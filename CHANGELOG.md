@@ -10,6 +10,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — WindowsContainerLog.Common's header names how OxidANT imports it
+
+- The module header said OxidANT's container scripts import it from `C:\host-scratch`; since
+  OxidANT 20a03fb they import it through `Resolve-BuildModule.ps1` from the streamed tree
+  (`Build-RustAll.ps1:15`, `Test-RustAll.ps1:13`). The header is four lines now, the restore
+  history stays in [`changelog-archive-2026-09-21.md`](docs/changelog-archive-2026-09-21.md), and
+  `.github/consumers.json`'s OxidANT note says the same.
+
 ## 2026-10-19 — the format walks skip node_modules and the other trees git never lists
 
 - **Windows' source walk** (`Get-ProjectSourceFiles`, used without a `.git`, as in a tar-piped

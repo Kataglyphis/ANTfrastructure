@@ -4,38 +4,12 @@
 
 <#
 .SYNOPSIS
-  Console+file logging for scripts running INSIDE a Windows build container.
-
+  Console and file logging for scripts running inside a Windows build container.
 .DESCRIPTION
-  Lifted from a consumer (OxidANT's
-  scripts/windows/container/Build-RustAll.ps1 and Test-RustAll.ps1), which
-  carried two byte-identical copies of it.
-
-  RESTORED 2026-09-14. Deleted in 6f5aef72 (2026-09-08, "no consumer") while
-  OxidANT's Invoke-StevedoreBuild.ps1 resolves it by path and its two
-  in-container scripts Import-Module it from C:\host-scratch -- references a
-  path grep of this repo cannot see. The consumer inventory
-  (.github/consumers.json) now records that consumer.
-
-  Deliberately DEPENDENCY-FREE and self-contained. An in-container script is
-  usually staged alone - the consumer's driver excludes ExternalLib from the
-  sources it copies in, so nothing under windows/scripts/modules/ is reachable
-  from inside the container unless it is copied there explicitly. This module
-  is therefore safe to drop next to the script it serves and import by path.
-
-  Two behaviours are the whole point, and both are hard-won:
-
-  * Every line is written to a file on the MOUNTED scratch directory as well
-    as the console. The docker CLI pipe drops intermittently on Windows
-    container hosts (hcsshim/ttrpc flakiness) while the container keeps
-    working, so console output alone can vanish mid-run and take the reason
-    for a failure with it.
-
-  * Native commands run through `cmd /c "<cmd> 2>&1"`. That merges stderr into
-    stdout as plain text instead of letting PowerShell wrap each stderr line
-    in an ErrorRecord, which reorders output and can turn a harmless warning
-    into a terminating error depending on $ErrorActionPreference and the
-    PowerShell version.
+  OxidANT's scripts/windows/container/*.ps1 import it through Resolve-BuildModule.ps1 from the streamed tree.
+  Dependency-free, so a script can also import it by path alone. Every line goes to the log file too, because the
+  docker CLI pipe drops on Windows container hosts while the container keeps running. Native commands run through
+  `cmd /c "<cmd> 2>&1"`, so stderr arrives as text, not as ErrorRecords that reorder output or terminate the script.
 #>
 
 $script:ContainerLogPath = $null
@@ -44,7 +18,7 @@ $script:ContainerLogPath = $null
 .SYNOPSIS
   Start (and truncate) the container log.
 .PARAMETER Path
-  Log file, normally under the mounted scratch dir (e.g. C:\host-scratch\x.log).
+  Log file, e.g. <Workspace>\logs\in-container-build.log, which the runner streams back to the host.
 #>
 function Start-ContainerLog {
     [CmdletBinding()]
