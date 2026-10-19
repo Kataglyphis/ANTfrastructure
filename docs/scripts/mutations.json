@@ -13731,6 +13731,54 @@
   "why": "a relative link resolves from the guide's own directory, which only its source path says"
  },
  {
+  "id": "lib.dartdoc-python-image-parser",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if [[ -n \"${python}\" ]] && _dartdoc_build_has_parser \"${python}\" \"${pin}\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "the image's python3 already carries the pinned parser; passing it over fails CI or downloads a copy"
+ },
+ {
+  "id": "lib.dartdoc-python-version-checked",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "sys.exit(markdown_it.__version__ != sys.argv[1])",
+  "replace": "sys.exit(0)",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "the renderer is written against one parser version; any markdown_it that imports is not that version"
+ },
+ {
+  "id": "lib.dartdoc-python-ci-never-downloads",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  elif [[ \"${CI:-}\" == \"true\" || -d \"${_DARTDOC_BUILD_IMAGE_VENV}\" ]]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "everything a lane needs is in the image: CI and the image fail on a missing parser instead of fetching it from PyPI"
+ },
+ {
+  "id": "lib.dartdoc-python-image-without-ci",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  elif [[ \"${CI:-}\" == \"true\" || -d \"${_DARTDOC_BUILD_IMAGE_VENV}\" ]]; then",
+  "replace": "  elif [[ \"${CI:-}\" == \"true\" ]]; then",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "a local lane runs the image without CI=true; it must fail like CI, not download what CI would not have"
+ },
+ {
+  "id": "lib.dartdoc-python-host-venv",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    _dartdoc_build_host_venv \"${requirements}\"\n",
+  "replace": "    err \"no parser\"\n",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "a workstation without the image (OmniAccelerANT's documented generate-docs.sh run) still needs the venv"
+ },
+ {
+  "id": "lib.dartdoc-python-pin-required",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if [[ -z \"${pin}\" ]]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-dartdoc-python.sh",
+  "why": "without a pin every markdown_it version would be compared against an empty string"
+ },
+ {
   "id": "doc-dupes.badges-are-not-prose",
   "target": "docs/scripts/verify_doc_dupes.py",
   "find": "        if fence or line.startswith((\"|\", \"#\", \"<!--\", \"-->\", \"[![\", \"![\")):",

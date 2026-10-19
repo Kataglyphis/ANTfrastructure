@@ -585,9 +585,9 @@ or that configured a footer and footered no page, fails. It prints both numbers
 | `DARTDOC_BUILD_FOOTER_TITLE` | bold name in front of those links | — |
 | `DARTDOC_BUILD_TITLE_SUFFIX` | appended to each guide page's `<title>` | — |
 | `DARTDOC_BUILD_REPO_URL` | GitHub URL a non-guide `*.md` link points into | the checkout's `origin` |
-| `DARTDOC_BUILD_VENV_DIR` | venv for the renderer | `${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv` |
-| `DARTDOC_BUILD_REQUIREMENTS` | its requirements file | `lib/dartdoc-guides.requirements.txt` |
-| `DARTDOC_BUILD_PYTHON` | interpreter for the renderer | the venv's, created on demand |
+| `DARTDOC_BUILD_VENV_DIR` | the renderer's venv, on a workstation without the image only | `${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv` |
+| `DARTDOC_BUILD_REQUIREMENTS` | the file that pins `markdown-it-py==X.Y.Z` | `lib/dartdoc-guides.requirements.txt` |
+| `DARTDOC_BUILD_PYTHON` | interpreter for the renderer | `python3`, when it imports the pinned parser |
 
 **A configured input that is missing is fatal.** An absent
 `DARTDOC_BUILD_IMAGES_DIR`, guide source or theme sheet fails the build instead
@@ -595,6 +595,23 @@ of being skipped: a docs site quietly missing its theme and half its pages is
 worse than a build that stops and says so. The same rule governs the CI
 ownership fix — the container writes `doc/` as root over a bind mount, and a
 `chown` that fails leaves a tree the host user cannot rebuild.
+
+### The renderer's Python
+
+`dartdoc_build_prepare_python_env` downloads nothing in CI or in the image
+(2026-10-19, BACKLOG CON101). It uses, in this order:
+
+1. `DARTDOC_BUILD_PYTHON`, when the caller sets it;
+2. `python3`, when it imports `markdown_it` at exactly the version
+   `dartdoc-guides.requirements.txt` pins. `:latest`'s `/opt/venv/bin/python3`
+   carries 4.2.0;
+3. otherwise, with `CI=true` or inside the image (`/opt/venv` exists), it fails:
+   `python3 (...) lacks markdown-it-py 4.2.0; CI and the image never download it`;
+4. on a workstation without the image, a uv venv at `DARTDOC_BUILD_VENV_DIR` with
+   the pinned parser. OmniAccelerANT's `getting-started.md` § *Build API docs*
+   runs `generate-docs.sh` on a host, which is the one caller of this path.
+
+Suite: `tests/test-dartdoc-python.sh`.
 
 ## The rustdoc theme sheet
 

@@ -10,6 +10,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the dartdoc guide renderer downloads nothing in CI
+
+- **`dartdoc_build_prepare_python_env` takes `python3` when it imports `markdown-it-py` at the
+  version `lib/dartdoc-guides.requirements.txt` pins** (`:latest`: `/opt/venv/bin/python3`,
+  4.2.0). With `CI=true` or inside the image (`/opt/venv`) it fails instead of installing it
+  from PyPI; only a workstation without the image still builds the uv venv, for OmniAccelerANT's
+  documented host run of `generate-docs.sh`
+  ([`shared-script-libraries.md`](docs/shared-script-libraries.md#the-renderers-python)).
+- `tests/test-dartdoc-python.sh` drives every branch with a stub parser; six
+  `lib.dartdoc-python-*` mutations prove it. BACKLOG CON101 keeps what is left: the image pin and
+  its smoke check, and the two consumers that still run a bare `dart doc`.
+
 ## 2026-10-19 — rustdoc documents every crate of a workspace
 
 - **`02-toolchain/rust/cargo_build_doc.sh` adds `--workspace` when `Cargo.toml` has a

@@ -29,22 +29,29 @@ _dartdoc_build_require_api_dir() {
   printf '%s\n' "${api_dir}"
 }
 
-# Python environment: container-native, used by path so no set -u dance around activate.
-dartdoc_build_prepare_python_env() {
-  local venv_dir requirements python
-  if [[ -n "${DARTDOC_BUILD_PYTHON:-}" ]]; then
-    info "Using the caller's interpreter: ${DARTDOC_BUILD_PYTHON}"
-    return 0
-  fi
-  venv_dir="${DARTDOC_BUILD_VENV_DIR:-${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv}"
-  requirements="${_DARTDOC_BUILD_LIB_DIR}/dartdoc-guides.requirements.txt"
-  requirements="${DARTDOC_BUILD_REQUIREMENTS:-${requirements}}"
+# The family image's interpreter prefix: inside it, the parser comes from the image or not at all.
+_DARTDOC_BUILD_IMAGE_VENV=/opt/venv
 
+# _dartdoc_build_parser_pin <requirements>: the markdown-it-py version the renderer is written against.
+_dartdoc_build_parser_pin() {
+  sed -n 's/^markdown-it-py==\([0-9][0-9.]*\).*/\1/p' "$1" | head -n 1
+}
+
+# _dartdoc_build_has_parser <python> <version>: does it import markdown_it at exactly that version?
+_dartdoc_build_has_parser() {
+  "$1" -c 'import sys, markdown_it; sys.exit(markdown_it.__version__ != sys.argv[1])' "$2" >/dev/null 2>&1
+}
+
+# _dartdoc_build_host_venv <requirements>: a workstation without the image; the one path that downloads.
+_dartdoc_build_host_venv() {
+  local venv_dir python
+  venv_dir="${DARTDOC_BUILD_VENV_DIR:-${TMPDIR:-/tmp}/kataglyphis-dartdoc-venv}"
+  warn "No python3 with the pinned markdown-it-py; installing it into ${venv_dir} (a workstation only)"
   # shellcheck source=../01-core/python_uv.sh
   source "${_DARTDOC_BUILD_LIB_DIR}/../01-core/python_uv.sh"
   uv_ensure_installed
   uv_venv_create "${venv_dir}" "" # "" skips the --python pin, honouring UV_PYTHON
-  uv_pip_install_requirements "${venv_dir}" "${requirements}"
+  uv_pip_install_requirements "${venv_dir}" "$1"
 
   python="${venv_dir}/bin/python"
   if [[ ! -x "${python}" ]]; then
@@ -52,6 +59,30 @@ dartdoc_build_prepare_python_env() {
   fi
   if [[ ! -x "${python}" ]]; then
     err "No usable interpreter in ${venv_dir} after uv_venv_create."
+  fi
+  DARTDOC_BUILD_PYTHON="${python}"
+}
+
+# Python environment: the image's python3 carries the parser, so CI never downloads it. docs/shared-script-libraries.md#the-renderers-python
+dartdoc_build_prepare_python_env() {
+  local requirements pin python
+  if [[ -n "${DARTDOC_BUILD_PYTHON:-}" ]]; then
+    info "Using the caller's interpreter: ${DARTDOC_BUILD_PYTHON}"
+    return 0
+  fi
+  requirements="${DARTDOC_BUILD_REQUIREMENTS:-${_DARTDOC_BUILD_LIB_DIR}/dartdoc-guides.requirements.txt}"
+  pin="$(_dartdoc_build_parser_pin "${requirements}")"
+  if [[ -z "${pin}" ]]; then
+    err "No markdown-it-py==<version> line in ${requirements}."
+  fi
+  python="$(command -v python3 || true)"
+  if [[ -n "${python}" ]] && _dartdoc_build_has_parser "${python}" "${pin}"; then
+    info "Using ${python}: it imports markdown-it-py ${pin}"
+  elif [[ "${CI:-}" == "true" || -d "${_DARTDOC_BUILD_IMAGE_VENV}" ]]; then
+    err "python3 (${python:-not found}) lacks markdown-it-py ${pin}; CI and the image never download it. Put it in the image from ${requirements}, or set DARTDOC_BUILD_PYTHON."
+  else
+    _dartdoc_build_host_venv "${requirements}"
+    python="${DARTDOC_BUILD_PYTHON}"
   fi
   DARTDOC_BUILD_PYTHON="${python}"
   export DARTDOC_BUILD_PYTHON
