@@ -182,6 +182,17 @@ On a Jetson, rootless nerdctl needs three extra flags:
 The WebRTC signalling server behind port 8443 is
 [`runtime-services.md` § WebRTC Streaming](runtime-services.md#webrtc-streaming).
 
+### A lane under a rootless engine on a Linux host runs as root
+
+Rootless nerdctl maps the host user to the container's root, so the image's uid 1001 lands on a
+subuid that may not write a bind-mounted checkout: `Cannot open file, path =
+'.dart_tool/package_config.json' (OS Error: Permission denied, errno = 13)`. Pass `--user 0:0`
+when `nerdctl info` reports `name=rootless` on a Linux host; every file the lane writes is then the
+host user's. As root, GNU tar also restores an archive's owners, and one beyond the engine's 65,536
+subuids fails the extraction (Flutter's `gradle-wrapper.tgz` carries uid 397546: `Cannot change
+ownership to uid 397546, gid 5000: Invalid argument`), so `TAR_OPTIONS=--no-same-owner` goes with
+the user. A Windows host (Rancher) and CI, whose runner is uid 1001 itself, need neither.
+
 ## Optional Ubuntu Apt Mirror Workaround
 
 - Add both `--build-arg USE_FAST_UBUNTU_MIRROR=true` and `--build-arg FAST_UBUNTU_MIRROR_URL=...` when the default Ubuntu archive mirror is slow.
@@ -303,45 +314,92 @@ tarball and AppImage started nowhere else: GCC 16.2's `libstdc++` (`GLIBCXX_3.4.
 any distro's, Ubuntu 26.04's included) and the chain ONNX Runtime were neither bundled nor
 declared, and the executable had no RUNPATH to its own `lib/`.
 
-- **What a package carries:** `kataglyphis_install_linux_closure` in `cmake/CPackCommon.cmake`,
-  the Linux twin of `kataglyphis_install_package_dlls`. At install time, so in every CPack
-  generator's staged tree and in the flatpak's `cmake --install`, it runs
-  `06-packaging/python-app-closure.sh`: every library the installed files need goes to
-  `lib/<PRIVATE_DIR>`, found through `$ORIGIN` RUNPATHs. The C++ compiler's runtime directory is
-  searched first, since the image has two `libstdc++`. `SYSTEM` names what the package's
-  `Depends` bring instead (a distro's GStreamer); `PROTECT` copies the chain ORT unpatched for G6.
-  Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every program. Only the
-  top-level project's call counts: AccelerANTgine, embedded in OmniAccelerANT's plugin by
-  `add_subdirectory`, would otherwise rewrite the Flutter bundle, chain ORT included.
-- **glibc travels too, with `LOADER`** (2026-10-17). The image links against glibc 2.43, newer than
-  Debian 13's 2.41 and Ubuntu 24.04's 2.39. `06-packaging/bundle-loader.sh` moves each executable
-  into `lib/<PRIVATE_DIR>` beside the image's loader, puts glibc's libraries in its `glibc/`, and
-  leaves a launcher in its place. **The launcher takes the bundled glibc only when the host's is
-  older** (2026-10-17): it reads the host loader's `--version`, and on the bundled version or newer
-  it starts the program itself, under its own name (`exec -a`). A host glibc newer than the
-  bundled one must win, because the host's GL drivers are built against it: the app flatpak
-  aborted at start on org.freedesktop.Platform 26.08, whose Mesa needs `GLIBC_2.44`, under the
-  bundled 2.43 (`No provider of eglGetPlatformDisplayEXT found`). The same holds for any distro
-  newer than the image. On an older host it runs the program through the bundled loader with
-  `--library-path <lib>/glibc:<lib>`, as ObservANT's does; glibc sits apart from `<lib>` so the
-  host loader never finds it through a RUNPATH. `KATAGLYPHIS_BUNDLED_GLIBC=1` forces that path,
-  for a test or a host whose newer glibc misbehaves. The bundled loader makes `/proc/self/exe`
-  name the loader, so a program that finds its data from there (a Flutter runner) takes
-  `--beside`: it stays in its directory as `<name>.bin` with the loader next to it, and only
-  glibc goes to `<lib>/glibc`. A second run finds its own launcher and stops. The launcher reads the
-  host's version through a command substitution: with `read < <(...)` that child outlived the `exec`
-  as a stray child of the program, which Python's `forkserver` warns about. A Python app bundle puts
-  the same launcher on its interpreter ([`python-app-bundles.md`](python-app-bundles.md#the-images-glibc-travels)). `LOADER` turns `dpkg-shlibdeps` off
-  (it reads the bundled glibc as the system's and pins `libc6 (<< 2.44)`), so `DEBIAN_DEPENDS`
-  names what the system still brings, and hands CPack's AppImage generator
-  `patchelf-keep-glibc.sh`: it patches every library without a RUNPATH, and a patched loader
-  segfaults. AccelerANTgine's `.deb`, tarball and AppImage start on Debian 13 (himbeere2) and
-  Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43: Ubuntu 26.04 and newer.
-- **The proof:** the `clean-host-package-check` action, in a job on `ubuntu-26.04` /
-  `ubuntu-26.04-arm` after the lane. It installs the `.deb` with apt, which resolves `Depends` as
-  on a user's machine, runs `ldd` over every installed ELF, and starts a command with
-  `LD_BIND_NOW=1`; the tarball unpacked anywhere and the AppImage get the same.
-  `linux/scripts/tests/test-linux-closure-install.sh` covers the CMake function itself.
+### What a package carries
+
+`kataglyphis_install_linux_closure` in `cmake/CPackCommon.cmake` is the Linux twin of
+`kataglyphis_install_package_dlls`. At install time, so in every CPack generator's staged tree and
+in the flatpak's `cmake --install`, it runs `06-packaging/python-app-closure.sh`: every library the
+installed files need goes to `lib/<PRIVATE_DIR>`, found through `$ORIGIN` RUNPATHs. The C++
+compiler's runtime directory is searched first, since the image has two `libstdc++`. `SYSTEM` names
+what the package's `Depends` bring instead (a distro's GStreamer); `PROTECT` copies the chain ORT
+unpatched for G6. Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every
+program. Only the top-level project's call counts: AccelerANTgine, embedded in OmniAccelerANT's
+plugin by `add_subdirectory`, would otherwise rewrite the Flutter bundle, chain ORT included.
+
+**Every bundled ELF needs its own `$ORIGIN` RUNPATH, because RUNPATH is not transitive.** It serves
+the direct dependencies of the file that carries it, nothing else: a plugin the executable
+`dlopen`s does not search the executable's `$ORIGIN/lib`, so a library that sits in the bundle but is
+reachable only through the executable's RUNPATH is present and still not found (measured in
+OmniAccelerANT's Flutter bundle). The closure therefore gives each user of a bundled library an
+`$ORIGIN`-relative RUNPATH, and `--check` fails a file whose library is in the lib dir but not on
+its own RUNPATH.
+
+### glibc travels, and a newer host glibc wins
+
+**glibc travels too, with `LOADER`** (2026-10-17). The image links against glibc 2.43, newer than
+Debian 13's 2.41 and Ubuntu 24.04's 2.39. `06-packaging/bundle-loader.sh` moves each executable
+into `lib/<PRIVATE_DIR>` beside the image's loader, puts glibc's libraries in its `glibc/`, and
+leaves a launcher in its place.
+
+**The launcher takes the bundled glibc only when the host's is older** (2026-10-17): it reads the
+host loader's `--version`, and on the bundled version or newer it starts the program itself, under
+its own name (`exec -a`). A host glibc newer than the bundled one must win, because the host's GL
+drivers are built against it: the app flatpak aborted at start on org.freedesktop.Platform 26.08,
+whose Mesa needs `GLIBC_2.44`, under the bundled 2.43 (`No provider of eglGetPlatformDisplayEXT
+found`). The same holds for any distro newer than the image. On an older host it runs the program
+through the bundled loader with `--library-path <lib>/glibc:<lib>`, as ObservANT's does; glibc sits
+apart from `<lib>` so the host loader never finds it through a RUNPATH.
+`KATAGLYPHIS_BUNDLED_GLIBC=1` forces that path, for a test or a host whose newer glibc misbehaves.
+
+The bundled loader makes `/proc/self/exe` name the loader, so a program that finds its data from
+there (a Flutter runner) takes `--beside`: it stays in its directory as `<name>.bin` with the loader
+next to it, and only glibc goes to `<lib>/glibc`. A second run finds its own launcher and stops. The
+launcher reads the host's version through a command substitution: with `read < <(...)` that child
+outlived the `exec` as a stray child of the program, which Python's `forkserver` warns about. A
+Python app bundle puts the same launcher on its interpreter
+([`python-app-bundles.md`](python-app-bundles.md#the-images-glibc-travels)).
+
+`LOADER` turns `dpkg-shlibdeps` off (it reads the bundled glibc as the system's and pins
+`libc6 (<< 2.44)`), so `DEBIAN_DEPENDS` names what the system still brings, and hands CPack's
+AppImage generator `patchelf-keep-glibc.sh`: it patches every library without a RUNPATH, and a
+patched loader segfaults. AccelerANTgine's `.deb`, tarball and AppImage start on Debian 13
+(himbeere2) and Ubuntu 26.04 this way. Without `LOADER` the packages need glibc 2.43: Ubuntu 26.04
+and newer.
+
+### GStreamer loads from the package alone
+
+The family's packages carry the image's own GStreamer, never the host's (owner rule, 2026-10-17):
+a host's `/usr/lib/*/gstreamer-1.0` plugins are built against another GStreamer. Four settings
+make GStreamer use the package and nothing else:
+
+| Variable | Value | Why |
+| --- | --- | --- |
+| `GST_PLUGIN_PATH` | the package's `gstreamer-1.0/` | the bundled plugins |
+| `GST_PLUGIN_SYSTEM_PATH`, `GST_PLUGIN_SYSTEM_PATH_1_0` | empty | unset, GStreamer adds the host's plugin directories |
+| `GST_REGISTRY_FORK` | `no` | no `gst-plugin-scanner` travels; GStreamer scans in-process instead of warning `External plugin loader failed` |
+| `GST_REGISTRY` | one file per installed copy, under `$XDG_CACHE_HOME` | a copy never reads a registry another GStreamer wrote |
+
+A launcher can write them (a Python app bundle's do:
+[`python-app-bundles.md` § GStreamer](python-app-bundles.md#gstreamer)), or the library that starts
+GStreamer sets them from an ELF constructor, each only when unset, so a user's value still wins
+(AccelerANTgine's `bundled_gstreamer.cpp`, OmniAccelerANT's `runtime_paths.cc`). The plugins'
+libraries come through the closure; the image reaches `/opt/gstreamer/lib`, `/opt/ffmpeg/lib` and
+`/opt/libcamera/lib` only through `ld.so.conf`, so the closure's search list must name them.
+
+`06-packaging/gstreamer-bundle.sh copy --dest DIR --plugin NAME...` copies the named plugins out of
+the image (a missing `--plugin` fails, a missing `--optional` is named). `gstreamer-bundle.sh check
+--plugins DIR ELEMENT...` asks the image's `gst-inspect-1.0` for each element under exactly the
+environment above and fails on one that no bundled plugin provides or that loads from elsewhere. A
+new element in a pipeline goes into the check's list and its plugin into the copy's, or the build
+fails.
+
+### The proof
+
+The `clean-host-package-check` action, in a job on `ubuntu-26.04` / `ubuntu-26.04-arm` after the
+lane. It installs the `.deb` with apt, which resolves `Depends` as on a user's machine, runs `ldd`
+over every installed ELF, and starts a command with `LD_BIND_NOW=1`; the tarball unpacked anywhere
+and the AppImage get the same. `linux/scripts/tests/test-linux-closure-install.sh` covers the CMake
+function itself.
 
 ## Consumer bash libraries (`linux/scripts/lib/`)
 

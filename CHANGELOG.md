@@ -10,6 +10,32 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — generic facts the consumers carried get one hub home
+
+Each was written out in one or more consumers; the hub now owns it and the consumers can link.
+
+- **Linux packages** ([`linux-build-basics.md`](docs/linux-build-basics.md#linux-packages-that-run-outside-the-image)):
+  the section has headings to link, and two new parts: an `$ORIGIN` RUNPATH per bundled ELF,
+  because RUNPATH is not transitive, and **GStreamer loads from the package alone** (the four
+  variables, set-unless-set in a constructor, `gstreamer-bundle.sh copy`/`check`).
+  `python-app-bundles.md` § GStreamer links there instead of listing the variables.
+- **Submodule URLs are https, never `git@`**: `adopting-in-a-new-project.md` § 0.
+- **`dart format`**: never `dart format .` (the analyzer's `exclude:` does not stop it; checked
+  in `:latest`, Dart 3.13.5), and the `environment: sdk:` floor picks the style the frb codegen and
+  `gen-l10n` format with: `code-quality-tooling.md` § `dart format`: the tracked files, in the
+  floor's style.
+- **`failure-modes.md`**: `set: pipefail\r: invalid option name` (a CRLF checkout) and the MSVC
+  STL 14.51 `unexpected size` `static_assert` under clang-cl (microsoft/STL#6294, fixed upstream by
+  #6298 on 2026-10-18, not yet in the image's VC Tools).
+- **Local lanes**: KVM in Rancher's VM for the Android emulator
+  (`rancher-desktop-linux-containers.md`), a lane under a rootless engine on a Linux host runs as
+  root with `TAR_OPTIONS=--no-same-owner` (`linux-build-basics.md`), and QEMU user mode on a
+  16 KiB-page kernel (`riscv64-cross-test-lanes.md` § Traps).
+- **`cmake/README.md` § Sanitizers**: what the modules do on every compiler, checked against
+  `Sanitizers.cmake` and `SanitizerSupport.cmake`; `windows-clang-cl-sanitizers.md` links it.
+- **`shared/templates/AGENTS.md.template`**: a § 2 row for the bootstrap copies and module
+  resolution, a § 3 line for `git-sync-branches.sh`. `INDEX.md` names every new anchor.
+
 ## 2026-10-19 — the dartdoc guide renderer's links land
 
 - **An anchored link between guides is rewritten.** `dartdoc-guides.py` tested the whole

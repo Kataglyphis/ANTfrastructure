@@ -22,6 +22,20 @@ submodule; bump the pin and the consuming change in the same commit, and push
 ANTfrastructure `develop` **before** the consumer, because CI resolves composite
 actions at `@develop` (§ 6 says why not `@main`).
 
+### Submodule URLs are https, never `git@`
+
+Every `.gitmodules` url in the family is `https://github.com/Kataglyphis/<repo>.git`. An ssh url
+needs a key, and none of the places that resolve these has one: a hosted runner, the `:latest`
+container the Renovate runner starts, an anonymous clone, and a recursive checkout from a
+superproject, which inherits the submodule's `.gitmodules`. `actions/checkout` installs a
+`url.<https>.insteadOf` rewrite that hides an ssh url; a bare `git submodule update` gets no such
+rewrite and dies with `Permission denied (publickey)` on a public repository. To change one:
+
+```bash
+git config -f .gitmodules submodule.<path>.url https://github.com/Kataglyphis/<repo>.git
+git submodule sync   # moves the existing checkout's remote too
+```
+
 ## Submodule maintenance
 
 ### Bumping the pin

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The image's own GStreamer plugins into a package, and proof its elements load from them alone; see docs/python-app-bundles.md § GStreamer
+# The image's own GStreamer plugins into a package, and proof its elements load from them alone; see docs/linux-build-basics.md#gstreamer-loads-from-the-package-alone
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

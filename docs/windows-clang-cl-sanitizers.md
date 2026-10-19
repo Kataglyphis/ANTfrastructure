@@ -17,7 +17,9 @@ multi-config generator (Visual Studio, Ninja Multi-Config) never instruments
 its Release config, and single-config non-Debug builds are byte-identical with
 sanitizers requested or not. The one unwrapped addition is the ASan runtime's
 link search directory (`target_link_directories`), which links nothing by
-itself.
+itself. The defaults, the combinations each toolchain refuses and the CRT switch,
+for every compiler:
+[`cmake/README.md`](../cmake/README.md#sanitizers-what-the-modules-actually-do).
 
 ## Dynamic ASan runtime: `/clang:-shared-libsan`
 

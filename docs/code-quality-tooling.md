@@ -214,15 +214,32 @@ reads that file instead of running the suite a second time. OmniAccelerANT's nat
 ran it twice, 70 s and then 55 s for the coverage report. It is refused with
 `--test-platform chrome`, since `flutter test` collects coverage on the VM only.
 
-**Never `dart format .` in a CI lane.** The recursive walk reaches every
-directory under the root, `third_party/` and `build/` included. The Linux lanes
+#### `dart format`: the tracked files, in the floor's style
+
+**Never `dart format .`, in a lane or by hand.** The recursive walk reaches every
+directory under the root, `third_party/` and `build/` included, and the analyzer's
+`exclude:` list in `analysis_options.yaml` does not stop it (Dart 3.13.5 in `:latest`
+formats a file under an excluded `vendor/`, checked 2026-10-19). The Linux lanes
 used to install the Flutter SDK inside the mounted workspace
 (`flutter_dir: /workspace/flutter`), so the walk reformatted the SDK. Measured
 2026-09-03 on OmniAccelerANT: `Formatted 7404 files (627 changed)`, 604 of them
 under `flutter/` — by itself enough to fail `--set-exit-if-changed`. The lanes
 now take the image's SDK at `/opt/flutter` (`flutter_lane_prepare_env`,
 `05-frameworks/flutter/lane-prologue.sh`), but a leftover `flutter/` checkout in
-a workspace is walked the same way, so the exclusion stays.
+a workspace is walked the same way, so every gate formats the tracked-file list
+above (`code_quality_find_dart_files`, `Get-ProjectDartFiles`). `dart analyze`
+honours the exclusions and is not affected.
+
+**The `environment: sdk:` floor in `pubspec.yaml` picks the formatter's style.**
+`dart format` formats a package at its language version, so moving the floor
+reformats committed files: at 3.13 it puts a blank line between import groups,
+and OmniAccelerANT's raise from 3.11.4 failed the format gate on every lane
+(3e4a252, reverted in 7af04e4). Generators that format their own output do it at
+the same version: `flutter_rust_bridge_codegen generate` and `flutter gen-l10n`.
+After a floor move, regenerate their output in the image instead of hand-formatting
+it, then format the rest; the result passes the gate unchanged (OmniAccelerANT
+0ebcf43). The image ships no `cargo-expand`, so the frb codegen installs it on
+first use and needs the network then.
 
 #### Known divergences from the Windows path — read before "unifying" the two
 

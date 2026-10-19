@@ -198,8 +198,10 @@ libxext6`.
 
 ## GStreamer
 
-The family's packages carry the image's own GStreamer, never the host's (owner rule,
-2026-10-17). An app that starts GStreamer names what it needs in `app.json`:
+A package's GStreamer is the image's and loads from the package alone; the rule and the four
+variables that enforce it are
+[`linux-build-basics.md` § GStreamer loads from the package alone](linux-build-basics.md#gstreamer-loads-from-the-package-alone).
+An app that starts GStreamer names what it needs in `app.json`:
 
 ```json
 "gstreamer": {
@@ -218,14 +220,11 @@ The family's packages carry the image's own GStreamer, never the host's (owner r
 - lets the closure find the GStreamer and libcamera libraries, which the image reaches only
   through `ld.so.conf`, and puts the bundled loader in front of each tool as in front of the
   interpreter;
-- writes into every launcher the variables that make GStreamer use the package alone:
-  `GST_PLUGIN_PATH` on the bundle's plugins, an empty `GST_PLUGIN_SYSTEM_PATH` and
-  `GST_PLUGIN_SYSTEM_PATH_1_0`, `GST_REGISTRY_FORK=no` (no scanner travels), a registry per
-  installed copy under `$XDG_CACHE_HOME/<id>/`, and `runtime/libexec/gstreamer` first on
-  `PATH`, so `shutil.which("gst-launch-1.0")` finds the bundled tool;
-- checks every `elements` entry with the image's `gst-inspect-1.0` under that environment
-  (`gstreamer-bundle.sh check`): an element no bundled plugin provides, or one loaded from
-  elsewhere, fails the build. Each tool must start on both glibc paths.
+- writes those variables into every launcher, unconditionally, with the registry under
+  `$XDG_CACHE_HOME/<id>/`, and puts `runtime/libexec/gstreamer` first on `PATH`, so
+  `shutil.which("gst-launch-1.0")` finds the bundled tool;
+- runs `gstreamer-bundle.sh check` over every `elements` entry, and starts each tool on both
+  glibc paths.
 
 A subprocess that builds its own environment must pass the `GST_` variables on; OrchestrANT's
 `get_gstreamer_env` does since 2026-10-18.

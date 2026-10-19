@@ -82,6 +82,7 @@ Two neighbours, so you land on the right page:
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
+- [`set: pipefail\r: invalid option name`](#set-pipefailr-invalid-option-name)
 
 **Windows: the layer store (hcsshim)**
 
@@ -144,6 +145,7 @@ Two neighbours, so you land on the right page:
 - [RVV changed what the optimizer can prove](#rvv-changed-what-the-optimizer-can-prove)
 - [`webrtcbin`'s action signals never reply; `ffi_prep_cif` returns `FFI_BAD_TYPEDEF`](#webrtcbins-action-signals-never-reply-ffi_prep_cif-returns-ffi_bad_typedef)
 - [`dtlsconnection ... unexpected eof while reading` at the first DTLS step](#dtlsconnection--unexpected-eof-while-reading-at-the-first-dtls-step)
+- [`static_assert failed: 'unexpected size'` from `std::find` under clang-cl](#static_assert-failed-unexpected-size-from-stdfind-under-clang-cl)
 
 
 ---
@@ -1385,6 +1387,23 @@ from 4.1 on; the host's CMake is older (3.29 on the dev box, 2026-10-19).
 through the repository's `Build-Windows-Container.ps1`. The presets themselves can still be
 read from the file.
 
+### `set: pipefail\r: invalid option name`
+
+**Symptom.** A script from a Windows checkout stops at its first line in the container, and
+the message names neither the file nor line endings.
+
+**Cause.** The checkout wrote the script with CRLF (`core.autocrlf=true`), so bash reads the
+`\r` as part of the option name.
+
+**Fix.** Pin shell scripts to LF in `.gitattributes` (`*.sh text eol=lf`, as here). git does
+not rewrite an existing checkout, so once per clone:
+
+```bash
+git ls-files -z '*.sh' | xargs -0 rm -f && git checkout -- .
+```
+
+The hub's `crlf-guard` gate fails a tracked shell script whose working-tree bytes carry CR.
+
 ## Windows: the layer store (hcsshim)
 
 ### `hcsshim::ActivateLayer 0x20` on an AMD Radeon host
@@ -2167,3 +2186,19 @@ end of file:
 [`windows-builds.md` § DTLS with OpenSSL 4](windows-builds.md#dtls-with-openssl-4).
 If it comes back after a `GSTREAMER_VERSION` bump, check that the build log still
 says the patch applied or that upstream carries it.
+
+### `static_assert failed: 'unexpected size'` from `std::find` under clang-cl
+
+**Symptom.** A clang-cl build stops in the STL's `<xutility>` at `_Find_vectorized` with
+`unexpected size`, at a `find`, `count`, `remove`, `remove_copy` or `replace` (or its
+`ranges::` form) over a struct with a defaulted `operator==`. BeschleunigerBallett run
+36052511207 stopped there on a 24-byte key.
+
+**Cause.** The image's MSVC STL 14.51 (19.51.36231) takes its vectorized path for every
+type clang calls trivially equality-comparable, then asserts the type is 1, 2, 4 or 8
+bytes (microsoft/STL#6294). Fixed upstream by microsoft/STL#6298 (merged 2026-10-18), not
+yet in a VC Tools release the image ships.
+
+**Fix.** `find_if` with a predicate, which is a plain loop; or a hand-written `operator==`,
+which is not trivially comparable. Drop the workaround once the image's VC Tools carry the
+fix.

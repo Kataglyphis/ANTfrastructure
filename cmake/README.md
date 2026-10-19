@@ -61,6 +61,34 @@ The `myproject_` prefix is the upstream cpp-best-practices convention these
 modules came from. It is kept deliberately: renaming would touch every call site
 in every consumer for no behavioural gain.
 
+## Sanitizers: what the modules actually do
+
+- **Debug only, decided in one place.** Every branch of `myproject_enable_sanitizers` emits its
+  flags through `$<$<CONFIG:Debug>:...>`: the GCC/Clang `-fsanitize=` pair, the clang-cl
+  compile, link and define set, and MSVC's `/fsanitize=`. Profile and Release are never
+  sanitized, and a multi-config generator never instruments its other configs. So the call site,
+  `myproject_apply_sanitizers(<target>)`, runs for every build type on purpose; a
+  `CMAKE_BUILD_TYPE` test around it would only restate the generator expressions.
+- **Defaults.** `myproject_supports_sanitizers()` then `myproject_default_debug_sanitizers()` set
+  `DEFAULT_ASAN` and `DEFAULT_UBSAN`, which a consumer passes as its option defaults: ASan ON for a
+  Debug build with GCC or Clang on Linux, MSVC and clang-cl; UBSan ON on Linux and clang-cl only.
+  Plain MSVC has no UBSan, and GCC 15 gets none (it ICEs on UBSan with C++20 modules).
+- **Combinations.** TSan does not run with ASan or LSan: with either on, the module drops TSan
+  with a warning, so a TSan build turns ASan off itself. MSan (Clang only) is dropped beside
+  ASan, TSan or LSan. MSVC takes ASan only and warns on the rest.
+- **clang-cl has no TSan** (`x86_64-pc-windows-msvc`): the request is dropped with a warning and
+  the result is a plain Debug binary. A `tsan` preset there builds a duplicate of Debug whose
+  green runs read as race-freedom; BeschleunigerBallett's cost ~185 s per full build until
+  2026-07-20. LSan and MSan are dropped with a warning too.
+- **clang-cl UBSan without ASan traps** (`-fsanitize-trap=undefined`, since 75645844 of
+  2026-09-07): it links, but undefined behaviour is a fast-fail at the faulting instruction with
+  no report. With ASan, the dynamic ASan runtime carries the UBSan handlers and reports, so on
+  Windows keep UBSan beside ASan. ASan moves the whole Debug build to the release CRT:
+  `myproject_apply_compiler_build_flags(<ASan option>)` strips `/MDd`, and a consumer's own
+  `CMAKE_MSVC_RUNTIME_LIBRARY` and any foreign build it drives (a Rust bridge's `CXXFLAGS`) must
+  follow. Why there is no `/MD` UBSan runtime, and which ASan runtime links:
+  [`../docs/windows-clang-cl-sanitizers.md`](../docs/windows-clang-cl-sanitizers.md).
+
 ## What does NOT belong here
 
 Anything encoding one project's *policy* rather than a reusable *mechanism*:

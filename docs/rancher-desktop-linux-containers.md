@@ -329,6 +329,22 @@ restart. The arm64 layers are a separate pull — roughly 6 GB over the wire and
 and every compile then runs under emulation, so expect it to be far slower than
 the native x64 path.
 
+## KVM in Rancher's VM for the Android emulator (per VM boot)
+
+The image's Android emulator needs `/dev/kvm`
+([`consumer-image-contract.md`](consumer-image-contract.md#the-android-emulator-runs-on-amd64-with-kvm)).
+Rancher's VM starts without the KVM module even though the CPU flags (`svm`/`vmx`) reach it,
+so nerdctl refuses a run that passes the device with `error stating device path: stat
+/dev/kvm: no such file or directory`. Load the module and open the node to the image's uid
+1001, the mode GitHub's runners get from a udev rule, once per VM boot:
+
+```bash
+wsl -d rancher-desktop -u root -- modprobe kvm_amd    # kvm_intel on Intel
+wsl -d rancher-desktop -u root -- chmod 0666 /dev/kvm
+```
+
+Measured 2026-10-06 on an AMD host: the AVD booted in 20 s.
+
 ## Emulated arm64 cannot run bubblewrap or static-PIE
 
 Under `qemu-user`, two packaging formats fail for reasons that have nothing to do

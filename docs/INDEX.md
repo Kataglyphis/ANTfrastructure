@@ -77,6 +77,7 @@ The two halves of one topic often split:
 | **Why the home-lab stacks live in the hub** (Home Assistant, Nextcloud AIO, Ansible) | [`overview.md` § Home-lab stacks](overview.md#home-lab-stacks-deliberately-here) |
 | **The home network's addresses**: placeholders in docs and examples, the real values in the gitignored `site.local.env` | [`site.local.env.example`](../site.local.env.example) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
+| **The sanitizer modules on every compiler**: Debug-only generator expressions, the defaults, the combinations each toolchain drops, clang-cl's trap-mode UBSan | [`../cmake/README.md`](../cmake/README.md#sanitizers-what-the-modules-actually-do) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
 | Open refactor work on the Windows chain | [`windows-refactor-backlog.md`](windows-refactor-backlog.md) |
 | **Local fixes to upstream projects** — every third-party source change the Windows chain carries, graded, and the 12 prepared-but-unsent submissions | [`upstream-windows-patches.md`](upstream-windows-patches.md) |
@@ -104,6 +105,8 @@ The two halves of one topic often split:
 | **Setting up WSL2 itself**: store-less install, `wsl.conf` interop, VHD reclaim, `usbipd` passthrough | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#setting-up-wsl2-itself) |
 | **A named volume that is silently a directory** — `-v name:/path` is a bind under Windows nerdctl; use the long `--mount type=volume` form | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#-v-namepath-is-a-bind-under-windows-nerdctl) |
 | **Running an arm64 container locally** — Rancher's VM ships no emulators, so `binfmt` must be registered once per VM boot | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#registering-arm64-emulation-in-ranchers-vm-per-vm-boot) |
+| **The Android emulator in Rancher's VM** — load the KVM module and open `/dev/kvm`, once per VM boot | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#kvm-in-ranchers-vm-for-the-android-emulator-per-vm-boot) |
+| **A lane under a rootless engine on a Linux host** — `--user 0:0` for the bind-mounted checkout, `TAR_OPTIONS=--no-same-owner` with it | [`linux-build-basics.md`](linux-build-basics.md#a-lane-under-a-rootless-engine-on-a-linux-host-runs-as-root) |
 | **flatpak/AppImage fail on emulated arm64** — bubblewrap's user namespace and static-PIE loading, neither of which `qemu-user` carries | [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#emulated-arm64-cannot-run-bubblewrap-or-static-pie) |
 | Cross-compilation chain and its stages | [`linux-cross-builds.md`](linux-cross-builds.md) |
 | **Vulkan SDK on foreign arches** — LunarG ships x86_64 only, so arm64/riscv64 are cross-built; what the target prefix contains, why it used to hold two binaries, and how the cross set grew to the vendor's own 24 components (VK2, VK4) | [`vulkan-foreign-arch-sdk.md`](vulkan-foreign-arch-sdk.md) |
@@ -142,10 +145,11 @@ The two halves of one topic often split:
 |---|---|
 | **What is cached where**, and which tier a miss came from | [`build-cache-tiers.md`](build-cache-tiers.md) |
 | **Wiring a new project to this repo** — start here | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
-| **A Linux package that runs outside the image** — `kataglyphis_install_linux_closure`, what still needs glibc 2.43, and the `clean-host-package-check` action on `ubuntu-26.04` | [`linux-build-basics.md`](linux-build-basics.md#linux-packages-that-run-outside-the-image) |
+| **A Linux package that runs outside the image** — `kataglyphis_install_linux_closure`, an `$ORIGIN` RUNPATH per ELF, the glibc launcher, GStreamer from the package alone, and the `clean-host-package-check` action on `ubuntu-26.04` | [`linux-build-basics.md`](linux-build-basics.md#linux-packages-that-run-outside-the-image) |
 | **A Python app as a relocatable folder** — the input to its zip/MSI/MSIX/tar.gz/deb/AppImage packages: `packaging/app.json`, both builders, the import walk + G6 + self-test gates, and why Windows ships the image's OpenCV instead of PyPI's | [`python-app-bundles.md`](python-app-bundles.md) |
 | Python CI: the shared lanes, and the three `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv, a synced venv's ONNX Runtime reconciled onto the chain wheels), and GIL vs free-threaded legs in one container | [`python-ci.md`](python-ci.md) |
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
+| **`dart format`**: never `dart format .`; the `environment: sdk:` floor picks the style, for code generators too | [`code-quality-tooling.md`](code-quality-tooling.md#dart-format-the-tracked-files-in-the-floors-style) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, why `--apply` refuses some submodules, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |
@@ -160,6 +164,7 @@ The two halves of one topic often split:
 | **Every checkout on its branch tip** — the superproject and every submodule, recursively, fast-forward only (`git-sync-branches.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#putting-every-checkout-on-its-branch) |
 | **A checkout after a history rewrite** — local work saved, branches and submodules moved, old blobs dropped (`git-adopt-rewritten-history.sh`) | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#after-a-history-rewrite) |
 | **Submodule conflicts on merge**, bumping the pin, shallow fetches | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-maintenance) |
+| **Submodule URLs are `https://`, never `git@`** — no key on a runner, in the Renovate container or in an anonymous clone | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#submodule-urls-are-https-never-git) |
 | Broken submodule checkout, `core.longpaths`, `git clean -fdx`, ssh-agent on Windows | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md#recovering-a-broken-submodule-checkout) |
 | **Branches, CI rounds and releases** — `develop` runs Linux x64 on every push, `[ci <lane>]` or a dispatch runs the rest, `main` moves by fast-forward to a fully green commit and every push to it releases only when every lane is green | [`branch-and-release-strategy.md`](branch-and-release-strategy.md) |
 | Which CI lanes run when, per repository, while the repositories move to that rule; what is still path-filtered or gated | [`ci-build-triggers.md`](ci-build-triggers.md) |

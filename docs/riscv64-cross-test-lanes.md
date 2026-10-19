@@ -222,6 +222,11 @@ The copy ran slower than in the probe because three jobs fetched the same blobs 
   finding for gitleaks (entropy 3.5), so every caller's secret scan would go red.
 - **Corrosion needs `Rust_CARGO_TARGET=riscv64gc-unknown-linux-gnu`**, like the Windows
   arm64 lane's `-Corrosion` switch.
+- **Not on a 16 KiB-page host.** QEMU user mode on a kernel with 16 KiB pages (a Raspberry
+  Pi 5's: `uname -r` ends in `16k`) cannot map a library's 4 KiB-aligned segments. OxidANT's
+  lane failed there on `liborc-0.4.so.0` (2026-10-13): every GStreamer plugin that links ORC
+  (`videoconvertscale` among them) failed to load, and the capture tests timed out waiting for a
+  frame. Everything else ran. Trust such tests only from a 4 KiB-page host, such as a CI runner.
 
 ## What the lanes do not run, and why
 
