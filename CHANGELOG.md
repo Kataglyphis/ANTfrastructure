@@ -22,8 +22,12 @@
   while `SCCACHE_DIR` is set, but drops its `[cache.disk]` section**, so the baked knobs never
   apply. Measured in `:latest` (sccache 0.18.0): the file's `[dist]` scheduler applied, its `dir`
   and `size` did not. "Not read at all" was wrong.
-- `doc-dupes.allow`: two budgets down to the measured counts (`adopting` | `linux-build-basics`
-  17 → 14, `windows-build-invariants` | `windows-builds` 22 → 15).
+- `doc-dupes.allow`: six budgets down to the measured counts (`adopting` | `linux-build-basics`
+  17 → 14, `windows-build-invariants` | `windows-builds` 22 → 15, `| windows-cross-builds` 20 → 15,
+  `| windows-build-lanes` 20 → 17, `failure-modes` | `windows-host-setup` 18 → 14,
+  `cross-build-verification` | `linux-cross-builds` 16 → 13).
+- `windows-cross-builds.md`: the Python-bindings heading said "staged, never imported"; the build
+  stages them and `windows-11-arm` imports them. Its `cv2` gate names `cv2.cp315-win_arm64.pyd`.
 
 ## 2026-10-19 — The arm64 test artifact keeps its hidden files
 
