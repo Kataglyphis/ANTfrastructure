@@ -14497,5 +14497,125 @@
   "replace": "submodule_urls(project))",
   "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
   "why": "without the project root the render cannot tell a file from a folder or a missing file"
+ },
+ {
+  "id": "packaging.elf-closure-relocatable",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    if [ \"${RELOCATABLE}\" = false ] || in_bundle \"${dir}\"; then return 0; fi",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a plugin's RUNPATH into /opt/gstreamer resolves in the image and nowhere else, so its libraries would stay behind"
+ },
+ {
+  "id": "packaging.elf-closure-from-or-nowhere",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    [ -e \"${rule#*=}/${soname}\" ] || return 1",
+  "replace": "    [ -e \"${rule#*=}/${soname}\" ] || continue",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "an ORT missing from the chain dir would be taken from the ld.so cache, /opt/opencv5's copy, which G6 rejects only later"
+ },
+ {
+  "id": "packaging.elf-closure-ldconfig",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    path=\"$(ldconfig -p 2>/dev/null | awk -v n=\"${soname}\" '$1 == n { print $NF; exit }' || true)\"",
+  "replace": "    path=\"\"",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "the Flutter bundle takes every library no --search names from the ld.so cache"
+ },
+ {
+  "id": "packaging.elf-closure-ldd-lists",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    $2 == \"=>\" && $3 ~ /^\\// { print $1, $3; next }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "the ObservANT bundles take every library from ldd's listing; without it nothing is copied"
+ },
+ {
+  "id": "packaging.elf-closure-ldd-not-found",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    $2 == \"=>\" && $3 == \"not\" { print $1, \"?\"; next }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a library ldd cannot find would be dropped silently and the bundle would fail on the target"
+ },
+ {
+  "id": "packaging.elf-closure-ldd-inside",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    /*) if in_bundle \"$3\"; then return 0; fi ;;",
+  "replace": "    /*) ;;",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a library already in the bundle would be copied a second time into the lib dir"
+ },
+ {
+  "id": "packaging.elf-closure-default-system",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "if [ \"${DEFAULT_SYSTEM}\" = true ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a bundle built against a newer glibc than the target's carries its C runtime, and the built-in list would keep it out"
+ },
+ {
+  "id": "packaging.elf-closure-no-runpath",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  if [ \"${RUNPATH}\" = true ]; then link_to_lib_dir \"${file}\" \"${soname}\"; fi",
+  "replace": "  link_to_lib_dir \"${file}\" \"${soname}\"",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "the Flutter bundle sets its own RUNPATHs after the walk, and a patched glibc loader crashes"
+ },
+ {
+  "id": "packaging.elf-closure-exclude",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    --system | --exclude) EXTRA_SYSTEM+=(\"${2:?}\"); shift 2 ;;",
+  "replace": "    --system) EXTRA_SYSTEM+=(\"${2:?}\"); shift 2 ;;",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "libcamera must stay the target's: its IPA and tuning match the target's kernel"
+ },
+ {
+  "id": "packaging.elf-closure-from-needs-dir",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  case \"${rule}\" in ?*=?*) ;; *) err \"--from needs SONAME-GLOB=DIR: ${rule}\" ;; esac",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "a --from without its directory would refuse every matching library"
+ },
+ {
+  "id": "packaging.elf-closure-protect",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  if is_protected \"${file}\"; then PRELOAD[${soname}]=1; return 0; fi",
+  "replace": "  if false; then PRELOAD[${soname}]=1; return 0; fi",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "G6 grades the chain ORT byte for byte, so it must never be patched"
+ },
+ {
+  "id": "packaging.elf-closure-check-copies-nothing",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  if [ -z \"${found}\" ] || [ \"${CHECK_ONLY}\" = true ]; then",
+  "replace": "  if [ -z \"${found}\" ]; then",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "--check grades a finished bundle and must not repair it on the way"
+ },
+ {
+  "id": "packaging.elf-closure-origin-relative",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "  [ \"${rel}\" = \".\" ] || token=\"\\$ORIGIN/${rel}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "bin/ needs $ORIGIN/../lib; a bare $ORIGIN finds nothing there"
+ },
+ {
+  "id": "packaging.elf-closure-allow-unresolved",
+  "target": "linux/scripts/06-packaging/elf-closure.sh",
+  "find": "    if [ -n \"${ALLOWED_UNRESOLVED[${soname}]:-}\" ]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "oneDNN is absent image-wide and loaded only when asked for; python-app-bundle.sh allows it"
+ },
+ {
+  "id": "packaging.elf-closure-old-name",
+  "target": "linux/scripts/06-packaging/python-app-closure.sh",
+  "find": "exec bash \"$(dirname \"${BASH_SOURCE[0]}\")/elf-closure.sh\" \"$@\"",
+  "replace": "exec true",
+  "test": "bash linux/scripts/tests/test-elf-closure.sh",
+  "why": "CPackCommon.cmake, python-app-bundle.sh and the consumers call the walker by this path"
  }
 ]

@@ -318,8 +318,8 @@ declared, and the executable had no RUNPATH to its own `lib/`.
 
 `kataglyphis_install_linux_closure` in `cmake/CPackCommon.cmake` is the Linux twin of
 `kataglyphis_install_package_dlls`. At install time, so in every CPack generator's staged tree and
-in the flatpak's `cmake --install`, it runs `06-packaging/python-app-closure.sh`: every library the
-installed files need goes to `lib/<PRIVATE_DIR>`, found through `$ORIGIN` RUNPATHs. The C++
+in the flatpak's `cmake --install`, it runs the [ELF closure walker](#the-elf-closure-walker): every
+library the installed files need goes to `lib/<PRIVATE_DIR>`, found through `$ORIGIN` RUNPATHs. The C++
 compiler's runtime directory is searched first, since the image has two `libstdc++`. `SYSTEM` names
 what the package's `Depends` bring instead (a distro's GStreamer); `PROTECT` copies the chain ORT
 unpatched for G6. Never `lib/` itself: `ldconfig` would serve a bundled `libstdc++` to every
@@ -333,6 +333,33 @@ reachable only through the executable's RUNPATH is present and still not found (
 OmniAccelerANT's Flutter bundle). The closure therefore gives each user of a bundled library an
 `$ORIGIN`-relative RUNPATH, and `--check` fails a file whose library is in the lib dir but not on
 its own RUNPATH.
+
+### The ELF closure walker
+
+`06-packaging/elf-closure.sh --bundle DIR --lib-dir DIR [options]`; `python-app-closure.sh` is the
+same script under the name `CPackCommon.cmake`, `python-app-bundle.sh` and the consumers call. Every
+ELF in the bundle gets the libraries it lacks copied into the lib dir, under the name the loader asks
+for, and by default an `$ORIGIN` RUNPATH to them.
+
+- **Where a library comes from:** `--from SONAME-GLOB=DIR`, that directory or nowhere (the chain ORT,
+  the compiler's `libstdc++`); then each `--search` in order; then `--ldconfig`, the ld.so cache.
+- **`--ldd`** takes a file's libraries from `ldd` instead of its NEEDED entries: transitively, found
+  where the loader finds them. A library that an excluded one needs therefore still travels.
+- **Never copied:** the built-in glibc and desktop graphics list (`--no-default-system` drops it, for a
+  bundle that carries its C runtime), `--system` (the package's `Depends` bring it) and `--exclude`
+  (the target's own copy has to load: libcamera, whose IPA and tuning match the target's kernel).
+- **`--relocatable`** counts a RUNPATH entry only inside the bundle: an image path such as
+  `/opt/gstreamer/lib` resolves in the image and is dead on the target. **`--no-runpath`** copies
+  and patches nothing else; **`--check`** copies nothing and fails on what a finished bundle lacks.
+
+| Bundle | Options |
+| --- | --- |
+| A Flutter bundle | `--relocatable --no-runpath --no-default-system --system <its list> --from 'libonnxruntime*=<chain dir>' --from 'libstdc++.so.6=<compiler dir>' --from 'libgcc_s.so.1=<compiler dir>' --search <GStreamer libdir> --ldconfig` |
+| A container-less GStreamer bundle | `--ldd --no-default-system --no-runpath --exclude 'libcamera.so.*' --exclude 'libcamera-base.so.*' --exclude 'libonnxruntime.so*'` |
+
+Run against OmniAccelerANT's Flutter and ObservANT walkers and OxidANT's host-libcamera walker on
+bundles of `:latest`'s own libraries (2026-10-19), each call above produced the same files, byte for
+byte. Suite `tests/test-elf-closure.sh`; the `packaging.elf-closure-*` mutations prove it.
 
 ### glibc travels, and a newer host glibc wins
 

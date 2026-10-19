@@ -10,6 +10,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — one ELF closure walker for every Linux bundle
+
+- **`linux/scripts/06-packaging/elf-closure.sh`** is `python-app-closure.sh` made language-neutral;
+  the old path stays, as a one-line `exec` of the new one. New options: `--from SONAME-GLOB=DIR` (that
+  directory or nowhere), `--ldconfig`, `--ldd` (a file's libraries as `ldd` lists them), `--exclude`,
+  `--no-default-system`, `--relocatable` (a RUNPATH out of the bundle resolves nothing) and
+  `--no-runpath`; without them it behaves as before
+  ([`linux-build-basics.md`](docs/linux-build-basics.md#the-elf-closure-walker)).
+- It replaces four consumer copies: OmniAccelerANT's `bundle-runtime-closure.sh` walk and the `ldd`
+  loops of `package-observant.sh` and `package-producer-bundle.sh`, and OxidANT's `collect_hostlibs`.
+  Run against those walkers on bundles of `:latest`'s own libraries, each produced the same files,
+  byte for byte (27, 28 and 24 entries).
+- `tests/test-elf-closure.sh` compiles its fixtures; 15 `packaging.elf-closure-*` mutations prove it,
+  the wrapper's path among them. The walker had no suite of its own until now.
+
 ## 2026-10-19 — a docs guide's link to any repository file reaches GitHub
 
 - **`lib/dartdoc-guides.py` rewrites every relative link of a guide**, not only `*.md` ones: a
