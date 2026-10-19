@@ -1041,6 +1041,119 @@ function Sync-BuildArtifacts {
     $global:LASTEXITCODE = 0
 }
 
-Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts
+<#
+.SYNOPSIS
+    $true when this sccache keys a clang-cl C++20 module importer on the interfaces it imports (mozilla/sccache#2876).
+.DESCRIPTION
+    0.18.0 and older serve stale importer objects, so a cache kept across CI runs is safe only on the hub's build
+    (0.18.0+<rev>.<patches>, shared/upstream/sccache/README.md) or a release cut after the fix, 0.19.0 on.
+#>
+function Test-SccacheModuleSafe {
+    [OutputType([bool])]
+    param([AllowEmptyString()][string]$VersionText)
+    if ($VersionText -notmatch '(\d+)\.(\d+)\.(\d+)(\+\S+)?') { return $false }
+    if ($Matches[4]) { return $true }
+    return ([version]"$($Matches[1]).$($Matches[2]).$($Matches[3])" -ge [version]'0.19.0')
+}
+
+# robocopy /MOVE of a cache tree; a missing source is an empty cache, and exit codes below 8 are success.
+function Move-CiCacheTree([string]$From, [string]$To, [string[]]$ExcludeDirs = @()) {
+    if (-not (Test-Path -LiteralPath $From)) { return }
+    $null = New-Item -ItemType Directory -Force -Path $To
+    $copyArgs = @($From, $To, '/E', '/MOVE', '/MT:16', '/R:1', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS', '/NP')
+    if (@($ExcludeDirs).Count -gt 0) { $copyArgs += @('/XD') + $ExcludeDirs }
+    & robocopy.exe @copyArgs | Out-Null
+    $code = $LASTEXITCODE
+    $global:LASTEXITCODE = 0
+    if ($code -ge 8) { throw "robocopy $From -> $To failed with exit code $code" }
+}
+
+# Stops the sccache server, so the next one indexes the moved disk cache; a missing sccache is nothing to stop.
+function Stop-SccacheServerQuietly {
+    if (-not (Get-Command sccache -ErrorAction SilentlyContinue)) { return }
+    & sccache --stop-server 2>&1 | Out-Null
+    $global:LASTEXITCODE = 0
+}
+
+<#
+.SYNOPSIS
+    Moves the caches CI_COMPILER_CACHE holds into container-local directories and points SCCACHE_DIR / CARGO_HOME there.
+.DESCRIPTION
+    sccache stores nothing on a mounted directory (docs/build-cache-tiers.md § Windows container lanes); Save-CiCompilerCache
+    moves them back. Returns $null, and touches nothing, when -CacheRoot is empty or -RequireModuleSafeSccache refuses this sccache.
+.PARAMETER Cache
+    The CI_COMPILER_CACHE subdirectories to restore: sccache, cargo.
+.PARAMETER LocalRoot
+    Where they go; empty is GLOBAL_CACHE_DIR, else <KATAGLYPHIS_FAST_BUILD_DIR or C:\kataglyphis_fast_build>\.cache.
+.PARAMETER RequireModuleSafeSccache
+    For a clang-cl C++20 module build: neither use nor fill the cache unless Test-SccacheModuleSafe passes.
+.PARAMETER VersionText
+    Test seam: sccache --version's output.
+#>
+function Restore-CiCompilerCache {
+    [CmdletBinding()]
+    param(
+        [ValidateSet('sccache', 'cargo')][string[]]$Cache = @('sccache'),
+        [AllowEmptyString()][string]$CacheRoot = $env:CI_COMPILER_CACHE,
+        [string]$LocalRoot = '',
+        [switch]$RequireModuleSafeSccache,
+        [pscustomobject]$Context,
+        [AllowEmptyString()][string]$VersionText
+    )
+    $say = { param([string]$Message, [switch]$Warn)
+        if ($Context -and $Warn) { Write-BuildLogWarning -Context $Context -Message $Message }
+        elseif ($Context) { Write-BuildLog -Context $Context -Message $Message }
+        elseif ($Warn) { Write-Warning $Message } else { Write-Host $Message } }
+    if (-not $CacheRoot) { return $null }
+    if (-not $PSBoundParameters.ContainsKey('VersionText') -and (Get-Command sccache -ErrorAction SilentlyContinue)) {
+        $VersionText = "$(& sccache --version 2>$null)"
+    }
+    if ($RequireModuleSafeSccache -and -not (Test-SccacheModuleSafe $VersionText)) {
+        & $say -Warn "sccache: '$VersionText' serves stale clang-cl module importers (mozilla/sccache#2876); this run neither uses nor fills the CI cache"
+        return $null
+    }
+    if (-not $LocalRoot) {
+        $fast = if ($env:KATAGLYPHIS_FAST_BUILD_DIR) { $env:KATAGLYPHIS_FAST_BUILD_DIR } else { 'C:\kataglyphis_fast_build' }
+        $LocalRoot = if ($env:GLOBAL_CACHE_DIR) { $env:GLOBAL_CACHE_DIR } else { Join-Path $fast '.cache' }
+    }
+    Stop-SccacheServerQuietly
+    foreach ($name in $Cache) { Move-CiCacheTree -From (Join-Path $CacheRoot $name) -To (Join-Path $LocalRoot $name) }
+    if ($Cache -contains 'sccache') { $env:SCCACHE_DIR = Join-Path $LocalRoot 'sccache' }
+    if ($Cache -contains 'cargo') { $env:CARGO_HOME = Join-Path $LocalRoot 'cargo' }
+    & $say "CI compiler cache: $($Cache -join ', ') restored from $CacheRoot into $LocalRoot$(if ($VersionText) { " ($VersionText)" })"
+    return [pscustomobject]@{ CacheRoot = $CacheRoot; LocalRoot = $LocalRoot; Cache = @($Cache); Context = $Context }
+}
+
+<#
+.SYNOPSIS
+    Moves what Restore-CiCompilerCache restored back into CI_COMPILER_CACHE, for the workflow to save; warns instead of throwing.
+.DESCRIPTION
+    Prints sccache's stats and stops its server first, so the disk cache is complete. cargo's registry\src and git\checkouts
+    stay behind: cargo unpacks them again from the cached archives. Returns $false when a move failed.
+#>
+function Save-CiCompilerCache {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param([AllowNull()][pscustomobject]$Restored)
+    if (-not $Restored) { return $true }
+    if (Get-Command sccache -ErrorAction SilentlyContinue) { & sccache --show-stats 2>&1 | Out-Host }
+    Stop-SccacheServerQuietly
+    $ok = $true
+    foreach ($name in $Restored.Cache) {
+        $local = Join-Path $Restored.LocalRoot $name
+        $exclude = @()
+        if ($name -eq 'cargo') { $exclude = @((Join-Path $local 'registry\src'), (Join-Path $local 'git\checkouts')) }
+        try { Move-CiCacheTree -From $local -To (Join-Path $Restored.CacheRoot $name) -ExcludeDirs $exclude }
+        catch {
+            $ok = $false
+            $message = "CI compiler cache: $name could not move back: $($_.Exception.Message)"
+            if ($Restored.Context) { Write-BuildLogWarning -Context $Restored.Context -Message $message } else { Write-Warning $message }
+        }
+    }
+    return $ok
+}
+
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts,
+    Test-SccacheModuleSafe, Restore-CiCompilerCache, Save-CiCompilerCache
 
 

@@ -1494,8 +1494,12 @@ input (2026-09-29). An `SCCACHE_DIR` on a mounted volume stored nothing on the d
 ([§ sccache's cache directory on a Windows container volume](windows-container-build-performance.md)),
 so the cache is not mounted for sccache to write into. `actions/cache` restores it into the
 workspace as `.ci-cache`, the container gets `CI_COMPILER_CACHE=C:\ws\.ci-cache`, and the
-build script moves it into container-local directories before the build and back after it
-(OxidANT's `Invoke-WindowsLane.ps1`). Pushes to the default branch save it.
+build script moves it into container-local directories before the build and back after it.
+`WindowsBuild.Common` does both: `Restore-CiCompilerCache -Cache sccache, cargo` moves the
+caches in and points `SCCACHE_DIR` and `CARGO_HOME` at them, and `Save-CiCompilerCache` prints
+sccache's stats, stops its server and moves them back without cargo's unpacked `registry\src`
+and `git\checkouts`; a failed move back warns and returns `$false`. Pushes to the default
+branch save it.
 
 That reusable workflow saves with `actions/cache/save` and deletes nothing. Its job
 grants only `contents: read`, and a reusable workflow cannot ask for more than every
@@ -1503,9 +1507,10 @@ caller grants. A caller that sets `compiler-cache-key` therefore runs
 `compiler-cache-prune` from a later job that grants `actions: write` (OxidANT's
 `windows-x64.yml`).
 
-A clang-cl C++20 module build must not
-use it: the released sccache serves stale objects for module importers until
-mozilla/sccache#2876 ships.
+A clang-cl C++20 module build passes `-RequireModuleSafeSccache`: sccache 0.18.0 and older
+serve stale objects for module importers (mozilla/sccache#2876), so `Test-SccacheModuleSafe`
+lets the cache in only on the hub's build (`0.18.0+<rev>.<patches>`) or 0.19.0 on, and the run
+otherwise neither uses nor fills it.
 
 **A cap below the working set is worse than no cache.** BeschleunigerBallett's release and
 profile caches filled their first caps (489/500 MB, 981/1000 MB): sccache evicted entries during

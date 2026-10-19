@@ -10,6 +10,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the CI compiler cache moves in and out through WindowsBuild.Common
+
+- **`Restore-CiCompilerCache` / `Save-CiCompilerCache`** move `CI_COMPILER_CACHE`'s sccache (and
+  with `-Cache sccache, cargo` cargo's) caches into container-local directories, point
+  `SCCACHE_DIR` / `CARGO_HOME` there, stop the sccache server around each move, and move them
+  back without cargo's unpacked `registry\src` and `git\checkouts`; a failed move back warns and
+  returns `$false`. **`Test-SccacheModuleSafe`** moved here from OmniAccelerANT, and
+  `-RequireModuleSafeSccache` keeps a clang-cl C++20 module build off an sccache that serves
+  stale importers ([`build-cache-tiers.md`](docs/build-cache-tiers.md)). OmniAccelerANT's
+  `Build-Windows.ps1` and OxidANT's `Invoke-WindowsLane.ps1` each carried their own robocopy
+  `/MOVE` pair.
+- `Build.CiCompilerCache.Tests.ps1`: real robocopy moves between temp directories and an
+  sccache stand-in that records `--version`, `--stop-server`, `--show-stats`, `--stop-server`.
+
 ## 2026-10-19 — one generated-artifacts suite for every consumer
 
 - **`shared/windows/tests/Repo.GeneratedArtifacts.Tests.ps1`** fails on a tracked file that
