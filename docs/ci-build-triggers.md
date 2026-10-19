@@ -33,21 +33,37 @@ What else decides whether a lane runs:
 
 ## This repository's lanes
 
-None of them builds a container image. The image chains run on the build hosts.
+**None of them builds a container image.** The image chains run on the build hosts
+(`windows/Build-Buildkit.ps1`, `linux/scripts/build-cross-chain.sh`), and no workflow here
+reacts to a commit-message token. Both name columns follow the family's naming convention
+(2026-09-24); the purposes were the README's CI table until 2026-10-19.
 
-| Workflow | Trigger |
-|---|---|
-| `linux-x64.yml` | every push and PR to `main`/`develop`: preflight, the mutation gate in four shards, the docs build |
-| `windows-x64.yml` | push/PR that touches `windows/**`, `shared/windows/**`, `versions.env` or the workflow itself |
-| `llm-stack-serving.yml` | push/PR that touches `linux/llm-stack/**` |
-| `submodule-pins.yml` | push/PR that touches `.gitmodules`, `third_party/**` or the pin suite |
-| `actions-selftest.yml` | push/PR that touches `.github/actions/**`, Mondays, and dispatch |
-| `consumer-inventory.yml` | Mondays, dispatch, and push/PR that touches its own inputs |
-| `ghcr-cleanup.yml` | Sundays, dispatch |
-| `sbom.yml`, `stale-docs-check.yml` | Mondays, dispatch |
+| Workflow | Shown as | Trigger | What it runs |
+|---|---|---|---|
+| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop` | the shell preflight gate suite, its mutation gate as four sharded jobs, and the docs validation and build |
+| `windows-x64.yml` | Windows x64 · script tests | push/PR that touches `windows/**`, `shared/windows/**`, `versions.env` or the workflow itself | PowerShell lint and the `windows/scripts/tests` suite |
+| `windows-arm64.yml` | Windows arm64 · bundle device gate | daily, dispatch, and a push that touches the gate's files | a `windows-2025` job packs the published `:winarm64` runtime bundle, a `windows-11-arm` job runs `Test-Arm64Bundle.ps1` over it |
+| `llm-stack-serving.yml` | LLM stack · serving | push/PR that touches `linux/llm-stack/**` | the compose shape and the backend registry. The NAS census test left with the census tool for OrchestrANT on 2026-09-15 |
+| `submodule-pins.yml` | Submodule pins (reusable) | push/PR that touches `.gitmodules`, `third_party/**` or the pin suite; also `workflow_call` | the submodule-pin invariant suite, which a consumer runs with `uses:` instead of copying the job |
+| `actions-selftest.yml` | Composite actions · self-test | push/PR that touches `.github/actions/**`, Mondays, and dispatch | the composite actions under `.github/actions/` exercised against themselves; dispatch adds the deep Windows lane |
+| `consumer-inventory.yml` | Consumers · inventory | Mondays, dispatch, and push/PR that touches its own inputs | clones every repo in `.github/consumers.json` and grades who still calls each hub entry point; files an issue when a reference dangles |
+| `ghcr-cleanup.yml` | GHCR · cleanup | Sundays, dispatch | `ghcr-prune-package.sh` deletes untagged versions no kept tag references; every tagged version stays, 14-day age guard |
+| `sbom.yml` | SBOM | Mondays, dispatch | SBOM generation |
+| `stale-docs-check.yml` | Docs · stale check | Mondays, dispatch | stale doc references and broken script paths |
 
-`build-docs.yml`, `container-ci-windows.yml`, `lint-gates.yml` and the two
-`python-ci-*` workflows are `workflow_call` only: they run when a caller runs.
+The `workflow_call` ones run when a caller runs:
+
+| Workflow | Shown as | What it runs |
+|---|---|---|
+| `build-docs.yml` | Docs · build (reusable) | the docs build |
+| `python-ci-linux.yml` | Python CI · Linux (reusable) | Python lint and tests on Linux, for consumer repos; never triggers here. `arches` picks the rows (default `x64 arm64`) |
+| `python-ci-windows.yml` | Python CI · Windows (reusable) | the same for Windows |
+| `lint-gates.yml` | Lint gates (reusable) | `run-lint-gates.sh` over a consumer tree |
+| `container-ci-windows.yml` | Container CI · Windows (reusable) | the family's Windows container lane: x64, and the arm64 cross lane with its arch gate and a run on `windows-11-arm` ([`windows-cross-builds.md`](windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)) |
+
+`container-ci-riscv64.yml` and `release-packages.yml` are `workflow_call` too, and
+`ci-host-speed-probe.yml`, `riscv64-sysroot-probe.yml`, `sccache-release.yml` and
+`windows-image-census-probe.yml` run only by hand (`workflow_dispatch`).
 
 ## A `skipped` job is still not a pass
 

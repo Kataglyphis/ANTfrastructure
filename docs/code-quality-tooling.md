@@ -258,7 +258,14 @@ derived table), `code-complexity` (decision paths and nesting depth, beside
 `lint-shell.sh` prints but never gated). The same day `code-dupes` and
 `env-knobs` gained the missing bookkeeping halves of their contracts — an
 unrecorded shrink and a knob nobody reads any more now fail — and `mutations`
-learned to refuse a bite recorded while that suite was already red. The checks
+learned to refuse a bite recorded while that suite was already red. Before them
+(2026-09-01), **`pkg-names`** resolves every package name the tree asks apt for
+against the live Ubuntu indices, and **`advert-keys`** fails when a
+version-shaped `ENV`/`ARG` is neither checked by the runtime smoke nor excused
+with a reason. Before those (2026-08-31), **`code-dupes`** — token-normalised
+duplication over shell, Dockerfiles and the Markdown outside `docs/`, so it
+catches *renamed* clones the prose gate cannot see; deliberate twins are
+budgeted in `docs/scripts/code-dupes.allow`. The checks
 `preflight.sh` runs are its `KNOWN_SLUGS` array; which of them a suite or a
 mutation actually proves is generated into `docs/code-quality-gates.md`, never
 hand-maintained here.

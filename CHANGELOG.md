@@ -19,6 +19,15 @@
 - **The README rule (owner, 2026-10-19):** a README is a short overview, under about 100 lines,
   that links into `docs/` for everything else; facts true for more than one repository move to
   this hub. `shared/templates/README.md.template` is that shape.
+- **The hub's own README follows it: 408 lines to about 100.** What it carried moved, not copied:
+  the accelerator table, the live-index warning, the annotated Dockerfile tree, the phases and
+  the three lanes, and the home-lab section to `docs/overview.md`; the CI table's names and
+  purposes to `docs/ci-build-triggers.md`, which gained `windows-arm64.yml` and the dispatch-only
+  probes; the 2026-09-22 Windows measurement to `docs/windows-cross-builds.md`; the corrected run
+  snippet and the rootless note to `docs/linux-build-basics.md`; the 2026-09-01 gates to
+  `docs/code-quality-tooling.md`. The rest was already a doc's and is linked. Two claims were
+  stale and are fixed where they landed: `:latest-nvidia` and `:latest-rocm` are published for
+  amd64, and the clone line used an ssh URL.
 
 ## 2026-10-18 — ORT 1.31.0's CUDA build on GCC 16: a missing `<cstdint>`
 

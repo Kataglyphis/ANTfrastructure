@@ -4,6 +4,12 @@ The Windows twin of [`linux-cross-builds.md`](linux-cross-builds.md). It covers 
 `aarch64-pc-windows-msvc` target lane: why it is shaped the way it is, what it can and cannot
 produce, and which gates keep it honest.
 
+> **Re-measured 2026-09-22** (moved from the README on 2026-10-19) — both lanes build green and
+> are published (`:winamd64`, `:winarm64`). amd64: smoke **236/0/0** (GPU, with Hailo) /
+> 198/0/1 (CPU), arch gate **1201/0**. arm64: smoke **127/0/15**, arch gate **1052/0**. The
+> patched LLVM toolchain (#135, `BUILD_PATCHED_LLVM=1`) is the default. The gate table below is
+> the older `bk-20260828-171914` run.
+>
 > **Status — re-measured 2026-09-02 after the #158-wave follow-ups: BOTH lanes
 > green** (`bk-20260828-171914` still supplies the gate numbers below; #135's
 > patched toolchain is the default, so the amd64 workarounds are gone; #167

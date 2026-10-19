@@ -161,14 +161,26 @@ re-export. (`--no-push` full chains from `base` are supported since 2026-08-30 v
 local OCI-layout handoff; only runs RESUMED mid-chain are refused — see
 `docs/linux-cross-builds.md`.)
 
-## Build
+## Running the published image
 
 ```bash
-# Recommended: cross-lane digest-pinned release
-sudo nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
-# on Windows you must expose ports one by one
-sudo nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
+
+# The default CMD is a shell — nothing listens until you start a server.
+# Publishing 8443 only helps once one is running inside; the separate
+# :webserver image is the one that serves HTTP, on 80/443.
+nerdctl run -it --rm -p 8443:8443 ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 ```
+
+Rootful nerdctl needs `sudo`. The sudo-less route is the rootless
+containerd + BuildKit stack this repo builds with — not the `docker` group,
+which nerdctl never consults (containerd's socket is `root:root 0660`). That
+stack can also be *installed* without sudo:
+[`linux-host-setup.md` § B3c](linux-host-setup.md#b3c-install-rootless-into-homelocal-no-sudo).
+On a Jetson, rootless nerdctl needs three extra flags:
+[§ B2b](linux-host-setup.md#b2b-a-gpu-container-on-a-jetson-with-rootless-nerdctl).
+The WebRTC signalling server behind port 8443 is
+[`runtime-services.md` § WebRTC Streaming](runtime-services.md#webrtc-streaming).
 
 ## Optional Ubuntu Apt Mirror Workaround
 

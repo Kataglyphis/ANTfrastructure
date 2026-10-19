@@ -90,13 +90,40 @@ nothing.
 | Image | Platforms | Tag examples | Description |
 | --- | --- | --- | --- |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest` | The default **manifest** — the current cross-lane release, Hailo and (when staged) QNN included. Built via digest-pinned stage chain (`base → compiler → sdk → media → android → package → torch → wrapper → manifest`). |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | the variant's arches (nvidia: linux/amd64, arm64 planned; rocm: linux/amd64) | `latest-nvidia`, `latest-rocm` | A variant's **manifest** over all its arches, only for a stack that cannot ship in `latest` (`<variant>` is a feature, never an architecture). **Not published yet**: neither tag is in the registry on 2026-09-25 ([accelerator images](linux-accelerator-images.md)). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | the variant's arches (nvidia: linux/amd64, arm64 planned; rocm: linux/amd64) | `latest-nvidia`, `latest-rocm` | A variant's **manifest** over all its arches, only for a stack that cannot ship in `latest` (`<variant>` is a feature, never an architecture). **Published for amd64**: `:latest-rocm` as the index `a5d68fbe…` of 2026-10-09, `:latest-nvidia` as the index `810f36b3…` of 2026-10-11, DeepStream included (`CHANGELOG.md`). Neither tag was in the registry on 2026-09-25 ([accelerator images](linux-accelerator-images.md)). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64 | `base`, `cross-compiler-amd64`, `cross-sdk-<arch>`, `cross-toolchain-<variant>-<arch>`, `cross-media-<arch>`, `cross-android-<arch>` | Cross-lane intermediate images (amd64-hosted, cross-compiled for target arches; the `cross-toolchain-` tag is a variant chain's `gpu` stage). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | per-arch native | `latest-base-<arch>`, `latest-package-<arch>`, `latest-<arch>`, `latest-<variant>-<arch>` | Runtime lane per-arch **wrapper** images the manifests are assembled from (internal). The chain pushes `latest-<arch>`; `latest-base-`/`latest-package-` go out only with `--push-all`. |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | linux/amd64, linux/arm64, linux/riscv64 | `latest-cross`, `latest-cross-<arch>` | **Retired** old name of `latest`; the tags were deleted from the registry on 2026-09-29 ([`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger:webserver | as built | `webserver` | Minimal nginx static webserver image, built by hand from a named build context ([`linux/webserver/README.md`](../linux/webserver/README.md)). No `webserver` tag is in the registry on 2026-09-25. |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX — a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`. |
-| ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 (arm64 **bundle**) | `winarm64` | The arm64 cross artifact bundle: a `windows/amd64` image carrying the aarch64 payload. Not a platform, not a manifest entry — see [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX — a **manifest** over `windows/amd64`, CPU + DirectML; variants as `:winamd64-<variant>`: `:winamd64-nvidia` (CUDA), `:winamd64-rocm` (ROCm). |
+| ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 (arm64 **bundle**) | `winarm64` | The arm64 cross artifact bundle: a `windows/amd64` image carrying the aarch64 payload, its own tag. Not a platform, not a manifest entry, never `--platform windows/arm64` — see [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags). `:winarm64-nvidia` carries the arm64 CUDA payload. |
+
+**Check the live index before relying on its arch coverage** —
+`nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`.
+On 2026-08-31 it (then `:latest-cross`) carried **riscv64 only**: a single-arch run had replaced the
+3-arch index. `build-runtime-manifest.sh` now refuses to shrink an already
+published index (`--force`, or `RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so
+a partial run cannot do it again —
+[cross-build-verification.md](cross-build-verification.md). The 2026-09-02
+full-fanout run restored it: the live index carries amd64/arm64/riscv64 again.
+
+### Accelerators in the default image
+
+Moved from the README on 2026-10-19. Accelerators whose runtime fits the default image are built
+into it instead of a variant:
+
+| Accelerator | In `:latest` | Arches |
+|---|---|---|
+| Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS, pyhailort: a real module in images built with the `HAILO_PYHAILORT_IPO` switch at its default, which fails the build on a module without `PyInit__pyhailort`; `import hailo_platform` on Python 3.14 is checked but only warns, proven on amd64 only, [`hailo-support.md`](hailo-support.md#pyhailort)) | always | amd64, arm64 (riscv64: no upstream support) |
+| Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`qnn-linux.md`](qnn-linux.md)) - **the current release was built without it** | arm64 |
+| NVIDIA CUDA / AMD ROCm | no - `:latest-nvidia` / `:latest-rocm`, both published for amd64 (table above) | NVIDIA: amd64, and arm64 (SBSA/Jetson) built on a Jetson but not published; ROCm: amd64 |
+| NVIDIA DeepStream 9.1 | no - in every amd64 `:latest-nvidia` build since 2026-10-07 (`ENABLE_DEEPSTREAM=false` opts out), publishing allowed by the owner 2026-10-01 ([`linux-accelerator-images.md`](linux-accelerator-images.md#deepstream-nvidia-variant)) | amd64 |
+
+**`:latest-nvidia` carries compiled kernels for the compute capabilities `CUDA_ARCHITECTURES`
+names and nothing else** (86, 87, 89 and 120 since the owner decision of 2026-09-23). There is no
+PTX to fall back on, so a card outside that list fails at session creation rather than running
+slowly. The hardware behind each number, what is left out, and how to change
+the set: [`AGENTS.md` § GPU architecture coverage](../AGENTS.md#gpu-architecture-coverage-how-to-turn-an-arch-on-or-off).
 
 ## Images in This Repository
 
@@ -106,7 +133,45 @@ nothing.
 
 ## Linux Image Chain
 
-The Linux images build as a chain of separate Dockerfiles (one per stage, for layer caching), ending in the `linux/Dockerfile.torch` wrapper. The per-stage table (Dockerfile → FROM → produced tag) is [above](#the-architecture-summary-agentsmd-carried), and the README's repo tree carries the annotated per-stage contents. Per-stage mechanics live in [Linux build basics](linux-build-basics.md) and [Linux cross builds](linux-cross-builds.md) — including `Dockerfile.sdk`'s reuse for amd64-hosted cross SDK artifact builds via `BUILD_MODE=cross` and `Dockerfile.package`'s clean-base runtime assembly in both native and cross flows.
+The Linux images build as a chain of separate Dockerfiles (one per stage, for layer caching), ending in the `linux/Dockerfile.torch` wrapper. The per-stage table (Dockerfile → FROM → produced tag) is [above](#the-architecture-summary-agentsmd-carried), and the tree below carries the annotated per-stage contents (moved from the README on 2026-10-19), so BuildKit caches the expensive layers and rebuilds only what changed:
+
+```
+linux/
+├── Dockerfile.base          ubuntu:26.04 + CMake/Node/uv
+├── Dockerfile.toolchain     GCC + LLVM/Clang + Python (FROM base)
+├── Dockerfile.sdk           Vulkan SDK + Flutter (FROM toolchain)
+├── Dockerfile.media         ONNX Runtime (+GenAI) · LiteRT · OpenCV · FFmpeg · GStreamer · libcamera · TVM · IREE · Arm NN (FROM sdk)
+├── Dockerfile.android       Android SDK/NDK + native GCC swap (FROM media)
+├── Dockerfile.package       lean runtime assembly + validation (FROM base + android)
+├── Dockerfile.torch         final wrapper: entrypoint, labels, runtime scripts (FROM package)
+├── Dockerfile.nvidia        optional CUDA/cuDNN/TensorRT layer (FROM sdk)
+├── Dockerfile.amd           optional MIGraphX layer (FROM sdk)
+└── scripts/                 01-core … 06-packaging — see AGENTS.md § Repo Map
+```
+
+```
+  Phase 1     Phase 2      Phase 3       Phase 4
+  ───────     ───────      ───────       ───────
+  Base   →   Compiler  →   SDK      →    Media
+  (amd64)    (amd64)       (per-arch)    (per-arch)
+                                          ↓
+                                     Android
+                                          ↓
+                                     Package + Torch (runtime lane)
+```
+
+Three lanes:
+
+- **Cross** (`linux/amd64` host, cross-compiles every arch):
+  `base → compiler → sdk → media → android → runtime` (`CROSS_STAGE_ORDER`).
+  The runtime stage is where `package`/`wrapper` get built, with the android
+  image as their artifact source — so android is not optional.
+- **Runtime** (native or QEMU per arch): `base → package → wrapper`
+- **Windows** (native Windows Containers):
+  `base → sdk → toolchain → media → torch → final`; the variant stages in that order are in
+  [`AGENTS.md` § Build Workflow](../AGENTS.md#build-workflow).
+
+Per-stage mechanics live in [Linux build basics](linux-build-basics.md) and [Linux cross builds](linux-cross-builds.md) — including `Dockerfile.sdk`'s reuse for amd64-hosted cross SDK artifact builds via `BUILD_MODE=cross` and `Dockerfile.package`'s clean-base runtime assembly in both native and cross flows.
 
 ## What You Get
 
@@ -139,5 +204,22 @@ The Linux images build as a chain of separate Dockerfiles (one per stage, for la
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 
 See [Third-Party Licenses](third-party-licenses.md) for license information on bundled software.
+
+## Home-lab stacks, deliberately here
+
+Moved from the README on 2026-10-19.
+
+Besides the build images and the shared CI surface, this repository carries the
+owner's **personal operations stacks**: Home Assistant under
+[`linux/homeassistant/`](../linux/homeassistant/README.md), Nextcloud AIO under
+[`linux/nextcloud-aio/`](../linux/nextcloud-aio/README.md), and the Ansible
+install on the host (pip in a venv, per the official docs) under
+[`linux/ansible/`](../linux/ansible/README.md). They are not build
+infrastructure and they are not here by accident — one owner, one host, one
+place to keep the compose files, the `.env.example` contracts and the runbooks
+that go with them. Anything in this repository that claims it is build
+infrastructure *only* is wrong; the declared topic includes these stacks.
+They consume the same gates as everything else (crlf-guard, shellcheck,
+secret scan), and nothing else in the tree depends on them.
 
 

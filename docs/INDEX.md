@@ -74,6 +74,7 @@ The two halves of one topic often split:
 | **The shared bucket's server**: Garage on a VPS behind the FritzBox's WireGuard, firewall, size cap, rebuild runbook | [`linux/sccache-s3/README.md`](../linux/sccache-s3/README.md) |
 | **The home fleet's weekly update**: Ansible on pi-1, the inventory's obfuscated names, the schedule, a host that is off, Garage, and each run's log and status | [`linux/ansible/README.md`](../linux/ansible/README.md) |
 | **Home Assistant on pi-1**: tracked vs live config, secrets, one file per feature in `packages/`, the Ansible page, the energy meter | [`linux/homeassistant/README.md`](../linux/homeassistant/README.md) |
+| **Why the home-lab stacks live in the hub** (Home Assistant, Nextcloud AIO, Ansible) | [`overview.md` § Home-lab stacks](overview.md#home-lab-stacks-deliberately-here) |
 | **The home network's addresses**: placeholders in docs and examples, the real values in the gitignored `site.local.env` | [`site.local.env.example`](../site.local.env.example) |
 | **clang-cl sanitizers**: why `-shared-libsan`, trap-mode UBSan, Microsoft's ASan runtime over LLVM's, and who stages the DLL | [`windows-clang-cl-sanitizers.md`](windows-clang-cl-sanitizers.md) |
 | Stevedore post-install fixes, ghcr login, service recovery | [`windows-stevedore-and-docker.md`](windows-stevedore-and-docker.md) |
