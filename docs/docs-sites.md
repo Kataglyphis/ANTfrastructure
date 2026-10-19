@@ -1,9 +1,9 @@
 # Docs sites: build, check, publish
 
-Every family repository publishes a documentation site to its own subdomain of the
-FTP host (Apache, one docroot per site). They all go through one reusable workflow,
+Every family repository publishes its documentation site to its own subdomain of the
+FTP host (Apache, one docroot per site) through one reusable workflow,
 `.github/workflows/build-docs.yml`: build the site in the family image, add the hub's
-`.htaccess`, check every internal link, publish. The upload itself is
+`.htaccess`, check every internal link, publish. The upload is
 [`deploy-over-ftp`](ftp-deploys.md).
 
 ## The reusable workflow

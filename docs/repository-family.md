@@ -6,8 +6,8 @@ SPDX-License-Identifier: MIT
 # The Kataglyphis repositories
 
 One owner, one build image and one set of rules cover every repository below. This page holds
-what is true for all of them, so that each README can stay a short overview and link here for
-the rest (owner, 2026-10-19).
+what is true for all of them, so each README stays a short overview that links here for the rest
+(owner, 2026-10-19).
 
 ## The repositories
 
@@ -56,10 +56,10 @@ read on; everything else has a page of its own. In this order:
 6. **Documentation:** a table with one row per guide, plus the docs site and `AGENTS.md`.
 7. **Footer:** one line to this page for contributing and contact, and the `LICENSE` link.
 
-Keep it under about 100 lines, badges included. [`README.md.template`](../shared/templates/README.md.template)
-is that shape, ready to copy. The `readme-length` gate fails a root README over 100 lines, in
-the hub's preflight and in every consumer's lint gates:
-[`code-quality-tooling.md` § README length](code-quality-tooling.md#readme-length-readme-length).
+**Under about 100 lines, badges included:** the `readme-length` gate fails a root README over 100
+lines, in the hub's preflight and in every consumer's lint gates
+([`code-quality-tooling.md` § README length](code-quality-tooling.md#readme-length-readme-length)).
+[`README.md.template`](../shared/templates/README.md.template) is that shape, ready to copy.
 
 What leaves the README:
 

@@ -2,47 +2,64 @@
 
 ## About The Project
 
-This project ships ready-to-build Dockerfiles for multiple targets in a single repo — plus the reusable tooling consumer projects build on: PowerShell modules (`windows/scripts/modules/`), bash libraries (`linux/scripts/lib/`: agentic-loop, app-runner, cmake-build, code-quality and more), cross-platform shared data (`shared/agentic-loop/prompts/`), CI composite actions (`.github/actions/`, see its README) and the reusable workflows consumers call at `@develop` (`python-ci-*`, `build-docs`, `lint-gates`, `submodule-pins`, `container-ci-windows`). The AGENTS.md Repo Map is the authoritative index of that half of the repo.
+Ready-to-build Dockerfiles for multiple targets in one repo, plus the reusable tooling consumer
+projects build on:
 
-Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/ANTfrastructure/pkgs/container/kataglyphis_beschleuniger) — the multi-arch Linux `:latest`, the Windows build image `:winamd64` and the `:winarm64` bundle; [Published Images and Tag Hints](#published-images-and-tag-hints) lists every tag.
+- PowerShell modules (`windows/scripts/modules/`)
+- bash libraries (`linux/scripts/lib/`: agentic-loop, app-runner, cmake-build, code-quality and
+  more)
+- cross-platform shared data (`shared/agentic-loop/prompts/`)
+- CI composite actions (`.github/actions/`, see its README)
+- the reusable workflows consumers call at `@develop` (`python-ci-*`, `build-docs`, `lint-gates`,
+  `submodule-pins`, `container-ci-windows`)
+
+The AGENTS.md Repo Map is the authoritative index of that half of the repo.
+
+Container registry: [ghcr.io/kataglyphis/kataglyphis_beschleuniger](https://github.com/Kataglyphis/ANTfrastructure/pkgs/container/kataglyphis_beschleuniger)
+— the multi-arch Linux `:latest`, the Windows build image `:winamd64` and the `:winarm64` bundle.
+Every tag: [Published Images and Tag Hints](#published-images-and-tag-hints).
 
 ## The architecture summary AGENTS.md carried
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10); corrected since where the code moved. The RULES stayed there; this is the reference behind them.
+Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), with the two sections after it;
+corrected since where the code moved. The RULES stayed there; this is the reference behind them.
 
-Three build lanes. Supported Linux arches: `amd64`, `arm64`, `riscv64`. Windows **host**:
-`windows/amd64` only; Windows **targets**: `amd64` (image, production) and `arm64`
-(cross-compiled artifact bundle — plumbing landed 2026-08-22 and the lane **BUILDS** since
-2026-08-23; **nothing it produces has ever been RUN**, because Windows x64 has no ARM64 emulation,
-so every arm64 signal is a static PE machine-type check. `Build-Buildkit.ps1 -TargetArch arm64`
-just works: `torch` is dropped from the DEFAULT stage list with a notice (asking for it
-**explicitly** still throws — it runs `uv sync`, which must execute the target interpreter).
-Which components are through is tracked in the status banner of `docs/windows-cross-builds.md` —
-do not restate it here, it moves). **Since 2026-08-26 the two lanes are at RUNTIME parity**: same
-GStreamer plugin set (200 DLLs, six contract plugins, `gst-ptp-helper`; the contract has
-thirteen since CON28 on 2026-10-05, and the seven WebRTC ones run on an arm64 device since
-2026-10-11), same media/inference
-surface, and the same six python wheels — the TVM/IREE **runtime** python packages are
-cross-built and assembled on this lane (#133). What stays amd64-only is a short, closed list:
-classic TensorRT (CUDA/cuDNN are cross-built since #176, 2026-09-20), the TVM and IREE
-**compilers** (target-arch LLVM), LiteRT-LM, the torch app
-stage — each named in the bundle by an `ABSENT-ON-ARM64.txt` / `COMPILER-ABSENT-ON-ARM64.txt`
-marker, so a consumer never has to guess.
+Three build lanes ([Linux Image Chain](#linux-image-chain)).
 
-> **Never publish the arm64 lane's output with `--platform windows/arm64`.** It
-> is a cross build out of the same `windows/amd64` container and its product is
-> an artifact bundle, not a runnable image; that flag yields a manifest nothing
-> can run. Why no arm64 Windows container can exist, and the lane's current
-> coverage: [`docs/windows-cross-builds.md`](windows-cross-builds.md).
+- **Linux arches:** `amd64`, `arm64`, `riscv64`.
+- **Windows host:** `windows/amd64` only. **Windows targets:** `amd64` (image, production) and
+  `arm64` (cross-compiled artifact bundle).
+- **The arm64 lane**: plumbing landed 2026-08-22, and the lane **BUILDS** since 2026-08-23.
+  **Nothing it produces runs on the build host**: Windows x64 has no ARM64 emulation, so every
+  arm64 signal there is a static PE machine-type check; the bundle runs on an arm64 device or a
+  `windows-11-arm` runner (`Test-Arm64Bundle.ps1`, first device run 2026-10-03,
+  [`windows-cross-builds.md`](windows-cross-builds.md)). `Build-Buildkit.ps1 -TargetArch arm64`
+  just works: `torch` is dropped from the DEFAULT stage list with a notice; asking for it **explicitly**
+  still throws, because it runs `uv sync`, which must execute the target interpreter. Which
+  components are through: the status banner of `docs/windows-cross-builds.md`. It moves, so do
+  not restate it here.
+- **RUNTIME parity since 2026-08-26:** the same GStreamer plugin set (200 DLLs, six contract
+  plugins, `gst-ptp-helper`; the contract has thirteen since CON28 on 2026-10-05, and the seven
+  WebRTC ones run on an arm64 device since 2026-10-11), the same media/inference surface and the
+  same six python wheels. The TVM/IREE **runtime** python packages are cross-built and assembled
+  on this lane (#133).
+- **amd64-only, a short closed list:** classic TensorRT (CUDA/cuDNN are cross-built since #176,
+  2026-09-20), the TVM and IREE **compilers** (target-arch LLVM), LiteRT-LM, the torch app
+  stage. The bundle names each with an `ABSENT-ON-ARM64.txt` / `COMPILER-ABSENT-ON-ARM64.txt`
+  marker, so a consumer never has to guess.
+
+> **Never publish the arm64 lane's output with `--platform windows/arm64`.** It is a cross build
+> out of the same `windows/amd64` container, and its product is an artifact bundle, not a
+> runnable image; that flag yields a manifest nothing can run. Why no arm64 Windows container can
+> exist, and the lane's current coverage: [`docs/windows-cross-builds.md`](windows-cross-builds.md).
 >
-> **The base carries four arm64-only prerequisites, all installed UNCONDITIONALLY in the shared
-> base** — never gate them on an arch ARG (that re-pays the chain's most expensive layers on every
-> lane switch). They are warn-only in the base (`Test-Arm64Prereqs.ps1` reports on all four); the
-> GStreamer build **throws** on the ones it actually needs. `WINDOWS_ARM64_STRICT=1` promotes the
-> base checks to hard gates, but it must be passed as a build-arg (`-BuildArg
-> WINDOWS_ARM64_STRICT=1`; a host env var alone does nothing) and it never reaches `Install-Vs.ps1`'s
-> MSVC `lib\arm64` check (that RUN sits above the `ARG` declaration in `Dockerfile.base`). The
-> prerequisite list, rationale and traps: `docs/windows-cross-builds.md`.
+> **The shared base installs four arm64-only prerequisites UNCONDITIONALLY.** Never gate them on
+> an arch ARG: that re-pays the chain's most expensive layers on every lane switch. The base only
+> warns (`Test-Arm64Prereqs.ps1` reports on all four); the GStreamer build **throws** on the ones
+> it needs. `WINDOWS_ARM64_STRICT=1` promotes the base checks to hard gates, but only as a
+> build-arg (`-BuildArg WINDOWS_ARM64_STRICT=1`; a host env var alone does nothing), and it never
+> reaches `Install-Vs.ps1`'s MSVC `lib\arm64` check (that RUN sits above the `ARG` declaration in
+> `Dockerfile.base`). The prerequisite list, rationale and traps: `docs/windows-cross-builds.md`.
 
 | Dockerfile | FROM | Produces |
 |------------|------|----------|
@@ -54,11 +71,9 @@ marker, so a consumer never has to guess.
 | `Dockerfile.package` | `:latest-base-<arch>` + `:cross-android-<arch>` | `:latest-package-<arch>` |
 | `Dockerfile.torch` | `:latest-package-<arch>` | `:latest-<arch>` (incl. the Hailo payload on amd64/arm64) |
 | `Dockerfile.nvidia` / `Dockerfile.amd` | `:cross-sdk-<arch>` | `:cross-toolchain-<variant>-<arch>`: a variant chain's `gpu` stage (CUDA or ROCm/MIGraphX); its media builds FROM it, and every later tag carries `-<variant>` |
-| `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` (a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`), or `:winarm64` under `-TargetArch arm64` — the arm64 **artifact bundle**, still a `windows/amd64` image; **never publish it with `--platform windows/arm64`, and never as a manifest entry** ([`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)) |
+| `windows/Dockerfile.*` | `windows/servercore:ltsc2025` | `:winamd64` (a **manifest** over `windows/amd64`; variants as `:winamd64-<variant>`), or `:winarm64` under `-TargetArch arm64` — the arm64 **artifact bundle**, still a `windows/amd64` image, never a manifest entry ([`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags)) |
 
 ## Supported platforms, as AGENTS.md listed them
-
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10); corrected since where the code moved. The RULES stayed there; this is the reference behind them.
 
 | Component | Build platform | Target platforms |
 |-----------|---------------|------------------|
@@ -72,18 +87,14 @@ riscv64's feature-parity exemptions: [`AGENTS.md` § Linux Build Rules](../AGENT
 
 ## Expected outputs, as AGENTS.md listed them
 
-Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10); corrected since where the code moved. The RULES stayed there; this is the reference behind them.
+A successful `build-cross-chain.sh` run pushes to GHCR:
 
-After a successful `build-cross-chain.sh` run:
-- All cross-lane intermediate images pushed to GHCR
-- Per-architecture wrapper images (`:latest-<arch>`) pushed to GHCR
-- Multi-arch manifest (`:latest`) pushed to GHCR
+- every cross-lane intermediate image
+- the per-architecture wrapper images (`:latest-<arch>`)
+- the multi-arch manifest (`:latest`)
 
 A variant chain (`CROSS_VARIANT=nvidia|rocm`) writes `:latest-<variant>-<arch>` and
-`:latest-<variant>` instead, and `--no-push` builds every stage locally and pushes
-nothing.
-
----
+`:latest-<variant>` instead; `--no-push` builds every stage locally and pushes nothing.
 
 ## Published Images and Tag Hints
 
@@ -98,19 +109,18 @@ nothing.
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 | `winamd64` | Windows Server Core 2025 build image with MSVC, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX — a **manifest** over `windows/amd64`, CPU + DirectML; variants as `:winamd64-<variant>`: `:winamd64-nvidia` (CUDA), `:winamd64-rocm` (ROCm). |
 | ghcr.io/kataglyphis/kataglyphis_beschleuniger | windows/amd64 (arm64 **bundle**) | `winarm64` | The arm64 cross artifact bundle: a `windows/amd64` image carrying the aarch64 payload, its own tag. Not a platform, not a manifest entry, never `--platform windows/arm64` — see [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags). `:winarm64-nvidia` carries the arm64 CUDA payload. |
 
-**Check the live index before relying on its arch coverage** —
-`nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`.
-On 2026-08-31 it (then `:latest-cross`) carried **riscv64 only**: a single-arch run had replaced the
-3-arch index. `build-runtime-manifest.sh` now refuses to shrink an already
-published index (`--force`, or `RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so
-a partial run cannot do it again —
-[cross-build-verification.md](cross-build-verification.md). The 2026-09-02
-full-fanout run restored it: the live index carries amd64/arm64/riscv64 again.
+**Check the live index before relying on its arch coverage**:
+`nerdctl manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest`. On 2026-08-31 it
+(then `:latest-cross`) carried **riscv64 only**: a single-arch run had replaced the 3-arch index.
+`build-runtime-manifest.sh` now refuses to shrink an already published index (`--force`, or
+`RUNTIME_MANIFEST_COMPLETENESS=0`, overrides), so a partial run cannot do it again
+([cross-build-verification.md](cross-build-verification.md)). The 2026-09-02 full-fanout run
+restored it: the live index carries amd64/arm64/riscv64 again.
 
 ### Accelerators in the default image
 
-Moved from the README on 2026-10-19. Accelerators whose runtime fits the default image are built
-into it instead of a variant:
+Moved from the README on 2026-10-19. An accelerator whose runtime fits the default image is built
+into it, not into a variant:
 
 | Accelerator | In `:latest` | Arches |
 |---|---|---|
@@ -120,20 +130,31 @@ into it instead of a variant:
 | NVIDIA DeepStream 9.1 | no - in every amd64 `:latest-nvidia` build since 2026-10-07 (`ENABLE_DEEPSTREAM=false` opts out), publishing allowed by the owner 2026-10-01 ([`linux-accelerator-images.md`](linux-accelerator-images.md#deepstream-nvidia-variant)) | amd64 |
 
 **`:latest-nvidia` carries compiled kernels for the compute capabilities `CUDA_ARCHITECTURES`
-names and nothing else** (86, 87, 89 and 120 since the owner decision of 2026-09-23). There is no
-PTX to fall back on, so a card outside that list fails at session creation rather than running
-slowly. The hardware behind each number, what is left out, and how to change
-the set: [`AGENTS.md` § GPU architecture coverage](../AGENTS.md#gpu-architecture-coverage-how-to-turn-an-arch-on-or-off).
+names and nothing else** (86, 87, 89 and 120; owner decision 2026-09-23). There is no PTX to fall
+back on, so a card outside that list fails at session creation rather than running slowly. The
+hardware behind each number, what is left out, and how to change the set:
+[`AGENTS.md` § GPU architecture coverage](../AGENTS.md#gpu-architecture-coverage-how-to-turn-an-arch-on-or-off).
 
 ## Images in This Repository
 
-- 🔥 `linux/Dockerfile.torch`: Final Linux wrapper image — Torch/Python layer + runtime scripts + entrypoint.
-- 🌐 `linux/webserver/Dockerfile`: Minimal nginx static webserver (config at `linux/webserver/nginx.conf`).
-- 🪟 `windows/Dockerfile.base`, `windows/Dockerfile.nvidia` or `windows/Dockerfile.rocm` (optional GPU layer), `windows/Dockerfile.toolchain-builder`, `windows/Dockerfile.media-merge-builder` (+ per-branch media builders), `windows/Dockerfile.rocm-migraphx` and `windows/Dockerfile.rocm-llama` (rocm variant only), `windows/Dockerfile.torch` (the OrchestrANT app stage), `windows/Dockerfile` (driven by `windows/Build-Buildkit.ps1`): Windows Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
+- `linux/Dockerfile.torch`: the final Linux wrapper image — Torch/Python layer + runtime scripts +
+  entrypoint.
+- `linux/webserver/Dockerfile`: minimal nginx static webserver (config at
+  `linux/webserver/nginx.conf`).
+- `windows/Dockerfile.base`, `windows/Dockerfile.nvidia` or `windows/Dockerfile.rocm` (optional
+  GPU layer), `windows/Dockerfile.toolchain-builder`, `windows/Dockerfile.media-merge-builder`
+  (+ per-branch media builders), `windows/Dockerfile.rocm-migraphx` and
+  `windows/Dockerfile.rocm-llama` (rocm variant only), `windows/Dockerfile.torch` (the
+  OrchestrANT app stage), `windows/Dockerfile` (driven by `windows/Build-Buildkit.ps1`): Windows
+  Server Core 2025 build image with MSVC Build Tools, LLVM/Clang, Vulkan SDK, Rust, Flutter, WiX.
 
 ## Linux Image Chain
 
-The Linux images build as a chain of separate Dockerfiles (one per stage, for layer caching), ending in the `linux/Dockerfile.torch` wrapper. The per-stage table (Dockerfile → FROM → produced tag) is [above](#the-architecture-summary-agentsmd-carried), and the tree below carries the annotated per-stage contents (moved from the README on 2026-10-19), so BuildKit caches the expensive layers and rebuilds only what changed:
+The Linux images build as a chain of separate Dockerfiles, one per stage, so BuildKit caches the
+expensive layers and rebuilds only what changed; the chain ends in the `linux/Dockerfile.torch`
+wrapper. Dockerfile → FROM → produced tag: the table
+[above](#the-architecture-summary-agentsmd-carried). Per-stage contents (moved from the README on
+2026-10-19):
 
 ```
 linux/
@@ -163,22 +184,24 @@ linux/
 Three lanes:
 
 - **Cross** (`linux/amd64` host, cross-compiles every arch):
-  `base → compiler → sdk → media → android → runtime` (`CROSS_STAGE_ORDER`).
-  The runtime stage is where `package`/`wrapper` get built, with the android
-  image as their artifact source — so android is not optional.
+  `base → compiler → sdk → media → android → runtime` (`CROSS_STAGE_ORDER`). The runtime stage
+  builds `package`/`wrapper` with the android image as their artifact source, so android is not
+  optional.
 - **Runtime** (native or QEMU per arch): `base → package → wrapper`
-- **Windows** (native Windows Containers):
-  `base → sdk → toolchain → media → torch → final`; the variant stages in that order are in
-  [`AGENTS.md` § Build Workflow](../AGENTS.md#build-workflow).
+- **Windows** (native Windows Containers): `base → sdk → toolchain → media → torch → final`; the
+  variant stages in that order: [`AGENTS.md` § Build Workflow](../AGENTS.md#build-workflow).
 
-Per-stage mechanics live in [Linux build basics](linux-build-basics.md) and [Linux cross builds](linux-cross-builds.md) — including `Dockerfile.sdk`'s reuse for amd64-hosted cross SDK artifact builds via `BUILD_MODE=cross` and `Dockerfile.package`'s clean-base runtime assembly in both native and cross flows.
+Per-stage mechanics: [Linux build basics](linux-build-basics.md) and
+[Linux cross builds](linux-cross-builds.md), including `Dockerfile.sdk`'s reuse for amd64-hosted
+cross SDK artifact builds via `BUILD_MODE=cross` and `Dockerfile.package`'s clean-base runtime
+assembly in both native and cross flows.
 
 ## What You Get
 
-- ✅ Multi-arch builds via nerdctl + BuildKit.
-- 🎮 Vulkan + toolchains ready for GPU passthrough.
-- 🧠 Torch/Python runtime included in the final Linux image chain.
-- 📡 Ready-to-serve static web content with nginx.
+- Multi-arch builds via nerdctl + BuildKit.
+- Vulkan + toolchains ready for GPU passthrough.
+- The Torch/Python runtime in the final Linux image chain.
+- Static web content served by nginx.
 
 ## Key Features
 
@@ -199,27 +222,23 @@ Per-stage mechanics live in [Linux build basics](linux-build-basics.md) and [Lin
 | Android | SDK <!-- generated:android_sdk -->15859902<!-- /generated:android_sdk -->, NDK <!-- generated:android_ndk -->29.0.14206865<!-- /generated:android_ndk --> | ✔️ |
 | Windows | MSVC Build Tools, CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, GStreamer <!-- generated:gstreamer -->1.29.2<!-- /generated:gstreamer --> | ✔️ |
 | Windows | Vulkan SDK <!-- generated:vulkan -->1.4.363.0<!-- /generated:vulkan -->, ONNX Runtime <!-- generated:onnx -->1.31.0<!-- /generated:onnx --> | ✔️ |
-| Windows-on-ARM | Cross-built **artifact bundle** (`:winarm64` labels a `windows/amd64` image — never publish it as `windows/arm64`): media + inference measured at runtime parity with amd64 on 2026-08-26 (statically verified only; HEAD carries unvalidated changes since). **CUDA/cuDNN and HailoRT cross-built since 2026-09-20/21 (#176 + Phase 3: arm64 toolkit payload, ORT CUDA EP, GenAI CUDA, OpenCV CUDA modules, TVM CUDA, `libhailort.dll` + `hailortcli`, all 0xAA64; running them needs an arm64 device).** Not included: classic TensorRT, TAPPAS, the pyhailort wheel, the TVM/IREE compilers, LiteRT-LM, the torch app. [Details](windows-cross-builds.md) | ✔️ |
+| Windows-on-ARM | Cross-built **artifact bundle** (`:winarm64` labels a `windows/amd64` image; publishing: [above](#the-architecture-summary-agentsmd-carried)): media + inference measured at runtime parity with amd64 on 2026-08-26 (statically verified only; HEAD carries unvalidated changes since). **CUDA/cuDNN and HailoRT cross-built since 2026-09-20/21 (#176 + Phase 3: arm64 toolkit payload, ORT CUDA EP, GenAI CUDA, OpenCV CUDA modules, TVM CUDA, `libhailort.dll` + `hailortcli`, all 0xAA64; running them needs an arm64 device).** Not included: classic TensorRT, TAPPAS, the pyhailort wheel, the TVM/IREE compilers, LiteRT-LM, the torch app. [Details](windows-cross-builds.md) | ✔️ |
 
 **Legend:** ✔️ completed · 🔶 in progress · ❌ not started
 
-See [Third-Party Licenses](third-party-licenses.md) for license information on bundled software.
+License information on bundled software: [Third-Party Licenses](third-party-licenses.md).
 
 ## Home-lab stacks, deliberately here
 
 Moved from the README on 2026-10-19.
 
-Besides the build images and the shared CI surface, this repository carries the
-owner's **personal operations stacks**: Home Assistant under
+Besides the build images and the shared CI surface, this repository carries the owner's
+**personal operations stacks**: Home Assistant under
 [`linux/homeassistant/`](../linux/homeassistant/README.md), Nextcloud AIO under
-[`linux/nextcloud-aio/`](../linux/nextcloud-aio/README.md), and the Ansible
-install on the host (pip in a venv, per the official docs) under
-[`linux/ansible/`](../linux/ansible/README.md). They are not build
-infrastructure and they are not here by accident — one owner, one host, one
-place to keep the compose files, the `.env.example` contracts and the runbooks
-that go with them. Anything in this repository that claims it is build
-infrastructure *only* is wrong; the declared topic includes these stacks.
-They consume the same gates as everything else (crlf-guard, shellcheck,
-secret scan), and nothing else in the tree depends on them.
-
-
+[`linux/nextcloud-aio/`](../linux/nextcloud-aio/README.md), and the Ansible install on the host
+(pip in a venv, per the official docs) under [`linux/ansible/`](../linux/ansible/README.md). They
+are not build infrastructure, and not here by accident: one owner, one host, one place for the
+compose files, the `.env.example` contracts and the runbooks that go with them. Anything in this
+repository that claims it is build infrastructure *only* is wrong; the declared topic includes
+these stacks. They go through the same gates as everything else (crlf-guard, shellcheck, secret scan),
+and nothing else in the tree depends on them.
