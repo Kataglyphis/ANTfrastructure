@@ -450,8 +450,8 @@ self-test step names every input, so actionlint checks the call site on every
 run, and it runs only when the workflow is dispatched with `ftp-dry-run: true` -
 then in the library's dry-run mode against the docs server, which connects and
 diffs but uploads nothing. The real upload is exercised by the hub's own
-`build-docs.yml` and `python-ci-linux.yml`, which adopted the action on
-2026-09-14.
+`build-docs.yml`, whose publish job every docs site goes through since 2026-10-19
+(the hub's `docs.yml` and `python-ci-linux.yml` among its callers).
 
 **Statically, on every run and locally.** actionlint reads the metadata of a
 locally-`uses:`d action and checks the call site: an input name the action does

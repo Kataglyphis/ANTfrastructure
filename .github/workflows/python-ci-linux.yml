@@ -93,8 +93,9 @@ on:
         default: auto
       deploy-docs:
         description: >-
-          Whether to FTP-sync the built docs on a push. Set false to build docs without
-          publishing (and then the FTP secrets are not required). A pull request never publishes.
+          Whether to publish the built docs on a push to develop or main (build-docs.yml).
+          Set false to build and check them without publishing (and then the FTP secrets
+          are not required). A pull request never publishes.
         required: false
         type: boolean
         default: true
@@ -103,6 +104,13 @@ on:
         required: false
         type: string
         default: ./docs/build/html/
+      docs-link-allow:
+        description: >-
+          Allow file for the built-site link gate over the docs, relative to the repository
+          root. Empty freezes nothing (docs/docs-sites.md#the-built-site-link-gate).
+        required: false
+        type: string
+        default: ''
       arches:
         description: >-
           The arch rows to run, space-separated, from "x64", "arm64" and
@@ -221,6 +229,7 @@ jobs:
             '${{ matrix.arch }}' '${{ inputs.static-analysis-python-version }}'"
 
       - name: Run Python tests
+        id: tests
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
@@ -241,8 +250,10 @@ jobs:
           name: test-reports-${{ matrix.arch }}
           path: docs/test_results/
 
+      # After a red test too: the site carries the test report, and a red test must not leave it stale.
       - name: Build Docs
-        if: ${{ matrix.arch == 'x64' }}
+        id: docs
+        if: ${{ !cancelled() && matrix.arch == 'x64' && (success() || steps.tests.outcome == 'failure') }}
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           image: ${{ env.CONTAINER_IMAGE }}
@@ -251,15 +262,16 @@ jobs:
             bash -lc "bash scripts/linux/ci_build_docs.sh
             '${{ inputs.docs-python-version }}'"
 
-      # @develop, not ./: a workflow_call workflow runs in the caller's checkout. Push only: a PR must not publish.
-      - name: 📂 Sync files to domain
-        if: ${{ matrix.arch == 'x64' && inputs.deploy-docs && github.event_name == 'push' }}
-        uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop
+      # The docs job below stages, checks and publishes it; this job holds no FTP secret.
+      - name: Upload the built docs
+        if: ${{ !cancelled() && steps.docs.outcome == 'success' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          local-dir: ${{ inputs.docs-artifact-path }}
+          name: python-docs-site
+          path: ${{ inputs.docs-artifact-path }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
 
       # Packaging on the riscv64 row is opt-in: the wheels are CROSS-built on this amd64 row (the emulated compile hung), and the app packages stay amd64-arm64.
       - name: Packaging application
@@ -324,3 +336,17 @@ jobs:
           name: packages-linux-${{ matrix.arch }}-source-and-binary
           path: ${{ github.workspace }}/dist/
           if-no-files-found: error
+
+  # The x64 row's docs, staged, link-checked and published by the family's one docs lane; a red test does not hold them back.
+  docs:
+    needs: build
+    if: ${{ !cancelled() && contains(inputs.arches, 'x64') }}
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/build-docs.yml@develop
+    with:
+      artifact: python-docs-site
+      link-allow: ${{ inputs.docs-link-allow }}
+      publish: ${{ inputs.deploy-docs }}
+    secrets:
+      FTP_SERVER: ${{ secrets.FTP_SERVER }}
+      FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+      FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}

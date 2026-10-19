@@ -11,7 +11,7 @@ on:
   pull_request:
     branches: [main, develop]
 
-# One run per ref; build-docs keeps its own non-cancelling deploy group.
+# One run per ref; the docs site is docs.yml's, which has no cancelling group.
 concurrency:
   group: linux-x64-${{ github.ref }}
   cancel-in-progress: true
@@ -58,13 +58,3 @@ jobs:
         run: pip install --quiet pyyaml
       - name: Mutation gate, shard ${{ matrix.shard }} of 4
         run: PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/4" bash linux/scripts/preflight.sh
-
-  build-docs:
-    uses: ./.github/workflows/build-docs.yml
-    with:
-      runner: ubuntu-26.04
-    secrets:
-      SERVER: ${{ secrets.SERVER }}
-      USERNAME: ${{ secrets.USERNAME }}
-      PW: ${{ secrets.PW }}
-

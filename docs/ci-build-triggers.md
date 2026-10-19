@@ -40,7 +40,8 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 
 | Workflow | Shown as | Trigger | What it runs |
 |---|---|---|---|
-| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop` | the shell preflight gate suite, its mutation gate as four sharded jobs, and the docs validation and build |
+| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop` | the shell preflight gate suite and its mutation gate as four sharded jobs |
+| `docs.yml` | Docs · build + publish | every push and PR to `main`/`develop`, and dispatch | the hub's site through `build-docs.yml`: `build-docs.sh`, the link gate, and on a push the upload |
 | `windows-x64.yml` | Windows x64 · script tests | push/PR that touches `windows/**`, `shared/windows/**`, `versions.env` or the workflow itself | PowerShell lint and the `windows/scripts/tests` suite |
 | `windows-arm64.yml` | Windows arm64 · bundle device gate | daily, dispatch, and a push that touches the gate's files | a `windows-2025` job packs the published `:winarm64` runtime bundle, a `windows-11-arm` job runs `Test-Arm64Bundle.ps1` over it |
 | `llm-stack-serving.yml` | LLM stack · serving | push/PR that touches `linux/llm-stack/**` | the compose shape and the backend registry. The NAS census test left with the census tool for OrchestrANT on 2026-09-15 |
@@ -55,7 +56,7 @@ The `workflow_call` ones run when a caller runs:
 
 | Workflow | Shown as | What it runs |
 |---|---|---|
-| `build-docs.yml` | Docs · build (reusable) | the docs build |
+| `build-docs.yml` | Docs · build + publish (reusable) | builds a docs site in the image, adds the hub's `.htaccess`, checks its links, and publishes it on a push to `develop` or `main` ([`docs-sites.md`](docs-sites.md#the-reusable-workflow)) |
 | `python-ci-linux.yml` | Python CI · Linux (reusable) | Python lint and tests on Linux, for consumer repos; never triggers here. `arches` picks the rows (default `x64 arm64`) |
 | `python-ci-windows.yml` | Python CI · Windows (reusable) | the same for Windows |
 | `lint-gates.yml` | Lint gates (reusable) | `run-lint-gates.sh` over a consumer tree |

@@ -194,7 +194,7 @@ push, so a flaky upload must not red the lane.
   specific enough to fix, and `timeout` and `protocol` are inputs.
 - *Gate the publish, do not silence it.* If the docs push genuinely should not
   run on a given branch or event, that belongs in the step's `if:` — which is
-  what `build-docs.yml` already does with `github.event_name == 'push'`. An
+  what `build-docs.yml`'s publish job does: a push to `develop` or `main` only. An
   `if:` that skips is honest; a `continue-on-error` that hides is not.
 - *Prove a new call site with `dry-run: 'true'`.* It reports the file count and
   the permission verdict without touching the server.
@@ -257,9 +257,12 @@ After — the fixup, the pin and the policy all move inside:
 ```
 
 Keep the `if:` guards where they are — they are per-lane policy, not deploy
-policy. `build-docs.yml`'s `github.event_name == 'push'` guard is what stops a
-pull request publishing to production, and this action deliberately does not
-second-guess it.
+policy, and this action deliberately does not second-guess them. **A docs site
+does not call this action directly any more**: `build-docs.yml` calls it from a
+publish job that runs on a push to `develop` or `main` only, after the hub's
+`.htaccess` and the link gate ([`docs-sites.md`](docs-sites.md#the-reusable-workflow)).
+A direct call is for a site that is no docs site, such as jotrockenmitlocken's
+web app.
 
 ## What this change does not do
 

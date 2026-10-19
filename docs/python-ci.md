@@ -57,7 +57,10 @@ jobs:
       GHCR_PAT: ${{ secrets.GHCR_PAT }}
 ```
 
-The docs build and the FTP deploy run on the `x64` row only, so the
+The docs build runs on the `x64` row only, after a red test too, and uploads the
+site as `python-docs-site`; the `docs` job then hands it to `build-docs.yml`, which
+adds the `.htaccess`, checks its links (`docs-link-allow`) and publishes it on a push
+to `develop` or `main` ([`docs-sites.md`](docs-sites.md#the-reusable-workflow)). So the
 `linux-x64.yml` caller is the one that passes the FTP secrets.
 
 A small `plan` job turns the list into the build matrix, and it **fails** on an

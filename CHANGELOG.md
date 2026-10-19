@@ -10,6 +10,27 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — every docs site is built, checked and published the same way
+
+- **`build-docs.yml` is the family's docs-site lane** ("Docs · build + publish (reusable)").
+  A `site` job builds the site in the image from `command` or `builder` (`rustdoc`, `python`,
+  `dartdoc`, the hub's drivers) or takes an `artifact` an earlier job uploaded, then
+  `docs-site.sh stage` adds the hub's `.htaccess` and 404 page and runs the link gate
+  (`link-allow`). A `publish` job runs `deploy-over-ftp` on a push to `develop` or `main` only
+  (a dispatch with `publish-on-dispatch`), in a `docs-publish-<site-name>` group that is never
+  cancelled, with no `continue-on-error`. Secrets: `FTP_SERVER`, `FTP_USERNAME`,
+  `FTP_PASSWORD`, nothing else; the old `SERVER`/`USERNAME`/`PW` inputs had no caller but the
+  hub ([`docs-sites.md`](docs/docs-sites.md#the-reusable-workflow)).
+- **The hub's site moved to `docs.yml`**: `linux-x64.yml`'s cancelling group could cut its
+  upload off, and the preflight subset the old job ran is `linux-x64.yml`'s anyway.
+- **`python-ci-linux.yml` publishes through it**: the x64 row builds the docs after a red test
+  too and uploads them as `python-docs-site`; a new `docs` job calls `build-docs.yml`
+  (`publish: deploy-docs`, new input `docs-link-allow`). OrchestrANT and WebDavClient need no
+  change; their docs now publish from `develop` and `main` only, after the link gate.
+- `docs-site.sh plan|build|stage` is the workflow's logic in one testable place;
+  `tests/test-docs-site.sh` drives it and pins the publish job's guards; 19 more `docs-site.*`
+  mutations prove it. `docs-sites.md` lists each repository's move onto the workflow.
+
 ## 2026-10-19 — one hub-owned .htaccess for the docs sites
 
 - **`linux/webserver/templates/docs-site.htaccess`**: http → https (301, with a guard against a

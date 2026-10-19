@@ -14049,5 +14049,157 @@
   "replace": "<a href=\"/home.html\">",
   "test": "bash linux/scripts/tests/test-docs-site-htaccess.sh",
   "why": "the 404 page is served at any depth, so its way back must be root-absolute and exist"
+ },
+ {
+  "id": "docs-site.plan-one-source",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  [ \"${modes}\" -eq 1 ] || die",
+  "replace": "  [ \"${modes}\" -ge 0 ] || die",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a command and a builder at once would build one site and publish whichever ran last"
+ },
+ {
+  "id": "docs-site.plan-artifact-root",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    site=.docs-site\n",
+  "replace": "    site=site\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the artifact lands in .docs-site, which no repository builds into"
+ },
+ {
+  "id": "docs-site.plan-builder-dir",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    rustdoc) printf 'target/doc\\n' ;;",
+  "replace": "    rustdoc) printf 'doc\\n' ;;",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "cargo doc writes target/doc; staging another directory publishes nothing or the wrong tree"
+ },
+ {
+  "id": "docs-site.plan-command-needs-site",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  [ -n \"${site}\" ] || die \"no site-dir\"",
+  "replace": "  true || die \"no site-dir\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a command's site lives wherever the command put it; guessing would publish the checkout root"
+ },
+ {
+  "id": "docs-site.plan-path-safety",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    /* | *..* | *[!A-Za-z0-9._/-]*) die",
+  "replace": "    /no-such-path) die",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "hub is substituted into the container command line, so a path with shell syntax in it would run"
+ },
+ {
+  "id": "docs-site.build-command",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    '') bash -lc \"${DOCS_COMMAND:?no command and no builder}\" ;;",
+  "replace": "    '') true ;;",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a build that never runs leaves last run's tree, or none, for the stager"
+ },
+ {
+  "id": "docs-site.build-rustdoc-driver",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    rustdoc) bash \"${DOCS_SITE_HUB}/linux/scripts/02-toolchain/rust/cargo_build_doc.sh\" ;;",
+  "replace": "    rustdoc) true ;;",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the builder input is a promise to run the hub's driver"
+ },
+ {
+  "id": "docs-site.build-dartdoc-theme",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  DARTDOC_BUILD_THEME_CSS=\"${DOCS_SITE_HUB}/third_party/DocumANTation/style/dartdoc.css\"",
+  "replace": "  DARTDOC_BUILD_THEME_CSS=\"${DOCS_SITE_HUB}/style/dartdoc.css\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the brand sheet is DocumANTation's generated one, which only the hub's submodule carries"
+ },
+ {
+  "id": "docs-site.build-dartdoc-packages",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  DARTDOC_BUILD_CLEAN_CMD=(flutter pub get)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "dart doc stops on a checkout whose packages were never resolved"
+ },
+ {
+  "id": "docs-site.stage-htaccess",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    cp \"${templates}/docs-site.htaccess\" \"${site}/.htaccess\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "without it the site keeps serving plain http and the FTP state file"
+ },
+ {
+  "id": "docs-site.stage-own-htaccess-refused",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    [ ! -e \"${site}/.htaccess\" ] || die \"the site ships a .htaccess\"",
+  "replace": "    true || die \"the site ships a .htaccess\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "overwriting a site's own .htaccess silently drops what that site needed it for"
+ },
+ {
+  "id": "docs-site.stage-own-404-kept",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    [ -e \"${site}/404.html\" ] || cp \"${templates}/docs-site-404.html\" \"${site}/404.html\"",
+  "replace": "    cp \"${templates}/docs-site-404.html\" \"${site}/404.html\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a site's themed 404 page is better than the hub's plain one"
+ },
+ {
+  "id": "docs-site.stage-link-gate",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  \"${PYTHON:-python3}\" \"${DOCS_SITE_HUB}/linux/scripts/verify_site_links.py\" \"${site}\" ${gate[@]+\"${gate[@]}\"}",
+  "replace": "  true",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the link gate is what keeps a site with dead links from replacing a good one"
+ },
+ {
+  "id": "docs-site.stage-allow-passed",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "      --allow) gate+=(--allow \"${2:?--allow needs a file}\"); shift 2 ;;",
+  "replace": "      --allow) shift 2 ;;",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "link-allow is how a repository adopts the gate with its known exceptions frozen"
+ },
+ {
+  "id": "docs-site.publish-push-only",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish-on-dispatch))",
+  "replace": "      && (github.event_name != 'schedule')",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a pull request, or an unasked dispatch, must never reach a live site"
+ },
+ {
+  "id": "docs-site.publish-never-cancelled",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "      cancel-in-progress: false",
+  "replace": "      cancel-in-progress: true",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the FTP library deletes before it uploads, so a sync cancelled half-way leaves a site with holes"
+ },
+ {
+  "id": "docs-site.publish-no-tolerance",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
+  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a publish that may fail is a site that stops updating while the lane stays green"
+ },
+ {
+  "id": "docs-site.publish-hidden-files",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "          include-hidden-files: true\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "upload-artifact skips dotfiles by default, and the .htaccess would never reach the server"
+ },
+ {
+  "id": "docs-site.build-dartdoc-images",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  if [ -d images ]; then\n",
+  "replace": "  if false; then\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "dart doc renders the README as index.html, and its images/logo.png was the one dead link of ANThology's site"
  }
 ]

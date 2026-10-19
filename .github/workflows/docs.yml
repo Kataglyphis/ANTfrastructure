@@ -1,0 +1,28 @@
+# Named by the fleet convention: docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
+name: Docs · build + publish
+
+# Least privilege: the reusable workflow reads the repository and publishes with its own FTP secrets.
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# No workflow-level concurrency: cancelling a run would cancel a publish half-way. build-docs.yml groups its jobs itself.
+jobs:
+  docs:
+    uses: ./.github/workflows/build-docs.yml
+    with:
+      command: bash linux/scripts/build-docs.sh
+      site-dir: docs/_build/html
+      hub-path: .
+      # Non-recursive, as DocumANTation references this repo; an expression, since actionlint reads a bare 'true' as a bool.
+      submodules: ${{ 'true' }}
+    secrets:
+      FTP_SERVER: ${{ secrets.SERVER }}
+      FTP_USERNAME: ${{ secrets.USERNAME }}
+      FTP_PASSWORD: ${{ secrets.PW }}

@@ -162,5 +162,5 @@ mutation-family:downloads
 mutation-family:rocm-stack
 # The built-site link gate the docs publish runs (verify_site_links.py), a lane gate no slug owns; proof: linux/scripts/tests/test-site-links.sh.
 mutation-family:site-links
-# The docs sites' .htaccess and 404 templates (linux/webserver/templates/docs-site*); proof: linux/scripts/tests/test-docs-site-htaccess.sh.
+# The docs-site lane: build-docs.yml, docs-site.sh and the .htaccess and 404 templates; proof: test-docs-site.sh and test-docs-site-htaccess.sh.
 mutation-family:docs-site

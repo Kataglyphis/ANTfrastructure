@@ -1,62 +1,232 @@
-# .github/workflows/build-docs.yml
-name: Docs · build (reusable)
+# One way to build, check and publish a family docs site. See docs/docs-sites.md#the-reusable-workflow
+name: Docs · build + publish (reusable)
 
-# Least privilege: docs build + FTP deploy need no repo write access.
+# Least privilege: the site job reads the repository, the publish job uses its own FTP secrets.
 permissions:
   contents: read
 
 on:
   workflow_call:
     inputs:
-      runner:
-        required: true
+      command:
+        description: >-
+          Shell command that builds the site, run with bash -lc in the family image at the
+          repository root. Set exactly one of command, builder and artifact.
         type: string
+        default: ''
+      builder:
+        description: >-
+          A hub driver instead of a command: rustdoc (cargo_build_doc.sh, site target/doc),
+          python (ci_build_docs.sh, site docs/build/html) or dartdoc (dartdoc_build_main with the
+          DocumANTation theme, site doc/api).
+        type: string
+        default: ''
+      artifact:
+        description: >-
+          An artifact an earlier job of the same run uploaded, the built site at its root.
+          Nothing is built; the site is staged, checked and published as it is.
+        type: string
+        default: ''
+      site-dir:
+        description: >-
+          The built site, relative to the repository root. Required with command; a builder
+          knows its own; empty with artifact.
+        type: string
+        default: ''
+      site-name:
+        description: >-
+          Names the uploaded site and the publish concurrency group. A repository that publishes
+          two sites gives each its own.
+        type: string
+        default: docs
+      link-allow:
+        description: >-
+          Allow file for the built-site link gate, relative to the repository root. Empty
+          freezes nothing; seed one with verify_site_links.py --print-keys.
+        type: string
+        default: ''
+      htaccess:
+        description: >-
+          Drop the hub's docs-site .htaccess and 404 page into the site. false for a site that
+          ships its own .htaccess.
+        type: boolean
+        default: true
+      publish:
+        description: >-
+          Publish on a push to develop or main. false builds and checks only, and needs no
+          FTP secrets.
+        type: boolean
+        default: true
+      publish-on-dispatch:
+        description: Also publish a workflow_dispatch run on develop or main.
+        type: boolean
+        default: false
+      server-dir:
+        description: >-
+          Remote directory. Empty is the FTP account's login directory, which is every family
+          site's docroot.
+        type: string
+        default: ''
+      submodules:
+        description: "actions/checkout submodules for the repository: 'recursive', 'true' or 'false'."
+        type: string
+        default: recursive
+      container-args:
+        description: >-
+          Extra docker run arguments for the build, substituted verbatim (run-in-linux-container's
+          extra-args): never untrusted text.
+        type: string
+        default: ''
+      hub-path:
+        description: >-
+          An ANTfrastructure checkout inside the repository to take the drivers, the stager and the
+          link gate from. Empty checks the hub out at develop, the ref this workflow is called at.
+          The hub itself passes '.'.
+        type: string
+        default: ''
+      runner:
+        description: Runner label; pinned to an OS version, never a moving alias.
+        type: string
+        default: ubuntu-26.04
     secrets:
-      SERVER:
-        required: true
-      USERNAME:
-        required: true
-      PW:
-        required: true
+      FTP_SERVER:
+        description: FTP host. Required to publish.
+        required: false
+      FTP_USERNAME:
+        description: FTP user. Required to publish.
+        required: false
+      FTP_PASSWORD:
+        description: FTP password. Required to publish.
+        required: false
+
 jobs:
-  build-docs:
-    name: Build Documentation
+  site:
+    name: Build and check the site
     runs-on: ${{ inputs.runner }}
-    # Raised from 30: the lane now pulls the family image before it builds.
-    timeout-minutes: 45
-    # Job-level because a workflow_call workflow has no run of its own; never cancel a half-done FTP sync.
+    timeout-minutes: 60
+    # A newer commit on the same ref makes this build moot; the publish job below is never cancelled.
     concurrency:
-      group: docs-deploy-${{ github.ref }}
-      cancel-in-progress: false
+      group: docs-site-${{ inputs.site-name }}-${{ github.ref }}
+      cancel-in-progress: true
+    env:
+      DOCS_COMMAND: ${{ inputs.command }}
+      DOCS_BUILDER: ${{ inputs.builder }}
+      DOCS_ARTIFACT: ${{ inputs.artifact }}
+      DOCS_SITE_DIR: ${{ inputs.site-dir }}
+      DOCS_HUB: ${{ inputs.hub-path || 'antfrastructure-tools' }}
+      DOCS_LINK_ALLOW: ${{ inputs.link-allow }}
+      DOCS_HTACCESS: ${{ inputs.htaccess }}
+    outputs:
+      site-dir: ${{ steps.plan.outputs.site-dir }}
     steps:
       # image omitted so the action's versions.env-composed default applies; no login, the package is public.
       - name: Prepare CI host (checkout + pull the family Linux image)
+        if: inputs.artifact == ''
         uses: Kataglyphis/ANTfrastructure/.github/actions/prepare-linux-ci-host@develop
         with:
-          fetch-depth: '0'
-          # Non-recursive: DocumANTation references this repo, so recursing would clone it in a cycle.
+          fetch-depth: '1'
+          submodules: ${{ inputs.submodules }}
+
+      # An artifact needs no image: only the allow file and the hub tooling are read from the checkout.
+      - name: Check out
+        if: inputs.artifact != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The stager and the gate travel with this workflow, so they come from the same develop; true for the theme submodule.
+      - name: Get ANTfrastructure tooling
+        if: inputs.hub-path == ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: Kataglyphis/ANTfrastructure
+          ref: develop
+          path: antfrastructure-tools
           submodules: 'true'
+          persist-credentials: false
 
-      # Docs-relevant subset only: linux-x64.yml already runs the full gate, and callers without one still get these.
-      - name: Run preflight verification (docs-relevant subset)
+      - name: Plan
+        id: plan
+        run: bash "${DOCS_HUB}/linux/scripts/docs-site.sh" plan >> "${GITHUB_OUTPUT}"
+
+      # The command and the builder reach the container as -e names, never through ${{ }}; hub is validated by plan.
+      - name: Build the site
+        if: inputs.artifact == ''
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
-          script: >-
-            bash -lc "PREFLIGHT_ONLY=version-snapshot,mirror-consistency,doc-links,doc-dupes,shellcheck
-            bash linux/scripts/preflight.sh"
+          extra-args: -e DOCS_COMMAND -e DOCS_BUILDER ${{ inputs.container-args }}
+          script: bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh build
 
-      # The same script as on a workstation; it fails without index.html, so an empty tree is never deployed.
-      - name: Build web page
-        uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
+      - name: Take the built site
+        if: inputs.artifact != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          script: bash linux/scripts/build-docs.sh
+          name: ${{ inputs.artifact }}
+          path: ${{ steps.plan.outputs.site-dir }}
 
-      # Callers also run this on pull_request, so guard the event; @develop, since ./ is the caller's checkout.
+      - name: Stage the site and check its links
+        env:
+          SITE_DIR: ${{ steps.plan.outputs.site-dir }}
+        run: |
+          set -euo pipefail
+          args=()
+          if [ -n "${DOCS_LINK_ALLOW}" ]; then args+=(--allow "${DOCS_LINK_ALLOW}"); fi
+          if [ "${DOCS_HTACCESS}" != 'true' ]; then args+=(--no-htaccess); fi
+          bash "${DOCS_HUB}/linux/scripts/docs-site.sh" stage "${SITE_DIR}" ${args[@]+"${args[@]}"}
+
+      # Hidden files too, or the .htaccess would never reach the server.
+      - name: Upload the checked site
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: docs-site-${{ inputs.site-name }}
+          path: ${{ steps.plan.outputs.site-dir }}
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the site
+    needs: site
+    # Never a pull request; a dispatch only when asked; develop and main only, whose sites are the published ones.
+    if: >-
+      inputs.publish
+      && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main')
+      && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish-on-dispatch))
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 30
+    # One upload per repository and site at a time, never cancelled half-way: the library deletes what it has not uploaded yet.
+    concurrency:
+      group: docs-publish-${{ inputs.site-name }}
+      cancel-in-progress: false
+    steps:
+      - name: Check the FTP secrets
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do
+            if [ -z "${!name}" ]; then missing+=("${name}"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error title=build-docs: no FTP secrets::${missing[*]} not passed: map the repository's secrets onto them in the caller's secrets: block (docs/docs-sites.md#secrets)."
+            exit 1
+          fi
+
+      - name: Take the checked site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: docs-site-${{ inputs.site-name }}
+          path: site
+
       - name: 📂 Sync files to domain
-        if: success() && github.event_name == 'push'
         uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop
         with:
-          server: ${{ secrets.SERVER }}
-          username: ${{ secrets.USERNAME }}
-          password: ${{ secrets.PW }}
-          local-dir: ./docs/_build/html/
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          local-dir: ./site/
+          server-dir: ${{ inputs.server-dir }}

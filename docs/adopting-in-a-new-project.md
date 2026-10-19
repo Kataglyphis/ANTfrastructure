@@ -425,11 +425,14 @@ image does not fit on a stock `windows-2025` runner's `C:`, and a pull without
 the move dies late with `hcsshim::ImportLayer 0x70` (measured; see
 [windows-build-resources.md](windows-build-resources.md)).
 
-Four lanes are reusable workflows rather than actions, each called with
+Five lanes are reusable workflows rather than actions, each called with
 `uses: Kataglyphis/ANTfrastructure/.github/workflows/<name>.yml@develop`:
 `lint-gates.yml` (the consumer lint gates, § 9), `submodule-pins.yml` (the pin
 suite, § 9), the Python pair `python-ci-linux.yml` / `python-ci-windows.yml`
-(§ 9), and `container-ci-windows.yml`, the Windows container lane. Its caller
+(§ 9), `build-docs.yml`, which builds, checks and publishes a docs site from the
+repository's own `docs.yml` (inputs, secrets and each repository's move:
+[`docs-sites.md`](docs-sites.md#the-reusable-workflow)), and
+`container-ci-windows.yml`, the Windows container lane. Its caller
 names a build script, the script's arguments and the directory the product lands
 in (`dist/windows-x64` or `dist/windows-arm64` in every caller, with the DLL
 closure the product needs); `target-arch: arm64` adds the arch gate and a run on
@@ -462,7 +465,7 @@ included.
 - **This hub's reusable workflows keep their file names.** Every consumer calls
   them as `Kataglyphis/ANTfrastructure/.github/workflows/<file>@develop`, so a
   rename breaks the fleet at once. Only their display names changed, and they
-  end in `(reusable)`: `Docs · build (reusable)`, `Lint gates (reusable)`,
+  end in `(reusable)`: `Docs · build + publish (reusable)`, `Lint gates (reusable)`,
   `Python CI · Linux (reusable)`, `Python CI · Windows (reusable)`,
   `Submodule pins (reusable)`, and `Container CI · Windows (reusable)`, new on
   2026-09-25.

@@ -377,7 +377,7 @@ When adding here:
   one file per platform and arch (`linux-x64.yml`, `windows-x64.yml`), display
   names `<Platform> <Arch> · <what>`. The hub's REUSABLE workflows
   (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`, and
-  `build-docs`, which only this repo calls) keep their file names for good:
+  `build-docs`, the docs-site lane) keep their file names for good:
   consumers call them at `@develop`, so a rename breaks the fleet in one push.
   The convention and the fleet's rename table:
   [`adopting-in-a-new-project.md` § Workflow file names and display names](docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names).
@@ -599,7 +599,7 @@ and `ls` answers faster than a stale number.
 | `shared/agentic-loop/` | Cross-platform loop data: the planner/refactor/executor task prompts and the role system prompts both lane implementations read, plus the copy-and-edit consumer templates. [Templates](shared/agentic-loop/templates/README.md) |
 | `docs/scripts/` | The docs gates and version tooling — `verify_doc_links.py`, `verify_doc_dupes.py`, `verify_code_dupes.py`, `sync_versions.py`, `bump_versions.py`, the SBOM pair, `mutations.json`. [Gate registry](docs/code-quality-gates.md) |
 | `.github/actions/` | The composite actions consumers call `@develop`. [README](.github/actions/README.md) |
-| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`); `build-docs` is `workflow_call` too, called only by this repo's `linux-x64.yml`. [Triggers](docs/ci-build-triggers.md) |
+| `.github/workflows/` | This repo's own lanes plus the `workflow_call` ones consumers reuse (`python-ci-*`, `container-ci-windows`, `lint-gates`, `submodule-pins`, and `build-docs`, which builds, checks and publishes every docs site: [`docs-sites.md`](docs/docs-sites.md)). [Triggers](docs/ci-build-triggers.md) |
 | `linux/scripts/` | The Linux build system: `01-core` (shared utilities), `02-toolchain` (GCC/LLVM/Rust/Python/CMake/Vulkan), `03-media` (per-library builds), `04-runtime` (entrypoint + env), `05-frameworks` (TVM, Torch, Flutter), `06-packaging` (assembly + smoke), plus the orchestrators and gates at its root. [Libraries](docs/shared-script-libraries.md) |
 | `linux/llm-stack/` | The Ollama + Open WebUI serving stack. [README](linux/llm-stack/README.md) |
 | `linux/jetson-webcam/` | A USB-camera object-detection PoC on a Jetson GPU, run in the arm64 GPU wrapper image. [README](linux/jetson-webcam/README.md) |
