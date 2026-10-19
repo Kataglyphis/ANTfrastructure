@@ -172,6 +172,7 @@ the caller's shell options.
 | `CODE_QUALITY_CMAKE_EXCLUDE_PATHS` | `find -not -path` globs for that walk, added to the built-in `*/.pub-cache/*` | empty |
 | `CODE_QUALITY_CMAKE_FORMAT_CONFIG` | cmake-format config, passed with `-c` only if it exists | `.cmake-format.yaml` |
 | `CODE_QUALITY_CPP_FORMAT_EXTENSIONS` | extensions fed to clang-format | `c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp` |
+| `CODE_QUALITY_CLANG_FORMAT_CANDIDATES` | clang-formats `code_quality_require_pinned_clang_format` tries before `PATH`'s | `/usr/local/llvm-target/bin/clang-format` |
 | `CODE_QUALITY_CLANG_TIDY_EXTENSIONS` | extensions fed to clang-tidy (TUs only) | `c cc cpp cxx` |
 | `CODE_QUALITY_CLANG_TIDY_ARGS` | extra clang-tidy arguments, e.g. per-project `-checks=` | empty (see axis 4) |
 | `CODE_QUALITY_CLANG_TIDY_FIX` | `true` appends `-fix` | `false` |
@@ -189,6 +190,16 @@ Anything the wrapper does not provide is discovered from the environment:
 logging from `01-core/logging.sh` via `lib/log-bootstrap.sh` (or minimal
 fallbacks), tool presence from the caller's `require_tools`/`has_tool`, or else
 `01-core/tool-checks.sh`.
+
+#### The pinned clang-format
+
+Releases format differently, so a gate grades only with the hub's LLVM.
+`code_quality_require_pinned_clang_format` sets `CODE_QUALITY_CLANG_FORMAT` to the first
+candidate that reports `LLVM_RELEASE` (the environment's, else `versions.env`'s; `23.1.30` is no
+`23.1.3`), and errs naming the release when none does. `code_quality_check_clang_format` and
+`code_quality_run_clang_format` then run that binary. On Windows `Invoke-ClangFormatCheck`
+(`WindowsFormatting.Common`) refuses any release but `LLVM_WINDOWS_VERSION` by default;
+`-ExpectedVersion ''` skips the check. Test: `tests/test-pinned-clang-format.sh`.
 
 #### Dart file enumeration
 
@@ -542,7 +553,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1865 entries** over **162 distinct test commands**; both digits are
+manifest holds **1868 entries** over **163 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1771,7 +1782,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 561 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 562 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

@@ -14921,5 +14921,29 @@
   "replace": "          build driver).\n        required: false\n        type: string\n        default: C:\\workspace\\scripts\\windows\\Build-Windows.ps1",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
   "why": "a fixed default path skips the resolution step, so a repo without its own script gets a missing-file failure instead of the hub driver"
+ },
+ {
+  "id": "lib.pinned-clang-format-version-anchored",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "clang-format version ${want//./\\\\.}([^0-9.]|\\$)\" <<<",
+  "replace": "clang-format version ${want//./\\\\.}\" <<<",
+  "test": "bash linux/scripts/tests/test-pinned-clang-format.sh",
+  "why": "unanchored, a clang-format 23.1.30 grades as the pinned 23.1.3, and releases format differently"
+ },
+ {
+  "id": "lib.pinned-clang-format-reads-versions-env",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  if [[ -z \"${want}\" ]]; then\n    # shellcheck source=../01-core/load-versions-env.sh",
+  "replace": "  if false; then\n    # shellcheck source=../01-core/load-versions-env.sh",
+  "test": "bash linux/scripts/tests/test-pinned-clang-format.sh",
+  "why": "a consumer that exports no LLVM_RELEASE must still get the hub's pin, not an error or any clang-format"
+ },
+ {
+  "id": "lib.pinned-clang-format-check-uses-it",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "    if ! \"${CODE_QUALITY_CLANG_FORMAT:-clang-format}\" --dry-run -Werror",
+  "replace": "    if ! clang-format --dry-run -Werror",
+  "test": "bash linux/scripts/tests/test-pinned-clang-format.sh",
+  "why": "the check would grade with PATH's clang-format after the pinned one was found, which is the drift the pin exists to stop"
  }
 ]

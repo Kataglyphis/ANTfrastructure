@@ -10,6 +10,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the pinned clang-format is the hub's to find
+
+- **`code_quality_require_pinned_clang_format`** (`lib/code-quality.sh`) sets
+  `CODE_QUALITY_CLANG_FORMAT` to the first of `CODE_QUALITY_CLANG_FORMAT_CANDIDATES` (default
+  `/usr/local/llvm-target/bin/clang-format`) and `PATH`'s clang-format that reports
+  `LLVM_RELEASE`, the environment's else `versions.env`'s, anchored so `23.1.30` is no `23.1.3`;
+  none errs naming the release. `code_quality_check_clang_format` and `_run_clang_format` run
+  that binary. AccelerANTgine's and BeschleunigerBallett's `run-static-analysis-format.sh` and
+  OmniAccelerANT's `check-plugin-cpp-format.sh` each grep `clang-format --version` themselves
+  ([`code-quality-tooling.md`](docs/code-quality-tooling.md#the-pinned-clang-format)).
+- **`Invoke-ClangFormatCheck` refuses any release but `LLVM_WINDOWS_VERSION` by default** (the
+  Windows image's LLVM; `-ExpectedVersion ''` skips), so BeschleunigerBallett need not read
+  `versions.env` to pass it. Both pins are `23.1.3` today.
+- `test-pinned-clang-format.sh` 11 assertions in `:latest` over stand-in clang-formats, 3
+  `lib.pinned-clang-format-*` mutations; `WindowsFormatting.ClangFormatCheck.Tests.ps1` 5/5.
+
 ## 2026-10-19 — Get-PackageVersion reads the repo's own version file, and can refuse to guess
 
 - **`Get-PackageVersion -VersionFile`** reads one file as `version_util.sh --file-version` does: a

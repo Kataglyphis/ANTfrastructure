@@ -25,9 +25,13 @@ Describe 'Invoke-ClangFormatCheck' {
       Mock -ModuleName WindowsFormatting.Common -CommandName Write-BuildLog { }
     }
     function Invoke-Check { Invoke-ClangFormatCheck -Context ([pscustomobject]@{ }) -WorkspacePath $script:root @args }
+    # The default -ExpectedVersion is this pin, so the stand-in's release is it unless a case says otherwise.
+    $script:pinBefore = $env:LLVM_WINDOWS_VERSION
+    $env:LLVM_WINDOWS_VERSION = '23.1.1'
   }
 
   AfterAll {
+    $env:LLVM_WINDOWS_VERSION = $script:pinBefore
     Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue
   }
 
@@ -50,6 +54,20 @@ Describe 'Invoke-ClangFormatCheck' {
     { Invoke-Check -ExpectedVersion '23.1.1' } | Should -Not -Throw
     { Invoke-Check -ExpectedVersion '23.1' } |
       Should -Throw -ExpectedMessage "*not clang-format 23.1"
+  }
+
+  It 'refuses another release by default: LLVM_WINDOWS_VERSION, else versions.env; an explicit empty version skips' {
+    Set-FormatStub -Files @($script:good)
+    $env:LLVM_WINDOWS_VERSION = '23.1.9'
+    try {
+      { Invoke-Check } | Should -Throw -ExpectedMessage '*not clang-format 23.1.9'
+      $env:LLVM_WINDOWS_VERSION = $null
+      $pinned = ((Get-Content (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')) -match '^LLVM_WINDOWS_VERSION=') -replace '^LLVM_WINDOWS_VERSION=', ''
+      { Invoke-Check } | Should -Throw -ExpectedMessage "*not clang-format $pinned"
+      { Invoke-Check -ExpectedVersion '' } | Should -Not -Throw
+    } finally {
+      $env:LLVM_WINDOWS_VERSION = '23.1.1'
+    }
   }
 
   It 'fails instead of skipping when the gate has no clang-format to run' {

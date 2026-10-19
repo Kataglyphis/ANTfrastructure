@@ -14,12 +14,10 @@ linux/scripts/lib/agentic-loop.sh	get_matrix_entry_name
 linux/scripts/lib/agentic-loop.sh	init_agentic_loop
 linux/scripts/lib/app-runner.sh	app_runner_main
 linux/scripts/lib/cmake-build.sh	cmake_build_main
-linux/scripts/lib/code-quality.sh	code_quality_check_clang_format
 linux/scripts/lib/code-quality.sh	code_quality_cleanup_compile_db
 linux/scripts/lib/code-quality.sh	code_quality_find_clang_tidy_files
 linux/scripts/lib/code-quality.sh	code_quality_find_cpp_files
 linux/scripts/lib/code-quality.sh	code_quality_prepare_compile_db
-linux/scripts/lib/code-quality.sh	code_quality_run_clang_format
 linux/scripts/lib/code-quality.sh	code_quality_run_clang_tidy
 linux/scripts/lib/coverage.sh	coverage_llvm_generate_profile
 linux/scripts/lib/coverage.sh	coverage_llvm_report

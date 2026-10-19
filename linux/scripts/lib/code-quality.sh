@@ -188,12 +188,33 @@ code_quality_run_cmake_format() {
   cmake-format "${args[@]}" "$@"
 }
 
+# Sets CODE_QUALITY_CLANG_FORMAT to a clang-format of LLVM_RELEASE (the environment's, else versions.env's), or errs: releases format differently.
+code_quality_require_pinned_clang_format() {
+  local want="${LLVM_RELEASE:-}" candidate version
+  if [[ -z "${want}" ]]; then
+    # shellcheck source=../01-core/load-versions-env.sh
+    want="$(source "${_CQ_CORE}/load-versions-env.sh" && load_versions_env "${_CQ_CORE}/versions.env" && printf '%s' "${LLVM_RELEASE:-}")"
+  fi
+  [[ -n "${want}" ]] || err "LLVM_RELEASE is unset and ${_CQ_CORE}/versions.env names none, so no clang-format can be graded."
+  for candidate in ${CODE_QUALITY_CLANG_FORMAT_CANDIDATES:-/usr/local/llvm-target/bin/clang-format} "$(command -v clang-format || true)"; do
+    [[ -n "${candidate}" && -x "${candidate}" ]] || continue
+    version="$("${candidate}" --version 2>/dev/null || true)"
+    # Anchored, so 23.1.30 does not pass for 23.1.3.
+    if grep -Eq "clang-format version ${want//./\\.}([^0-9.]|\$)" <<<"${version}"; then
+      CODE_QUALITY_CLANG_FORMAT="${candidate}"
+      info "clang-format: ${candidate} (${want}, the hub's LLVM_RELEASE)"
+      return 0
+    fi
+  done
+  err "No clang-format ${want} (the hub's LLVM_RELEASE) in ${CODE_QUALITY_CLANG_FORMAT_CANDIDATES:-/usr/local/llvm-target/bin/clang-format} or on PATH; another release formats differently."
+}
+
 # One invocation, unlike Windows. docs/code-quality-tooling.md#known-divergences-from-the-windows-path--read-before-unifying-the-two
 code_quality_run_clang_format() {
   [[ $# -gt 0 ]] || return 0
 
   info "Running clang-format on $# files..."
-  clang-format -i "$@"
+  "${CODE_QUALITY_CLANG_FORMAT:-clang-format}" -i "$@"
 }
 
 # Always returns 0; gate on CODE_QUALITY_CLANG_FORMAT_DEVIATIONS, which this sets.
@@ -204,7 +225,7 @@ code_quality_check_clang_format() {
   local total=$# file
   local deviating=()
   for file in "$@"; do
-    if ! clang-format --dry-run -Werror "${file}" >/dev/null 2>&1; then
+    if ! "${CODE_QUALITY_CLANG_FORMAT:-clang-format}" --dry-run -Werror "${file}" >/dev/null 2>&1; then
       deviating+=("${file}")
     fi
   done

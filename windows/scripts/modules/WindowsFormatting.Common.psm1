@@ -11,6 +11,11 @@ if (-not (Get-Module -Name 'WindowsBuild.Common')) {
   Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
 
+# Get-ANTfrastructurePin, for Invoke-ClangFormatCheck's default -ExpectedVersion.
+if (-not (Get-Command -Name 'Get-ANTfrastructurePin' -ErrorAction SilentlyContinue)) {
+  Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
+}
+
 $script:CppExtensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.ixx')
 
 # git ls-files fast path, else a Get-ChildItem walk; the public wrappers pass pathspec and predicate.
@@ -211,14 +216,16 @@ function Invoke-ClangFormatStep {
   Reports how many sources deviate from .clang-format WITHOUT rewriting them.
 .DESCRIPTION
   Report-only by default, for a project with a large known backlog. -FailOnDeviation makes it a gate once the
-  backlog is zero, and -ExpectedVersion refuses a clang-format of any other LLVM release (BACKLOG CON71).
+  backlog is zero. A clang-format of any other LLVM release is refused (BACKLOG CON71).
+.PARAMETER ExpectedVersion
+  The release it must report; default LLVM_WINDOWS_VERSION, the environment's else versions.env's. '' skips the check.
 #>
 function Invoke-ClangFormatCheck {
   param(
     [Parameter(Mandatory)]$Context,
     [Parameter(Mandatory)][string]$WorkspacePath,
     [switch]$FailOnDeviation,
-    [string]$ExpectedVersion = ''
+    [AllowEmptyString()][string]$ExpectedVersion
   )
 
   $clangFormat = Get-Command 'clang-format' -ErrorAction SilentlyContinue
@@ -237,6 +244,8 @@ function Invoke-ClangFormatCheck {
     $clangFormatSource = $clangFormat.Source
   }
 
+  # The image's clang-format is its LLVM, pinned by LLVM_WINDOWS_VERSION; read only once there is one to grade.
+  if (-not $PSBoundParameters.ContainsKey('ExpectedVersion')) { $ExpectedVersion = Get-ANTfrastructurePin -Name 'LLVM_WINDOWS_VERSION' }
   if ($ExpectedVersion) {
     $version = (& $clangFormatSource --version 2>&1) -join ' '
     if ($version -notmatch ('clang-format version {0}([^0-9.]|$)' -f [regex]::Escape($ExpectedVersion))) {
