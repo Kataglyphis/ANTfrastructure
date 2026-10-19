@@ -142,6 +142,85 @@ Then a dry run on `develop` (`gh workflow run release.yml --ref develop -f dry-r
 is `dry-run`, not `dry_run`) runs every lane and lists the release's files, and the owner's
 fast-forward of `main` releases that commit.
 
+## Collecting the release files
+
+`linux/scripts/06-packaging/collect-release-assets.sh [options] <artifacts dir> <out dir>` turns the
+run's uploads, one folder each as `actions/download-artifact` writes them, into one flat directory of
+release files. It fails when two files would get one name, when it collects nothing, and on an
+`--expect` the release would lack. An upload named `*-docs-site` or `docs-site-*` is always skipped:
+`build-docs.yml` uploads the site in the same run.
+
+| Option | Does |
+| --- | --- |
+| `--skip UPLOAD_GLOB` | an upload that is no deliverable |
+| `--include PATH_GLOB` | collect a file whose `<upload>/<path>` matches |
+| `--exclude PATH_GLOB` | never collect such a file (`*/bundle/*`) |
+| `--only-from PATH_GLOB=UPLOAD_GLOB` | a file every lane builds alike ships from these uploads only |
+| `--rename PATH_GLOB=NAME` | collect such a file as `NAME` |
+| `--flatpak-arch-from-suffix` | `--rename '*.flatpak={stem}-{machine}.flatpak'`: the packagers name a flatpak without its arch |
+| `--zip UPLOAD_GLOB[/DIR]=NAME` | the upload's folder, or its `DIR`, as one zip; a matching upload without `DIR` fails |
+| `--unpack UPLOAD_GLOB` | collect from the contents of the upload's tarballs |
+| `--expect NAME` | the release must carry `NAME` |
+| `--strict` | an upload neither skipped nor collected from fails |
+| `--version V`, `--options FILE` | the value of `{version}`; more options, one per line |
+
+Globs are `case` patterns, so `*` crosses `/`. A `NAME` takes `{version}`, `{stem}` (the file's name
+without its last extension), `{arch}` (the last `x64`, `arm64` or `riscv64` word of the upload's
+name) and `{machine}` (`x86_64`, `aarch64`, `riscv64`). An options file holds its globs unquoted; a
+quoted one fails, since it would match nothing. `tests/test-collect-release-assets.sh` runs the
+script over each consumer's uploads with that consumer's options, the `<repo>.options` blocks there.
+
+## The reusable release workflow
+
+`.github/workflows/release-publish.yml` is the version check and the release job of every
+`release.yml`, called twice: `stage: check` before the lanes, `stage: publish` in a job that
+`needs:` all of them. The publish stage downloads the run's uploads (`artifacts`, a download-artifact
+pattern, empty for all), collects them with the options in `collect`, and tags `v<version>` through
+`publish-github-release.sh`, from `main` only. With `dry-run` it checks and collects, lists the files
+in the run summary and tags nothing. The scripts come from the hub's `develop`, like the workflow.
+
+```yaml
+jobs:
+  # A minute, so a merge without a new version stops before the lanes; elsewhere only a dry run runs.
+  version:
+    if: github.ref == 'refs/heads/main' || inputs.dry-run
+    # The grant covers the publish job of the same file; the check job itself takes contents: read.
+    permissions:
+      contents: write
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/release-publish.yml@develop
+    with:
+      stage: check
+      name: OxidANT
+      version-file: Cargo.toml
+      dry-run: ${{ inputs.dry-run == true }}
+
+  # linux-x64, windows-x64, ...: the lane jobs, each with needs: version, as before.
+
+  # needs: every lane, so one red or cancelled lane means no tag and no release.
+  release:
+    needs: [linux-x64, linux-arm64, linux-riscv64, windows-x64, windows-arm64-cross]
+    permissions:
+      contents: write
+    uses: Kataglyphis/ANTfrastructure/.github/workflows/release-publish.yml@develop
+    with:
+      stage: publish
+      name: OxidANT
+      version-file: Cargo.toml
+      dry-run: ${{ inputs.dry-run == true }}
+      collect: |
+        --skip *-tests
+        --include *.deb
+        --flatpak-arch-from-suffix
+```
+
+- **Both calls grant `contents: write`.** GitHub checks every job of a called workflow against the
+  calling job's grant before any job runs, and the file's publish job asks for write.
+- **`dry-run: ${{ inputs.dry-run == true }}`**, not `${{ inputs.dry-run }}`: a push has no inputs,
+  and the comparison hands the boolean input a boolean.
+- **Moving a repository onto it:** replace its `version:` and `release:` jobs with the two calls, keep
+  `on:`, `permissions: {}`, `concurrency:` and the lane jobs, delete
+  `scripts/linux/collect-release-assets.sh` and its suite, and prove it with a dry run on `develop`.
+
 ## How a repository implements it
 
 | File | Triggers |
@@ -149,7 +228,7 @@ fast-forward of `main` releases that commit.
 | `linux-x64.yml` | `push` to `develop`, `pull_request`, `workflow_dispatch`, `workflow_call` |
 | every other lane (`linux-arm64.yml`, `windows-x64.yml`, …) | `workflow_dispatch` and `workflow_call` only |
 | `on-request.yml` | `push` to `develop` and `workflow_dispatch` (input `lanes`): one job reads the tokens, one job per lane calls it |
-| `release.yml` | `push` to `main` and `workflow_dispatch`: the version check (on `main` only, so a dispatch elsewhere releases nothing), one job per lane, the release job |
+| `release.yml` | `push` to `main` and `workflow_dispatch`: the version check (on `main` only, so a dispatch elsewhere releases nothing), one job per lane, the release job; both calls of [`release-publish.yml`](#the-reusable-release-workflow) |
 
 A calling job looks the same in both:
 
@@ -188,9 +267,9 @@ A calling job looks the same in both:
   names must differ across lanes.
 - **Pushes, not tags, start a release.** The tag is the release job's output. Nothing
   listens for `push: tags`.
-- OmniAccelerANT is the reference: its `on-request.yml` and `release.yml`. Its release job
-  fetches only the hub submodule (`git submodule update --init --depth 1
-  third_party/ANTfrastructure`), not the others, to run the script.
+- OmniAccelerANT's `on-request.yml` is the reference. A `release.yml` not yet on
+  `release-publish.yml` fetches only the hub submodule (`git submodule update --init --depth 1
+  third_party/ANTfrastructure`), not the others, to run the scripts.
 
 ## Why this shape
 

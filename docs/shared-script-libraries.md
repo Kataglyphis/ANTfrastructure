@@ -650,6 +650,13 @@ inferred from `BASH_SOURCE`.** A consumer checks this repo out at
 `third_party/ANTfrastructure/`, so a self-derived root resolves to ANTfrastructure and
 the tool operates on the wrong tree — reporting green, having looked at nothing.
 
+### `06-packaging/collect-release-assets.sh`
+
+`collect-release-assets.sh [options] <artifacts dir> <out dir>`: a release run's uploads as one
+flat directory of release files, by `--skip`, `--include`, `--rename`, `--zip`, `--expect` and the
+rest, or one option per line through `--options FILE`. The reusable `release-publish.yml` runs it;
+options and names: [`branch-and-release-strategy.md` § *Collecting the release files*](branch-and-release-strategy.md#collecting-the-release-files).
+
 ### Gate aggregation (`01-core/gates.sh`)
 
 `run_gate` / `gate_skip` / `assert_gates`, the shell half of the fleet's

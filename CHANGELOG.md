@@ -10,6 +10,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — one release collector and one reusable release workflow
+
+- **`linux/scripts/06-packaging/collect-release-assets.sh [options] <artifacts dir> <out dir>`**
+  replaces the six consumers' own copies, which had diverged (wheels in AccelerANTgine only, zips in
+  OmniAccelerANT and OxidANT, an inlined `put()` in OrchestrANT). Options cover every variant:
+  `--skip`, `--include`, `--exclude`, `--only-from`, `--rename` (`{version}`, `{arch}`, `{machine}`,
+  `{stem}`), `--flatpak-arch-from-suffix`, `--zip UPLOAD[/DIR]=NAME`, `--unpack`, `--expect`,
+  `--strict`, and `--options FILE`, one per line. A docs site's upload (`*-docs-site`,
+  `docs-site-*`) is always skipped. Duplicates, an empty release and a missing `--expect` fail
+  ([`branch-and-release-strategy.md`](docs/branch-and-release-strategy.md#collecting-the-release-files)).
+- **`.github/workflows/release-publish.yml`** ("Release · version check + publish (reusable)") is
+  the `version:` and `release:` jobs every `release.yml` carried, ~105 identical lines each:
+  `stage: check` before the lanes, `stage: publish` after them, with `dry-run` checking and
+  collecting without a tag. A real publish runs from `main` only, a misspelt stage fails.
+- `tests/test-collect-release-assets.sh` ports the six consumers' suites, each with its own options,
+  plus AccelerANTgine's docs-site check, and pins the workflow's guards; 29 `release.*` mutations (a
+  new declared family) prove it. Consumers move in a later wave.
+
 ## 2026-10-19 — every docs site is built, checked and published the same way
 
 - **`build-docs.yml` is the family's docs-site lane** ("Docs · build + publish (reusable)").

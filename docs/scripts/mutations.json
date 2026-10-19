@@ -14201,5 +14201,237 @@
   "replace": "  if false; then\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "dart doc renders the README as index.html, and its images/logo.png was the one dead link of ANThology's site"
+ },
+ {
+  "id": "release.collect-duplicate-fails",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  [ ! -e \"${OUT}/$2\" ] || die \"two artifacts carry $2\"",
+  "replace": "  true || die \"two artifacts carry $2\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "two uploads with one file name would ship whichever came last, silently"
+ },
+ {
+  "id": "release.collect-zip-duplicate-fails",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    [ ! -e \"${OUT}/${name}\" ] || die \"two artifacts carry ${name}\"",
+  "replace": "    true || die \"two artifacts carry ${name}\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "zip adds to an existing archive, so a second folder of one name would merge into the first"
+ },
+ {
+  "id": "release.collect-empty-fails",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  [ -n \"$(ls -A \"$OUT\")\" ] || die \"no packages under ${artifacts}\"",
+  "replace": "  true || die \"no packages under ${artifacts}\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a release with no files is a tag with nothing to download"
+ },
+ {
+  "id": "release.collect-skip",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    if any_match \"$upload\" \"${SKIP[@]}\"; then continue; fi",
+  "replace": "    if false; then continue; fi",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "test bundles and reports would ship as release files"
+ },
+ {
+  "id": "release.collect-docs-site-skipped",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "SKIP=('*-docs-site' 'docs-site-*')",
+  "replace": "SKIP=()",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "build-docs.yml uploads the site in the release's run, and both of its uploads carry the same files"
+ },
+ {
+  "id": "release.collect-strict",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    [ \"$GAVE\" = 1 ] || [ \"$STRICT\" = 0 ] || die",
+  "replace": "    [ \"$GAVE\" = 1 ] || true || die",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "with --strict a new upload nobody decided about must stop the release, not vanish"
+ },
+ {
+  "id": "release.collect-expect",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    [ -e \"${OUT}/${name}\" ] || die \"the release would lack ${name}\"",
+  "replace": "    true || die \"the release would lack ${name}\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a lane that uploaded nothing would publish a release without its platform"
+ },
+ {
+  "id": "release.collect-exclude",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  if any_match \"$1\" \"${EXCLUDE[@]}\" || ! only_from_allows",
+  "replace": "  if false || ! only_from_allows",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the bundle's loose exe and dlls, the docs and the logs would ship"
+ },
+ {
+  "id": "release.collect-only-from",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  return \"$named\"",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the pure wheel every lane builds would arrive three times and fail the release as a duplicate"
+ },
+ {
+  "id": "release.collect-include",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  if any_match \"$1\" \"${INCLUDE[@]}\"; then printf",
+  "replace": "  if false; then printf",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "only renamed files would ship"
+ },
+ {
+  "id": "release.collect-rename",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "      render \"${rule#*=}\" \"$2\" \"${1##*/}\"",
+  "replace": "      printf '%s' \"${1##*/}\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "both arches' flatpaks carry one name and would collide"
+ },
+ {
+  "id": "release.collect-flatpak-arch",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "RENAME+=('*.flatpak={stem}-{machine}.flatpak')",
+  "replace": "RENAME+=('*.flatpak={stem}.flatpak')",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the packagers name a flatpak without its arch"
+ },
+ {
+  "id": "release.collect-machine-name",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "arm64) machine=aarch64 ;;",
+  "replace": "arm64) machine=arm64 ;;",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the released flatpak and AppImage names use the machine name, aarch64"
+ },
+ {
+  "id": "release.collect-arch-words",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    case \"$word\" in x64 | arm64 | riscv64) arch=\"$word\" ;; esac",
+  "replace": "    case \"$word\" in x64 | arm64) arch=\"$word\" ;; esac",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "OxidANT and OrchestrANT build riscv64 too"
+ },
+ {
+  "id": "release.collect-version-required",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "[ -n \"$VERSION\" ] || die \"${1} names {version}: pass --version\"",
+  "replace": "true || die \"${1} names {version}: pass --version\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a name without its version, like app--x86_64.flatpak, would ship"
+ },
+ {
+  "id": "release.collect-one-file-name",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  case \"$name\" in '' | */*) die",
+  "replace": "  case \"$name\" in '') die",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a name with a slash would write outside the flat release directory"
+ },
+ {
+  "id": "release.collect-zip-dir-missing",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    [ -d \"$folder\" ] || die \"upload ${upload} has no ${left#*/} to zip\"",
+  "replace": "    [ -d \"$folder\" ] || continue",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a Windows lane that lost its portable folder would release without the zip"
+ },
+ {
+  "id": "release.collect-zip-subdir",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    if [ \"$left\" != \"${left%%/*}\" ]; then folder=\"${dir}/${left#*/}\"; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the zip would hold the whole upload, installers included, one folder too deep"
+ },
+ {
+  "id": "release.collect-unpack",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  if any_match \"$upload\" \"${UNPACK[@]}\"; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "OmniAccelerANT's APK reaches the release only inside its tarball"
+ },
+ {
+  "id": "release.collect-out-absolute",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "  OUT=\"$(cd \"${POSITIONAL[1]}\" && pwd)\"",
+  "replace": "  OUT=\"${POSITIONAL[1]}\"",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the workflow passes a relative out dir, and the zips are made from inside each folder"
+ },
+ {
+  "id": "release.collect-rule-needs-value",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    case \"$rule\" in ?*=?*) ;; *) die \"a rule needs GLOB=VALUE: ${rule}\" ;; esac",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a rename without a name would rename every match to its own glob"
+ },
+ {
+  "id": "release.collect-quoted-glob",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    case \"$rule\" in \\'* | \\\"*) die \"write ${rule} unquoted\" ;; esac",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a glob quoted in an options file keeps its quotes and matches nothing, silently"
+ },
+ {
+  "id": "release.collect-options-crlf",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "    line=\"${line%$'\\r'}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "an options file written on Windows would end every glob in a carriage return"
+ },
+ {
+  "id": "release.collect-options-not-option",
+  "target": "linux/scripts/06-packaging/collect-release-assets.sh",
+  "find": "*) die \"$1: '${line}' is not an option\" ;;",
+  "replace": "*) continue ;;",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a line without its dashes would be dropped and the release would lack what it asked for"
+ },
+ {
+  "id": "release.workflow-dry-run-never-publishes",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "        if: ${{ !inputs.dry-run }}",
+  "replace": "        if: always()",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a dry run on develop would tag and publish"
+ },
+ {
+  "id": "release.workflow-main-only",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "          [ \"${GITHUB_REF}\" = refs/heads/main ] || { echo \"::error::a release is published from main only; dispatch a dry run elsewhere\"; exit 1; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a caller that forgot dry-run on develop would release a commit main never had"
+ },
+ {
+  "id": "release.workflow-check-fails-outside-dry-run",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "            [ \"${DRY_RUN}\" = true ] || exit 1",
+  "replace": "            true",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a released version would run every lane again and fail only at the tag"
+ },
+ {
+  "id": "release.workflow-stage-typo-fails",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "    if: inputs.stage != 'publish'",
+  "replace": "    if: inputs.stage == 'check'",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "a misspelt stage would skip both jobs and the release would read green"
+ },
+ {
+  "id": "release.workflow-check-reads-only",
+  "target": ".github/workflows/release-publish.yml",
+  "find": "    timeout-minutes: 10\n    permissions:\n      contents: read",
+  "replace": "    timeout-minutes: 10\n    permissions:\n      contents: write",
+  "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
+  "why": "the version check needs no write token, and the caller grants write for the publish job"
  }
 ]

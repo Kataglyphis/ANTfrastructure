@@ -164,3 +164,5 @@ mutation-family:rocm-stack
 mutation-family:site-links
 # The docs-site lane: build-docs.yml, docs-site.sh and the .htaccess and 404 templates; proof: test-docs-site.sh and test-docs-site-htaccess.sh.
 mutation-family:docs-site
+# The release collector and the reusable release workflow: collect-release-assets.sh and release-publish.yml; proof: test-collect-release-assets.sh.
+mutation-family:release
