@@ -35,10 +35,23 @@ if [ -n "$EXT_CSS" ] && [ -f "./resources/web/rustdoc-mapping.css" ]; then
     export RUSTDOCFLAGS="--extend-css ./resources/web/combined-theme.css"
 fi
 
-# Generate documentation without dependencies
-info "Generating rust documentation (cargo doc --no-deps)..."
+# cargo_doc_scope <args>: --workspace for a [workspace] manifest, unless the caller already picked the packages.
+cargo_doc_scope() {
+    local arg
+    grep -qE '^\[workspace\]' Cargo.toml || return 0
+    for arg in "$@"; do
+        case "$arg" in
+            -p* | --package | --package=* | --workspace | --all) return 0 ;;
+        esac
+    done
+    printf '%s\n' --workspace
+}
+
+# Without --workspace cargo doc documents the root package alone. See docs/shared-script-libraries.md#every-crate-of-a-workspace
+DOC_SCOPE="$(cargo_doc_scope "$@")"
+info "Generating rust documentation (cargo doc --no-deps ${DOC_SCOPE})..."
 # Forward args to cargo doc (e.g. --features <feature>)
-cargo doc --no-deps "$@"
+cargo doc --no-deps ${DOC_SCOPE:+"$DOC_SCOPE"} "$@"
 
 # Provide a redirect from the root doc directory to the crate's docs
 if [ -f "./resources/web/redirect/index.html" ]; then

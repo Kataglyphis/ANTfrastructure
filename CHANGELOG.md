@@ -10,6 +10,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — rustdoc documents every crate of a workspace
+
+- **`02-toolchain/rust/cargo_build_doc.sh` adds `--workspace` when `Cargo.toml` has a
+  `[workspace]` table** and the caller named no packages (`-p`, `--package`, `--workspace`,
+  `--all`). OxidANT, its one caller, published `oxidant` alone; in `:latest` against OxidANT
+  `8af8f67` the driver now documents all 11 crates in 39 s. A single-package manifest builds as
+  before ([`shared-script-libraries.md`](docs/shared-script-libraries.md#every-crate-of-a-workspace)).
+- `tests/test-cargo-build-doc.sh` drives the driver with a logging `cargo`; three `rust.cargo-doc-*`
+  mutations prove it.
+
 ## 2026-10-19 — the site renders with DocumANTation 4866eae
 
 - **`third_party/DocumANTation` 4783f2c → 4866eae**: Markdown links between pages resolve on the

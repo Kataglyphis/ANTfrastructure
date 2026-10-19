@@ -614,6 +614,16 @@ The path is now resolved from `SCRIPT_DIR` rather than the working directory, so
 it answers the same inside a consumer's `third_party/ANTfrastructure` checkout —
 which is the case the cwd-relative probe existed for in the first place.
 
+### Every crate of a workspace
+
+A `Cargo.toml` with a `[workspace]` table gets `cargo doc --no-deps --workspace`
+(2026-10-19). Without it cargo documents the root package alone: OxidANT's site
+showed `oxidant` and none of its ten member crates. Measured in `:latest` against
+OxidANT `8af8f67`: 11 crates in `target/doc/`, every one in rustdoc's crate list,
+39 s. A caller that names the packages (`-p`, `--package`, `--workspace`,
+`--all`) keeps its choice, and a single-package manifest builds as before. Suite:
+`tests/test-cargo-build-doc.sh`.
+
 ## Consumer entry points that are not libraries
 
 The things below are executables a consumer *runs*, not cores it sources. They

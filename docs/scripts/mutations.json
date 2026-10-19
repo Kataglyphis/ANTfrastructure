@@ -12627,6 +12627,30 @@
   "why": "every driver run would append another copy to the global gitconfig"
  },
  {
+  "id": "rust.cargo-doc-workspace-default",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "    printf '%s\\n' --workspace\n",
+  "replace": "    return 0\n",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "without --workspace cargo doc documents the root package alone, and every member crate is missing from the site"
+ },
+ {
+  "id": "rust.cargo-doc-caller-scope-wins",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "            -p* | --package | --package=* | --workspace | --all) return 0 ;;",
+  "replace": "            --no-such-flag) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "a caller that names its packages must not get the whole workspace added, or --workspace twice"
+ },
+ {
+  "id": "rust.cargo-doc-workspace-only",
+  "target": "linux/scripts/02-toolchain/rust/cargo_build_doc.sh",
+  "find": "    grep -qE '^\\[workspace\\]' Cargo.toml || return 0\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cargo-build-doc.sh",
+  "why": "a single-package manifest must build exactly as before, without a --workspace it never asked for"
+ },
+ {
   "id": "env-knobs.tool-pins-are-owners",
   "target": "linux/scripts/lint-env-knobs.sh",
   "find": "ENV_OWNER_FILES=(\"${SCRIPTS}/01-core/versions.env\" \"${SCRIPTS}/01-core/tool-pins.env\" \"${SCRIPTS}\"/03-media/core/arch-flags-*.env)",
