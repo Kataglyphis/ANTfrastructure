@@ -185,6 +185,67 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
 
+## Open — Flet clients for OrchestrANT's UIs
+
+Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;
+d954e86, `yolo-monitor`'s viewer and the camera stream page), and Flet's clients are built from
+Flet's `client/` sources on this hub's `FLUTTER_VERSION`, not on Flet's own pin (3.44.8); the
+owner carries the breakage that costs.
+
+- [ ] **CON102 — Flet's desktop and web client, built in the images on `FLUTTER_VERSION`** [L, ★★★].
+      Probe 2026-10-19 on `:latest` (amd64, Flutter 3.47.7 against Flet's 3.44.8, Flet v1.0.4):
+      the same analyzer findings bar one `use_super_parameters` info, core `flet` 91/91 tests,
+      the client builds for `linux` and `web` and starts under xvfb on Impeller. The first
+      breakage to expect is core `flet`'s `cacheExtent`/`onReorder`, deprecated in Flutter 3.44.
+      1. Core controls only: both OrchestrANT UIs use `RawImage`, canvas, `DataTable` and
+         `ProgressBar`, so the client drops all 19 extensions (their path deps in
+         `client/pubspec.yaml`, their imports and `Extension()` rows in `lib/main.dart`; keep the
+         dev_dependencies). That also drops libmpv, libsecret and GStreamer from the client. A
+         build trimmed to charts and datatable2 linked only window_manager, screen_retriever,
+         pasteboard, url_launcher and dartjni (37 MB bundle).
+      2. Linux amd64 and arm64 in `:latest`, Windows x64 in `:winamd64`, Windows arm64 natively
+         on `windows-11-arm` (Flutter cannot cross-build it, flutter/flutter#62597; OmniAccelerANT's
+         `windows-arm64.yml` does the same), and the web client once. riscv64 waits on CON70.
+      3. The client's pub cache in the image, proven under `--network none` as `flutter --version` is.
+      4. Never run yet: any Windows build (the dev host has no Visual Studio) and any arm64 build.
+- [ ] **CON103 — `FLET_VERSION` in `versions.env`, one pin for Python and client** [S, ★★]. The
+      Python SDK and the client speak one release's protocol, so a bump moves together:
+      OrchestrANT's `frontend` extra (`flet[desktop]==1.0.4`, `flet-web==1.0.4`), its
+      `benchmarks.yml` viewer job (`flet==1.0.4`, held to `uv.lock` by OrchestrANT's
+      `test_viewer_job.py`) and CON102's client tag. Add the consumer-pins rows and one Renovate
+      group (pep621 and the `versions.env` regex). OrchestrANT also holds `fastapi<0.145`: flet-web
+      1.0.4 passes the `openapi_prefix` argument FastAPI 0.145 removed (flet-dev/flet#6984, open
+      2026-10-19). Lift it with the Flet release that fixes that.
+- [b] **CON104 — the app bundles ship the Flet client** [M, ★★]. Blocked on CON102.
+      OrchestrANT's packages carry its `app` extra only, so `yolo-monitor --ui auto` falls back
+      to OpenCV's window there (OrchestrANT `AGENTS.md` § 4). With CON102:
+      1. A `packaging/app.json` key that copies the client into the bundle and sets
+         `FLET_VIEW_PATH` in the launchers (`docs/python-app-bundles.md`). Not flet_desktop's own
+         lookup: it starts any `.exe` under `<cwd>/build/windows` (or `build/linux`) before
+         `FLET_VIEW_PATH`, and unpacks an archive in its `bin` dir into `~/.flet/client`.
+      2. `flet[desktop]` joins OrchestrANT's `app` extra (consumer side).
+      3. `Test-TargetArch.ps1` over the client in the Windows arm64 bundle (an x64 client would
+         run there under emulation without a word), and a self-test line that the client is
+         present, with no display.
+      4. The deb and AppImage runtime dependencies of the core-only client: GTK 3, and whether
+         `libsecret-1-0` is still needed once the secure-storage extension is gone (CON105).
+- [ ] **CON105 — `:latest` lacks the runtime library Flet's stock Linux client needs** [S, ★].
+      Measured 2026-10-19 on `:latest` amd64: the client flet_desktop downloads (1.0.4, light)
+      stops at start with `libsecret-1.so.0: cannot open shared object file`; with `libsecret-1-0`
+      installed it runs under xvfb, frames at about 30 fps. This matters for anyone running
+      OrchestrANT's viewers in the image before CON102 lands (dev containers, xvfb UI checks).
+      Building Flet's full client needs `libsecret-1-dev` and `libmpv-dev` too, and
+      `audioplayers_linux` links `-lgstreamer-1.0` without pkg-config's `-L`, so
+      `/opt/gstreamer/lib/x86_64-linux-gnu` has to be on `LIBRARY_PATH` (or the plugin's CMake
+      patched). Both are moot for CON102's core-only client.
+- [ ] **CON106 — `assemble-torch-app.sh` installs no GUI extra "because it pulls wxPython"** [S, ★].
+      OrchestrANT's `frontend` extra has no wxPython since d954e86; it is flet, flet-desktop,
+      flet-web (off Windows), `fastapi<0.145` and uvicorn[standard]. Every native one has cp315
+      wheels on amd64 and arm64 (httptools 0.9.0, msgpack 1.2.3, uvloop 0.23.0, websockets 17.2;
+      watchfiles 1.3.0 has none but was in the lock before). Decide: `--extra frontend` in the app
+      venv (the image then runs both viewers and the stream page, and app-venv-parity grows by
+      those packages), or keep it out and give the comment its real reason.
+
 ## Open — Linux image (all arches)
 
 - [ ] **CON99 — measure, then maybe publish `:latest` with zstd layers** [M, ★★]. Every Linux CI
@@ -282,6 +343,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       Either way is an owner decision: an engine built from source in the image (our own pin,
       hours of chain time per Flutter bump) or a third-party engine binary. Until then
       OmniAccelerANT's riscv64 coverage is OxidANT's and AccelerANTgine's own lanes.
+      Flet's Linux client for riscv64 (CON102) waits on the same engine; OrchestrANT's
+      `frontend` extra leaves riscv64 out until then.
 
 ## Open — Windows `:winamd64`
 
@@ -489,6 +552,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
         the media lane once.
 ## Open — the Windows arm64 bundle and unpublished variants
 
+- [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
+      `Stage-Arm64Tests.ps1` stages from `:winarm64`'s `PYTHON_WHEELS`, which has no Flet, so
+      `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
+      flet-desktop, oauthlib and repath are pure Python; msgpack 1.2.3 has a cp315 `win_arm64`
+      wheel. Add them to the store and to OrchestrANT's staging list.
 - [b] **CON30 — The `:winarm64` bundle** [L, ★]. Blocked on hardware and owner
       decisions.
       - The aarch64 ASan runtime ships in the bundle since 2026-10-03: VS 2026's MSVC
@@ -554,6 +622,15 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON107 — retire the wxPython plumbing** [S, ★]. OrchestrANT dropped wxPython in d954e86
+      and was its one consumer (check the others first: `rg -il wxpython` over the family). Left
+      behind: `uv_sync_project --no-wxpython` and its `grep -q wxpython` sniff
+      (`linux/scripts/01-core/python_uv.sh`, called from `ci_tests.sh`, `ci_static_analysis.sh`,
+      `ci_packaging.sh` and `ci_build_docs.sh`), `Sync-UvProjectDependencies
+      -NoBuildIsolationPackageWxPython` (`WindowsUv.Common.psm1`, `Invoke-CiStaticAnalysis.ps1`,
+      `Invoke-CiPackaging.ps1`), `docs/windows-builds.md`'s "wxPython GUI extra excluded", the
+      `docs/scripts/mutations.json` rows and `test-uv-chain-ort.sh`. Harmless meanwhile: uv takes
+      `--no-build-isolation-package wxpython` with no wxPython in the lock (checked 2026-10-19).
 - [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
       decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 84709078
       (2026-08-02), but 23 files outside `third_party/` still say
