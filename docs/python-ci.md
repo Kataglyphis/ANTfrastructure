@@ -291,8 +291,9 @@ So `uv_sync_project()` and `uv_pip_install_requirements()` pin `--python <venv>/
 is load-bearing, not tidiness. Pin any new uv entry point too, and end it in
 `uv_reconcile_chain_ort` (Trap 3).
 
-The image after CON11 exports neither variable (in source since 2026-09-26): `Dockerfile.torch`
-empties both, since Docker cannot unset an inherited ENV, and the entrypoint unsets them, so uv
+The image after CON11 exports neither `UV_PYTHON` nor `VIRTUAL_ENV` (in source since
+2026-09-26): `Dockerfile.torch` empties both, since Docker cannot unset an inherited ENV, and the
+entrypoint unsets them, so uv
 targets an activated venv again while `/opt/venv/bin` stays first on `PATH`. Keep the pin: every
 image before it exports both, and the pin is correct on either.
 
