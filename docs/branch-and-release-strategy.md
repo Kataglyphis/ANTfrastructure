@@ -1,8 +1,8 @@
 # Branches, CI rounds and releases
 
 **Owner rule for every repository of the family (2026-10-15).** It replaces the
-2026-09-24 rule that every platform lane runs on every push. Which repository
-follows it today: [`ci-build-triggers.md`](ci-build-triggers.md).
+2026-09-24 rule that every platform lane runs on every push. Which repository follows it
+today: [`ci-build-triggers.md`](ci-build-triggers.md).
 
 ## The rule
 
@@ -16,9 +16,8 @@ follows it today: [`ci-build-triggers.md`](ci-build-triggers.md).
    asks for them with `[ci <lane>]`, or when someone starts them by hand.
 4. **`main` is the release branch.** It moves only by a fast-forward to a
    `develop` commit whose **full round**, every lane, is green.
-5. **Every push to `main` makes a release, and only when every lane is green.**
-   `release.yml` runs all lanes once more on that commit and publishes
-   `v<version>` only if every one of them passes.
+5. **Every push to `main` makes a release, if every lane is green.** `release.yml`
+   runs all lanes once more on that commit and publishes `v<version>` only if all pass.
 
 ## Asking for a lane in a commit message
 
@@ -65,8 +64,8 @@ gh workflow run on-request.yml --ref develop -f lanes="windows web" # several
 gh workflow run on-request.yml --ref develop -f lanes=all           # the full round
 ```
 
-`--ref` takes any branch, so a pull request's branch can be tried on Windows the
-same way. The run uses that branch's newest commit at the moment it starts.
+`--ref` takes any branch, so a pull request's branch can be tried on Windows the same way; the
+run uses that branch's newest commit at the moment it starts.
 
 ## Merging into `main`
 
@@ -104,7 +103,7 @@ A push to `main` starts `release.yml`:
    no release yet; otherwise the run stops here. Every merge into `main` is a release,
    so every merge carries a new version.
 2. **Every lane**, called as reusable workflows in this one run.
-3. **The release job**, which `needs:` every lane. It runs only when all of them
+3. **The release job**, which `needs:` every lane, so it runs only when all of them
    succeeded. It tags the commit `v<version>` and publishes the GitHub release with the
    packages the lanes built in this run, a `SHA256SUMS`, and the version's CHANGELOG
    section as notes.
@@ -118,12 +117,12 @@ fixed on `develop` and merged again.
 
 Both the version check and the release job run the hub's
 `linux/scripts/06-packaging/publish-github-release.sh`: `--version-file` names `pubspec.yaml`,
-`Cargo.toml`, a `CMakeLists.txt` (its first `project()` call's literal `VERSION`) or a `VERSION.txt` (read by `version_util.sh --file-version`, which never falls
-back to a branch name), `--changelog` the file whose `## <version>` or `## [<version>]` section
-becomes the notes, `--name` the release title, then `--check` or `--assets <dir>`. It refuses a
-version that is released already, a version without a section, notes over GitHub's 125000
-characters, a GitHub that does not answer and an empty directory
-(`test-publish-github-release.sh`, 34 assertions).
+`Cargo.toml`, a `CMakeLists.txt` (its first `project()` call's literal `VERSION`) or a
+`VERSION.txt` (read by `version_util.sh --file-version`, which never falls back to a branch name),
+`--changelog` the file whose `## <version>` or `## [<version>]` section becomes the notes, `--name`
+the release title, then `--check` or `--assets <dir>`. It refuses a version that is released
+already, a version without a section, notes over GitHub's 125000 characters, a GitHub that does
+not answer and an empty directory (`test-publish-github-release.sh`, 34 assertions).
 
 ### Before a repository's first release
 
@@ -261,8 +260,8 @@ A calling job looks the same in both:
     one group and cancel or queue behind each other; OxidANT's lanes did until they moved
     (2026-10-15).
 - **A dry run.** OmniAccelerANT's `release.yml` takes a `dry-run` input: dispatched on
-  `develop`, it runs every lane and collects the release, lists its files in the run's
-  summary and publishes nothing, which is the full round before a merge as well.
+  `develop` it publishes nothing ([first release](#before-a-repositorys-first-release)) and is
+  the full round before a merge as well.
 - **Artifacts.** `release.yml` holds every lane's uploads in one run, so artifact
   names must differ across lanes.
 - **Pushes, not tags, start a release.** The tag is the release job's output. Nothing
