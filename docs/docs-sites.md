@@ -56,7 +56,8 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 | Input | Default | Meaning |
 |---|---|---|
 | `command` | `''` | Builds the site: `bash -lc` in the family image at the repository root |
-| `builder` | `''` | A hub driver instead: `rustdoc` (`cargo_build_doc.sh`, site `target/doc`), `python` (`ci_build_docs.sh`, site `docs/build/html`) or `dartdoc` (`dartdoc_build_main` with DocumANTation's theme after `flutter pub get`, `images/` copied when the repository has one, site `doc/api`) |
+| `builder` | `''` | A hub driver instead: `rustdoc` (`cargo_build_doc.sh`, site `target/doc`), `python` (`ci_build_docs.sh`, site `docs/build/html`) or `dartdoc` (`doc/api` cleared, then `dartdoc_build_main` with DocumANTation's theme after `flutter pub get`, `images/` copied when the repository has one, site `doc/api`) |
+| `guides` | `''` | `builder: dartdoc` only: the Markdown guides rendered beside the API pages, one `<source>\|<slug>\|<nav title>` per line (a YAML `\|` block), sources relative to the repository root. `docs-site.sh plan` refuses it with any other source, a source outside the checkout, and a slug that is not `[A-Za-z0-9_-]` |
 | `artifact` | `''` | A site an earlier job of the run uploaded; nothing is built |
 | `site-dir` | `''` | The built site, relative to the repository root; required with `command`, empty with `artifact` |
 | `site-name` | `docs` | Names the uploaded site and the publish group; a second site of the same repository needs its own |
@@ -98,7 +99,7 @@ fixes them.
 | OmniAccelerANT | `reusable-linux.yml` published `doc/api` after the whole native lane | a `docs.yml` with `command: bash scripts/linux/generate-docs.sh`, `site-dir: doc/api`; `run-docs` off, the deploy step and its three secrets go |
 | AccelerANTgine | `reusable-linux.yml` published from the clang x64 build, whose docs carry its coverage, on every event but a dispatch, pull requests included | artifact mode: the deploy step becomes an `upload-artifact` of `docs/build/html/` named `accelerantgine-docs-site` (`include-hidden-files: true`, `if-no-files-found: error`), and `linux-x64.yml` gets a `docs` job that `needs: build-ubuntu26_04_clang-x64` with `artifact: accelerantgine-docs-site` |
 | BeschleunigerBallett | `reusable-linux.yml` published on every event but a dispatch, pull requests included, with `continue-on-error: true` | artifact mode as AccelerANTgine: upload `docs/build/html/` as `bb-docs-site` after the wasm budget step; `linux-x64.yml` gets a `docs` job, `needs: build-x64`, `if: ${{ !cancelled() }}` |
-| ANThology | `docs.yml` ran `dart doc` after the Dart checks, in the same job | a `docs` job with `builder: dartdoc` beside the checks job. Run in `:latest` over its checkout: 1070 documents, 0 findings, 39 s |
+| ANThology | `docs.yml` ran `dart doc` after the Dart checks, in the same job | done (c3615ca): a `docs` job with `command: bash scripts/build-docs.sh`, `site-dir: doc/api`, because the builder took no guide list then. It can move to `builder: dartdoc` with `guides: docs/getting-started.md\|getting-started\|Getting started`: run twice in `:latest` over its checkout, 1071 documents, 0 findings, 57 s, the rebuild 29 s |
 | jotrockenmitlocken | `web.yml` published `doc/api` with no `if:`, after the whole web build | a `docs` job with `command: bash scripts/ci-container-steps.sh dart-doc`, `site-dir: doc/api`, `container-args: --platform linux/amd64`, secrets from `DOC_WEBSITE_*`. Its three web-app deploys stay on `deploy-over-ftp`: an app ships its own `.htaccess` |
 
 DocumANTation publishes to GitHub Pages and is not an FTP site.

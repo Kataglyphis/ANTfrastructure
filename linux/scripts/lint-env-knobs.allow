@@ -85,6 +85,7 @@ DESKTOP_FILE
 DOCS_ARTIFACT  # build-docs.yml's artifact input, passed to docs-site.sh plan through the job env
 DOCS_BUILDER   # build-docs.yml's builder input, for docs-site.sh plan and build
 DOCS_COMMAND   # build-docs.yml's command input, for docs-site.sh plan and build
+DOCS_GUIDES    # build-docs.yml's guides input, for docs-site.sh plan and the dartdoc builder
 DOCS_HUB       # build-docs.yml's hub-path input (default antfrastructure-tools), for docs-site.sh plan
 DOCS_SITE_DIR  # build-docs.yml's site-dir input, for docs-site.sh plan
 DOCS_BUILD_DOCS_DIR

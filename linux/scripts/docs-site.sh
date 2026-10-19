@@ -23,13 +23,35 @@ _docs_site_relative() {
   esac
 }
 
-# plan: DOCS_COMMAND, DOCS_BUILDER, DOCS_ARTIFACT, DOCS_SITE_DIR and DOCS_HUB in; site-dir= and hub= lines out.
+# _docs_site_guides: DOCS_GUIDES, one <source>|<slug>|<nav title> per line, into DOCS_SITE_GUIDES with absolute sources.
+_docs_site_guides() {
+  local line src slug title
+  DOCS_SITE_GUIDES=()
+  while IFS= read -r line; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -n "${line}" ] || continue
+    IFS='|' read -r src slug title <<<"${line}"
+    [ -n "${src}" ] && [ -n "${slug}" ] && [ -n "${title}" ] || die "bad guide" "a guide is '<source>|<slug>|<nav title>', got '${line}'."
+    _docs_site_relative "guide source" "${src}"
+    case "${slug}" in
+      *[!A-Za-z0-9_-]*) die "bad guide slug" "a slug names guide-<slug>.html, so letters, digits, - and _ only; got '${slug}'." ;;
+    esac
+    DOCS_SITE_GUIDES+=("$(pwd)/${src}|${slug}|${title}")
+  done <<<"${DOCS_GUIDES:-}"
+}
+
+# plan: DOCS_COMMAND, DOCS_BUILDER, DOCS_ARTIFACT, DOCS_SITE_DIR, DOCS_GUIDES and DOCS_HUB in; site-dir= and hub= lines out.
 docs_site_plan() {
   local modes=0 site="${DOCS_SITE_DIR:-}"
   [ -z "${DOCS_COMMAND:-}" ] || modes=$((modes + 1))
   [ -z "${DOCS_BUILDER:-}" ] || modes=$((modes + 1))
   [ -z "${DOCS_ARTIFACT:-}" ] || modes=$((modes + 1))
   [ "${modes}" -eq 1 ] || die "one source" "set exactly one of command, builder and artifact; ${modes} are set."
+  if [ -n "${DOCS_GUIDES:-}" ]; then
+    [ "${DOCS_BUILDER:-}" = dartdoc ] || die "guides without dartdoc" "guides is the dartdoc builder's guide list; a command sets its own."
+    _docs_site_guides
+  fi
   if [ -n "${DOCS_ARTIFACT:-}" ]; then
     [ -z "${site}" ] || die "site-dir with artifact" "the artifact's root is the site; leave site-dir empty."
     site=.docs-site
@@ -43,10 +65,15 @@ docs_site_plan() {
   printf 'site-dir=%s\nhub=%s\n' "${site%/}" "${DOCS_HUB:-.}"
 }
 
-# _docs_site_dartdoc: dartdoc_build_main with the hub's theme and no guides; a repository with guides runs its own wrapper.
+# _docs_site_dartdoc: dartdoc_build_main with the hub's theme and the DOCS_GUIDES guide list.
 _docs_site_dartdoc() {
   # shellcheck source=lib/dartdoc-build.sh
   source "${DOCS_SITE_HUB}/linux/scripts/lib/dartdoc-build.sh"
+  # dart doc writes over doc/api, so a rebuild would keep the staged .htaccess, which stage then refuses.
+  rm -rf doc/api
+  _docs_site_guides
+  # shellcheck disable=SC2034 # read by dartdoc_build_stage_guides and dartdoc_build_render_guides
+  DARTDOC_BUILD_GUIDES=(${DOCS_SITE_GUIDES[@]+"${DOCS_SITE_GUIDES[@]}"})
   DARTDOC_BUILD_THEME_CSS="${DOCS_SITE_HUB}/third_party/DocumANTation/style/dartdoc.css"
   export DARTDOC_BUILD_THEME_CSS
   # shellcheck disable=SC2034 # read by dartdoc_build_generate

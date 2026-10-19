@@ -21,6 +21,12 @@ on:
           DocumANTation theme, site doc/api).
         type: string
         default: ''
+      guides:
+        description: >-
+          builder dartdoc only: the Markdown guides rendered beside the API pages, one
+          <source>|<slug>|<nav title> per line, sources relative to the repository root.
+        type: string
+        default: ''
       artifact:
         description: >-
           An artifact an earlier job of the same run uploaded, the built site at its root.
@@ -111,6 +117,7 @@ jobs:
     env:
       DOCS_COMMAND: ${{ inputs.command }}
       DOCS_BUILDER: ${{ inputs.builder }}
+      DOCS_GUIDES: ${{ inputs.guides }}
       DOCS_ARTIFACT: ${{ inputs.artifact }}
       DOCS_SITE_DIR: ${{ inputs.site-dir }}
       DOCS_HUB: ${{ inputs.hub-path || 'antfrastructure-tools' }}
@@ -150,12 +157,12 @@ jobs:
         id: plan
         run: bash "${DOCS_HUB}/linux/scripts/docs-site.sh" plan >> "${GITHUB_OUTPUT}"
 
-      # The command and the builder reach the container as -e names, never through ${{ }}; hub is validated by plan.
+      # The command, the builder and the guides reach the container as -e names, never through ${{ }}; plan validates them.
       - name: Build the site
         if: inputs.artifact == ''
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
-          extra-args: -e DOCS_COMMAND -e DOCS_BUILDER ${{ inputs.container-args }}
+          extra-args: -e DOCS_COMMAND -e DOCS_BUILDER -e DOCS_GUIDES ${{ inputs.container-args }}
           script: bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh build
 
       - name: Take the built site

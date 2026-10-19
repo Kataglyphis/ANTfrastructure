@@ -10,6 +10,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — `builder: dartdoc` takes a guide list and clears doc/api first
+
+- **`build-docs.yml` input `guides`**: one `<source>|<slug>|<nav title>` per line, reaching the
+  build container as `DOCS_GUIDES` and `dartdoc_build_main` as `DARTDOC_BUILD_GUIDES`, sources
+  made absolute from the repository root. `docs-site.sh plan` refuses guides without
+  `builder: dartdoc`, a line without all three fields, a source outside the checkout and a slug
+  outside `[A-Za-z0-9_-]`. ANThology used `command: bash scripts/build-docs.sh` because the builder
+  took no guide list ([`docs-sites.md`](docs/docs-sites.md#moving-a-repository-onto-it) said
+  otherwise; corrected).
+- **The builder clears `doc/api` before `dart doc`**: `dart doc` writes over it, so a rebuild kept
+  the staged `.htaccess` and `stage` failed "the site ships a .htaccess".
+- ANThology through the builder with its one guide, twice in `:latest`: 1071 documents, 0
+  findings, 57 s, the rebuild 29 s. `test-docs-site.sh` 60 assertions; 8 `docs-site.*` mutations.
+
 ## 2026-10-19 — WindowsContainerLog.Common's header names how OxidANT imports it
 
 - The module header said OxidANT's container scripts import it from `C:\host-scratch`; since

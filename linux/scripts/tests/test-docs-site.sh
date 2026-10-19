@@ -10,7 +10,7 @@ trap 'rm -rf "${_tmp}"' EXIT
 
 # _plan [VAR=value...]: docs-site.sh plan with only the given inputs set.
 _plan() {
-  env -u DOCS_COMMAND -u DOCS_BUILDER -u DOCS_ARTIFACT -u DOCS_SITE_DIR -u DOCS_HUB "$@" \
+  env -u DOCS_COMMAND -u DOCS_BUILDER -u DOCS_ARTIFACT -u DOCS_SITE_DIR -u DOCS_HUB -u DOCS_GUIDES "$@" \
     bash "${SCRIPTS}/docs-site.sh" plan
 }
 
@@ -42,27 +42,41 @@ done
 t_assert_eq "hub=antfrastructure-tools" "$(_plan DOCS_BUILDER=rustdoc DOCS_HUB=antfrastructure-tools | tail -n 1)"
 t_assert_fails _plan DOCS_BUILDER=rustdoc DOCS_HUB='tools && id'
 
+t_case "plan: guides are the dartdoc builder's, one <source>|<slug>|<nav title> per line"
+t_assert_eq "site-dir=doc/api" "$(_plan DOCS_BUILDER=dartdoc DOCS_GUIDES="$(printf '  guides/a.md|a|A guide\n\nguides/b.md|b-2|B, the second\n')" | head -n 1)"
+t_assert_contains "$(t_out _plan DOCS_COMMAND=x DOCS_SITE_DIR=doc/api DOCS_GUIDES='guides/a.md|a|A')" "guides is the dartdoc builder's guide list"
+for bad in 'guides/a.md|a' 'guides/a.md||A' '../a.md|a|A' '/a.md|a|A' 'guides/a.md|a/b|A' 'guides/a.md|a b|A'; do
+  t_assert_fails _plan DOCS_BUILDER=dartdoc DOCS_GUIDES="${bad}"
+done
+
 # A copy of the hub's script beside stub drivers, so a builder's dispatch is visible without cargo, pip or dart.
 FAKE="${_tmp}/hub"
 mkdir -p "${FAKE}/linux/scripts/02-toolchain/rust" "${FAKE}/linux/scripts/02-toolchain/python" "${FAKE}/linux/scripts/lib"
 cp "${SCRIPTS}/docs-site.sh" "${FAKE}/linux/scripts/"
 printf 'echo rustdoc-driver\n' > "${FAKE}/linux/scripts/02-toolchain/rust/cargo_build_doc.sh"
 printf 'echo python-driver\n' > "${FAKE}/linux/scripts/02-toolchain/python/ci_build_docs.sh"
-printf 'dartdoc_build_main() { echo "dartdoc theme=${DARTDOC_BUILD_THEME_CSS} before=${DARTDOC_BUILD_CLEAN_CMD[*]} images=${DARTDOC_BUILD_IMAGES_DIR:-}"; }\n' \
+printf 'dartdoc_build_main() { echo "dartdoc theme=${DARTDOC_BUILD_THEME_CSS} before=${DARTDOC_BUILD_CLEAN_CMD[*]} images=${DARTDOC_BUILD_IMAGES_DIR:-} guides=${DARTDOC_BUILD_GUIDES[*]:-}"; }\n' \
   > "${FAKE}/linux/scripts/lib/dartdoc-build.sh"
 mkdir -p "${_tmp}/dart-plain" "${_tmp}/dart-images/images"
-_build() { env -u DOCS_COMMAND -u DOCS_BUILDER "$@" bash "${FAKE}/linux/scripts/docs-site.sh" build; }
+_build() { env -u DOCS_COMMAND -u DOCS_BUILDER -u DOCS_GUIDES "$@" bash "${FAKE}/linux/scripts/docs-site.sh" build; }
 
 t_case "build: a command runs at the working directory, a builder runs the hub's driver"
 (cd "${_tmp}" && _build DOCS_COMMAND='echo built > built.txt')
 t_assert_eq "built" "$(cat "${_tmp}/built.txt" 2>/dev/null)"
 t_assert_eq "rustdoc-driver" "$(_build DOCS_BUILDER=rustdoc)"
 t_assert_eq "python-driver" "$(_build DOCS_BUILDER=python)"
-t_assert_eq "dartdoc theme=${FAKE}/third_party/DocumANTation/style/dartdoc.css before=flutter pub get images=" \
+t_assert_eq "dartdoc theme=${FAKE}/third_party/DocumANTation/style/dartdoc.css before=flutter pub get images= guides=" \
   "$(cd "${_tmp}/dart-plain" && _build DOCS_BUILDER=dartdoc)" \
   "the brand sheet from the hub's DocumANTation, and the packages resolved first"
 t_assert_contains "$(cd "${_tmp}/dart-images" && _build DOCS_BUILDER=dartdoc)" "images=${_tmp}/dart-images/images" \
   "the README's images/logo.png is a dead link on the site unless images/ is copied (ANThology, 2026-10-19)"
+t_assert_contains "$(cd "${_tmp}/dart-plain" && _build DOCS_BUILDER=dartdoc DOCS_GUIDES="$(printf 'guides/a.md|a|A guide\nguides/b.md|b|B')")" \
+  "guides=${_tmp}/dart-plain/guides/a.md|a|A guide ${_tmp}/dart-plain/guides/b.md|b|B" "each guide, its source from the repository root"
+mkdir -p "${_tmp}/dart-plain/doc/api/static-assets"
+: > "${_tmp}/dart-plain/doc/api/.htaccess"
+(cd "${_tmp}/dart-plain" && _build DOCS_BUILDER=dartdoc >/dev/null)
+t_assert_eq 0 "$([ -e "${_tmp}/dart-plain/doc/api" ] && echo 1 || echo 0)" \
+  "dart doc writes over doc/api, so the last build's staged .htaccess would fail stage"
 t_assert_fails _build DOCS_BUILDER=nope
 t_assert_fails _build DOCS_COMMAND='exit 3'
 
@@ -117,5 +131,9 @@ t_assert_contains "${publish}" "cancel-in-progress: false"
 t_assert_contains "${publish}" "uses: Kataglyphis/ANTfrastructure/.github/actions/deploy-over-ftp@develop"
 t_assert_eq 0 "$(grep -c 'continue-on-error' "${WORKFLOW}")" "a publish that may fail is a site that stops updating unseen"
 t_assert_contains "$(_job site)" "include-hidden-files: true"
+
+t_case "build-docs.yml: the guides reach plan and the build container as an environment name"
+t_assert_contains "$(_job site)" 'DOCS_GUIDES: ${{ inputs.guides }}'
+t_assert_contains "$(_job site)" "extra-args: -e DOCS_COMMAND -e DOCS_BUILDER -e DOCS_GUIDES "
 
 t_summary

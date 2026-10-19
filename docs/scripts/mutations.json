@@ -14977,5 +14977,69 @@
   "replace": "CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES=(\n  '*/.pub-cache/*'\n)",
   "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
   "why": "the CMake walk's defaults must cover node_modules too, or a cmake-js addon's CMakeLists.txt fails the consumer's gate"
+ },
+ {
+  "id": "docs-site.build-dartdoc-clears-api",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  rm -rf doc/api\n  _docs_site_guides\n",
+  "replace": "  _docs_site_guides\n",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "dart doc writes over doc/api, so a rebuild kept the staged .htaccess and stage then failed 'the site ships a .htaccess'"
+ },
+ {
+  "id": "docs-site.build-dartdoc-guides",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  DARTDOC_BUILD_GUIDES=(${DOCS_SITE_GUIDES[@]+\"${DOCS_SITE_GUIDES[@]}\"})",
+  "replace": "  DARTDOC_BUILD_GUIDES=()",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the guides input must reach dartdoc_build_main, or a Dart repository with guides needs its own build script again"
+ },
+ {
+  "id": "docs-site.guides-absolute-source",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    DOCS_SITE_GUIDES+=(\"$(pwd)/${src}|${slug}|${title}\")",
+  "replace": "    DOCS_SITE_GUIDES+=(\"${src}|${slug}|${title}\")",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a guide source is read from the repository root, which the renderer must not have to guess from its working directory"
+ },
+ {
+  "id": "docs-site.plan-guides-dartdoc-only",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    [ \"${DOCS_BUILDER:-}\" = dartdoc ] || die \"guides without dartdoc\"",
+  "replace": "    true || die \"guides without dartdoc\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "guides beside a command or another builder would be silently ignored, and the caller would believe its guides published"
+ },
+ {
+  "id": "docs-site.plan-guide-fields",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    [ -n \"${src}\" ] && [ -n \"${slug}\" ] && [ -n \"${title}\" ] || die \"bad guide\"",
+  "replace": "    true || die \"bad guide\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a guide line without its slug or title fails deep in the renderer, after the whole dart doc run"
+ },
+ {
+  "id": "docs-site.plan-guide-source-safety",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "    _docs_site_relative \"guide source\" \"${src}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "a guide source outside the checkout would publish a file of the build host"
+ },
+ {
+  "id": "docs-site.plan-guide-slug-safety",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "      *[!A-Za-z0-9_-]*) die \"bad guide slug\"",
+  "replace": "      __never__) die \"bad guide slug\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the slug names guide-<slug>.html, so a / or a space writes outside the site or breaks every link to the page"
+ },
+ {
+  "id": "docs-site.workflow-guides-reach-container",
+  "target": ".github/workflows/build-docs.yml",
+  "find": "          extra-args: -e DOCS_COMMAND -e DOCS_BUILDER -e DOCS_GUIDES ${{ inputs.container-args }}",
+  "replace": "          extra-args: -e DOCS_COMMAND -e DOCS_BUILDER ${{ inputs.container-args }}",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "plan reads DOCS_GUIDES on the runner, but the build runs in the container, where a missing -e builds a site without its guides"
  }
 ]
