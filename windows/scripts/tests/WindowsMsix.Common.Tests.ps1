@@ -80,6 +80,29 @@ Describe 'WindowsMsix.Common' {
       $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v3') -Force).FullName
       Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.1.0'
     }
+
+    It 'reads -VersionFile as version_util.sh --file-version does, pyproject.toml too' {
+      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v6') -Force).FullName
+      Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @(
+        '[package]', 'name = "x"', 'version = "2.3.4-rc1"', '[dependencies]', 'serde = { version = "1" }', '[workspace.package]', 'version = "5.6.7"')
+      Set-Content -LiteralPath (Join-Path $ws 'pubspec.yaml') -Encoding utf8 -Value @('name: app', 'version: 2.0.0+2')
+      Set-Content -LiteralPath (Join-Path $ws 'pyproject.toml') -Encoding utf8 -Value @(
+        '[tool.other]', 'version = "9.9"', '[project]', 'name = "p"', 'version = "0.10.1"')
+      Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required | Should -Be '5.6.7.0'
+      Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Components 3 -Required | Should -Be '2.0.0'
+      Get-PackageVersion -WorkspacePath $ws -VersionFile (Join-Path $ws 'pyproject.toml') | Should -Be '0.10.1.0'
+      Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @('[package]', 'version = "2.3.4-rc1"')
+      Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '2.3.4.0'
+    }
+
+    It 'throws with -Required instead of falling back to the default' {
+      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v7') -Force).FullName
+      { Get-PackageVersion -WorkspacePath $ws -Required } | Should -Throw -ExpectedMessage '*no version in*VERSION.txt*refuses the 0.0.1.0 fallback*'
+      { Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Required } | Should -Throw -ExpectedMessage '*no version in*pubspec.yaml*'
+      Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @('[package]', 'version.workspace = true')
+      { Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required } | Should -Throw -ExpectedMessage '*no version in*Cargo.toml*'
+      Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '0.0.1.0'
+    }
   }
 
   Context 'Invoke-MsixPackage' {

@@ -634,7 +634,7 @@ links one list instead of keeping its own.
 | Container teardown | `Remove-BuildContainerSafe` | same file | `docker rm -f`, which misses the wcifs teardown lock |
 | Bind-mount probe, artifact delivery | `Test-ContainerBindMount`, `Test-BuildArtifactsDelivered` | same file | assuming a green build delivered something |
 | Stage, manifest, pack and sign one MSIX | `Invoke-MsixPackage` | [`WindowsMsix.Common.psm1`](../windows/scripts/modules/WindowsMsix.Common.psm1) | a local makeappx/assets/tokens/pack sequence |
-| The version to stamp a package with | `Get-PackageVersion` | same file | reading `VERSION.txt` inline, with a different fallback per step |
+| The version to stamp a package with: `VERSION.txt`, or `-VersionFile` (a `Cargo.toml`, `pubspec.yaml`, `pyproject.toml` or `CMakeLists.txt`, read as `version_util.sh --file-version` does); `-Required` throws instead of the `0.0.1.0` fallback | `Get-PackageVersion` | same file | reading a version file inline, with a different fallback per step |
 | SDK tools (makeappx, signtool) | `Resolve-WindowsSdkToolPath` | same file | `Get-ChildItem -Recurse` over the Kits tree |
 | Manifest tokens, XML escaping, placeholder PNGs | `Expand-XmlTemplateTokens`, `ConvertTo-XmlSafeText`, `New-TransparentPng` | same file | `-replace`, or a local redefinition |
 | Config access | `Get-OrDefault`, `Get-ConfigValue` | [`WindowsConfig.Common.psm1`](../windows/scripts/modules/WindowsConfig.Common.psm1) | copies |

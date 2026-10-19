@@ -114,39 +114,75 @@ function New-TransparentPng {
   }
 }
 
+# The version a file states, '' when none, as version_util.sh --file-version reads it; pyproject.toml is this twin's addition.
+function Get-VersionFileText([string]$Path) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return '' }
+  $text = Get-Content -LiteralPath $Path -Raw
+  switch -Regex (Split-Path -Leaf $Path) {
+    '^CMakeLists\.txt$' {
+      if ($text -match '(?is)\bproject\s*\([^)]*?\bVERSION\s+([0-9]+(?:\.[0-9]+)*)') { return $Matches[1] }
+      return ''
+    }
+    '^pubspec\.yaml$' { if ($text -match '(?m)^version:\s*([0-9][0-9.]*)') { return $Matches[1] }; return '' }
+    '^(Cargo|pyproject)\.toml$' {
+      # [workspace.package] beats [package]; "version.workspace = true" is no version.
+      $want = if ($_ -eq 'pyproject.toml') { @('project') } else { @('workspace.package', 'package') }
+      $found = @{}
+      $section = ''
+      foreach ($line in ($text -split '\r?\n')) {
+        if ($line -match '^\s*\[([^\]]+)\]\s*$') { $section = $Matches[1].Trim(); continue }
+        if ($section -in $want -and -not $found.ContainsKey($section) -and $line -match '^\s*version\s*=\s*"([^"]*)"') { $found[$section] = $Matches[1] }
+      }
+      foreach ($name in $want) { if ($found.ContainsKey($name)) { return $found[$name] } }
+      return ''
+    }
+    default { return "$text".Trim() }
+  }
+}
+
 function Get-PackageVersion {
   <#
     .SYNOPSIS
       The version to stamp a package with, read from the workspace.
     .DESCRIPTION
-      VERSION.txt, or version.txt for the Rust consumers, else CMakeLists.txt's project() VERSION; none falls back to -Default.
+      -VersionFile reads that one file as version_util.sh --file-version does (Cargo.toml, CMakeLists.txt, pubspec.yaml
+      without its +build, pyproject.toml's [project], else its first version). Without it: VERSION.txt, or version.txt for
+      the Rust consumers, else CMakeLists.txt's project() VERSION. None falls back to -Default, or throws with -Required.
     .PARAMETER Components
       Component count, 4 for an AppxManifest, which rejects fewer; extras dropped, missing ones zero-filled.
+    .PARAMETER VersionFile
+      A path, relative to -WorkspacePath unless rooted.
   #>
   param(
     [Parameter(Mandatory)] [string]$WorkspacePath,
     [string]$Default = '0.0.1.0',
-    [int]$Components = 4
+    [int]$Components = 4,
+    [string]$VersionFile = '',
+    [switch]$Required
   )
 
   $text = ''
-  foreach ($name in @('VERSION.txt', 'version.txt')) {
-    $candidate = Join-Path $WorkspacePath $name
-    if (Test-Path -LiteralPath $candidate -PathType Leaf) {
-      $text = (Get-Content -LiteralPath $candidate -Raw).Trim()
-      break
+  $read = @()
+  if ($VersionFile) {
+    $path = if ([IO.Path]::IsPathRooted($VersionFile)) { $VersionFile } else { Join-Path $WorkspacePath $VersionFile }
+    $text = (Get-VersionFileText $path).Trim()
+    $read = @($path)
+  } else {
+    # A CMake project without a version file: CPack stamps project()'s VERSION, so the MSIX takes the same.
+    foreach ($name in @('VERSION.txt', 'version.txt', 'CMakeLists.txt')) {
+      $candidate = Join-Path $WorkspacePath $name
+      $read += $candidate
+      if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+        $text = (Get-VersionFileText $candidate).Trim()
+        if ($text) { break }
+      }
     }
   }
-  # A CMake project without a version file: CPack stamps project()'s VERSION, so the MSIX takes the same.
-  $cmakeLists = Join-Path $WorkspacePath 'CMakeLists.txt'
-  if ([string]::IsNullOrWhiteSpace($text) -and (Test-Path -LiteralPath $cmakeLists -PathType Leaf) -and
-    ((Get-Content -LiteralPath $cmakeLists -Raw) -match '(?is)\bproject\s*\([^)]*?\bVERSION\s+([0-9]+(?:\.[0-9]+)*)')) {
-    $text = $Matches[1]
-  }
-  if ([string]::IsNullOrWhiteSpace($text)) { $text = $Default }
-
   # A leading v, a -rc1 suffix or a newline is common in a version file and illegal in an AppxManifest.
   $digits = [regex]::Match($text, '[0-9]+(\.[0-9]+)*')
+  if (-not $digits.Success -and $Required) {
+    throw "Get-PackageVersion: no version in $($read -join ', '); -Required refuses the $Default fallback"
+  }
   if (-not $digits.Success) { $digits = [regex]::Match($Default, '[0-9]+(\.[0-9]+)*') }
   $parts = @($digits.Value.Split('.'))
   while ($parts.Count -lt $Components) { $parts += '0' }

@@ -10,6 +10,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — Get-PackageVersion reads the repo's own version file, and can refuse to guess
+
+- **`Get-PackageVersion -VersionFile`** reads one file as `version_util.sh --file-version` does: a
+  `Cargo.toml`'s `[workspace.package]` or `[package]` version, a `CMakeLists.txt`'s `project()`
+  `VERSION`, a `pubspec.yaml`'s `version:` without its `+build`, and, new in this twin, a
+  `pyproject.toml`'s `[project]` version; another file gives its first version.
+  **`-Required`** throws instead of the silent `0.0.1.0` fallback. OxidANT's
+  `Get-CargoMsixVersion`, OmniAccelerANT's two `pubspec.yaml` regexes and BeschleunigerBallett's
+  `VERSION.txt` guard each worked around the missing switches. `WindowsMsix.Common.Tests.ps1`
+  23/23; dropping the `-Required` throw fails a case.
+
 ## 2026-10-19 — Linux containers from Windows: one nerdctl lookup, the family image chowns
 
 - **`Resolve-NerdctlExe`** (`WindowsContainerBuild.Reuse`, the twin of `Resolve-DockerExe`):
