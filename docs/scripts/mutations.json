@@ -14813,7 +14813,7 @@
  {
   "id": "gate-fixture.harness-consumer-entry",
   "target": "linux/scripts/lib/test-harness.sh",
-  "find": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/../tests/test-harness.sh\"",
+  "find": "source \"${_TEST_HARNESS_LIB_DIR}/../tests/test-harness.sh\"",
   "replace": "source ./test-harness.sh",
   "test": "bash linux/scripts/tests/test-harness-guards.sh",
   "why": "a consumer's suite runs from its own tree, so the entry must find the harness beside itself, not in the working directory"

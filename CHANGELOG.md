@@ -70,6 +70,8 @@
   code exactly; a miss prints the output) for `expect`, and `t_assert_grep` / `t_assert_no_grep
   <file> <ERE>` (a miss prints the file; a pattern may start with `--`) for `check`
   ([`shared-script-libraries.md`](docs/shared-script-libraries.md#libtest-harnesssh)).
+- Like every `lib/` module it loads `01-core/logging.sh` through `log-bootstrap.sh`
+  (`test-lib-modules.sh`, which the first version of the entry failed).
 - OxidANT's `test-check-crate-coverage.sh`, ported in `:latest`, runs the same 8 cases on it.
   `test-harness-guards.sh` holds the new assertions and the entry from a consumer-shaped tree;
   5 more `gate-fixture.harness-*` mutations prove it.

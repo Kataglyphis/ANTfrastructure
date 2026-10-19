@@ -676,7 +676,8 @@ the hub's own harness: `t_case`, `t_assert_eq`, `t_assert_contains`, `t_assert_o
 `t_summary` ([`cross-build-verification.md` § *The `linux/scripts/tests` suites*](cross-build-verification.md#the-linuxscriptstests-suites)).
 The suite runs under `set -u`, not `-e`: the harness counts every failed assertion and `t_summary`
 sets the exit code, `0` only when at least one assertion ran and none failed. It prints the same
-`N assertion(s) passed` line the consumers' own `passed` counters did.
+`N assertion(s) passed` line the consumers' own `passed` counters did. Like every `lib/` module it
+loads `01-core/logging.sh` through `log-bootstrap.sh`, so `info`, `warn` and `err` are there too.
 
 | A consumer's own helper | The harness |
 | --- | --- |
