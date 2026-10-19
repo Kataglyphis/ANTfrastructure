@@ -117,8 +117,47 @@ function Start-MsixSigning {
   return Invoke-MsixSign -Context $Context -WorkspacePath $WorkspacePath -MsixOutPath $MsixOutPath -InvokerScriptBlock $InvokerScriptBlock
 }
 
+function New-TestSigningCertificate {
+  <#
+    .SYNOPSIS
+      A throwaway code-signing certificate for -Subject, made in memory and written as a .pfx (and -CerPath's .cer); returns its thumbprint.
+    .DESCRIPTION
+      No certificate store is touched, so a run leaves nothing behind. Without -Password the .pfx is unprotected: delete it once signed.
+  #>
+  [CmdletBinding()]
+  [OutputType([string])]
+  param(
+    [Parameter(Mandatory)][string]$Subject,
+    [Parameter(Mandatory)][string]$PfxPath,
+    [string]$CerPath = '',
+    [securestring]$Password,
+    [int]$ValidYears = 1
+  )
+
+  $x509 = 'Security.Cryptography.X509Certificates'
+  $rsa = [Security.Cryptography.RSA]::Create(2048)
+  try {
+    $request = New-Object "$x509.CertificateRequest" $Subject, $rsa, ([Security.Cryptography.HashAlgorithmName]::SHA256), ([Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    $request.CertificateExtensions.Add((New-Object "$x509.X509BasicConstraintsExtension" $false, $false, 0, $true))
+    $request.CertificateExtensions.Add((New-Object "$x509.X509KeyUsageExtension" ([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature), $true))
+    $codeSigning = [Security.Cryptography.OidCollection]::new()
+    $null = $codeSigning.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
+    $request.CertificateExtensions.Add((New-Object "$x509.X509EnhancedKeyUsageExtension" $codeSigning, $false))
+    $now = [DateTimeOffset]::UtcNow
+    $cert = $request.CreateSelfSigned($now.AddDays(-1), $now.AddYears($ValidYears))
+    $pfx = if ($Password) { $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx, $Password) }
+    else { $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx) }
+    [IO.File]::WriteAllBytes($PfxPath, $pfx)
+    if ($CerPath) { [IO.File]::WriteAllBytes($CerPath, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert)) }
+    return $cert.Thumbprint
+  } finally {
+    $rsa.Dispose()
+  }
+}
+
 Export-ModuleMember -Function @(
   'Invoke-MsixSign',
   'Start-MsixSigning',
-  'Test-Administrator'
+  'Test-Administrator',
+  'New-TestSigningCertificate'
 )

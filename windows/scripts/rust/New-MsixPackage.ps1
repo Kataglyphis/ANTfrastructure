@@ -39,7 +39,8 @@ $ErrorActionPreference = "Stop"
 Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -Modules @(
     'WindowsBuild.Common',
     'WindowsScripts.Shared',
-    'WindowsMsix.Common'
+    'WindowsMsix.Common',
+    'WindowsMsix.Signing'
 )
 
 $logDir = Join-Path $Workspace "logs"
@@ -259,9 +260,7 @@ try {
             }
 
             Write-BuildLog -Context $Context -Message "Creating self-signed test certificate..."
-            $cert = New-SelfSignedCertificate -Type CodeSigningCert -Subject $Publisher -CertStoreLocation "Cert:\CurrentUser\My"
-            $securePassword = New-PasswordSecureString -Password $CertificatePassword
-            Export-PfxCertificate -Cert $cert -FilePath $CertificatePath -Password $securePassword | Out-Null
+            $null = New-TestSigningCertificate -Subject $Publisher -PfxPath $CertificatePath -Password (New-PasswordSecureString -Password $CertificatePassword)
 
             Write-BuildLog -Context $Context -Message "Signing package with generated test certificate..."
             Import-CertificateAndSign -CertificatePath $CertificatePath -CertificatePassword $CertificatePassword -PackageFile $packageFile -SigntoolExe $signtoolExe -Context $Context -CreatedAsTestCert

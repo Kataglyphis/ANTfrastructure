@@ -272,7 +272,7 @@ carries them. The 0.5–0.7 GB of loose bundle files stay out of it.
   `gui_script` is listed in Start. `makeappx` packs the bundle where it lies through a mapping
   file, with no staged copy.
   - **Signing:** a test certificate whose subject is the manifest's `CN=<publisher>`. It is
-    made in memory (`New-PythonAppSigningCertificate`), so no certificate store is touched.
+    made in memory (`New-TestSigningCertificate`, `WindowsMsix.Signing`), so no certificate store is touched.
     The unprotected `.pfx` is deleted once `signtool` has signed. The `.cer` ships next to the
     MSIX.
   - **Installing it:** import the `.cer` into *Local Machine → Trusted People* first. It is a

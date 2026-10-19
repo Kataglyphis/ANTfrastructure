@@ -181,6 +181,23 @@ Describe 'WindowsMsix.Common' {
       Should -Invoke -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign -Times 1 -Exactly `
         -ParameterFilter { $WorkspacePath -eq $root }
     }
+
+    It 'with -RequireSignature signs and throws on a package that came out unsigned or signed by another subject' {
+      Mock -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign { }
+      $build = Join-Path $script:tmp 'required\build'
+      $package = @{ Context = ([pscustomobject]@{}); StagingDir = (Join-Path $build 'staging'); ManifestTemplatePath = $script:bareTemplate
+        OutputPath = (Join-Path $build 'app.msix'); TokenMap = @{}; GenerateTransparentLogos = $true; SigningRoot = $build
+        InvokerScriptBlock = $script:fakeMakeappx; RequireSignature = $true; SignerSubject = 'CN=Pub' }
+      Mock -ModuleName WindowsMsix.Common -CommandName Get-AuthenticodeSignature { [pscustomobject]@{ SignerCertificate = $null } }
+      { Invoke-MsixPackage @package } | Should -Throw -ExpectedMessage '*app.msix is not signed*'
+      Should -Invoke -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign -Times 1 -Exactly
+      Mock -ModuleName WindowsMsix.Common -CommandName Get-AuthenticodeSignature { [pscustomobject]@{ SignerCertificate = [pscustomobject]@{ Subject = 'CN=Other' } } }
+      { Invoke-MsixPackage @package } | Should -Throw -ExpectedMessage '*signed by CN=Other, not CN=Pub'
+      Mock -ModuleName WindowsMsix.Common -CommandName Get-AuthenticodeSignature { [pscustomobject]@{ SignerCertificate = [pscustomobject]@{ Subject = 'CN=Pub' } } }
+      Invoke-MsixPackage @package | Should -Be $package.OutputPath
+      $package.Remove('SigningRoot')
+      { Invoke-MsixPackage @package } | Should -Throw -ExpectedMessage '*-SigningRoot*'
+    }
   }
 
   Context 'Invoke-MsiPackage' {

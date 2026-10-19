@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # NOT covered: makeappx and signtool (New-PythonAppPackage.ps1 runs both inside :winamd64, then verifies against the .cer).
 
-Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
+foreach ($m in 'WindowsPythonApp.Common', 'WindowsMsix.Signing') { Import-Module (Join-Path (Get-RepoRoot) "windows\scripts\modules\$m.psm1") -Force -DisableNameChecking }
 
 function script:New-TestMsixApp {
     return @{ name = 'Demo App'; id = 'demo'; publisher = 'Pub Lisher'; description = 'A <demo> & more'
@@ -56,12 +56,12 @@ Describe 'New-PythonAppAppxManifest' {
     }
 }
 
-Describe 'New-PythonAppSigningCertificate' {
+Describe 'New-TestSigningCertificate' {
 
     It 'writes a code-signing .pfx with its key and the matching .cer, without any certificate store' {
         Invoke-InTestDir { param($d)
             $before = @(Get-ChildItem Cert:\CurrentUser\My).Count
-            $thumbprint = New-PythonAppSigningCertificate -Subject 'CN=Pub Lisher' -PfxPath "$d\t.pfx" -CerPath "$d\t.cer"
+            $thumbprint = New-TestSigningCertificate -Subject 'CN=Pub Lisher' -PfxPath "$d\t.pfx" -CerPath "$d\t.cer"
             $pfx = [Security.Cryptography.X509Certificates.X509Certificate2]::new("$d\t.pfx")
             $cer = [Security.Cryptography.X509Certificates.X509Certificate2]::new("$d\t.cer")
             Assert-Equal "CN=Pub Lisher|$thumbprint|$thumbprint" "$($pfx.Subject)|$($pfx.Thumbprint)|$($cer.Thumbprint)" 'subject and one thumbprint'
@@ -69,6 +69,19 @@ Describe 'New-PythonAppSigningCertificate' {
             Assert-False $cer.HasPrivateKey 'the .cer cannot'
             Assert-Equal '1.3.6.1.5.5.7.3.3' (@($pfx.Extensions | Where-Object { $_.Oid.Value -eq '2.5.29.37' })[0].EnhancedKeyUsages[0].Value) 'code signing'
             Assert-Equal $before @(Get-ChildItem Cert:\CurrentUser\My).Count 'no store touched'
+        }
+    }
+
+    It 'protects the .pfx with -Password, and writes no .cer without -CerPath' {
+        Invoke-InTestDir { param($d)
+            $secret = [securestring]::new()
+            foreach ($c in [guid]::NewGuid().ToString('N').ToCharArray()) { $secret.AppendChar($c) }
+            $thumbprint = New-TestSigningCertificate -Subject 'CN=Pub Lisher' -PfxPath "$d\p.pfx" -Password $secret
+            Assert-Throws { [Security.Cryptography.X509Certificates.X509Certificate2]::new("$d\p.pfx") } 'no password, no key'
+            $pfx = [Security.Cryptography.X509Certificates.X509Certificate2]::new("$d\p.pfx", $secret)
+            Assert-Equal $thumbprint $pfx.Thumbprint
+            Assert-True $pfx.HasPrivateKey
+            Assert-Equal 1 @(Get-ChildItem -LiteralPath $d).Count 'the .pfx alone'
         }
     }
 }

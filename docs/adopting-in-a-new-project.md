@@ -513,7 +513,14 @@ keeps the old name; this table translates it.
 `Invoke-MsixPackage -Sign -SigningRoot <repo root>`: it signs with the `*.pfx`
 it finds in that directory (not recursively; the family keeps it there,
 gitignored) and `MSIX_PFX_PASSWORD`. Since 2026-09-25 `-Sign` without
-`-SigningRoot` throws before anything is staged.
+`-SigningRoot` throws before anything is staged. A failed signing only warns, so a
+package that must install passes `-RequireSignature` (with `-SignerSubject` for the
+manifest's publisher): it throws when the MSIX comes out unsigned, or signed by another
+subject. A throwaway certificate for a test signature comes from
+`New-TestSigningCertificate` (`WindowsMsix.Signing`): made in memory, no certificate
+store touched, the `.pfx` optionally protected with `-Password`.
+`certificates/GenerateCertificateMSIX.ps1` stays the manual tool for a long-lived,
+AES-protected developer certificate.
 
 An MSI built from the project's own `.wxs` goes through `Invoke-MsiPackage`
 (`WindowsMsix.Common`, since 2026-10-05). It runs `wix build` with `Version`, `ExeSource`,
@@ -633,7 +640,8 @@ links one list instead of keeping its own.
 | `--isolation process` and friends | `Get-ContainerIsolationArgs` | same file | inline flags |
 | Container teardown | `Remove-BuildContainerSafe` | same file | `docker rm -f`, which misses the wcifs teardown lock |
 | Bind-mount probe, artifact delivery | `Test-ContainerBindMount`, `Test-BuildArtifactsDelivered` | same file | assuming a green build delivered something |
-| Stage, manifest, pack and sign one MSIX | `Invoke-MsixPackage` | [`WindowsMsix.Common.psm1`](../windows/scripts/modules/WindowsMsix.Common.psm1) | a local makeappx/assets/tokens/pack sequence |
+| Stage, manifest, pack and sign one MSIX; `-RequireSignature` refuses an unsigned one | `Invoke-MsixPackage` | [`WindowsMsix.Common.psm1`](../windows/scripts/modules/WindowsMsix.Common.psm1) | a local makeappx/assets/tokens/pack sequence, or a `Get-AuthenticodeSignature` check after it |
+| A throwaway code-signing certificate, no store touched | `New-TestSigningCertificate` | [`WindowsMsix.Signing.psm1`](../windows/scripts/modules/WindowsMsix.Signing.psm1) | `New-SelfSignedCertificate` into `Cert:\CurrentUser\My` and an `Export-PfxCertificate` |
 | The version to stamp a package with: `VERSION.txt`, or `-VersionFile` (a `Cargo.toml`, `pubspec.yaml`, `pyproject.toml` or `CMakeLists.txt`, read as `version_util.sh --file-version` does); `-Required` throws instead of the `0.0.1.0` fallback | `Get-PackageVersion` | same file | reading a version file inline, with a different fallback per step |
 | SDK tools (makeappx, signtool) | `Resolve-WindowsSdkToolPath` | same file | `Get-ChildItem -Recurse` over the Kits tree |
 | Manifest tokens, XML escaping, placeholder PNGs | `Expand-XmlTemplateTokens`, `ConvertTo-XmlSafeText`, `New-TransparentPng` | same file | `-replace`, or a local redefinition |

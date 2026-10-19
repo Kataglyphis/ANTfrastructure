@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsMsix.Signing.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
 
@@ -150,7 +151,7 @@ function Invoke-MsixAppPackage {
     Set-Content -LiteralPath (Join-Path $work 'mapping.txt') -Value $map -Encoding utf8NoBOM
     Invoke-SdkTool 'makeappx.exe' @('pack', '/o', '/h', 'SHA256', '/f', (Join-Path $work 'mapping.txt'), '/p', $msix)
     $pfx = Join-Path $work 'test-signing.pfx'
-    $thumbprint = New-PythonAppSigningCertificate -Subject $publisher -PfxPath $pfx -CerPath $cer
+    $thumbprint = New-TestSigningCertificate -Subject $publisher -PfxPath $pfx -CerPath $cer
     try {
         Invoke-SdkTool 'signtool.exe' @('sign', '/fd', 'SHA256', '/f', $pfx, $msix)
     } finally {

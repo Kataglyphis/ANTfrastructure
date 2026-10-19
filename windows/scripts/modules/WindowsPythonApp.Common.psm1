@@ -640,40 +640,6 @@ $($files.ToString().TrimEnd())
     return $Destination
 }
 
-function New-PythonAppSigningCertificate {
-    <#
-    .SYNOPSIS
-        A throwaway code-signing certificate for -Subject, made in memory and written as .pfx and .cer; returns its thumbprint.
-    .DESCRIPTION
-        No certificate store is touched, so a developer's run leaves nothing behind. The .pfx is unprotected: delete it once signed.
-    #>
-    [CmdletBinding()]
-    [OutputType([string])]
-    param(
-        [Parameter(Mandatory)][string]$Subject,
-        [Parameter(Mandatory)][string]$PfxPath,
-        [Parameter(Mandatory)][string]$CerPath
-    )
-
-    $x509 = 'Security.Cryptography.X509Certificates'
-    $rsa = [Security.Cryptography.RSA]::Create(2048)
-    try {
-        $request = New-Object "$x509.CertificateRequest" $Subject, $rsa, ([Security.Cryptography.HashAlgorithmName]::SHA256), ([Security.Cryptography.RSASignaturePadding]::Pkcs1)
-        $request.CertificateExtensions.Add((New-Object "$x509.X509BasicConstraintsExtension" $false, $false, 0, $true))
-        $request.CertificateExtensions.Add((New-Object "$x509.X509KeyUsageExtension" ([Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature), $true))
-        $codeSigning = [Security.Cryptography.OidCollection]::new()
-        $null = $codeSigning.Add([Security.Cryptography.Oid]::new('1.3.6.1.5.5.7.3.3'))
-        $request.CertificateExtensions.Add((New-Object "$x509.X509EnhancedKeyUsageExtension" $codeSigning, $false))
-        $now = [DateTimeOffset]::UtcNow
-        $cert = $request.CreateSelfSigned($now.AddDays(-1), $now.AddYears(1))
-        [IO.File]::WriteAllBytes($PfxPath, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Pfx))
-        [IO.File]::WriteAllBytes($CerPath, $cert.Export([Security.Cryptography.X509Certificates.X509ContentType]::Cert))
-        return $cert.Thumbprint
-    } finally {
-        $rsa.Dispose()
-    }
-}
-
 function New-PythonAppAppxManifest {
     <#
     .SYNOPSIS
@@ -757,4 +723,4 @@ $(($apps -join "`n").TrimEnd())
 
 Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs,
-    New-PythonAppSigningCertificate, New-PythonAppAppxManifest
+    New-PythonAppAppxManifest

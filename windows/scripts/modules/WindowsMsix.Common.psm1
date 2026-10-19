@@ -224,6 +224,9 @@ function Invoke-MsixPackage {
       Write placeholder PNGs instead of copying -LogoPath; a missing logo fails the install without naming it.
     .PARAMETER SigningRoot
       Where -Sign looks for the *.pfx (non-recursive), normally the repository root; required with -Sign.
+    .PARAMETER RequireSignature
+      Implies -Sign, and throws unless the package comes out signed (by -SignerSubject when given): Invoke-MsixSign only
+      warns, and an unsigned MSIX does not install.
   #>
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
@@ -239,12 +242,15 @@ function Invoke-MsixPackage {
     [string]$MakeAppxPath = '',
     [switch]$Sign,
     [string]$SigningRoot = '',
+    [switch]$RequireSignature,
+    [string]$SignerSubject = '',
     # Test seam: this module does not import Invoke-BuildExternal, and real packing needs a Windows SDK.
     [scriptblock]$InvokerScriptBlock
   )
 
+  $signing = $Sign -or $RequireSignature
   # Before any work, so a missing parameter cannot leave a packed package silently unsigned.
-  if ($Sign) {
+  if ($signing) {
     if ([string]::IsNullOrWhiteSpace($SigningRoot)) {
       throw '-Sign needs -SigningRoot: the directory holding the signing .pfx, normally the repository root.'
     }
@@ -292,8 +298,13 @@ function Invoke-MsixPackage {
   $packArgs = @('pack', '/d', $StagingDir, '/p', $OutputPath, '/o')
   Invoke-PackagerTool -Context $Context -File $makeappx -Parameters $packArgs -OutputPath $OutputPath -InvokerScriptBlock $InvokerScriptBlock
 
-  if ($Sign) {
+  if ($signing) {
     Invoke-MsixSign -Context $Context -WorkspacePath $SigningRoot -MsixOutPath $OutputPath
+  }
+  if ($RequireSignature) {
+    $signer = (Get-AuthenticodeSignature -LiteralPath $OutputPath).SignerCertificate
+    if (-not $signer) { throw "$OutputPath is not signed: Invoke-MsixSign found no usable .pfx in $SigningRoot or signtool failed (see the log)" }
+    if ($SignerSubject -and $signer.Subject -ne $SignerSubject) { throw "$OutputPath is signed by $($signer.Subject), not $SignerSubject" }
   }
 
   return $OutputPath

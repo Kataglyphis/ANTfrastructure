@@ -10,6 +10,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — an MSIX that must install can require its signature
+
+- **`Invoke-MsixPackage -RequireSignature`** (implies `-Sign`) throws when the package comes out
+  unsigned, or, with `-SignerSubject`, signed by another subject: `Invoke-MsixSign` only warns,
+  and an unsigned MSIX does not install. OmniAccelerANT's `New-AppMsix` checked
+  `Get-AuthenticodeSignature` itself. The default `-Sign` behaviour is unchanged.
+- **`New-TestSigningCertificate`** (`WindowsMsix.Signing`) is the one throwaway certificate
+  maker: in memory, no store touched, `-Password` protects the `.pfx`. It replaces
+  `WindowsPythonApp.Common`'s `New-PythonAppSigningCertificate` (no consumer named it) and the
+  store-based `New-SelfSignedCertificate` in `rust/New-MsixPackage.ps1 -CreateTestCertificate`;
+  `certificates/GenerateCertificateMSIX.ps1` stays the manual tool for a long-lived developer
+  certificate ([`adopting-in-a-new-project.md` § 7](docs/adopting-in-a-new-project.md#7-certificates--packaging-windows)).
+- Packed and signed on this host with the Windows SDK's makeappx and signtool: the signed MSIX
+  passed `-RequireSignature -SignerSubject 'CN=H4b Probe'` with the certificate's thumbprint, a
+  package from a directory without a `.pfx` was refused, and no store held the certificate
+  afterwards. `WindowsMsix.Common.Tests.ps1` 24/24, `PythonApp.Msix.Tests.ps1` 5/5.
+
 ## 2026-10-19 — the pinned clang-format is the hub's to find
 
 - **`code_quality_require_pinned_clang_format`** (`lib/code-quality.sh`) sets
