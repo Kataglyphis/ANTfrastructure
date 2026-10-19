@@ -10,6 +10,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the large-files gate measures what git stores
+
+- **`verify_large_files.py` sizes each tracked file by its blob** (`git cat-file --batch-check`),
+  not by the checkout: under `core.autocrlf` a text scene grows by a byte a line, so
+  BeschleunigerBallett's `Resources/Models/suzanne.obj` read `GREW from 986 to 1017 KiB` on its
+  Windows checkout and passes now, against the same `986` row. A blob git cannot size exits 2
+  ([`data-repositories.md`](docs/data-repositories.md#keeping-data-out-of-the-code-repositories)).
+- `tests/test-large-files.sh` adds a CRLF checkout and an unsizable blob; its symlink case waives
+  on Git Bash, which makes no symlinks, instead of failing there. 2 `large-files.*` mutations.
+
 ## 2026-10-19 — consumers' bash suites on the hub's harness
 
 - **`linux/scripts/lib/test-harness.sh`** is the consumer entry to the hub's own

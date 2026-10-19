@@ -14817,5 +14817,21 @@
   "replace": "source ./test-harness.sh",
   "test": "bash linux/scripts/tests/test-harness-guards.sh",
   "why": "a consumer's suite runs from its own tree, so the entry must find the harness beside itself, not in the working directory"
+ },
+ {
+  "id": "large-files.blob-size",
+  "target": "linux/scripts/verify_large_files.py",
+  "find": "        kib = sizes[sha] // 1024",
+  "replace": "        kib = os.path.getsize(os.path.join(root, rel)) // 1024",
+  "test": "bash linux/scripts/tests/test-large-files.sh",
+  "why": "a CRLF checkout grows a text scene by a byte a line, so BeschleunigerBallett's suzanne.obj read as grown from 986 to 1017 KiB on Windows"
+ },
+ {
+  "id": "large-files.blob-sized-or-refused",
+  "target": "linux/scripts/verify_large_files.py",
+  "find": "    if out.returncode != 0 or lost:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-large-files.sh",
+  "why": "a blob git cannot size would be graded as missing data, never as a failure"
  }
 ]

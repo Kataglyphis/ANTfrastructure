@@ -118,7 +118,8 @@ generated source are text and pass. `third_party/` is graded by its own reposito
 - **Where it runs**: the hub's preflight and pre-commit hook, and every consumer's
   `run-lint-gates.sh --ratchets`, against `<consumer root>/large-files.allow`.
 - **The freeze** is `<path> | <KiB> | <reason>`, one row per file the repo must track (a
-  runtime the app loads, a document the site serves that has no other home). A frozen file
+  runtime the app loads, a document the site serves that has no other home). The size is the
+  blob's as git stores it, so a `core.autocrlf` checkout reads the same as Linux. A frozen file
   that grows, shrinks, moves or goes fails until its row is updated: each new version is
   another copy in history, so it should be a conscious edit.
 - **Everything else** moves to ModelANT or AssetANT and is fetched by lock, as above. A

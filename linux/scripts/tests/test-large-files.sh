@@ -46,8 +46,26 @@ t_assert_eq 1 "$(_rc "$(_repo assets/model.bin 950 bin 'assets/model.bin | 900 |
 t_assert_eq 1 "$(_rc "$(_repo assets/model.bin 850 bin 'assets/model.bin | 900 | the runtime loads it')")" "a shrink must be recorded"
 t_assert_eq 1 "$(_rc "$(_repo assets/small.bin 10 bin 'assets/gone.bin | 900 | moved to AssetANT')")" "a freeze nothing matches is stale"
 
-t_case "vendored third_party/ and symlinks are not this repo's data"
+t_case "the size is the blob's: a CRLF checkout of a text scene does not grow it"
+d="$(mktemp -d "${_work}/crlf.XXXXXX")"
+git -C "${d}" init -q
+git -C "${d}" config core.autocrlf false
+mkdir -p "${d}/Resources"
+yes 'v 1 2 3' | head -n 60000 > "${d}/Resources/scene.obj"
+git -C "${d}" add -A && git -C "${d}" commit -q -m fixture
+git -C "${d}" config core.autocrlf true
+rm "${d}/Resources/scene.obj" && git -C "${d}" checkout -- Resources/scene.obj
+t_assert_ok test "$(wc -c < "${d}/Resources/scene.obj")" -gt $(( 500 * 1024 ))
+t_assert_eq 0 "$(_rc "${d}")" "468 KiB in git, 527 in the checkout"
+printf 'x' > "${d}/Resources/lost.bin"
+git -C "${d}" update-index --add --cacheinfo "100644,$(printf '%040d' 7),Resources/lost.bin"
+t_assert_eq 2 "$(_rc "${d}")" "a blob git cannot size: exit 2, nothing graded"
+
+t_case "vendored third_party/ is not this repo's data"
 t_assert_eq 0 "$(_rc "$(_repo third_party/lib/test.png 900 bin)")" "third_party is graded by its own repository"
+
+t_case "a symlink is a path, not data, even into an absent submodule"
+t_needs "real symlinks" t_posix_symlinks
 d="$(_repo assets/small.bin 10 bin)"
 head -c $(( 900 * 1024 )) /dev/zero > "${_work}/outside.bin"
 ln -s "${_work}/outside.bin" "${d}/assets/link.bin" && git -C "${d}" add -A && git -C "${d}" commit -q -m link

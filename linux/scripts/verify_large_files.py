@@ -38,23 +38,43 @@ def is_data(path):
         return b"\0" in fh.read(SNIFF)
 
 
+def blob_sizes(root, shas):
+    """{sha: bytes} as git stores the blobs, which a CRLF checkout does not change."""
+    out = subprocess.run(["git", "-C", root, "cat-file", "--batch-check=%(objectname) %(objectsize)"],
+                         input="".join(sha + "\n" for sha in shas), capture_output=True, text=True, encoding="utf-8")
+    sizes = {}
+    for line in out.stdout.splitlines():
+        sha, _, size = line.partition(" ")
+        if size.isdigit():
+            sizes[sha] = int(size)
+    lost = [sha for sha in shas if sha not in sizes]
+    if out.returncode != 0 or lost:
+        raise gate_scope.ScopeError("git cat-file could not size %d blob(s) of %s" % (len(lost) or 1, root))
+    return sizes
+
+
 def large_data(root):
     """[((rel,), KiB)] for every tracked regular data file over the limit; source text (lockfiles, generated code) is not data."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-s", "-z"], capture_output=True, text=True, encoding="utf-8")
     if out.returncode != 0:
         raise gate_scope.ScopeError("%s is not a git checkout; --root must be one" % root)
-    found, missing = [], []
+    tracked, missing = [], []
     for entry in filter(None, out.stdout.split("\0")):
         meta, rel = entry.split("\t", 1)
+        mode, sha = meta.split()[:2]
         # Symlinks (120000) and gitlinks (160000) are paths, not data: one into an absent submodule must not fail the tree.
-        if meta.split()[0] not in REGULAR or rel.split("/", 1)[0] in gate_scope.EXCLUDE:
+        if mode not in REGULAR or rel.split("/", 1)[0] in gate_scope.EXCLUDE:
             continue
-        path = os.path.join(root, rel)
-        if not os.path.isfile(path):
+        if not os.path.isfile(os.path.join(root, rel)):
             missing.append(rel)
             continue
-        kib = os.path.getsize(path) // 1024
-        if kib > LIMIT_KIB and is_data(path):
+        tracked.append((rel, sha))
+    sizes = blob_sizes(root, sorted({sha for _, sha in tracked}))
+    found = []
+    for rel, sha in tracked:
+        # The blob, not the checkout: core.autocrlf grows a text scene by a byte a line (suzanne.obj, 986 to 1017 KiB).
+        kib = sizes[sha] // 1024
+        if kib > LIMIT_KIB and is_data(os.path.join(root, rel)):
             found.append(((rel,), kib))
     if missing:
         raise gate_scope.ScopeError("%d tracked file(s) are not on disk, so this gate would grade a partial tree: %s"
