@@ -246,6 +246,23 @@ owner carries the breakage that costs.
       watchfiles 1.3.0 has none but was in the lock before). Decide: `--extra frontend` in the app
       venv (the image then runs both viewers and the stream page, and app-venv-parity grows by
       those packages), or keep it out and give the comment its real reason.
+- [b] **CON109 — ANThology widgets as a Flet extension** [M, ★]. Blocked on CON102, and on a
+      UI that needs a widget Flet lacks (owner, 2026-10-19). OrchestrANT's Flet UIs take
+      ANThology's look from Python alone (Material 3, `color_scheme_seed` green accent) and use
+      only core controls, so nothing wraps ANThology yet. When something does (its markdown page,
+      openable image or pie chart are the likely first):
+      1. A `flet-anthology` extension package: per widget, a Python control class and a Dart
+         wrapper that reads the fields and returns the ANThology widget; events go back through
+         `triggerEvent`.
+      2. ANThology pinned where the client is built (CON102's build, so here, the way
+         OmniAccelerANT pins it: a submodule and a pubspec `path:` dependency), not in
+         OrchestrANT, which compiles no Dart.
+      3. Its Flutter floor stays at or below `FLUTTER_VERSION` (3.44.0 in its pubspec today).
+         Every package it shares with Flet's client resolved within its ranges on 2026-10-19
+         (fl_chart 1.2.0, intl 0.20.2, url_launcher 6.3.2, markdown 7.3.1).
+      4. Widgets tied to ANThology's app shell take those dependencies as arguments first:
+         `AnthologyTable` calls `context.go`, `SkillTable` and `single_page` read
+         `UserSettings`/`AppSettings`, and `open_button` needs `AnthologyLocalizations`.
 
 ## Open — Linux image (all arches)
 
