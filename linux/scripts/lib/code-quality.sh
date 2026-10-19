@@ -102,9 +102,23 @@ _code_quality_name_predicate() {
   _CODE_QUALITY_NAME_PREDICATE+=(')')
 }
 
+# Dependency and output trees git never lists: a walk that enters them grades a dependency's own sources.
+CODE_QUALITY_UNTRACKED_EXCLUDES=(
+  '*/node_modules/*' '*/.pub-cache/*' '*/.dart_tool/*' '*/.gradle/*' '*/.cxx/*' '*/.cargo/*' '*/flutter/ephemeral/*'
+)
+
+# The files under the roots that match _CODE_QUALITY_NAME_PREDICATE, outside every untracked tree.
+_code_quality_find_sources() {
+  local skip=() excl
+  for excl in "${CODE_QUALITY_UNTRACKED_EXCLUDES[@]}"; do
+    skip+=(-not -path "${excl}")
+  done
+  find "$@" -type f "${skip[@]}" "${_CODE_QUALITY_NAME_PREDICATE[@]}"
+}
+
 # Hub helpers create these in consumer trees; a consumer's list adds to them. docs/shared-script-libraries.md#05-frameworksflutterlane-prologuesh
 CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES=(
-  '*/.pub-cache/*'
+  "${CODE_QUALITY_UNTRACKED_EXCLUDES[@]}"
 )
 
 # Paths stay relative to the search root, as cmake-format wants them.
@@ -132,7 +146,7 @@ code_quality_find_cpp_files() {
   fi
 
   _code_quality_name_predicate "${exts[@]}"
-  find "$@" -type f "${_CODE_QUALITY_NAME_PREDICATE[@]}"
+  _code_quality_find_sources "$@"
 }
 
 # Headers are excluded: clang-tidy needs a compile-DB entry.
@@ -145,7 +159,7 @@ code_quality_find_clang_tidy_files() {
   fi
 
   _code_quality_name_predicate "${exts[@]}"
-  find "$@" -type f "${_CODE_QUALITY_NAME_PREDICATE[@]}"
+  _code_quality_find_sources "$@"
 }
 
 # Tracked files, not `dart format .`: CI installs Flutter inside the workspace, and the walk would reformat it.

@@ -966,9 +966,10 @@ neither owns nor can format. OmniAccelerANT measured 28 such CMake files —
 `code_quality_find_cmake_files` therefore excludes `*/.pub-cache/*` by default
 (`CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES`, added to whatever
 `CODE_QUALITY_CMAKE_EXCLUDE_PATHS` a consumer sets, never replacing it): the hub
-created the directory, so the hub excludes it. Any OTHER tree-walking gate a
-consumer runs — clang-format, a licence sweep, a secret scan over sources — has
-to exclude it in that gate's own list.
+created the directory, so the hub excludes it. The C/C++ walks skip it too, with the
+other dependency and output trees git never lists (`CODE_QUALITY_UNTRACKED_EXCLUDES`;
+Windows' walk the same set, 2026-10-19). Any OTHER tree-walking gate a consumer runs —
+a licence sweep, a secret scan over sources — has to exclude it in that gate's own list.
 
 Three things it does not do, and must not gain: a `safe.directory` for the SDK
 (`setup-package-image.sh:556` registers `/opt/flutter` at `--system` level, so a

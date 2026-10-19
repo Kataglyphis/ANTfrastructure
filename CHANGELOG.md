@@ -10,6 +10,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the format walks skip node_modules and the other trees git never lists
+
+- **Windows' source walk** (`Get-ProjectSourceFiles`, used without a `.git`, as in a tar-piped
+  container) skips `node_modules`, `.pub-cache`, `.dart_tool`, `.gradle`, `.cxx`, `.cargo` and
+  `flutter\ephemeral`: a local container build of BeschleunigerBallett failed its clang-format
+  check on `.opencode/node_modules/msgpackr-extract/src/extract.cpp`. The `git ls-files` path is
+  unchanged.
+- **Linux**: `CODE_QUALITY_UNTRACKED_EXCLUDES` holds the same globs; `code_quality_find_cpp_files`
+  and `code_quality_find_clang_tidy_files` apply them, and `CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES`
+  is that list (it was `*/.pub-cache/*` alone).
+- `test-code-quality-walk.sh` (4 assertions, 4 mutations `lib.*-walk-*`) and two cases in
+  `WindowsFormatting.ClangFormatCheck.Tests.ps1`, which fail without the exclusion.
+
 ## 2026-10-19 — New-PortableBundle returns its result object alone
 
 - **`New-PortableBundle`** pipes its `-Runner` call to `Out-Host`: the default runner let cmake's

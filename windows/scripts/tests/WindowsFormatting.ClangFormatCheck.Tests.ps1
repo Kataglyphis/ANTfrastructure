@@ -79,3 +79,31 @@ Describe 'Invoke-ClangFormatCheck' {
     { Invoke-Check } | Should -Not -Throw
   }
 }
+
+Describe 'The source walk without a git checkout' {
+  BeforeAll {
+    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsFormatting.Common.psm1') -Force
+    $script:tree = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('fmt-walk-' + (Get-Random))) -Force).FullName
+    $own = 'src\app.cpp', 'src\CMakeLists.txt', 'windows\flutter\generated_plugin_registrant.cc'
+    $untracked = '.opencode\node_modules\msgpackr-extract\src\extract.cpp', 'node_modules\addon\CMakeLists.txt',
+      '.pub-cache\hosted\fl_chart\example\linux\main.cc', '.dart_tool\gen.h', 'android\app\.cxx\gen.cpp',
+      'android\.gradle\gen.c', '.cargo\registry\src\cc\x.c', 'windows\flutter\ephemeral\cpp_client_wrapper\core.cc'
+    foreach ($f in @($own) + @($untracked)) { $null = New-Item -ItemType File -Force -Path (Join-Path $script:tree $f) }
+    # A tar-piped container has no .git, so git cannot list the tree.
+    Mock -ModuleName WindowsFormatting.Common -CommandName Get-Command -ParameterFilter { $Name -eq 'git' } { $null }
+    function Get-Relative([string[]]$Paths) { @($Paths | ForEach-Object { $_.Substring($script:tree.Length + 1) } | Sort-Object) -join ',' }
+  }
+
+  AfterAll {
+    Remove-Item -LiteralPath $script:tree -Recurse -Force -ErrorAction SilentlyContinue
+  }
+
+  It 'grades the repository''s own C/C++ files and skips every dependency and output tree' {
+    Get-Relative (Get-ProjectCppFiles -WorkspacePath $script:tree) |
+      Should -Be 'src\app.cpp,windows\flutter\generated_plugin_registrant.cc'
+  }
+
+  It 'skips them for the CMake walk too' {
+    Get-Relative (Get-ProjectCmakeFiles -WorkspacePath $script:tree) | Should -Be 'src\CMakeLists.txt'
+  }
+}

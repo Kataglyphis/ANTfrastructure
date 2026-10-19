@@ -169,7 +169,8 @@ the caller's shell options.
 |---|---|---|
 | `CODE_QUALITY_PROJECT_ROOT` | repo root; replaces the container workspace prefix when remapping a compile DB | `$PWD` |
 | `CODE_QUALITY_CMAKE_SEARCH_ROOT` | root of the cmake-format walk | `.` |
-| `CODE_QUALITY_CMAKE_EXCLUDE_PATHS` | `find -not -path` globs for that walk, added to the built-in `*/.pub-cache/*` | empty |
+| `CODE_QUALITY_CMAKE_EXCLUDE_PATHS` | `find -not -path` globs for that walk, added to the built-in `CODE_QUALITY_UNTRACKED_EXCLUDES` | empty |
+| `CODE_QUALITY_UNTRACKED_EXCLUDES` | the dependency and output trees git never lists, skipped by the C/C++ and CMake walks | `*/node_modules/*` `*/.pub-cache/*` `*/.dart_tool/*` `*/.gradle/*` `*/.cxx/*` `*/.cargo/*` `*/flutter/ephemeral/*` |
 | `CODE_QUALITY_CMAKE_FORMAT_CONFIG` | cmake-format config, passed with `-c` only if it exists | `.cmake-format.yaml` |
 | `CODE_QUALITY_CPP_FORMAT_EXTENSIONS` | extensions fed to clang-format | `c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp` |
 | `CODE_QUALITY_CLANG_FORMAT_CANDIDATES` | clang-formats `code_quality_require_pinned_clang_format` tries before `PATH`'s | `/usr/local/llvm-target/bin/clang-format` |
@@ -269,7 +270,7 @@ these were "fixed" during the extraction.
 | 4 | `--checks` | a checks argument is passed (the consumer disables one check that crashes its clang-tidy) | `$Checks` defaults to an **empty** array; an imposed `--checks=-misc-include-cleaner` used to crash some versions |
 | 5 | Invocation shape | one invocation with the whole file list — fast, but one crash loses the run | one process per file, `-ThrottleLimit` at a time (default: the core count, capped at one per 6 GB of RAM: two on a 16 GB runner, where four went out of memory), each file's output logged whole and every failure named; `-Fix` stays serial, as two files' fixes can rewrite one header. BeschleunigerBallett's 43 `Src` TUs: 112 s on 32 cores, against about 900 s one at a time |
 | 6 | Missing `compile_commands.json` | hard error, telling the user to configure CMake first | regenerates via `ninja -C <build> -t compdb` when possible, throws only if not |
-| 7 | File enumeration | `find` with `-not -path` exclusions | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages` |
+| 7 | File enumeration | `find` with `-not -path` exclusions, `CODE_QUALITY_UNTRACKED_EXCLUDES` among them | `git ls-files` with a `Get-ChildItem` fallback, because its container receives sources by tar-pipe and has no `.git`; also excludes `_deps`, `vcpkg_installed`, `.venv`, `site-packages`, and the walk skips the same dependency and output trees as Linux (`node_modules`, `.pub-cache`, `.dart_tool`, `.gradle`, `.cxx`, `.cargo`, `flutter\ephemeral`) |
 
 ## This repository's own gates
 
@@ -553,7 +554,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1868 entries** over **163 distinct test commands**; both digits are
+manifest holds **1872 entries** over **164 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

@@ -14945,5 +14945,37 @@
   "replace": "    if ! clang-format --dry-run -Werror",
   "test": "bash linux/scripts/tests/test-pinned-clang-format.sh",
   "why": "the check would grade with PATH's clang-format after the pinned one was found, which is the drift the pin exists to stop"
+ },
+ {
+  "id": "lib.walk-skips-node-modules",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  '*/node_modules/*' '*/.pub-cache/*'",
+  "replace": "  '*/.pub-cache/*'",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "a walk that enters node_modules grades a native addon's sources, which the repository neither owns nor can format"
+ },
+ {
+  "id": "lib.cpp-walk-skips-untracked-trees",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "    exts=(c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  _code_quality_find_sources \"$@\"\n",
+  "replace": "    exts=(c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  find \"$@\" -type f \"${_CODE_QUALITY_NAME_PREDICATE[@]}\"\n",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "the clang-format walk must apply the untracked-tree list, or a consumer passing . grades every dependency's C++"
+ },
+ {
+  "id": "lib.tidy-walk-skips-untracked-trees",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "    exts=(c cc cpp cxx)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  _code_quality_find_sources \"$@\"\n",
+  "replace": "    exts=(c cc cpp cxx)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  find \"$@\" -type f \"${_CODE_QUALITY_NAME_PREDICATE[@]}\"\n",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "the clang-tidy walk must skip the same trees as the format walk, or it tidies dependency sources no compile DB knows"
+ },
+ {
+  "id": "lib.cmake-walk-skips-untracked-trees",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES=(\n  \"${CODE_QUALITY_UNTRACKED_EXCLUDES[@]}\"\n)",
+  "replace": "CODE_QUALITY_CMAKE_DEFAULT_EXCLUDES=(\n  '*/.pub-cache/*'\n)",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "the CMake walk's defaults must cover node_modules too, or a cmake-js addon's CMakeLists.txt fails the consumer's gate"
  }
 ]

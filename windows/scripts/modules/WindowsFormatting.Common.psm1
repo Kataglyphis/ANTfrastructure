@@ -17,6 +17,8 @@ if (-not (Get-Command -Name 'Get-ANTfrastructurePin' -ErrorAction SilentlyContin
 }
 
 $script:CppExtensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.ixx')
+# Dependency and output trees git never lists: a walk that enters them grades a dependency's own sources.
+$script:UntrackedTreePattern = '\\(node_modules|\.pub-cache|\.dart_tool|\.gradle|\.cxx|\.cargo)\\|\\flutter\\ephemeral\\'
 
 # git ls-files fast path, else a Get-ChildItem walk; the public wrappers pass pathspec and predicate.
 function Get-ProjectSourceFiles {
@@ -61,7 +63,8 @@ function Get-ProjectSourceFiles {
       ($_.FullName -notmatch '\\.git\\modules\\') -and
       ($_.FullName -notmatch '\\vcpkg_installed\\') -and
       ($_.FullName -notmatch '\\\.venv') -and
-      ($_.FullName -notmatch '\\site-packages\\')
+      ($_.FullName -notmatch '\\site-packages\\') -and
+      ($_.FullName -notmatch $script:UntrackedTreePattern)
     } |
     Select-Object -ExpandProperty FullName
 
