@@ -76,6 +76,16 @@ _page beta "${_SHORT}"
 t_assert_eq "0" "$(_rc)" "under MIN_WORDS it cannot carry a shingle"
 t_assert_contains "$(_report)" "scanned 0 paragraphs in 2 files"
 
+t_case "badges and images are markup, not prose: every README's badge row would match"
+_reset
+_BADGES="[![Linux x64 build and test](https://github.com/Kataglyphis/Example/actions/workflows/linux-x64.yml/badge.svg)](https://github.com/Kataglyphis/Example/actions/workflows/linux-x64.yml)
+[![Windows x64 build and test](https://github.com/Kataglyphis/Example/actions/workflows/windows-x64.yml/badge.svg)](https://github.com/Kataglyphis/Example/actions/workflows/windows-x64.yml)
+![logo](https://github.com/Kataglyphis/Example/raw/develop/images/logo.png)"
+_page alpha "${_BADGES}"
+_page beta "${_BADGES}"
+t_assert_eq "0" "$(_rc)" "a badge row shared by two pages is not a copied passage"
+t_assert_contains "$(_report)" "scanned 0 paragraphs in 2 files"
+
 t_case "--report names every allowed pair and what was scanned"
 _reset
 _page alpha "${_PARA}"
@@ -97,5 +107,85 @@ t_case "--root grades the named tree, and its budget lives under that root"
 _D='docs/'
 _root_para="$(printf 'The runtime image ships a cross built toolchain for every architecture we\ntarget and the media layer is rebuilt on top of it whenever a pin moves so the\nresulting artifacts stay reproducible across the whole fleet of machines.')"
 gate_root_pair_arm "${PY}" "${GATE}" "${_root_para}" "${_D}one.md" "${_D}two.md" doc-dupes.allow
+
+# The --against-hub arm: a fixture hub holds the gate and one tracked page, since the hub's pages come from git ls-files.
+_hubfx="$(mktemp -d "${_work}/hub.XXXXXX")"
+mkdir -p "${_hubfx}/${_D}scripts" "${_hubfx}/linux/scripts"
+cp "${GATE}" "${_hubfx}/${_D}scripts/"
+cp "${TESTS_DIR}/../quality_allow.py" "${TESTS_DIR}/../gate_scope.py" "${_hubfx}/linux/scripts/"
+printf '# Owner\n\n%s\n' "${_PARA}" > "${_hubfx}/${_D}owner.md"
+git -C "${_hubfx}" init -q
+t_git_commit "${_hubfx}"
+_HUB_GATE="${_hubfx}/${_D}scripts/verify_doc_dupes.py"
+_hub() { "${PY}" "${_HUB_GATE}" --against-hub "$@"; }
+# _consumer <README text> [<allow file text>]: a consumer checkout; the allow file is written only when given.
+_consumer() {
+  local d; d="$(mktemp -d "${_work}/consumer.XXXXXX")"
+  printf '# Readme\n\n%s\n' "$1" > "${d}/README.md"
+  [ "$#" -lt 2 ] || printf '%s\n' "$2" > "${d}/doc-dupes-hub.allow"
+  git -C "${d}" init -q
+  t_git_commit "${d}"
+  printf '%s' "${d}"
+}
+
+t_case "--against-hub is off until the consumer seeds doc-dupes-hub.allow, and --report still lists"
+_c="$(_consumer "${_PARA}")"
+t_assert_eq "0" "$(t_rc _hub --root "${_c}")" "an unseeded consumer is not failed"
+t_assert_contains "$(t_out _hub --root "${_c}")" "OFF for"
+t_assert_contains "$(t_out _hub --root "${_c}")" "--report lists what it would find"
+t_assert_eq "0" "$(t_rc _hub --root "${_c}" --report)" "--report on an unseeded consumer lists, and still does not fail"
+t_assert_contains "$(t_out _hub --root "${_c}" --report)" "1 passage(s) restate a hub page"
+t_assert_contains "$(t_out _hub --root "${_c}" --report)" "hub:${_D}owner.md"
+
+t_case "off, it never reads the hub: a git-less hub (the mutation mirror) still passes an unseeded consumer"
+_nogit="$(mktemp -d "${_work}/nogit.XXXXXX")"
+mkdir -p "${_nogit}/${_D}scripts" "${_nogit}/linux/scripts"
+cp "${_HUB_GATE}" "${_nogit}/${_D}scripts/"
+cp "${_hubfx}/linux/scripts/"*.py "${_nogit}/linux/scripts/"
+cp "${_hubfx}/${_D}owner.md" "${_nogit}/${_D}"
+t_assert_eq "0" "$(t_rc "${PY}" "${_nogit}/${_D}scripts/verify_doc_dupes.py" --against-hub --root "${_c}")" \
+  "the aggregator's no-shell case runs this in a mirror with no .git"
+t_assert_eq "2" "$(t_rc "${PY}" "${_nogit}/${_D}scripts/verify_doc_dupes.py" --against-hub --root "${_c}" --report)" \
+  "asked to scan, a hub git cannot list is a refusal, not an empty reference"
+
+t_case "seeded, a consumer passage that restates a hub page fails, naming both pages"
+_c="$(_consumer "${_PARA}" "")"
+t_assert_eq "1" "$(t_rc _hub --root "${_c}")" "a copy of a hub paragraph in a seeded consumer is a finding"
+_out="$(t_out _hub --root "${_c}")"
+t_assert_contains "${_out}" "README.md:"
+t_assert_contains "${_out}" "hub:${_D}owner.md:"
+t_assert_contains "${_out}" "replace the consumer's copy with a link"
+
+t_case "a pair budgeted in <root>/doc-dupes-hub.allow passes at its measurement"
+_n="$(t_out _hub --root "${_c}" | sed -n 's/^  \([0-9]*\) shared shingles.*/\1/p' | head -1)"
+_c="$(_consumer "${_PARA}" "README.md | ${_D}owner.md | ${_n} | fixture budget")"
+t_assert_eq "0" "$(t_rc _hub --root "${_c}")" "the row in the consumer's own allow file silences the pair"
+t_assert_contains "$(t_out _hub --root "${_c}")" "doc-dupes --against-hub OK"
+
+t_case "a budget row whose overlap is gone fails as stale"
+_c="$(_consumer "Nothing here resembles the hub at all; it talks about kitchen utensils, the weather in a different hemisphere, and bread." \
+  "README.md | ${_D}owner.md | 20 | fixture budget")"
+t_assert_eq "1" "$(t_rc _hub --root "${_c}")" "a row that measures nothing is cover for the next copy"
+t_assert_contains "$(t_out _hub --root "${_c}")" "no longer overlaps"
+
+t_case "two consumer pages sharing a passage are the plain mode's business, not this one's"
+_c="$(_consumer "${_root_para}" "")"
+printf '# Other\n\n%s\n' "${_root_para}" > "${_c}/other.md"
+t_git_commit "${_c}"
+t_assert_eq "0" "$(t_rc _hub --root "${_c}")" "only consumer <-> hub pairs count here"
+
+t_case "the hub itself is refused: it is the reference, not a consumer"
+t_assert_eq "2" "$(t_rc _hub)" "without --root the gate would grade the hub against its own pages"
+t_assert_contains "$(t_out _hub)" "is its own reference"
+
+t_case "run-lint-gates.sh runs the mode in its ratchet step and returns its verdict"
+# shellcheck source=../run-lint-gates.sh
+source "${TESTS_DIR}/../run-lint-gates.sh"
+_LINT_GATES_DIR="${_hubfx}/linux/scripts"
+_lint_gates_parse_args "$(_consumer "${_PARA}" "")"
+t_assert_eq "1" "$(t_rc _lint_gates_doc_dupes_hub)" "a seeded consumer restating the hub fails the aggregator"
+_lint_gates_parse_args "$(_consumer "${_PARA}")"
+t_assert_eq "0" "$(t_rc _lint_gates_doc_dupes_hub)" "an unseeded one passes"
+t_assert_contains "$(declare -f _lint_gates_ratchet)" "_lint_gates_doc_dupes_hub" "--ratchets must call it"
 
 t_summary

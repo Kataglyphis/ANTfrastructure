@@ -1222,6 +1222,9 @@ how to run it and what breaks; no filler, no marketing, no repetition.
   every cross-reference and every `docs/*.md` pointer in code; `doc-dupes`
   catches a passage reworded into a second page. Budgets live in
   `docs/scripts/*.allow` with a reason, and a stale row fails.
+- **A consumer page that restates a hub page fails too**, once the consumer seeds
+  `doc-dupes-hub.allow`: `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`
+  ([`code-quality-tooling.md`](docs/code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub)).
 - **A README is an overview, in this repo and every consumer.** Procedures go to
   `docs/`, family-wide facts to this hub, and the README links to both:
   [`docs/repository-family.md` § The README rule](docs/repository-family.md#the-readme-rule).

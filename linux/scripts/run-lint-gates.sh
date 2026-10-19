@@ -176,6 +176,15 @@ sys.exit(0 if gate_scope.assert_non_empty(RELS, ROOT, ["*.sh"], "allow", "ratche
 RATCHETSCOPE
 }
 
+# A consumer page restating a hub page; off until <root>/doc-dupes-hub.allow exists. See docs/code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub
+_lint_gates_doc_dupes_hub() {
+  _lint_gates_hub docs/scripts/verify_doc_dupes.py || return 1
+  _lint_gates_interpreter || return 1
+  printf '== verify_doc_dupes.py --against-hub --root %s ==\n' "${_LINT_GATES_ROOT}"
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --against-hub --root "${_LINT_GATES_ROOT}"
+}
+
 _lint_gates_ratchet() {
   local gate rc=0
   _lint_gates_interpreter || return 1
@@ -190,6 +199,7 @@ _lint_gates_ratchet() {
     # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
     ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}" || rc=1
   done
+  _lint_gates_doc_dupes_hub || rc=1
   if [ "${shell_scope}" -eq 1 ]; then
     return "${rc}"
   fi

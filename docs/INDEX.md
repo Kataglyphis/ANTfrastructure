@@ -151,6 +151,7 @@ The two halves of one topic often split:
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | **`dart format`**: never `dart format .`; the `environment: sdk:` floor picks the style, for code generators too | [`code-quality-tooling.md`](code-quality-tooling.md#dart-format-the-tracked-files-in-the-floors-style) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
+| **A consumer page that restates a hub page** — `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`, off until the consumer seeds `doc-dupes-hub.allow` | [`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
 | **Upgrading dependencies** — Renovate as a local CLI, why `--apply` refuses some submodules, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |

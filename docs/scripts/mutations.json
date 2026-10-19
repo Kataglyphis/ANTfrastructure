@@ -13705,5 +13705,85 @@
   "replace": "    awk -F'\\t' 'NF { printf \"guide\\t%s\\t%s\\t\\n\", $2, $3 }' >>\"${out}\"",
   "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
   "why": "a relative link resolves from the guide's own directory, which only its source path says"
+ },
+ {
+  "id": "doc-dupes.badges-are-not-prose",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "        if fence or line.startswith((\"|\", \"#\", \"<!--\", \"-->\", \"[![\", \"![\")):",
+  "replace": "        if fence or line.startswith((\"|\", \"#\", \"<!--\", \"-->\")):",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "every family README opens with a badge row of the same URL shape; read as prose it makes every consumer restate the hub's README"
+ },
+ {
+  "id": "doc-dupes.hub-pairs-cross-side-only",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "        if n <= threshold or a[0].startswith(HUB_TAG) == b[0].startswith(HUB_TAG):",
+  "replace": "        if n <= threshold:",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "--against-hub judges consumer <-> hub pairs only; counting two consumer pages, or two hub pages, against each other reports what the plain mode already owns"
+ },
+ {
+  "id": "doc-dupes.hub-off-until-seeded",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "    if not seeded:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "a consumer that has not seeded doc-dupes-hub.allow is reported, not failed; without the switch the first pin bump reds every consumer at once"
+ },
+ {
+  "id": "doc-dupes.hub-finding-fails",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "        _print_findings(findings, texts, HUB_ADVICE)\n        return 1",
+  "replace": "        _print_findings(findings, texts, HUB_ADVICE)\n        return 0",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "a seeded consumer restating a hub page must fail; printing the copy and exiting 0 is a gate that cannot go red"
+ },
+ {
+  "id": "doc-dupes.hub-budget-under-root",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "    ALLOW_FILE = REPO_ROOT / HUB_ALLOW_NAME",
+  "replace": "    ALLOW_FILE = HUB_ROOT / HUB_ALLOW_NAME",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "the budget is the consumer's, in its own diff; read from the hub, no consumer could ever seed or budget the gate"
+ },
+ {
+  "id": "doc-dupes.hub-stale-row-fails",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "    if _print_bookkeeping(sorted(set(allow) - used)):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "a budget row whose overlap is gone must fail, or it covers the next copy of the same pair"
+ },
+ {
+  "id": "doc-dupes.hub-root-refused",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "        return gate_scope.die(gate_scope.ScopeError(\"--against-hub grades a consumer's --root; the hub is its own reference\"))",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "the hub graded against itself pairs every page with its own copy; a run without --root must stop, not report"
+ },
+ {
+  "id": "doc-dupes.hub-consumer-half-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub docs/scripts/verify_doc_dupes.py || return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "the consumer half must run the mode and return its verdict, or a seeded consumer's lint lane passes every restated passage"
+ },
+ {
+  "id": "doc-dupes.hub-consumer-half-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_doc_dupes_hub || rc=1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "a gate function the ratchet step never calls runs in no consumer"
+ },
+ {
+  "id": "doc-dupes.hub-off-skips-the-scan",
+  "target": "docs/scripts/verify_doc_dupes.py",
+  "find": "    if not seeded and not args.report:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-doc-dupes.sh",
+  "why": "an unseeded consumer must not need the hub's git: run-lint-gates.sh reaches this step in the git-less mutation mirror, where listing the hub's pages exits 2"
  }
 ]

@@ -734,7 +734,8 @@ four things and gets all of it:
    measurement gates (code size,
    complexity, dead functions, comment size, stdout returns, masked
    declarations, trailing conditionals, shellcheck warnings) over the consumer's
-   own shell.
+   own shell. The same step grades the consumer's pages against the hub's
+   (`doc-dupes --against-hub`), off until `doc-dupes-hub.allow` is committed.
 3. **The pin suite.** `Submodule.Pins.Tests.ps1` asserts every submodule sits at
    its recorded, remotely reachable commit; consumers call
    `uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@develop`

@@ -542,7 +542,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1713 entries** over **152 distinct test commands**; both digits are
+manifest holds **1723 entries** over **152 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1021,6 +1021,33 @@ Fix a finding by moving a procedure, table or piece of history to `docs/` and li
 is no allowlist. `tests/test-readme-length.sh` drives both halves; the `readme-length.*`
 mutations prove the limit, the unterminated last line, the missing file, and that
 `run-lint-gates.sh` registers the gate and returns its verdict.
+
+## Consumer pages against the hub (`doc-dupes --against-hub`)
+
+`docs/scripts/verify_doc_dupes.py --against-hub --root <consumer>` grades a consumer's tracked
+pages against every tracked page of the hub the script ships in, records excluded, by the plain
+mode's rule: a consumer paragraph and a hub paragraph sharing more than 12 eight-word shingles is a
+copy, and a shingle held by more than five paragraphs is vocabulary. Only consumer ↔ hub pairs
+count; pairs inside either tree are the plain mode's. In both modes a badge or image line is
+markup, not prose, so the badge row every family README opens with matches nothing.
+
+- **Where it runs.** In every consumer, through `run-lint-gates.sh --ratchets`. Never in the hub,
+  which is the reference: `--against-hub` without a consumer `--root` exits 2.
+- **Off until seeded.** Without `<root>/doc-dupes-hub.allow` it says so, reads nothing and exits 0,
+  so a hub git cannot list (the mutation mirror) never fails it; `--report` lists what it would
+  find and still exits 0. An empty file turns it on. Rows are
+  `consumer page | hub page | budget | reason`, in that order, budgeted at the measurement; a row
+  whose overlap is gone fails.
+- **Fixing a finding.** Replace the consumer's passage with a link to the hub page
+  ([`INDEX.md`](INDEX.md) maps topic to page). Budget a pair only when the consumer must say it
+  too, and say why.
+- **Not covered.** A copy reworded below the threshold, code blocks and tables, and a hub
+  passage restated in other words.
+
+`tests/test-doc-dupes.sh` drives the mode against a fixture hub, and the aggregator's call; the
+`doc-dupes.hub-*` mutations prove the off switch and its git-free short cut, the failure once seeded, the consumer-side budget,
+the stale row, the cross-side rule, the refused hub root and the wiring, and
+`doc-dupes.badges-are-not-prose` the markup rule.
 
 ## Code-to-docs pointers (`doc-links`)
 

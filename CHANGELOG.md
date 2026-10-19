@@ -10,6 +10,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — a consumer page that restates a hub page fails
+
+- **`verify_doc_dupes.py --against-hub --root <consumer>`** grades a consumer's tracked pages
+  against every tracked page of the hub it ships in, by the same shingle rule: a consumer
+  paragraph and a hub paragraph sharing more than 12 eight-word shingles is a copy. Budgets are
+  the consumer's, in `<root>/doc-dupes-hub.allow` (`consumer page | hub page | budget | reason`),
+  and the mode is **off until that file exists**: it says so and exits 0 without reading the hub,
+  and `--report` lists what it would find. Without a consumer `--root` it exits 2.
+- **`run-lint-gates.sh --ratchets` runs it** in every consumer, beside `doc-links`.
+- **Badge and image lines are markup, not prose**, in both modes: every family README's badge
+  row matched the hub's. The hub's own run scans one paragraph fewer and keeps every budget.
+- `tests/test-doc-dupes.sh` drives the mode against a fixture hub and the aggregator call; ten new
+  `doc-dupes.*` mutations prove it ([`code-quality-tooling.md`](docs/code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub)).
+  No consumer is seeded yet; on 2026-10-19 nine of the twelve family repositories had a finding, 23 in all.
+
 ## 2026-10-19 — the hub stops restating its neighbours, and one wrong credit
 
 - **`geniex-local-ai-setup.md` §§ 1m/1n keep the GenieX measurements and link the lab for the

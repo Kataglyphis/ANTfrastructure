@@ -855,6 +855,9 @@ nothing to seed and it is safe the very first time the flag goes on. It grades
 every tracked Markdown page in the consumer — which is what puts a consumer's
 own `README.md` into the cross-reference graph at all — and it runs even when
 the tree carries no shell, because a Dart or Python repo still has pages.
+**`verify_doc_dupes.py --against-hub --root`** (2026-10-19) runs beside it: a consumer
+page that restates a hub page fails, once the consumer seeds `doc-dupes-hub.allow`
+([how it decides](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub)).
 
 A consumer with **no tracked shell at all** — a pure Dart or Python repo — may
 still pass the flag: the step asks `gate_scope.assert_non_empty` once with
