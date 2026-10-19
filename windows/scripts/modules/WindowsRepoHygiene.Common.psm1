@@ -80,14 +80,20 @@ function Get-TrackedGeneratedArtifact {
       Tracked paths matching caller-supplied generated-output patterns; empty means clean.
     .DESCRIPTION
       Catches generated output that was committed and never ignored, which Get-TrackedIgnoredFile cannot see.
+      Throws on a wildcard pathspec that ends in '/': git matches it against no file, so it would hold nothing.
     .PARAMETER Pattern
-      Git pathspecs to treat as generated output, e.g. 'Testing/', '**/__pycache__/'.
+      Git pathspecs to treat as generated output, e.g. 'Testing/', '**/__pycache__/*'.
   #>
   param(
     [Parameter(Mandatory)] [string]$RepoRoot,
     [Parameter(Mandatory)] [string[]]$Pattern
   )
 
+  $dead = @($Pattern | Where-Object { ($_ -replace '^:(\([^)]*\)|[!^/]*)', '') -match '[*?[].*/$' })
+  if ($dead.Count -gt 0) {
+    throw ("Get-TrackedGeneratedArtifact: a wildcard pathspec ending in '/' matches no file: {0}. Write {1}." -f
+      ($dead -join ', '), (($dead | ForEach-Object { "'$_*'" }) -join ', '))
+  }
   $gitArgs = @('ls-files', '--') + $Pattern
   return Invoke-GitIn -Path $RepoRoot -Arguments $gitArgs
 }

@@ -750,6 +750,13 @@ four things and gets all of it:
    its recorded, remotely reachable commit; consumers call
    `uses: Kataglyphis/ANTfrastructure/.github/workflows/submodule-pins.yml@develop`
    (the AGENTS.md template's § 3 names the suite) instead of copying the job.
+   **The generated-artifacts suite**, `shared/windows/tests/Repo.GeneratedArtifacts.Tests.ps1`,
+   fails on a tracked file that `.gitignore` also excludes, and on one under the repo's
+   generated-output pathspecs in `scripts/windows/generated-artifacts.txt` (one per line, `#`
+   starts a comment). Run it with `run-pester-suite`, `path:` set to that suite under
+   `third_party/ANTfrastructure/`, on a Windows runner checked out with `submodules: true`. A
+   wildcard pathspec ending in `/` (`**/__pycache__/`, `build*/`) matches no file in git, so the
+   suite refuses it: write `**/__pycache__/*`.
 4. **Python repos** get the whole CI surface from the reusable
    `python-ci-linux.yml` / `python-ci-windows.yml` workflows —
    [`python-ci.md`](python-ci.md).

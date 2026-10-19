@@ -10,6 +10,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — one generated-artifacts suite for every consumer
+
+- **`shared/windows/tests/Repo.GeneratedArtifacts.Tests.ps1`** fails on a tracked file that
+  `.gitignore` also excludes and on one under the repo's generated-output pathspecs, read from
+  `scripts/windows/generated-artifacts.txt` (or `-Pattern`). AccelerANTgine, BeschleunigerBallett
+  and OxidANT each carried a 47-line copy; it runs under Pester 3.4.0 and 5+, and a setup error
+  surfaces in each case, since Pester 6.1 reports a throw from `BeforeAll` as an escaped `break`
+  ([`adopting-in-a-new-project.md` § 9](docs/adopting-in-a-new-project.md#9-quality-gates)).
+- **`Get-TrackedGeneratedArtifact` refuses a wildcard pathspec ending in `/`**: git matches
+  `**/__pycache__/` or `build*/` against no file, so the check held nothing there. Measured on
+  the consumers' lists: BeschleunigerBallett's `**/__pycache__/` and AccelerANTgine's `build*/`
+  and `docs/test-results*/` were such dead entries; with `*` appended all three repos pass.
+  `WindowsRepoHygiene.Common.Tests.ps1` and `Shared.GeneratedArtifacts.Tests.ps1` (Pester 3.4.0
+  and 6.1.0, child process) prove both.
+
 ## 2026-10-19 — the hub runs a Python repo's Windows CI build
 
 - **`windows/scripts/python/Invoke-PythonCiBuild.ps1`** runs the Linux lane's three steps on

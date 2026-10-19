@@ -115,6 +115,21 @@ Describe 'WindowsRepoHygiene.Common' {
       @(Get-TrackedGeneratedArtifact -RepoRoot $script:child -Pattern @('Testing/', 'docs/build/')).Count |
         Should -Be 0
     }
+
+    It 'refuses a wildcard pathspec ending in a slash, which git matches against no file' {
+      $repo = script:New-TestRepo -Name 'pycache-artifact'
+      New-Item -ItemType Directory -Path (Join-Path $repo 'pkg\__pycache__'), (Join-Path $repo 'build-x') -Force | Out-Null
+      script:Add-TestCommit -Path $repo -File 'pkg/__pycache__/m.pyc' -Content 'x' -Message 'bytecode'
+      script:Add-TestCommit -Path $repo -File 'build-x/out.o' -Content 'x' -Message 'object'
+
+      @(& git -C $repo ls-files -- '**/__pycache__/' 'build*/').Count | Should -Be 0
+      foreach ($dead in '**/__pycache__/', 'build*/', ':(glob)**/__pycache__/', 'pkg/__pycache?/') {
+        { Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('logs/', $dead) } |
+          Should -Throw -ExpectedMessage "*matches no file: $dead. Write '$dead*'.*"
+      }
+      (@(Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('**/__pycache__/*', 'build*/*', 'pkg/__pycache__/')) -join ',') |
+        Should -Be 'build-x/out.o,pkg/__pycache__/m.pyc'
+    }
   }
 
   Context 'Test-SubmoduleCommitReachable' {

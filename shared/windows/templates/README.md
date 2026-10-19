@@ -7,8 +7,9 @@ modules.
 |---|---|---|
 | `Resolve-BuildModule.ps1` | `scripts/windows/Resolve-BuildModule.ps1` (or `scripts/windows/`) | Adjust `$script:RepoRootRelativeToHere` if the script does not sit exactly two directories below the repo root. Nothing else. |
 
-The Pester suite beside this directory, `../tests/Submodule.Pins.Tests.ps1`, is not
-a template: consumers run it from the submodule and never copy it
+The Pester suites beside this directory, `../tests/Submodule.Pins.Tests.ps1` and
+`../tests/Repo.GeneratedArtifacts.Tests.ps1`, are not templates: consumers run them from the
+submodule and never copy them
 ([`adopting-in-a-new-project.md` § 9](../../../docs/adopting-in-a-new-project.md#9-quality-gates)).
 
 ## Why this one file is copied rather than imported
