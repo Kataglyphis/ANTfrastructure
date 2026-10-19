@@ -270,6 +270,35 @@ function Resolve-DockerExe {
 
 <#
 .SYNOPSIS
+  nerdctl for Linux containers: -Override, NERDCTL_EXE, PATH, then Rancher Desktop's copy; never Stevedore's.
+.DESCRIPTION
+  Stevedore's nerdctl.exe drives the Windows containerd, where a Linux image fails without naming the engine.
+  -AllowMissing returns $null instead of throwing, for a guard that only asks whether a Linux container can be running.
+#>
+function Resolve-NerdctlExe {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$Override, [switch]$AllowMissing)
+
+    $stevedore = if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Stevedore\bin' } else { '' }
+    $onPath = @(Get-Command nerdctl -All -CommandType Application -ErrorAction SilentlyContinue |
+            ForEach-Object Source | Where-Object { -not $stevedore -or (Split-Path -Parent $_) -ne $stevedore })
+    $candidates = @(
+        $Override,
+        $env:NERDCTL_EXE,
+        $(if ($onPath.Count -gt 0) { $onPath[0] }),
+        $(if ($env:ProgramFiles) { Join-Path $env:ProgramFiles 'Rancher Desktop\resources\resources\win32\bin\nerdctl.exe' })
+    ) | Where-Object { $_ }
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return (Resolve-Path -LiteralPath $candidate).Path }
+    }
+    if ($AllowMissing) { return $null }
+    throw 'nerdctl not found. Install Rancher Desktop, or put nerdctl on PATH.'
+}
+
+<#
+.SYNOPSIS
   Builds docker isolation arguments.
 .DESCRIPTION
   Process isolation exposes all host CPUs; Hyper-V isolation defaults to 2, so
@@ -878,6 +907,7 @@ Export-ModuleMember -Function @(
     'Remove-StaleContainerSources',
     'Test-BuildArtifactsDelivered',
     'Resolve-DockerExe',
+    'Resolve-NerdctlExe',
     'Get-ContainerIsolationArgs',
     'Test-ContainerBindMount',
     'Remove-BuildContainerSafe',

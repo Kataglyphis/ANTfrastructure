@@ -113,5 +113,46 @@ Describe 'WindowsBuildSweep.Common' {
       }
       $args_seen[-3..-1] -join '|' | Should -BeExactly "bash|-c|set -e`necho a`necho b`n"
     }
+
+    # Every engine call, one line each, so the volume steps before the run are visible too.
+    function script:Get-FakeEngineCall {
+        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake engine runs in a child scope the tested code resolves; only the global scope survives it')]
+        param([Parameter(Mandatory)][scriptblock]$Body)
+        $global:FakeEngineCalls = [System.Collections.Generic.List[string]]::new()
+        Set-Item function:global:FakeEngineRun { $global:FakeEngineCalls.Add("$args") }
+        try {
+            $null = & $Body
+            return @($global:FakeEngineCalls)
+        } finally {
+            Remove-Item function:global:FakeEngineRun
+            Remove-Variable -Name FakeEngineCalls -Scope Global
+        }
+    }
+
+    It 'chowns each named volume with the image it runs, on its platform, never a stock image' {
+      $calls = @(Get-FakeEngineCall {
+        Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command 'true' -DockerExe 'FakeEngineRun' -NamedVolumes 'cache:/cache' -Platform 'linux/arm64'
+      })
+      $calls.Count | Should -Be 3
+      $calls[0] | Should -BeExactly 'volume create cache'
+      $calls[1] | Should -BeExactly 'run --rm --user root --mount type=volume,source=cache,target=/v --platform linux/arm64 --entrypoint chown img -R 1001:1001 /v'
+      $calls[2] | Should -BeLike 'run --rm --platform linux/arm64 -v C:\repo:/workspace -w /workspace --mount type=volume,source=cache,target=/cache img bash -c *'
+      ($calls -join ' ') | Should -Not -Match 'alpine'
+    }
+
+    It 'passes -Privileged, -Device, -Env and -ExtraMount to the run' {
+      $calls = @(Get-FakeEngineCall {
+        Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command 'true' -DockerExe 'FakeEngineRun' -Privileged -Device '/dev/kvm' `
+          -Env 'CI=true', 'A=b c' -ExtraMount 'type=bind,source=C:\k,target=/run/secrets/k,readonly'
+      })
+      $calls[-1] | Should -BeLike 'run --rm --privileged --device /dev/kvm --platform linux/amd64 -e CI=true -e A=b c -v C:\repo:/workspace -w /workspace --mount type=bind,source=C:\k,target=/run/secrets/k,readonly img bash -c *'
+    }
+
+    It 'finds nerdctl through Resolve-NerdctlExe when -Engine nerdctl names no -DockerExe' {
+      Mock -ModuleName WindowsBuildSweep.Common -CommandName Resolve-NerdctlExe { 'FakeEngineRun' }
+      $calls = @(Get-FakeEngineCall { Invoke-InLinuxContainerBuild -RepoRoot 'C:\repo' -Image 'img' -Command 'true' -Engine nerdctl })
+      $calls.Count | Should -Be 1
+      Should -Invoke Resolve-NerdctlExe -ModuleName WindowsBuildSweep.Common -Times 1 -Exactly
+    }
   }
 }

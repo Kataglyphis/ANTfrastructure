@@ -10,6 +10,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — Linux containers from Windows: one nerdctl lookup, the family image chowns
+
+- **`Resolve-NerdctlExe`** (`WindowsContainerBuild.Reuse`, the twin of `Resolve-DockerExe`):
+  `-Override`, `NERDCTL_EXE`, `PATH`, then Rancher Desktop's copy, never Stevedore's
+  `nerdctl.exe`, which drives the Windows containerd; `-AllowMissing` returns `$null` for a guard
+  ([`rancher-desktop-linux-containers.md`](docs/rancher-desktop-linux-containers.md#use-nerdctl-not-docker)).
+  OmniAccelerANT resolved it three times: `Invoke-DartChecks.ps1`, `Invoke-Renovate.ps1` and
+  `WindowsLaneGuard.Common`.
+- **`Invoke-InLinuxContainerBuild` chowns its named volumes with the image it runs**
+  (`--entrypoint chown`, on its `--platform`), no longer with `alpine:3.20`, finds nerdctl through
+  `Resolve-NerdctlExe` for `-Engine nerdctl`, and takes `-Privileged`, `-Device`, `-Env` and
+  `-ExtraMount`. Run against `:latest` through Rancher's nerdctl: the volume came out owned by
+  1001, uid 1001 wrote into it, `-Env` arrived.
+
 ## 2026-10-19 — two suites and the data fetcher hold on a Windows checkout
 
 - **`test-collect-release-assets.sh`'s `_job` drops a trailing `\r`**: on a Windows

@@ -48,6 +48,13 @@ talking to Linux.
 real isolation, and images pulled into one namespace are invisible from another
 — an image can be present and still "not found".
 
+From PowerShell, `Resolve-NerdctlExe` (`WindowsContainerBuild.Reuse`) finds this binary:
+`-Override`, `NERDCTL_EXE`, `PATH`, then Rancher Desktop's copy. It skips
+`Stevedore\bin\nerdctl.exe`, which drives the Windows containerd. `Invoke-InLinuxContainerBuild`
+(`WindowsBuildSweep.Common`) runs a bash command there with the repo bound at `/workspace`,
+creates and chowns `-NamedVolumes` with the image it runs, and passes `-Privileged`, `-Device`,
+`-Env` and `-ExtraMount` through.
+
 If you would rather use the `docker` CLI, switch Rancher Desktop's container
 engine from `containerd` to `dockerd (moby)` in its settings. Then `docker`
 targets Rancher and `nerdctl` stops being the entry point. Pick one and stay

@@ -209,3 +209,28 @@ Describe 'WindowsContainerBuild.Reuse: Wait-ContainerExit contract' {
         Assert-Null (Get-Command Get-ContainerInspectField -ErrorAction SilentlyContinue)
     }
 }
+
+Describe 'WindowsContainerBuild.Reuse: Resolve-NerdctlExe' {
+
+    It 'takes -Override, NERDCTL_EXE, PATH, then Rancher Desktop''s copy, and skips Stevedore''s Windows nerdctl' {
+        Invoke-InTestDir { param($d)
+            $exe = @{ stevedore = "$d\pf\Stevedore\bin\nerdctl.exe"; rancher = "$d\pf\Rancher Desktop\resources\resources\win32\bin\nerdctl.exe"
+                other = "$d\other\nerdctl.exe"; env = "$d\env\nerdctl.exe"; override = "$d\override\nerdctl.exe" }
+            foreach ($path in $exe.Values) { $null = New-Item -ItemType File -Force -Path $path }
+            $resolve = { param($Path, [string]$Override = '') Invoke-WithEnv @{ ProgramFiles = "$d\pf"; PATH = $Path; NERDCTL_EXE = $null } { Resolve-NerdctlExe -Override $Override } }
+            Assert-Equal $exe.rancher (& $resolve "$d\pf\Stevedore\bin") 'Stevedore''s copy drives the Windows containerd'
+            Assert-Equal $exe.other (& $resolve "$d\pf\Stevedore\bin;$d\other")
+            Assert-Equal $exe.override (& $resolve "$d\other" $exe.override)
+            Invoke-WithEnv @{ ProgramFiles = "$d\pf"; PATH = "$d\other"; NERDCTL_EXE = $exe.env } { Assert-Equal $exe.env (Resolve-NerdctlExe) }
+        }
+    }
+
+    It 'throws without a nerdctl, and returns $null with -AllowMissing' {
+        Invoke-InTestDir { param($d)
+            Invoke-WithEnv @{ ProgramFiles = $d; PATH = $d; NERDCTL_EXE = $null } {
+                Assert-Throws { Resolve-NerdctlExe } -MessagePattern 'nerdctl not found'
+                Assert-Null (Resolve-NerdctlExe -AllowMissing)
+            }
+        }
+    }
+}

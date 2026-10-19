@@ -7,6 +7,11 @@
 
 Set-StrictMode -Version Latest
 
+# Resolve-NerdctlExe, for -Engine nerdctl; no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
+if (-not (Get-Command Resolve-NerdctlExe -ErrorAction SilentlyContinue)) {
+  Import-Module (Join-Path $PSScriptRoot 'WindowsContainerBuild.Reuse.psm1') -DisableNameChecking
+}
+
 function Invoke-SweepStep {
   <#
     .SYNOPSIS
@@ -87,11 +92,11 @@ function Invoke-InLinuxContainerBuild {
     .PARAMETER RepoRoot
       Host path bind-mounted at -WorkDir.
     .PARAMETER Image
-      Fully qualified image reference to run.
+      Fully qualified image reference to run; it also chowns -NamedVolumes, so no stock image is pulled.
     .PARAMETER Command
       Bash command run with `set -e` prepended, so a failing line fails the step.
     .PARAMETER Engine
-      docker (default) or nerdctl; an explicit -DockerExe still wins.
+      docker (default) or nerdctl, which Resolve-NerdctlExe finds; an explicit -DockerExe still wins.
     .PARAMETER Platform
       Overrides linux/amd64; arm64 needs binfmt per VM boot (docs/rancher-desktop-linux-containers.md).
     .PARAMETER Name / -KeepContainer
@@ -100,6 +105,12 @@ function Invoke-InLinuxContainerBuild {
       'volume-name:/mount/path' entries, chowned to uid 1001; long --mount form, as Windows nerdctl binds `-v name:/path`.
     .PARAMETER EnvFile
       Passed through as --env-file.
+    .PARAMETER Env
+      'NAME=value' entries, each passed as -e.
+    .PARAMETER ExtraMount
+      Whole --mount specs, e.g. 'type=bind,source=C:\key,target=/run/secrets/key,readonly'.
+    .PARAMETER Device
+      Host devices passed as --device, e.g. /dev/kvm.
   #>
   param(
     [Parameter(Mandatory)] [string]$RepoRoot,
@@ -112,29 +123,38 @@ function Invoke-InLinuxContainerBuild {
     [string]$Name = '',
     [switch]$KeepContainer,
     [string[]]$NamedVolumes = @(),
-    [string]$EnvFile = ''
+    [string]$EnvFile = '',
+    [string[]]$Env = @(),
+    [string[]]$ExtraMount = @(),
+    [string[]]$Device = @(),
+    [switch]$Privileged
   )
 
-  $exe = if ($PSBoundParameters.ContainsKey('DockerExe')) { $DockerExe } else { $Engine }
+  $exe = if ($PSBoundParameters.ContainsKey('DockerExe')) { $DockerExe } elseif ($Engine -eq 'nerdctl') { Resolve-NerdctlExe } else { 'docker' }
+  $platformArgs = if ($Platform) { @('--platform', $Platform) } else { @() }
 
   foreach ($spec in $NamedVolumes) {
     $volume = $spec.Split(':')[0]
     # Both steps are safe to repeat, so no exists-check to get wrong.
     & $exe volume create $volume | Out-Null
-    & $exe run --rm --user root --mount "type=volume,source=$volume,target=/v" `
-      alpine:3.20 chown -R 1001:1001 /v | Out-Null
+    & $exe run --rm --user root --mount "type=volume,source=$volume,target=/v" @platformArgs `
+      --entrypoint chown $Image -R 1001:1001 /v | Out-Null
   }
 
   $runArgs = @('run')
   if (-not $KeepContainer) { $runArgs += '--rm' }
   if ($Name) { $runArgs += @('--name', $Name) }
-  if ($Platform) { $runArgs += @('--platform', $Platform) }
+  if ($Privileged) { $runArgs += '--privileged' }
+  foreach ($dev in $Device) { $runArgs += @('--device', $dev) }
+  $runArgs += $platformArgs
   if ($EnvFile) { $runArgs += @('--env-file', $EnvFile) }
+  foreach ($pair in $Env) { $runArgs += @('-e', $pair) }
   $runArgs += @('-v', "${RepoRoot}:${WorkDir}", '-w', $WorkDir)
   foreach ($spec in $NamedVolumes) {
     $parts = $spec.Split(':')
     $runArgs += @('--mount', "type=volume,source=$($parts[0]),target=$($parts[1])")
   }
+  foreach ($spec in $ExtraMount) { $runArgs += @('--mount', $spec) }
   # A caller's here-string carries its file's CRLF, and bash reads `set -e<CR>` as an invalid option.
   $runArgs += @($Image, 'bash', '-c', "set -e`n$($Command -replace "`r`n", "`n")")
 

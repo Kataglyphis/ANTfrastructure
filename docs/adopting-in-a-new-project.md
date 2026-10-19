@@ -628,6 +628,8 @@ links one list instead of keeping its own.
 | Need | Use | Defined in | Not |
 | --- | --- | --- | --- |
 | `docker.exe` discovery (Stevedore) | `Resolve-DockerExe` | [`WindowsContainerBuild.Reuse.psm1`](../windows/scripts/modules/WindowsContainerBuild.Reuse.psm1) | a hand-rolled candidate list |
+| `nerdctl` discovery (Rancher Desktop, never Stevedore's) | `Resolve-NerdctlExe` (`-AllowMissing` for a guard) | same file | `Get-Command nerdctl` plus a Rancher path per script |
+| A bash command in a Linux container from Windows: named volumes chowned by the run's image, `-Privileged`, `-Device`, `-Env`, `-ExtraMount` | `Invoke-InLinuxContainerBuild` | [`WindowsBuildSweep.Common.psm1`](../windows/scripts/modules/WindowsBuildSweep.Common.psm1), [`rancher-desktop-linux-containers.md`](rancher-desktop-linux-containers.md#use-nerdctl-not-docker) | a hand-built `nerdctl run` with its own volume chown |
 | `--isolation process` and friends | `Get-ContainerIsolationArgs` | same file | inline flags |
 | Container teardown | `Remove-BuildContainerSafe` | same file | `docker rm -f`, which misses the wcifs teardown lock |
 | Bind-mount probe, artifact delivery | `Test-ContainerBindMount`, `Test-BuildArtifactsDelivered` | same file | assuming a green build delivered something |
