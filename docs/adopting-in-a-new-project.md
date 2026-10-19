@@ -350,7 +350,8 @@ Reusable core, already written:
 Start from the copy-and-edit templates in
 [`shared/agentic-loop/templates/`](../shared/agentic-loop/templates/README.md)
 (config with every project-specific field marked `TODO`, plus both runner
-wrappers). A consumer supplies four things:
+wrappers, which `.antfrastructure-shared.manifest` declares as `agentic-loop-sh` and
+`agentic-loop-ps1` so the shared-config gate watches them). A consumer supplies four things:
 
 1. **`BACKLOG.md`** with the checkbox protocol: `- [ ]` actionable, `- [b]`
    blocked (skipped, and excluded from the pending count so a blocked-only

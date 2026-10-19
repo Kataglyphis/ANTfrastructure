@@ -101,7 +101,15 @@ function Get-Comparable {
   $lines = @($text -split "`n")
   if ($Mode -eq 'body') {
     $first = 0
-    while ($first -lt $lines.Count -and (Test-ProseLine $lines[$first])) { $first++ }
+    # A leading <# ... #> block is prose too: PowerShell's comment-based help is a script's header.
+    while ($first -lt $lines.Count) {
+      if ($lines[$first].TrimStart().StartsWith('<#')) {
+        while ($first -lt $lines.Count -and -not $lines[$first].Contains('#>')) { $first++ }
+      } elseif (-not (Test-ProseLine $lines[$first])) {
+        break
+      }
+      $first++
+    }
     if ($first -ge $lines.Count) {
       throw "'$Path' has no code line; a body-mode file cannot be all prose."
     }

@@ -10,6 +10,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the agentic-loop runners are watched copies
+
+- **`shared-assets.manifest` registers `agentic-loop-sh` and `agentic-loop-ps1`** in body mode:
+  OmniAccelerANT and BeschleunigerBallett carried `Run-AgenticLoop.sh` and
+  `Invoke-AgenticLoop.ps1` as copies of the templates that nothing compared. In a PowerShell file
+  a leading `<# … #>` help block now counts as header prose, in both twins; `head -` is the bash
+  runner's knob, since its `--help` prints the consumer's header
+  ([`shared/config/README.md`](shared/config/README.md#the-template-trees-are-owners-too)).
+- **The bash template's header sits above `set -euo pipefail`**, so body mode starts after it,
+  and the template reaches the library through `scripts/linux/lib/antfrastructure.sh`, as
+  BeschleunigerBallett's copy already did, instead of a `third_party` literal.
+- Not registered: the five consumers' `renovate-local.sh` wrappers and ANThology's
+  `scripts/lib/find-hub.sh` are their own code, not copies of a template; ANThology's sibling
+  probe stays its own, since no other consumer lacks the submodule.
+- Read with both twins over the two consumers' runners: `DRIFTED` as they are, in sync once
+  re-based on the templates under their own headers, and `DRIFTED` again with one planted line.
+  `test-shared-config-sync.sh` adds the help-block case; 2 `shared-config.*` and 2 `shared-assets.*`
+  mutations (a new declared family).
+
 ## 2026-10-19 — the hub's docs build from the image, offline
 
 - **`linux/scripts/build-docs.sh` no longer installs Sphinx from PyPI in CI.** In the image its

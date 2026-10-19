@@ -168,3 +168,5 @@ mutation-family:docs-site
 mutation-family:release
 # The data-lock fetcher and its CMake twin: lib/fetch-data-lock.py and cmake/KataglyphisFetchData.cmake; proof: test-fetch-data-lock.sh.
 mutation-family:data-lock
+# The shared-assets registry's rows (shared/config/shared-assets.manifest), a data file no slug owns; proof: test-shared-config-sync.sh.
+mutation-family:shared-assets

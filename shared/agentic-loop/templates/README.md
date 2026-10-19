@@ -11,9 +11,16 @@ logic lives in `windows/scripts/modules/WindowsAgenticLoop.Common.psm1` and
   entry's `testCommand`, and the Bash loop checks nothing, so grep for `TODO`
   before the first run.
 - `Invoke-AgenticLoop.ps1` → `scripts/agentic-loop/Invoke-AgenticLoop.ps1`.
-  Nothing, unless your submodule path differs.
-- `Run-AgenticLoop.sh` → `scripts/agentic-loop/Run-AgenticLoop.sh`. Same;
-  `chmod +x`.
+  Write your own `<# … #>` help; the rest stays the template's.
+- `Run-AgenticLoop.sh` → `scripts/agentic-loop/Run-AgenticLoop.sh`, `chmod +x`. Write your
+  own header above `set -euo pipefail` and fit the `head -N "$0" | tail -M` line that prints
+  it as `--help`; the rest stays the template's. It reaches the library through
+  `scripts/linux/lib/antfrastructure.sh`.
+
+Both runners are copies the shared-config gate watches: declare `agentic-loop-sh` and
+`agentic-loop-ps1` in `.antfrastructure-shared.manifest`, and `sync-shared-config.sh --check`
+compares each from its first code line down
+([`shared/config/README.md`](../../config/README.md#the-template-trees-are-owners-too)).
 
 You also need a `BACKLOG.md` at the repo root using the checkbox protocol:
 `- [ ]` actionable, `- [b]` blocked (skipped by the executor and excluded

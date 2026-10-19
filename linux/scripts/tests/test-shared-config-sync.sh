@@ -94,6 +94,32 @@ _check "${_d}"
 t_assert_eq "1" "${rc}" "an edited code line is drift even under a rewritten header"
 t_assert_contains "${OUT}" "DRIFTED scripts/linux/lib/antfrastructure.sh"
 
+# _loop_consumer: the agentic-loop runners under this consumer's own headers, PowerShell's a <# #> help block.
+_loop_consumer() {
+  local d t="${HUB}/shared/agentic-loop/templates"
+  d="$(mktemp -d "${_work}/loop.XXXXXX")"
+  mkdir -p "${d}/scripts/agentic-loop"
+  {
+    printf '#!/usr/bin/env bash\n# The consumer loop.\n'
+    sed -n '/^set -euo pipefail$/,$p' "${t}/Run-AgenticLoop.sh" | sed 's/head -28 "\$0" | tail -27/head -2 "$0" | tail -1/'
+  } > "${d}/scripts/agentic-loop/Run-AgenticLoop.sh"
+  {
+    printf '#requires -Version 7.0\n<#\n.SYNOPSIS\n  The consumer loop.\n#>\n'
+    sed -n '/^param(/,$p' "${t}/Invoke-AgenticLoop.ps1"
+  } > "${d}/scripts/agentic-loop/Invoke-AgenticLoop.ps1"
+  printf 'agentic-loop-sh\nagentic-loop-ps1\n' > "${d}/.antfrastructure-shared.manifest"
+  printf '%s' "${d}"
+}
+
+t_case "'body' mode: a leading <# #> help block is the consumer's header, and the help range a knob"
+_d="$(_loop_consumer)"; _check "${_d}"
+t_assert_eq "0" "${rc}" "the runners' own help is prose, as a bash header is; output was: ${OUT}"
+t_assert_contains "$(cat "${_d}/scripts/agentic-loop/Run-AgenticLoop.sh")" 'head -2 "$0" | tail -1'
+sed -i 's/^param(\[string\]\$Engine = .., /param([string]$Engine = "opencode", /' "${_d}/scripts/agentic-loop/Invoke-AgenticLoop.ps1"
+_check "${_d}"
+t_assert_eq "1" "${rc}" "the first line after the help block is code again"
+t_assert_contains "${OUT}" "DRIFTED scripts/agentic-loop/Invoke-AgenticLoop.ps1"
+
 t_case "an id ANTfrastructure does not own is broken INPUT (2), not a finding"
 _d="$(_consumer)"
 printf 'not-an-asset\n' >> "${_d}/.antfrastructure-shared.manifest"

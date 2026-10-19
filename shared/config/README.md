@@ -231,6 +231,13 @@ are legitimate and one is not:
   value: rewrite the line itself and it is drift again.
 - **Everything else is drift**, including comments below the first code line.
 
+**The agentic-loop runners are rows too** (2026-10-19): `agentic-loop-sh` and
+`agentic-loop-ps1`, the two files OmniAccelerANT and BeschleunigerBallett copied from
+`shared/agentic-loop/templates/`. In a PowerShell file a leading `<# … #>` block counts as
+header prose, since a script's comment-based help names its repository; the first line after it
+is code. `Run-AgenticLoop.sh` prints its own header as `--help` with `head -N "$0" | tail -M`,
+so `head -` is its knob: the range follows the consumer's header length.
+
 ## The bash twin
 
 `sync-shared-config.sh` is a full reimplementation, not a wrapper, and it is

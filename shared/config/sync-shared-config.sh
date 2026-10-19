@@ -142,9 +142,18 @@ _ssc_read_data_rows() {
     done
 }
 
+# A leading <# ... #> block is prose too: PowerShell's comment-based help is a script's header.
 _ssc_first_code_line() {
-    local path="$1" first=0
-    while [ "$first" -lt ${#SSC_LINES[@]} ] && _ssc_is_prose_line "${SSC_LINES[$first]}"; do
+    local path="$1" first=0 line
+    while [ "$first" -lt ${#SSC_LINES[@]} ]; do
+        line="$(_ssc_trim "${SSC_LINES[$first]}")"
+        if [ "${line#<\#}" != "$line" ]; then
+            while [ "$first" -lt ${#SSC_LINES[@]} ] && [ "${SSC_LINES[$first]#*\#>}" = "${SSC_LINES[$first]}" ]; do
+                first=$((first + 1))
+            done
+        elif ! _ssc_is_prose_line "$line"; then
+            break
+        fi
         first=$((first + 1))
     done
     if [ "$first" -ge ${#SSC_LINES[@]} ]; then

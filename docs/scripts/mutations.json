@@ -14865,5 +14865,37 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-build-docs.sh",
   "why": "a requirement only an extra asks for is no requirement of the build"
+ },
+ {
+  "id": "shared-config.help-block-is-header",
+  "target": "shared/config/sync-shared-config.sh",
+  "find": "        if [ \"${line#<\\#}\" != \"$line\" ]; then",
+  "replace": "        if false; then",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "a PowerShell runner's comment-based help names its repository, and comparing it would read every consumer as drifted"
+ },
+ {
+  "id": "shared-config.help-block-ends-at-its-close",
+  "target": "shared/config/sync-shared-config.sh",
+  "find": "[ \"${SSC_LINES[$first]#*\\#>}\" = \"${SSC_LINES[$first]}\" ]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "the code after the help block is the copy under test; skipping past it compares nothing"
+ },
+ {
+  "id": "shared-assets.agentic-loop-runners-registered",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "agentic-loop-ps1     | shared/agentic-loop/templates/Invoke-AgenticLoop.ps1 | scripts/agentic-loop/Invoke-AgenticLoop.ps1 | body  |\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "the runners were copied into two consumers and watched by nothing"
+ },
+ {
+  "id": "shared-assets.help-range-is-a-knob",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  | head -\n",
+  "replace": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  |\n",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "--help prints the consumer's own header, whose length the head/tail range follows"
  }
 ]
