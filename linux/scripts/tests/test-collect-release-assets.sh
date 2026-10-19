@@ -452,8 +452,8 @@ cp "${w}/dist/${p}-cp314-cp314-win_amd64.whl" "${a}/packages-linux-x64-copy/"
 t_assert_fails collect wdc-2 --options "${work}/webdavclient.options" "${a}" "${work}/wdc-r2"
 t_assert_contains "$(log wdc-2)" "two artifacts carry ${p}-cp314-cp314-win_amd64.whl"
 
-# _job <name>: the lines of one job of the workflow, from its key to the next job's.
-_job() { awk -v job="  $1:" '$0 == job { on = 1; next } on && /^  [a-z-]+:$/ { exit } on' "${WORKFLOW}"; }
+# _job <name>: the lines of one job of the workflow, from its key to the next job's; a CRLF checkout's \r is dropped.
+_job() { awk -v job="  $1:" '{ sub(/\r$/, "") } $0 == job { on = 1; next } on && /^  [a-z-]+:$/ { exit } on' "${WORKFLOW}"; }
 
 t_case "release-publish.yml: the check job reads, the publish job writes, a stage typo fails"
 check="$(_job check)"

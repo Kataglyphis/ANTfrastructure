@@ -63,7 +63,8 @@ One line per file, `#` for comments, whitespace-separated:
   `kataglyphis-models` or `kataglyphis-assets` under `%LOCALAPPDATA%` or `~/.cache`. A bare
   `<sha256>` entry, as the first model fetchers wrote it, still serves.
 - **Every cached copy, every download and every target is hashed**; a mismatch fails and leaves
-  neither the target nor a part behind. An http(s) download gets three attempts; a failed one
+  neither the target nor a part behind, and so does a refused rename (a Windows bind mount
+  answered one with `WinError 3`). An http(s) download gets three attempts; a failed one
   names the cache path an offline copy goes to.
 - **It writes by one rename**, a file `0644` whatever the umask, and one fetch holds a cache at a
   time (`<cache>/.lock`). It exits 1 on a failed fetch and 2 on bad arguments.

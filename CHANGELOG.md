@@ -10,6 +10,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — two suites and the data fetcher hold on a Windows checkout
+
+- **`test-collect-release-assets.sh`'s `_job` drops a trailing `\r`**: on a Windows
+  `core.autocrlf` checkout `release-publish.yml` has CRLF lines, so no job key matched and 10 of
+  129 assertions failed in `:latest`. 129/129 now on this CRLF checkout and on an LF copy.
+- **`fetch-data-lock.py`'s `place_file` removes `<file>.part` when anything after the copy
+  fails**: in `:winamd64` on a bind mount `os.replace` raised `WinError 3` and left the part
+  beside the target, which [`data-repositories.md`](docs/data-repositories.md#the-hubs-fetcher)
+  says never happens. `test-fetch-data-lock.sh` puts a directory where the file goes (69
+  assertions in `:latest`); `data-lock.failed-place-leaves-no-part` bites, and
+  `data-lock.readable-by-all` follows the new indentation.
+
 ## 2026-10-19 — the CI compiler cache moves in and out through WindowsBuild.Common
 
 - **`Restore-CiCompilerCache` / `Save-CiCompilerCache`** move `CI_COMPILER_CACHE`'s sccache (and

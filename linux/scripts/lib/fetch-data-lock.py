@@ -122,12 +122,16 @@ def cached_copy(sha: str, name: str, url: str, cache: Path) -> Path:
 
 
 def place_file(cached: Path, target: Path) -> None:
-    """The cached file at target, by one rename, readable by every user."""
+    """The cached file at target, by one rename, readable by every user; a failure leaves no part behind."""
     part = target.with_name(target.name + ".part")
-    shutil.copyfile(cached, part)
-    # A umask of 077 would make it 0600, and a service user must read the model.
-    part.chmod(0o644)
-    part.replace(target)
+    try:
+        shutil.copyfile(cached, part)
+        # A umask of 077 would make it 0600, and a service user must read the model.
+        part.chmod(0o644)
+        part.replace(target)
+    except BaseException:
+        part.unlink(missing_ok=True)
+        raise
 
 
 def archive_name(file: str) -> str:

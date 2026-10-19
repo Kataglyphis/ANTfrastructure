@@ -14653,10 +14653,18 @@
  {
   "id": "data-lock.readable-by-all",
   "target": "linux/scripts/lib/fetch-data-lock.py",
-  "find": "    part.chmod(0o644)\n",
+  "find": "        part.chmod(0o644)\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
   "why": "ObservANT's service user cannot read a 0600 model"
+ },
+ {
+  "id": "data-lock.failed-place-leaves-no-part",
+  "target": "linux/scripts/lib/fetch-data-lock.py",
+  "find": "    except BaseException:\n        part.unlink(missing_ok=True)\n        raise\n",
+  "replace": "    except BaseException:\n        raise\n",
+  "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
+  "why": "a rename refused after the copy left <file>.part beside the target, which the docs promise never happens"
  },
  {
   "id": "data-lock.plain-file-name",

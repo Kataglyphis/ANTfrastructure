@@ -73,6 +73,15 @@ t_assert_contains "$(log)" "the lock says ${model_sha}"
 t_assert_fails test -e "${w}/d4/model.onnx"
 t_assert_eq 0 "$(find "${w}/cache" -name '.part*' | wc -l | tr -d ' ')"
 
+t_case "a rename that fails after the part is written leaves no part behind"
+# A directory where the file goes: os.replace refuses it, as a Windows bind mount refused one with WinError 3.
+mkdir -p "${w}/d8/model.onnx/held"
+t_assert_fails fetch --lock "${w}/models.lock" --dest "${w}/d8" --only model.onnx
+t_assert_ok test -d "${w}/d8/model.onnx/held"
+t_assert_eq 0 "$(find "${w}/d8" -name '*.part' | wc -l | tr -d ' ')"
+# The cached copy it made would serve the offline case below.
+rm -f "${w}/cache/${model_sha}-model.onnx"
+
 t_case "--only fetches the named file, and a name the lock lacks fails"
 t_assert_ok fetch --lock "${w}/models.lock" --dest "${w}/d5" --only model.LICENSE
 t_assert_ok test -f "${w}/d5/model.LICENSE"
