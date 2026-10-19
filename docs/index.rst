@@ -142,6 +142,7 @@ Common development targets:
    :caption: Start here:
 
    INDEX
+   repository-family
    failure-modes
    adopting-in-a-new-project
    data-repositories

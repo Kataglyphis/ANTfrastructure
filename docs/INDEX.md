@@ -46,6 +46,7 @@ The two halves of one topic often split:
 |---|---|
 | **An error message** — symptom → cause → fix, both lanes | [`failure-modes.md`](failure-modes.md) |
 | **Wiring a new project to this repo** | [`adopting-in-a-new-project.md`](adopting-in-a-new-project.md) |
+| **The family's repositories** — what each is and who vendors it, how one is laid out, **the README rule**, contributing, licence and contact | [`repository-family.md`](repository-family.md) |
 | **Models and scenes outside the code** — ModelANT, AssetANT, the SHA-256 lock, the fetchers' contract, what stays tracked | [`data-repositories.md`](data-repositories.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
 | Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |

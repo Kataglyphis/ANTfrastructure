@@ -8,6 +8,10 @@ the agentic-loop config and runners in [`../agentic-loop/templates/`](../agentic
 Copy `AGENTS.md.template` to `<your-repo>/AGENTS.md`, then fill in sections 1,
 3, 4, 5 and 6. Leave section 2 as links.
 
+Copy `README.md.template` to `<your-repo>/README.md` and replace `PROJECT`. The
+README stays an overview that links into `docs/`; what it holds and what leaves
+it is [`repository-family.md` § The README rule](../../docs/repository-family.md#the-readme-rule).
+
 ## What the layout is for
 
 One rule decides where any piece of knowledge goes:

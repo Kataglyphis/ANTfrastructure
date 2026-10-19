@@ -1219,6 +1219,9 @@ The shared theme and its `conf.py` snippet:
   every cross-reference and every `docs/*.md` pointer in code; `doc-dupes`
   catches a passage reworded into a second page. Budgets live in
   `docs/scripts/*.allow` with a reason, and a stale row fails.
+- **A README is an overview, in this repo and every consumer.** Procedures go to
+  `docs/`, family-wide facts to this hub, and the README links to both:
+  [`docs/repository-family.md` § The README rule](docs/repository-family.md#the-readme-rule).
 - **The theme and the brand belong to DocumANTation.** Change `custom.css`
   there, not here.
 

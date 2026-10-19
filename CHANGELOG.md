@@ -10,6 +10,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — one page for the family, and the README rule
+
+- **`docs/repository-family.md` holds what every repository shares:** what each one is and who
+  vendors or fetches it, how one is laid out, contributing, licence and contact. The READMEs
+  link to it instead of carrying their own copies, which had drifted to four different contact
+  addresses and a fork-and-feature-branch recipe that contradicts the develop-only rule.
+- **The README rule (owner, 2026-10-19):** a README is a short overview, under about 100 lines,
+  that links into `docs/` for everything else; facts true for more than one repository move to
+  this hub. `shared/templates/README.md.template` is that shape.
+
 ## 2026-10-18 — ORT 1.31.0's CUDA build on GCC 16: a missing `<cstdint>`
 
 - **The first Linux CUDA build of ORT 1.31.0 stopped** after 5 h, at 84 %:

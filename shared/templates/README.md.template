@@ -1,0 +1,43 @@
+<div align="center">
+  <a href="https://jonasheinle.de">
+    <img src="images/logo.png" alt="logo" width="200" />
+  </a>
+
+  <h1>PROJECT</h1>
+
+  <h4>What PROJECT is, in one line.</h4>
+</div>
+
+[![Linux x64](https://github.com/Kataglyphis/PROJECT/actions/workflows/linux-x64.yml/badge.svg)](https://github.com/Kataglyphis/PROJECT/actions/workflows/linux-x64.yml)
+
+[**Docs site**](https://PROJECT.jonasheinle.de)
+
+One paragraph: what PROJECT does, for whom, and what sets it apart.
+
+## Highlights
+
+- At most six bullets, one line each.
+
+## Quick start
+
+```bash
+git clone --recurse-submodules --branch develop https://github.com/Kataglyphis/PROJECT.git
+cd PROJECT
+# the one command that builds or runs it
+```
+
+Prerequisites, every platform and the troubleshooting: [docs/getting-started.md](docs/getting-started.md).
+
+## Documentation
+
+| Topic | Read |
+| --- | --- |
+| Getting started | [docs/getting-started.md](docs/getting-started.md) |
+| Rules for agents and contributors | [AGENTS.md](AGENTS.md) |
+| Known work | [BACKLOG.md](BACKLOG.md) |
+| Changes | [CHANGELOG.md](CHANGELOG.md) |
+
+## Contributing and contact
+
+PROJECT is one of the [Kataglyphis repositories](https://github.com/Kataglyphis/ANTfrastructure/blob/develop/docs/repository-family.md),
+which share one way to contribute and one contact. Licence: MIT, see [LICENSE](LICENSE).
