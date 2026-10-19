@@ -57,7 +57,9 @@ read on; everything else has a page of its own. In this order:
 7. **Footer:** one line to this page for contributing and contact, and the `LICENSE` link.
 
 Keep it under about 100 lines, badges included. [`README.md.template`](../shared/templates/README.md.template)
-is that shape, ready to copy.
+is that shape, ready to copy. The `readme-length` gate fails a root README over 100 lines, in
+the hub's preflight and in every consumer's lint gates:
+[`code-quality-tooling.md` § README length](code-quality-tooling.md#readme-length-readme-length).
 
 What leaves the README:
 

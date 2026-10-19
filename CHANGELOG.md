@@ -10,6 +10,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the README rule is a gate
+
+- **`readme-length` fails a root `README.md` over 100 lines**, badges included, and names
+  `repository-family.md` § The README rule. It is a preflight slug in the commit hook's fast set,
+  and `run-lint-gates.sh` runs it over every consumer, so `lint-gates.yml` and the consumers'
+  pre-commit hook enforce it. `tests/test-readme-length.sh` drives both halves; five
+  `readme-length.*` mutations prove the limit, the unterminated last line, the missing file and
+  the consumer wiring ([`code-quality-tooling.md` § README length](docs/code-quality-tooling.md#readme-length-readme-length)).
+- **The hub's README is 100 lines, down from 103**: the failure-modes pointer already in the
+  documentation table left the quick start, and two paragraphs were rewrapped. Every consumer
+  README was at most 89 lines when the gate went in.
+- **`lint-gates.empty-shell-list-refuses` bites on a Git Bash host too.** Its case let the real
+  `lint-shell.sh` lint the mutation mirror, which fails there, so the missing refusal still read
+  red; a green stand-in now plays the clean hub.
+
 ## 2026-10-19 — one page for the family, and the README rule
 
 - **`docs/repository-family.md` holds what every repository shares:** what each one is and who

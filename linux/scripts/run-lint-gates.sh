@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins (+ratchets) over ONE consumer tree.
+# run-lint-gates.sh - shellcheck, actionlint, gitleaks, ruff, shared config, pins, README length (+ratchets) over ONE consumer tree.
 
 #   run-lint-gates.sh <consumer-root> [--exclude <top-level-dir>]... [--ratchets]
 
@@ -138,6 +138,13 @@ _lint_gates_consumer_pins() {
   _lint_gates_hub docs/scripts/sync_versions.py || return 1
   _lint_gates_interpreter || return 1
   ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --consumer-pins --consumer-root "${_LINT_GATES_ROOT}"
+}
+
+# The README rule binds every repository of the family. See docs/repository-family.md#the-readme-rule
+_lint_gates_readme() {
+  _lint_gates_hub linux/scripts/verify_readme_length.py || return 1
+  _lint_gates_interpreter || return 1
+  ${_LINT_GATES_PY} "${_LINT_GATES_HUB_FILE}" --root "${_LINT_GATES_ROOT}"
 }
 
 # _LINT_GATES_PY is expanded unquoted: it may be a command line such as `uv run --no-project python`.
@@ -322,6 +329,7 @@ _lint_gates_main() {
   run_gate "ruff" _lint_gates_python
   run_gate "shared-config drift" _lint_gates_shared_config
   run_gate "consumer pins" _lint_gates_consumer_pins
+  run_gate "README length" _lint_gates_readme
   if [ "${_LINT_GATES_RATCHETS}" -eq 1 ]; then
     run_gate "ratchets" _lint_gates_ratchet
   fi

@@ -525,7 +525,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1700 entries** over **150 distinct test commands**; both digits are
+manifest holds **1705 entries** over **151 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -986,6 +986,24 @@ are legitimately COPY'd into base stages for their descendants, so it produced
 false positives, and a noisy gate teaches people to ignore gates. The
 verify-media-artifacts case it was meant to catch is recorded in
 `docs/refactoring-backlog-archive-2026-09-02.md` § F6 instead.
+
+## README length (`readme-length`)
+
+The README rule caps a README at about 100 lines, badges included
+([`repository-family.md` § The README rule](repository-family.md#the-readme-rule)).
+`linux/scripts/verify_readme_length.py` fails a root `README.md` over 100 lines and names the
+rule's page; a missing `README.md` fails too.
+
+- **Where it runs.** Here as a preflight slug in the commit hook's fast set; in every consumer
+  through `run-lint-gates.sh`, so `lint-gates.yml` and the consumers' pre-commit template run it.
+- **Counting.** Newline characters, plus an unterminated last line: what an editor numbers.
+- **Not covered.** Any other README (`docs/`, `linux/llm-stack/`, a crate's), and the order and
+  content of its sections.
+
+Fix a finding by moving a procedure, table or piece of history to `docs/` and linking it; there
+is no allowlist. `tests/test-readme-length.sh` drives both halves; the `readme-length.*`
+mutations prove the limit, the unterminated last line, the missing file, and that
+`run-lint-gates.sh` registers the gate and returns its verdict.
 
 ## Code-to-docs pointers (`doc-links`)
 

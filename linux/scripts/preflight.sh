@@ -45,6 +45,7 @@ KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage context-paths cr
              code-complexity \
              dead-functions \
              large-files \
+             readme-length \
              shellcheck-warnings \
              mutations \
              gate-registry \
@@ -191,6 +192,8 @@ run_check code-complexity "cyclomatic complexity + nesting" ${PREFLIGHT_PYTHON} 
 run_check dead-functions "dead shell functions" ${PREFLIGHT_PYTHON} linux/scripts/verify_dead_functions.py
 # Data belongs in ModelANT/AssetANT: a new large file here would be in every clone's history for good.
 run_check large-files "large data files" ${PREFLIGHT_PYTHON} linux/scripts/verify_large_files.py
+# A README is an overview; detail belongs in docs/. See docs/repository-family.md#the-readme-rule
+run_check readme-length "README length" ${PREFLIGHT_PYTHON} linux/scripts/verify_readme_length.py
 run_check shellcheck-warnings "shellcheck warning ratchet" ${PREFLIGHT_PYTHON} linux/scripts/verify_shellcheck_warnings.py
 # See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
 : "${PREFLIGHT_MUTATION_SHARD:=}"

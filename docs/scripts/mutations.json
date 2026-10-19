@@ -13601,5 +13601,45 @@
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-flutter-checks-platform.sh",
   "why": "flutter test collects coverage on the VM only; without the refusal, --coverage with --test-platform chrome silently writes no report"
+ },
+ {
+  "id": "readme-length.limit-enforced",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    if count > LIMIT:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "why": "a README over 100 lines must fail, not print OK"
+ },
+ {
+  "id": "readme-length.unterminated-last-line-counts",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    return data.count(b\"\\n\") + (1 if data and not data.endswith(b\"\\n\") else 0)",
+  "replace": "    return data.count(b\"\\n\")",
+  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "why": "a last line without a newline is still a line; counting newlines alone lets a 101-line README through"
+ },
+ {
+  "id": "readme-length.missing-readme-fails",
+  "target": "linux/scripts/verify_readme_length.py",
+  "find": "    if not os.path.isfile(readme):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "why": "a missing README is not a short one; without the check the gate crashes or reads green over nothing"
+ },
+ {
+  "id": "readme-length.consumer-half-grades",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  _lint_gates_hub linux/scripts/verify_readme_length.py || return 1",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "why": "the consumer half must run the gate and return its verdict, or lint-gates.yml passes every consumer README"
+ },
+ {
+  "id": "readme-length.consumer-half-registered",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "  run_gate \"README length\" _lint_gates_readme\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-readme-length.sh",
+  "why": "a gate function nothing registers never runs in a consumer lane"
  }
 ]

@@ -88,7 +88,7 @@ cd "${_root}"
 _FAST_SLUGS="crlf-guard,stdout-returns,copy-coverage,patch-integrity,code-dupes,\
 arg-consistency,masked-decls,comment-size,code-size,code-complexity,dead-functions,large-files,\
 artifact-parity,advert-keys,stage-graph,env-knobs,trailing-conditional,\
-doc-links,gate-registry"
+doc-links,gate-registry,readme-length"
 
 echo "pre-commit: fast preflight gates…"
 PREFLIGHT_ONLY="${_FAST_SLUGS}" bash linux/scripts/preflight.sh || {

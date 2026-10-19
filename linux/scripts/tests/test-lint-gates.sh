@@ -71,7 +71,10 @@ _empty="$(mktemp -d "${_work}/empty.XXXXXX")"
 printf 'x\n' > "${_empty}/README.md"
 git -C "${_empty}" init -q; git -C "${_empty}" add -A >/dev/null 2>&1
 _lint_gates_parse_args "${_empty}"
-t_assert_eq "1" "$(t_rc _lint_gates_shell)" \
+# A green lint-shell.sh, as the real one is over a clean hub; a red one would hide a missing refusal.
+_green="$(mktemp -d "${_work}/green.XXXXXX")"
+printf '#!/usr/bin/env bash\nexit 0\n' > "${_green}/lint-shell.sh"
+t_assert_eq "1" "$(_LINT_GATES_DIR="${_green}" t_rc _lint_gates_shell)" \
   "lint-shell.sh with zero file arguments lints ANTfrastructure and exits 0"
 
 t_case "gates.sh: every gate runs, and the verdict is raised once at the end"

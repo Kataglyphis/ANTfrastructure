@@ -796,7 +796,7 @@ package and OxidANT a Rust crate, neither has a single `.py`, and refusing an em
 Python scope made both lanes exit 1 on every push for a reason nothing in either tree
 could change. A permanently red lane is a tolerated failure by construction.
 
-### `run-lint-gates.sh` — six gates over a consumer tree, plus the opt-in ratchets
+### `run-lint-gates.sh` — seven gates over a consumer tree, plus the opt-in ratchets
 
 ```bash
 bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD"
@@ -804,7 +804,8 @@ bash third_party/ANTfrastructure/linux/scripts/run-lint-gates.sh "$PWD" --exclud
 ```
 
 shellcheck, actionlint (+ the CI image-ref check), gitleaks, ruff (error tier),
-the shared-config drift check and the consumer pin-forwarding check, in one
+the shared-config drift check, the consumer pin-forwarding check and the
+[README length](code-quality-tooling.md#readme-length-readme-length), in one
 command, every gate running even after one fails. Three consumers had grown their own copy
 — two of them as `run:` blocks inside a workflow, so the gate blocking their
 deploy could not be reproduced locally at all.

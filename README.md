@@ -47,14 +47,12 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 .\windows\Build-Buildkit.ps1          # the Windows image, :winamd64 (non-admin shell; -Gpu for :winamd64-nvidia)
 ```
 
-A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md);
-an error message is looked up in [docs/failure-modes.md](docs/failure-modes.md).
+A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md).
 
 ## Published images
 
-Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`; one published tag is one manifest over every architecture
-of its variant ([AGENTS.md § Image and tag naming](AGENTS.md#image-and-tag-naming-published-tags)). Every tag, the
-accelerator matrix and the GPUs `:latest-nvidia` runs on: [docs/overview.md](docs/overview.md#published-images-and-tag-hints).
+Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag over every architecture of its variant
+([AGENTS.md § Image and tag naming](AGENTS.md#image-and-tag-naming-published-tags)). Every tag, the accelerator matrix and the GPUs `:latest-nvidia` runs on: [docs/overview.md](docs/overview.md#published-images-and-tag-hints).
 
 | Tag | What |
 | --- | --- |
@@ -98,6 +96,5 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 ## Contributing and contact
 
-ANTfrastructure is one of the [Kataglyphis repositories](docs/repository-family.md), which share
-one way to contribute and one contact. Here: `make hooks` once, `make preflight` before a push
-([AGENTS.md § Validation](AGENTS.md#validation)). Licence: MIT, see [LICENSE](LICENSE).
+ANTfrastructure is one of the [Kataglyphis repositories](docs/repository-family.md), which share one way to contribute
+and one contact. Here: `make hooks` once, `make preflight` before a push ([AGENTS.md § Validation](AGENTS.md#validation)). Licence: MIT, see [LICENSE](LICENSE).
