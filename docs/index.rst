@@ -211,6 +211,7 @@ Common development targets:
    branch-and-release-strategy
    ci-build-triggers
    ftp-deploys
+   docs-sites
    github-cli-pipeline-monitoring
    mistral-vibe-glm-setup
    geniex-local-ai-setup

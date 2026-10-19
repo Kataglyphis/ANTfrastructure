@@ -636,13 +636,13 @@ links one list instead of keeping its own.
 | Tool guards, workspace paths, a hub pin from `versions.env` | `Assert-Command`, `Resolve-WorkspacePath`, `Get-ANTfrastructurePin` | [`WindowsScripts.Shared.psm1`](../windows/scripts/modules/WindowsScripts.Shared.psm1) | a second implementation, or a `versions.env` regex |
 | Logging inside a container | `Start-ContainerLog`, `Write-ContainerLog`, `Invoke-ContainerLoggedCommand` | [`WindowsContainerLog.Common.psm1`](../windows/scripts/modules/WindowsContainerLog.Common.psm1) | a `Say`/`Run-Logged` pair per script |
 | CI version stamping (bash) | `version_util.sh --github-env`, `--resolve-ci`, `--normalize` | [`version_util.sh`](../linux/scripts/02-toolchain/rust/version_util.sh) | re-reading `VERSION.txt` or `Cargo.toml` yourself |
-| In-container cargo steps | `cargo_debug.sh`, `cargo_release.sh`, `cargo_test.sh`, `cargo_coverage.sh`, `cargo_fmt_clippy.sh` (`CARGO_CLIPPY_ARGS`), … | [`02-toolchain/rust/`](../linux/scripts/02-toolchain/rust/) | inline cargo invocations |
+| In-container cargo steps | `cargo_debug.sh`, `cargo_release.sh`, `cargo_test.sh`, `cargo_coverage.sh`, `cargo_fmt_clippy.sh` (`CARGO_CLIPPY_ARGS`), … | [`02-toolchain/rust/`](https://github.com/Kataglyphis/ANTfrastructure/tree/develop/linux/scripts/02-toolchain/rust) | inline cargo invocations |
 | Publishing a GitHub release: `v<version>` from `pubspec.yaml`, `Cargo.toml` or `VERSION.txt`, the CHANGELOG section as notes, a `SHA256SUMS` | `publish-github-release.sh --check` / `--assets` | [`publish-github-release.sh`](../linux/scripts/06-packaging/publish-github-release.sh) | a per-repo release script |
 | Linux packaging (tar, deb, AppImage, Flatpak) | `package_archive.sh` | [`package_archive.sh`](../linux/scripts/06-packaging/package_archive.sh) | bespoke packaging |
 | CI job plumbing | `prepare-linux-ci-host`, `run-in-linux-container`, `run-in-windows-container`, `clone-into-short-path`, `cleanup-disk-space`, `assert-docker-disk-space` | [`.github/actions/`](../.github/actions/README.md) | hand-written `docker run` blocks |
 | Linting workflows locally | `lint-workflows.sh <root>` (pinned, SHA-verified actionlint) | [`lint-workflows.sh`](../linux/scripts/lint-workflows.sh) | bootstrapping your own |
 | The agentic loop | config and runner templates | [`shared/agentic-loop/templates/`](../shared/agentic-loop/templates/README.md) | writing one from scratch |
-| Bash helpers: logging, retry, SHA-checked downloads, parallelism | `logging.sh`, `downloads.sh`, `parallelism.sh`, … | [`linux/scripts/01-core/`](../linux/scripts/01-core/) | new implementations |
+| Bash helpers: logging, retry, SHA-checked downloads, parallelism | `logging.sh`, `downloads.sh`, `parallelism.sh`, … | [`linux/scripts/01-core/`](https://github.com/Kataglyphis/ANTfrastructure/tree/develop/linux/scripts/01-core) | new implementations |
 
 Two caveats:
 

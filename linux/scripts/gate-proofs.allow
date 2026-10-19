@@ -160,3 +160,5 @@ mutation-family:linker-select
 mutation-family:downloads
 # The ROCm release in every name 01-core/setup-rocm-repo.sh installs, and its one-release check; proof: linux/scripts/tests/test-rocm-packages.sh.
 mutation-family:rocm-stack
+# The built-site link gate the docs publish runs (verify_site_links.py), a lane gate no slug owns; proof: linux/scripts/tests/test-site-links.sh.
+mutation-family:site-links

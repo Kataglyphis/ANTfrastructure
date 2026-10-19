@@ -13857,5 +13857,133 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-doc-dupes.sh",
   "why": "an unseeded consumer must not need the hub's git: run-lint-gates.sh reaches this step in the git-less mutation mirror, where listing the hub's pages exits 2"
+ },
+ {
+  "id": "site-links.missing-target",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        if path is None:\n            self.note(\"missing\\t\" + rel, rel_page)",
+  "replace": "        if path is None:\n            pass",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a link to a page the build never wrote is a 404 on the live site"
+ },
+ {
+  "id": "site-links.anchor-checked",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "            if target is not None and not anchor_ok(target.ids, fragment):",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a dead anchor lands the reader at the top of the wrong place; the hub's own site had three"
+ },
+ {
+  "id": "site-links.anchor-as-written",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "fragment == \"top\" or fragment in ids or unquote(fragment) in ids:",
+  "replace": "fragment == \"top\" or unquote(fragment) in ids:",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "rustdoc writes its impl ids percent-encoded (impl-From%3CT%3E-for-T); decoding first reported every one as dead"
+ },
+ {
+  "id": "site-links.anchor-decoded",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "fragment == \"top\" or fragment in ids or unquote(fragment) in ids:",
+  "replace": "fragment == \"top\" or fragment in ids:",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a browser tries the decoded fragment too, so an encoded href to a plain id resolves"
+ },
+ {
+  "id": "site-links.line-range-ends",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "    return bool(m) and m.group(1) in ids and m.group(2) in ids",
+  "replace": "    return bool(m)",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a rustdoc source range past the file's last line points at nothing"
+ },
+ {
+  "id": "site-links.escape-root",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "    if rel.startswith(\"../\"):\n        return None\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a link above the site root is not published, even when the build host has a file there"
+ },
+ {
+  "id": "site-links.directory-index",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "    if os.path.isdir(path):\n        path = os.path.join(path, \"index.html\")\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "Apache serves a directory link from its index.html; without one it is a 403 or a listing"
+ },
+ {
+  "id": "site-links.absolute-path",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        link = SITE + link[1:]",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "every family site is served at its domain root, so /a.html is the tree's a.html"
+ },
+ {
+  "id": "site-links.base-href",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "            base = urljoin(url, page.base) if page.base else url",
+  "replace": "            base = url",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a <base href> moves every relative link of its page, as in a browser"
+ },
+ {
+  "id": "site-links.base-not-a-link",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "            self.base = self.base or a.get(\"href\") or None\n            return\n",
+  "replace": "            self.base = self.base or a.get(\"href\") or None\n",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "<base href=\"../\"> is no link: read as one it resolves against itself and climbs out of the site"
+ },
+ {
+  "id": "site-links.fragments-not-documents",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "            if page is None or not page.is_document:",
+  "replace": "            if page is None:",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a dartdoc sidebar fragment is injected into pages elsewhere, so its links are not relative to its own file"
+ },
+ {
+  "id": "site-links.meta-refresh",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "                self.links.append(m.group(1).strip())",
+  "replace": "                pass",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "rustdoc's root index.html is a meta refresh; a redirect to nothing is a dead site"
+ },
+ {
+  "id": "site-links.root-index",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "            self.note(\"missing\\tindex.html\", \"(the site root)\")",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a site without index.html at its root shows a listing or a 403 at its own address"
+ },
+ {
+  "id": "site-links.allow-read",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "    frozen = load_keys(args.allow) if args.allow else set()",
+  "replace": "    frozen = set()",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a consumer adopts the gate by freezing what it has; an unread allow file fails every frozen site"
+ },
+ {
+  "id": "site-links.allow-must-exist",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "    if args.allow and not os.path.isfile(args.allow):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a typo'd allow path would read as an empty freeze and hide that the exceptions were never applied"
+ },
+ {
+  "id": "site-links.verdict",
+  "target": "linux/scripts/verify_site_links.py",
+  "find": "        print(\"OK: every internal link and anchor resolves\")\n    return rc\n",
+  "replace": "        print(\"OK: every internal link and anchor resolves\")\n    return 0\n",
+  "test": "bash linux/scripts/tests/test-site-links.sh",
+  "why": "a gate that prints its findings and exits 0 publishes the broken site anyway"
  }
 ]

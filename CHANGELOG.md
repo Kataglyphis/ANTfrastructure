@@ -10,6 +10,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — a built docs site is checked for dead links before it goes up
+
+- **`linux/scripts/verify_site_links.py <site dir> [--allow FILE] [--print-keys]`** reads a
+  built HTML tree offline and fails on an internal link, meta refresh or anchor that resolves to
+  nothing, a link that climbs out of the site root, and a root without `index.html`. It honours
+  `<base href>`, reads anchors as written and decoded, accepts rustdoc's source line ranges, and
+  skips dartdoc's script-injected sidebar fragments. Known exceptions go into an allow file under
+  the two-way rule; `--print-keys` seeds one ([`docs-sites.md`](docs/docs-sites.md#the-built-site-link-gate)).
+- **The hub's site resolves completely**: three Markdown links to a directory, which the theme
+  rendered as dead anchors (`#../linux/scripts/01-core/`), point at the GitHub tree now. Built in
+  `:latest` by `build-docs.sh`: 96 documents, 0 findings. OxidANT's 11-crate rustdoc: 517
+  documents, 20 `missing <module>/dispatcher` in `kataglyphis_webgpu_renderer`.
+- `tests/test-site-links.sh` builds fixture sites; 16 `site-links.*` mutations (a new declared
+  family) prove it. `docs/docs-sites.md` is the page for what the hub does to a site before the
+  upload.
+
 ## 2026-10-19 — the dartdoc guide renderer downloads nothing in CI
 
 - **`dartdoc_build_prepare_python_env` takes `python3` when it imports `markdown-it-py` at the
