@@ -29,6 +29,23 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
+- [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [M, ★★]. Every
+      `dartdoc_build_main` run calls `dartdoc_build_prepare_python_env`
+      (`linux/scripts/lib/dartdoc-build.sh`), which creates a venv with uv and installs
+      `dartdoc-guides.requirements.txt` (`markdown-it-py==4.2.0`) from PyPI: a CI-time download,
+      which the everything-in-the-image rule forbids. The published `:latest` (2026-10-11) has
+      markdown-it-py 4.2.0 in `/opt/venv` already, but only as myst-parser's dependency from
+      OrchestrANT's `docs` extra, so no pin holds it at the renderer's version (read 2026-10-19).
+      1. Pin it in the image from that one requirements file, and assert the version in the smoke.
+      2. `dartdoc_build_prepare_python_env` takes the image's `python3` when it imports
+         `markdown_it` at that version, and creates the venv only outside the image.
+      3. jotrockenmitlocken (`scripts/ci-container-steps.sh`) and ANThology (`docs.yml`) run a
+         bare `dart doc`; they switch to `dartdoc_build_main` and render their `docs/` guides on
+         their docs sites, as OmniAccelerANT's `generate-docs.sh` does.
+
+      Done when a docs build in `:latest` renders the guides without network and both consumers'
+      sites carry their guides.
+
 - [ ] **CON98 — one hub-owned fetcher for the data locks** [M, ★★]. Three consumers fetch
       ModelANT and AssetANT files by the same lock and contract in three languages: OxidANT's
       `fetch-models.sh` with OmniAccelerANT's `Get-Models.ps1`, OrchestrANT's stdlib
