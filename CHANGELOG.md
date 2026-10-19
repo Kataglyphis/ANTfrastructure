@@ -20,6 +20,10 @@
   broken; the live site, on the old theme, had 184. Three anchors stay dead: links to a directory
   (`../linux/scripts/01-core/`, `../linux/scripts/02-toolchain/rust/`, `upstream/patches/`)
   render as fragments, which the theme has to map.
+- **Two archives render again** (rendering fixes, the records unchanged):
+  `windows-backlog-archive-2026-08-21.md` had a bare `<script>` in prose that swallowed the rest
+  of the page, now in backticks; `changelog-archive-2026-09-07.md` linked the old D5 heading of
+  `linux-host-setup.md` and now names the current one.
 
 ## 2026-10-19 — a consumer page that restates a hub page fails
 

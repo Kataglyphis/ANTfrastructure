@@ -568,7 +568,7 @@ Upstream follow-ups: see "Pending" at the bottom.
   dual-layout trap: after the move, $PSScriptRoot-relative modules/patches
   refs cannot serve host (scripts/build/) AND container (flat C:/bkmnt)
   with one string - the bind-mount TARGETS must mirror the new layout
-  (C:/bkmnt/build/<script> + C:/bkmnt/modules), which cascades through
+  (`C:/bkmnt/build/<script>` + `C:/bkmnt/modules`), which cascades through
   every -ScriptDir contract in the chain wrappers. (3) land as ONE commit,
   ONLY on a green chain, verified by ITS OWN full ride + smoke.
   Prerequisite not met at spec time (the 2026-08-20 batch-verify ride was

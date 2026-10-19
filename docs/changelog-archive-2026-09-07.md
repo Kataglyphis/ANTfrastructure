@@ -157,7 +157,7 @@ mutation entries were reporting `vacuous bite` without it — a quarter of the c
 dark) and `pwsh` (the `shared-config` slug failed with `command not found`, which
 reads like config drift; the file it checks was verifiably in sync). Both installed
 user-scope and written up as
-[`linux-host-setup.md` § D5](linux-host-setup.md#d5-pwsh-and-pytest--the-two-host-tools-preflight-needs-and-never-asked-for).
+[`linux-host-setup.md` § D5](linux-host-setup.md#d5-the-host-tools-preflight-needs-and-never-asked-for).
 
 **A benchmark-harness bug that corrupted measurements, found by making the
 mutation gate run at all.** With `pytest` installed, 16 of the `bench_coding`
