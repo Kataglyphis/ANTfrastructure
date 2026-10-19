@@ -34,10 +34,15 @@ on:
       build-script:
         description: >-
           Path to the build entry point AS SEEN INSIDE THE CONTAINER, i.e. under
-          the mount target, not a host path.
+          the mount target, not a host path. Empty (the default) runs the repo's
+          own scripts\windows\Build-Windows.ps1 when the checkout has one, else
+          the hub's windows/scripts/python/Invoke-PythonCiBuild.ps1 with
+          -RepoRoot set to the mount target; that driver reads the repo's values
+          from scripts\windows\python-ci.psd1 (docs/python-ci.md § The Windows
+          build driver).
         required: false
         type: string
-        default: C:\workspace\scripts\windows\Build-Windows.ps1
+        default: ''
       mount-target:
         description: Where the workspace is mounted inside the container.
         required: false
@@ -220,6 +225,29 @@ jobs:
           submodules: recursive
           short-path-target: ''
 
+      # Inputs reach the script through env, never interpolated into it.
+      - name: Resolve the build script
+        id: build-script
+        env:
+          BUILD_SCRIPT: ${{ inputs.build-script }}
+          MOUNT_TARGET: ${{ inputs.mount-target }}
+        run: |
+          $file = $env:BUILD_SCRIPT
+          $repoRoot = ''
+          if (-not $file -and (Test-Path -LiteralPath 'scripts/windows/Build-Windows.ps1' -PathType Leaf)) {
+            $file = Join-Path $env:MOUNT_TARGET 'scripts\windows\Build-Windows.ps1'
+          } elseif (-not $file) {
+            if (-not (Test-Path -LiteralPath 'third_party/ANTfrastructure/windows/scripts/python/Invoke-PythonCiBuild.ps1' -PathType Leaf)) {
+              throw 'No scripts/windows/Build-Windows.ps1, and no ANTfrastructure pin at third_party/ANTfrastructure that ships Invoke-PythonCiBuild.ps1: pass build-script.'
+            }
+            $file = Join-Path $env:MOUNT_TARGET 'third_party\ANTfrastructure\windows\scripts\python\Invoke-PythonCiBuild.ps1'
+            $repoRoot = $env:MOUNT_TARGET
+          }
+          Write-Host "build script: $file"
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value "file=$file"
+          # One argv element per line, as run-in-windows-container's file-args takes them.
+          Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value (@('args<<FILE_ARGS_EOF') + @(if ($repoRoot) { '-RepoRoot', $repoRoot }) + @('FILE_ARGS_EOF'))
+
       # The action runs the payload under pwsh; the hub's modules need 7.0 and fail opaquely under 5.1.
       - name: Run container
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-windows-container@develop
@@ -227,7 +255,8 @@ jobs:
           image: ${{ inputs.image }}
           mount-source: ${{ github.workspace }}
           mount-target: ${{ inputs.mount-target }}
-          file: ${{ inputs.build-script }}
+          file: ${{ steps.build-script.outputs.file }}
+          file-args: ${{ steps.build-script.outputs.args }}
           # One argument per line: the action builds an argv array, so -e and its value are two lines.
           extra-args: |
             -e

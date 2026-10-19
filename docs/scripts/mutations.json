@@ -14897,5 +14897,21 @@
   "replace": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  |\n",
   "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
   "why": "--help prints the consumer's own header, whose length the head/tail range follows"
+ },
+ {
+  "id": "windows-lane.build-script-prefers-the-repo-script",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "find": "if (-not $file -and (Test-Path -LiteralPath 'scripts/windows/Build-Windows.ps1' -PathType Leaf)) {",
+  "replace": "if ($false) {",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "a caller relying on the default must keep running its own Build-Windows.ps1 until it deletes it, or the hub driver runs on a repo without its python-ci.psd1"
+ },
+ {
+  "id": "windows-lane.build-script-defaults-empty",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "find": "          build driver).\n        required: false\n        type: string\n        default: ''",
+  "replace": "          build driver).\n        required: false\n        type: string\n        default: C:\\workspace\\scripts\\windows\\Build-Windows.ps1",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "a fixed default path skips the resolution step, so a repo without its own script gets a missing-file failure instead of the hub driver"
  }
 ]

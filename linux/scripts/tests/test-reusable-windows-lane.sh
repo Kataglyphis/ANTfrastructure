@@ -121,4 +121,12 @@ t_case "the arm64 job hands its inputs over through env, never interpolated into
 t_assert_eq "False" "$(_q "'\${{' in '\n'.join(str(V.value(s,'run') or '') for s in V.value(V.value(jobs,'test-python-on-windows-arm64'),'steps'))")"
 t_assert_eq "True" "$(_raw_has '& $legs -InstallUv -PythonVersions $env:PY_VERSIONS -Extras $env:PY_EXTRAS -FreeThreadedExtras $env:FT_EXTRAS -TestPaths $env:TEST_PATHS')"
 
+t_case "build-script defaults to empty: the repo's own Build-Windows.ps1 first, else the hub driver"
+# A caller that relies on the default keeps running its own script until it deletes it.
+t_assert_eq "" "$(_q "V.value(V.value(inputs,'build-script'),'default')")"
+t_assert_eq "True" "$(_raw_has "if (-not \$file -and (Test-Path -LiteralPath 'scripts/windows/Build-Windows.ps1' -PathType Leaf)) {")"
+t_assert_eq "True" "$(_raw_has 'third_party/ANTfrastructure/windows/scripts/python/Invoke-PythonCiBuild.ps1')"
+t_assert_eq "True" "$(_raw_has 'file: ${{ steps.build-script.outputs.file }}')"
+t_assert_eq "False" "$(_q "'\${{' in str(V.value([s for s in V.value(build,'steps') if V.value(s,'id') == 'build-script'][0],'run'))")"
+
 t_summary

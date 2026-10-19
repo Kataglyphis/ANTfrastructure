@@ -10,6 +10,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the hub runs a Python repo's Windows CI build
+
+- **`windows/scripts/python/Invoke-PythonCiBuild.ps1`** runs the Linux lane's three steps on
+  Windows: pytest on each Python leg in its own venv, `Invoke-CiStaticAnalysis.ps1` as a gate,
+  then the repo's `DataLocks` through `fetch-data-lock.py` and `Invoke-CiPackaging.ps1`. A repo
+  keeps its values in `scripts\windows\python-ci.psd1` under the driver's parameter names; a
+  parameter on the command line wins, and an unknown key fails the run
+  ([`python-ci.md`](docs/python-ci.md#the-windows-build-driver)). OrchestrANT's and
+  WebDavClient's `Build-Windows.ps1` shared 161 identical lines of shims over the hub's modules,
+  and WebDavClient's ran its static analysis as `Invoke-Optional`, which gates nothing.
+- **`python-ci-windows.yml`'s `build-script` defaults to empty**: the repo's own
+  `scripts\windows\Build-Windows.ps1` when the checkout has one, as before, else the hub driver
+  with `-RepoRoot` set to the mount.
+- Run in `:winamd64` (`f8da1c947056`) on each consumer's HEAD with this hub tree and a
+  `python-ci.psd1`: OrchestrANT 3.15 (1776 passed) and 3.15t (1735 passed), six gates ok, the
+  model fetched by lock, sdist, pure, cp315 and cp315t wheels, MSI, MSIX and zip in 12m22s;
+  WebDavClient 3.13, 3.14 and 3.14t, six gates ok, sdist, pure, cp314 and cp314t wheels in
+  4m42s. The checkout was copied into the container first: on this host a bind mount refused
+  uv's renames (`failed to persist temporary file`). `PythonCiBuild.Tests.ps1` drives it over a
+  recording uv, python and child drivers; `test-reusable-windows-lane.sh` holds the default, and
+  2 `windows-lane.build-script-*` mutations prove it.
+
 ## 2026-10-19 — the agentic-loop runners are watched copies
 
 - **`shared-assets.manifest` registers `agentic-loop-sh` and `agentic-loop-ps1`** in body mode:

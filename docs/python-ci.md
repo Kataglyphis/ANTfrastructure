@@ -11,7 +11,7 @@ share their whole CI surface with this repository:
 | Layer | Where |
 |---|---|
 | Linux lane | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml) (`workflow_call`) |
-| Windows lane | [`../.github/workflows/python-ci-windows.yml`](../.github/workflows/python-ci-windows.yml) (`workflow_call`) |
+| Windows lane | [`../.github/workflows/python-ci-windows.yml`](../.github/workflows/python-ci-windows.yml) (`workflow_call`), and its build driver `windows/scripts/python/Invoke-PythonCiBuild.ps1` (§ The Windows build driver) |
 | Step drivers | `linux/scripts/02-toolchain/python/ci_{tests,static_analysis,build_docs,packaging}.sh` |
 | uv primitives | `linux/scripts/01-core/python_uv.sh` |
 | Chain ORT reconcile | `uv_reconcile_chain_ort` in `python_uv.sh`, `Sync-UvChainOnnxRuntime` in `windows/scripts/modules/WindowsUv.Common.psm1`; both run the ORT census `linux/scripts/03-media/runtime/ort-venv-census.py` (the Windows image's module copy runs the one `windows/Dockerfile` puts in `C:\temp\scripts\`) |
@@ -445,9 +445,8 @@ Test: `windows/scripts/tests/Uv.ChainOpenCv.Tests.ps1`.
 `PYTEST_PATHS` (the `test-paths` input, comma-separated) names some, so pytest reads the
 consumer's `testpaths`. It used to hard-code `tests/unit`. When WebDavClient gained its
 arm64 and Windows lanes (2025-10-20) every lane narrowed to that directory, and its six
-WebDAV client tests and the integration test ran on no lane until 2026-10-01. Windows
-drivers live in the consumers (`scripts/windows/Build-Windows.ps1`) and must not
-hard-code a subdirectory either.
+WebDAV client tests and the integration test ran on no lane until 2026-10-01. The Windows
+driver takes the same list as `TestPaths` (§ The Windows build driver).
 
 **A free-threaded leg that gates.** `3.14t` sits in `EXPERIMENTAL_PYTHON_VERSIONS` by
 default, because `--all-extras` pulls in wheels that only exist for the GIL build
@@ -467,6 +466,52 @@ Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
 `python.ci-tests-runs-the-configured-testpaths`,
 `python.ci-tests-free-threaded-leg-syncs-its-own-extras` and
 `python.ci-tests-experimental-sync-failure-is-annotated`.
+
+## The Windows build driver
+
+`python-ci-windows.yml`'s build job runs `build-script` in the `:winamd64` container. Left empty,
+that is the repo's own `scripts\windows\Build-Windows.ps1` when the checkout has one, else
+[`windows/scripts/python/Invoke-PythonCiBuild.ps1`](../windows/scripts/python/Invoke-PythonCiBuild.ps1)
+with `-RepoRoot` set to the mount. The driver runs the Linux lane's three steps, logging to
+`logs\build-windows-*.log` and `logs\build-summary-*.json`:
+
+1. **pytest per leg**, each leg in its own venv, synced `--locked` when `uv.lock` exists. The
+   `bench/` demos log `skipped` instead of failing. A leg with no extras of its own that
+   `EXPERIMENTAL_PYTHON_VERSIONS` lists (default: the pin's X.Yt) may fail without failing the run.
+2. **`Invoke-CiStaticAnalysis.ps1`**, which gates.
+3. **`DataLocks`**, each fetched beside itself by the hub's `fetch-data-lock.py`
+   ([`data-repositories.md`](data-repositories.md#the-hubs-fetcher)), then **`Invoke-CiPackaging.ps1`**.
+
+A repo keeps its values in `scripts\windows\python-ci.psd1`, under the driver's parameter names.
+A parameter on the command line wins; a key that is no parameter fails the run.
+
+```powershell
+# scripts\windows\python-ci.psd1
+@{
+    PackageName           = 'orchestrant'
+    FreeThreadedExtras    = 'test'
+    ExtraPaths            = @('benchmarks', 'frontend', 'bench', 'examples')
+    BanditExcludes        = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results,benchmarks/tests'
+    DataLocks             = @('resources/models/models.lock')
+}
+```
+
+| Setting | Linux twin | Empty means |
+|---|---|---|
+| `PackageName` | `package-name` | pyproject.toml's `name` |
+| `PythonVersions` | `test-python-versions` | the pinned X.Y, plus X.Yt when pyproject.toml declares free-threading; `pinned` and `pinnedt` work in a list |
+| `TestExtras` | `test-extras` | every extra |
+| `FreeThreadedExtras` | `free-threaded-extras` | every extra, and the X.Yt leg stays experimental |
+| `TestPaths` | `test-paths` | the project's `testpaths` |
+| `StaticAnalysisPythonVersion`, `PackagingPythonVersion` | `static-analysis-python-version`, `packaging-python-version` | the pin |
+| `ExtraPaths`, `BanditExcludes` | `STATIC_ANALYSIS_EXTRA_PATHS`, `BANDIT_EXCLUDES` | § The static-analysis knobs |
+| `DataLocks` | the repo's `ci_packaging.sh` wrapper | nothing is fetched |
+| `EnablePySpy` | — | no py-spy demo |
+
+To run it by hand, start it from the repo root inside `:winamd64`:
+`pwsh -File third_party\ANTfrastructure\windows\scripts\python\Invoke-PythonCiBuild.ps1`. Test:
+`windows/scripts/tests/PythonCiBuild.Tests.ps1`, with a uv, a python and both child drivers
+replaced by stand-ins that record each call.
 
 ## Windows arm64: the runner-native test job
 
