@@ -27,6 +27,8 @@ NAV_MARKER = "kg-md-nav-section"
 FOOTER_MARKER = "kg-doc-footer-links"
 # The family links every repository on develop: docs/repository-family.md#the-readme-rule
 BRANCH = "develop"
+# A scheme, a protocol-relative or site-absolute path, or a same-page anchor: not a path into the repository.
+NOT_A_REPO_PATH = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*:|/|#)")
 GITHUB_REMOTE = re.compile(
     r"^(?:https://(?:[^@/]+@)?github\.com/|git@github\.com:|ssh://git@github\.com/)"
     r"([\w.-]+/[\w.-]+?)(?:\.git)?/?$"
@@ -94,12 +96,31 @@ def repo_path(root: str, source: str) -> str:
 
 
 class LinkTargets:
-    """Where a relative `*.md` link in a guide goes: the guide rendered from it, or the file on GitHub."""
+    """Where a relative link in a guide goes: the guide rendered from it, or the file or folder on GitHub."""
 
-    def __init__(self, guide_pages: dict, repo_url: str = "", submodules=()):
+    def __init__(self, guide_pages: dict, repo_url: str = "", submodules=(), project_root: str = "",
+                 site_root: str = ""):
         self.guide_pages = guide_pages
         self.repo_url = repo_url.rstrip("/")
         self.submodules = list(submodules)
+        self.project_root = project_root
+        self.site_root = site_root
+
+    def kind(self, resolved: str) -> str:
+        """blob for a file, tree for a folder, '' for nothing; blob unchecked without a project root."""
+        if not self.project_root:
+            return "blob"
+        found = pathlib.Path(self.project_root, resolved)
+        if found.is_dir():
+            return "tree"
+        if found.is_file():
+            return "blob"
+        for sub, _ in self.submodules:
+            checkout = pathlib.Path(self.project_root, sub)
+            # A submodule the build did not check out cannot be looked into.
+            if (resolved + "/").startswith(sub + "/") and checkout.is_dir() and not any(checkout.iterdir()):
+                return "blob"
+        return ""
 
     def target(self, source_rel: str, path: str) -> str:
         resolved = posixpath.normpath(posixpath.join(posixpath.dirname(source_rel), unquote(path)))
@@ -108,13 +129,21 @@ class LinkTargets:
         if resolved == ".." or resolved.startswith("../"):
             raise SystemExit(f"{source_rel}: the link {path!r} leaves the repository; "
                              "link another repository by its absolute URL.")
+        kind = self.kind(resolved)
+        if not kind:
+            if self.site_root and pathlib.Path(self.site_root, unquote(path)).exists():
+                return path
+            raise SystemExit(f"{source_rel}: the link {path!r} names nothing in the repository "
+                             f"({resolved}) and no page of the site.")
         for sub, url in self.submodules:
+            if resolved == sub:
+                return f"{url}/tree/{BRANCH}"
             if resolved.startswith(sub + "/"):
-                return f"{url}/blob/{BRANCH}/{quote(resolved[len(sub) + 1:])}"
+                return f"{url}/{kind}/{BRANCH}/{quote(resolved[len(sub) + 1:])}"
         if not self.repo_url:
             raise SystemExit(f"{source_rel}: the link {path!r} names no guide, and the repository's "
                              "GitHub URL is unknown (no GitHub origin); set DARTDOC_BUILD_REPO_URL.")
-        return f"{self.repo_url}/blob/{BRANCH}/{quote(resolved)}"
+        return f"{self.repo_url}/{kind}/{BRANCH}/{quote(resolved)}"
 
 
 def slugify(value: str) -> str:
@@ -123,15 +152,13 @@ def slugify(value: str) -> str:
 
 
 def rewrite_md_links(rendered_html: str, links: LinkTargets, source_rel: str) -> str:
-    """Point every relative `*.md` link, anchor kept, at its guide page or, failing that, at GitHub."""
+    """Point every relative link, anchor kept, at its guide page or, failing that, at GitHub."""
 
     def repl(match):
         prefix, href, suffix = match.group(1), match.group(2), match.group(3)
-        if href.startswith(("http://", "https://", "#", "mailto:")):
+        if NOT_A_REPO_PATH.match(href):
             return match.group(0)
         path, sep, fragment = href.partition("#")
-        if pathlib.PurePosixPath(path).suffix.lower() != ".md":
-            return match.group(0)
         return f"{prefix}{links.target(source_rel, path)}{sep}{fragment}{suffix}"
 
     return re.sub(r'(href\s*=\s*["\'])([^"\']+)(["\'])', repl, rendered_html)
@@ -271,7 +298,7 @@ def main(argv) -> int:
     project = config["project_root"] or os.getcwd()
     sources = {slug: repo_path(project, src) for slug, src in config["sources"].items()}
     links = LinkTargets({rel: f"guide-{slug}.html" for slug, rel in sources.items()},
-                        config["repo_url"] or origin_url(project), submodule_urls(project))
+                        config["repo_url"] or origin_url(project), submodule_urls(project), project, str(root))
     shell = (root / "index.html").read_text(encoding="utf-8", errors="ignore")
 
     for slug, label in guides:

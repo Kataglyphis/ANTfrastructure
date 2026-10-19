@@ -10,6 +10,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — a docs guide's link to any repository file reaches GitHub
+
+- **`lib/dartdoc-guides.py` rewrites every relative link of a guide**, not only `*.md` ones: a
+  file goes to `<repository>/blob/develop/<path>`, a folder to `/tree/`, a submodule path to that
+  submodule's repository. A link that names nothing in the repository and no page of the built
+  site fails the render; a submodule the build did not check out is linked unchecked. Until now
+  a link to a workflow, a manifest or a hub script stayed relative and 404ed: OmniAccelerANT's
+  13 `docs/site-links.allow` rows, which go stale at its next hub pin
+  ([`shared-script-libraries.md`](docs/shared-script-libraries.md#dartdoc-buildsh--theme-and-enrich-a-dart-doc-site)).
+- Read over OmniAccelerANT's eleven guides in `:latest`: exactly those 13 links now point at
+  GitHub, and every guide renders; jotrockenmitlocken's two render too.
+  `tests/test-dartdoc-guides.sh` adds a fixture tree and an end-to-end render; 8 more
+  `lib.dartdoc-guides-*` mutations prove it.
+
 ## 2026-10-19 — one release collector and one reusable release workflow
 
 - **`linux/scripts/06-packaging/collect-release-assets.sh [options] <artifacts dir> <out dir>`**

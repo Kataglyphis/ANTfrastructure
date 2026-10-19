@@ -13685,7 +13685,7 @@
  {
   "id": "lib.dartdoc-guides-other-md-to-github",
   "target": "linux/scripts/lib/dartdoc-guides.py",
-  "find": "        return f\"{self.repo_url}/blob/{BRANCH}/{quote(resolved)}\"",
+  "find": "        return f\"{self.repo_url}/{kind}/{BRANCH}/{quote(resolved)}\"",
   "replace": "        return f\"guide-{posixpath.splitext(posixpath.basename(resolved))[0]}.html\"",
   "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
   "why": "a *.md that is no guide (../AGENTS.md) became guide-AGENTS.html, which nothing renders"
@@ -14433,5 +14433,69 @@
   "replace": "    timeout-minutes: 10\n    permissions:\n      contents: write",
   "test": "bash linux/scripts/tests/test-collect-release-assets.sh",
   "why": "the version check needs no write token, and the caller grants write for the publish job"
+ },
+ {
+  "id": "lib.dartdoc-guides-any-repo-path",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        return f\"{prefix}{links.target(source_rel, path)}{sep}{fragment}{suffix}\"",
+  "replace": "        if not path.endswith(\".md\"):\n            return match.group(0)\n        return f\"{prefix}{links.target(source_rel, path)}{sep}{fragment}{suffix}\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a link to a workflow, a manifest or a hub script stayed relative and was a dead link on the site (13 on OmniAccelerANT's)"
+ },
+ {
+  "id": "lib.dartdoc-guides-folder-is-tree",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "            return \"tree\"",
+  "replace": "            return \"blob\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "GitHub shows a folder under /tree/; /blob/ on a folder is a redirect at best"
+ },
+ {
+  "id": "lib.dartdoc-guides-missing-fails",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        if not kind:",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a link to a file that does not exist would ship as a GitHub 404 that no site gate sees"
+ },
+ {
+  "id": "lib.dartdoc-guides-site-page-kept",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "            if self.site_root and pathlib.Path(self.site_root, unquote(path)).exists():",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a guide may link a page of the site itself, which is no repository file"
+ },
+ {
+  "id": "lib.dartdoc-guides-scheme-left-alone",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "NOT_A_REPO_PATH = re.compile(r\"^(?:[A-Za-z][A-Za-z0-9+.-]*:|/|#)\")",
+  "replace": "NOT_A_REPO_PATH = re.compile(r\"^(?:https?:|#)\")",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a mailto: or a site-absolute link would be read as a repository path"
+ },
+ {
+  "id": "lib.dartdoc-guides-empty-submodule",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "            if (resolved + \"/\").startswith(sub + \"/\") and checkout.is_dir() and not any(checkout.iterdir()):",
+  "replace": "            if False:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a docs build without the submodules checked out would fail on every hub link"
+ },
+ {
+  "id": "lib.dartdoc-guides-submodule-root",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "            if resolved == sub:\n                return f\"{url}/tree/{BRANCH}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a link to the submodule itself would land on the superproject's gitlink page"
+ },
+ {
+  "id": "lib.dartdoc-guides-render-checks-the-tree",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "submodule_urls(project), project, str(root))",
+  "replace": "submodule_urls(project))",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "without the project root the render cannot tell a file from a folder or a missing file"
  }
 ]
