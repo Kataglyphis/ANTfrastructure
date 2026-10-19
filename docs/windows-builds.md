@@ -213,7 +213,7 @@ distribution for Windows Containers) and is split into staged images:
   `tag`; the former no-op `Dockerfile.sdk` shim was removed), and downstream stages build CPU-only
   (CUDA auto-detection falls back to `CPU-only build`). `windows/Build-Buildkit.ps1` selects with
   `-Gpu` / `-Variant`.
-- The toolchain stage builds CPython 3.14 from source (matching the canonical versions.env) via
+- The toolchain stage builds CPython `PYTHON_VERSION` (versions.env, 3.15.0) from source via
   `windows/Dockerfile.toolchain-builder` + `Build-ToolchainAll.ps1`, twice from one checkout: the
   GIL build and its free-threaded twin (§ [The free-threaded CPython](#the-free-threaded-cpython)).
   Then it builds the patched clang/LLVM on top by default (`patched-llvm` target,
@@ -363,7 +363,7 @@ in `linux/scripts/01-core/versions.env`.
 
 | Component | Generator | Compiler | Notes |
 |---|---|---|---|
-| CPython 3.14 | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset; built GIL and free-threaded, [details](#the-free-threaded-cpython) |
+| CPython (pin: `PYTHON_VERSION`) | `PCbuild\build.bat` | ClangCL (v145→ClangCL via Directory.Build.props) | Requires VS ClangCL toolset; built GIL and free-threaded, [details](#the-free-threaded-cpython) |
 | ONNX Runtime (pin: `ONNXRUNTIME_VERSION`) | Ninja | clang-cl, lld-link | [details](#onnx-runtime-pin-onnxruntime_version) |
 | ONNX GenAI (pin: `ONNXRUNTIME_GENAI_VERSION`) | CMake (Ninja) | clang-cl, lld-link | [details](#onnx-genai-pin-onnxruntime_genai_version) |
 | OpenCV 5.x | Ninja | clang-cl, lld-link | [details](#opencv-5x) |
@@ -391,12 +391,13 @@ interpreter.
 - **Own trees and prefix.** The free-threaded build writes `PCbuild\freethreaded\amd64` and
   `PCbuild\obj\freethreaded` (`Get-CpythonPcbuildArguments -FreeThreaded`). CPython's own
   `PC\layout --include-freethreaded --include-dev --include-venv --include-stable` installs it into
-  `C:\python-freethreaded` (`PYTHON_FREETHREADED_BIN`), 36 MB: `python3.14t.exe`, `python314t.dll`,
-  `DLLs\*.cp314t-win_amd64.pyd`, `Lib`, `include` and `libs\python314t.lib`. Its `site-packages`
-  starts empty, so the GIL tree's pip, cp314 wheels and `sitecustomize.py` never reach it.
+  `C:\python-freethreaded` (`PYTHON_FREETHREADED_BIN`), 38.7 MB at 3.15.0: `python3.15t.exe`,
+  `python315t.dll`, `DLLs\*.cp315t-win_amd64.pyd`, `Lib`, `include` and `libs\python315t.lib`. Its
+  `site-packages` starts empty, so the GIL tree's pip, cp315 wheels and `sitecustomize.py` never
+  reach it.
 - **PATH order picks the build.** `PYTHON_FREETHREADED_BIN` is last on `PATH` and holds no
-  `python.exe`: a bare `python`, a `3.14` and a `3.14+gil` request stay on
-  `C:\temp\cpython\PCbuild\amd64\python.exe`; only a `3.14t` request finds `python3.14t.exe`.
+  `python.exe`: a bare `python`, a `3.15` and a `3.15+gil` request stay on
+  `C:\temp\cpython\PCbuild\amd64\python.exe`; only a `3.15t` request finds `python3.15t.exe`.
 - **Measured in `:winamd64` on 2026-10-07** (`Build-ToolchainAll.ps1 -SourceDir` on a fresh v3.14.8
   checkout, `UV_PYTHON_DOWNLOADS=never`, two runs, 32 CPUs): the GIL build took 120-207 s with the
   externals download, the free-threaded one 104-124 s. `uv python find 3.14t`,
@@ -404,9 +405,9 @@ interpreter.
   `C:\python-freethreaded\python3.14t.exe`, and uv's managed store stayed empty without the variable
   too. `uv build --python 3.14t` built a `cp314-cp314t-win_amd64` wheel, `3.14+gil` a `cp314-cp314`
   one.
-- **Import libraries.** `Select-CpythonImportLib` gives a GIL caller `python314.lib` and a
-  `-FreeThreaded` one `python314t.lib`, never the other; `Get-SourceBuildPython -FreeThreaded`
-  returns the install's exe, `include` and `libs`. 3.14's `PC\pyconfig.h` does not define
+- **Import libraries.** `Select-CpythonImportLib` gives a GIL caller `python315.lib` and a
+  `-FreeThreaded` one `python315t.lib`, never the other; `Get-SourceBuildPython -FreeThreaded`
+  returns the install's exe, `include` and `libs`. `PC\pyconfig.h` (3.14 and 3.15) does not define
   `Py_GIL_DISABLED` itself, so an extension built against the install must pass
   `Py_GIL_DISABLED=1`: setuptools does, a hand-written CMake or clang-cl build must too. A clang-cl
   extension built that way imported with the GIL still off.
@@ -426,7 +427,7 @@ interpreter.
   `/p:PreferredToolArchitecture=x64`); one function, `Install-CpythonTargetTree`, stages each tree
   right after its own build (tests: `SourceBuild.TargetCpythonTree.Tests.ps1`):
   - **`C:\runtime\python`**: the GIL build, unchanged.
-  - **`C:\runtime\python-freethreaded`**: `python3.14t.exe`, `libs\python314t.lib` and the
+  - **`C:\runtime\python-freethreaded`**: `python3.15t.exe`, `libs\python315t.lib` and the
     stable-ABI `libs\python3t.lib` (IREE's twin needs FindPython's `Development.SABIModule`), no
     `python.exe`, an empty `site-packages` without the DLL-directory shim, and `venvlaunchert.exe`
     and `venvwlaunchert.exe` in `Lib\venv\scripts\nt`, where `PC\layout --include-venv` puts them.
@@ -434,7 +435,7 @@ interpreter.
     suitable Python executable".
   - **`BUNDLE-ENV`** sets `KATA_PYTHON_FREETHREADED` and appends the tree last to `PATH`.
   - **media-tvm builds both trees too.** The merge takes only media-core's, but TVM's and IREE's
-    cross twins link the free-threaded tree's `python314t.lib`
+    cross twins link the free-threaded tree's `python315t.lib`
     ([§ The arm64 cross twins](#the-arm64-cross-twins)).
 - **Measured in `:winamd64` on 2026-10-07** on a fresh v3.14.8 checkout:
   - The ARM64 GIL build took 65-96 s with the externals fetch, the free-threaded one 67 s.
@@ -452,7 +453,7 @@ interpreter.
 #### The free-threaded wheels
 
 Every wheel the media stages build, on `:winamd64` and on the arm64 cross lane, gets a
-`cp3XY-cp3XYt` twin beside its unchanged `cp314` wheel, but only when the package's own code
+`cp3XY-cp3XYt` twin beside its unchanged `cp3XY` wheel, but only when the package's own code
 declares free-threading (owner request 2026-10-07). The twins are built with the interpreter of
 [§ The free-threaded CPython](#the-free-threaded-cpython), on the image's VS 2026 and clang-cl.
 
@@ -462,7 +463,7 @@ declares free-threading (owner request 2026-10-07). The twins are built with the
   was read at, and that evidence; `PythonWheel.FreeThreadedTwin.Tests.ps1` fails when a pin moves,
   so a bump re-reads the evidence.
   - **twin**: `onnxruntime`, `av`, `apache-tvm-ffi`, `iree-base-runtime` and `iree-base-compiler`.
-  - **none**: `apache-tvm` (a `py3` wheel with no extension, which a 3.14t venv installs as it is)
+  - **none**: `apache-tvm` (a `py3` wheel with no extension, which an X.Yt venv installs as it is)
     and `torchvision`.
   - **gil**: `onnxruntime-genai`, `ai-edge-litert`, `hailort`, `libcamera` and `opencv`, whose
     modules re-enable the GIL.
@@ -495,13 +496,14 @@ declares free-threading (owner request 2026-10-07). The twins are built with the
     lane runs. The proof venv's `sitecustomize.py` registers the image's DLL homes
     (`Get-PythonDllHome`, the list of the image's own shim) and the wheel's own DLL directories,
     which the package's `__init__` would load first.
-- **`Py_GIL_DISABLED` is the build's job** (3.14's `pyconfig.h` leaves it undefined on Windows,
+- **`Py_GIL_DISABLED` is the build's job** (`pyconfig.h` leaves it undefined on Windows,
   § The free-threaded CPython). CMake 4.4's FindPython adds it to `Python::Module` when the
   interpreter it runs is free-threaded. ONNX Runtime only logs it, so
   `Assert-NinjaFreeThreadedDefine` checks `build.ninja` before the ORT and IREE twins compile.
-- **No `win32` tag.** The clang-built 3.14t keeps the `AMD64` marker in `sys.version`, so
+- **No `win32` tag.** The clang-built X.Yt keeps the `AMD64` marker in `sys.version`, so
   `sysconfig`, setuptools and `packaging` all report `win-amd64` without the GIL tree's platform
-  shim (measured 2026-10-07). The tag check still refuses any other platform.
+  shim (measured on 3.14t 2026-10-07; `sys.version` and `sysconfig` on 3.15t 2026-10-19). The tag
+  check still refuses any other platform.
 
 How each twin is built:
 
@@ -527,8 +529,8 @@ How each twin is built:
   `C:\runtime\iree` stays the GIL pass's.
   - `IREE_ENABLE_PYTHON_STABLE_ABI=OFF` and `MLIR_ENABLE_PYTHON_STABLE_ABI=OFF`: upstream turns abi3
     on unless `SOABI` starts `cpython-NNt` (`CMakeLists.txt:782-791`), Windows' is
-    `cp314t-win_amd64`, and 3.14t loads no abi3 module.
-  - `-UNB_SUFFIX -UNB_SUFFIX_S`: nanobind caches the GIL pass's `.cp314-win_amd64.pyd`, which 3.14t
+    `cp3XYt-win_amd64`, and X.Yt loads no abi3 module.
+  - `-UNB_SUFFIX -UNB_SUFFIX_S`: nanobind caches the GIL pass's `.cp3XY-win_amd64.pyd`, which X.Yt
     never imports.
   - `ninja -t cleandead` and a fresh `build\` beside each `setup.py`: the GIL pass's bare abi3
     `_runtime.pyd` is no output any more, and left in place it went into the twin, where it failed
@@ -589,14 +591,14 @@ builds):
 
 The arm64 cross lane builds the same twins for `win_arm64` since 2026-10-07 (CON79): `onnxruntime`,
 `av`, `apache-tvm-ffi` and `iree-base-runtime`; with no IREE compiler built, there is no
-`iree-base-compiler` wheel to pair. The host's x64 3.14t runs every build, and each module links the
-target tree's `C:\runtime\python-freethreaded\libs\python314t.lib`
+`iree-base-compiler` wheel to pair. The host's x64 3.15t runs every build, and each module links the
+target tree's `C:\runtime\python-freethreaded\libs\python315t.lib`
 ([§ The free-threaded CPython](#the-free-threaded-cpython)).
 
 - **The venv names its modules for the target.** `New-FreeThreadedBuildPython` takes its link
   inputs from `Get-TargetBuildPython -FreeThreaded` and, on a cross lane, writes the platform shim
   into the venv's `site-packages` after uv installs the build tools. The shim pins `EXT_SUFFIX` to
-  `.cp314t-win_arm64.pyd` (it keeps the `t` when `Py_GIL_DISABLED` is set, the one formula the GIL
+  `.cp315t-win_arm64.pyd` (it keeps the `t` when `Py_GIL_DISABLED` is set, the one formula the GIL
   build interpreter's shim uses too); `get_platform()` stays the host's.
 - **`--plat-name win_arm64`.** `Invoke-PythonWheelBuild -FreeThreaded` adds it to a `bdist_wheel`
   on a cross lane, as `-CrossStage` does for the GIL wheel. The IREE twin packs with
@@ -609,16 +611,16 @@ target tree's `C:\runtime\python-freethreaded\libs\python314t.lib`
   configure drops them; without them the twin would recompile those objects and ORT would relink
   `onnxruntime.dll`, which the byte-for-byte check refuses.
 - **tvm-ffi** is assembled for the target as its GIL wheel is (`New-TvmFfiCrossWheel`, one function
-  for both): its own tvm-ffi tree, the Cython core linked against `python314t.lib`, and
+  for both): its own tvm-ffi tree, the Cython core linked against `python315t.lib`, and
   `Assert-NinjaFreeThreadedDefine` before ninja. `apache-tvm`'s assembled wheel is now
-  `py3-none-win_arm64`, as upstream's `wheel.py-api = "py3"` builds it, so a 3.14t venv installs it
+  `py3-none-win_arm64`, as upstream's `wheel.py-api = "py3"` builds it, so an X.Yt venv installs it
   too; it was tagged `cp314-cp314` before, which no 3.14t venv takes.
 
 **Proved statically on the build host, on the device by the bundle gate.** No ARM64 module loads on
 the x64 host, so `Save-FreeThreadedWheel` runs no venv proof on a cross lane. It stores a twin after
 three static gates instead: the tags (`cp3XY-cp3XYt`, `win_arm64`, every tagged `.pyd`
-`.cp314t-win_arm64.pyd`), the imports (every module imports `python314t.dll`, never
-`python314.dll` or `python3.dll`), and `Assert-WheelTargetArch` (every PE member `0xAA64`).
+`.cp3XYt-win_arm64.pyd`), the imports (every module imports `python3XYt.dll`, never
+`python3XY.dll` or `python3.dll`), and `Assert-WheelTargetArch` (every PE member `0xAA64`).
 
 - **The merge** checks the store twice. `Write-BundleManifest.ps1` refuses a cross bundle unless
   every twin-verdict GIL wheel in `C:\runtime\wheels` has exactly one tag-clean twin of its version,
@@ -627,7 +629,7 @@ three static gates instead: the tags (`cp3XY-cp3XYt`, `win_arm64`, every tagged 
   every wheel's native members, which it only walked before, and fails a `cp3XYt` wheel module that
   imports a GIL runtime. The bundle ships both runtimes, so the walk alone resolves either.
 - **The device.** `Export-Arm64Bundle.ps1` puts `free-threaded-wheel.py` beside
-  `Test-Arm64Bundle.ps1`. The gate installs each twin offline into a `python3.14t.exe -m venv`, with
+  `Test-Arm64Bundle.ps1`. The gate installs each twin offline into a `python3XYt.exe -m venv`, with
   its dependencies from `deps\` (below), and runs `free-threaded-wheel.py prove`, with the bundle's
   DLL homes registered in the venv's `sitecustomize.py`. A bundle without `deps\` gets each twin
   alone (`--no-deps`), as before 2026-10-11.
@@ -636,7 +638,7 @@ three static gates instead: the tags (`cp3XY-cp3XYt`, `win_arm64`, every tagged 
 - **Their dependencies sit in `wheels-free-threaded\deps`** (CON79, in source since 2026-10-11).
   After the GIL store, `Copy-TargetPythonDeps.ps1` reads each twin's `Requires-Dist` and downloads
   the requirements for the target as `cp3XYt` or ABI-free wheels, never `abi3`, which the
-  free-threaded ABI cannot load. Today: numpy and ml_dtypes as `cp314t-win_arm64`, plus flatbuffers,
+  free-threaded ABI cannot load. Today: numpy and ml_dtypes as `cp315t-win_arm64`, plus flatbuffers,
   packaging, protobuf and typing-extensions as pure wheels. It fails when a downloaded wheel carries
   another ABI, or when a twin's or a dependency's requirement resolves in neither directory. The
   store's top keeps the twins alone, which the mirror gate reads; a consumer installs a twin offline
@@ -1477,8 +1479,10 @@ lane.**
   (source-built at `C:\runtime\python`, step 1), the `onnxruntime`, `onnxruntime_genai_directml`,
   `av`, `apache_tvm`, `apache_tvm_ffi` and `iree_base_runtime` wheels in `C:\runtime\wheels`
   (staged, **not** installed: nothing here can import them; install them on the target host), and
-  `cv2.cp314-win_arm64.pyd` installed into the target interpreter's site-packages. No arm64 import
-  has ever been executed anywhere.
+  `cv2.cp315-win_arm64.pyd` installed into the target interpreter's site-packages. A device imports
+  them: `Test-Arm64Bundle.ps1` on `windows-11-arm` installs the ORT, GenAI and `av` wheels offline
+  and imports `numpy`, `onnxruntime`, `av` and `cv2`
+  ([`windows-cross-builds.md` § Verification](windows-cross-builds.md#verification)).
 - **The two sets.** Six wheels on each lane, differing in exactly two entries: amd64 additionally
   has `iree_base_compiler`, and installs `tvm_ffi` from the vendored source instead of shipping it
   as a wheel. The **compiler** packages (`iree.compiler`, TVM codegen) stay amd64-only: they need an

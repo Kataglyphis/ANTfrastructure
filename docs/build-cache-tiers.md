@@ -784,7 +784,7 @@ only after a detour through the config file:
   `file_stat_matches` / `use_ctime_for_stat` into `/etc/sccache/config.toml`
   (`Dockerfile.base:115-142`, reached via `SCCACHE_CONF`, `:102`) — those knobs
   have NO environment-variable path in sccache, which is why the config file
-  exists at all. (It is not read while `SCCACHE_DIR` is set, which is always:
+  exists at all. (Its `[cache.disk]` section is dropped while `SCCACHE_DIR` is set, which is always:
   [§ The shipped image's cache dirs](#the-shipped-images-cache-dirs).) And the runtime turns the mode off: both entry points
   export `SCCACHE_DIRECT=false` (`01-core/common.sh:419-433`,
   `01-core/compiler-cache.sh:132`), and the environment variable wins over
@@ -1425,6 +1425,10 @@ published `:latest` on 2026-09-28 with `sccache --show-stats`:
 | `SCCACHE_DIR` + `SCCACHE_CONF` | 10 GiB |
 | `SCCACHE_CONF` alone | 30 GiB (the file) |
 | `SCCACHE_DIR` + `SCCACHE_CACHE_SIZE=30G` | 30 GiB |
+
+The rest of the file still applies: with `SCCACHE_DIR` set, a test file's `[dist]` scheduler reached
+the server while its `[cache.disk]` `dir` and `size` did not (sccache 0.18.0 in `:latest`,
+2026-10-19).
 
 Base's ENV and `compiler-cache.sh` always set `SCCACHE_DIR`, so the baked
 `file_stat_matches = true` and `hash_working_directory = false` have never applied.

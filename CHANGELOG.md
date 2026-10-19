@@ -11,6 +11,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — Docs: Windows CPython is 3.15, the sccache file is read
+
+- **`windows-builds.md` names the Windows images' CPython 3.15.0** (`PYTHON_VERSION` in both
+  published images of 2026-10-17): `python3.15t.exe`, `python315t.lib`, `cp315` and `cp315t` where
+  it said 3.14; the dated 3.14 measurements stay. "No arm64 import has ever been executed" is gone:
+  `Test-Arm64Bundle.ps1` imports `numpy`, `onnxruntime`, `av` and `cv2` on `windows-11-arm`
+  (run 39200278761: `PY 3.15.0`, 18 steps passed).
+- **`linux-build-basics.md` and `build-cache-tiers.md`: sccache reads `/etc/sccache/config.toml`
+  while `SCCACHE_DIR` is set, but drops its `[cache.disk]` section**, so the baked knobs never
+  apply. Measured in `:latest` (sccache 0.18.0): the file's `[dist]` scheduler applied, its `dir`
+  and `size` did not. "Not read at all" was wrong.
+- `doc-dupes.allow`: two budgets down to the measured counts (`adopting` | `linux-build-basics`
+  17 → 14, `windows-build-invariants` | `windows-builds` 22 → 15).
+
 ## 2026-10-19 — The arm64 test artifact keeps its hidden files
 
 - **`container-ci-windows.yml` uploads `<artifact-name>-tests` with `include-hidden-files: true`.**
