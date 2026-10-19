@@ -43,8 +43,9 @@ linux/scripts/renovate-local.sh --apply .      # gitlinks AND manifests AND lock
 
 Consumers call their own thin `renovate-local.sh` wrapper (`scripts/linux/`, or
 `scripts/` in a flat repo), same shape as `run-lint-gates.sh`. Node 24
-(SHA256-verified) and Renovate (an exact npm version) are pinned in
-`01-core/versions.env` and bootstrapped on demand into `~/.cache/kataglyphis`. The apply
+(SHA256-verified) and Renovate (an exact npm version, installed from a committed
+lock) are pinned in `01-core/tool-pins.env` and bootstrapped on demand into
+`~/.cache/kataglyphis` ([§ Pins](#pins-and-why-node-is-one-of-them)). The apply
 half's JSON reading and file editing live beside it in `renovate_planner.py`, and
 `tests/test-renovate-local.sh` drives the real script over fixtures through
 `RENOVATE_LOCAL_REPORT` / `RENOVATE_LOCAL_CONFIG` - no network, no node.
@@ -1255,13 +1256,28 @@ so one name cannot serve both. A node already on `PATH` is used only when its ma
 otherwise the pinned tarball is downloaded once, **SHA256-verified**, and cached
 per version under `${XDG_CACHE_HOME:-~/.cache}/kataglyphis` (override with
 `RENOVATE_LOCAL_CACHE`).
-Renovate itself is installed into a user-owned npm prefix — no sudo, nothing
-global.
+Renovate itself installs with **`npm ci` from the committed
+`linux/scripts/renovate-npm/package-lock.json`** (every transitive version with its
+sha512 integrity) into a user-owned prefix, `renovate-<version>-<lock hash>` in that
+cache: no sudo, nothing global, and a regenerated lock reinstalls. `renovate-local.sh`
+refuses a lock that installs another Renovate than `RENOVATE_VERSION`, and `--print-bin`
+prints the path alone (the install talks on stderr).
+
+**Why a lock (2026-10-19).** `npm install -g renovate@44.157.0` failed with `npm ETARGET
+@aws-sdk/credential-provider-http@^3.972.77`. Renovate pins its direct dependencies
+exactly and nothing below them, so each install resolved the registry of that minute:
+`@aws-sdk/credential-provider-node` 3.972.87, published 18:47:51Z, requires
+`^3.972.77`, which AWS published at 18:53:07Z; the install at 18:48:11Z fell in between.
+Nothing was yanked and no lock was stale; there was none. Suite:
+`tests/test-renovate-bootstrap.sh`.
 
 Renovate updates itself the same way: both keys are annotated (`datasource=npm
 depName=renovate`, `datasource=node-version depName=node`), so a report names a newer
 Renovate like any other pin. Their bump is a hand bump, because the Node tarball's SHA256
-moves with it.
+moves with it. A Renovate bump also sets `renovate` in `linux/scripts/renovate-npm/package.json`
+and regenerates the lock there: `npm install --package-lock-only --ignore-scripts` with the
+pinned Node. `.github/renovate.json` gates that `package.json` the same way; lock maintenance
+(`--apply`) still moves the lock's transitive entries.
 
 ## A skipped pin is not up to date
 

@@ -89,8 +89,10 @@ fi
 
 CACHE_ROOT="${RENOVATE_LOCAL_CACHE:-${XDG_CACHE_HOME:-${HOME}/.cache}/kataglyphis}"
 NODE_DIR="${CACHE_ROOT}/node-${RENOVATE_NODE_VERSION}"
-NPM_PREFIX="${CACHE_ROOT}/renovate-${RENOVATE_VERSION}"
-RENOVATE_JS="${NPM_PREFIX}/lib/node_modules/renovate/dist/renovate.js"
+# npm ci from the committed lock: a fresh resolve takes whatever the registry holds that minute.
+RENOVATE_NPM_DIR="${HUB_ROOT}/linux/scripts/renovate-npm"
+NPM_PREFIX=""
+RENOVATE_JS=""
 NODE_BIN=""
 
 node_major() { "$1" --version 2>/dev/null | sed -e 's/^v//' -e 's/\..*//'; }
@@ -104,6 +106,18 @@ node_arch_asset() {
     arm64) printf 'linux-arm64 %s\n' "${RENOVATE_NODE_LINUX_ARM64_SHA256:-}" ;;
     *) err "no pinned Node asset for ${arch}; install Node ${RENOVATE_NODE_VERSION}+ yourself and re-run" ;;
   esac
+}
+
+# The lock must install the pinned Renovate; the prefix carries the lock's hash, so a regenerated lock reinstalls.
+renovate_lock_check() {
+  local lock="${RENOVATE_NPM_DIR}/package-lock.json" locked
+  [ -f "${lock}" ] || err "no ${lock}: the bootstrap installs Renovate from it"
+  locked="$("${PY_BIN}" -c 'import json, sys; print(json.load(open(sys.argv[1]))["packages"]["node_modules/renovate"]["version"])' "${lock}")" \
+    || err "cannot read the renovate version from ${lock}"
+  [ "${locked}" = "${RENOVATE_VERSION}" ] \
+    || err "${lock} installs renovate ${locked}, tool-pins.env pins ${RENOVATE_VERSION}: set it in package.json beside the lock and run 'npm install --package-lock-only --ignore-scripts' there with Node ${RENOVATE_NODE_VERSION}"
+  NPM_PREFIX="${CACHE_ROOT}/renovate-${RENOVATE_VERSION}-$(sha256sum "${lock}" | cut -c1-12)"
+  RENOVATE_JS="${NPM_PREFIX}/node_modules/renovate/dist/renovate.js"
 }
 
 bootstrap_node() {
@@ -124,7 +138,7 @@ bootstrap_node() {
   url="https://nodejs.org/dist/v${RENOVATE_NODE_VERSION}/node-v${RENOVATE_NODE_VERSION}-${asset}.tar.xz"
   tmp="$(mktemp -d)" || err "mktemp failed"
 
-  note "bootstrapping node ${RENOVATE_NODE_VERSION} (${asset}) into ${NODE_DIR}"
+  note "bootstrapping node ${RENOVATE_NODE_VERSION} (${asset}) into ${NODE_DIR}" >&2
   curl -fsSL -o "${tmp}/node.tar.xz" "${url}" || { rm -rf "${tmp}"; err "download failed: ${url}"; }
   local got
   got="$(sha256sum "${tmp}/node.tar.xz" | cut -d' ' -f1)"
@@ -139,18 +153,22 @@ bootstrap_node() {
   [ -x "${NODE_BIN}" ] || err "node did not land at ${NODE_BIN}"
 }
 
+# stdout stays the --print-bin answer, so the install talks on stderr.
 bootstrap_renovate() {
   [ -f "${RENOVATE_JS}" ] && return 0
-  note "installing renovate ${RENOVATE_VERSION} into ${NPM_PREFIX}"
-  # A user-owned prefix: no sudo, nothing global touched.
-  PATH="$(dirname "${NODE_BIN}"):${PATH}" npm_config_prefix="${NPM_PREFIX}" \
-    "$(dirname "${NODE_BIN}")/npm" install -g "renovate@${RENOVATE_VERSION}" \
-    --no-fund --no-audit --loglevel=error \
-    || err "npm install of renovate@${RENOVATE_VERSION} failed"
+  note "installing renovate ${RENOVATE_VERSION} into ${NPM_PREFIX} from ${RENOVATE_NPM_DIR}/package-lock.json" >&2
+  rm -rf "${NPM_PREFIX:?}"
+  mkdir -p "${NPM_PREFIX}" \
+    && cp "${RENOVATE_NPM_DIR}/package.json" "${RENOVATE_NPM_DIR}/package-lock.json" "${NPM_PREFIX}/" \
+    || err "cannot stage the lock in ${NPM_PREFIX}"
+  (cd "${NPM_PREFIX}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
+    "$(dirname "${NODE_BIN}")/npm" ci --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
+    || err "npm ci of renovate@${RENOVATE_VERSION} from ${RENOVATE_NPM_DIR}/package-lock.json failed"
   [ -f "${RENOVATE_JS}" ] || err "renovate did not land at ${RENOVATE_JS}"
 }
 
 if [ -z "${INJECTED_REPORT}" ] || [ "${MODE}" = print-bin ]; then
+  renovate_lock_check
   bootstrap_node
   bootstrap_renovate
 fi

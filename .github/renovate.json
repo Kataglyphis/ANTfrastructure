@@ -25,6 +25,12 @@
       "dependencyDashboardApproval": false
     },
     {
+      "description": "renovate in linux/scripts/renovate-npm/package.json moves with RENOVATE_VERSION in tool-pins.env, which the rules above gate: renovate-local.sh refuses a lock that installs another version. Lock maintenance of its transitive dependencies stays free.",
+      "matchFileNames": ["linux/scripts/renovate-npm/package.json"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "dependencyDashboardApproval": true
+    },
+    {
       "description": "Dockerfile digest updates (UBUNTU_DIGEST-style FROM pins) also need sync_versions.py --write to propagate; require dashboard approval.",
       "matchManagers": ["dockerfile"],
       "dependencyDashboardApproval": true

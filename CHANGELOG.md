@@ -10,6 +10,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — Renovate installs from a committed lock
+
+- **`renovate-local.sh` installs Renovate with `npm ci` from
+  `linux/scripts/renovate-npm/package-lock.json`** (620 entries, each with its sha512), into
+  `renovate-<version>-<lock hash>` in the cache. `npm install -g renovate@44.157.0` failed today
+  with `npm ETARGET @aws-sdk/credential-provider-http@^3.972.77`: Renovate pins only its direct
+  dependencies, `@aws-sdk/credential-provider-node` 3.972.87 (published 18:47:51Z) requires
+  `^3.972.77`, which AWS published at 18:53:07Z, and the install at 18:48:11Z fell in between.
+  Nothing was yanked and no lock was stale; there was none
+  ([`dependency-updates.md`](docs/dependency-updates.md#pins-and-why-node-is-one-of-them)).
+- The script refuses a lock that installs another Renovate than `RENOVATE_VERSION`, and
+  `--print-bin` prints the path alone: the bootstrap's notes and npm's output go to stderr, where
+  `node "$(renovate-local.sh --print-bin)"` used to get them on a first run.
+  `.github/renovate.json` gates the `package.json` bump like the `tool-pins.env` one.
+- `test-renovate-bootstrap.sh` 10 assertions, 4 `renovate.bootstrap-*` mutations. In `:latest`:
+  the six renovate suites pass, and a fresh bootstrap (27 s) answers `renovate --version`
+  with `44.157.0`.
+
 ## 2026-10-19 — `builder: dartdoc` takes a guide list and clears doc/api first
 
 - **`build-docs.yml` input `guides`**: one `<source>|<slug>|<nav title>` per line, reaching the
