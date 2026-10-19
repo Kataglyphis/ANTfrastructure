@@ -249,16 +249,20 @@ from scratch. Point it at a named volume instead:
 
 ```bash
 nerdctl volume create cargo-cache        # once
-
-MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' rdctl shell nerdctl run --rm --user root \
+# once: a new volume is root's, and the image runs as uid 1001
+MSYS_NO_PATHCONV=1 nerdctl run --rm --user root --entrypoint chown \
   --mount type=volume,source=cargo-cache,target=/cargo-cache \
-  -v /mnt/d/path/to/repo:/workspace -w /workspace \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest -R 1001:1001 /cargo-cache
+
+MSYS_NO_PATHCONV=1 nerdctl run --rm \
+  --mount type=volume,source=cargo-cache,target=/cargo-cache \
+  -v 'D:\path\to\repo:/workspace' -w /workspace \
   ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
   bash -c 'bash scripts/linux/cmake-configure-build.sh \
      --preset linux-debug-clang --build-dir /tmp/build --cargo-cache-dir /cargo-cache'
 ```
 
-Three details that are easy to get wrong:
+Five details that are easy to get wrong:
 
 - **`--build-dir` must be container-native** (`/tmp/...`), not a path on the
   bind-mounted host tree. CMake's FetchContent `file RENAME` and cargo's
@@ -266,20 +270,19 @@ Three details that are easy to get wrong:
   through with a permission error on a stale artifact.
 - The build driver also redirects `CARGO_TARGET_DIR` onto the same volume, so
   compiled artifacts stay off the host mount for the same reason.
-- `--user root` sidesteps volume ownership. To avoid it, chown the volume to
-  the image's uid once:
-  ```bash
-  rdctl shell nerdctl run --rm --user root \
-    --mount type=volume,source=cargo-cache,target=/cargo-cache \
-    alpine:3.20 chown -R 1001:1001 /cargo-cache
-  ```
+- **The family image does the chown**, as root for that one run, never a stock image: one
+  image to pull and trust, and the uid is the one it runs as.
+- **The repo is a Windows path**, `D:\...`, which Windows `nerdctl` translates in containerd's
+  namespace; `/mnt/d/...` binds an empty directory
+  ([§ *An empty mount is not a missing drive*](#an-empty-mount-is-not-a-missing-drive)).
 - The long `--mount` form is not a style choice. See
   [§ `-v name:/path` is a bind under Windows nerdctl](#-v-namepath-is-a-bind-under-windows-nerdctl)
   below: the short form silently mounts a directory instead of the volume.
 
-The `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` prefix is required when
-invoking nerdctl from Git Bash — without it the `-v` argument is rewritten
-into a Windows path and the run fails with "expected an absolute path".
+`MSYS_NO_PATHCONV=1` is required when invoking nerdctl from Git Bash: without it
+Git Bash rewrites the container side of `-v` and `target=` into a Windows path, and
+the run fails with "expected an absolute path". This recipe, the image's chown and a
+uid-1001 write into the volume, ran from Git Bash on 2026-10-19.
 
 After the first build the registry and compiled dependencies are reused and
 subsequent runs are dramatically faster.

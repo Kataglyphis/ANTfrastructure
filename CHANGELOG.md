@@ -10,6 +10,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the cargo-cache recipe follows its own page
+
+- **`rancher-desktop-linux-containers.md` § *Persisting the cargo cache*** chowns the named
+  volume with the family image (`--user root --entrypoint chown`, once), not `alpine:3.20`, and
+  then runs as the image's uid 1001 instead of `--user root`. It binds the repo by its Windows
+  path through Windows `nerdctl`, not `rdctl shell nerdctl -v /mnt/d/...`, the form the same
+  page's § *An empty mount is not a missing drive* shows mounting nothing. Run from Git Bash on
+  2026-10-19: the chown, then a uid-1001 write into the volume.
+
 ## 2026-10-19 — the large-files gate measures what git stores
 
 - **`verify_large_files.py` sizes each tracked file by its blob** (`git cat-file --batch-check`),
