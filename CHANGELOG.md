@@ -10,6 +10,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the site renders with DocumANTation 4866eae
+
+- **`third_party/DocumANTation` 4783f2c → 4866eae**: Markdown links between pages resolve on the
+  site, links to repository files go to GitHub, headings get anchors to depth 6, and the family
+  logo, favicon and a page title without the version are `setup_theme()` defaults.
+- **`docs/conf.py` passes no `release`**: titles no longer carry it, and nothing else reads it.
+- Built in `:latest` (Sphinx 9.1.0) and crawled offline: 95 pages, 273 internal targets, none
+  broken; the live site, on the old theme, had 184. Three anchors stay dead: links to a directory
+  (`../linux/scripts/01-core/`, `../linux/scripts/02-toolchain/rust/`, `upstream/patches/`)
+  render as fragments, which the theme has to map.
+
 ## 2026-10-19 — a consumer page that restates a hub page fails
 
 - **`verify_doc_dupes.py --against-hub --root <consumer>`** grades a consumer's tracked pages

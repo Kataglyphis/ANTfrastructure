@@ -12,6 +12,5 @@ setup_theme(
     globals(),
     repository_url=f"{brand()['identity']['github_url']}/{PROJECT}",
     project_name=PROJECT,
-    release="0.0.1",
     exclude_patterns=["_build", ".venv", "Thumbs.db", ".DS_Store"],
 )
