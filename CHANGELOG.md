@@ -10,6 +10,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the hub's docs build from the image, offline
+
+- **`linux/scripts/build-docs.sh` no longer installs Sphinx from PyPI in CI.** In the image its
+  `.venv` sees the image's `python3` site-packages through a `.pth` (Sphinx 9.1.0,
+  sphinx-book-theme 1.2.0, myst-parser 5.1.0, sphinx-design 0.7.0, Pygments 2.20.0 in `:latest`), and
+  only the vendored DocumANTation theme is installed into it, editable, `--offline --no-deps
+  --no-build-isolation`. A theme requirement the image does not meet stops the build and is named;
+  CI without the image refuses; a workstation without it installs `requirements.txt` as before
+  ([`project-info.md`](docs/project-info.md#building-the-hubs-docs)).
+- Built in `:latest` with `--network none`: the same 98 pages and 49 warnings as the PyPI build,
+  and the site-link gate passes. `tests/test-build-docs.sh` drives the three ways and the
+  requirement check; 4 `docs-site.*` mutations prove it.
+
 ## 2026-10-19 — the cargo-cache recipe follows its own page
 
 - **`rancher-desktop-linux-containers.md` § *Persisting the cargo cache*** chowns the named

@@ -234,3 +234,14 @@ The theme and the brand belong to DocumANTation, vendored here at `third_party/D
 `setup_theme()`. How any project uses it, and where the brand's CSS is changed (in DocumANTation,
 never here):
 [DocumANTation's `style/README.md`](https://github.com/Kataglyphis/DocumANTation/blob/develop/style/README.md#sphinx-docs).
+
+### Building the hub's docs
+
+`bash linux/scripts/build-docs.sh` builds `docs/_build/html`; `docs.yml` runs it in `:latest`
+through `build-docs.yml`. In the image it downloads nothing: the image's `python3` carries Sphinx,
+sphinx-book-theme, myst-parser, sphinx-design and Pygments, so `.venv` sees that interpreter's
+site-packages through a `.pth`, and only the vendored theme goes into it, editable, with
+`--offline --no-deps --no-build-isolation`. A requirement of the theme the image does not meet
+stops the build and is named. CI without the image refuses; a workstation without it installs
+`requirements.txt` from PyPI. Built in `:latest` with `--network none` on 2026-10-19: the same
+98 pages and 49 warnings as the PyPI build, 15 s instead of 20.

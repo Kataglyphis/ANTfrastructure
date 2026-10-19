@@ -14833,5 +14833,37 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-large-files.sh",
   "why": "a blob git cannot size would be graded as missing data, never as a failure"
+ },
+ {
+  "id": "docs-site.hub-docs-never-pypi-in-ci",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "  elif [ \"${CI:-}\" = true ]; then\n    err \"no ${IMAGE_VENV}: the docs build in the family image (build-docs.yml), never from PyPI in CI\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "a CI-side download of the Sphinx stack is what the everything-in-the-image rule forbids"
+ },
+ {
+  "id": "docs-site.hub-docs-image-first",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "  if [ -d \"${IMAGE_VENV}\" ]; then\n    image_docs_venv",
+  "replace": "  if false; then\n    image_docs_venv",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "in the image the stack is already there; going to PyPI anyway downloads 35 packages per build"
+ },
+ {
+  "id": "docs-site.hub-docs-version-checked",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "    if not req.specifier.contains(have, prereleases=True):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "an image whose Sphinx is older than the theme needs would fail deep inside sphinx-build, not by name"
+ },
+ {
+  "id": "docs-site.hub-docs-extras-skipped",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "    if req.marker is not None and not req.marker.evaluate({\"extra\": \"\"}):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "a requirement only an extra asks for is no requirement of the build"
  }
 ]
