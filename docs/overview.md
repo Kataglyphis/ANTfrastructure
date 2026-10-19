@@ -114,7 +114,7 @@ into it instead of a variant:
 
 | Accelerator | In `:latest` | Arches |
 |---|---|---|
-| Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS, pyhailort: a real module in images built with the `HAILO_PYHAILORT_IPO` switch at its default, which fails the build on a module without `PyInit__pyhailort`; `import hailo_platform` on Python 3.14 is checked but only warns, proven on amd64 only, [`hailo-support.md`](hailo-support.md#pyhailort)) | always | amd64, arm64 (riscv64: no upstream support) |
+| Hailo-10H (HailoRT, `hailortcli`, `hailonet`, TAPPAS, pyhailort: a real module in images built with the `HAILO_PYHAILORT_IPO` switch at its default, which fails the build on a module without `PyInit__pyhailort`; `import hailo_platform` on the image's Python is checked but only warns, proven on 3.14 and amd64 only (the 3.15 pin is not built yet), [`hailo-support.md`](hailo-support.md#pyhailort)) | always | amd64, arm64 (riscv64: no upstream support) |
 | Qualcomm QNN (ORT QNN EP) | only when a QAIRT zip is staged in `linux/qnn-sdk/` at build time ([`qnn-linux.md`](qnn-linux.md)) - **the current release was built without it** | arm64 |
 | NVIDIA CUDA / AMD ROCm | no - `:latest-nvidia` / `:latest-rocm`, both published for amd64 (table above) | NVIDIA: amd64, and arm64 (SBSA/Jetson) built on a Jetson but not published; ROCm: amd64 |
 | NVIDIA DeepStream 9.1 | no - in every amd64 `:latest-nvidia` build since 2026-10-07 (`ENABLE_DEEPSTREAM=false` opts out), publishing allowed by the owner 2026-10-01 ([`linux-accelerator-images.md`](linux-accelerator-images.md#deepstream-nvidia-variant)) | amd64 |

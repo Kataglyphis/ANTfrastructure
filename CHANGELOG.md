@@ -10,6 +10,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — two stale facts: pyhailort's Python, MSIX trust
+
+- **pyhailort is built for `PYTHON_VERSION`, not for "3.14".** `hailo-support.md` and
+  `overview.md` said the image runs 3.14 and that the staged wheel serves a ≤3.13
+  environment. The pin is 3.15.0 since CON90, and no image with pyhailort on 3.15 is built
+  yet; the published `:latest` (2026-10-11) runs Python 3.14.4, stages
+  `hailort-5.4.0-cp314-cp314-linux_x86_64.whl`, which installs on 3.14 only, and imports
+  `hailo_platform` on amd64 (checked 2026-10-19).
+- **A self-signed MSIX certificate needs `LocalMachine\TrustedPeople` only.**
+  `windows/scripts/certificates/README.md` said `TrustedPeople` alone fails with
+  `0x800B0109` and told everyone to import into `Root` too. OmniAccelerANT's installer test
+  imports a fresh self-signed certificate into `TrustedPeople` alone and `Add-AppxPackage`
+  passes on `windows-2025` and `windows-11-arm` (runs 39038477716 and 39038479571,
+  2026-10-17). `Root` is for a CA-issued certificate's CA and for `signtool verify /pa`.
+
 ## 2026-10-19 — the README rule is a gate
 
 - **`readme-length` fails a root `README.md` over 100 lines**, badges included, and names

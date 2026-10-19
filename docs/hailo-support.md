@@ -24,11 +24,15 @@ directory) and installed into `/opt/venv`. Every image built before the
 `HAILO_PYHAILORT_IPO` switch shipped it as an empty module that could never
 import; the switch's default patches that and checks the module
 ([pyhailort](#pyhailort)). One honest caveat: upstream declares
-`requires-python <3.14` and the image runs 3.14, so the wheel's metadata is
-relaxed before the build and the install is followed by an import test — a
-failure is REPORTED, never hidden. The wheel also stays staged at
-`/opt/hailo/wheels/` for a ≤3.13 environment. The 2026-09-24 amd64 build imports
-on 3.14; if an import fails there, that is upstream's declared boundary.
+`requires-python <3.14`, and the wheel is built for the image's own interpreter,
+`PYTHON_VERSION` in `versions.env`. So its metadata is relaxed before the build and
+the install is followed by an import test — a failure is REPORTED, never hidden.
+The wheel also stays staged at `/opt/hailo/wheels/`, tagged for that interpreter
+only (`hailort-5.4.0-cp314-cp314-linux_x86_64.whl` in the published `:latest`).
+The import works on 3.14: the 2026-09-24 amd64 build, and the published `:latest`
+of 2026-10-11 (Python 3.14.4, amd64, checked 2026-10-19). The pin is 3.15.0 since
+CON90, and no image with pyhailort on 3.15 is built yet; a failed import there is
+upstream's declared boundary.
 **TAPPAS IS built** (2026-09-20). Its README names GStreamer 1.16–1.20 as the
 *tested* matrix, but the meson constraint is `>= 1.0` and it builds clean
 against this image's 1.29.2 — the two load-bearing fixes are build-args, not
@@ -239,9 +243,10 @@ module is what ships. Under `upstream` all three warn, which is how the image
 shipped before. A run without `/opt/venv`, outside the image, only stages the
 wheel.
 
-`import hailo_platform` is tried last, and it only warns, in both modes: upstream
-declares `requires-python <3.14`, and the import on the image's 3.14 is proven on
-amd64 only. The gate is the `PyInit__pyhailort` export, not the import.
+`import hailo_platform` is tried last, on `/opt/venv`'s Python (`PYTHON_VERSION`),
+and it only warns, in both modes: upstream declares `requires-python <3.14`. It is
+proven on 3.14 and amd64 only; 3.15, the pin since CON90, is not built yet. The gate
+is the `PyInit__pyhailort` export, not the import.
 
 **The build backend is not pinned.** `build_pyhailort` installs
 `scikit-build-core>=0.10` and `pybind11>=2.13.6,<3` from PyPI, unpinned and
