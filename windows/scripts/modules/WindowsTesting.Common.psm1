@@ -343,7 +343,30 @@ function Invoke-CtestDiscoveredTests {
   }
 }
 
+<#
+.SYNOPSIS
+  The one `TESTS: passed=<n> failed=<n> skipped=<n>` line Invoke-StagedTests.ps1 prints, read from -Lines as Passed, Failed
+  and Skipped; throws unless there is exactly one, nothing failed and something passed.
+.PARAMETER Label
+  Names the run in the error, e.g. 'host tests'.
+#>
+function Assert-StagedTestVerdict {
+  [CmdletBinding()]
+  [OutputType([pscustomobject])]
+  param(
+    [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Lines,
+    [string]$Label = 'the staged tests'
+  )
+  $verdict = @($Lines | Select-String -Pattern '^TESTS: passed=(\d+) failed=(\d+) skipped=(\d+)\s*$')
+  if ($verdict.Count -ne 1) { throw "$Label printed $($verdict.Count) 'TESTS: passed=<n> failed=<n> skipped=<n>' lines; exactly one is the verdict." }
+  $passed, $failed, $skipped = $verdict[0].Matches[0].Groups[1..3].Value | ForEach-Object { [int]$_ }
+  if ($failed -gt 0) { throw "${Label}: $failed failed ($passed passed, $skipped skipped)." }
+  if ($passed -lt 1) { throw "${Label}: no test passed; a run with nothing tested is not a test verdict." }
+  return [pscustomobject]@{ Passed = $passed; Failed = $failed; Skipped = $skipped }
+}
+
 Export-ModuleMember -Function @(
+  'Assert-StagedTestVerdict',
   'Resolve-TestExecutable',
   'Invoke-ManualTestExecutable',
   'Invoke-CtestDiscoveredTests',

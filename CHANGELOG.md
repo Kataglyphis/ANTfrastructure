@@ -10,6 +10,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — a local run grades the staged tests' verdict line too
+
+- **`Invoke-StagedTests.ps1 -AssertVerdict`** throws after printing
+  `TESTS: passed=<n> failed=<n> skipped=<n>` when a test failed or none passed, and
+  **`Assert-StagedTestVerdict -Lines`** (`WindowsTesting.Common`) reads that line out of captured
+  output with the same rules and returns the counts. AccelerANTgine's `Start-Windows.ps1` and
+  OxidANT's `Invoke-HostTests.ps1` each parsed it themselves. `container-ci-windows.yml`'s
+  arm64 run job keeps its own reading: it has no checkout, and it writes the counts to the job
+  summary before it judges them
+  ([`windows-cross-builds.md`](docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml)).
+- `StagedTests.Tests.ps1` 7 cases; dropping either rule fails one.
+
 ## 2026-10-19 — New-PortableBundle builds a CMake product's bundle and packages
 
 - **`New-PortableBundle`** (`WindowsCrossBundle.Common`): `cmake --install` of the build dir into

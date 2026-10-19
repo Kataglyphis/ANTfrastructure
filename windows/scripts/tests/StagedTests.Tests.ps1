@@ -86,4 +86,27 @@ Describe 'Invoke-StagedTests.ps1' {
             Assert-Equal 0 $LASTEXITCODE 'exit 0 after printing the verdict'
         }
     }
+
+    It 'with -AssertVerdict throws after the counts line on a failure or on nothing passed, and passes a green run' {
+        Invoke-InTestDir { param($d)
+            $run = { param($Tests) $null = Invoke-FakeSuite -Dir $d -Tests $Tests; @(& $script:StagedTests -Manifest (Join-Path $d 'tests.json') -AssertVerdict 6>$null) }
+            Assert-Equal 'TESTS: passed=1 failed=0 skipped=0' (@(& $run @(New-FakeTest 'ok' 'exitcode' 0 'ok')) | Select-Object -Last 1)
+            Assert-Throws { & $run @(New-FakeTest 'red' 'exitcode' 3 'boom') } -MessagePattern '^1 staged test\(s\) failed \(0 passed, 0 skipped\)\.$'
+            Assert-Throws { & $run @(New-FakeTest 'idle' 'cargo' 0 'test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out') } `
+                -MessagePattern '^No staged test passed'
+        }
+    }
+}
+
+Describe 'Assert-StagedTestVerdict' {
+
+    It 'returns the counts of the one verdict line, and refuses none, two, a failure or nothing passed' {
+        $ok = Assert-StagedTestVerdict -Lines @('== a.exe', 'TESTS: passed=7 failed=0 skipped=2', 'tail') -Label 'host tests'
+        Assert-Equal '7|0|2' "$($ok.Passed)|$($ok.Failed)|$($ok.Skipped)"
+        Assert-Throws { Assert-StagedTestVerdict -Lines @('no verdict') -Label 'host tests' } -MessagePattern "^host tests printed 0 'TESTS: "
+        Assert-Throws { Assert-StagedTestVerdict -Lines @('TESTS: passed=1 failed=0 skipped=0', 'TESTS: passed=1 failed=0 skipped=0') } -MessagePattern 'printed 2 '
+        Assert-Throws { Assert-StagedTestVerdict -Lines @('TESTS: passed=4 failed=1 skipped=0') -Label 'arm64' } -MessagePattern '^arm64: 1 failed \(4 passed, 0 skipped\)\.$'
+        Assert-Throws { Assert-StagedTestVerdict -Lines @('TESTS: passed=0 failed=0 skipped=3') } -MessagePattern 'no test passed'
+        Assert-Throws { Assert-StagedTestVerdict -Lines @() } -MessagePattern 'printed 0 '
+    }
 }

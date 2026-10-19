@@ -15,10 +15,13 @@
     itself, which its framework counts as passed (a wgpu test without an adapter): each match moves one test from
     passed to skipped. A failing test is counted, not thrown, so the verdict line always prints; a missing binary
     or a summary that cannot be read is an error.
+.PARAMETER AssertVerdict
+    After the counts line, throw when a test failed or none passed, as WindowsTesting.Common's Assert-StagedTestVerdict does.
 #>
 [CmdletBinding()]
 param(
     [string]$Manifest = (Join-Path $PSScriptRoot 'tests.json'),
+    [switch]$AssertVerdict,
     # Test seam: WER event 1000 records since a time; the real reader needs a Windows event log.
     [scriptblock]$CrashEventReader = {
         param([datetime]$Since)
@@ -138,5 +141,8 @@ foreach ($entry in $entries) {
     Add-StagedCount $total -Passed $counts.Passed -Failed $counts.Failed -Skipped $counts.Skipped
 }
 Write-Output "TESTS: passed=$($total.Passed) failed=$($total.Failed) skipped=$($total.Skipped)"
+# The script is copied beside the tests, with no module to import, so the two rules are restated here.
+if ($AssertVerdict -and $total.Failed -gt 0) { throw "$($total.Failed) staged test(s) failed ($($total.Passed) passed, $($total.Skipped) skipped)." }
+if ($AssertVerdict -and $total.Passed -lt 1) { throw 'No staged test passed; a run with nothing tested is not a test verdict.' }
 # The last test's exit code would otherwise leak into $LASTEXITCODE; the line above is the verdict.
 exit 0
