@@ -95,9 +95,12 @@ exactly what the assertion aggregate above is for.
 **The harness is the whole API.** `source test-harness.sh`, then `t_case <name>`
 to label the assertions that follow, `t_assert_eq <expected> <actual> [msg]`,
 `t_assert_contains <haystack> <needle> [msg]`, `t_assert_ok <cmd…>`,
-`t_assert_fails <cmd…>`, and `t_summary` as the last line. `t_summary` exits
-non-zero when an assertion failed **and when the suite ran none at all** — a
-gutted suite must not read as a pass.
+`t_assert_fails <cmd…>`, `t_assert_rc <rc> <cmd…>` (that exit code exactly),
+`t_assert_grep <file> <ERE>` and `t_assert_no_grep <file> <ERE>`, and `t_summary`
+as the last line. `t_summary` exits non-zero when an assertion failed **and when the
+suite ran none at all** — a gutted suite must not read as a pass. A consumer's suite
+sources the same harness through `lib/test-harness.sh`
+([`shared-script-libraries.md`](shared-script-libraries.md#libtest-harnesssh)).
 
 **A Git Bash host may skip what it cannot host; Linux may not** (CON61,
 2026-10-05). Some suites need what Git Bash lacks: real symlinks, mode bits, a

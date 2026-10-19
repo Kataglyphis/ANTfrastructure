@@ -38,4 +38,47 @@ t_assert_contains "$(_harness 't_assert_fails bash -c "exit 2"')" "1 assertion(s
   "exit 2 from a real command is a real failure"
 t_assert_contains "$(_harness 't_assert_ok bash -c "exit 0"')" "1 assertion(s) passed"
 
+_tmp="$(mktemp -d)"
+trap 'rm -rf "${_tmp}"' EXIT
+
+t_case "t_assert_rc holds the exact exit code"
+t_assert_contains "$(_harness 't_assert_rc 2 bash -c "exit 2"')" "1 assertion(s) passed"
+_out="$(_harness 't_assert_rc 1 bash -c "echo usage: x; exit 2"')"
+t_assert_contains "${_out}" "expected rc 1, got 2"
+t_assert_contains "${_out}" "usage: x"
+t_assert_contains "$(_harness 't_assert_rc 0 false')" "1 assertion(s) FAILED"
+
+t_case "t_assert_grep and t_assert_no_grep read the file, a miss shows it, and a pattern may start with --"
+printf 'alpha
+beta 42
+--flag
+' > "${_tmp}/out"
+t_assert_contains "$(_harness "t_assert_grep '${_tmp}/out' '^beta [0-9]+\$'")" "1 assertion(s) passed"
+_out="$(_harness "t_assert_grep '${_tmp}/out' '^gamma'")"
+t_assert_contains "${_out}" "no /^gamma/ in ${_tmp}/out"
+t_assert_contains "${_out}" "alpha"
+t_assert_contains "$(_harness "t_assert_grep '${_tmp}/out' '--flag'")" "1 assertion(s) passed"
+t_assert_contains "$(_harness "t_assert_no_grep '${_tmp}/out' '^gamma'")" "1 assertion(s) passed"
+t_assert_contains "$(_harness "t_assert_no_grep '${_tmp}/out' 'beta'")" "unexpected /beta/"
+t_assert_contains "$(_harness "t_assert_no_grep '${_tmp}/missing' 'beta'")" "cannot read ${_tmp}/missing"
+
+t_case "a consumer's suite sources lib/test-harness.sh from its own tree, and t_summary decides its exit"
+mkdir -p "${_tmp}/consumer/scripts/linux/tests"
+# consumer_suite <assertions>: a consumer-shaped suite that sources the hub's lib entry; prints its output and exit code.
+consumer_suite() {
+  printf '#!/usr/bin/env bash
+set -u
+source "%s/lib/test-harness.sh"
+t_case one
+%s
+t_summary
+' "${_T_SCRIPTS}" "$1"     > "${_tmp}/consumer/scripts/linux/tests/test-x.sh"
+  (cd "${_tmp}/consumer" && bash scripts/linux/tests/test-x.sh 2>&1; echo "rc=$?")
+}
+_out="$(consumer_suite 't_assert_rc 0 true')"
+t_assert_contains "${_out}" "1 assertion(s) passed"
+t_assert_contains "${_out}" "rc=0"
+t_assert_contains "$(consumer_suite 't_assert_eq 1 2')" "rc=1"
+t_assert_contains "$(consumer_suite ':')" "ZERO ASSERTIONS"
+
 t_summary

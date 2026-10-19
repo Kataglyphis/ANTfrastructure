@@ -252,6 +252,34 @@ t_assert_ok()    { _t_assert_run t_assert_ok 0 success "$@"; }
 # t_assert_fails <command...>  — command must fail
 t_assert_fails() { _t_assert_run t_assert_fails 1 failure "$@"; }
 
+# t_assert_rc <rc> <command...>: exactly that exit code, for a gate whose 1 (finding) and 2 (usage) differ; a miss prints its output.
+t_assert_rc() {
+  local want="$1" rc=0 out
+  shift
+  _T_RUN=$((_T_RUN + 1))
+  out="$("$@" 2>&1)" || rc=$?
+  if [ "${rc}" = "${want}" ]; then _t_pass; else _t_fail "expected rc ${want}, got ${rc}: $*
+$(printf '%s
+' "${out}" | tail -n 20)"; fi
+}
+
+# t_assert_grep <file> <ERE>, t_assert_no_grep <file> <ERE>: the file holds a matching line, or none; a miss prints the file.
+t_assert_grep()    { _t_assert_file_grep 0 "$@"; }
+t_assert_no_grep() { _t_assert_file_grep 1 "$@"; }
+_t_assert_file_grep() {
+  local want="$1" file="$2" pattern="$3" rc=0
+  _T_RUN=$((_T_RUN + 1))
+  grep -qE -e "${pattern}" -- "${file}" 2>/dev/null || rc=$?
+  if [ "${rc}" -gt 1 ]; then
+    _t_fail "cannot read ${file} for /${pattern}/"
+  elif [ "${rc}" = "${want}" ]; then
+    _t_pass
+  else
+    _t_fail "$([ "${want}" = 0 ] && echo no || echo unexpected) /${pattern}/ in ${file}:
+$(cat -- "${file}" 2>/dev/null)"
+  fi
+}
+
 t_summary() {
   local _unknown=0
   if [ -s "${_T_UNKNOWN_MARK:-/nonexistent}" ]; then

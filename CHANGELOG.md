@@ -10,6 +10,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — consumers' bash suites on the hub's harness
+
+- **`linux/scripts/lib/test-harness.sh`** is the consumer entry to the hub's own
+  `tests/test-harness.sh`: one harness, so a consumer suite gets the zero-assertion guard, the
+  misused-assertion guard and the Git Bash skips the hub's suites have. Three assertions join it
+  for the two helpers six consumer suites carried in copies: `t_assert_rc <rc> <cmd…>` (that exit
+  code exactly; a miss prints the output) for `expect`, and `t_assert_grep` / `t_assert_no_grep
+  <file> <ERE>` (a miss prints the file; a pattern may start with `--`) for `check`
+  ([`shared-script-libraries.md`](docs/shared-script-libraries.md#libtest-harnesssh)).
+- OxidANT's `test-check-crate-coverage.sh`, ported in `:latest`, runs the same 8 cases on it.
+  `test-harness-guards.sh` holds the new assertions and the entry from a consumer-shaped tree;
+  5 more `gate-fixture.harness-*` mutations prove it.
+
 ## 2026-10-19 — one fetcher for the data locks (CON98, the hub half)
 
 - **`linux/scripts/lib/fetch-data-lock.py --lock FILE [--dest DIR] [--extract] [--only NAME]...

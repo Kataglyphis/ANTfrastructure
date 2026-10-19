@@ -14777,5 +14777,45 @@
   "replace": "  execute_process(COMMAND \"${_python}\" -I \"${_KATAGLYPHIS_FETCH_DATA}\" RESULT_VARIABLE _rc)",
   "test": "bash linux/scripts/tests/test-fetch-data-lock.sh",
   "why": "the CMake twin is only as good as the arguments it hands the fetcher"
+ },
+ {
+  "id": "gate-fixture.harness-rc-is-exact",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  if [ \"${rc}\" = \"${want}\" ]; then _t_pass; else _t_fail \"expected rc ${want}, got ${rc}: $*",
+  "replace": "  if [ \"${rc}\" -ne 0 ] || [ \"${want}\" = 0 ]; then _t_pass; else _t_fail \"expected rc ${want}, got ${rc}: $*",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a gate's usage error (2) passing for its finding (1) is the vacuous pass the consumers' expect() helpers were written against"
+ },
+ {
+  "id": "gate-fixture.harness-grep-verdict",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  elif [ \"${rc}\" = \"${want}\" ]; then\n    _t_pass",
+  "replace": "  elif true; then\n    _t_pass",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a pattern check that passes on a miss proves nothing about the output"
+ },
+ {
+  "id": "gate-fixture.harness-grep-unreadable",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  if [ \"${rc}\" -gt 1 ]; then\n    _t_fail \"cannot read ${file} for /${pattern}/\"",
+  "replace": "  if false; then\n    _t_fail \"cannot read ${file} for /${pattern}/\"",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a missing output file must not read as the absence of a pattern"
+ },
+ {
+  "id": "gate-fixture.harness-grep-pattern-not-an-option",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "  grep -qE -e \"${pattern}\" -- \"${file}\" 2>/dev/null || rc=$?",
+  "replace": "  grep -qE \"${pattern}\" \"${file}\" 2>/dev/null || rc=$?",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a pattern beginning with -- is read as an option and matches nothing, silently (AGENTS.md, host tool traps)"
+ },
+ {
+  "id": "gate-fixture.harness-consumer-entry",
+  "target": "linux/scripts/lib/test-harness.sh",
+  "find": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/../tests/test-harness.sh\"",
+  "replace": "source ./test-harness.sh",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "a consumer's suite runs from its own tree, so the entry must find the harness beside itself, not in the working directory"
  }
 ]

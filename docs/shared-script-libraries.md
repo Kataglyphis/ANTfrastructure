@@ -668,6 +668,23 @@ options and names: [`branch-and-release-strategy.md` § *Collecting the release 
 or scenes a data lock pins, checked by SHA-256, through a cache; CMake reaches it through
 `kataglyphis_fetch_data`. The contract: [`data-repositories.md` § *The hub's fetcher*](data-repositories.md#the-hubs-fetcher).
 
+### `lib/test-harness.sh`
+
+A consumer's bash suite sources `$(antfrastructure_path linux/scripts/lib/test-harness.sh)` and gets
+the hub's own harness: `t_case`, `t_assert_eq`, `t_assert_contains`, `t_assert_ok`, `t_assert_fails`,
+`t_assert_rc`, `t_assert_grep`, `t_assert_no_grep`, `t_rc`, `t_out`, `t_skip_unless`, `t_needs` and
+`t_summary` ([`cross-build-verification.md` § *The `linux/scripts/tests` suites*](cross-build-verification.md#the-linuxscriptstests-suites)).
+The suite runs under `set -u`, not `-e`: the harness counts every failed assertion and `t_summary`
+sets the exit code, `0` only when at least one assertion ran and none failed. It prints the same
+`N assertion(s) passed` line the consumers' own `passed` counters did.
+
+| A consumer's own helper | The harness |
+| --- | --- |
+| `expect <rc> <name> <args…>` | `t_case <name>`, then `t_assert_rc <rc> <command…>`; a miss prints the command's output |
+| `check <name> <file> <ERE> [absent]` | `t_case <name>`, then `t_assert_grep` or `t_assert_no_grep <file> <ERE>`; a miss prints the file |
+| `check <name> <command…>` with a `fails` count | `t_case <name>`, then `t_assert_ok <command…>` |
+| `passed` and the closing `printf` | `t_summary` |
+
 ### Gate aggregation (`01-core/gates.sh`)
 
 `run_gate` / `gate_skip` / `assert_gates`, the shell half of the fleet's
