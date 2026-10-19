@@ -352,12 +352,14 @@ jobs:
           path: ${{ steps.prep.outputs.workspace }}/${{ inputs.artifact-dir }}
           if-no-files-found: error
 
+      # Hidden files too: the arch gate inspected them, and a staged .github/ is test data (OrchestrANT's viewer-job test).
       - name: Upload the tests
         if: ${{ inputs.target-arch == 'arm64' && inputs.test-artifact-dir != '' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact-name }}-tests
           path: ${{ steps.prep.outputs.workspace }}/${{ inputs.test-artifact-dir }}
+          include-hidden-files: true
           if-no-files-found: error
 
   run-arm64:

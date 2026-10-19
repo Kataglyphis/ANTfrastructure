@@ -386,7 +386,8 @@ is the same file an x64 lane uses with `target-arch: amd64`:
 6. With a `test-artifact-dir` and a `test-command` (CON43, 2026-10-01), the build also stages
    test binaries. They get the same arch gate as the product, because Windows on Arm runs x64
    code transparently and an amd64 test would pass there by emulation. They are uploaded as
-   `<artifact-name>-tests`, and the second job runs `test-command` in them after `run-command`.
+   `<artifact-name>-tests`, hidden files included (a staged `.github/` reaches the device), and
+   the second job runs `test-command` in them after `run-command`.
    - **The verdict is a printed line,** `TESTS: passed=<n> failed=<n> skipped=<n>`. The job
      fails without it, on any failure, and when nothing passed, so an empty run cannot read
      as green. The counts go to the job summary.

@@ -11,6 +11,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — The arm64 test artifact keeps its hidden files
+
+- **`container-ci-windows.yml` uploads `<artifact-name>-tests` with `include-hidden-files: true`.**
+  `upload-artifact` drops dot-paths by default, so OrchestrANT's staged `.github/workflows/`
+  never reached `windows-11-arm` and `test_viewer_job.py` failed there with `FileNotFoundError`
+  (run 39322525681) while the arch gate had passed the full tree.
+
 ## 2026-10-19 — Renovate installs from a committed lock
 
 - **`renovate-local.sh` installs Renovate with `npm ci` from
