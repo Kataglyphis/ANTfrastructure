@@ -29,6 +29,23 @@
   stale and are fixed where they landed: `:latest-nvidia` and `:latest-rocm` are published for
   amd64, and the clone line used an ssh URL.
 
+- **What the READMEs carried for more than one repository moved here.** `python-ci.md`
+  § Working on a Python consumer locally (the hook, the static-analysis gate, binary-only
+  wheels, the tools), `failure-modes.md` (a host CMake too old for `"version": 10` presets),
+  `branch-and-release-strategy.md` (checking a download against `SHA256SUMS`), and
+  `repository-family.md`: a README rendered on PyPI, rustdoc, `dart doc` or Sphinx links its own
+  files absolutely; ModelANT's scripts are Apache-2.0; AccelerANTgine fetches from ModelANT too.
+  `project-info.md` points at the family page for contributing and contact, and lost the 3D-model
+  acknowledgements, which were never this repository's.
+- **`doc-links` no longer crashes on a submodule below a consumer's top level.** Its consumer
+  scan read every `git ls-files` path as a file, and a gitlink is a directory:
+  `PermissionError` on DocumANTation's `md2pdfLib/third_party/`. It keeps files only now;
+  `test-doc-links.sh` plants the nested gitlink, and `doc-links.consumer-gitlink-skip` proves
+  the case bites.
+- `linux-accelerator-images.md` no longer calls `:latest-rocm` unpublished: it is, since 2026-10-09.
+- **Docs are short and precise, written like a developer would** (owner, 2026-10-19): in this
+  `AGENTS.md`, the `AGENTS.md` template and every consumer's `AGENTS.md`.
+
 ## 2026-10-18 — ORT 1.31.0's CUDA build on GCC 16: a missing `<cstdint>`
 
 - **The first Linux CUDA build of ORT 1.31.0 stopped** after 5 h, at 84 %:

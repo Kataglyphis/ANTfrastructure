@@ -691,7 +691,7 @@ nerdctl build -t local/kataglyphis:torch-amd64 -f linux/Dockerfile.torch .
 
 > **Tag: `:latest-rocm`** (a manifest; per-arch wrapper `:latest-rocm-amd64`) —
 > spelled `rocm`, not `amd`, because a variant never reads like an architecture
-> (`:latest-amd-amd64`). **Not published yet.** The old single-arch `:amd` (a
+> (`:latest-amd-amd64`). **Published since 2026-10-09** (`BACKLOG.md`'s state line has its index). The old single-arch `:amd` (a
 > 2026-04-24 build on the Ubuntu 24.04 base) and its stage tags were deleted from
 > the registry on 2026-09-22.
 

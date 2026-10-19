@@ -21,7 +21,7 @@ the rest (owner, 2026-10-19).
 | [OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | Python AI prototyping package, the LLM benchmark lab and its viewer | its app environment is baked into the build images |
 | [ANTfrastructure](https://github.com/Kataglyphis/ANTfrastructure) | The build images, the CI actions and reusable workflows, the quality gates, and this page | submodule of every code repository but ANThology, whose CI checks it out |
 | [DocumANTation](https://github.com/Kataglyphis/DocumANTation) | Markdown to a LaTeX book or Beamer slides, and the theme every docs site uses | submodule of ANTfrastructure |
-| [ModelANT](https://github.com/Kataglyphis/ModelANT) | Permissively licensed ML models, one release each | fetched by SHA-256 lock: OxidANT, OmniAccelerANT, OrchestrANT |
+| [ModelANT](https://github.com/Kataglyphis/ModelANT) | Permissively licensed ML models, one release each | fetched by SHA-256: OxidANT, OmniAccelerANT and OrchestrANT through a lock, AccelerANTgine through `sha256sum -c` |
 | [AssetANT](https://github.com/Kataglyphis/AssetANT) | 3D scenes and textures, one archive per release | fetched by SHA-256 lock: BeschleunigerBallett |
 | [WebDavClient](https://github.com/Kataglyphis/WebDavClient) | Python client that downloads files and folders from WebDAV storage, in CI for example | nobody |
 | [jotrockenmitlocken](https://github.com/Kataglyphis/jotrockenmitlocken) | The owner's website and blog, a Flutter web app | its build is what the hub's `:webserver` image serves |
@@ -39,7 +39,7 @@ scenes live outside the code on purpose: [`data-repositories.md`](data-repositor
 | `AGENTS.md` | Rules for coding agents and new contributors, from the [`AGENTS.md` template](../shared/templates/README.md) |
 | `BACKLOG.md` | Known work that is not done yet, in the format the agentic loop reads |
 | `CHANGELOG.md` | What changed, newest first |
-| `LICENSE` | MIT, see [Licence](#licence) |
+| `LICENSE` | MIT almost everywhere, see [Licence](#licence) |
 
 A data repository (ModelANT, AssetANT) and the profile page carry fewer of these.
 
@@ -49,7 +49,7 @@ A data repository (ModelANT, AssetANT) and the profile page carry fewer of these
 read on; everything else has a page of its own. In this order:
 
 1. **Header:** the family's ant logo, the name, and the tagline in one line.
-2. **Badges:** the CI lanes first.
+2. **Badges:** the CI lanes first; dependency, social and donate badges after them, in the same block.
 3. **One paragraph:** what it does and for whom.
 4. **Highlights:** at most six bullets of one line each.
 5. **Quick start:** clone, then the one command that builds or runs it. A screen at most.
@@ -74,6 +74,19 @@ follow a relative link into a submodule, so a README link to
 `third_party/ANTfrastructure/docs/…` works in a checkout and is a 404 on the repository page.
 `AGENTS.md`, which agents read in a checkout, keeps its relative links.
 
+**A README that is rendered somewhere else as well links its own files absolutely too.** Four
+places show a README away from GitHub, and a relative link is a 404 in each:
+
+| Where | Because of |
+| --- | --- |
+| PyPI, as the long description | `readme = "README.md"` in `pyproject.toml` |
+| The rustdoc front page | `#![doc = include_str!("../README.md")]` in `src/lib.rs` |
+| The `index.html` of a `dart doc` site | `dart doc` always renders the README there |
+| A Sphinx site | the docs build copies the README into `docs/source/` |
+
+Such a README loads its logo from `raw.githubusercontent.com` and gives every code block a
+language, so that rustdoc runs none of them as a doc test.
+
 ## Contributing
 
 - **Issues and pull requests are welcome** in every repository. Fork it, branch in your fork,
@@ -94,16 +107,19 @@ follow a relative link into a submodule, so a README link to
 - **Commit messages read `type(scope): what changed`**, with `feat`, `fix`, `docs`,
   `refactor`, `test`, `ci` or `chore`. `[ci <lane>]` in the message asks for a lane beyond
   Linux x64.
-- **Docs change in the same commit as the behaviour they describe.**
+- **Docs change in the same commit as the behaviour they describe**, and read like a developer
+  wrote them: short and precise, no filler, no marketing, no repetition.
 - **Dependencies move through Renovate as a local CLI**, never by hand:
   [`dependency-updates.md`](dependency-updates.md).
 - **Search with ripgrep** (`rg`): `winget install --id BurntSushi.ripgrep.MSVC -e --scope user`
   on Windows, `apt install ripgrep` on Linux.
+- **Terminal multiplexers the owner uses beside them:** [tmux](https://github.com/tmux/tmux/wiki)
+  and [zellij](https://zellij.dev/), and [psmux](https://github.com/marlocarlo/psmux) on Windows.
 
 ## Licence
 
-- **The code is MIT** in every repository: its `LICENSE`, and an `SPDX-License-Identifier`
-  header where the repository uses them.
+- **The code is MIT** in every repository but ModelANT, whose scripts are Apache-2.0: each
+  repository's `LICENSE`, and an `SPDX-License-Identifier` header where the repository uses them.
 - **Bundled third-party software keeps its own licence**:
   [`third-party-licenses.md`](third-party-licenses.md).
 - **A model or a scene carries its own licence**, recorded with its release:

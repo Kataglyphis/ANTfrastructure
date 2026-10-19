@@ -233,4 +233,15 @@ t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_root_fx}")" "README.md" 
   "a consumer README enters the graph only because the scope is git ls-files"
 rm -rf "${_root_fx}"
 
+# DocumANTation keeps its submodules under md2pdfLib/third_party/, where the top-level exclude cannot reach.
+t_case "--root skips a gitlink below the top level instead of reading a directory"
+_sub_fx="$(gate_tree_git "$(printf '# Fixture\n\nSee [guide](%sguide.md).\n' "${D}")" README.md)"
+mkdir -p "${_sub_fx}/docs" "${_sub_fx}/lib/vendored"
+printf '# Guide\n' > "${_sub_fx}/docs/guide.md"
+git -C "${_sub_fx}" update-index --add --cacheinfo "160000,$(git -C "${_sub_fx}" rev-parse HEAD),lib/vendored"
+t_git_commit "${_sub_fx}"
+t_assert_eq "160000" "$(git -C "${_sub_fx}" ls-files -s lib/vendored | cut -d' ' -f1)" "the fixture must hold a real gitlink"
+t_assert_eq "0" "$(t_rc "${PY}" "${GATE}" --root "${_sub_fx}")" "a nested gitlink must not crash the code-pointer scan"
+rm -rf "${_sub_fx}"
+
 t_summary

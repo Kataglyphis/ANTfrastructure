@@ -1212,6 +1212,9 @@ The shared theme and its `conf.py` snippet:
 
 ## Documentation Maintenance
 
+**Write docs like a developer: short and precise** (owner, 2026-10-19). Say what a thing does,
+how to run it and what breaks; no filler, no marketing, no repetition.
+
 - **[`docs/INDEX.md`](docs/INDEX.md) decides which page owns which topic.** Add
   a row when you add a page; the `doc-links` gate fails a page that no row and
   no toctree entry names.

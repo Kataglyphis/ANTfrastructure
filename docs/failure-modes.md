@@ -81,6 +81,7 @@ Two neighbours, so you land on the right page:
 - [A cross-built Rust tool links the build host's libbz2](#a-cross-built-rust-tool-links-the-build-hosts-libbz2)
 - [HailoRT's configure is slow while the cache looks healthy](#hailorts-configure-is-slow-while-the-cache-looks-healthy)
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
+- [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
 
 **Windows: the layer store (hcsshim)**
 
@@ -1367,6 +1368,22 @@ yields a module with no code.
 
 **Fix.** `HAILO_PYHAILORT_IPO=off`, the default, patches the forced IPO out of
 the cached source. [pyhailort](hailo-support.md#pyhailort).
+
+### `cmake --list-presets`: `Unrecognized "version" field`
+
+**Symptom.** On the host, not in a container:
+
+```
+CMake Error: Could not read presets from C:/GitHub/BeschleunigerBallett:
+Error: @2,13: Unrecognized "version" field
+```
+
+**Cause.** BeschleunigerBallett's `CMakePresets.json` is `"version": 10`, which CMake reads
+from 4.1 on; the host's CMake is older (3.29 on the dev box, 2026-10-19).
+
+**Fix.** Configure in the family image, whose CMake is the `versions.env` pin, or on Windows
+through the repository's `Build-Windows-Container.ps1`. The presets themselves can still be
+read from the file.
 
 ## Windows: the layer store (hcsshim)
 

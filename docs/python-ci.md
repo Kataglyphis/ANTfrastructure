@@ -148,6 +148,36 @@ tools come from the cache the other rows warm. Measured 2026-10-03, with the
 emulated predecessor: without both, the leg resolved 306 packages (opencv-python
 and torchvision from git among them) and was killed at the 300-minute budget.
 
+## Working on a Python consumer locally
+
+What both consumers share on a developer's machine (2026-10-19; it left their READMEs).
+
+**The pre-commit hook** is the same ruff-only config in both:
+
+```bash
+uv venv
+source .venv/bin/activate   # .venv/Scripts/activate in pwsh
+uv pip install pre-commit
+pre-commit install
+pre-commit run --all-files  # once, optional
+```
+
+**Static analysis is a gate, not a report.** `scripts/linux/ci_static_analysis.sh` is the
+driver CI runs, and it exits `1` when codespell, bandit, vulture, `ruff check --no-fix`,
+`ruff format --check` or `ty check` finds anything. Sending its output to a log file hides that
+exit from the terminal: check `$?`, or drop the redirect.
+
+**A binary-only wheel** compiles every module with Cython (`setup.py`'s `CYTHONIZE` branch; the
+idea: [Protect source code](https://art-vasilyev.github.io/posts/protecting-source-code/)).
+`python -m zipfile --extract <WHEEL> <TARGET_DIR>` shows what one holds, and
+`pip debug --verbose` lists the tags the interpreter accepts.
+
+**The tools in the `test` extras:** [ty](https://github.com/astral-sh/ty) (types),
+[ruff](https://github.com/astral-sh/ruff) (lint and format), [uv](https://github.com/astral-sh/uv)
+(environments and locks), [py-spy](https://github.com/benfred/py-spy) (sampling profiler),
+[line_profiler](https://github.com/pyutils/line_profiler) and
+[pytest-benchmark](https://github.com/ionelmc/pytest-benchmark).
+
 ## The static-analysis knobs, and the bandit trap between them
 
 Two knobs decide what the six analysers grade, and each has a Windows twin that

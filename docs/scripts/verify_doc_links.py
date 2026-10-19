@@ -255,7 +255,8 @@ def code_files() -> list[Path]:
         return [REPO_ROOT / rel
                 for rel in gate_scope.tracked(str(REPO_ROOT), ["*"])
                 if not rel.endswith(CODE_SKIP_SUFFIXES)
-                and not (CODE_SKIP_PARTS & set(Path(rel).parts))]
+                and not (CODE_SKIP_PARTS & set(Path(rel).parts))
+                and (REPO_ROOT / rel).is_file()]  # a nested submodule is a gitlink: a directory
     for name in CODE_SCAN:
         root = REPO_ROOT / name
         if root.is_file():

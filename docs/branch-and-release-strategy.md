@@ -109,6 +109,9 @@ A push to `main` starts `release.yml`:
    packages the lanes built in this run, a `SHA256SUMS`, and the version's CHANGELOG
    section as notes.
 
+**Checking a download:** put `SHA256SUMS` beside the files you took from the release and run
+`sha256sum --check --ignore-missing SHA256SUMS`.
+
 A red lane means no tag and no release. A flaky failure is rerun with `gh run rerun
 <id> --failed`, and the release job follows once the rerun is green. A real failure is
 fixed on `develop` and merged again.

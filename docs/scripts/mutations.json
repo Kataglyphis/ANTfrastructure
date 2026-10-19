@@ -720,6 +720,14 @@
   "why": "286 docs/ pointers live in CODE; without this pass a moved page or renamed heading leaves them dangling and nothing notices (6 were on 2026-09-03)"
  },
  {
+  "id": "doc-links.consumer-gitlink-skip",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "                and (REPO_ROOT / rel).is_file()]  # a nested submodule is a gitlink: a directory\n",
+  "replace": "                ]\n",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "a submodule below a consumer's top level is a gitlink in git ls-files; reading it as a file crashed the gate on DocumANTation (2026-10-19)"
+ },
+ {
   "id": "doc-links.local-section-ref-unchecked",
   "target": "docs/scripts/verify_doc_links.py",
   "find": "            if m.group(\"sec\") in have:\n                continue",

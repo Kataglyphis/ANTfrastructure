@@ -170,11 +170,11 @@ When feeding locally saved runtime artifacts back into later builds:
 
 ## Contributing
 
-1. Fork the project.
-2. Create a feature branch (`git checkout -b feature/my-change`).
-3. Make your changes. If modifying build scripts or Dockerfiles, run `python3 docs/scripts/sync_versions.py --check` to verify version consistency.
-4. Commit your changes — the pre-commit hook (`linux/host-config/git-hooks/pre-commit`, installed by `make hooks`) runs the fast preflight slugs, staged shellcheck and the doc gates.
-5. Push and open a pull request.
+The family's way to contribute is [`repository-family.md` § Contributing](repository-family.md#contributing).
+Here in addition: after a change to a build script or a Dockerfile, run
+`python3 docs/scripts/sync_versions.py --check`, and install the pre-commit hook once with
+`make hooks` (`linux/host-config/git-hooks/pre-commit`: the fast preflight slugs, staged
+shellcheck and the doc gates).
 
 ## License
 
@@ -217,16 +217,7 @@ be): what left it, and how a checkout from before follows, is in
 
 ## Contact
 
-Jonas Heinle - [@Cataglyphis_](https://twitter.com/Cataglyphis_) - jonasheinle@googlemail.com
-
-Project Link: [https://github.com/Kataglyphis/ANTfrastructure](https://github.com/Kataglyphis/ANTfrastructure)
-
-## Acknowledgements
-
-Thanks for free 3D models:
-
-- [Morgan McGuire, Computer Graphics Archive, July 2017](http://casual-effects.com/data)
-- [Viking room](https://sketchfab.com/3d-models/viking-room-a49f1b8e4f5c4ecf9e1fe7d81915ad38)
+[`repository-family.md` § Contact](repository-family.md#contact).
 
 ## Literature
 
