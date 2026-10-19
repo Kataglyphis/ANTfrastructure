@@ -42,3 +42,15 @@ versions.env assignment, which is exactly why chasing regenerable output with
 per-value allowlists is the wrong repair.
 """
 paths = ['''^out/''']
+
+[[allowlists]]
+description = """
+The theme's package-data file name "logo-t3-wireframe.png" in DocumANTation's
+sphinx-kataglyphis-theme/pyproject.toml: generic-api-key reads the string after
+"brand.tokens.json" as a token value. A file name, no credential; the working-tree
+scan reaches it through the third_party/DocumANTation checkout (2026-10-19).
+"""
+regexTarget = "secret"
+regexes = [
+  '''^logo-t3-wireframe\.png$''',
+]
