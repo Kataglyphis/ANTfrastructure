@@ -50,4 +50,31 @@ Describe 'WindowsConfig.Common' {
       Test-ConfigurationSelected -Name 'clangcl-debug' -SelectedConfigurations $set | Should -BeFalse
     }
   }
+
+  Context 'Get-BuildConfigurationRow' {
+    BeforeAll {
+      $script:cfg = @{ Build = @{ Configurations = @{
+            'clangcl-release' = @{ BuildDir = 'build-rel'; BuildDirEnv = 'H4B_TEST_BUILD_DIR'; Preset = 'x64-Rel'; PresetEnv = 'H4B_TEST_PRESET'; Configuration = 'Release' }
+            'bare' = @{ BuildDir = 'build-bare'; Preset = 'x64-Bare'; Configuration = 'Debug' } } } }
+    }
+
+    It 'returns the row with each *Env variable overriding its field when set' {
+      $env:H4B_TEST_BUILD_DIR = $null; $env:H4B_TEST_PRESET = $null
+      $row = Get-BuildConfigurationRow -Config $script:cfg -Name 'clangcl-release'
+      "$($row.Name)|$($row.BuildDir)|$($row.Preset)|$($row.Configuration)" | Should -Be 'clangcl-release|build-rel|x64-Rel|Release'
+      $env:H4B_TEST_BUILD_DIR = 'D:\elsewhere'; $env:H4B_TEST_PRESET = 'x64-Other'
+      try {
+        $row = Get-BuildConfigurationRow -Config $script:cfg -Name 'clangcl-release'
+        "$($row.BuildDir)|$($row.Preset)|$($row.Row['BuildDir'])" | Should -Be 'D:\elsewhere|x64-Other|build-rel'
+        (Get-BuildConfigurationRow -Config $script:cfg -Name 'bare').BuildDir | Should -Be 'build-bare'
+      } finally {
+        $env:H4B_TEST_BUILD_DIR = $null; $env:H4B_TEST_PRESET = $null
+      }
+    }
+
+    It 'throws for a configuration the file does not define, naming the file' {
+      { Get-BuildConfigurationRow -Config $script:cfg -Name 'nope' -ConfigPath 'C:\x\Build-Windows.config.psd1' } |
+        Should -Throw -ExpectedMessage "Unknown build configuration 'nope' in C:\x\Build-Windows.config.psd1."
+    }
+  }
 }

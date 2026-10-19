@@ -10,6 +10,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — Get-BuildConfigurationRow reads a Build-Windows.config.psd1 row
+
+- **`Get-BuildConfigurationRow`** (`WindowsConfig.Common`) returns `Build.Configurations.<Name>`
+  as `Name`, `BuildDir`, `Preset`, `Configuration` and the raw `Row`, with `BuildDir` and `Preset`
+  taken from the row's `BuildDirEnv` / `PresetEnv` variables when set, and throws, naming the
+  file, for a name the config lacks. AccelerANTgine's `Build-Windows.ps1` and `Start-Windows.ps1`
+  and BeschleunigerBallett's `Build-Windows.ps1` and `Build-Windows-Container.ps1` each read the
+  row themselves. `WindowsConfig.Common.Tests.ps1` 8/8.
+
 ## 2026-10-19 — an MSIX that must install can require its signature
 
 - **`Invoke-MsixPackage -RequireSignature`** (implies `-Sign`) throws when the package comes out

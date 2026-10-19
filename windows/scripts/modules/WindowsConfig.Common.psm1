@@ -62,9 +62,38 @@ function Test-ConfigurationSelected {
   return $SelectedConfigurations.Contains($Name)
 }
 
+<#
+.SYNOPSIS
+  Build.Configurations.<Name> of a Build-Windows.config.psd1, with BuildDir and Preset taken from the row's
+  BuildDirEnv / PresetEnv variables when those are set; throws for a name the config lacks.
+.OUTPUTS
+  [pscustomobject] Name, BuildDir, Preset, Configuration and Row (the row as written).
+#>
+function Get-BuildConfigurationRow {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory)]$Config,
+    [Parameter(Mandatory)][string]$Name,
+    # Named in the error, so a typo says which file to look in.
+    [string]$ConfigPath = ''
+  )
+
+  $row = Get-ConfigValue -Config $Config -Path "Build.Configurations.$Name"
+  if ($null -eq $row) { throw "Unknown build configuration '$Name'$(if ($ConfigPath) { " in $ConfigPath" })." }
+  $fromEnv = { param($Variable) if ($Variable) { [Environment]::GetEnvironmentVariable($Variable) } }
+  return [pscustomobject]@{
+    Name          = $Name
+    BuildDir      = Get-OrDefault (& $fromEnv $row['BuildDirEnv']) $row['BuildDir']
+    Preset        = Get-OrDefault (& $fromEnv $row['PresetEnv']) $row['Preset']
+    Configuration = $row['Configuration']
+    Row           = $row
+  }
+}
+
 Export-ModuleMember -Function @(
   'Get-OrDefault',
   'Get-ConfigValue',
   'Get-SelectedConfigurations',
-  'Test-ConfigurationSelected'
+  'Test-ConfigurationSelected',
+  'Get-BuildConfigurationRow'
 )
