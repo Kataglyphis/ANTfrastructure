@@ -86,15 +86,6 @@ $uv = @{ CommandRunner = $script:UvCommandRunner; LogInfo = $script:UvLogInfo; L
 $tracker = [System.Collections.Generic.List[string]]::new()
 $PackageName = Get-PyprojectPackageName -RepoRoot $repoRoot -Default $PackageName
 
-# The pinned X.Y, and its X.Yt twin for a project that declares free-threading, as ci_tests.sh's default_py_versions.
-function Get-DefaultLeg {
-    $pinned = (Get-PinnedPythonVersion).MajorMinor
-    $python = Find-UvPython -Request (Get-UvPythonRequest -Version $pinned)
-    $plan = Get-FreeThreadedWheelPlan -Mode auto -PyprojectPath (Join-Path $repoRoot 'pyproject.toml') -Python $python
-    if ($plan.Build) { return "$pinned ${pinned}t" }
-    return $pinned
-}
-
 # A demo is a profiling showcase, not a gate: it logs "skipped", as on the Linux lane.
 function Invoke-BenchDemo([string]$Label, [string[]]$Arguments) {
     $code = Invoke-BuildExternal -Context $context -File 'uv' -Parameters (@('run') + $Arguments) -IgnoreExitCode
@@ -140,8 +131,7 @@ try {
     try {
         Write-BuildLog -Context $context -Message "=== Windows build/test pipeline: $PackageName in $repoRoot ==="
         New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'docs\test_results') | Out-Null
-        if (-not $PythonVersions) { $PythonVersions = Get-DefaultLeg }
-        foreach ($leg in @(Resolve-PythonLegList -PythonVersions $PythonVersions)) {
+        foreach ($leg in @(Resolve-PythonLegList -PythonVersions $PythonVersions -PyprojectPath (Join-Path $repoRoot 'pyproject.toml'))) {
             $extras = if ($TestExtras) { $TestExtras } elseif ($leg -match 't$' -and $FreeThreadedExtras) { $FreeThreadedExtras } else { '' }
             # As in ci_tests.sh: only a leg with no extras of its own may be experimental.
             $experimental = (-not $extras) -and (Test-ExperimentalPython -Version $leg)

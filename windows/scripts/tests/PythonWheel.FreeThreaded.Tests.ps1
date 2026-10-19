@@ -191,6 +191,24 @@ Describe 'Resolve-PythonLegList and Get-NativeWheelCheck (Invoke-NativeWheelBuil
         }
     }
 
+    It 'adds the X.Yt twin to an empty list only when -PyprojectPath declares free-threading, as ci_tests.sh does' {
+        Invoke-InTestDir { param($d)
+            $envFile = Join-Path $d 'versions.env'
+            Set-Content -LiteralPath $envFile -Value 'PYTHON_VERSION=3.14.2'
+            $pyproject = Join-Path $d 'pyproject.toml'
+            Set-Content -LiteralPath $pyproject -Value '[project]'
+            Invoke-WithEnv @{ PYTHON_VERSION = $null } {
+                $legs = { param($py, $list) (Resolve-PythonLegList -PythonVersions $list -PyprojectPath $pyproject -Python $py -VersionsEnvPath $envFile) -join '|' }
+                Assert-Equal '3.14|3.14t' (Invoke-WithFakePython -Dir $d -Code 0 -Text 'Free Threading' { param($py) & $legs $py '' }) 'declared'
+                Assert-Match "-I \S+free-threaded-wheel\.py declares $([regex]::Escape($pyproject))" (Get-Content -Raw -LiteralPath (Join-Path $d 'py.log')) 'the shared helper reads it'
+                Assert-Equal '3.14' (Invoke-WithFakePython -Dir $d -Code 1 -Text 'no classifier' { param($py) & $legs $py '' }) 'not declared'
+                Assert-Equal '3.13' (Invoke-WithFakePython -Dir $d -Code 0 { param($py) & $legs $py '3.13' }) 'a named list wins'
+                Assert-Throws { Invoke-WithFakePython -Dir $d -Code 2 -Text 'not TOML' { param($py) & $legs $py '' } } -MessagePattern 'cannot tell'
+                Assert-Equal '3.14' ((Resolve-PythonLegList -PyprojectPath (Join-Path $d 'none.toml') -VersionsEnvPath $envFile) -join '|') 'no pyproject.toml, no interpreter asked'
+            }
+        }
+    }
+
     It 'loads an X.Y leg''s wheel, proves an X.Yt leg''s, and refuses any other ABI or platform' {
         Assert-Equal 'load' (Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314-win_arm64.whl' -Leg '3.14' -Platform 'win_arm64')
         Assert-Equal 'load' (Get-NativeWheelCheck -Name 'app-1.0-cp314-cp314-win_arm64.whl' -Leg '3.14.2' -Platform 'win_arm64') 'X.Y.Z'

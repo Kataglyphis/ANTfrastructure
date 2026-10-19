@@ -365,14 +365,11 @@ interpreter. Two remedies work on both lanes:
 `UV_SYNC_EXTRAS` is NOT a remedy: every sync of the run reads it, so leaving ORT out of one leg
 leaves it out of all of them.
 
-The hub defaults are the image interpreter (owner decision 2026-09-23; the images carry CPython
-3.14 only): `ci_tests.sh` `PY_VERSIONS='3.14'` and `ci_build_docs.sh` `COVERAGE_VERSION=3.14`, like
-the static-analysis and packaging drivers; `tests/test-python-ci-defaults.sh` holds them to
-`versions.env`'s `PYTHON_VERSION`. OrchestrANT dropped its 3.13 legs. A project that needs another
-interpreter names it for every driver, docs included: WebDavClient (no ORT; atheris has no cp314
-wheel) pins 3.13 for its tests, static analysis and packaging, and needs
-`docs-python-version: '3.13'` as well. Nothing sets that for it, and without it the first hub bump
-past this default fails its docs job on atheris.
+The hub defaults are the image interpreter (owner decision 2026-09-23): `PYTHON_VERSION`'s X.Y
+for `ci_tests.sh`, `ci_build_docs.sh`'s `COVERAGE_VERSION` and the static-analysis and packaging
+drivers, plus X.Yt for a project that declares free-threading; `tests/test-python-ci-defaults.sh`
+holds them to `versions.env`. Every lane tests and packages only that X.Y and X.Yt (owner,
+2026-10-20): a consumer names no version, or `pinned` and `pinnedt`.
 
 | Message | Cause | Fix |
 |---|---|---|
@@ -489,10 +486,13 @@ ANTfrastructure pin and runs `windows/scripts/python/Invoke-PythonTestLegs.ps1 -
 
 - **uv** is the `UV_VERSION` release zip, checked against `UV_WINDOWS_ARM64_SHA256` in
   `versions.env`; `bump_versions.py` refreshes that pin with the Linux ones.
-- **Legs** come from `arm64-python-versions` (default: the pinned X.Y; `pinned` and `pinnedt` in a
-  list stand for X.Y and X.Yt). Each leg gets its own venv through `New-UvProjectEnvironment`, so a
-  bare `X.Y` asks for `X.Y+gil`; otherwise an `X.Yt` leg earlier in the same job would hand it the
-  free-threaded build (§ Free-threaded and GIL legs in one container).
+- **Legs** come from `arm64-python-versions`. Empty is the pinned X.Y, plus X.Yt when
+  `pyproject.toml` declares free-threading, the x64 driver's and the Linux lane's rule
+  (`Resolve-PythonLegList`); uv installs the pinned X.Y first to read the classifier. `pinned` and
+  `pinnedt` in a list stand for X.Y and X.Yt. Each leg gets its own venv through
+  `New-UvProjectEnvironment`, so a bare `X.Y` asks for `X.Y+gil`; otherwise an `X.Yt` leg earlier
+  in the same job would hand it the free-threaded build (§ Free-threaded and GIL legs in one
+  container).
 - **Extras:** `arm64-extras` (empty means all extras), `free-threaded-extras` for a `t` leg, and
   `test-paths`, all as on Linux. Every leg gates. A failed leg does not stop the next one, and the
   error names every failed leg and its step: venv, sync or pytest.

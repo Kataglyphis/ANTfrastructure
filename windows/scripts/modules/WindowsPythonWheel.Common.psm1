@@ -69,14 +69,25 @@ function Get-PythonWheelAbiTag {
     return (Split-PythonWheelName -Name $Name)[-2]
 }
 
-# A wheel file name's dash-separated fields, the last three being its python, ABI and platform tags; throws for any other name.
 function Resolve-PythonLegList {
     <#
     .SYNOPSIS
-        The legs of a comma or space separated -PythonVersions: empty is the pinned X.Y, `pinned` stands for it and `pinnedt` its twin.
+        The legs of a comma or space separated -PythonVersions: `pinned` stands for the pinned X.Y and `pinnedt` its twin.
+    .DESCRIPTION
+        Empty is the pinned X.Y, plus X.Yt when -PyprojectPath declares free-threading, as ci_tests.sh's default_py_versions.
+        -Python reads the classifier; empty takes the pinned X.Y that uv finds, which it never downloads.
     #>
     [OutputType([string[]])]
-    param([string]$PythonVersions = '', [string]$VersionsEnvPath = (Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\01-core\versions.env'))
+    param(
+        [string]$PythonVersions = '',
+        [string]$PyprojectPath = '',
+        [string]$Python = '',
+        [string]$VersionsEnvPath = (Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\01-core\versions.env')
+    )
+    if (-not $PythonVersions -and $PyprojectPath -and (Test-Path -LiteralPath $PyprojectPath -PathType Leaf)) {
+        if (-not $Python) { $Python = Find-UvPython -Request "$((Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor)+gil" }
+        $PythonVersions = if ((Get-FreeThreadedWheelPlan -Mode auto -PyprojectPath $PyprojectPath -Python $Python).Build) { 'pinned pinnedt' } else { 'pinned' }
+    }
     if (-not $PythonVersions -or $PythonVersions -match 'pinned') {
         $mm = (Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor
         $PythonVersions = if ($PythonVersions) { $PythonVersions -creplace 'pinned', $mm } else { $mm }
@@ -99,6 +110,7 @@ function Get-NativeWheelCheck {
     if ($parts[-2] -cne $abi -or $parts[-1] -cne $Platform) { throw "Python $Leg built $Name, not a $abi $Platform wheel" }
     return $check
 }
+# A wheel file name's dash-separated fields, the last three being its python, ABI and platform tags; throws for any other name.
 function Split-PythonWheelName {
     param([Parameter(Mandatory)][string]$Name)
     $parts = [IO.Path]::GetFileNameWithoutExtension($Name).Split('-')

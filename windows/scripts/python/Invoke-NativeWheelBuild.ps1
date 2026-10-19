@@ -33,7 +33,7 @@ $env:PATH = "$llvm;$env:PATH"
 $env:CYTHONIZE = 'True'
 $null = New-Item -ItemType Directory -Force -Path $OutDir
 
-$legs = @(Resolve-PythonLegList -PythonVersions $PythonVersions -VersionsEnvPath $VersionsEnvPath)
+$legs = @(Resolve-PythonLegList -PythonVersions $PythonVersions -PyprojectPath (Join-Path (Get-Location).Path 'pyproject.toml') -VersionsEnvPath $VersionsEnvPath)
 foreach ($leg in $legs) {
     $python = Find-UvPython -Request (Get-UvPythonRequest -Version $leg) -Hint 'run Invoke-PythonTestLegs.ps1 for this leg first'
     Add-PythonLibPath -PythonDir (Split-Path -Parent $python)

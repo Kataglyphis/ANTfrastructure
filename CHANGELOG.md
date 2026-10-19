@@ -11,6 +11,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The arm64 Python job defaults to the pinned X.Y and X.Yt
+
+- **`python-ci-windows.yml`'s empty `arm64-python-versions` runs the pinned X.Y plus X.Yt when
+  `pyproject.toml` declares free-threading**, as the x64 driver and `python-ci-linux.yml` do (owner,
+  2026-10-20: every lane tests only the pinned CPython, once with the GIL and once free-threaded).
+  It ran X.Y alone. One helper holds the rule: `Resolve-PythonLegList -PyprojectPath` reads the
+  classifier with `free-threaded-wheel.py declares`. `Invoke-PythonCiBuild.ps1`'s `Get-DefaultLeg`
+  is gone, and `Invoke-PythonTestLegs.ps1` installs the pinned X.Y first when uv has none, since a
+  hosted runner has no image interpreter. The job's one caller, WebDavClient, names `pinned pinnedt`.
+- `python-ci.md`: the defaults paragraph under ORT trap 3 named 3.14 and WebDavClient's 3.13 legs;
+  it states the pin rule now.
+- Tests: `PythonWheel.FreeThreaded.Tests.ps1` and `PythonTestLegs.Tests.ps1` (classifier declared,
+  absent, unreadable; the pinned X.Y installed only when uv finds none).
+
 ## 2026-10-19 — Docs: Windows CPython is 3.15, the sccache file is read
 
 - **`windows-builds.md` names the Windows images' CPython 3.15.0** (`PYTHON_VERSION` in both

@@ -145,8 +145,10 @@ on:
         description: >-
           Space-separated Python legs for the arm64 job; a `t` suffix is a
           free-threaded leg. Empty (the default) runs the pinned X.Y of
-          versions.env, and the word `pinned` stands for that X.Y (`pinnedt`
-          its free-threaded twin), so a Python upgrade moves every leg.
+          versions.env, plus X.Yt when pyproject.toml declares free-threading,
+          as the x64 build and python-ci-linux.yml do; the word `pinned` stands
+          for that X.Y (`pinnedt` its free-threaded twin), so a Python upgrade
+          moves every leg.
         required: false
         type: string
         default: ''

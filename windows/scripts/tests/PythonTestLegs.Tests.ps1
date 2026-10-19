@@ -5,13 +5,14 @@
 
 $script:Legs = Join-Path (Get-RepoRoot) 'windows\scripts\python\Invoke-PythonTestLegs.ps1'
 
-# A uv that logs each call and exits 1 when "<args> [<UV_PROJECT_ENVIRONMENT>]" matches the regex FAKE_UV_FAIL.
+# A uv that logs each call, exits 1 when "<args> [<UV_PROJECT_ENVIRONMENT>]" matches the regex FAKE_UV_FAIL, and finds FAKE_UV_PYTHON.
 function script:New-FakeUv([string]$Dir) {
     $null = New-Item -ItemType Directory -Force -Path $Dir
     Set-Content -LiteralPath (Join-Path $Dir 'uv.cmd') -Encoding ascii -Value '@pwsh -NoProfile -File "%~dp0fake-uv.ps1" %*'
     Set-Content -LiteralPath (Join-Path $Dir 'fake-uv.ps1') -Encoding utf8 -Value @(
         'Add-Content -LiteralPath $env:FAKE_UV_LOG -Value "$args"'
         'if ($env:FAKE_UV_FAIL -and "$args [$env:UV_PROJECT_ENVIRONMENT]" -match $env:FAKE_UV_FAIL) { exit 1 }'
+        'if ("$($args[0]) $($args[1])" -eq "python find" -and $env:FAKE_UV_PYTHON) { $env:FAKE_UV_PYTHON }'
         'exit 0'
     )
 }
@@ -92,6 +93,30 @@ Describe 'Invoke-PythonTestLegs.ps1' {
                 $calls = Get-FakeUvCall $d
                 foreach ($leg in '9.87', '9.87t', '3.13') { Assert-Match "\.venv-ci-$([regex]::Escape($leg))\|" $calls "the $leg leg" }
                 Assert-False ($calls -match 'pinned') 'no leg keeps the word'
+            }
+        }
+    }
+
+    It 'adds the X.Yt leg for a project that declares free-threading, and installs the pinned X.Y only when uv has none' {
+        Invoke-InTestDir { param($d)
+            $envFile = Join-Path $d 'versions.env'
+            Set-Content -LiteralPath $envFile -Value 'PYTHON_VERSION=9.87.6'
+            Set-Content -LiteralPath (Join-Path $d 'pyproject.toml') -Value '[project]'
+            # The interpreter uv finds; free-threaded-wheel.py's declares verdict is its exit code.
+            $py = Join-Path $d 'python.cmd'
+            Set-Content -LiteralPath $py -Encoding ascii -Value '@exit /b %FAKE_DECLARES_RC%'
+            Invoke-WithEnv @{ PYTHON_VERSION = $null; FAKE_UV_PYTHON = $py; FAKE_DECLARES_RC = '0' } {
+                Invoke-FakeLegs -Dir $d -FakeOnPath -Arguments @{ VersionsEnvPath = $envFile }
+                $calls = Get-FakeUvCall $d
+                Assert-Match '^python find 9\.87\+gil\|python find 9\.87\+gil\|python find 9\.87\+gil\|venv ' $calls 'the pin is there: nothing installed'
+                foreach ($leg in '9.87', '9.87t') { Assert-Match "venv --python $([regex]::Escape($leg))\S* --clear <d>\\\.venv-ci-$([regex]::Escape($leg))\|" $calls "the $leg leg" }
+                Remove-Item -LiteralPath (Join-Path $d 'uv-calls.log')
+                $env:FAKE_DECLARES_RC = '1'
+                Invoke-FakeLegs -Dir $d -FakeOnPath -Arguments @{ VersionsEnvPath = $envFile }
+                Assert-False ((Get-FakeUvCall $d) -match '9\.87t') 'no classifier, no twin'
+                Remove-Item -LiteralPath (Join-Path $d 'uv-calls.log')
+                Assert-Throws { Invoke-FakeLegs -Dir $d -FakeOnPath -Fail '^python find' -Arguments @{ VersionsEnvPath = $envFile } } -MessagePattern 'uv finds no 9\.87\+gil'
+                Assert-Match '^python find 9\.87\+gil\|python install 9\.87\|' (Get-FakeUvCall $d) 'uv had none: the pinned X.Y installs first'
             }
         }
     }

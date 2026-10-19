@@ -11,7 +11,7 @@
     -TestPaths names others, -Extras for every leg (empty: all extras), and a free-threaded leg (X.Yt) that syncs only
     -FreeThreadedExtras when set. Every leg gates, and a failed leg does not stop the next one. -InstallUv first puts
     the uv that versions.env pins (UV_VERSION, UV_WINDOWS_<ARCH>_SHA256) on PATH. Empty -PythonVersions runs the pinned
-    X.Y, and `pinned` in the list stands for it (`pinnedt` its twin).
+    X.Y, plus X.Yt when pyproject.toml declares free-threading, and `pinned` in the list stands for it (`pinnedt` its twin).
 #>
 [CmdletBinding()]
 param(
@@ -52,8 +52,15 @@ if ($InstallUv) {
     $env:PATH = "$uvDir;$env:PATH"
 }
 
-# Empty runs the pinned X.Y; `pinned` in a list is that X.Y (`pinnedt` its twin), as in ci_tests.sh.
-$legs = @(Resolve-PythonLegList -PythonVersions $PythonVersions -VersionsEnvPath $VersionsEnvPath)
+$pyproject = Join-Path (Get-Location).Path 'pyproject.toml'
+# A hosted runner has no image interpreter: the pinned X.Y the first leg installs anyway reads the classifier.
+if (-not $PythonVersions -and (Test-Path -LiteralPath $pyproject -PathType Leaf)) {
+    $pinned = (Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor
+    & uv python find "$pinned+gil" *> $null
+    if ($LASTEXITCODE -ne 0) { & uv python install $pinned; if ($LASTEXITCODE -ne 0) { throw "uv python install $pinned exited $LASTEXITCODE" } }
+}
+# As in ci_tests.sh: empty is the pinned X.Y plus X.Yt for a project declaring free-threading; `pinned` in a list is that X.Y.
+$legs = @(Resolve-PythonLegList -PythonVersions $PythonVersions -PyprojectPath $pyproject -VersionsEnvPath $VersionsEnvPath)
 $paths = @(Split-List $TestPaths)
 $failed = [System.Collections.Generic.List[string]]::new()
 foreach ($leg in $legs) {
