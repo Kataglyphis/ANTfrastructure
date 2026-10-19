@@ -228,25 +228,9 @@ Some very helpful literature, tutorials, etc.
 
 ## Reusable Sphinx theme package
 
-The shared theme lives in the DocumANTation repo and is vendored here as a submodule.
-
-The shared theme now lives in the **DocumANTation** repo, vendored here
-as a submodule at `third_party/DocumANTation`. `requirements.txt` installs it
-editable (`-e ./third_party/DocumANTation/sphinx-kataglyphis-theme`), so
-`docs/conf.py` just imports it:
-
-```python
-from sphinx_kataglyphis import setup_theme
-setup_theme(globals(), repository_url="https://github.com/org/repo")
-```
-
-`setup_theme()` provides all shared Sphinx config and loads the canonical CSS from the
-package's `_static/` directory.
-
-**For other projects** — add the DocumANTation submodule and the same `-e` line to
-their `requirements.txt`, then use the `conf.py` snippet above.
-
-The canonical CSS lives in the submodule at
-`third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/_static/css/custom.css`
-— edit it **in the DocumANTation repo** to change the global look. The project's own
-`docs/_static/css/` can hold additional per-project overrides.
+The theme and the brand belong to DocumANTation, vendored here at `third_party/DocumANTation`.
+`requirements.txt` installs it editable
+(`-e ./third_party/DocumANTation/sphinx-kataglyphis-theme`) and `docs/conf.py` calls
+`setup_theme()`. How any project uses it, and where the brand's CSS is changed (in DocumANTation,
+never here):
+[DocumANTation's `style/README.md`](https://github.com/Kataglyphis/DocumANTation/blob/develop/style/README.md#sphinx-docs).

@@ -63,7 +63,7 @@ Every fetcher keeps the same contract:
 
 | Consumer | Lock | Fetcher |
 | --- | --- | --- |
-| OxidANT | `resources/models/models.lock` | `scripts/linux/fetch-models.sh`; OmniAccelerANT's `scripts/windows/Get-Models.ps1` |
+| OxidANT | `resources/models/models.lock` | `scripts/linux/fetch-models.sh`, `scripts/windows/Get-Models.ps1` |
 | OrchestrANT | `resources/models/models.lock` | `scripts/fetch_models.py` (stdlib, Linux and Windows) |
 | BeschleunigerBallett | `Resources/assets.lock` | `cmake/FetchAssets.cmake`, at every configure or as `cmake -P` |
 

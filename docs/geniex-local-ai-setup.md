@@ -1365,17 +1365,11 @@ lanes in one command.
 
 ### 1m. The end-to-end agent run — the constraint every proxy missed (measured 2026-09-04)
 
-Everything above this line measures an **endpoint**: a prompt goes in, tokens
-come out, a grader scores them. You do not run an endpoint, you run an **agent**
-— and the two had never been connected. `benchmarks/bench_agent.py`
-connects them: a scratch git repository, a task with a verifiable outcome, and
-success defined as *the repository's tests pass afterwards*. Not the transcript.
-An agent that says it fixed the bug and did not is exactly the failure a
-transcript cannot catch.
-
-Connecting them overturned this page's recommendation for agent use, and the
-reason is not the models. **Every prompt in every benchmark above was short.**
-The real one is not.
+Everything above this line measures an **endpoint**. OrchestrANT's `bench_agent.py` runs an
+**agent** against these lanes and scores it by the repository's own tests afterwards
+([how it scores](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#does-the-whole-agent-loop-work-bench_agentpy)).
+That overturned this page's recommendation for agent use, and the reason is not the models.
+**Every prompt in every benchmark above was short.** The real one is not.
 
 #### opencode's fixed preamble is 8,175 tokens, before your task is read
 
@@ -1518,30 +1512,12 @@ really cannot do function calling. Both look like "0 tool calls" from outside.
 | `Qwen3.8-9B-Distill` Q4_K_M | `<tool_call><function=…>` template | **yes** |
 | `Qwen3.8-2B-Distill` Q4_K_M | markdown code fences | no — it is not a call |
 
-**`benchmarks/geniex_toolcall_shim.py` does the translation** the server
-does not: it sits between the agent and the lane, parses the template into
-proper `tool_calls`, and sets `finish_reason` to `"tool_calls"` so the agent
-loop continues instead of stopping.
-
-```bash
-python3 benchmarks/geniex_toolcall_shim.py \
-    --upstream http://localhost:18184 --port 18190
-# then point the opencode provider at 18190 instead of 18184
-```
-
-It calls upstream without streaming even when the client asked for a stream — a
-tool call cannot be recognised before its closing tag arrives — and re-emits the
-answer as the stream the client expects. On v0.5.0 that cost nothing
-measurable: there was no prefix cache and prefill dominated, so the response was
-already one long wait. On v0.6.x it would cost the streaming experience — but
-there the shim is not needed at all (§ 1n).
-
-Two things it deliberately does **not** do. It never invents a call from
-markdown fences: guessing there is how an agent runs a command the model never
-asked for. And a call the model started but never closed yields no call at all —
-only the half-written markup is removed, so it cannot reach the user as if it
-were an answer. Both are pinned by tests, against output captured from the real
-server rather than invented fixtures.
+**OrchestrANT's `geniex_toolcall_shim.py` does the translation** the server does not, between
+the agent and the lane on port 18190
+([usage and what it refuses to guess](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#when-the-lane-loses-the-tool-call-geniex_toolcall_shimpy)).
+It calls upstream without streaming, since a tool call cannot be recognised before its closing
+tag; on v0.5.0 that cost nothing measurable, because prefill dominated and the response was
+already one long wait. v0.6.x needs no shim (§ 1n).
 
 **With the shim in place, the loop works.** The same harness, the same models,
 the same tasks — the only change is that the tool call is now visible:
@@ -1593,28 +1569,11 @@ quality result: the models were not the limit at any point.
 
 #### The harness proves itself before it judges anything
 
-With no strong control model reachable, a column of failures is unreadable —
-broken fixture, or weak model? So `--self-test` applies a known-good solution to
-each fixture by hand and asserts the verification is red before and green after:
-
-```bash
-python3 benchmarks/bench_agent.py --self-test
-#   fix_failing_test         OK   unsolved=fail solved=pass
-#   add_function_and_test    OK   unsolved=fail solved=pass
-#   multi_file_rename        OK   unsolved=fail solved=pass
-#   Harness validated
-```
-
-The fixtures also refuse the two cheap ways to fake a pass, both covered by
-tests: aliasing the old name (`fetch_data = format_record`) is not a rename, and
-an `assert True` test does not count as testing a `clamp` that never clamps.
-
-**Blocked runs are excluded from the score, not counted as zero.** A model that
-never received the task did not fail it, so the denominator counts attempted
-tasks only. Three blocked tasks report `0/0`, which the statistics layer renders
-`n/a` over a [0%, 100%] interval — "not measurable here", never "0%, it cannot
-code". Confusing those two is how a hardware limit gets written up as a model
-being bad at its job.
+`bench_agent.py --self-test` showed every fixture red before a known-good solution and green
+after, and the fixtures refuse the cheap fakes. The QAIRT lane's three blocked tasks therefore
+read `0/0`, rendered `n/a`: a model that never received the task did not fail it, and a hardware
+limit is not written up as a model being bad at its job
+([the scoring rules](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#does-the-whole-agent-loop-work-bench_agentpy)).
 
 ### 1n. GenieX v0.6.1 — what the update changed (measured 2026-09-05)
 
@@ -1653,22 +1612,14 @@ entirely. What changed is only the diagnosis: the lane now says
 `context_length_exceeded` instead of failing schema validation on an error
 shape the client could not read.
 
-#### What this means for the tooling in this repository
+#### What this means for the tooling
 
-- **`geniex_toolcall_shim.py` is obsolete on v0.6+.** It exists because v0.5.0
-  dropped the tool call; v0.6.0 added the parsing. It is kept for older builds
-  and is harmless in front of a new one — it skips any message the server
-  already parsed — but the opencode provider now points straight at the lane.
-- **`bench_coding.py` no longer assumes a 2048-token ceiling.** A cut is
-  recognised from `finish_reason: "length"` first, then from
-  `usage.completion_tokens`, and only then from the streamed delta count; the
-  threshold is the request's own budget rather than a server constant. A fixed
-  2048 would now report a long legitimate answer as CUT.
-- **`--repeats` still earns its place.** `temperature: 0` samples, so a single
-  run is still one draw rather than the model.
-- The numbers in § 1d, § 1f, § 1g, § 1i and § 1m are **v0.5.0 measurements**
-  and are left as measured. Where the cap or the missing cache distorted them,
-  the section says so.
+The opencode provider points straight at the lane; the shim stays in OrchestrANT for older
+builds. The lab's tools followed the release (a cut is read from `finish_reason`, never a fixed
+2048, and `--repeats` still earns its place because `temperature: 0` samples):
+[OrchestrANT's benchmarks](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#which-model-writes-code-that-actually-runs-bench_codingpy).
+The numbers in § 1d, § 1f, § 1g, § 1i and § 1m are **v0.5.0 measurements** and are left as
+measured. Where the cap or the missing cache distorted them, the section says so.
 
 #### The coding benchmark, re-run on v0.6.1
 
@@ -1729,14 +1680,10 @@ a number with no effect.
 
 **The other edge cost an hour.** `Qwen3-4B:Q4_0` on `parse_version` was cut at
 128 s under the 3000-token budget; given 8000 it generated for **over an hour
-without finishing**, and the sweep sat behind it. The cause is in the harness,
-not the model: `ask()` passed its timeout to `urlopen`, where it applies **per
-socket read**, so a stream that keeps delivering never trips it. `bench_coding.py`
-now takes a `--deadline` (1800 s by default) that bounds the whole attempt and
-records what arrived as `GAVE UP ... - not graded as wrong`, unmeasured for the
-same reason a cut is. `bench_lanes.py` had the same shape and the same fix;
-`bench_tools.py` does not — its requests are non-streaming and capped at 600
-tokens.
+without finishing**, and the sweep sat behind it. The harness's timeout applied per
+socket read, so a stream that keeps delivering never tripped it; `bench_coding.py`
+now bounds the whole attempt with `--deadline`
+([OrchestrANT](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#which-model-writes-code-that-actually-runs-bench_codingpy)).
 
 That result is left as "did not finish within the hour". It is a fact about the
 model, and a more useful one than a number obtained after two.
@@ -1780,56 +1727,26 @@ are the GenieX version and that the shim is gone:
 single task used to. The gain is the prefix cache: the work per turn did not
 change, it stopped being paid again on every turn.
 
-Reproduce with (`geniex-cpu` is the opencode provider key declared in Step 3;
-`--keep-output` was added afterwards and stores each workspace's `git diff`, so
-a future PASS can be re-audited — this run's could not be):
-
-```bash
-python3 benchmarks/bench_agent.py --self-test    # prove the fixtures first
-python3 benchmarks/bench_agent.py \
-    --model geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M \
-    --timeout 1800 --keep-output --output agent-v0.6.1.json
-```
+Reproduce with OrchestrANT's `bench_agent.py` and the model
+`geniex-cpu/empero-ai/Qwen3.8-9B-Distill-GGUF:Q4_K_M` (`geniex-cpu` is the opencode provider
+key declared in Step 3), `--self-test` first
+([the commands](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#does-the-whole-agent-loop-work-bench_agentpy)).
+This run kept no `git diff` of its workspaces, so its passes cannot be re-audited.
 
 #### The grader itself changed on 2026-09-05 — do not compare a re-run to these numbers
 
-Everything above was measured with the grader as it stood on the morning of
-2026-09-05. A panel review found four defects in it the same day
-([the benchmark review](https://github.com/Kataglyphis/OrchestrANT/blob/main/benchmarks/docs/llm-benchmark-review-2026-09-05.md)),
-all now fixed, and each moves a published number without any model changing:
+Everything above was graded before a panel review found four defects in the grader on
+2026-09-05 ([the review](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/docs/llm-benchmark-review-2026-09-05.md)),
+all fixed since, each moving a published number without any model changing. For the tables
+on this page that means: the three cuts were classified under the old truncation rule and
+have **not** been re-classified; every wall figure includes attempts excluded from the score
+beside it; the "nine of the eleven failures are near misses" fractions are an intermediate
+accounting (§ 1i's dated caveat); and no control endpoint ran, so nothing is calibrated by
+one. `--task-set all` is 33 tasks now, not 27.
 
-- **The truncation rule was wrong in both directions.** A reply whose final
-  ` ``` ` was followed by a newline or by prose was read as an *unclosed* fence,
-  so a syntax-error answer ending that way was graded CUT — excluded from the
-  rate, the interval, determinism and the rank — instead of counted wrong.
-  Conversely a server cut landing on a prefix that happened to compile was
-  graded FAIL, "timed out (likely an infinite loop)". The three cuts in the
-  tables above were classified under that rule and have **not** been
-  re-classified.
-- **Wall statistics now cover measured attempts only.** The seconds of a cut or
-  abandoned attempt — up to the full 1800 s deadline — used to be inside
-  `total_wall_s` and `avg/attempt`, which is what the ranking's tie-break reads.
-  Every wall figure above includes attempts that were excluded from the score
-  beside it; a re-run's will not.
-- **Partial-credit denominators changed again**, in both directions, for the
-  reason given in § 1i's dated caveat. The "nine of the eleven failures are near
-  misses" fractions here are the intermediate accounting.
-- **A control endpoint can now mark a case suspect** and remove it from every
-  candidate's score. No control ran for anything on this page, so nothing above
-  is calibrated that way — a re-run with one configured will legitimately report
-  a different denominator.
-
-Also new since these runs: an `OVERFLOW` state for a 4xx saying the prompt did
-not fit (it used to land in three different buckets depending on how the server
-reported it), an `ERROR` state for an in-stream `{"error": …}` (graded "no code
-found" before), a visible `SKIP` for a language whose linter is absent, and
-`--task-set all` now meaning 33 tasks rather than 27.
-
-**So: re-derive, do not compare.** A number produced by today's grader and one
-in the tables above are not the same measurement, and `bench_compare` will say
-so on its own — provenance carries a hash of the grader's source and reports
-`BENCHMARK SOURCE CHANGED` before any score. The exact re-run commands are in
-the CHANGELOG entry of 2026-09-05.
+**So: re-derive, do not compare.** `bench_compare` refuses on its own: provenance carries a
+hash of the grader's source and reports `BENCHMARK SOURCE CHANGED` before any score
+([OrchestrANT](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#did-anything-regress-bench_comparepy)).
 
 ## Debugged: i-quants below 4 bits are broken in GenieX's llama.cpp
 

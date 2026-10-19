@@ -10,6 +10,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-19 — the hub stops restating its neighbours, and one wrong credit
+
+- **`geniex-local-ai-setup.md` §§ 1m/1n keep the GenieX measurements and link the lab for the
+  harness**: what `bench_agent.py` scores, its self-test and blocked-is-not-failed rule, the
+  tool-call shim's usage and refusals, `bench_coding`'s cut detection and `--deadline`, and the
+  2026-09-05 grader fixes are OrchestrANT's `benchmarks/README.md`, linked at `develop`. The
+  reproduce block pointed at `benchmarks/` paths this repository no longer has.
+- **`linux/llm-stack/README.md`**: the gateway's acceptance steps are OrchestrANT's; the hub keeps
+  the `budget_tokens` trap and what is not covered yet.
+- **`project-info.md` § Reusable Sphinx theme package** says what the hub wires and links
+  DocumANTation for the rest; it carried the same opening sentence twice.
+- **The Dev Drive `fsutil` command lives only in `windows-container-build-performance.md`**;
+  `windows-build-lanes.md` links it.
+- **`data-repositories.md`**: `scripts/windows/Get-Models.ps1` is OxidANT's, not OmniAccelerANT's
+  (OxidANT tracks it; OmniAccelerANT has none).
+
 ## 2026-10-19 — generic facts the consumers carried get one hub home
 
 Each was written out in one or more consumers; the hub now owns it and the consumers can link.

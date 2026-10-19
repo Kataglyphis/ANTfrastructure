@@ -270,24 +270,12 @@ real `serve-stack.sh up` … `down`. CI runs it on x64 and arm64
 
 ### Acceptance (P1): the lab benchmarks the gateway
 
-Both stages on one day, one GenieX version, serving on hold, a quiet host.
-
-- **Stage A, transparency** (`lab-raw-X` against direct `geniex-X`, `geniex-cpu-9b` for the CPU lane):
-  every `contract` answer equal (`identical_repeat_intact`, the prefix-cache
-  checks, the `tool_calls` shape, the `/v1/completions` stop sequence);
-  `bench_chat --correctness-only` and `bench_tools` without `--system` give the
-  same answers, with the direct baseline sent with sorted keys or key order
-  shown not to matter; `orchestrant-bench speed` TTFT within noise; the AI-route
-  log lines equal the requests sent, one address each, `rerouted: no` throughout.
-- **Stage B, shaping** (`lab-chat`): `bench_chat` reproduces P8.2; `bench_tools`
-  is not separable from `geniex-npu --system benchmarks/prompts/tool-disambiguation.md`
-  (P8.1); `contract` differs only where expected (`power_mode_understood` no,
-  `overflow_is_clean_error` a GPU 200); a ~7k-token document logs
-  `route_id: chat-presend, lane: gpu`; with `estimate.bytes_per_token` raised
-  (say to 1000) so the estimate never fires, an overflow logs one NPU and one
-  GPU attempt, `rerouted: overflow` and a 200, streamed and not. (Not
-  `budget_tokens`: the renderer refuses a budget at or above the NPU's 4096.)
-- **Upgrade gate:** Stage A and the overflow row again after every APISIX or GenieX bump.
+OrchestrANT's lab owns the acceptance: Stage A (each `lab-raw-X` answers exactly as its direct
+lane), Stage B (`lab-chat`'s routing and overflow), and both again after every APISIX or GenieX
+bump. The steps, and the 2026-09-25 acceptance on the NPU and GPU lanes:
+[OrchestrANT, through the gateway](https://github.com/Kataglyphis/OrchestrANT/blob/develop/benchmarks/README.md#through-the-gateway-lab--backends).
+To force an overflow there, raise `estimate.bytes_per_token` (say to 1000), never
+`budget_tokens`: the renderer refuses a budget at or above the NPU's 4096.
 
 Not covered yet: how GenieX answers a streamed overflow (only a 400 before the
 stream is handled), whether it stops generating when a client hangs up (the
