@@ -46,22 +46,12 @@ Enter-VsDevCmdEnvironment -Arch $arch
 $work = [IO.Directory]::CreateTempSubdirectory('ft-cross-').FullName
 try {
     $venv = New-FreeThreadedBuildPython -GilPython $gil -VenvDir (Join-Path $work 'venv') -Package $requires
-    $cfg = Join-Path $work 'cross.cfg'
-    [IO.File]::WriteAllLines($cfg, [string[]]@('[build_ext]', "plat_name = $($tag -replace '_', '-')", "library_dirs = $($target.LibDir)",
-            '[bdist_wheel]', "plat_name = $tag"))
-    $env:DIST_EXTRA_CONFIG = $cfg
     $env:CYTHONIZE = 'True'
-    $dist = Join-Path $work 'dist'
-    & uv build --wheel --no-build-isolation --python $venv.Exe --out-dir $dist $RepoRoot
-    if ($LASTEXITCODE -ne 0) { throw "the $tag free-threaded build failed (exit $LASTEXITCODE)" }
-    $wheel = Select-FreeThreadedWheel -Wheels @(Get-ChildItem -LiteralPath $dist -Filter '*.whl' -File) -AbiTag (Get-FreeThreadedAbiTag)
+    $wheel = Invoke-CrossWheelBuild -Python $venv.Exe -Source $RepoRoot -LibDir $target.LibDir -AbiTag (Get-FreeThreadedAbiTag) -WorkDir $work
     if (-not $wheel) {
         Write-Host "free-threaded wheel: the build is pure, and the py3-none-any wheel already serves $tag"
         exit 0
     }
-    $findings = @(Get-FreeThreadedWheelFinding -Path $wheel.FullName -PlatformTag $tag) + @(Get-FreeThreadedWheelImportFinding -Path $wheel.FullName)
-    if ($findings.Count -gt 0) { throw "$($wheel.Name) fails the cp3XYt gates:`n  $($findings -join "`n  ")" }
-    Assert-WheelTargetArch -WheelPath $wheel.FullName
 
     # The device kit: no hub checkout reaches the arm64 run job, only this directory.
     New-Item -ItemType Directory -Force -Path $OutDir | Out-Null

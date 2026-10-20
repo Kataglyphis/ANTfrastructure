@@ -1212,27 +1212,83 @@ function New-FreeThreadedBuildPython {
         [Parameter(Mandatory)][string]$VenvDir,
         [string[]]$Package = @()
     )
-    $ft = Get-SourceBuildPython -FreeThreaded
-    $link = Get-TargetBuildPython -FreeThreaded
+    return New-CrossBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package $Package -FreeThreaded
+}
+
+function New-CrossBuildPython {
+    <#
+    .SYNOPSIS
+        New-FreeThreadedBuildPython's venv, or with no -FreeThreaded its GIL twin: a venv of -GilPython linking Get-TargetBuildPython's library.
+    .PARAMETER LibDir
+        The target library directory instead of Get-TargetBuildPython's, such as a shipped image's C:untime\python\libs.
+    #>
+    param(
+        [Parameter(Mandatory)][hashtable]$GilPython,
+        [Parameter(Mandatory)][string]$VenvDir,
+        [string[]]$Package = @(),
+        [switch]$FreeThreaded,
+        [string]$LibDir = ''
+    )
+    $base = if ($FreeThreaded) { (Get-SourceBuildPython -FreeThreaded).Exe } else { $GilPython.Exe }
+    $link = Get-TargetBuildPython -FreeThreaded:$FreeThreaded
+    if ($LibDir) {
+        $lib = Select-CpythonImportLib -LibDir $LibDir -FreeThreaded:$FreeThreaded
+        $link = @{ Include = $link.Include; LibDir = $LibDir; Lib = $(if ($lib) { $lib.FullName } else { $LibDir }) }
+    }
+    $label = if ($FreeThreaded) { 'free-threaded' } else { 'GIL' }
     $requirements = @(foreach ($p in $Package) {
             if ($p -match '[=<>!~]') { $p; continue }
             $ver = "$(& $GilPython.Exe -I -c 'import importlib.metadata as m, sys; print(m.version(sys.argv[1]))' $p 2>$null)".Trim()
-            if ($LASTEXITCODE -ne 0 -or -not $ver) { throw "free-threaded: the GIL build interpreter $($GilPython.Exe) has no $p, so its twin has no version to match" }
+            if ($LASTEXITCODE -ne 0 -or -not $ver) { throw "${label}: the GIL build interpreter $($GilPython.Exe) has no $p, so the build venv has no version to match" }
             "$p==$ver"
         })
-    [void](Invoke-ShieldedNative -Label 'uv venv (free-threaded build)' -CommandLine "uv venv --clear --no-cache --quiet --python ""$($ft.Exe)"" ""$VenvDir""")
+    [void](Invoke-ShieldedNative -Label "uv venv ($label build)" -CommandLine "uv venv --clear --no-cache --quiet --python ""$base"" ""$VenvDir""")
     $exe = Join-Path $VenvDir 'Scripts\python.exe'
     if ($requirements.Count -gt 0) {
-        [void](Invoke-ShieldedNative -Label 'uv pip install (free-threaded build)' -CommandLine "uv pip install --no-cache --quiet --python ""$exe"" $($requirements -join ' ')")
+        [void](Invoke-ShieldedNative -Label "uv pip install ($label build)" -CommandLine "uv pip install --no-cache --quiet --python ""$exe"" $($requirements -join ' ')")
     }
     # After the installs, which resolve host wheels: the pin changes EXT_SUFFIX only, get_platform() stays the host's.
     if (Test-WindowsCrossTarget) {
         $shim = Write-PythonDllDirectoryShim -SitePackages (Join-Path $VenvDir 'Lib\site-packages') -OpenCvArchDir (Get-OpenCvArchDir) `
-            -CrossExtTag (Get-PythonWheelTag) -WrittenBy 'New-FreeThreadedBuildPython (cross build venv)'
-        Write-Host "free-threaded: $shim names this venv's modules for $(Get-PythonWheelTag); they link $($link.Lib)"
+            -CrossExtTag (Get-PythonWheelTag) -WrittenBy 'New-CrossBuildPython (cross build venv)'
+        Write-Host "${label}: $shim names this venv's modules for $(Get-PythonWheelTag); they link $($link.Lib)"
     }
-    Write-Host "free-threaded: build venv $VenvDir on $($ft.Exe) with $(if ($requirements.Count) { $requirements -join ' ' } else { 'no packages' })"
-    return @{ Exe = $exe; Include = $link.Include; LibDir = $link.LibDir; Lib = $link.Lib; FreeThreaded = $true; Venv = $VenvDir }
+    Write-Host "${label}: build venv $VenvDir on $base with $(if ($requirements.Count) { $requirements -join ' ' } else { 'no packages' })"
+    return @{ Exe = $exe; Include = $link.Include; LibDir = $link.LibDir; Lib = $link.Lib; FreeThreaded = [bool]$FreeThreaded; Venv = $VenvDir }
+}
+
+function Invoke-CrossWheelBuild {
+    <#
+    .SYNOPSIS
+        A cross lane's -AbiTag wheel of -Source, built by -Python against -LibDir and gated statically; the wheel, or $null when the build is pure.
+    .DESCRIPTION
+        DIST_EXTRA_CONFIG gives every build_ext the target platform and libs, and bdist_wheel the platform
+        (docs/python-ci.md § The arm64 cross lane's free-threaded wheel). The gates: a cp3XYt wheel's tags, every module importing
+        python3XY[t].dll, every PE member the target's machine. -Python is the build venv, which must pin EXT_SUFFIX to the target.
+    #>
+    [OutputType([IO.FileInfo])]
+    param(
+        [Parameter(Mandatory)][string]$Python,
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$LibDir,
+        [Parameter(Mandatory)][string]$AbiTag,
+        [Parameter(Mandatory)][string]$WorkDir
+    )
+    $tag = Get-PythonWheelTag
+    $cfg = Join-Path $WorkDir 'cross.cfg'
+    [IO.File]::WriteAllLines($cfg, [string[]]@('[build_ext]', "plat_name = $($tag -replace '_', '-')", "library_dirs = $LibDir",
+            '[bdist_wheel]', "plat_name = $tag"))
+    $env:DIST_EXTRA_CONFIG = $cfg
+    $dist = Join-Path $WorkDir 'dist'
+    & uv build --wheel --no-build-isolation --python $Python --out-dir $dist $Source
+    if ($LASTEXITCODE -ne 0) { throw "the $AbiTag $tag build of $Source failed (exit $LASTEXITCODE)" }
+    $wheel = Select-FreeThreadedWheel -Wheels @(Get-ChildItem -LiteralPath $dist -Filter '*.whl' -File) -AbiTag $AbiTag
+    if (-not $wheel) { return $null }
+    $findings = @(if ($AbiTag.EndsWith('t')) { Get-FreeThreadedWheelFinding -Path $wheel.FullName -PlatformTag $tag }) +
+        @(Get-FreeThreadedWheelImportFinding -Path $wheel.FullName -AbiTag $AbiTag)
+    if ($findings.Count -gt 0) { throw "$($wheel.Name) fails the $AbiTag gates:`n  $($findings -join "`n  ")" }
+    Assert-WheelTargetArch -WheelPath $wheel.FullName
+    return $wheel
 }
 
 function Invoke-FreeThreadedTwinWheel {
@@ -2498,6 +2554,8 @@ Export-ModuleMember -Function @(
     'Get-FreeThreadedTwinPlan',
     'Assert-NinjaFreeThreadedDefine',
     'New-FreeThreadedBuildPython',
+    'New-CrossBuildPython',
+    'Invoke-CrossWheelBuild',
     'Invoke-FreeThreadedTwinWheel',
     'Get-FreeThreadedWheelImportFinding',
     'Save-FreeThreadedWheel',

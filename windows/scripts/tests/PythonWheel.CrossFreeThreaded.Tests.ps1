@@ -10,6 +10,7 @@ Describe 'the arm64 cross lane''s free-threaded wheel (CON75)' {
         $script:buildText = [IO.File]::ReadAllText((Join-Path $script:pythonDir 'New-CrossFreeThreadedWheel.ps1'))
         $script:packagingText = [IO.File]::ReadAllText((Join-Path $script:pythonDir 'Invoke-CiPackaging.ps1'))
         $script:workflowText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) '.github\workflows\container-ci-windows.yml'))
+        $script:crossText = (Get-Command Invoke-CrossWheelBuild).ScriptBlock.ToString()
     }
 
     It 'runs in a child process of the packaging driver, which writes the kit beside the arm64 bundle' {
@@ -20,20 +21,22 @@ Describe 'the arm64 cross lane''s free-threaded wheel (CON75)' {
 
     It 'names the target for every build_ext and bdist_wheel instance, and builds without isolation in the pinned venv' {
         Assert-Match "Enter-VsDevCmdEnvironment -Arch \`$arch" $script:buildText 'VS''s cross tools'
-        Assert-Match "WriteAllLines\(\`$cfg, \[string\[\]\]@\('\[build_ext\]', `"plat_name = \`$\(\`$tag -replace '_', '-'\)`", `"library_dirs = \`$\(\`$target\.LibDir\)`"" $script:buildText `
-            'the target libs reach the relink that bdist_wheel starts too'
-        Assert-Match "'\[bdist_wheel\]', `"plat_name = \`$tag`"" $script:buildText 'the wheel''s platform tag'
-        Assert-Match '\$env:DIST_EXTRA_CONFIG = \$cfg' $script:buildText 'setuptools reads it for every command'
         Assert-Match "New-FreeThreadedBuildPython -GilPython \`$gil -VenvDir \(Join-Path \`$work 'venv'\) -Package \`$requires" $script:buildText 'EXT_SUFFIX pinned to the target'
-        Assert-Match 'uv build --wheel --no-build-isolation --python \$venv\.Exe' $script:buildText 'the pinned venv runs the backend'
+        Assert-Match 'Invoke-CrossWheelBuild -Python \$venv\.Exe -Source \$RepoRoot -LibDir \$target\.LibDir -AbiTag \(Get-FreeThreadedAbiTag\)' $script:buildText 'the shared cross build'
+        Assert-Match "WriteAllLines\(\`$cfg, \[string\[\]\]@\('\[build_ext\]', `"plat_name = \`$\(\`$tag -replace '_', '-'\)`", `"library_dirs = \`$LibDir`"" $script:crossText `
+            'the target libs reach the relink that bdist_wheel starts too'
+        Assert-Match "'\[bdist_wheel\]', `"plat_name = \`$tag`"" $script:crossText 'the wheel''s platform tag'
+        Assert-Match '\$env:DIST_EXTRA_CONFIG = \$cfg' $script:crossText 'setuptools reads it for every command'
+        Assert-Match 'uv build --wheel --no-build-isolation --python \$Python' $script:crossText 'the pinned venv runs the backend'
     }
 
     It 'gates the wheel before it packs the kit' {
-        $gates = $script:buildText.IndexOf('Assert-WheelTargetArch -WheelPath $wheel.FullName')
+        $build = $script:buildText.IndexOf('Invoke-CrossWheelBuild -Python')
         $pack = $script:buildText.IndexOf("Copy-Item -LiteralPath `$wheel.FullName -Destination `$OutDir")
-        Assert-True ($gates -gt 0 -and $pack -gt $gates) 'nothing ungated reaches the device'
-        Assert-Match 'Get-FreeThreadedWheelFinding -Path \$wheel\.FullName -PlatformTag \$tag' $script:buildText 'the tags'
-        Assert-Match 'Get-FreeThreadedWheelImportFinding -Path \$wheel\.FullName' $script:buildText 'the python314t.dll imports'
+        Assert-True ($build -gt 0 -and $pack -gt $build) 'nothing ungated reaches the device'
+        Assert-Match 'Get-FreeThreadedWheelFinding -Path \$wheel\.FullName -PlatformTag \$tag' $script:crossText 'the tags'
+        Assert-Match 'Get-FreeThreadedWheelImportFinding -Path \$wheel\.FullName -AbiTag \$AbiTag' $script:crossText 'the python3XYt.dll imports'
+        Assert-Match 'Assert-WheelTargetArch -WheelPath \$wheel\.FullName' $script:crossText 'every PE member the target''s'
         foreach ($file in 'free-threaded-wheel.py', 'WindowsPythonWheel.Common.psm1', 'Test-FreeThreadedWheel.ps1') {
             Assert-True $script:buildText.Contains($file) "the kit carries $file"
         }

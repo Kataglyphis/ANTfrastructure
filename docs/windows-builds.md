@@ -643,6 +643,14 @@ three static gates instead: the tags (`cp3XY-cp3XYt`, `win_arm64`, every tagged 
   another ABI, or when a twin's or a dependency's requirement resolves in neither directory. The
   store's top keeps the twins alone, which the mirror gate reads; a consumer installs a twin offline
   with `--find-links` on both directories.
+- **`deps\` also holds the `cp3XYt` wheels PyPI lacks for the target** (CON111): psutil 7.2.2 ships
+  `cp313t`/`cp314t` `win_arm64` wheels and no `cp315t` one, and OrchestrANT's and WebDavClient's
+  free-threaded device legs lock it. `Build-TargetSdistWheel.ps1` builds it in the merge, before the
+  gate above, from the sdist pinned by `PY_PSUTIL_SDIST_SHA256`. setuptools' compiler runs copies
+  of clang-cl, lld-link and llvm-lib named `cl`, `link` and `lib` (as the torch stage's sdists do),
+  and `CL` carries `--target=aarch64-pc-windows-msvc` and `/clang:-fcommon`: psutil's headers define
+  their function pointers in every object, which `cl` merges and clang rejects as duplicates. The
+  wheel passes the twins' three static gates, and fails when a member carries MSVC's Rich header.
 
 **Measured in `:winarm64` on 2026-10-07**, the published image of 2026-10-04 with an x64 3.14t built
 from v3.14.7 (104 s) and the ARM64 trees of this checkout's `Build-TargetCpython.ps1` (212 s for

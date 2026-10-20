@@ -214,6 +214,11 @@ RUN --mount=type=bind,source=windows/scripts/build/Write-BundleManifest.ps1,targ
     --mount=type=bind,source=linux/scripts/03-media/free-threaded-twins.txt,target=C:\bkmnt\free-threaded-twins.txt `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Write-BundleManifest.ps1' -ScriptDir 'C:\bkmnt'
+# The cp3XYt wheels PyPI lacks for the target (psutil), into deps\ before its gate; consumers' free-threaded device legs need them.
+RUN --mount=type=bind,source=windows/scripts/build/Build-TargetSdistWheel.ps1,target=C:\bkmnt\Build-TargetSdistWheel.ps1 `
+    --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
+    --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
+    & 'C:\bkmnt\Build-TargetSdistWheel.ps1' -ScriptDir 'C:\bkmnt'
 # Before the arch gate, so the staged target-tag deps are machine-checked and import-walked too.
 RUN --mount=type=bind,source=windows/scripts/build/Copy-TargetPythonDeps.ps1,target=C:\bkmnt\Copy-TargetPythonDeps.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `

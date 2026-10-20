@@ -11,6 +11,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — `:winarm64` builds the cp315t psutil wheel PyPI lacks
+
+- **psutil 7.2.2 has no `cp315t` `win_arm64` wheel on PyPI** (`cp313t` and `cp314t` only), and
+  OrchestrANT's and WebDavClient's free-threaded device legs lock it. The arm64 merge now builds it
+  from the sdist pinned by the new `PY_PSUTIL_SDIST_SHA256` (`Build-TargetSdistWheel.ps1`) into
+  `C:\runtime\wheels-free-threaded\deps`, before `Copy-TargetPythonDeps.ps1`'s gate (CON111).
+- **clang-cl, not VS's `cl`:** setuptools runs copies of clang-cl, lld-link and llvm-lib named `cl`,
+  `link` and `lib`, and `CL` adds `--target=aarch64-pc-windows-msvc /clang:-fcommon`. psutil's
+  headers define their function pointers in every object; `cl` merges them, clang 23 stopped with
+  `duplicate symbol: _GetExtendedUdpTable` until `-fcommon`. The wheel then passes the twins' three
+  static gates and a new one: no member carries MSVC's Rich header.
+- **One cross build for both scripts.** `Invoke-CrossWheelBuild` (`WindowsSourceBuild.Common`) holds
+  `DIST_EXTRA_CONFIG`, the `uv build` and the static gates `New-CrossFreeThreadedWheel.ps1` had
+  inline, for a `cp3XY` or `cp3XYt` wheel. `New-CrossBuildPython` is `New-FreeThreadedBuildPython`
+  with a GIL form and a `-LibDir` override; the shipped image keeps the GIL target's import library
+  in `C:\runtime\python\libs`, not `PCbuild\arm64`.
+- Measured in the published `:winarm64` (2026-10-17): `psutil-7.2.2-cp315-cp315t-win_arm64.whl`,
+  one `0xAA64` module. Test: `Build.TargetSdistWheel.Tests.ps1`. Rides the next arm64 chain.
+
 ## 2026-10-20 — A repository with a release keeps a CHANGELOG
 
 - **The naming rule changed** (owner, 2026-10-20). It said only a registry package keeps
