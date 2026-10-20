@@ -183,10 +183,10 @@ This project's own code is licensed under the **MIT License** — see the
 matching `SPDX-License-Identifier: MIT` header, and the published container
 images declare `org.opencontainers.image.licenses="MIT"`.
 
-> Until 2026-08-07 the source headers and two of the three image labels said
-> `Apache-2.0` while `LICENSE` said MIT. That contradiction is resolved in
-> favour of MIT throughout; nothing about the terms was ever intended to differ
-> from `LICENSE`.
+> Until 2026-08-07 the source headers (23 Windows scripts until 2026-10-20, CON69)
+> and two of the three image labels said `Apache-2.0` while `LICENSE` said MIT.
+> That contradiction is resolved in favour of MIT throughout; nothing about the
+> terms was ever intended to differ from `LICENSE`.
 
 Bundled upstream software keeps its own terms — see
 [Third-Party Licenses](third-party-licenses.md). The `NOTICES` bundle the served

@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # One UAC click for the between-runs admin steps (step-log env, GC budgets, diag tag release); never while a chain solves.
 
 [CmdletBinding()]

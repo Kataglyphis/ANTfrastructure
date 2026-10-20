@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Elevated, 10-40 min, with nothing building: DISM /RestoreHealth then sfc, for a host whose DISM COM API is broken.
 
 $ErrorActionPreference = 'Continue'

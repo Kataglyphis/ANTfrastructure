@@ -1,7 +1,7 @@
 #requires -Version 7.0
 
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # litert_lm_main via upstream's CI-tested bazel path; the CMake port (Build-LitertLmFromSource.ps1) is the frozen fallback.
 #requires -Version 7.0
 [CmdletBinding()]

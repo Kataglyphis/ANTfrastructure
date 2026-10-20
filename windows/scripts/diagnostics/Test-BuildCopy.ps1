@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # The 3-layer RUN+COPY probe to run before trusting a new Windows host; exports type=image like the chain, never type=local.
 
 [CmdletBinding()]

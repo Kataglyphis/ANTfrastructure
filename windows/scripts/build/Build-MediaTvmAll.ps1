@@ -1,5 +1,5 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 
 #requires -Version 7.0
 # The media-tvm chain in one RUN with the tvmmods closure; no per-stage cache, so a failure re-runs it all.

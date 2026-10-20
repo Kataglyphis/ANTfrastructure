@@ -12,6 +12,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The last 23 Apache-2.0 headers are MIT, as `LICENSE` says (CON69)
+
+- **Owner decision 2026-10-20.** 802699f6 (2026-08-07) moved 101 headers to MIT and missed 23
+  Windows scripts; their `SPDX-License-Identifier` line now reads `MIT`. Nothing else in them
+  changed: the copyright line stays.
+- **Checked first.** Every commit on each file, renames followed, is the owner's, co-authored
+  only by Claude, and no file carries upstream attribution, a NOTICE or copied third-party code.
+  So none stays Apache-2.0 and `third-party-licenses.md` gains no row.
+- **Files.** `windows/scripts/build/`: `Build-GstreamerFromSource`, `Build-LitertAll`,
+  `Build-LitertLmBazel`, `Build-MediaCoreAll`, `Build-MediaTvmAll`. `diagnostics/`:
+  `Test-BuildCopy`, `Test-CudaCache`, `Test-Rdna4LayerLock`, `verify-cuda-cache/Test-Cache`.
+  `host/`: `Clear-DiskSpace`, `Get-HostDockerState`, `Install-DufsService`, `Install-NewHost`,
+  `Repair-WindowsComponentstore`, `Reset-ContainerLocks`, `Reset-ContainerStores`,
+  `Set-ContainerdConfig`, `Set-ElevatedWindow`, `Set-Rdna4Gpu`, `Sync-DefenderExclusions`,
+  `Test-HostSetup`. `modules/`: `WindowsHostMaintenance.Common.psm1`,
+  `WindowsSourceBuild.Common.psm1`.
+- **Not touched.** `.claude/hooks/guard-destructive-deletes.{ps1,py}` still say Apache-2.0
+  (`rg` skips the hidden directory, so the row's count missed them); the hook is edited by
+  the owner only (`comment-size.allow`).
+
 ## 2026-10-20 — Windows runs the suite on the installed cp3XYt wheel too (CON122)
 
 - **Why.** Windows packaging only loaded the free-threaded wheel (OrchestrANT job 118384523138: `63

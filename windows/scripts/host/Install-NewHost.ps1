@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Admin, never while a build solves (it restarts containerd/buildkitd); see docs/windows-host-setup.md § A5. CNI nat conf.
 
 [CmdletBinding(SupportsShouldProcess, ConfirmImpact = 'Medium')]

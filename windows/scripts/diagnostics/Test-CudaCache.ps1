@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Proves sccache's nvcc path end to end against the WebDAV endpoint: one .cu compiled twice must write, then hit.
 
 [CmdletBinding()]

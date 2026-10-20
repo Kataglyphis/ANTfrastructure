@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Test-CudaCache.ps1's in-container payload: the same .cu twice through sccache must write, then hit.
 $ErrorActionPreference = 'Stop'
 

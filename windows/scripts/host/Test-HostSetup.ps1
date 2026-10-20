@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # docs/windows-host-setup.md as checks: change both together. Non-admin; exit 1 on any FAIL.
 
 [CmdletBinding()]

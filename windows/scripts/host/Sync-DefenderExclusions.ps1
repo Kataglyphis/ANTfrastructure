@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Elevated: applies the Defender exclusions Windows-container builds need, printing the set before and after.
 
 $ErrorActionPreference = 'Stop'

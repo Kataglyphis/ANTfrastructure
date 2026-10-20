@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Works around docker/for-win#14977: an enabled RDNA4 dGPU fails process-isolated layer finalize; -Disable to build, default re-enables.
 
 [CmdletBinding()]

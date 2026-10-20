@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Host state that decides Windows-container layer filesystems, to diff a working and a failing machine; run elevated.
 
 $ErrorActionPreference = 'Continue'

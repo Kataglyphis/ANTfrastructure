@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Runs the sccache WebDAV endpoint as one ONSTART SYSTEM task, since a logon-bound one dies with the session silently.
 
 [CmdletBinding()]

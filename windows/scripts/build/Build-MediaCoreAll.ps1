@@ -1,5 +1,5 @@
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 
 #requires -Version 7.0
 # The media-core chain, run by four RUNs with their own -ResumeFrom/-Until windows; an edit re-keys all four.

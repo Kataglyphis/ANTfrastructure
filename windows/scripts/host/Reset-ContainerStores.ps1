@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Elevated store reset that renames state dirs aside; Continue so no single failure aborts, every step prints a verdict.
 
 $ErrorActionPreference = 'Continue'

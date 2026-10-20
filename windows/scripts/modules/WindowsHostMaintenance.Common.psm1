@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Host-maintenance plumbing; what a script restores and whether it then throws stays in the script on purpose.
 
 Set-StrictMode -Version Latest

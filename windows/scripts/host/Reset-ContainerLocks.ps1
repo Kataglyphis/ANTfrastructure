@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # Elevated, with nothing building: releases the stale handles behind ActivateLayer 0x20 on a fresh base-layer commit.
 
 $ErrorActionPreference = 'Stop'

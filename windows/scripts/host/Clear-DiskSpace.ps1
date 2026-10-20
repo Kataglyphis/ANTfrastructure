@@ -1,6 +1,6 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: MIT
 # The only sanctioned host disk reclaim: allowlist only, report-only without -Apply; see docs/windows-builds.md § `Clear-DiskSpace.ps1`.
 
 [CmdletBinding()]

@@ -646,13 +646,6 @@ owner carries the breakage that costs.
       holds the pair at 40 as a pending dedupe. Done when both call one helper in `01-core` and
       the pair's budget drops back.
 
-- [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
-      decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 84709078
-      (2026-08-02), but 23 files outside `third_party/` still say
-      `SPDX-License-Identifier: Apache-2.0`, most of them under `windows/scripts/`
-      (`rg -l 'SPDX-License-Identifier: Apache-2.0' --glob '!third_party/**'`). Moved here from
-      BeschleunigerBallett's closed LICENSE row. Either relicense the 23 to MIT (one header line
-      each), or record why they stay Apache-2.0 in `docs/third-party-licenses.md`.
 - [b] **CON62 — WSL containers (`wslc`) as the local Linux engine** [M, ★★]. Blocked
       upstream. Evaluated 2026-10-05 against WSL 3.0.1
       (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind
