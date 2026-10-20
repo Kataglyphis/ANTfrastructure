@@ -188,10 +188,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       leg on `ubuntu-26.04` through `setup-uv` with `python-version: "3.15"` (a uv download), no `3.15t` leg, and
       downloads pandoc at run time. The `Dockerfile` builds its `md2pdf` venv on Ubuntu's `python3-full`. Fix:
       the lane in the family image on the pinned X.Y and X.Yt, and the Dockerfile's venv on the pin.
-- [b] **CON116 — ModelANT's `check.yml` runs on the runner's `python3` and `shellcheck`** [S, ★]. Owner
-      decision pending (2026-10-20). Its two steps (each model has its spec, licence and notice; `bash -n`,
-      `shellcheck -S warning` and `py_compile` over the scripts) run on `ubuntu-latest` on every push, while
-      `release.yml` runs in `:latest` since CON112. Moving them into the image costs a 12.84 GB pull per push.
 - [ ] **CON117 — WebDavClient tracks copies of its README and CHANGELOG in `docs/source/`** [S, ★]. The
       hub's `ci_build_docs.sh` (lines 24-25) copies the root files over them before every build; WebDavClient's
       `AGENTS.md` has each commit re-sync them by hand, so `docs/Makefile` builds without that copy. Both have
