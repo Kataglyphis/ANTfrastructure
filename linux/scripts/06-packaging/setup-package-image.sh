@@ -22,6 +22,9 @@ source /opt/scripts/core/package-lists.sh
 # The package stage's toolchain and runtime wiring (BACKLOG CON15, CON16, CON21).
 # shellcheck source=linux/scripts/06-packaging/package-image-wiring.sh
 source /opt/scripts/packaging/package-image-wiring.sh
+# install_pwsh's verified downloads.
+# shellcheck source=linux/scripts/01-core/downloads.sh
+source /opt/scripts/core/downloads.sh
 
 link_command_if_present() {
     local command_name="$1"
@@ -637,6 +640,7 @@ main() {
     wire_cargo_symlinks
     install_web_lane_toolchain
     install_cargo_qa_tools
+    install_pwsh
     install_free_threaded_python
     hand_root_created_paths_to_runtime_user "${RUSTUP_HOME:?}" "${CARGO_HOME:?}"
     create_runtime_venv "${python_mm}"

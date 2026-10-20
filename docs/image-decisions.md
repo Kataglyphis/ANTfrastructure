@@ -86,6 +86,8 @@ These are recorded so nobody files them as gaps:
   already do (owner, 2026-10-20: not a rebuilt GLib; CON129).
 - riscv64 has no IREE compiler, no `ml-ai` extra, no Flutter, appimagetool,
   Flatpak runtimes or Hailo, because upstream ships none for it.
+- riscv64 has no pwsh and no PSScriptAnalyzer: PowerShell publishes no riscv64 build, so tests
+  that drive pwsh skip there with their reason, `pwsh is not on PATH` (CON131).
 - ORT QNN is opt-in on arm64.
 - The Android host tools are x86-64 only (upstream's shape).
 - `wasm-bindgen-cli` and `cxxbridge-cmd` are installed at lane time, because

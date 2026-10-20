@@ -203,13 +203,21 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 - [ ] **CON124 — three consumer workflows run Python on the runner, not in the image** [S, ★★]. Owner
       rule 2026-10-20: only the pinned CPython, from the family images (ModelANT's check moved in,
-      85647c6; DocumANTation is CON115). None of the three repos has a backlog:
-      1. OrchestrANT `benchmarks.yml`: both jobs use `setup-uv` on `ubuntu-26.04`; the contract job ran
-         pytest on `/usr/bin/python3` 3.14.4 (run 39270082041), the viewer job too. GIL only.
-      2. AssetANT `check.yml:20`: `python3 -I scripts/check.py` on the runner, the shape ModelANT left.
-      3. jotrockenmitlocken `web.yml`: the WebDAV sync (`setup-uv`, `scripts/sync-webdav-content.sh`)
-         runs on the host for its secrets, and uv downloads CPython there (run 39382562942: `uv
-         installed python 3.15`).
+      85647c6; DocumANTation is CON115). None of the three repos has a backlog. Left: item 1's contract
+      job, which waits on CON131.
+      1. OrchestrANT `benchmarks.yml`: both jobs used `setup-uv` on `ubuntu-26.04`; the contract job ran
+         pytest on `/usr/bin/python3` 3.14.4 (run 39270082041), the viewer job too. GIL only. **The
+         viewer job is in** (ddf5258, run 39501333926): `benchmarks/ci-image-leg.sh pinned|pinnedt`
+         runs its old `uv run` in a fresh venv of the image's interpreter, the same 98 tests on 3.14
+         and 3.14t. **The contract job stays on the runner** until CON131: in `:latest` its 41
+         PowerShell tests skip. Its in-image legs otherwise pass locally (2370 passed, 43 skipped,
+         both legs, no uv-managed interpreter).
+      2. ~~AssetANT `check.yml:20`~~ done: `scripts/check.sh` in the image (24b7cde, run 39496647122:
+         `python: Python 3.14.4`, `14 assets, 0 problem(s)`); rc=1 on a planted bad sha256 and SC2086.
+      3. ~~jotrockenmitlocken `web.yml`~~ done: the sync runs in the image, the secrets passed by name
+         (`-e WEBDAV_PASSWORD`), outside it the script stops with exit 2 (90eb29b, run 39497261352:
+         `Using CPython 3.14.4 interpreter at: /usr/local/bin/python3.14`, `UV_PYTHON_DOWNLOADS=never`,
+         the deploy green).
 
       Done when each runs in `:latest` on its interpreter, OrchestrANT's tests on X.Y and X.Yt.
 
@@ -311,6 +319,28 @@ owner carries the breakage that costs.
          arm64 lanes, and in its riscv64-test step against the new child's sysroot.
       Then OxidANT drops AGENTS.md's `gui_unix` "No, by design" row and its `--all-features` and
       feature-check exclusions (OxidANT's change).
+
+- [ ] **CON131 — pwsh in the Linux image; then OrchestrANT's `benchmarks.yml` contract job moves into
+      `:latest`** [S, ★★]. Found with CON124 (2026-10-20): in `:latest` the contract job's 41 PowerShell
+      tests skip (`pwsh is not on PATH`, `benchmarks/tests/test_bench_coding_powershell.py` and
+      `test_bench_coding_tasks.py:189`), as on every other lane (Linux: no pwsh; Windows: "the harness is
+      POSIX-only"), so the job's bare runner is their only run. In source: the package stage's
+      `install_pwsh` puts pwsh `PWSH_VERSION` and PSScriptAnalyzer `PSSCRIPTANALYZER_VERSION` on amd64
+      and arm64 ([`consumer-image-contract.md` § PowerShell](docs/consumer-image-contract.md#powershell));
+      riscv64 has neither. Proved in throwaway containers of `:latest` `b52f8c34`, no chain build:
+      amd64 and arm64 (QEMU) install both and list the module as uid 1001, riscv64 prints the note, and
+      OrchestrANT's contract command passes 2411, skips 2 on 3.14 and 3.14t (2370 and 43 without pwsh).
+      The next `:latest` must show:
+      1. Package stage: `OK: pwsh 7.6.7 at /usr/local/bin/pwsh (x64)` (arm64: `(arm64)`) and
+         `OK: PSScriptAnalyzer 1.25.0 in /opt/microsoft/powershell/7/Modules`; riscv64 `NOTE: PowerShell
+         publishes no riscv64 build`.
+      2. Then OrchestrANT's contract job moves in, prepared in CON124: its checkout, `setup-uv` and `run`
+         become `prepare-linux-ci-host` (`fetch-depth: '1'`, `submodules: 'true'`) and two
+         `run-in-linux-container` steps, `extra-args: --network host -e OLLAMA_BASE_URL -e TEST_TIMEOUT`,
+         `script: bash benchmarks/ci-image-leg.sh pinned` (then `pinnedt`, `if: ${{ !cancelled() }}`)
+         `--extra test bash benchmarks/ci-contract-tests.sh "${OLLAMA_BASE_URL}"`, the two variables as
+         job `env:`, `timeout-minutes: 45`, and the "On the runner until" comment gone.
+      Done when that job's run shows the PowerShell tests passed on both legs.
 
 - [ ] **CON99 — measure, then maybe publish `:latest` with zstd layers** [M, ★★]. Every Linux CI
       job pulls the whole image: `:latest` amd64 is 72 layers, 12.84 GB, all `tar+gzip`

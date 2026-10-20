@@ -12,6 +12,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — pwsh and PSScriptAnalyzer in the Linux image, from the next build (CON131)
+
+- **Why.** CON124 moves consumer Python into `:latest`, and OrchestrANT's `benchmarks.yml` contract
+  job cannot follow yet: its 41 PowerShell tests skip there (`pwsh is not on PATH`), and every
+  other lane skips them too, so the job's bare runner is their only run.
+- **The package stage** (`install_pwsh`, `package-image-wiring.sh`) installs pwsh `PWSH_VERSION`
+  7.6.7 from its release tarball and PSScriptAnalyzer `PSSCRIPTANALYZER_VERSION` 1.25.0 from its
+  release nupkg into `$PSHOME/Modules`, on amd64 and arm64, each against a SHA-256 pin
+  (`PWSH_LINUX_{X64,ARM64}_SHA256`, `PSSCRIPTANALYZER_NUPKG_SHA256`, equal to the release's
+  `hashes.sha256`, GitHub's asset digests and the Gallery's SHA-512). It fails the stage when pwsh
+  does not report its pin or does not list the module at its pin. riscv64 gets neither: PowerShell
+  publishes no riscv64 build (`image-decisions.md`). `bump_versions.py`'s `spec_pwsh` re-derives the
+  two tarball pins with the zip's.
+- **Gates.** Seven cases in `test-package-image-wiring.sh`, nine mutations.
+- **Proved** in throwaway containers of `:latest` `b52f8c34`: amd64 and arm64 (QEMU) `OK: pwsh
+  7.6.7`, `OK: PSScriptAnalyzer 1.25.0`, listed as uid 1001; riscv64 the note. OrchestrANT's
+  contract command on the image's 3.14 and 3.14t, as uid 1001 against ollama: 2411 passed, 2 skipped
+  on both legs, PSScriptAnalyzer's test included; without pwsh 2370 passed, 43 skipped.
+- **Docs.** [`consumer-image-contract.md` § PowerShell](docs/consumer-image-contract.md#powershell).
+
 ## 2026-10-20 — A WebGPU page is proved by reading its frame back, not by a screenshot (CON128)
 
 - In the image's headless Chrome 155 a WebGPU canvas screenshots white.

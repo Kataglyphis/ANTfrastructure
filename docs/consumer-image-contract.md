@@ -631,6 +631,18 @@ no source fallback, which would cost hundreds of crates per tool under QEMU.
   `binary already exists`, since cargo did not install them. **So a consumer's hub pin
   must include this before it builds on an image that ships them.**
 
+### PowerShell
+
+The package stage puts `pwsh` at `PWSH_VERSION` on `PATH` (`/usr/local/bin/pwsh`, the tree in
+`/opt/microsoft/powershell/7`) on amd64 and arm64, with PSScriptAnalyzer at
+`PSSCRIPTANALYZER_VERSION` in its `$PSHOME/Modules`, which every user's module path reads (CON131).
+Both come from their GitHub releases through `download_verified_file`, against
+`PWSH_LINUX_{X64,ARM64}_SHA256` and `PSSCRIPTANALYZER_NUPKG_SHA256`; `install_pwsh` fails the
+stage when `pwsh` does not report its pin or does not list the module at its pin. The consumer is
+OrchestrANT's benchmark lab: 41 of its tests drive pwsh, and outside a container only the bare
+runner had one. **riscv64 has neither**: PowerShell publishes no riscv64 build, and those tests
+skip there ([image-decisions.md](image-decisions.md#deliberate--not-gaps)).
+
 ### shellcheck and hadolint
 
 The torch stage puts both on `PATH` in `/usr/local/bin` on every arch (CON83), at the

@@ -140,6 +140,76 @@ write_clang_gcc_toolchain_cfg() {
     done < <({ printf '%s\n' "${dir}"; find -L "${link_dirs[@]}" -maxdepth 1 -samefile "${real}" -printf '%h\n' 2>/dev/null || true; } | sort -u)
 }
 
+# <env file> <version key> <sha key>: "<version> <sha>", or an error naming both keys.
+_pwsh_pins() {
+    local version sha
+    version="$(sed -n "s/^$2=//p" "$1" 2>/dev/null | head -n 1)"
+    sha="$(sed -n "s/^$3=//p" "$1" 2>/dev/null | head -n 1)"
+    if [ -n "${version}" ] && [ -n "${sha}" ]; then
+        printf '%s %s\n' "${version}" "${sha}"
+        return 0
+    fi
+    echo "ERROR: $2 or $3 is not pinned in $1" >&2
+    return 1
+}
+
+# <url> <sha> <dest>: the verified release asset (a .tar.gz, else a zip) in a fresh <dest>; the caller sources downloads.sh.
+_pwsh_unpack_verified() {
+    local url="$1" sha="$2" dest="$3" dir rc=0
+    dir="$(mktemp -d)" || return 1
+    download_verified_file "${url}" "${sha}" "${dir}/asset" && rm -rf "${dest}" && mkdir -p "${dest}" || rc=1
+    case "${rc}:${url}" in
+        0:*.tar.gz) tar -xzf "${dir}/asset" -C "${dest}" || rc=1 ;;
+        0:*) unzip -q "${dir}/asset" -d "${dest}" || rc=1 ;;
+    esac
+    rm -rf "${dir}"
+    [ "${rc}" -eq 0 ] || echo "ERROR: ${url##*/} did not download, verify or unpack from ${url}" >&2
+    return "${rc}"
+}
+
+# <pin> <what> <pwsh> <command>: fails unless pwsh answers <command> with the pin.
+_pwsh_reports() {
+    local report
+    report="$("$3" -NoLogo -NoProfile -NonInteractive -Command "$4" 2>&1)" || true
+    [ "${report}" = "$1" ] && return 0
+    echo "ERROR: $2 reports '${report}', the pin is $1" >&2
+    return 1
+}
+
+# pwsh at PWSH_VERSION for the tests that drive it (OrchestrANT's benchmark harness, CON131); upstream builds no riscv64 one.
+install_pwsh() {
+    local env_file="${1:-/opt/scripts/core/versions.env}" prefix="${2:-/opt/microsoft/powershell/7}"
+    local bindir="${3:-/usr/local/bin}" machine="${4:-}" arch key version sha
+    [ -n "${machine}" ] || machine="$(uname -m)"
+    case "${machine}" in
+        x86_64)  arch=x64;   key=PWSH_LINUX_X64_SHA256 ;;
+        aarch64) arch=arm64; key=PWSH_LINUX_ARM64_SHA256 ;;
+        *) echo "NOTE: PowerShell publishes no ${machine} build; no pwsh on this arch (docs/image-decisions.md)"; return 0 ;;
+    esac
+    read -r version sha < <(_pwsh_pins "${env_file}" PWSH_VERSION "${key}") || return 1
+    _pwsh_unpack_verified "https://github.com/PowerShell/PowerShell/releases/download/v${version}/powershell-${version}-linux-${arch}.tar.gz" \
+        "${sha}" "${prefix}" || return 1
+    chmod 0755 "${prefix}/pwsh" && mkdir -p "${bindir}" && ln -sf "${prefix}/pwsh" "${bindir}/pwsh" || return 1
+    _pwsh_reports "${version}" pwsh "${bindir}/pwsh" '$PSVersionTable.PSVersion.ToString()' || return 1
+    echo "OK: pwsh ${version} at ${bindir}/pwsh (${arch})"
+    install_psscriptanalyzer "${env_file}" "${prefix}"
+}
+
+# PSScriptAnalyzer in $PSHOME/Modules, on every user's module path: the lab's pwsh tests lint with it (CON131).
+install_psscriptanalyzer() {
+    local env_file="$1" prefix="$2" version sha mod
+    read -r version sha < <(_pwsh_pins "${env_file}" PSSCRIPTANALYZER_VERSION PSSCRIPTANALYZER_NUPKG_SHA256) || return 1
+    mod="${prefix}/Modules/PSScriptAnalyzer/${version}"
+    rm -rf "${prefix:?}/Modules/PSScriptAnalyzer"
+    _pwsh_unpack_verified "https://github.com/PowerShell/PSScriptAnalyzer/releases/download/${version}/PSScriptAnalyzer.${version}.nupkg" \
+        "${sha}" "${mod}" || return 1
+    # The nupkg's packaging parts are not the module's; Install-Module drops them too.
+    rm -rf "${mod:?}/_rels" "${mod:?}/package" "${mod:?}/[Content_Types].xml" "${mod:?}/PSScriptAnalyzer.nuspec"
+    _pwsh_reports "${version}" "pwsh's PSScriptAnalyzer" "${prefix}/pwsh" \
+        '(Get-Module -ListAvailable -Name PSScriptAnalyzer).Version.ToString()' || return 1
+    echo "OK: PSScriptAnalyzer ${version} in ${prefix}/Modules"
+}
+
 # atheris' find_libfuzzer.sh wants the pre-per-target lib/linux/libclang_rt.<rt>-<arch>.a names (CON38).
 link_compiler_rt_legacy_names() {
     local clang="${1:-/usr/bin/clang}" resdir triple arch rt src n=0

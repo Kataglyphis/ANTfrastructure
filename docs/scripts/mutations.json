@@ -11547,6 +11547,78 @@
   "why": "the gate's ERROR line would read as a passing contract row (CON129)"
  },
  {
+  "id": "packaging.pwsh-asset-arch",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "        x86_64)  arch=x64;   key=PWSH_LINUX_X64_SHA256 ;;",
+  "replace": "        x86_64)  arch=amd64; key=PWSH_LINUX_X64_SHA256 ;;",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "PowerShell names its amd64 tarball linux-x64; the package stage would fetch a 404 (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-pins-required",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    if [ -n \"${version}\" ] && [ -n \"${sha}\" ]; then\n        printf",
+  "replace": "    if true; then\n        printf",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "pwsh or PSScriptAnalyzer without its SHA-256 pin would reach the download instead of stopping the stage (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-report-compares",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    [ \"${report}\" = \"$1\" ] && return 0\n",
+  "replace": "    return 0\n",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a pwsh that does not start, or answers another version, would pass as the pin (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-reports-its-pin",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    _pwsh_reports \"${version}\" pwsh \"${bindir}/pwsh\" '$PSVersionTable.PSVersion.ToString()' || return 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "pwsh would ship unchecked against PWSH_VERSION (CON131)"
+ },
+ {
+  "id": "packaging.pssa-listed-at-its-pin",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    _pwsh_reports \"${version}\" \"pwsh's PSScriptAnalyzer\" \"${prefix}/pwsh\" \\\n        '(Get-Module -ListAvailable -Name PSScriptAnalyzer).Version.ToString()' || return 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a module pwsh cannot list, or lists at another version, would ship; the lab's analyzer test would skip (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-riscv64-note",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "        *) echo \"NOTE: PowerShell publishes no ${machine} build; no pwsh on this arch (docs/image-decisions.md)\"; return 0 ;;",
+  "replace": "        *) echo \"NOTE: PowerShell publishes no ${machine} build; no pwsh on this arch (docs/image-decisions.md)\"; return 1 ;;",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "riscv64, which upstream does not build, would fail its package stage (CON131)"
+ },
+ {
+  "id": "packaging.pssa-drops-packaging-parts",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    rm -rf \"${mod:?}/_rels\" \"${mod:?}/package\" \"${mod:?}/[Content_Types].xml\" \"${mod:?}/PSScriptAnalyzer.nuspec\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "the nupkg's OPC parts would sit in the module directory, which Install-Module never leaves (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-installs-pssa",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    install_psscriptanalyzer \"${env_file}\" \"${prefix}\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "pwsh would ship without PSScriptAnalyzer, and the lab's analyzer test would skip (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-unverified-lands-nothing",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    download_verified_file \"${url}\" \"${sha}\" \"${dir}/asset\" && rm -rf \"${dest}\" && mkdir -p \"${dest}\" || rc=1\n",
+  "replace": "    download_verified_file \"${url}\" \"${sha}\" \"${dir}/asset\"; rm -rf \"${dest}\" && mkdir -p \"${dest}\" || rc=1\n",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "an asset that failed its SHA-256 check would still be unpacked and installed (CON131)"
+ },
+ {
   "id": "packaging.glib-yield-only-when-older",
   "target": "linux/scripts/06-packaging/package-image-wiring.sh",
   "find": "    if [ ! -f \"${theirs}\" ] || [ \"$(printf '%s\\n' \"${theirs##*/}\" \"${ours##*/}\" | sort -V | tail -n 1)\" = \"${ours##*/}\" ]; then",

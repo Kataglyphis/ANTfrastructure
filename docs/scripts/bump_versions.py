@@ -357,7 +357,18 @@ def spec_pwsh(cur):
     if v != cur and WRITE_MODE:
         extras["PWSH_ZIP_SHA256"] = asset_sha256(
             "PowerShell/PowerShell", tag, f"PowerShell-{v}-win-x64.zip", sums=("hashes.sha256",))
+        # The Linux package stage's tarballs (CON131).
+        for key, arch in (("PWSH_LINUX_X64_SHA256", "x64"), ("PWSH_LINUX_ARM64_SHA256", "arm64")):
+            extras[key] = asset_sha256(
+                "PowerShell/PowerShell", tag, f"powershell-{v}-linux-{arch}.tar.gz", sums=("hashes.sha256",))
     return v, extras
+
+
+def spec_psscriptanalyzer(cur):
+    v = gh_latest("PowerShell/PSScriptAnalyzer")
+    pins = {"PSSCRIPTANALYZER_NUPKG_SHA256": asset_sha256(
+        "PowerShell/PSScriptAnalyzer", v, f"PSScriptAnalyzer.{v}.nupkg")} if v != cur and WRITE_MODE else {}
+    return v, pins
 
 
 def spec_git(cur):
@@ -1208,7 +1219,8 @@ def _r(repo, strip_v=True, pattern=None, prefix=""):
 
 SAFE: list[tuple[str, Callable, str]] = [
     # Keys whose bump also moves a paired *_SHA256, which a Renovate datasource cannot compute.
-    ("PWSH_VERSION", spec_pwsh, "windows base (full — pwsh is layer 1)"),
+    ("PWSH_VERSION", spec_pwsh, "windows base (full — pwsh is layer 1) + linux package pwsh layer"),
+    ("PSSCRIPTANALYZER_VERSION", spec_psscriptanalyzer, "linux package pwsh layer"),
     ("GIT_VERSION", spec_git, "windows base scoop layer"),
     ("NUGET_VERSION", spec_nuget, "windows toolchain run (cheap)"),
     ("UV_VERSION", spec_uv, "linux base uv layer + tail"),
