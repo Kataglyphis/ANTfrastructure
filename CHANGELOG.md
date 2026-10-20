@@ -41,8 +41,10 @@
   layout's widths; `docs-site.sh build <site>` runs it in the build's container for a site
   `build-docs.yml` builds, and
   `lib/docs-build.sh` and `ci_build_docs.sh` after `make html` for the artifact sites.
-  Suite `test-docs-sidebars.sh`, 13 `docs-site.*` mutations. [docs-sites.md § The sidebar toggle
+  Suite `test-docs-sidebars.sh`, 14 `docs-site.*` mutations. [docs-sites.md § The sidebar toggle
   check](docs/docs-sites.md#the-sidebar-toggle-check).
+- **Live, 2026-10-20**: every toggle passes the check at 1400/1100/850/400 px on all six Sphinx
+  sites; the three dartdoc sites passed before and after. CON121 is done.
 
 ## 2026-10-20 — The Windows images' history names no cache endpoint, bucket or LAN address (#177)
 
