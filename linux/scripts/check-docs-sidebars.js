@@ -87,7 +87,8 @@ async function launch(chrome) {
   const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
   const close = () => { ws.close(); proc.kill('SIGKILL'); fs.rmSync(profile, { recursive: true, force: true }); };
   await send('Page.enable');
-  return { send, loaded, close };
+  const product = (await send('Browser.getVersion')).result.product;
+  return { send, loaded, close, product };
 }
 
 // Runs in the page: the sidebar's state and the one toggle a user can see.
@@ -190,7 +191,7 @@ async function main() {
     browser.close();
     if (server) server.close();
   }
-  process.stdout.write(`check-docs-sidebars: ${kind} site ${arg}\n${lines.map((l) => `  ${l}`).join('\n')}\n`);
+  process.stdout.write(`check-docs-sidebars: ${kind} site ${arg}, ${browser.product} (${chrome})\n${lines.map((l) => `  ${l}`).join('\n')}\n`);
   const failed = lines.filter((l) => l.startsWith('FAIL')).length;
   if (failed) fail(`${failed} sidebar toggle check(s) failed; see docs/docs-sites.md#the-sidebar-toggle-check`, 1);
 }

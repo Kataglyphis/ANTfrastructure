@@ -156,8 +156,9 @@ not close again (second click, the overlay, or Escape for a dialog); a hidden si
 no toggle fails too. Exit 1 on a failure, 2 on a usage error or no Chrome; any other site
 has nothing to toggle and passes.
 
-It runs where each site is built, in the image: `build-docs.yml` after `docs-site.sh
-build` (`docs-site.sh check`), and for the artifact sites after `make html` in
+It runs where each site is built, in the image: `docs-site.sh build <site>` builds and then
+checks in one container command in `build-docs.yml` (the action's `script` is `docker
+run`'s argv, so a shell `&&` would run on the runner), and for the artifact sites after `make html` in
 `lib/docs-build.sh` (BeschleunigerBallett, AccelerANTgine) and
 `02-toolchain/python/ci_build_docs.sh` (OrchestrANT, WebDavClient), with `--if-chrome`,
 which skips only where the image sets no `CHROME_EXECUTABLE` (riscv64).

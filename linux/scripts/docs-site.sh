@@ -86,7 +86,7 @@ _docs_site_dartdoc() {
   dartdoc_build_main
 }
 
-# build: inside the image, at the repository root; the command or the hub driver the builder names.
+# build [<site>]: inside the image, at the repository root; the command or the hub driver the builder names, then check <site>.
 docs_site_build() {
   case "${DOCS_BUILDER:-}" in
     '') bash -lc "${DOCS_COMMAND:?no command and no builder}" ;;
@@ -95,6 +95,8 @@ docs_site_build() {
     dartdoc) _docs_site_dartdoc ;;
     *) die "unknown builder" "builder must be rustdoc, python or dartdoc, got '${DOCS_BUILDER}'." ;;
   esac
+  [ -n "${1:-}" ] || return 0
+  docs_site_check "$1"
 }
 
 # stage <site> [--allow FILE] [--no-htaccess]: the hub's .htaccess and 404 page in, then the link gate over the result.
@@ -139,8 +141,8 @@ docs_site_check() {
 
 case "${1:-}" in
   plan) docs_site_plan ;;
-  build) docs_site_build ;;
+  build) shift; docs_site_build "$@" ;;
   check) shift; docs_site_check "$@" ;;
   stage) shift; docs_site_stage "$@" ;;
-  *) die "usage" "docs-site.sh plan | build | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess]" ;;
+  *) die "usage" "docs-site.sh plan | build [<site dir>] | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess]" ;;
 esac

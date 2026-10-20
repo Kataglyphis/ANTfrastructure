@@ -38,7 +38,8 @@
   theme JS binds first; `custom.css` no longer makes the primary sidebar sticky, which kept the
   drawer in the flow and pushed the article's toggle to x=-242.
 - **The gate.** `linux/scripts/check-docs-sidebars.js` clicks every visible toggle at the
-  layout's widths; `docs-site.sh check` runs it after `build-docs.yml` builds a site, and
+  layout's widths; `docs-site.sh build <site>` runs it in the build's container for a site
+  `build-docs.yml` builds, and
   `lib/docs-build.sh` and `ci_build_docs.sh` after `make html` for the artifact sites.
   Suite `test-docs-sidebars.sh`, 13 `docs-site.*` mutations. [docs-sites.md § The sidebar toggle
   check](docs/docs-sites.md#the-sidebar-toggle-check).

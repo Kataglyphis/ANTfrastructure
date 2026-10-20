@@ -98,8 +98,11 @@ t_assert_contains "$(CHROME_EXECUTABLE='' t_out bash "${SCRIPTS}/docs-site.sh" c
 t_assert_rc 1 env CHROME_EXECUTABLE="${_chrome}" bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/dead" --if-chrome
 t_assert_rc 1 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/works" --bogus
 
-t_case "build-docs.yml clicks the toggles of every site it builds"
-t_assert_grep "${SCRIPTS}/../../.github/workflows/build-docs.yml" 'docs-site\.sh check \$\{\{ steps\.plan\.outputs\.site-dir \}\}'
+t_case "build-docs.yml builds and clicks in one container command, since its script is docker run's argv"
+t_assert_grep "${SCRIPTS}/../../.github/workflows/build-docs.yml" '^          script: bash \$\{\{ steps\.plan\.outputs\.hub \}\}/linux/scripts/docs-site\.sh build \$\{\{ steps\.plan\.outputs\.site-dir \}\}$'
+t_assert_rc 0 env -u DOCS_BUILDER DOCS_COMMAND=true bash "${SCRIPTS}/docs-site.sh" build "${_tmp}/works"
+t_assert_rc 1 env -u DOCS_BUILDER DOCS_COMMAND=true bash "${SCRIPTS}/docs-site.sh" build "${_tmp}/dead"
+t_assert_rc 0 env -u DOCS_BUILDER DOCS_COMMAND=true bash "${SCRIPTS}/docs-site.sh" build
 
 t_case "docs-build.sh clicks the toggles after make html, where an artifact site is built"
 mkdir -p "${_tmp}/proj/docs" "${_tmp}/bin"
