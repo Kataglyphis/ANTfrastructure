@@ -651,18 +651,6 @@ owner carries the breakage that costs.
       2026-10-20 read the canvas texture back instead (3575 colours, run 39440853860). Record the read-back
       as the way to prove a WebGPU page in `docs/docs-sites.md`, next to the sidebar toggle check.
 
-- [ ] **CON125 — the hub's own workflows run Python on the runner** [S, ★★]. Owner rule 2026-10-20:
-      only the pinned CPython, from the images. Measured 2026-10-20:
-      - `linux-x64.yml`'s preflight and mutation shards: `setup-uv` and `pip install` on
-        `ubuntu-26.04`, the gates on `/usr/bin/python` 3.14.4 (run 39431792286: `Using CPython 3.14.4
-        interpreter at: /usr/bin/python`).
-      - `stale-docs-check.yml`, `consumer-inventory.yml` and `sbom.yml`: `actions/setup-python` at
-        `versions.env`'s X.Y, a download every run.
-      - `llm-stack-serving.yml`: pytest in a venv of the runner's `python3`, x64 and arm64.
-      - Decided: `develop-red.yml` keeps `setup-python` (owner, 2026-10-20; `docs/image-decisions.md`).
-
-      Done when the open ones run in `:latest` on its interpreter.
-
 - [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
       `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb
       added the first as a 5-line copy of the second's sysconfigdata lookup; `code-dupes.allow`

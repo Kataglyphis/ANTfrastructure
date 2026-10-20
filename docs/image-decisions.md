@@ -69,6 +69,10 @@ These are recorded so nobody files them as gaps:
 - The distro `libgstreamer*-dev` packages are purged.
 - Only the pinned CPython (`PYTHON_VERSION`), once with the GIL and once free-threaded (owner,
   2026-10-20).
+- The hub's own CI keeps the runner's Python: the preflight and mutation shards on `/usr/bin/python`,
+  `stale-docs-check.yml`, `consumer-inventory.yml` and `sbom.yml` on `actions/setup-python` at
+  `versions.env`'s X.Y, `llm-stack-serving.yml` on the runner's `python3` (owner, 2026-10-20: not the
+  image, whose pull would cost ~13 GB and ~10 min on every hub push; was CON125).
 - The exception: `develop-red.yml` runs on `actions/setup-python` at `versions.env`'s X.Y, a ~3 s
   download each run, not the image and not an `actions/github-script` port (owner, 2026-10-20).
 - cmake-format stays at 0.6.13, its last release (2020-08-19), with `lib/cmakelang-py315.py`'s
