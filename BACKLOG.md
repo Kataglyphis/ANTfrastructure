@@ -624,6 +624,17 @@ owner carries the breakage that costs.
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON127 — Exhale's API tree does not collapse on the Sphinx sites** [S, ★★]. Found 2026-10-20 with
+      the image's headless Chrome during CON121: AccelerANTgine's and BeschleunigerBallett's API pages log
+      `ReferenceError: $ is not defined` from Exhale's `apply-collapsible-lists.js`, which needs jQuery;
+      Sphinx stopped shipping it in version 6. Fix in DocumANTation's theme (`setup_theme()`: ship jQuery for
+      Exhale, or switch Exhale to a jQuery-free tree view), and let `linux/scripts/check-docs-sidebars.js`
+      fail on any page `ReferenceError`. Done when both sites' tree views collapse and the check is green.
+- [ ] **CON128 — a headless screenshot of a WebGPU canvas is white** [S, ★]. In the image's Chrome 155 a
+      correctly cleared WebGPU canvas still screenshots white, so the BeschleunigerBallett demo proof of
+      2026-10-20 read the canvas texture back instead (3575 colours, run 39440853860). Record the read-back
+      as the way to prove a WebGPU page in `docs/docs-sites.md`, next to the sidebar toggle check.
+
 - [ ] **CON125 — the hub's own workflows run Python on the runner** [S, ★★]. Owner rule 2026-10-20:
       only the pinned CPython, from the images. Measured 2026-10-20:
       - `linux-x64.yml`'s preflight and mutation shards: `setup-uv` and `pip install` on
