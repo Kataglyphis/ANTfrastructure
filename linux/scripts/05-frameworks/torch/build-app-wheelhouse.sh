@@ -243,33 +243,44 @@ EOF
     printf '%s' "${path}"
 }
 
-# Only when the module exists: _PYTHON_SYSCONFIGDATA_NAME without it is an instant ModuleNotFoundError.
+# Exports the BUILD TARGET's sysconfig module (without one, _PYTHON_SYSCONFIGDATA_NAME is an instant ModuleNotFoundError) and never the host's: `cross_target_triplet` answers for the host (arch_oci), which handed pip a 3.14 sysconfigdata (`cp315`, `cp314`, `linux_x86_64`, 2026-10-19).
 resolve_target_python_sysconfig_export() {
-    local target_triplet="" name="" stage_root="" dir="" search_root="" sysdir
-    target_triplet="$(cross_target_triplet 2>/dev/null || true)"
+    local target_arch="" target_triplet="" machine="" name="" stage_root="" dir="" sysdir=""
+    target_arch="${TARGET_ARCH:-${TARGETARCH:-}}"
+    [ -n "${target_arch}" ] || return 0
+    target_triplet="$(cross_target_triplet_for_arch "${target_arch}" 2>/dev/null || true)"
     [ -n "${target_triplet}" ] || return 0
+    machine="${target_triplet%%-*}"
     name="_sysconfigdata__linux_${target_triplet}"
 
-    stage_root="$(cross_target_python_root 2>/dev/null || true)"
-    for search_root in \
-        ${stage_root:+"${stage_root}/lib"} \
-        "/usr/lib" ; do
-        [ -d "${search_root}" ] || continue
-        dir="$(find "${search_root}" -maxdepth 2 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
-        [ -n "${dir}" ] && break
-    done
-
-    if [ -z "${dir}" ]; then
-        warn "Target Python sysconfigdata ${name}.py not found under ${stage_root:-<no staged python>}/lib or /usr/lib; building with the HOST sysconfig (extension tags may need retagging)."
-        return 0
+    stage_root="$(cross_target_python_root "${target_arch}" 2>/dev/null || true)"
+    if [ -n "${stage_root}" ] && [ -d "${stage_root}/lib" ]; then
+        dir="$(find "${stage_root}/lib" -maxdepth 2 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
     fi
 
-    # A dir holding only the module: the target's lib/pythonX.Y on PYTHONPATH shadows the pinned interpreter's json (`array_hook`, 2026-10-19).
+    # A dir of its own: the target stdlib beside the module must not shadow the pinned interpreter's (FT_TARGET_SYSCONFIG_DIR's shape).
     sysdir="${APP_WHEELHOUSE_BUILD_ROOT}/sysconfigdata-${target_triplet}"
-    mkdir -p "${sysdir}" && cp -f "${dir}/${name}.py" "${sysdir}/" || return 1
+    mkdir -p "${sysdir}" || return 1
+    if [ -n "${dir}" ]; then
+        cp -f "${dir}/${name}.py" "${sysdir}/" || return 1
+    else
+        "${BUILD_PYTHON:-${MEDIA_HOST_PYTHON:-python3}}" - "${sysdir}/${name}.py" "${target_triplet}" <<'PY' || return 1
+import pprint, sys, sysconfig
+out, triplet = sys.argv[1], sys.argv[2]
+mm = "".join(str(part) for part in sys.version_info[:2])
+data = dict(sysconfig.get_config_vars())
+data["SOABI"] = "cpython-%s-%s" % (mm, triplet)
+data["EXT_SUFFIX"] = "." + data["SOABI"] + ".so"
+data["MULTIARCH"] = triplet
+with open(out, "w") as fh:
+    fh.write("build_time_vars = ")
+    fh.write(pprint.pformat(data, width=1000))
+    fh.write("\n")
+PY
+    fi
 
-    printf 'export _PYTHON_SYSCONFIGDATA_NAME=%q; export PYTHONPATH=%q${PYTHONPATH:+:${PYTHONPATH}}' \
-        "${name}" "${sysdir}"
+    printf 'export _PYTHON_SYSCONFIGDATA_NAME=%q; export _PYTHON_HOST_PLATFORM=%q; export PYTHONPATH=%q${PYTHONPATH:+:${PYTHONPATH}}' \
+        "${name}" "linux_${machine}" "${sysdir}"
 }
 
 append_common_cross_cmake_args() {
