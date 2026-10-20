@@ -11,6 +11,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — "Windows x64 · script tests" no longer needs uv on the runner
+
+- `Uv.PythonRequest.Tests.ps1`'s "Initialize-UvVenv creates the venv on the pin" case (edc4dc54)
+  reached the real `uv python find` through `New-UvProjectEnvironment`'s default finder, and
+  `windows-2025` has no uv on `PATH` (`The term 'uv' is not recognized`, red since run 39345711596).
+  The case stubs `uv` for its duration; 9/9 with and without uv on `PATH`.
+
 ## 2026-10-20 — The Windows arm64 Python job runs on `:winarm64`'s interpreters and toolchain (CON113)
 
 - **`windows-11-arm` downloaded its CPython and built with the runner's Visual Studio.** WebDavClient

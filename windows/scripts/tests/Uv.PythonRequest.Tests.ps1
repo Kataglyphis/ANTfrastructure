@@ -83,9 +83,13 @@ Describe 'Initialize-UvVenv and Install-UvRequirements' {
 
     It 'Initialize-UvVenv creates the venv on the pin when no version is named, never a version literal' {
         $calls.Clear()
-        Invoke-WithEnv @{ PYTHON_VERSION = '9.87.6'; UV_PROJECT_ENVIRONMENT = $null } {
-            Invoke-InTestDir { param($d) $null = Initialize-UvVenv -Workspace $d -CommandRunner $runner }
-        }
+        # The default finder calls uv directly, and the windows-2025 runner has none on PATH.
+        function global:uv { $global:LASTEXITCODE = 2 }
+        try {
+            Invoke-WithEnv @{ PYTHON_VERSION = '9.87.6'; UV_PROJECT_ENVIRONMENT = $null } {
+                Invoke-InTestDir { param($d) $null = Initialize-UvVenv -Workspace $d -CommandRunner $runner }
+            }
+        } finally { Remove-Item -LiteralPath Function:\global:uv -ErrorAction SilentlyContinue }
         Assert-Equal 'uv python install 9.87' $calls[0] 'uv finds no 9.87, so the pin is installed'
         Assert-Match '^uv venv --python 9\.87\+gil --clear ' $calls[1] 'then the venv on its GIL build'
     }
