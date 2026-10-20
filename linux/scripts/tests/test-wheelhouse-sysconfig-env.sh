@@ -8,7 +8,7 @@ WHEELHOUSE_SH="${TESTS_DIR}/../05-frameworks/torch/build-app-wheelhouse.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 APP_WHEELHOUSE_BUILD_ROOT="${_work}/build"
-BUILD_PYTHON="$(command -v python3)"
+export BUILD_PYTHON="$(command -v python3)"
 
 # A GIL cross tree as staged: the host's data, no target-named sysconfigdata, and a json that refuses to load so a PYTHONPATH leak shows.
 _sysroot="${_work}/sysroot"
@@ -18,7 +18,7 @@ printf 'build_time_vars = {"SOABI": "cpython-314-x86_64-linux-gnu"}\n' \
 printf 'raise SystemExit("the target stdlib was imported through PYTHONPATH")\n' \
     > "${_sysroot}/lib/python3.14/json/__init__.py"
 
-cross_target_triplet_for_arch() { [ "$1" = riscv64 ] && printf 'riscv64-linux-gnu'; }
+cross_target_triplet_for_arch() { if [ "$1" = riscv64 ]; then printf 'riscv64-linux-gnu'; fi; }
 cross_target_python_root() { printf '%s' "${_sysroot}"; }
 warn() { printf 'WARN %s\n' "$*" >&2; }
 eval "$(t_fn_src "${WHEELHOUSE_SH}" resolve_target_python_sysconfig_export)"
