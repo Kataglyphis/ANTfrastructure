@@ -636,15 +636,6 @@ owner carries the breakage that costs.
       exist, and `md2pdfLib/pandoc_builder.py:83` passes `--resource-path .`, so pandoc finds them; the gate reports
       both `no such file` (DocumANTation c0f4530, 2026-10-20). Give the consumer gate a resource-path mode (roots
       a link may also resolve against) or a per-repo allow file.
-- [ ] **CON120 — a push that skipped the hooks leaves `develop` red for every other session** [S, ★★]. On
-      2026-10-20 another host's session pushed fc5386eb (`comment-size`, `code-size`, `code-dupes` and
-      `doc-numbers` red) and b0b83498 (`masked-decls` red); until c0587f93 and 05108e94 every other session's commit
-      hook failed on those files. CI caught both (`Linux x64 · preflight + mutation gate` runs 39341736041 and
-      39379899580), but nothing reports a red develop run: `Windows x64 · script tests` stayed red from run
-      39345711596 (edc4dc54's case needed `uv` on `PATH`) until 50b256d6 (run 39416230326), 11 h later. `make hooks` sets `core.hooksPath` per clone, and
-      `pre-push` runs only the mutation gate. Options: `pre-push` also runs the commit hook's whole-tree slugs;
-      AGENTS.md's push rules say to read develop's last Linux and Windows runs first and fix a red tree before
-      pushing; a red develop run notifies the owner.
 
 - [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
       decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 84709078

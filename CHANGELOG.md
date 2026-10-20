@@ -34,6 +34,10 @@
 - One hub workflow on the hub's `GITHUB_TOKEN`: no consumer file, no secret.
   `develop-red-selftest.yml` fails or passes on request, to prove it. AGENTS.md's push rules read
   the open issues before every push.
+- **Proved on a real transition** (2026-10-20): self-test run 39425116404 red, watch run 39425267469
+  opened [#4](https://github.com/Kataglyphis/ANTfrastructure/issues/4); run 39425445085 left it alone;
+  self-test run 39425593827 green, watch run 39425615967 closed it. Every run ends with a `watched:` line
+  naming the repositories it read, so a token that sees nothing does not pass for a green family.
 
 ## 2026-10-20 — "Windows x64 · script tests" no longer needs uv on the runner
 
