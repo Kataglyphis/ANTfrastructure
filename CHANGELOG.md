@@ -11,6 +11,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The consumers' free-threaded legs on the image's interpreter, proved in CI (CON66)
+
+- OrchestrANT and WebDavClient ran both Linux legs on `:latest`'s interpreters with no download
+  (`/usr` 3.14.4, `/opt/python-freethreaded` 3.14.8) and passed `test-free-threaded-wheel.sh` on the
+  installed cp314t wheel, x64 and arm64: OrchestrANT runs 39413508655 and 39347777216 (8 passed,
+  2 skipped), WebDavClient 39413315749 and 39347779924 (24 passed). The 3.15 repeat and the PGO and
+  CI-runner timing leftovers moved to CON90.
+
 ## 2026-10-20 — The docs sites' sidebar toggles work, and a headless click proves it (CON121)
 
 - **Measured** on the nine published sites with the image's headless Chrome: the five Sphinx

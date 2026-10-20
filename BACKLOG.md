@@ -305,9 +305,10 @@ owner carries the breakage that costs.
          cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch. The
          owner's other build host runs it since 2026-10-20.
          - **The cross children's GIL tree likely lacks its `ar` too.** The published arm64 and riscv64 children
-           run Ubuntu's 3.14.4 as their GIL interpreter (CON66); from source, `install_staged_target_python`
-           copies the cross-built `/opt/python-cross/<arch>/usr/local` instead. `build_python.sh` builds that
-           tree with the same cross configure as the X.Yt one, but `Dockerfile.torch` runs
+           run Ubuntu's 3.14.4 as their GIL interpreter (`/usr` 3.14.4 in OrchestrANT job 118397954209); from
+           source, `install_staged_target_python` copies the cross-built `/opt/python-cross/<arch>/usr/local`
+           instead. `build_python.sh` builds that tree with the same cross configure as the X.Yt one, but
+           `Dockerfile.torch` runs
            `free-threaded-sysconfig-tools.py fix` on `/opt/python-freethreaded` only (CON110). Check the
            published children: `/usr/local/bin/python3.15` runs and its sysconfig's `AR` exists; else run the
            fix on `/usr/local` too.
@@ -316,26 +317,12 @@ owner carries the breakage that costs.
       3. The consumers' fallout once `:latest` moves. Their edits are in: OrchestrANT (964c24f) and WebDavClient
          (091da1c, fb5659b) name no version, and AccelerANTgine's `ci-python-bindings.sh` takes the image's X.Y
          (66b1db2). Left: their first runs on the 3.15 `:latest`, whose locks need cp315 wheels (numpy 2.5.4 has
-         them; PyPI onnxruntime has none, the chain's serves the image).
-
-- [ ] **CON66 — the consumers' `3.14t` legs on the image's free-threaded Python** [S, ★★]. The image
-      half is proven: the `:latest` published 2026-10-09 (hub 36e996a7) carries
-      `/opt/python-freethreaded` with python3.14t 3.14.8 and `sys._is_gil_enabled() == False` on amd64,
-      arm64 and riscv64, and passes the `free-threaded-python` row, prefix check included
-      (`docs/consumer-image-contract.md` § The free-threaded Python). Open:
-      - **The consumer half is done (2026-10-12).** In the shipped image a `3.14` or `3.14t` leg takes the image's
-        interpreter or fails, and never downloads one (hub 295f6fa0, CHANGELOG 2026-10-11). On that pin OrchestrANT
-        (8296f63) and WebDavClient (000389d) logged `the image's own interpreter, UV_PYTHON_DOWNLOADS=never` for both
-        legs on x64 and arm64 (`/usr` 3.14.4, `/opt/python-freethreaded` 3.14.8), and OrchestrANT's riscv64 row for its
-        `3.14` leg (run 38171396906). Its riscv64 row runs no `3.14t` leg, so `uv_venv_create 3.14t` ran in the published
-        riscv64 child (`7689579f…`) under QEMU: `/opt/python-freethreaded` 3.14.8, `gil=False`,
-        `cpython-314t-riscv64-linux-gnu`, nothing in uv's managed store. Both consumers also run their suite on the
-        installed cp314t wheel, through the hub's `test-free-threaded-wheel.sh` since 2026-10-12 (hub ff91d46d, OrchestrANT
-        0aeb53a, WebDavClient cbd1574; their two local scripts are gone). Proved locally in `:latest`; their next Linux
-        x64 and arm64 runs prove it in CI.
-      - The toolchain stage's added time on a CI runner (estimate 25-40 min on 4 cores); a local chain
-        time is not that number.
-      - A native arm64 toolchain build (PGO on arm64).
+         them; PyPI onnxruntime has none, the chain's serves the image). Those runs must repeat what their 3.14
+         runs proved on 2026-10-20 (OrchestrANT 39413508655, WebDavClient 39413315749): both legs logging
+         `the image's own interpreter, UV_PYTHON_DOWNLOADS=never`, and `free-threaded wheel tests passed` on
+         the cp315t wheel.
+      4. Left from CON66: PGO on arm64 needs a native arm64 toolchain build (the cross arches get LTO alone), and
+         the toolchain stage's CPython time on a 4-core CI runner is an estimate (25–40 min), not a measurement.
 
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
