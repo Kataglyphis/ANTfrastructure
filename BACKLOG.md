@@ -554,20 +554,6 @@ owner carries the breakage that costs.
         py-spy (a Rust binary from an sdist) stay off the leg, and no test imports either.
       - **Left:** waits for the `:winarm64` publish of chain 20261020-095644 (hub 6a38dc14), then
         OrchestrANT's `windows-arm64-cross.yml` run.
-- [ ] **CON113 — `python-ci-windows.yml`'s arm64 test job runs on interpreters from
-      `:winarm64`, not uv downloads** [M, ★★]. `test-python-on-windows-arm64` calls
-      `Invoke-PythonTestLegs.ps1 -InstallUv`, which on `windows-11-arm` installs the pinned X.Y
-      and X.Yt through uv: WebDavClient run 39336879640 (2026-10-19, green, legs 3.15 and 3.15t)
-      logged `Downloading cpython-3.15.0-windows-aarch64-none` and
-      `Downloading cpython-3.15.0+freethreaded-windows-aarch64-none`. The versions are right; the
-      source breaks "everything in the image". Fix: stage the bundle's runtime and its
-      free-threaded tree from `:winarm64`, as OrchestrANT's cross build does, and run the legs on
-      those. Done when that job's log has no `Downloading cpython`.
-      - **In source since 2026-10-20:** a `windows-2025` job stages both legs in `:winarm64`
-        (`New-Arm64PythonTestStage.ps1`), and the device job runs them and installs nothing.
-        WebDavClient's stage passed locally in 78 s.
-      - **Left:** waits for the `:winarm64` publish of chain 20261020-095644, whose store carries the
-        psutil cp315t wheel the 3.15t leg locks; then WebDavClient's `windows-arm64.yml` run.
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
       `Stage-Arm64Tests.ps1` stages from `:winarm64`'s `PYTHON_WHEELS`, which has no Flet, so
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
