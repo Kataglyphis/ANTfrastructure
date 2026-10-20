@@ -11,6 +11,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — A red `develop` anywhere in the family opens an issue here (CON120)
+
+- **A red run told nobody.** `Windows x64 · script tests` stayed red 11 h (run 39345711596 to
+  39416230326), and fc5386eb and b0b83498 failed every other session's commit hook until they were
+  fixed. `develop-red.yml` now reads every family repository's `develop` runs twice an hour and keeps
+  one `develop-red` issue per red workflow, listing each red job with its run; the issue closes
+  itself once each job passed again. The newest run of a job decides it, so an on-request or
+  release run of another lane neither hides nor clears a red one.
+- One hub workflow on the hub's `GITHUB_TOKEN`: no consumer file, no secret.
+  `develop-red-selftest.yml` fails or passes on request, to prove it. AGENTS.md's push rules read
+  the open issues before every push.
+
 ## 2026-10-20 — "Windows x64 · script tests" no longer needs uv on the runner
 
 - `Uv.PythonRequest.Tests.ps1`'s "Initialize-UvVenv creates the venv on the pin" case (edc4dc54)

@@ -15185,5 +15185,61 @@
   "replace": "text + COMPAT",
   "test": "bash linux/scripts/tests/test-cmake-format.sh",
   "why": "a marker without the swap reads as patched while 3.15 still refuses the lexer"
+ },
+ {
+  "id": "develop-red.undecisive-runs-decide-nothing",
+  "target": "linux/scripts/develop_red.py",
+  "find": "        if run[\"event\"] in EVENTS and run[\"conclusion\"] in RED | GREEN:",
+  "replace": "        if True:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a cancelled run or a pull request's merge test would close or open a develop-red issue on evidence about something other than develop"
+ },
+ {
+  "id": "develop-red.forks-are-not-family",
+  "target": "linux/scripts/develop_red.py",
+  "find": "if not r[\"fork\"] and not r[\"archived\"] and r[\"default_branch\"] == \"develop\")",
+  "replace": "if True)",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a fork or an archived repository follows none of the family's rules; watched, its red default branch files issues nobody will act on"
+ },
+ {
+  "id": "develop-red.red-run-without-red-job",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    if not RED & set(ran.values()):",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a startup failure has no jobs, so without the whole-run key a workflow file that does not parse never opens an issue"
+ },
+ {
+  "id": "develop-red.masked-lane",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    return newer[:WALK]",
+  "replace": "    return newer[:1]",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a later run of another lane (on-request, release) would hide an earlier red one that no run has passed since"
+ },
+ {
+  "id": "develop-red.closed-issue-is-a-floor",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    floor = max(state[\"seen\"], (now - LOOKBACK).strftime(ISO))",
+  "replace": "    floor = (now - LOOKBACK).strftime(ISO)",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "an issue closed by hand would reopen on the same red run at the next poll"
+ },
+ {
+  "id": "develop-red.older-rerun-never-overrides",
+  "target": "linux/scripts/develop_red.py",
+  "find": "            if job in decided or run[\"id\"] < red.get(job, {}).get(\"run\", 0):",
+  "replace": "            if job in decided:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "a green re-run of an older commit would close the issue while the newest run of that job is still red"
+ },
+ {
+  "id": "develop-red.green-closes",
+  "target": "linux/scripts/develop_red.py",
+  "find": "    if not new[\"red\"]:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-develop-red.sh",
+  "why": "an issue that never closes is the noise that teaches everyone to ignore the label"
  }
 ]

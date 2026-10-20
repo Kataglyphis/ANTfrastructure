@@ -51,6 +51,8 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 | `ghcr-cleanup.yml` | GHCR · cleanup | Sundays, dispatch | `ghcr-prune-package.sh` deletes untagged versions no kept tag references; every tagged version stays, 14-day age guard |
 | `sbom.yml` | SBOM | Mondays, dispatch | SBOM generation |
 | `stale-docs-check.yml` | Docs · stale check | Mondays, dispatch | stale doc references and broken script paths |
+| `develop-red.yml` | Develop red · watch | twice an hour, dispatch | one `develop-red` issue per family workflow whose `develop` run is red, closed once it is green ([`github-cli-pipeline-monitoring.md`](github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)) |
+| `develop-red-selftest.yml` | Develop red · self-test | dispatch | fails or passes as its `outcome` input says, to prove the watch |
 
 The `workflow_call` ones run when a caller runs:
 

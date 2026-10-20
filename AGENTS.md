@@ -870,6 +870,11 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 ## Push And Publish Rules
 
+- **A red `develop` is fixed before anything else lands on it** (2026-10-20). Before every push in
+  any family repository, `gh issue list -R Kataglyphis/ANTfrastructure -l develop-red`: an open
+  issue names the repository, workflow and jobs that are red, with their runs. `develop-red.yml`
+  opens it within half an hour of the red run and closes it when the jobs pass again
+  ([`github-cli-pipeline-monitoring.md` § A red develop opens an issue](docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue)).
 - `build-runtime-artifacts.sh --push` pushes only the final per-arch wrapper images.
 - `build-runtime-manifest.sh --push` pushes wrappers + the final manifest.
 - `--push-all` only when explicitly requested (it publishes the `base`/`package` intermediates).

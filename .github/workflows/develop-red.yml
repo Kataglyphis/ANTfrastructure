@@ -1,0 +1,45 @@
+# A red develop run anywhere in the family opens a hub issue. See docs/github-cli-pipeline-monitoring.md#a-red-develop-opens-an-issue
+name: Develop red · watch
+
+on:
+  schedule:
+    - cron: "13,43 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Queued, never cancelled: two runs at once could each open the same issue.
+concurrency:
+  group: develop-red
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    name: Open or close the develop-red issues
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # The X.Y versions.env pins, so a Python upgrade needs no edit here.
+      - name: Read the pinned Python
+        id: python
+        run: echo "version=$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' linux/scripts/01-core/versions.env)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ steps.python.outputs.version }}
+
+      - name: Settle every family workflow's issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 linux/scripts/develop_red.py

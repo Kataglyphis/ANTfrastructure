@@ -1,0 +1,25 @@
+# Fails or passes on request, so the develop-red watch can be proved on a real transition without breaking develop.
+name: Develop red · self-test
+
+on:
+  workflow_dispatch:
+    inputs:
+      outcome:
+        description: The conclusion this run reports
+        type: choice
+        options: [success, failure]
+        default: success
+
+permissions:
+  contents: read
+
+jobs:
+  outcome:
+    name: Report the requested outcome
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Conclude as asked
+        env:
+          OUTCOME: ${{ inputs.outcome }}
+        run: test "${OUTCOME}" = success

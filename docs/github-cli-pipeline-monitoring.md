@@ -112,6 +112,31 @@ a gated-off job reports `skipped`,
 which is easy to read as success at a glance
 ([`ci-build-triggers.md`](ci-build-triggers.md)).
 
+## A red develop opens an issue
+
+`develop-red.yml` (*Develop red · watch*, at :13 and :43 every hour) reads the `develop` runs of
+every family repository: the owner's own, not a fork, not archived, default branch `develop`. When
+a workflow's push, dispatch or scheduled run fails, it opens one issue in this repository,
+`develop is red: <repo> · <workflow>`, labelled `develop-red`, listing each red job with its run.
+It updates the issue as runs come in and closes it once every listed job passed on `develop` again.
+
+```bash
+gh issue list -R Kataglyphis/ANTfrastructure -l develop-red   # empty: every develop is green
+```
+
+- Cancelled, skipped and pull-request runs decide nothing. A red run with no red job (a startup
+  failure has none) lists `(the run itself)`.
+- The newest run of a job decides it, so a green run of another lane through `on-request.yml` or
+  `release.yml` keeps the issue open, and a re-run of an older commit never closes it.
+- A job that was renamed or removed never passes again: close its issue by hand. A closed issue
+  marks the runs it covered, so the watch does not reopen it on them.
+- `develop-red-selftest.yml` concludes as its `outcome` input says: dispatch it with `failure` and
+  then the watch to see an issue open, with `success` to see it close.
+
+One hub workflow on the hub's `GITHUB_TOKEN` (every family repository is public): no file in a
+consumer, no secret. Logic and cases: `linux/scripts/develop_red.py`,
+`linux/scripts/tests/test-develop-red.sh`.
+
 ## The orientation AGENTS.md carried
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links and the `skipped` bullet (the opt-in markers it named were retired on 2026-09-24). The RULES stayed there; this is the reference behind them.
