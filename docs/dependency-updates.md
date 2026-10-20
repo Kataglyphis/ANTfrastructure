@@ -9,6 +9,12 @@ SPDX-License-Identifier: MIT
 in the family are driven by **Renovate run as a local CLI**, through
 `linux/scripts/renovate-local.sh`. Not by hand, and not by waiting for a bot.
 
+**The one exception, a red security advisory** (owner, 2026-10-20): when `cargo audit`, `cargo deny` or
+another advisory gate fails on a published advisory (RUSTSEC-…), fix it at once with the narrowest
+lockfile update (`cargo update -p <crate> --precise <fixed>`), naming the advisory and the moved versions
+in the commit and CHANGELOG. An advisory with no fixed release goes into the ignore file with its reason
+and a backlog row. First case: OxidANT 1ffbbcd, RUSTSEC-2026-0381/0382.
+
 **Dependabot is off family-wide** (owner, 2026-10-20): no repository carries
 `.github/dependabot.yml`, and its security-update PRs are disabled
 (`gh api -X DELETE repos/Kataglyphis/<repo>/automated-security-fixes`). Dependabot alerts stay
