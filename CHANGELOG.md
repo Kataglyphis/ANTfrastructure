@@ -12,6 +12,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — Exhale's tree views fold again; the sidebar check fails on an uncaught exception (CON127)
+
+- **Cause.** Exhale 0.3.7's `apply-collapsible-lists.js` is `$(document).ready(...)`, and
+  Sphinx 6 stopped shipping jQuery: every page of AccelerANTgine's and BeschleunigerBallett's
+  sites threw `ReferenceError: $ is not defined`, and their API trees never folded.
+- **Fix** in DocumANTation 020a5c3, the gitlink here: the theme copies a jQuery-free applier over
+  Exhale's, with no new dependency. The two sites get it with their next hub gitlink, since their
+  docs install the theme from this hub's DocumANTation.
+- **The gate.** `check-docs-sidebars.js` fails on any uncaught exception or rejection and clicks
+  an Exhale tree view's first foldable item; it opens `index.html`, the pages named after the
+  site, and in a built Sphinx site every page with a tree view. Eight new `docs-site.sidebars-*`
+  mutations. The other seven published sites pass it as they are.
+  [docs-sites.md § The sidebar toggle check](docs/docs-sites.md#the-sidebar-toggle-check).
+
 ## 2026-10-20 — The last 23 Apache-2.0 headers are MIT, as `LICENSE` says (CON69)
 
 - **Owner decision 2026-10-20.** 802699f6 (2026-08-07) moved 101 headers to MIT and missed 23

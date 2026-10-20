@@ -15291,6 +15291,70 @@
   "why": "a check that prints FAIL and exits 0 publishes the broken site anyway"
  },
  {
+  "id": "docs-site.sidebars-runtime-events",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  await send('Runtime.enable');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "without Runtime.enable Chrome sends no exceptionThrown, and a page that throws looks clean"
+ },
+ {
+  "id": "docs-site.sidebars-uncaught-fails",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  for (const line of new Set(thrown.map(uncaught))) results.push(`FAIL ${w}x${h}: uncaught ${line}`);\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "Exhale's applier threw `$ is not defined` on every page of two sites while every toggle passed"
+ },
+ {
+  "id": "docs-site.sidebars-tree-applied",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    if (!tree.applied) results.push(",
+  "replace": "    if (false) results.push(",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a tree view whose script never ran shows every list open and folds nothing"
+ },
+ {
+  "id": "docs-site.sidebars-tree-folds",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "      if (folded.state === tree.state) results.push(",
+  "replace": "      if (false) results.push(",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "an applied tree without its click handler draws the buttons and does nothing"
+ },
+ {
+  "id": "docs-site.sidebars-tree-goes-back",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "        results.push(back.state === tree.state",
+  "replace": "        results.push(true",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "an item that opens but never folds again"
+ },
+ {
+  "id": "docs-site.sidebars-tree-own-text",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  if (text) range.selectNodeContents(text);",
+  "replace": "  range.selectNodeContents(li.querySelector('a'));",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "the reader folds an item on its own text: its link opens another page"
+ },
+ {
+  "id": "docs-site.sidebars-tree-pages-found",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])",
+  "replace": "...[]",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "the callers pass the site alone, and Exhale's tree is on api/library_root.html, not index.html"
+ },
+ {
+  "id": "docs-site.sidebars-asked-pages",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "['index.html', ...asked, ",
+  "replace": "['index.html', ",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a published site has no file list to search: the live check names its API page"
+ },
+ {
   "id": "docs-site.check-runs-the-click-check",
   "target": "linux/scripts/docs-site.sh",
   "find": "  node \"${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js\" \"${site}\"",

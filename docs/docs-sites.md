@@ -147,7 +147,7 @@ Suite `linux/scripts/tests/test-site-links.sh`; the `site-links.*` mutations pro
 
 ## The sidebar toggle check
 
-`linux/scripts/check-docs-sidebars.js <site dir | https URL>` serves a built Sphinx
+`linux/scripts/check-docs-sidebars.js <site dir | https URL> [page ...]` serves a built Sphinx
 book-theme or dartdoc site on `127.0.0.1` (or opens a published one), and in the image's
 headless Chrome clicks every sidebar toggle a reader can see, at the widths where the
 layout changes: 1400, 1100, 850 and 400 px for Sphinx, 1400, 800 and 400 px for dartdoc.
@@ -155,6 +155,15 @@ A toggle fails when it is off-screen, covered, does nothing, or opens a sidebar 
 not close again (second click, the overlay, or Escape for a dialog); a hidden sidebar with
 no toggle fails too. Exit 1 on a failure, 2 on a usage error or no Chrome; any other site
 has nothing to toggle and passes.
+
+It opens `index.html`, each `page` named (a path under the site root), and in a built Sphinx
+site every page with an Exhale tree view (`class="collapsibleList"`); a published site has no
+file list, so name its API page (`api/library_root.html`). On each page and width:
+
+- **any uncaught exception or rejection fails**, with its message and source line;
+- **an Exhale tree view** gets its first foldable item clicked on its own text, never its
+  link: an item that never folds (its script did not run), stays put, or does not unfold
+  again fails.
 
 It runs where each site is built, in the image: `docs-site.sh build <site>` builds and then
 checks in one container command in `build-docs.yml` (the action's `script` is `docker
@@ -175,6 +184,13 @@ saw it.
 - The theme's `custom.css` made `.bd-sidebar-primary` `position: sticky` at every width.
   Below the drawer breakpoint the sidebar is `position: fixed` with a negative margin;
   sticky kept it in the flow and moved the article's toggle to x=-242 at 850 px.
+
+Why the exceptions and tree views (CON127, 2026-10-20): Exhale 0.3.7's
+`apply-collapsible-lists.js` is `$(document).ready(...)`, and Sphinx 6 stopped shipping
+jQuery, so every page of AccelerANTgine's and BeschleunigerBallett's sites threw
+`ReferenceError: $ is not defined` and their API trees never folded, while every toggle
+passed. DocumANTation's theme copies a jQuery-free applier over Exhale's when a site
+builds one; Exhale's own `CollapsibleLists.js` needs no jQuery.
 
 Suite `linux/scripts/tests/test-docs-sidebars.sh` (fixture sites, one per failure); the
 `docs-site.sidebars-*` and `docs-site.*-clicks-the-toggles` mutations prove it.
