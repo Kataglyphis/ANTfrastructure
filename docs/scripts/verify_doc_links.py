@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import re
 import subprocess
 import sys
@@ -30,6 +31,8 @@ CODE_SCAN = ("linux", "docs/scripts", ".github", "Makefile")
 HEADER_LINES = 10
 HEADER_SUFFIXES = (".sh", ".py")
 HEADER_ALLOW = Path(__file__).with_name("doc-header-pointers.allow")
+# `<page glob> | <dir>` rows: a link from a matching page may also resolve from <dir>, as pandoc's --resource-path does.
+LINK_ROOTS = Path(__file__).with_name("doc-link-roots.allow")
 # Pages no header may name, frozen or not: an open backlog entry is archived the day it closes.
 UNFREEZABLE_PAGES = ("refactoring-backlog.md",)
 CODE_SKIP_SUFFIXES = (".md", ".patch", ".diff")
@@ -159,8 +162,40 @@ def collect() -> dict[str, Doc]:
     return docs
 
 
-def check_links_and_anchors(docs: dict[str, Doc], findings: list[str]) -> tuple[int, int]:
+def load_link_roots(findings: list[str]) -> list[tuple[str, Path, str]]:
+    """LINK_ROOTS as (page glob, directory, row label); a malformed row or a missing directory is a finding."""
+    rows: list[tuple[str, Path, str]] = []
+    if not LINK_ROOTS.is_file():
+        return rows
+    for num, raw in enumerate(LINK_ROOTS.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        glob, sep, root = (part.strip() for part in line.partition("|"))
+        label = f"{LINK_ROOTS.name}:{num}"
+        base = (REPO_ROOT / root).resolve()
+        if not (sep and glob and root):
+            findings.append(f"[roots]   {label}  (expected '<page glob> | <directory>')")
+        elif not base.is_dir():
+            findings.append(f"[roots]   {label} -> {root}  (no such directory)")
+        else:
+            rows.append((glob, base, label))
+    return rows
+
+
+def _from_roots(doc: Doc, target: str, roots: list, used: set) -> Path | None:
+    """The target from the first declared directory that has it for this page, noting the row that served it."""
+    for glob, base, label in roots:
+        if fnmatch.fnmatchcase(doc.rel, glob) and (base / target).exists():
+            used.add(label)
+            return (base / target).resolve()
+    return None
+
+
+def check_links_and_anchors(docs: dict[str, Doc], findings: list[str],
+                            roots: list = (), used: set | None = None) -> tuple[int, int]:
     links = anchors = 0
+    used = set() if used is None else used
     for doc in docs.values():
         for m in MD_LINK.finditer(doc.raw):
             url = m.group(1)
@@ -171,6 +206,8 @@ def check_links_and_anchors(docs: dict[str, Doc], findings: list[str]) -> tuple[
                 resolved = (doc.path.parent / target).resolve()
                 links += 1
                 if not resolved.exists():
+                    resolved = _from_roots(doc, target, roots, used)
+                if resolved is None:
                     findings.append(f"[link]    {doc.rel} -> {url}  (no such file)")
                     continue
             else:
@@ -410,7 +447,7 @@ def main() -> int:
                     help="grade this checkout instead of the gate's own repo")
     args = ap.parse_args()
 
-    global REPO_ROOT, DOCS, HEADER_ALLOW
+    global REPO_ROOT, DOCS, HEADER_ALLOW, LINK_ROOTS
     try:
         REPO_ROOT = Path(gate_scope.resolve_root(args.root, str(HUB_ROOT)))
     except gate_scope.ScopeError as exc:
@@ -419,6 +456,7 @@ def main() -> int:
     if not _is_hub():
         # The freeze file follows the root like every ratchet; absent means nothing frozen.
         HEADER_ALLOW = REPO_ROOT / HEADER_ALLOW.name
+        LINK_ROOTS = REPO_ROOT / LINK_ROOTS.name
 
     if _is_hub() and not DOCS.is_dir():
         print("ERROR: docs/ not found -- run from the repo (or fix REPO_ROOT)", file=sys.stderr)
@@ -433,7 +471,11 @@ def main() -> int:
         return 2
 
     findings: list[str] = []
-    n_links, n_anchors = check_links_and_anchors(docs, findings)
+    roots, used = load_link_roots(findings), set()
+    n_links, n_anchors = check_links_and_anchors(docs, findings, roots, used)
+    for _glob, _base, label in roots:
+        if label not in used:
+            findings.append(f"[roots]   {label}  (STALE: no link needs it -- delete the line)")
     n_sections = check_section_refs(docs, findings)
     n_sections += check_local_section_refs(docs, findings)
     n_pages = check_index_coverage(docs, findings)

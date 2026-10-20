@@ -642,13 +642,6 @@ owner carries the breakage that costs.
       holds the pair at 40 as a pending dedupe. Done when both call one helper in `01-core` and
       the pair's budget drops back.
 
-- [ ] **CON119 — `verify_doc_links.py` resolves a link from its page; pandoc resolves from the repo root**
-      [S, ★]. DocumANTation's `data/book/chapters/11-template-demo.md` links `data/book/images/figure1.jpg`, and
-      `data/presentation/demo/99-examples.md` links `data/presentation/images/title-background.jpg`. Both files
-      exist, and `md2pdfLib/pandoc_builder.py:83` passes `--resource-path .`, so pandoc finds them; the gate reports
-      both `no such file` (DocumANTation c0f4530, 2026-10-20). Give the consumer gate a resource-path mode (roots
-      a link may also resolve against) or a per-repo allow file.
-
 - [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
       decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 84709078
       (2026-08-02), but 23 files outside `third_party/` still say

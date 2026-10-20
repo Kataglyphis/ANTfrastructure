@@ -11,6 +11,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — `doc-links` grades a link the way pandoc resolves it (CON119)
+
+- DocumANTation's pandoc sources link from the repo root (`--resource-path .`, `pandoc_builder.py:83`),
+  so `verify_doc_links.py --root` called both images `no such file`. `<root>/doc-link-roots.allow`
+  declares such a root per page glob (`data/book/* | .`); a row no link needs is `STALE`, a missing
+  directory a finding. Three cases in `test-doc-links.sh`, mutations `doc-links.link-roots-*`
+  ([`code-quality-tooling.md` § Links a build resolves from another directory](docs/code-quality-tooling.md#links-a-build-resolves-from-another-directory)).
+
 ## 2026-10-20 — The wxPython plumbing is gone (CON107)
 
 - OrchestrANT, its one consumer, dropped wxPython in d954e86; `git grep -il wxpython` over the

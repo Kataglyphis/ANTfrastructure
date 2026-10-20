@@ -15241,5 +15241,29 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-develop-red.sh",
   "why": "an issue that never closes is the noise that teaches everyone to ignore the label"
+ },
+ {
+  "id": "doc-links.link-roots-follow-root",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "        LINK_ROOTS = REPO_ROOT / LINK_ROOTS.name\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "a consumer's doc-link-roots.allow would never be read, so a pandoc source's root-relative link fails the gate though the build finds it (DocumANTation, CON119)"
+ },
+ {
+  "id": "doc-links.link-roots-scoped-by-glob",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "        if fnmatch.fnmatchcase(doc.rel, glob) and (base / target).exists():\n",
+  "replace": "        if (base / target).exists():\n",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "a root declared for the pandoc sources would also excuse a README link that GitHub cannot resolve"
+ },
+ {
+  "id": "doc-links.link-roots-stale",
+  "target": "docs/scripts/verify_doc_links.py",
+  "find": "        if label not in used:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "a row no link needs is cover for the next broken link from those pages"
  }
 ]

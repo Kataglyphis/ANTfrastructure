@@ -554,7 +554,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **1905 entries** over **167 distinct test commands**; both digits are
+manifest holds **1908 entries** over **167 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1213,6 +1213,17 @@ pointer there and the real tree goes red — which is why
 `doc-links.flutter-checks-anchor` neuters the target *heading* rather than the
 pointer text. `dead-functions` exempts the manifest; this gate does not, on the
 grounds that a stale pointer is stale wherever it is written.
+
+### Links a build resolves from another directory
+
+DocumANTation's `data/book/chapters/11-template-demo.md` links `data/book/images/figure1.jpg`. pandoc
+runs from the repo root with `--resource-path .` (`md2pdfLib/pandoc_builder.py`), so the PDF finds it;
+read from its page it is `no such file`. `<root>/doc-link-roots.allow` declares such a root, one
+`<page glob> | <directory>` row each (`fnmatch`, so `*` crosses `/`; the directory relative to the
+root): a link its page does not resolve may resolve from that directory, for matching pages only, so
+a README GitHub renders keeps page-relative links. Two-way: a row no link needs is `STALE`, and a
+directory that does not exist is a finding. The hub declares none (its file would sit beside the
+gate). Mutations `doc-links.link-roots-*`.
 
 ## Gate proof registry (`gate-registry`)
 

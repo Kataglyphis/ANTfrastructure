@@ -244,4 +244,23 @@ t_assert_eq "160000" "$(git -C "${_sub_fx}" ls-files -s lib/vendored | cut -d' '
 t_assert_eq "0" "$(t_rc "${PY}" "${GATE}" --root "${_sub_fx}")" "a nested gitlink must not crash the code-pointer scan"
 rm -rf "${_sub_fx}"
 
+# pandoc resolves a link from its --resource-path, not from the page; doc-link-roots.allow declares that root.
+t_case "--root: a link that resolves only from a declared root passes, for the pages its row names"
+_lr_fx="$(gate_tree_git "$(printf '# Chapter\n\n![fig](data/book/fig.png)\n')" data/book/ch.md)"
+: > "${_lr_fx}/data/book/fig.png"
+t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_lr_fx}")" "data/book/ch.md -> data/book/fig.png  (no such file)" \
+  "read from its page the link is data/book/data/book/fig.png"
+printf 'other/* | .\n' > "${_lr_fx}/doc-link-roots.allow"
+t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_lr_fx}")" "data/book/ch.md -> data/book/fig.png  (no such file)" \
+  "a row covers only the pages its glob names"
+printf 'data/* | .\n' > "${_lr_fx}/doc-link-roots.allow"
+t_assert_eq "0" "$(t_rc "${PY}" "${GATE}" --root "${_lr_fx}")" "the row at <root>/doc-link-roots.allow resolves it from the repo root"
+printf 'data/* | .\ndata/* | nope\n' > "${_lr_fx}/doc-link-roots.allow"
+t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_lr_fx}")" "doc-link-roots.allow:2 -> nope  (no such directory)"
+printf '# Chapter\n\nNo link.\n' > "${_lr_fx}/data/book/ch.md"
+printf 'data/* | .\n' > "${_lr_fx}/doc-link-roots.allow"
+t_assert_contains "$(t_out "${PY}" "${GATE}" --root "${_lr_fx}")" "doc-link-roots.allow:1  (STALE: no link needs it" \
+  "a row no link needs is cover for the next broken one"
+rm -rf "${_lr_fx}"
+
 t_summary
