@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# check-docs-sidebars.js and its three callers, against fixture sites in headless Chrome. See docs/docs-sites.md#the-sidebar-toggle-check
+set -u
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${TESTS_DIR}/test-harness.sh"
+SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
+CHECK="${SCRIPTS}/check-docs-sidebars.js"
+_tmp="$(mktemp -d)"
+trap 'rm -rf "${_tmp}"' EXIT
+
+t_skip_unless "node with a global WebSocket (22 and later)" node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'
+_chrome=""
+for c in "${CHROME_EXECUTABLE:-}" chrome chromium chromium-browser google-chrome; do
+  [ -n "${c}" ] && command -v "${c}" >/dev/null 2>&1 && { _chrome="${c}"; break; }
+done
+t_skip_unless "Chrome (CHROME_EXECUTABLE, chrome, chromium or google-chrome)" test -n "${_chrome}"
+_chrome="$(command -v "${_chrome}")"
+export CHECK_DOCS_SIDEBARS_VIEWPORTS="1000x700"
+
+# _site <name> <theme marker> <style> <body> <script>: a one-page site the check takes for that theme; prints its dir.
+_site() {
+  local d="${_tmp}/$1"
+  mkdir -p "$(dirname "${d}/$2")"
+  : > "${d}/$2"
+  printf '<!DOCTYPE html><html><head><style>body{margin:0} %s</style></head><body>%s<script>%s</script></body></html>
+'     "$3" "$4" "$5" > "${d}/index.html"
+  printf '%s
+' "${d}"
+}
+
+# _sphinx <name> <variant>: a book-theme-shaped page whose one primary toggle behaves as <variant> says.
+_sphinx() {
+  local toggle='<button class="primary-toggle" style="left:250px">=</button>' extra='' js=''
+  local on="document.querySelector('.primary-toggle').addEventListener('click', () =>"
+  case "$2" in
+    works) js="${on} sb.classList.toggle('gone'));" ;;
+    dead) ;;
+    hidden-twin) toggle="<button class=\"primary-toggle\" style=\"display:none\">=</button>${toggle}"; js="${on} sb.classList.toggle('gone'));" ;;
+    off-screen) toggle='<button class="primary-toggle" style="left:-120px">=</button>'; js="${on} sb.classList.toggle('gone'));" ;;
+    covered) extra='<div style="position:fixed;left:240px;top:0;width:60px;height:60px;z-index:9"></div>'; js="${on} sb.classList.toggle('gone'));" ;;
+    one-way) js="${on} sb.classList.add('gone'));" ;;
+    dialog) extra='<dialog id="pst-primary-sidebar-modal">nav</dialog><style>#pst-primary-sidebar{display:none}</style>'
+      js="${on} document.getElementById('pst-primary-sidebar-modal').showModal());" ;;
+    no-toggle) toggle=''; extra='<style>#pst-primary-sidebar{display:none}</style>' ;;
+  esac
+  _site "$1" _static/scripts/sphinx-book-theme.js     '.primary-toggle{position:fixed;top:5px;width:30px;height:30px} #pst-primary-sidebar{position:fixed;left:0;top:50px;width:200px;height:300px;background:#cfc} #pst-primary-sidebar.gone{display:none}'     "${toggle}<div id=\"pst-primary-sidebar\">nav</div>${extra}"     "const sb = document.getElementById('pst-primary-sidebar'); ${js}"
+}
+
+# _dartdoc <name> <closes|stays>: dartdoc's drawer at 840 px and below, which the overlay under it closes or not.
+_dartdoc() {
+  local close="ov.addEventListener('click', () => { sb.classList.remove('active'); ov.classList.remove('active'); });"
+  [ "$2" = closes ] || close=''
+  _site "$1" static-assets/docs.dart.js     '#sidenav-left-toggle{position:fixed;left:10px;top:5px;width:30px;height:30px} #dartdoc-sidebar-left{position:fixed;left:-400px;top:0;width:300px;height:500px;background:#cfc;z-index:2000} #dartdoc-sidebar-left.active{left:0} #overlay-under-drawer{display:none} #overlay-under-drawer.active{display:block;position:fixed;inset:0;z-index:1999;background:#0006}'     '<span id="sidenav-left-toggle" role="button">=</span><div id="dartdoc-sidebar-left">nav</div><div id="overlay-under-drawer"></div>'     "const sb = document.getElementById('dartdoc-sidebar-left'), ov = document.getElementById('overlay-under-drawer'); document.getElementById('sidenav-left-toggle').addEventListener('click', () => { sb.classList.add('active'); ov.classList.add('active'); }); ${close}"
+}
+
+t_case "a toggle that opens and closes its sidebar passes"
+out="$(t_out node "${CHECK}" "$(_sphinx works works)")"
+t_assert_contains "${out}" "ok   1000x700 primary: open -> closed -> open"
+t_assert_contains "${out}" "ok   1000x700 secondary: no such sidebar on this page"
+t_assert_rc 0 node "${CHECK}" "${_tmp}/works"
+
+t_case "a toggle that does nothing fails"
+t_assert_rc 1 node "${CHECK}" "$(_sphinx dead dead)"
+t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/dead")" "FAIL 1000x700 primary: clicking the toggle at "
+t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/dead")" " leaves it open"
+
+t_case "a hidden twin first in the DOM takes the theme JS, so the visible toggle is dead (pydata 0.20's header)"
+t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx twin hidden-twin)")" "leaves it open"
+
+t_case "a toggle off-screen or under another element fails before it is clicked"
+t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx off off-screen)")" " is off-screen"
+t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx cov covered)")" " is covered by another element"
+
+t_case "a toggle that opens but cannot close again fails"
+t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx oneway one-way)")" "FAIL 1000x700 primary: open -> closed, and it does not go back"
+
+t_case "a dialog the toggle opens is closed with Escape"
+t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx dlg dialog)")" "ok   1000x700 primary: closed -> open -> closed"
+
+t_case "a hidden sidebar without a toggle fails"
+t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx none no-toggle)")" "FAIL 1000x700 primary: hidden, and no toggle opens it"
+
+t_case "dartdoc's drawer opens with its toggle and closes on the overlay"
+t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc drawer closes)")" "ok   1000x700 left: closed -> open -> closed"
+t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc stuck stays)")" "FAIL 1000x700 left: closed -> open, and it does not go back"
+
+t_case "a site of neither theme has nothing to toggle; a missing site or argument is a usage error"
+mkdir -p "${_tmp}/plain" && printf '<!DOCTYPE html><html><body>hi</body></html>\n' > "${_tmp}/plain/index.html"
+t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/plain")" "nothing to toggle"
+t_assert_rc 0 node "${CHECK}" "${_tmp}/plain"
+t_assert_rc 2 node "${CHECK}" "${_tmp}/no-such-site"
+t_assert_rc 2 node "${CHECK}"
+
+t_case "docs-site.sh check runs the click check; --if-chrome skips only without CHROME_EXECUTABLE"
+t_assert_rc 0 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/works"
+t_assert_rc 1 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/dead"
+t_assert_contains "$(CHROME_EXECUTABLE='' t_out bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/dead" --if-chrome)" "sidebar check skipped"
+t_assert_rc 1 env CHROME_EXECUTABLE="${_chrome}" bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/dead" --if-chrome
+t_assert_rc 1 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/works" --bogus
+
+t_case "build-docs.yml clicks the toggles of every site it builds"
+t_assert_grep "${SCRIPTS}/../../.github/workflows/build-docs.yml" 'docs-site\.sh check \$\{\{ steps\.plan\.outputs\.site-dir \}\}'
+
+t_case "docs-build.sh clicks the toggles after make html, where an artifact site is built"
+mkdir -p "${_tmp}/proj/docs" "${_tmp}/bin"
+cat > "${_tmp}/bin/make" <<EOF
+#!/usr/bin/env bash
+mkdir -p build && rm -rf build/html && cp -r "${_tmp}/\${FIXTURE}" build/html
+EOF
+chmod +x "${_tmp}/bin/make"
+_docs_build() {
+  (export PATH="${_tmp}/bin:${PATH}" CHROME_EXECUTABLE="${_chrome}" FIXTURE="$1" DOCS_BUILD_PROJECT_ROOT="${_tmp}/proj" DOCS_BUILD_TARGETS=html
+   source "${SCRIPTS}/lib/docs-build.sh"
+   docs_build_sphinx)
+}
+t_assert_rc 0 _docs_build works
+t_assert_rc 1 _docs_build dead
+
+t_case "ci_build_docs.sh clicks the toggles after make html"
+t_assert_grep "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" '^bash "\$SCRIPT_DIR/\.\./\.\./docs-site\.sh" check "\$WORKSPACE_ROOT/docs/build/html" --if-chrome$'
+
+t_summary

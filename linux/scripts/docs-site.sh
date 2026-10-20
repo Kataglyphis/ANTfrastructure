@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# docs-site.sh plan|build|stage: the three steps of build-docs.yml, one place to test them. See docs/docs-sites.md#the-reusable-workflow
+# docs-site.sh plan|build|check|stage: the steps of build-docs.yml, one place to test them. See docs/docs-sites.md#the-reusable-workflow
 set -euo pipefail
 
 DOCS_SITE_HUB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -119,9 +119,28 @@ docs_site_stage() {
   "${PYTHON:-python3}" "${DOCS_SITE_HUB}/linux/scripts/verify_site_links.py" "${site}" ${gate[@]+"${gate[@]}"}
 }
 
+# check <site> [--if-chrome]: every sidebar toggle clicked in headless Chrome; --if-chrome skips where the image has no Chrome.
+docs_site_check() {
+  local site="${1:?usage: docs-site.sh check <site dir> [--if-chrome]}"
+  case "${2:-}" in
+    '') ;;
+    --if-chrome)
+      if [ -z "${CHROME_EXECUTABLE:-}" ]; then
+        printf 'docs-site: sidebar check skipped: no CHROME_EXECUTABLE (the family image sets it on amd64 and arm64)
+'
+        return 0
+      fi
+      ;;
+    *) die "bad argument" "check takes --if-chrome, got '$2'." ;;
+  esac
+  command -v node >/dev/null 2>&1 || die "no node" "the sidebar check runs on node, which the family image carries."
+  node "${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js" "${site}"
+}
+
 case "${1:-}" in
   plan) docs_site_plan ;;
   build) docs_site_build ;;
+  check) shift; docs_site_check "$@" ;;
   stage) shift; docs_site_stage "$@" ;;
-  *) die "usage" "docs-site.sh plan | build | stage <site dir> [--allow FILE] [--no-htaccess]" ;;
+  *) die "usage" "docs-site.sh plan | build | check <site dir> [--if-chrome] | stage <site dir> [--allow FILE] [--no-htaccess]" ;;
 esac

@@ -32,7 +32,8 @@ jobs:
 
 Two jobs (2026-10-19):
 
-- **`site`** builds the site in the family image (`command` or `builder`), or takes the
+- **`site`** builds the site in the family image (`command` or `builder`) and clicks its
+  [sidebar toggles](#the-sidebar-toggle-check), or takes the
   artifact an earlier job of the run uploaded (`artifact`). `docs-site.sh stage` then adds
   the `.htaccess` and 404 page and runs the [link gate](#the-built-site-link-gate); the
   checked tree is uploaded as `docs-site-<site-name>`, hidden files included. A newer
@@ -143,6 +144,39 @@ Measured 2026-10-19 in `:latest`:
 | ANThology through `builder: dartdoc` | 1070 | 0, once the builder copied `images/`: the README's `images/logo.png` was the one dead link |
 
 Suite `linux/scripts/tests/test-site-links.sh`; the `site-links.*` mutations prove it.
+
+## The sidebar toggle check
+
+`linux/scripts/check-docs-sidebars.js <site dir | https URL>` serves a built Sphinx
+book-theme or dartdoc site on `127.0.0.1` (or opens a published one), and in the image's
+headless Chrome clicks every sidebar toggle a reader can see, at the widths where the
+layout changes: 1400, 1100, 850 and 400 px for Sphinx, 1400, 800 and 400 px for dartdoc.
+A toggle fails when it is off-screen, covered, does nothing, or opens a sidebar that does
+not close again (second click, the overlay, or Escape for a dialog); a hidden sidebar with
+no toggle fails too. Exit 1 on a failure, 2 on a usage error or no Chrome; any other site
+has nothing to toggle and passes.
+
+It runs where each site is built, in the image: `build-docs.yml` after `docs-site.sh
+build` (`docs-site.sh check`), and for the artifact sites after `make html` in
+`lib/docs-build.sh` (BeschleunigerBallett, AccelerANTgine) and
+`02-toolchain/python/ci_build_docs.sh` (OrchestrANT, WebDavClient), with `--if-chrome`,
+which skips only where the image sets no `CHROME_EXECUTABLE` (riscv64).
+
+Why (CON121, 2026-10-20): every Sphinx site had dead or unreachable toggles and no gate
+saw it.
+
+- pydata-sphinx-theme 0.20, which sphinx-book-theme 1.4.0 pins, defaults
+  `navbar_persistent` to the search field and renders its own header, with a hidden
+  `.primary-toggle` and `.secondary-toggle`, before the book theme's article header. Both
+  themes' JS bind `document.querySelector('.primary-toggle')`, the hidden one, so the
+  visible toggles did nothing at any width on the five sites built from PyPI. DocumANTation's
+  `setup_theme()` sets `navbar_persistent: []`.
+- The theme's `custom.css` made `.bd-sidebar-primary` `position: sticky` at every width.
+  Below the drawer breakpoint the sidebar is `position: fixed` with a negative margin;
+  sticky kept it in the flow and moved the article's toggle to x=-242 at 850 px.
+
+Suite `linux/scripts/tests/test-docs-sidebars.sh` (fixture sites, one per failure); the
+`docs-site.sidebars-*` and `docs-site.*-clicks-the-toggles` mutations prove it.
 
 ## The site's .htaccess
 

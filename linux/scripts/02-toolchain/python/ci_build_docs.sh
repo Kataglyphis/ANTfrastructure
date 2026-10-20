@@ -90,6 +90,8 @@ done
 
 cd "$WORKSPACE_ROOT/docs"
 make html
+# Published from an artifact, so the sidebar toggles are clicked here, in the image that built the site.
+bash "$SCRIPT_DIR/../../docs-site.sh" check "$WORKSPACE_ROOT/docs/build/html" --if-chrome
 
 if [ "$WORKSPACE_ROOT" = "/workspace" ] && [ -d /workspace ]; then
   OWNER_UID=$(stat -c "%u" /workspace)

@@ -14,6 +14,8 @@ cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${SCRIPTS}
 cp "${SCRIPTS}/02-toolchain/python/ci_tests.sh" "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" \
   "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" "${TREE}/02-toolchain/python/"
 printf '#!/usr/bin/env bash\nprintf "make %%s\\n" "$*" >> "${REC}"\n' > "${_work}/bin/make"; chmod +x "${_work}/bin/make"
+# ci_build_docs.sh clicks the site's sidebar toggles through docs-site.sh; the stub records it (test-docs-sidebars.sh owns the check).
+printf '#!/usr/bin/env bash\necho "docs-site $*" >> "${REC}"\n' > "${TREE}/docs-site.sh"
 # The real python_uv.sh (is_experimental_python and its knob), with every uv and workspace effect recorded instead.
 cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
@@ -83,6 +85,7 @@ t_assert_eq "${IMAGE_PY}" "$(_legs)" "the docs venv syncs on the image interpret
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage/index.html" 2>&1)"
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage.xml" 2>&1)"
 t_assert_contains "$(cat "${REC}")" "make html" "and the docs are built"
+t_assert_contains "$(cat "${REC}")" "docs-site check ${WS}/docs/build/html --if-chrome" "and their sidebar toggles clicked"
 
 t_case "ci_build_docs.sh also publishes the default leg's reports under names without a version"
 echo "gil report" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}.html"

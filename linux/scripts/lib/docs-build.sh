@@ -82,7 +82,16 @@ docs_build_sphinx() {
   for target in "${targets[@]}"; do
     info "Running 'make ${target}' in ${docs_dir} (SPHINXOPTS=${sphinxopts})"
     (cd "${docs_dir}" && SPHINXOPTS="${sphinxopts}" make "${target}")
+    [[ "${target}" != html ]] || docs_build_check_sidebars
   done
+}
+
+# The site is published from an artifact, so its sidebar toggles are clicked here, in the image that built it.
+docs_build_check_sidebars() {
+  local html
+  html="$(_docs_build_docs_dir)/build/html"
+  [[ -f "${html}/index.html" ]] || err "no ${html}/index.html after make html: the docs Makefile's BUILDDIR must be build"
+  bash "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/docs-site.sh" check "${html}" --if-chrome
 }
 
 # Full pipeline: python env, asset staging, diagram generation, Sphinx.

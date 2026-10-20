@@ -15139,6 +15139,110 @@
   "why": "plan reads DOCS_GUIDES on the runner, but the build runs in the container, where a missing -e builds a site without its guides"
  },
  {
+  "id": "docs-site.sidebars-click-changes-state",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    if (toggled.state === before.state) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a toggle the theme JS never bound looks fine until it is clicked: five family sites had dead toggles at every width"
+ },
+ {
+  "id": "docs-site.sidebars-off-screen",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    if (!before.toggle.onScreen) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a sticky sidebar pushed the article's toggle to x=-242 at 850 px, where no reader can reach it"
+ },
+ {
+  "id": "docs-site.sidebars-covered",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    if (!before.toggle.topmost) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a toggle under another element takes no click, though it is drawn"
+ },
+ {
+  "id": "docs-site.sidebars-goes-back",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    results.push(after.state === before.state",
+  "replace": "    results.push(true",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a sidebar that opens but never closes again traps a phone reader under it"
+ },
+ {
+  "id": "docs-site.sidebars-hidden-without-toggle",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "`FAIL ${where}: hidden, and no toggle opens it`",
+  "replace": "`ok   ${where}: hidden`",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a hidden sidebar with no toggle hides the whole navigation"
+ },
+ {
+  "id": "docs-site.sidebars-the-visible-toggle",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "[...document.querySelectorAll(spec.toggle)].find((e) => e.getBoundingClientRect().width > 0)",
+  "replace": "document.querySelector(spec.toggle)",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "pydata 0.20's header put a hidden toggle first in the DOM; the reader clicks the visible one"
+ },
+ {
+  "id": "docs-site.sidebars-dialog-escape",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    else await escape();\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "below 992 px the book theme's toggle opens a modal dialog, which only Escape or its backdrop closes"
+ },
+ {
+  "id": "docs-site.sidebars-verdict",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  if (failed) fail(",
+  "replace": "  if (false) fail(",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a check that prints FAIL and exits 0 publishes the broken site anyway"
+ },
+ {
+  "id": "docs-site.check-runs-the-click-check",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  node \"${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js\" \"${site}\"",
+  "replace": "  true",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "the check subcommand is what build-docs.yml and both Sphinx drivers call"
+ },
+ {
+  "id": "docs-site.check-skips-only-without-chrome",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "      if [ -z \"${CHROME_EXECUTABLE:-}\" ]; then",
+  "replace": "      if true; then",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "--if-chrome skips riscv64, which has no Chrome for Testing build, never an image that has Chrome"
+ },
+ {
+  "id": "docs-site.workflow-clicks-the-toggles",
+  "target": ".github/workflows/build-docs.yml",
+  "find": " &&\n            bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh check ${{ steps.plan.outputs.site-dir }}\n",
+  "replace": "\n",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a site the workflow builds itself is checked in the image right after the build"
+ },
+ {
+  "id": "docs-site.docs-build-clicks-the-toggles",
+  "target": "linux/scripts/lib/docs-build.sh",
+  "find": "    [[ \"${target}\" != html ]] || docs_build_check_sidebars\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "BeschleunigerBallett and AccelerANTgine publish an artifact; this is the one place their toggles are clicked"
+ },
+ {
+  "id": "docs-site.ci-build-docs-clicks-the-toggles",
+  "target": "linux/scripts/02-toolchain/python/ci_build_docs.sh",
+  "find": "bash \"$SCRIPT_DIR/../../docs-site.sh\" check \"$WORKSPACE_ROOT/docs/build/html\" --if-chrome\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "OrchestrANT and WebDavClient publish an artifact; this is the one place their toggles are clicked"
+ },
+ {
   "id": "renovate.bootstrap-installs-from-the-lock",
   "target": "linux/scripts/renovate-local.sh",
   "find": "    \"$(dirname \"${NODE_BIN}\")/npm\" ci --no-fund",

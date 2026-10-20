@@ -11,6 +11,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The docs sites' sidebar toggles work, and a headless click proves it (CON121)
+
+- **Measured** on the nine published sites with the image's headless Chrome: the five Sphinx
+  sites built from PyPI (sphinx-book-theme 1.4.0, pydata-sphinx-theme 0.20.0) had dead toggles
+  at every width, and all six Sphinx sites had the primary toggle off-screen between 768 and
+  991 px. The three dartdoc sites were fine. Every asset was served with its right type, so
+  `nosniff` was not the cause.
+- **Fix** in DocumANTation ed5f840, the gitlink here: `setup_theme()` sets
+  `navbar_persistent: []`, so pydata 0.20 renders no header with a hidden toggle pair that the
+  theme JS binds first; `custom.css` no longer makes the primary sidebar sticky, which kept the
+  drawer in the flow and pushed the article's toggle to x=-242.
+- **The gate.** `linux/scripts/check-docs-sidebars.js` clicks every visible toggle at the
+  layout's widths; `docs-site.sh check` runs it after `build-docs.yml` builds a site, and
+  `lib/docs-build.sh` and `ci_build_docs.sh` after `make html` for the artifact sites.
+  Suite `test-docs-sidebars.sh`, 13 `docs-site.*` mutations. [docs-sites.md § The sidebar toggle
+  check](docs/docs-sites.md#the-sidebar-toggle-check).
+
 ## 2026-10-20 — The Windows images' history names no cache endpoint, bucket or LAN address (#177)
 
 - **The leak.** BuildKit writes an `ARG`'s value into its history entry and a RUN's build args

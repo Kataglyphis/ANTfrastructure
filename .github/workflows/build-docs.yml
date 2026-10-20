@@ -163,7 +163,9 @@ jobs:
         uses: Kataglyphis/ANTfrastructure/.github/actions/run-in-linux-container@develop
         with:
           extra-args: -e DOCS_COMMAND -e DOCS_BUILDER -e DOCS_GUIDES ${{ inputs.container-args }}
-          script: bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh build
+          script: >-
+            bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh build &&
+            bash ${{ steps.plan.outputs.hub }}/linux/scripts/docs-site.sh check ${{ steps.plan.outputs.site-dir }}
 
       - name: Take the built site
         if: inputs.artifact != ''
