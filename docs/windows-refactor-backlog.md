@@ -222,6 +222,10 @@ this repo's cp314 pin).
     built before this change fails the gate, so `-Stages final` on old bk- tags refuses to
     push them. Context:
     [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
+  - **Left, outside the image:** two failure-path messages inside the build containers still print
+    an endpoint or the bucket into the local step logs (`WindowsScripts.Shared.psm1`, copied into
+    the base above the Visual Studio layer, so changing it re-keys that install: ride the next base
+    re-key), and the driver's WebDAV reachability line on the host console names that endpoint.
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
   silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
   The genuine switches, all verified defined at v2.2.0:
