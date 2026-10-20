@@ -621,9 +621,12 @@ Small decisions that were folklore until 2026-09-15, one line each.
   [`02-toolchain/rust/version_util.sh`](../linux/scripts/02-toolchain/rust/version_util.sh)
   falls back to. A repo whose ecosystem already carries the version (a `pyproject.toml`, a
   `pubspec.yaml`, a workspace `Cargo.toml`) does not add a second one.
-- **CHANGELOG.** A repo that publishes a package (PyPI, pub.dev, crates.io) keeps `CHANGELOG.md`
-  **at the package root**, because that is what the registry renders. Applications rely on git
-  history; do not add an unmaintained file to look tidy.
+- **CHANGELOG** (owner, 2026-10-20). A repo with a release keeps `CHANGELOG.md`, because
+  [`release-publish.yml`](../.github/workflows/release-publish.yml) takes each release's notes from
+  its `## <version>` or `## [<version>]` section; one without a release (jotrockenmitlocken) needs
+  none. A package published to a registry (PyPI, pub.dev, crates.io) keeps it at the package root,
+  which the registry renders. ModelANT and AssetANT release per asset, with notes from its
+  `model.json` or `asset.json`, and keep none.
 - **Instruction file.** `AGENTS.md` is the **only** instruction file. Anything an agent-specific
   tool wants at its own path (`.github/copilot-instructions.md`, `CLAUDE.md`, a `.cursorrules`) is
   a two-line pointer to `AGENTS.md`, never a second copy: the copies drift, and the one nobody

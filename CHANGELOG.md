@@ -11,6 +11,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — A repository with a release keeps a CHANGELOG
+
+- **The naming rule changed** (owner, 2026-10-20). It said only a registry package keeps
+  `CHANGELOG.md` and applications rely on git history, while `release-publish.yml` takes every
+  release's notes from the CHANGELOG's `## <version>` or `## [<version>]` section. Now
+  [`adopting-in-a-new-project.md`](docs/adopting-in-a-new-project.md#the-rest-of-the-naming-rules-in-one-place)
+  says a repository with a release keeps one and one without (jotrockenmitlocken) needs none;
+  `repository-family.md`'s layout table agrees. All six family repositories with a `release.yml`
+  (OmniAccelerANT, OxidANT, AccelerANTgine, BeschleunigerBallett, OrchestrANT, WebDavClient) have a
+  section for their current version. ModelANT and AssetANT release per asset with notes from its
+  JSON and keep none.
+
 ## 2026-10-20 — Dependabot is off family-wide
 
 - **Dependency upgrades go only through Renovate as a local CLI** (owner, 2026-10-20). Every

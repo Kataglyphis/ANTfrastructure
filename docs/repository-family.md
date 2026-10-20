@@ -38,7 +38,7 @@ scenes live outside the code on purpose: [`data-repositories.md`](data-repositor
 | `docs/` | The guides. The docs site on each repository's homepage is built from them |
 | `AGENTS.md` | Rules for coding agents and new contributors, from the [`AGENTS.md` template](../shared/templates/README.md) |
 | `BACKLOG.md` | Known work that is not done yet, in the format the agentic loop reads |
-| `CHANGELOG.md` | What changed, newest first |
+| `CHANGELOG.md` | What changed, newest first; a repository with a release keeps one, since the release notes come from it ([naming rules](adopting-in-a-new-project.md#the-rest-of-the-naming-rules-in-one-place)) |
 | `LICENSE` | MIT almost everywhere, see [Licence](#licence) |
 
 A data repository (ModelANT, AssetANT) and the profile page carry fewer of these.
