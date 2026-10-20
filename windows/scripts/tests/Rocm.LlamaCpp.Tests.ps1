@@ -805,7 +805,7 @@ Describe 'Build-Buildkit.ps1: the llama pins reach the llama stage only' {
             Assert-Match "$k\s*= Get-Ver '$k'" $block "$k in the llama block"
             Assert-Equal ([regex]::Matches($block, "\b$k\b")).Count ([regex]::Matches($src, "\b$k\b")).Count "every $k mention sits in that block"
         }
-        Assert-Match '\}\s*\+ \$sccache' $block 'ggml-hip compiles there, so the sccache endpoint goes along'
+        Assert-False ($block -match '\$sccache') 'ggml-hip gets the cache as secret mounts, never as build args a history records'
         Assert-Match "(?s)if \(\`$Stages -contains 'llama'\) \{\s+#[^\n]*\n\s+\`$llamaArgs = @\{" $src 'only inside the llama stage'
     }
 }

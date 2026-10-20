@@ -70,7 +70,6 @@ t_assert_ok "${PY}" "${GATE}" --env-file "${_work}/versions.env" --min-vars 100
 t_case "an ENV continued with the Windows escape character still carries the endpoint"
 _f="$(_df win-env '# escape=`
 FROM scratch
-ARG SCCACHE_WEBDAV_ENDPOINT
 ENV SCCACHE_DIR="C:\sccache\v2" `
     SCCACHE_WEBDAV_ENDPOINT="${SCCACHE_WEBDAV_ENDPOINT}"')"
 t_assert_eq "1" "$(t_rc _lint "${_f}")"
@@ -78,12 +77,11 @@ t_assert_contains "$(t_out _lint "${_f}")" "ENV SCCACHE_WEBDAV_ENDPOINT -- build
 
 t_case "an ENV that expands the endpoint ARG under another name is still a leak"
 _f="$(_df alias 'FROM scratch
-ARG SCCACHE_WEBDAV_ENDPOINT
 ENV MY_CACHE=${SCCACHE_WEBDAV_ENDPOINT}')"
 t_assert_eq "1" "$(t_rc _lint "${_f}")"
 t_assert_contains "$(t_out _lint "${_f}")" 'expands the build-host ARG ${SCCACHE_WEBDAV_ENDPOINT}'
 
-t_case "a LAN literal in an ENV or an ARG default fails; the ARG-only endpoint passes"
+t_case "a LAN literal in an ENV or an ARG default fails; a version ARG and a local default pass"
 _f="$(_df lan-env 'FROM scratch
 ENV PIP_INDEX_URL=http://10.0.0.5:3141/root/pypi')"
 t_assert_eq "1" "$(t_rc _lint "${_f}")"
@@ -91,35 +89,50 @@ _f="$(_df lan-arg 'FROM scratch
 ARG MIRROR=http://192.168.1.2:8080')"
 t_assert_eq "1" "$(t_rc _lint "${_f}")"
 _f="$(_df arg-only 'FROM scratch
-ARG SCCACHE_WEBDAV_ENDPOINT
 ARG CUDA_WINDOWS_ARM64_CURAND_VERSION=10.4.4.72
 ENV SCCACHE_DIR=/var/cache/sccache')"
+t_assert_eq "0" "$(t_rc _lint "${_f}")"
+
+t_case "an ARG of an endpoint, bucket, region or key fails, value or not: BuildKit writes it into the history"
+for _arg in SCCACHE_WEBDAV_ENDPOINT SCCACHE_ENDPOINT SCCACHE_BUCKET SCCACHE_REGION AWS_ACCESS_KEY_ID; do
+  _f="$(_df arg-host "FROM scratch
+ARG ${_arg}")"
+  t_assert_eq "1" "$(t_rc _lint "${_f}")" "ARG ${_arg}"
+  t_assert_contains "$(t_out _lint "${_f}")" "ARG ${_arg} -- BuildKit writes an ARG's value into the image history"
+done
+
+t_case "the layout switches may stay ARGs: they name no host"
+_f="$(_df arg-layout 'FROM scratch
+ARG SCCACHE_FORCE_LOCAL
+ARG SCCACHE_MULTILEVEL_CHAIN="disk,webdav"')"
 t_assert_eq "0" "$(t_rc _lint "${_f}")"
 
 # A compile RUN mounts both caches; either one alone is a probe that starts no server.
 _cache='--mount=type=cache,target=C:\sccache,id=a,sharing=shared'
 _logs='--mount=type=cache,target=C:\sccache-logs,id=b,sharing=shared'
+_secret='--mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT'
 _compile_run="RUN ${_cache} \`
     ${_logs} \`
     echo compile"
-t_case "a compiling RUN whose stage never declares the endpoint ARG fails"
-_f="$(_df no-arg "# escape=\`
+t_case "a compiling RUN that does not mount the endpoint secret fails"
+_f="$(_df no-secret "# escape=\`
 FROM scratch
 ${_compile_run}")"
 t_assert_eq "1" "$(t_rc _lint "${_f}")"
-t_assert_contains "$(t_out _lint "${_f}")" "declares no ARG SCCACHE_WEBDAV_ENDPOINT"
+t_assert_contains "$(t_out _lint "${_f}")" "does not mount the secret sccache_webdav_endpoint as SCCACHE_WEBDAV_ENDPOINT"
 
-t_case "the ARG must be in the RUN's OWN stage: scope resets at FROM"
-_f="$(_df prior-stage "# escape=\`
-FROM scratch AS one
-ARG SCCACHE_WEBDAV_ENDPOINT
-FROM scratch AS two
+t_case "the secret must be on the compiling RUN itself: another RUN's mount does not count"
+_f="$(_df other-run "# escape=\`
+FROM scratch
+RUN ${_secret} echo fetch
 ${_compile_run}")"
 t_assert_eq "1" "$(t_rc _lint "${_f}")"
-_f="$(_df own-stage "# escape=\`
-FROM scratch AS two
-ARG SCCACHE_WEBDAV_ENDPOINT
-${_compile_run}")"
+_f="$(_df own-run "# escape=\`
+FROM scratch
+RUN ${_cache} \`
+    ${_secret} \`
+    ${_logs} \`
+    echo compile")"
 t_assert_eq "0" "$(t_rc _lint "${_f}")"
 
 t_case "a RUN with only one of the two mounts is a probe, not a compile"

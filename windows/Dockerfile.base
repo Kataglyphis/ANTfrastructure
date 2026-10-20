@@ -55,12 +55,12 @@ ARG SCOOP_INSTALLER_SHA256=94f983b190438311e006b957db7c8422709e0ba62a6c2ac04e278
 ARG WIX_VERSION=7.0.0
 ARG WIX_UI_EXT_VERSION=7.0.0
 ARG FLUTTER_VERSION=3.47.7
-# sdk.lunarg.com stalls from inside containers, so the driver preseeds the Vulkan SDK exe on the LAN webdav; empty = vendor download.
-ARG VULKAN_PRESEED_ENDPOINT=""
 # Empty = warn-only, since the base is shared with amd64; see docs/windows-cross-builds.md § Vulkan needs an optional component.
 ARG WINDOWS_ARM64_STRICT=""
 COPY windows\scripts\host\Install-ScoopTools.ps1 C:\temp\scripts\
-RUN & 'C:\temp\scripts\Install-ScoopTools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
+# sdk.lunarg.com stalls inside containers, so the installers come from the LAN WebDAV, a secret the history never records; none = vendor download.
+RUN --mount=type=secret,id=sccache_webdav_endpoint,env=VULKAN_PRESEED_ENDPOINT `
+    & 'C:\temp\scripts\Install-ScoopTools.ps1' -TempDir $env:TEMP_DIR -VulkanVersion $env:VULKAN_VERSION -CMakeVersion $env:CMAKE_VERSION `
     -LlvmVersion $env:LLVM_WINDOWS_VERSION -NinjaVersion $env:NINJA_WINDOWS_VERSION -NasmVersion $env:NASM_WINDOWS_VERSION `
     -WindowsArm64Strict $env:WINDOWS_ARM64_STRICT
 

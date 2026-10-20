@@ -15,7 +15,9 @@ Describe 'driver preflight contract (Build-Buildkit.ps1)' {
         'Assert-StageDiskHeadroom',
         # containerd/buildkitd infrastructure — BK lane only, and now the only lane.
         'Assert-ShimPatch',
-        'Assert-BuildkitdStepLogEnv'
+        'Assert-BuildkitdStepLogEnv',
+        # The history gate on every exported image, in Invoke-BkHistoryGate.
+        'Assert-ImageConfigPublishable'
     )
 
     It 'wires every required preflight' {

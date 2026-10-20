@@ -354,16 +354,21 @@ function Assert-SccacheEndpoint {
     }
 }
 
+# The RUN-side variables the driver hands over as secrets; each one's id is its name in lower case.
+$script:BkSccacheSecretNames = @('SCCACHE_WEBDAV_ENDPOINT', 'SCCACHE_MULTILEVEL_CHAIN', 'SCCACHE_ENDPOINT', 'SCCACHE_BUCKET',
+    'SCCACHE_REGION', 'SCCACHE_S3_USE_SSL')
+
 function Get-BkSccacheConfig {
     <#
     .SYNOPSIS
-        sccache's build args and buildctl secrets: level 0 the host's WebDAV, level 1 an optional S3 bucket shared by every host.
+        sccache's buildctl secrets: level 0 the host's WebDAV, level 1 an optional S3 bucket shared by every host.
     .DESCRIPTION
-        The S3 level joins only with its endpoint, bucket and both key halves in the process environment. The key reaches
-        buildctl as env-sourced secrets, never as an argument or a build arg, so no layer or image history carries it.
-        docs/windows-build-resources.md § Two cache levels
+        Every setting, endpoints and key alike, reaches buildctl as an env-sourced secret and the RUN as a secret mount, so
+        no argument, build record or image history carries it; a secret is not part of a cache key either. The S3 level
+        joins only with its endpoint, bucket and both key halves. docs/windows-build-resources.md § Two cache levels
     .OUTPUTS
-        @{ BuildArgs; Secrets; Levels; Note } - Note says why a configured S3 level was left out.
+        @{ Secrets; SecretEnv; Levels; Note } - SecretEnv is what the driver sets in its own process for buildctl, $null
+        for a setting this run leaves out; Note says why a configured S3 level was left out.
     #>
     param(
         [string]$WebdavEndpoint = '',
@@ -373,16 +378,38 @@ function Get-BkSccacheConfig {
         [string]$KeyIdVariable = 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID',
         [string]$SecretVariable = 'KATAGLYPHIS_SCCACHE_S3_SECRET_ACCESS_KEY'
     )
-    $config = @{ BuildArgs = @{ SCCACHE_WEBDAV_ENDPOINT = $WebdavEndpoint }; Secrets = @(); Levels = @(); Note = '' }
-    if ($WebdavEndpoint) { $config.Levels += "webdav $WebdavEndpoint" }
+    $config = @{ Secrets = @(); SecretEnv = [ordered]@{}; Levels = @(); Note = '' }
+    $settings = @{}
+    if ($WebdavEndpoint) {
+        $settings['SCCACHE_WEBDAV_ENDPOINT'] = $WebdavEndpoint
+        $config.Levels += 'webdav'
+    }
     $s3 = Get-SccacheS3Level -WebdavEndpoint $WebdavEndpoint -S3Endpoint $S3Endpoint -S3Bucket $S3Bucket -S3Region $S3Region `
         -KeyIdVariable $KeyIdVariable -SecretVariable $SecretVariable
     $config.Note = $s3.Note
+    foreach ($name in $s3.Settings.Keys) { $settings[$name] = $s3.Settings[$name] }
+    foreach ($name in $script:BkSccacheSecretNames) {
+        $variable = "KATAGLYPHIS_BK_$name"
+        $config.SecretEnv[$variable] = $settings[$name]
+        if ($settings[$name]) { $config.Secrets += @('--secret', "id=$($name.ToLowerInvariant()),env=$variable") }
+    }
     if ($s3.Settings.Count -eq 0) { return $config }
-    foreach ($name in $s3.Settings.Keys) { $config.BuildArgs[$name] = $s3.Settings[$name] }
-    $config.Secrets = @('--secret', "id=sccache_s3_key_id,env=$KeyIdVariable", '--secret', "id=sccache_s3_secret,env=$SecretVariable")
-    $config.Levels += "s3 $S3Endpoint bucket $S3Bucket"
+    $config.Secrets += @('--secret', "id=sccache_s3_key_id,env=$KeyIdVariable", '--secret', "id=sccache_s3_secret,env=$SecretVariable")
+    $config.Levels += 's3'
     return $config
+}
+
+function Get-BkSccacheSecretMount {
+    # The --mount flags a RUN needs for every secret Get-BkSccacheConfig can pass, so tests read one list.
+    @($script:BkSccacheSecretNames | ForEach-Object { "--mount=type=secret,id=$($_.ToLowerInvariant()),env=$_" }) +
+        @('--mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID', '--mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY')
+}
+
+function Get-BkHistoryGateValue {
+    # What the history gate refuses: the endpoints' hosts, the bucket and the region, whether or not this run uses them.
+    param([string[]]$Url = @(), [string]$Bucket = '', [string]$Region = '')
+    $hosts = @(foreach ($u in $Url) { try { ([Uri]$u).Host } catch { Write-Verbose "no host in '$u'" } })
+    @{ EndpointHost = @($hosts | Where-Object { $_ }); Bucket = $Bucket; Region = $Region }
 }
 
 function Assert-DiskHeadroom {
@@ -800,6 +827,7 @@ function Publish-PreseedFile {
 }
 
 Export-ModuleMember -Function Initialize-BuildDriverContext, Write-DriverRecord, Get-BkSccacheConfig,
+    Get-BkSccacheSecretMount, Get-BkHistoryGateValue,
     Test-TransientDockerFailure, Invoke-TransientCooldown,
     Get-VersionTableValue, Get-MediaBranchVersionArg, Get-MediaMergeVersionArg,
     Get-WindowsVersionsEnvLine, Get-WindowsVersionsEnvCorpus, Write-WindowsVersionsEnv,

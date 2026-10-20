@@ -13,6 +13,8 @@
     The image the question is about, not whatever happens to be newest.
 .PARAMETER BuildArg
     Extra KEY=VALUE build-args; PROBE_NONCE is always added.
+.PARAMETER Secret
+    buildctl --secret specs (id=...,env=...), for values the build record must not carry.
 .PARAMETER VerdictPattern
     Regex for the verdict lines printed after the solve.
 .PARAMETER LogName
@@ -24,6 +26,7 @@ param(
     [string]$Dockerfile = '',
     [Parameter(Mandatory)][string]$BaseImage,
     [string[]]$BuildArg = @(),
+    [string[]]$Secret = @(),
     [string]$VerdictPattern = '\[ OK \]|\[FAIL\]',
     [string]$LogName = '',
     [string]$BuildCtl = ''
@@ -73,6 +76,10 @@ $bkArgs = @(
 foreach ($extra in $BuildArg) {
     if ($extra -notmatch '^[^=]+=') { throw "-BuildArg '$extra' is not in KEY=VALUE form" }
     $bkArgs += @('--opt', "build-arg:$extra")
+}
+foreach ($s in $Secret) {
+    if ($s -notmatch '^id=[a-z0-9_]+,env=[A-Za-z_][A-Za-z0-9_]*$') { throw "-Secret '$s' is not in id=<id>,env=<VARIABLE> form" }
+    $bkArgs += @('--secret', $s)
 }
 # No --output: a probe's product is its stdout, not an image.
 

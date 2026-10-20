@@ -97,6 +97,8 @@ Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsScripts.Share
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -Force
 # Shared transient-failure engine; the BK lane passes its own pattern below.
 Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsBuildDriver.Common.psm1') -Force
+# The history gate's matcher, the one the publish gate's RUN mounts.
+Import-Module (Join-Path $repoRoot 'windows\scripts\modules\WindowsImageEnv.Common.psm1') -Force
 # What the Dockerfiles bake and mount: without the Linux-only keys, whose edits would re-key the whole chain (CON87).
 $null = Write-WindowsVersionsEnv -RepoRoot $repoRoot
 
@@ -423,9 +425,16 @@ function Invoke-BkStage {
         }
         $bkArgs += @('--opt', "build-arg:$extra")
     }
-    # Env-sourced, so the key is in no argument; a stage without the secret mounts ignores them.
+    # Env-sourced, so no value is in an argument; a stage without the secret mounts ignores them.
     if ($script:BkSecretArgs) { $bkArgs += $script:BkSecretArgs }
     $stageLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-" + ($Label -replace '[:\\/]', '-') + ".log")
+    # The exported image's config digest, for the history gate; -OutputSpec re-exports a solve already graded.
+    $metaFile = ''
+    if (-not $NoOutput -and -not $OutputSpec) {
+        $metaFile = [IO.Path]::ChangeExtension($stageLog, '.metadata.json')
+        Remove-Item -LiteralPath $metaFile -Force -ErrorAction SilentlyContinue
+        $bkArgs += @('--metadata-file', $metaFile)
+    }
     Set-BuildPhase $Label
     $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
@@ -453,6 +462,7 @@ function Invoke-BkStage {
         Write-DriverRecord "[bk:$Label] FAILED (exit $LASTEXITCODE) after $([math]::Round($stageClock.Elapsed.TotalSeconds, 1))s: $stageLog"
         throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — full log: $stageLog"
     }
+    if ($metaFile) { Invoke-BkHistoryGate -MetadataFile $metaFile -Image $Tag -Label $Label }
     $stageClock.Stop()
     $script:StageTimings[$Label] = [math]::Round($stageClock.Elapsed.TotalSeconds, 1)
     Write-DriverRecord "[bk:$Label] OK in $($script:StageTimings[$Label])s"
@@ -477,6 +487,28 @@ function Invoke-BkPublishGate {
     Write-Host "[bk:$Label] $Image carries no build-host setting" -ForegroundColor Green
 }
 
+# Fails when an exported image's history or config names a cache endpoint, bucket or LAN address; see docs/windows-build-resources.md § What the published image carries.
+function Invoke-BkHistoryGate {
+    param([Parameter(Mandatory)][string]$MetadataFile, [Parameter(Mandatory)][string]$Image, [string]$Label = 'history-gate')
+    try {
+        $digest = ''
+        if (Test-Path -LiteralPath $MetadataFile) {
+            $digest = "$((Get-Content -Raw -LiteralPath $MetadataFile | ConvertFrom-Json -AsHashtable)['containerimage.config.digest'])"
+        }
+        if ($digest -notmatch '^sha256:[0-9a-f]{64}$') {
+            throw "[bk:$Label] history gate: buildctl wrote no config digest for $Image - refusing a pass over a history it never read"
+        }
+        # buildkitd's content store, through the same pipe as the solve; containerd's own pipe is admin-only.
+        $raw = @(& $BuildCtl debug get $digest)
+        if ($LASTEXITCODE -ne 0 -or $raw.Count -eq 0) { throw "[bk:$Label] history gate: buildctl debug get $digest failed (exit $LASTEXITCODE)" }
+        $config = ($raw -join "`n") | ConvertFrom-Json -AsHashtable
+        $gate = $script:BkHistoryGateValue
+        Assert-ImageConfigPublishable -Config $config -Label $Image -EndpointHost $gate.EndpointHost -Bucket $gate.Bucket -Region $gate.Region
+    } finally {
+        Remove-Item -LiteralPath $MetadataFile -Force -ErrorAction SilentlyContinue
+    }
+}
+
 if (-not $SccacheS3Endpoint) { $SccacheS3Endpoint = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_ENDPOINT' }
 if (-not $SccacheS3Bucket) { $SccacheS3Bucket = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_BUCKET' }
 if (-not $SccacheS3Region) { $SccacheS3Region = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_REGION' }
@@ -489,13 +521,16 @@ foreach ($keyVariable in 'KATAGLYPHIS_SCCACHE_S3_ACCESS_KEY_ID', 'KATAGLYPHIS_SC
 $sccacheConfig = Get-BkSccacheConfig -WebdavEndpoint $SccacheEndpoint -S3Endpoint $SccacheS3Endpoint -S3Bucket $SccacheS3Bucket -S3Region $SccacheS3Region
 if ($sccacheConfig.Note) { Write-Warning "sccache: $($sccacheConfig.Note)" }
 # Level 1 is an accelerator, so an unreachable bucket costs its hits, never the build.
-if ($sccacheConfig.Secrets.Count -gt 0 -and -not (Test-UrlPortOpen $SccacheS3Endpoint)) {
-    Write-Warning "sccache: the S3 level $SccacheS3Endpoint does not answer from the host (TCP); building on the WebDAV level alone"
+if ($sccacheConfig.Levels -contains 's3' -and -not (Test-UrlPortOpen $SccacheS3Endpoint)) {
+    Write-Warning 'sccache: the S3 level does not answer from the host (TCP); building on the WebDAV level alone'
     $sccacheConfig = Get-BkSccacheConfig -WebdavEndpoint $SccacheEndpoint
 }
 Write-Host ("sccache levels: " + $(if ($sccacheConfig.Levels.Count -gt 0) { $sccacheConfig.Levels -join ' -> ' } else { 'none' })) -ForegroundColor Cyan
-$sccache = $sccacheConfig.BuildArgs
+# buildctl reads each secret's value from this process; $null removes one an earlier run in this session set.
+foreach ($name in $sccacheConfig.SecretEnv.Keys) { [Environment]::SetEnvironmentVariable($name, $sccacheConfig.SecretEnv[$name]) }
 $script:BkSecretArgs = $sccacheConfig.Secrets
+# Refused in every exported image's history, also when this run leaves the S3 level out.
+$script:BkHistoryGateValue = Get-BkHistoryGateValue -Url $SccacheEndpoint, $SccacheS3Endpoint -Bucket $SccacheS3Bucket -Region $SccacheS3Region
 
 # Preseed the Vulkan SDK on the webdav: sdk.lunarg.com stalls inside containers; fail-open to their direct download.
 if ($SccacheEndpoint) {
@@ -581,8 +616,6 @@ if ($Stages -contains 'base') {
         WINDOWS_LTSC          = Get-Ver 'WINDOWS_LTSC'
         WINDOWS_BASE_DIGEST   = Get-Ver 'WINDOWS_BASE_DIGEST'
         VULKAN_VERSION        = Get-Ver 'VULKAN_VERSION'
-        # LAN source for the 275 MB SDK exe (see the preseed block above).
-        VULKAN_PRESEED_ENDPOINT = $SccacheEndpoint
         CMAKE_VERSION         = Get-Ver 'CMAKE_VERSION'
         # Compiled-output pins.
         LLVM_WINDOWS_VERSION  = Get-Ver 'LLVM_WINDOWS_VERSION'
@@ -664,7 +697,7 @@ if ($Stages -contains 'toolchain') {
     $toolchainArgs = @{
         BASE_IMAGE     = Get-BkTag 'windows-sdk'
         PYTHON_VERSION = Get-Ver 'PYTHON_VERSION'
-    } + $sccache
+    }
     $toolchainTarget = if ($StockLlvm) { 'built' } else { 'patched-llvm' }
     if ($toolchainTarget -eq 'patched-llvm') {
         $toolchainArgs['BUILD_PATCHED_LLVM'] = '1'
@@ -691,7 +724,7 @@ if ($Stages -contains 'media') {
     foreach ($branch in $loopBranches) {
         $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
-        } + $branchArgs[$branch] + $sccache + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes) -VersionTable $versions)
+        } + $branchArgs[$branch] + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes) -VersionTable $versions)
         if ($branch -eq 'media-core') {
             # Direct solves rely on the patched runhcs shim (see docs/windows-build-lanes.md § Traps); one solve per library for caching.
             Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
@@ -797,7 +830,7 @@ if ($Stages -contains 'media') {
             TVM_IMAGE       = $tvmImage
         } + $archArgs
         # Mounting three branch trees is the only stage measured burning all 3 attempts.
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs ($mergeArgs + $sccache) -MaxAttempts 5
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -Target 'built' -Tag (Get-BkTag 'windows-media') -BuildArgs $mergeArgs -MaxAttempts 5
     } else {
         # Fail closed: later stages would silently build on the previous run's media image.
         $downstream = @('migraphx', 'llama', 'torch', 'final') | Where-Object { $Stages -contains $_ }
@@ -818,11 +851,11 @@ if ($Stages -contains 'migraphx') {
     # Its pins (MIGRAPHX_*, ORT_AMDGPU_EP_*, the gfx family) come from the shared version map.
     $migraphxArgs = @{
         BASE_IMAGE = Get-BkTag 'windows-media'
-    } + (Get-MediaBranchVersionArg -Branch 'rocm-migraphx' -VersionTable $versions) + $sccache
+    } + (Get-MediaBranchVersionArg -Branch 'rocm-migraphx' -VersionTable $versions)
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-migraphx' -Target 'built' -Tag $migraphxTag -BuildArgs $migraphxArgs
 }
 if ($Stages -contains 'llama') {
-    # -NoRocmSpikes skips migraphx, so llama then builds straight on the merged media; ggml-hip compiles here, hence $sccache.
+    # -NoRocmSpikes skips migraphx, so llama then builds straight on the merged media.
     $llamaArgs = @{
         BASE_IMAGE           = $(if ($NoRocmSpikes) { Get-BkTag 'windows-media' } else { $migraphxTag })
         ROCM_WINDOWS_GFX_FAMILY = Get-Ver 'ROCM_WINDOWS_GFX_FAMILY'
@@ -832,7 +865,7 @@ if ($Stages -contains 'llama') {
         LLAMA_CPP_CPU_SHA256 = Get-Ver 'LLAMA_CPP_CPU_SHA256'
         LLAMA_CPP_HIP_LICENSE_SHA256 = Get-Ver 'LLAMA_CPP_HIP_LICENSE_SHA256'
         LLAMA_CPP_VULKAN_SHA256 = Get-Ver 'LLAMA_CPP_VULKAN_SHA256'
-    } + $sccache
+    }
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-llama' -Target 'built' -Tag $llamaTag -BuildArgs $llamaArgs
 }
 # Get-BkTag carries the lane: bk-windows-torch, or bk-windows-torch-rocm on the rocm lane.
@@ -850,9 +883,7 @@ if ($Stages -contains 'torch') {
         APP_REF    = Resolve-TorchAppRef -VersionTable $versions -LatestApp:$LatestApp
         # Without it a -Gpu chain ships CPU torch; rocm keeps the cpu extra and TORCH_ROCM swaps torch later.
         PYTORCH_EXTRA = $(if ($isNvidia) { 'pytorch-cu130' } else { 'pytorch-cpu' })
-    } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions) +
-        # rocm compiles torch from source in this Dockerfile (torch-rocm-wheels); cpu/nvidia solve args stay as they were.
-        $(if ($Variant -eq 'rocm') { $sccache } else { @{} }))
+    } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions))
 }
 
 if ($Stages -contains 'final') {

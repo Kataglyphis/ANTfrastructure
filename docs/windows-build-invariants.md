@@ -367,14 +367,16 @@ ENV (2026-09-23).** `:winamd64` shipped `SCCACHE_WEBDAV_ENDPOINT=http://<webdav-
 from four ENV blocks, and on every consumer runner sccache 0.18 died on the unreachable
 endpoint, so CMake reported clang-cl broken. Do not regress any of these:
 
-- **The three build-host sccache names** (`SCCACHE_WEBDAV_ENDPOINT`,
-  `SCCACHE_MULTILEVEL_CHAIN`, `SCCACHE_FORCE_LOCAL`) are ARGs with no default, declared
-  in EVERY compiling stage above its RUN. An ARG does not cross a FROM, and the
-  media-core chain crosses solves (`FROM ${MEDIA_CORE_*_IMAGE}`). Never "restore" one
-  as an empty ENV: that is the shape that leaked.
-- **A new compiling stage** (a RUN mounting both `C:\sccache` and `C:\sccache-logs`)
-  declares `ARG SCCACHE_WEBDAV_ENDPOINT` in its own stage, or the static lint fails it —
-  without the ARG it compiles uncached and says nothing.
+- **The cache's endpoints, bucket, region, chain and key are env secret mounts, never an
+  ARG or ENV (2026-10-20).** BuildKit writes an ARG's value into the image history, so an
+  ARG is a leak too; the static lint refuses one, and the history gate refuses an image
+  whose history names one. Every compiling RUN mounts all eight (`Get-BkSccacheSecretMount`),
+  the base's preseed RUN the WebDAV one as `VULKAN_PRESEED_ENDPOINT`. Never "restore" one
+  as an empty ENV: that is the shape that leaked. `SCCACHE_FORCE_LOCAL`, which names no
+  host, stays an ARG with no default.
+- **A new compiling RUN** (one mounting both `C:\sccache` and `C:\sccache-logs`) mounts
+  `id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT`, or the static lint fails it —
+  without it the RUN compiles uncached and says nothing.
 - **The publish gate stays armed at all three points**: on every `BASE_IMAGE` a stage
   inherits that the run did not build (in `Invoke-BkStage`, before the solve), on the
   fresh toolchain, and on the final image after the smoke gate and before any export or
@@ -383,10 +385,11 @@ endpoint, so CMake reported clang-cl broken. Do not regress any of these:
   a fix, never resume one. Never give the gate an ARG after FROM or route it through the
   entrypoint; either changes the environment it grades.
 - **The same holds for any future build-host knob** — a LAN mirror, a proxy, a cache
-  server: ARG, never ENV. The gates refuse a LAN address in any ENV value.
+  server: a secret mount, never an ARG or ENV. The gates refuse a LAN address in any ENV
+  value and in the image history.
 
-The table of which sccache variables ship and why, the three gates and what they cannot
-see (hostnames, image history — backlog #177):
+The table of which sccache variables ship and why, the four gates and what they cannot
+see (other hostnames, files):
 [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 
 ---

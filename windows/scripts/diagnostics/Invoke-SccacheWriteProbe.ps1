@@ -28,12 +28,18 @@ if (-not $SccacheEndpoint) {
 }
 
 $extraArgs = @("SCCACHE_LOG=$SccacheLog")
-if ($SccacheEndpoint) { $extraArgs += "SCCACHE_WEBDAV_ENDPOINT=$SccacheEndpoint" }
+# A secret, as in the real stages: buildctl reads it from this process, so no build record carries the endpoint.
+$secrets = @()
+if ($SccacheEndpoint) {
+    $env:KATAGLYPHIS_BK_SCCACHE_WEBDAV_ENDPOINT = $SccacheEndpoint
+    $secrets += 'id=sccache_webdav_endpoint,env=KATAGLYPHIS_BK_SCCACHE_WEBDAV_ENDPOINT'
+}
 
 & (Join-Path $PSScriptRoot 'Invoke-DiagnosticProbe.ps1') `
     -Dockerfile 'Dockerfile.sccache-write-probe' `
     -BaseImage $BaseImage `
     -BuildArg $extraArgs `
+    -Secret $secrets `
     -VerdictPattern '\[ OK \]|\[FAIL\]|write errors|write failures|Cache misses|os error' `
     -LogName 'sccache-write-probe.log' `
     -BuildCtl $BuildCtl

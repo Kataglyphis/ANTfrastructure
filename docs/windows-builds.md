@@ -2114,8 +2114,8 @@ out with a `patch-assert-exempt` marker + reason.
 *`windows/scripts/`, `windows/`*
 
 Reproduces the sccache **cache-write** environment in ~2 min instead of a 90-min media build
-(backlog #99): same cache-mount ids, same sccache settings (the endpoint and chain as ARGs since
-2026-09-23, like the real stages;
+(backlog #99): same cache-mount ids, same sccache settings (the endpoint as a secret mount since
+2026-10-20, like the real stages, passed through `Invoke-DiagnosticProbe.ps1 -Secret`; the chain an ARG;
 [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries)),
 then a configuration matrix (`disk-only`, `disk-mounted-subdir`, `disk-plaindir`,
 `multilevel-mounted`, `multilevel-plaindir`, `webdav-only`), raw filesystem tests, a process-spawn

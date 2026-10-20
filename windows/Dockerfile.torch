@@ -29,14 +29,8 @@ ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
 # rocm only, on BASE_IMAGE not app, so an APP_REF move never re-runs it; see docs/windows-rocm.md § PyTorch on the rocm lane (torch stage).
 FROM ${BASE_IMAGE} AS torch-rocm-wheels
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
-# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
-ARG SCCACHE_WEBDAV_ENDPOINT
+# The cache endpoints are the RUNs' secret mounts, which no history records; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_LOG="warn"
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
 ARG SCCACHE_DIR="C:\sccache\v2"
 ARG SCCACHE_FORCE_LOCAL
 ENV SCCACHE_DIR="${SCCACHE_DIR}" `
@@ -56,6 +50,9 @@ ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_URL=https://stable.repo.amd.com/rocm/core/w
 ARG TORCH_ROCM_WINDOWS_SDK_LIBRARIES_SHA256=0c34bafbb4aa626cc710d8b130bb314f591194c3d79eeb5892b755ea0be06159
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -73,6 +70,9 @@ ARG TORCHVISION_VERSION=v0.29.1
 ARG TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT=1f1a920d685d46dfbe187934b785b7ecb7a182f2
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-TorchRocmFromSource.ps1,target=C:\bkmnt\Build-TorchRocmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-TorchvisionRocmFromSource.ps1,target=C:\bkmnt\Build-TorchvisionRocmFromSource.ps1 `

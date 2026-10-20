@@ -8,6 +8,13 @@ $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 Import-Module (Join-Path $modDir 'WindowsImageEnv.Common.psm1') -Force -DisableNameChecking
 
 $script:imageEnvRoot = Get-RepoRoot
+$script:bkDriver = Get-Content -Raw (Join-Path $script:imageEnvRoot 'windows\Build-Buildkit.ps1')
+# Three solves: one unbuilt parent graded first, one built parent, one parent already graded.
+$script:gateChain = {
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Tag 'img:toolchain' -BuildArgs @{ BASE_IMAGE = 'img:sdk' }
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Tag 'img:media' -BuildArgs @{ BASE_IMAGE = 'img:toolchain' }
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-migraphx' -Tag 'img:mgx' -BuildArgs @{ BASE_IMAGE = 'img:sdk' }
+}
 $script:imageEnvModule = Join-Path $modDir 'WindowsImageEnv.Common.psm1'
 $script:imageEnvCases = @(Get-Content -Raw (Join-Path $script:imageEnvRoot 'linux\scripts\tests\image-env-cases.json') | ConvertFrom-Json)
 
@@ -218,7 +225,7 @@ function Get-PublishGateWiringProblem {
 
 Describe 'Build-Buildkit.ps1: where the publish gate runs' {
 
-    $drv = Get-Content -Raw (Join-Path $script:imageEnvRoot 'windows\Build-Buildkit.ps1')
+    $drv = $script:bkDriver
     $finalCall = 'Invoke-BkPublishGate -Image (Get-BkTag $script:FinalTagName)'
 
     It 'one solve, in Invoke-BkPublishGate: final tag before both exports and never skipped, the toolchain, an unbuilt parent' {
@@ -240,53 +247,62 @@ Describe 'Build-Buildkit.ps1: where the publish gate runs' {
     }
 }
 
-# A fake buildctl records each solve as '<Dockerfile>|<BASE_IMAGE>' and fails $FailDockerfile.
+# A fake buildctl records each solve as '<Dockerfile>|<BASE_IMAGE>', fails $FailDockerfile, and serves $Config to `debug get`.
 $script:gateScenarioPrelude = @'
-param($Dir, $FailDockerfile)
+param($Dir, $FailDockerfile, $ImageEnvModule, $Config, $NoMetadata)
+Import-Module $ImageEnvModule -Force -DisableNameChecking
 $script:Solves = [System.Collections.Generic.List[string]]::new()
+$script:ConfigReads = 0
 $script:LogDir = $Dir; $script:RunId = 'test'; $script:StageTimings = @{}
+$script:BkHistoryGateValue = @{ EndpointHost = @('10.0.0.26'); Bucket = 'kata-bucket'; Region = 'kata-region' }
 $repoRoot = $Dir; $SkipHostChecks = $true; $NoCacheStage = @(); $NoCache = $false
 $ImportCacheRef = ''; $ExportCacheRef = ''; $TargetArch = 'amd64'; $BuildArg = @()
 function Assert-StageDiskHeadroom { }
 function Set-BuildPhase { param($Name) }
 function Invoke-TransientCooldown { $false }
 $BuildCtl = {
+    if ($args[0] -eq 'debug') { $script:ConfigReads++; $global:LASTEXITCODE = 0; return $Config }
     $file = "$($args | Where-Object { "$_" -like 'filename=*' })" -replace '^filename=', ''
     $base = "$($args | Where-Object { "$_" -like 'build-arg:BASE_IMAGE=*' })" -replace '^build-arg:BASE_IMAGE=', ''
     $script:Solves.Add("$file|$base")
+    $meta = [array]::IndexOf([string[]]$args, '--metadata-file')
+    if ($meta -ge 0 -and -not $NoMetadata) { Set-Content -LiteralPath $args[$meta + 1] -Value ('{"containerimage.config.digest":"sha256:' + ('ab' * 32) + '"}') }
     $global:LASTEXITCODE = if ($FailDockerfile -and $file -eq $FailDockerfile) { 1 } else { 0 }
 }
 '@
 
+# Image configs for the fake: what the secret form leaves, and the 2026-10-17 S3 ARG.
+$script:cleanConfigJson = @{ history = @(@{ created_by = 'RUN |1 SCCACHE_LOG=warn pwsh -Command echo' }); config = @{ Env = @('PATH=C:\Windows') } } | ConvertTo-Json -Depth 5 -Compress
+$script:leakyConfigJson = @{ history = @(@{ created_by = 'ARG SCCACHE_ENDPOINT=http://10.0.0.26:3900' }); config = @{ Env = @('PATH=C:\Windows') } } | ConvertTo-Json -Depth 5 -Compress
+
 # Runs $Scenario over the driver's lifted gate functions; -Find/-Replace mutate them.
 function Invoke-GateScenario {
     param([Parameter(Mandatory)][string]$Driver, [Parameter(Mandatory)][scriptblock]$Scenario,
-        [string]$FailDockerfile = '', [string]$Find = '', [AllowEmptyString()][string]$Replace = '')
+        [string]$FailDockerfile = '', [string]$Find = '', [AllowEmptyString()][string]$Replace = '',
+        [string]$Config = $script:cleanConfigJson, [switch]$NoMetadata)
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($Driver, [ref]$null, [ref]$null)
     $state = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
                 $n.Left.Extent.Text -in @('$script:NoCacheStageMatched', '$script:BkBuiltTags', '$script:BkGatedImages') }, $true) |
             ForEach-Object { $_.Extent.Text })
     if ($state.Count -ne 3) { throw "scenario: found $($state.Count) of the driver's three state initialisers" }
     Invoke-InTestDir { param($dir)
-        $m = Import-FunctionModule -Text $Driver -FunctionName 'Invoke-BkStage', 'Invoke-BkPublishGate' -Dir $dir -Prefix Scn `
-            -Prelude ($script:gateScenarioPrelude + "`n" + ($state -join "`n")) -Find $Find -Replace $Replace -ArgumentList $dir, $FailDockerfile
+        $m = Import-FunctionModule -Text $Driver -FunctionName 'Invoke-BkStage', 'Invoke-BkPublishGate', 'Invoke-BkHistoryGate' -Dir $dir -Prefix Scn `
+            -Prelude ($script:gateScenarioPrelude + "`n" + ($state -join "`n")) -Find $Find -Replace $Replace `
+            -ArgumentList $dir, $FailDockerfile, $script:imageEnvModule, $Config, ([bool]$NoMetadata)
         try {
             $err = ''
             try { $null = & $m $Scenario 6>$null } catch { $err = $_.Exception.Message }
-            [pscustomobject]@{ Solves = (@(& $m { $script:Solves }) -join '; '); Error = $err }
+            [pscustomobject]@{ Solves = (@(& $m { $script:Solves }) -join '; '); Error = $err; Reads = (& $m { $script:ConfigReads })
+                Leftover = @(Get-ChildItem -LiteralPath $dir -Filter '*.metadata.json').Count }
         } finally { Remove-Module $m -Force }
     }
 }
 
 Describe 'Build-Buildkit.ps1: a parent this run did not build is graded before a stage inherits its ENV' {
 
-    $drv = Get-Content -Raw (Join-Path $script:imageEnvRoot 'windows\Build-Buildkit.ps1')
+    $drv = $script:bkDriver
     $oneStage = { Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Tag 'img:media' -BuildArgs @{ BASE_IMAGE = 'img:toolchain' } }
-    $chain = {
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.toolchain-builder' -Tag 'img:toolchain' -BuildArgs @{ BASE_IMAGE = 'img:sdk' }
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Tag 'img:media' -BuildArgs @{ BASE_IMAGE = 'img:toolchain' }
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-migraphx' -Tag 'img:mgx' -BuildArgs @{ BASE_IMAGE = 'img:sdk' }
-    }
+    $chain = $script:gateChain
 
     # Want is a regex over the solves; a case without Find runs the real driver, one with Find a mutant.
     foreach ($case in @(
@@ -317,5 +333,39 @@ Describe 'Build-Buildkit.ps1: a parent this run did not build is graded before a
         Assert-Equal 'Dockerfile.publish-gate|img:toolchain' $r.Solves 'the stage must not solve on a stale parent'
         Assert-Match 'img:toolchain was not built by this run' $r.Error
         Assert-Match 'Rebuild it' $r.Error
+    }
+}
+
+Describe 'Build-Buildkit.ps1: the history gate grades every image a stage exports' {
+
+    $drv = $script:bkDriver
+    # The chain above, then the push re-export of a solve already graded.
+    $chain = [scriptblock]::Create("$script:gateChain`nInvoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final-push' -OutputSpec 'type=image,name=x,push=true' -BuildArgs @{ BASE_IMAGE = 'img:mgx' }")
+    $gateCall = 'if ($metaFile) { Invoke-BkHistoryGate -MetadataFile $metaFile -Image $Tag -Label $Label }'
+
+    It 'reads the config of each exported image, never of a -NoOutput gate or an -OutputSpec re-export, and leaves no metadata file' {
+        $r = Invoke-GateScenario -Driver $drv -Scenario $chain
+        Assert-Equal '' $r.Error
+        Assert-Equal 3 $r.Reads 'the three stage images; the publish gate and the push re-export are not read'
+        Assert-Equal 0 $r.Leftover
+    }
+
+    It 'fails a stage whose history names the S3 endpoint, after its solve, naming the image and the entry' {
+        $r = Invoke-GateScenario -Driver $drv -Scenario $chain -Config $script:leakyConfigJson
+        Assert-Match 'history gate FAILED: \d+ finding\(s\) in the history and config of img:toolchain \(history\[0\]\)' $r.Error
+        Assert-Equal 'Dockerfile.publish-gate|img:sdk; Dockerfile.toolchain-builder|img:sdk' $r.Solves 'the next stage must not solve on it'
+        Assert-False $r.Error.Contains('10.0.0.26') 'the error names the value'
+    }
+
+    It 'fails closed when buildctl wrote no config digest' {
+        $r = Invoke-GateScenario -Driver $drv -Scenario $chain -NoMetadata
+        Assert-Match 'buildctl wrote no config digest for img:toolchain' $r.Error
+        Assert-Equal 0 $r.Reads
+    }
+
+    It 'a driver without the gate call ships the leaking history, so the second case bites (mutation)' {
+        Assert-True $drv.Contains($gateCall) 'mutation target is gone'
+        $r = Invoke-GateScenario -Driver $drv -Scenario $chain -Config $script:leakyConfigJson -Find $gateCall -Replace ''
+        Assert-Equal '' $r.Error
     }
 }

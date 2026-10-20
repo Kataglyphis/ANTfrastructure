@@ -21,14 +21,8 @@ FROM ${BASE_IMAGE} AS built
 
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
 
-# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
-ARG SCCACHE_WEBDAV_ENDPOINT
+# The cache endpoints are the RUNs' secret mounts, which no history records; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_LOG="warn"
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
 ARG SCCACHE_DIR="C:\sccache\v2"
 ARG SCCACHE_FORCE_LOCAL
 ENV SCCACHE_DIR="${SCCACHE_DIR}" `
@@ -53,6 +47,9 @@ ARG MIGRAPHX_WINDOWS_SQLITE_YEAR=2025
 ARG MIGRAPHX_WINDOWS_SQLITE_SHA256=1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MigraphxFromSource.ps1,target=C:\bkmnt\Build-MigraphxFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -82,6 +79,9 @@ ARG ORT_AMDGPU_EP_RANGE_V3_VERSION=0.12.0
 ARG ORT_AMDGPU_EP_RANGE_V3_SHA256=cbcb96beda464e71d293c07dec89ef5c0790ca83d37b0e199890893019441044
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1,target=C:\bkmnt\Build-OrtAmdgpuEpFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsOrtProvenance.Build.psm1,target=C:\bkmnt\ortmods\WindowsOrtProvenance.Build.psm1 `

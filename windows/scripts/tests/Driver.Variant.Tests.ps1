@@ -338,8 +338,8 @@ Describe 'Build-Buildkit.ps1: rocm chain wiring' {
         Assert-Match "\`$torchTag = Get-BkTag 'windows-torch'" $src 'one torch tag expression'
         Assert-Match "BASE_IMAGE = \`$\(if \(\`$Variant -eq 'rocm'\) \{ \`$llamaTag \} else \{ Get-BkTag 'windows-media' \}\)" $src 'torch base'
         Assert-Match "PYTORCH_EXTRA = \`$\(if \(\`$isNvidia\) \{ 'pytorch-cu130' \} else \{ 'pytorch-cpu' \}\)" $src 'torch extra'
-        Assert-Match "\} \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage 'torch' -VersionTable \`$versions\) \+" $src 'TORCH_ROCM only through the rocm helper'
-        Assert-Match "\`$\(if \(\`$Variant -eq 'rocm'\) \{ \`$sccache \} else \{ @\{\} \}\)\)" $src 'the sccache endpoint reaches the torch solve on rocm only (torch-rocm-wheels compiles)'
+        Assert-Match "\} \+ \(Get-BkRocmStageArg -Variant \`$Variant -Stage 'torch' -VersionTable \`$versions\)\)" $src 'TORCH_ROCM only through the rocm helper'
+        Assert-False ($src -match '\$sccache\b') 'the cache settings are secrets on every solve, never build args a history records'
     }
 
     It 'sends TVM_ROCM and ORT_WEBGPU through the media branch loop, and forwards the lane to the -ConcurrentAux children' {

@@ -12,11 +12,12 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+_HOST_ADDRESS = (r"WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|"
+                 r"COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION")
+# The sccache names whose value is a host, a bucket or a region.
+BUILD_HOST_ADDRESS_NAME = re.compile(r"^SCCACHE_(?:%s)$" % _HOST_ADDRESS, re.IGNORECASE)
 # Every sccache remote backend and host-layout knob; local defaults like SCCACHE_DIR are allowed.
-BUILD_HOST_NAME = re.compile(
-    r"^SCCACHE_(?:WEBDAV_\w+|REDIS\w*|MEMCACHED\w*|GCS_\w+|AZURE_\w+|S3_\w+|OSS_\w+|"
-    r"COS_\w+|GHA_\w+|BUCKET|ENDPOINT|REGION|MULTILEVEL_CHAIN|FORCE_LOCAL)$",
-    re.IGNORECASE)
+BUILD_HOST_NAME = re.compile(r"^SCCACHE_(?:%s|MULTILEVEL_CHAIN|FORCE_LOCAL)$" % _HOST_ADDRESS, re.IGNORECASE)
 # The S3 level's key reaches a RUN only as a BuildKit secret; as a variable it would publish with the image.
 CREDENTIAL_NAME = re.compile(r"^AWS_(?:ACCESS_KEY_ID|SECRET_ACCESS_KEY|SESSION_TOKEN)$", re.IGNORECASE)
 PRIVATE_V4 = tuple(ipaddress.ip_network(n) for n in
@@ -30,7 +31,8 @@ REF = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)")
 # Only a compiling RUN mounts both dirs; either alone is a probe that starts no sccache server.
 SCCACHE_MOUNTS = tuple(re.compile(r"--mount=[^\s]*target=C:\\%s(?=[,\s]|$)" % d, re.IGNORECASE)
                        for d in ("sccache", "sccache-logs"))
-ENDPOINT_ARG = "SCCACHE_WEBDAV_ENDPOINT"
+# The WebDAV level reaches a compile only through this mount; an ARG would write the endpoint into the history.
+ENDPOINT_SECRET = re.compile(r"--mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT(?=\s|$)")
 
 
 def _host_position(value, start, end, name):
@@ -155,10 +157,12 @@ def _pairs(body, legacy):
     return [(t.split("=", 1)[0], _unquote(t.split("=", 1)[1]) if "=" in t else None) for t in toks]
 
 
-def _scan_arg(where, body, stage_args):
+def _scan_arg(where, body):
     findings = []
     for key, value in _pairs(body, legacy=False):
-        stage_args.add(key)
+        if BUILD_HOST_ADDRESS_NAME.match(key) or CREDENTIAL_NAME.match(key):
+            findings.append("%s: ARG %s -- BuildKit writes an ARG's value into the image history; "
+                            "mount it as a secret (--mount=type=secret,id=%s,env=%s)" % (where, key, key.lower(), key))
         findings += ["%s: ARG %s default carries a %s" % (where, key, why)
                      for why in address_reasons(key, value or "")]
     return findings
@@ -173,28 +177,26 @@ def _scan_env(where, body):
     return findings
 
 
-def _scan_run(where, body, stage_args):
-    if all(m.search(body) for m in SCCACHE_MOUNTS) and ENDPOINT_ARG not in stage_args:
+def _scan_run(where, body):
+    if all(m.search(body) for m in SCCACHE_MOUNTS) and not ENDPOINT_SECRET.search(body):
         return ["%s: RUN compiles through sccache (it mounts C:\\sccache and C:\\sccache-logs) but "
-                "its stage declares no ARG %s above it -- the endpoint never reaches this compile"
-                % (where, ENDPOINT_ARG)]
+                "does not mount the secret sccache_webdav_endpoint as SCCACHE_WEBDAV_ENDPOINT "
+                "-- the endpoint never reaches this compile" % where]
     return []
 
 
 def scan_dockerfile(path, rel):
-    findings, stage_args = [], set()
+    findings = []
     for line, text in instructions(path):
         head, _, body = text.partition(" ")
         head = head.upper()
         where = "%s:%d" % (rel, line)
-        if head == "FROM":
-            stage_args = set()
-        elif head == "ARG":
-            findings += _scan_arg(where, body, stage_args)
+        if head == "ARG":
+            findings += _scan_arg(where, body)
         elif head == "ENV":
             findings += _scan_env(where, body)
         elif head == "RUN":
-            findings += _scan_run(where, body, stage_args)
+            findings += _scan_run(where, body)
     return findings
 
 

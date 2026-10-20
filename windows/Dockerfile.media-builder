@@ -16,7 +16,7 @@ FROM ${BASE_IMAGE} AS common
 # First declared here, not in base/sdk/toolchain, whose cache an ARG would key on every lane switch.
 ARG WINDOWS_TARGET_ARCH=amd64
 ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
-# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
+# The cache endpoints are secret mounts on each compiling RUN; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_LOG="warn"
 
 # The disk level is off by default; see docs/windows-build-resources.md § Persistent compile cache (sccache).
@@ -122,16 +122,13 @@ ARG ORT_WEBGPU_WINDOWS_DAWN_SHA256
 ARG ORT_WEBGPU_WINDOWS_DXC_VERSION
 ARG ORT_WEBGPU_WINDOWS_DXC_ASSET
 ARG ORT_WEBGPU_WINDOWS_DXC_SHA256
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OnnxFromSource.ps1,target=C:\bkmnt\Build-OnnxFromSource.ps1 `
@@ -178,16 +175,13 @@ ENV FFMPEG_VERSION="${FFMPEG_VERSION}" `
     X264_MESON_COMMIT="${X264_MESON_COMMIT}" `
     X265_VERSION="${X265_VERSION}" `
     X265_SHA256="${X265_SHA256}"
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-FfmpegFromSource.ps1,target=C:\bkmnt\Build-FfmpegFromSource.ps1 `
@@ -216,16 +210,13 @@ ARG OPENCV_VERSION=5.0.0
 ENV OPENCV_LINK_CHAIN_FFMPEG="${OPENCV_LINK_CHAIN_FFMPEG}" `
     OPENCV_SOURCE_VERSION="${OPENCV_SOURCE_VERSION}" `
     OPENCV_VERSION="${OPENCV_VERSION}"
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OpencvFromSource.ps1,target=C:\bkmnt\Build-OpencvFromSource.ps1 `
@@ -247,16 +238,13 @@ ENV HAILORT_VERSION="${HAILORT_VERSION}"
 ARG HAILORT_SOURCE_SHA256=7a0e43df03cad7086643029fd7dc3773a8231b1f6383705fe3036896a70472b0
 ARG HAILO_PROTOBUF_VERSION=21.12
 ARG HAILO_PROTOBUF_SHA256=22fdaf641b31655d4b2297f9981fa5203b2866f8332d3c6333f6b0107bb320de
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-HailortFromSource.ps1,target=C:\bkmnt\Build-HailortFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -274,16 +262,13 @@ ENV ONNXRUNTIME_GENAI_VERSION="${ONNXRUNTIME_GENAI_VERSION}"
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaCoreAll.ps1,target=C:\bkmnt\Build-MediaCoreAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-OnnxGenaiFromSource.ps1,target=C:\bkmnt\Build-OnnxGenaiFromSource.ps1 `
@@ -299,17 +284,14 @@ FROM media-litert-env AS media-litert-built
 # Every stage that mounts windows/qnn-sdk declares this, or Resolve-QnnSdk extracts unverified.
 ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8BCDD344BB"
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 # bazel's output_base stays container-local (rename-heavy, and the cache mount is rename-hostile); the CMake fallback stays mounted.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/Build-LitertAll.ps1,target=C:\bkmnt\Build-LitertAll.ps1 `
@@ -339,8 +321,9 @@ ENV LITERT_WINDOWS_SOURCE_COMMIT="${LITERT_WINDOWS_SOURCE_COMMIT}" `
     LITERT_WINDOWS_ACCELERATOR_WHEEL_URL="${LITERT_WINDOWS_ACCELERATOR_WHEEL_URL}" `
     LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256="${LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256}" `
     LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256="${LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256}"
-# WindowsBazel.Common is mounted per file, never into buildmods, so no other media RUN re-keys on it.
+# WindowsBazel.Common is mounted per file, never into buildmods, so no other media RUN re-keys on it; the endpoint feeds Bazel's remote cache.
 RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,sharing=locked `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT `
     --mount=type=bind,source=windows/scripts/build/Build-LitertWheelBazel.ps1,target=C:\bkmnt\Build-LitertWheelBazel.ps1 `
     --mount=type=bind,source=windows/scripts/build/litert-wheel-smoke.py,target=C:\bkmnt\litert-wheel-smoke.py `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
@@ -356,16 +339,13 @@ ARG QNN_SDK_ZIP_SHA256="52A5B0CC051EB2896848C9FD46E704612B1DC06E7D2F5D0D9A79FD8B
 ENV QNN_SDK_ZIP_SHA256="${QNN_SDK_ZIP_SHA256}"
 # ARG only, no ENV: Build-TvmFromSource.ps1 reads it at RUN time and nothing downstream should.
 ARG TVM_ROCM=0
-# Build-host sccache settings: RUN env only, never image ENV (see `common`).
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The disk-only diagnostic switch; the cache endpoints are the RUN's secret mounts, which no history records.
 ARG SCCACHE_FORCE_LOCAL
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-MediaTvmAll.ps1,target=C:\bkmnt\Build-MediaTvmAll.ps1 `
     --mount=type=bind,source=windows/scripts/build/Build-TargetCpython.ps1,target=C:\bkmnt\Build-TargetCpython.ps1 `

@@ -36,13 +36,7 @@ RUN --mount=type=bind,source=windows/scripts/build/Build-ToolchainAll.ps1,target
 # Pinned LLVM plus llvm#219275/#219276 (the AArch64 aborts), not main, so the provenance gate still passes; -StockLlvm opts out.
 FROM built AS patched-llvm
 ARG BUILD_PATCHED_LLVM=1
-# Build-host settings are ARGs only; see docs/windows-build-resources.md § What the published image carries.
-ARG SCCACHE_WEBDAV_ENDPOINT
-ARG SCCACHE_MULTILEVEL_CHAIN
-ARG SCCACHE_ENDPOINT
-ARG SCCACHE_BUCKET
-ARG SCCACHE_REGION
-ARG SCCACHE_S3_USE_SSL
+# The cache endpoints are the RUN's secret mounts, which no history records; see docs/windows-build-resources.md § What the published image carries.
 ARG SCCACHE_FORCE_LOCAL
 ARG SCCACHE_LOG="warn"
 ARG SCCACHE_DIR="C:\sccache\v2"
@@ -54,6 +48,9 @@ ENV SCCACHE_DIR="${SCCACHE_DIR}" `
 # Per-file module mounts: a whole-dir mount would re-key this LLVM compile on every module edit.
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=secret,id=sccache_s3_key_id,env=AWS_ACCESS_KEY_ID --mount=type=secret,id=sccache_s3_secret,env=AWS_SECRET_ACCESS_KEY `
+    --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT --mount=type=secret,id=sccache_multilevel_chain,env=SCCACHE_MULTILEVEL_CHAIN `
+    --mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT --mount=type=secret,id=sccache_bucket,env=SCCACHE_BUCKET `
+    --mount=type=secret,id=sccache_region,env=SCCACHE_REGION --mount=type=secret,id=sccache_s3_use_ssl,env=SCCACHE_S3_USE_SSL `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Build-LlvmFromSource.ps1,target=C:\bkmnt\Build-LlvmFromSource.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsSourceBuild.Common.psm1,target=C:\bkmnt\modules\WindowsSourceBuild.Common.psm1 `

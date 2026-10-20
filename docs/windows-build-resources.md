@@ -501,21 +501,24 @@ A wrong secret does not fail quietly: the server does not start at all
 so the compiles of that RUN run uncached. That is how the first probe found a command line
 stored as the secret.
 
-**The key never enters an argument, a layer or the image history.** `Build-Buildkit.ps1`
-passes it as two env-sourced BuildKit secrets, `--secret id=sccache_s3_key_id,env=…` and
-`id=sccache_s3_secret,env=…`. Every sccache RUN mounts them as `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` (`--mount=type=secret,…,env=…`). Probed on this host with a dummy
-secret (2026-10-15):
-- The variable is set inside the RUN, and is gone in the next RUN.
+**No setting enters an argument, a layer, a build record or the image history (2026-10-20).**
+`Get-BkSccacheConfig` turns each setting into an env-sourced BuildKit secret: the driver sets
+`KATAGLYPHIS_BK_<NAME>` in its own process and passes `--secret id=<name in lower case>,env=KATAGLYPHIS_BK_<NAME>`,
+the key as `id=sccache_s3_key_id` and `id=sccache_s3_secret`. Every sccache RUN mounts all eight
+as their sccache names (`--mount=type=secret,id=sccache_endpoint,env=SCCACHE_ENDPOINT`, …,
+`env=AWS_ACCESS_KEY_ID`); `Get-BkSccacheSecretMount` is the list. A setting this run leaves out
+is not passed, and its mount is skipped. Probed on this host:
+- The variable is set inside the RUN, and is gone in the next RUN (2026-10-15, 2026-10-20).
 - A build without the secret runs, with the variable unset.
 - A file-target secret also works, but needs a forward-slash target (`target=C:/…`), and it
   leaves a 0-byte placeholder in the layer. The env form leaves nothing.
+- A secret is not part of any cache key, so a host with another endpoint, or a run without the
+  S3 level, hits the same layers.
 
-The bucket's endpoint, name, region and `SCCACHE_S3_USE_SSL` are ordinary build args, so they
-appear in the image history next to the WebDAV endpoint. They are reachable only over the VPN.
 The publish gate fails an image whose environment carries `AWS_ACCESS_KEY_ID`,
 `AWS_SECRET_ACCESS_KEY` or `AWS_SESSION_TOKEN` (`WindowsImageEnv.Common`, and
-`verify_image_env.py` with the shared fixture).
+`verify_image_env.py` with the shared fixture); the history gate fails one whose history names
+an endpoint, the bucket or the region ([§ What the published image carries](#what-the-published-image-carries)).
 
 **Setting up a client host** (once per host, after `Install-NewHost.ps1`):
 
@@ -530,7 +533,7 @@ pwsh -File windows\scripts\host\Copy-SccacheCacheToS3.ps1 -DryRun         # opti
 - **Variables.** `Build-Buildkit.ps1` reads them from the process, the user and the machine
   environment, in that order, so a shell that started before them still finds them. The
   parameters `-SccacheS3Endpoint`, `-SccacheS3Bucket` and `-SccacheS3Region` override them.
-  The run then prints `sccache levels: webdav … -> s3 …`.
+  The run then prints `sccache levels: webdav -> s3`, without the endpoints.
 - **Defaults.** Bucket `sccache`, region `garage`.
 - **The secret is checked before it is stored.** One with whitespace is refused (a pasted
   command line was stored once, 2026-10-15). With s5cmd on PATH the script lists the bucket
@@ -601,11 +604,12 @@ patched LLVM hit 4233 of 4233 from level 0 and started its server with both leve
 GStreamer merge wrote 179 objects to the bucket with none failed, and the next run 36. Every
 drain ended after 0 s. The smoke gate passed 301 assertions.
 
-Adding the secret mounts and ARGs changed the RUN instructions, so the chain after 2026-10-15
-re-keys every sccache stage once. Those stages compile warm from level 0.
+Adding the secret mounts changed the RUN instructions, so the chain after 2026-10-15 re-keyed
+every sccache stage once, and the chain after 2026-10-20 re-keys them again, from the base's
+scoop layer on. Those stages compile warm from level 0.
 
 Tests: `BuildDriver.SccacheLevels.Tests.ps1` (the config, the secrets, and every one of the
-16 sccache RUNs carrying both mounts and the ARGs), `Build.SccacheEndpointProbe.Tests.ps1`
+16 sccache RUNs carrying all eight mounts and no ARG of them), `Build.SccacheEndpointProbe.Tests.ps1`
 (§ the S3 level), `SourceBuild.SccacheUploadDrain.Tests.ps1`, and the publish gate's
 credential cases.
 
@@ -659,11 +663,19 @@ Every client then times out after 10-12 s with exit 2, CMake reports clang-cl as
 "not able to compile a simple test program", and the AccelerANTgine and
 OmniAccelerANT Windows lanes went red (runs 35921977157, 35912798986).
 
+**Since 2026-10-20 they are secrets, never ARGs either** (owner: no endpoint, bucket,
+region or LAN address in a Windows image's history or config). BuildKit writes an ARG's
+value into its own history entry (`ARG SCCACHE_ENDPOINT=http://…`) and every build arg
+of a RUN into the RUN's (`RUN |9 … SCCACHE_BUCKET=… pwsh …`), and the final image
+inherits every entry: the four images of 2026-10-17 named the WebDAV and S3 endpoints,
+the bucket and the region, `:winamd64` 30 times an RFC1918 address. A secret mount
+appears in neither the history nor the build record.
+
 | Variable | Where it lives | Why |
 | --- | --- | --- |
-| `SCCACHE_WEBDAV_ENDPOINT` | ARG, no default, redeclared in every compiling stage | a LAN address; nothing outside the build host reaches it |
-| `SCCACHE_MULTILEVEL_CHAIN` | ARG, no default | the build host's cache layout (#99); it names a remote only the build host has |
-| `SCCACHE_FORCE_LOCAL` | ARG, no default | the hub's own diagnostic switch, read only by `Test-SccacheRemoteConfigured` |
+| `SCCACHE_WEBDAV_ENDPOINT`, `SCCACHE_MULTILEVEL_CHAIN`, `SCCACHE_ENDPOINT`, `SCCACHE_BUCKET`, `SCCACHE_REGION`, `SCCACHE_S3_USE_SSL`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | env secret mounts on every compiling RUN | LAN addresses, the bucket, its region and key; nothing outside the build host reaches them |
+| `VULKAN_PRESEED_ENDPOINT` | the WebDAV secret, mounted on the base's `Install-ScoopTools.ps1` RUN | the installers' LAN source; until 2026-10-20 an ARG in every later base RUN's history |
+| `SCCACHE_FORCE_LOCAL` | ARG, no default | the hub's own disk-only diagnostic switch, read only by `Test-SccacheRemoteConfigured`; it names no host |
 | `SCCACHE_DIR`, `SCCACHE_CACHE_SIZE`, `SCCACHE_ERROR_LOG`, `SCCACHE_LOG`, `SCCACHE_IDLE_TIMEOUT` | ENV, the runtime defaults | container-local: a path, a size, a log file and level, a timeout. None names a host, so they behave the same on the build host, a runner and a laptop, and the Linux image ships the same set ([`build-cache-tiers.md`](build-cache-tiers.md#the-shipped-images-cache-dirs)) |
 
 The runtime defaults keep their values. `Initialize-BuildCacheEnvironment` and
@@ -674,25 +686,45 @@ remote tier, which it only ever reached through the leaked ENV; `Invoke-Containe
 now forwards it at run time:
 [§ The build host's remote tier, at run time](#the-build-hosts-remote-tier-at-run-time).
 
-**Why every compiling stage redeclares the ARG.** An ARG is in the environment of
-the RUNs of the stage that declares it, and only that stage. The media-core chain
-crosses solves: `media-core-built-ffmpeg` is `FROM ${MEDIA_CORE_ONNX_IMAGE}`, an
-image, so nothing declared in `common` reaches it. Each of the seven compiling
-stages in `Dockerfile.media-builder` therefore declares `SCCACHE_WEBDAV_ENDPOINT`,
-`SCCACHE_MULTILEVEL_CHAIN` and `SCCACHE_FORCE_LOCAL` right above its RUN, as do
-`patched-llvm`, the merge `built` stage and `rocm-migraphx`. With no default an
-ARG is simply absent when the driver does not pass it, which is what the old empty
-ENV meant too (sccache 0.18 ignores an empty value, and `Test-SccacheRemoteConfigured`
-treats one as unset). A missed stage would compile uncached without a word, so the
-static lint refuses it: a RUN that mounts both `C:\sccache` and `C:\sccache-logs`
-must see `ARG SCCACHE_WEBDAV_ENDPOINT` in its own stage.
+**Why each RUN mounts them.** A secret mount belongs to one RUN, so each of the 16
+compiling RUNs (the seven of `Dockerfile.media-builder`, the three of the merge stage,
+`patched-llvm`, two each in `rocm-migraphx` and `torch-rocm-wheels`, one in `rocm-llama`)
+mounts all eight; the litert wheel RUN, which compiles nothing, mounts the WebDAV one for
+Bazel's remote cache. A setting the driver does not pass is simply absent in the RUN,
+which is what the ARG without a default meant (sccache 0.18 ignores an empty value, and
+`Test-SccacheRemoteConfigured` treats one as unset). A missed RUN would compile uncached
+without a word, so the static lint refuses it: a RUN that mounts both `C:\sccache` and
+`C:\sccache-logs` must mount `id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT`.
 
-**Three gates hold it:**
+**Four gates hold it:**
 
 - **Static, in preflight:** `linux/scripts/verify_image_env.py --dockerfile`, run by
   `lint-dockerfiles.sh` over both lanes' Dockerfiles. It refuses an ENV of a
   build-host sccache name, an ENV that expands one, a LAN literal in an ENV or ARG
-  default, and the missing per-stage ARG above.
+  default, an ARG of an endpoint, bucket, region or key name, and a compiling RUN
+  without the endpoint secret.
+- **History, Windows (2026-10-20):** every solve `Invoke-BkStage` exports as an image
+  passes `--metadata-file`. `Invoke-BkHistoryGate` reads the config digest from it,
+  fetches the config with `buildctl debug get <digest>` (buildkitd's pipe; containerd's
+  is admin-only) and runs `Assert-ImageConfigPublishable` over every history entry, the
+  ENV, the labels and the entrypoint. It fails on a host-carrying sccache name or a key
+  half with a value (`SCCACHE_ENDPOINT=…`, `AWS_SECRET_ACCESS_KEY=…`), an RFC1918 or
+  link-local address in a host position, either endpoint's host anywhere, and the
+  bucket or region as the value of a `*BUCKET*`/`*REGION*` name (both are common words,
+  `sccache` and `garage`, so nowhere else). A red gate prints the entry and the reason,
+  never the value:
+
+  ```text
+    LEAK history[62]: the build-host setting SCCACHE_ENDPOINT
+    LEAK history[62]: RFC1918/link-local address in SCCACHE_ENDPOINT
+  history gate FAILED: 144 finding(s) in the history and config of …:bk-winarm64 (history[28], …)
+  ```
+
+  It grades the image right after its solve, so a leak stops the run at the stage that
+  made it, and the final image before the smoke gate, `-FinalTar` and `-PushRef`. A run
+  without `final` in `-Stages` still grades what it exports. The `-OutputSpec`
+  re-exports (`final-tar`, `final-push`) are not read again: they re-export the graded
+  final solve. A missing digest or an unreadable config fails it.
 - **Publish, Windows:** `Build-Buildkit.ps1` solves `windows/Dockerfile.publish-gate`
   (`Invoke-BkPublishGate`) at three points: on every `BASE_IMAGE` a stage inherits
   that this run did not build, before that stage solves
@@ -720,12 +752,24 @@ value or list item, or followed by `:port` or `/`. A dotted quad inside a path
 is a version: the base bakes every `versions.env` key into the Machine environment,
 `CUDA_WINDOWS_ARM64_CURAND_VERSION=10.4.4.72` among them.
 
-**What the gates do not cover.** Hostnames and loopback (`http://buildhost:5000`,
-`127.0.0.1`), files inside the image, and the image **history**: BuildKit records a
-RUN's build args in its `created_by`, so the final image's history still names the
-endpoint for every compiling RUN. That is metadata, not configuration, and nothing
-reads it at run time. Moving the endpoint into a secret mount would remove it; that
-is open as backlog #177.
+**What the gates do not cover.** Hostnames other than the two endpoints' and loopback
+(`http://buildhost:5000`, `127.0.0.1`), and files inside the image. In-container scripts
+print an endpoint only on a failure path (`Clear-UnreachableSccacheEndpoint`,
+`Remove-SccacheS3Level`), into the stage log and the local build record, never into the
+image. The Linux lane has no history gate; its S3 level was a secret from the start.
+
+**Proved on this host, 2026-10-20** (buildkitd v0.33.0, a throwaway stage on the bare
+servercore base with the host's real settings through `Get-BkSccacheConfig` and
+`Get-BkSccacheSecretMount`): all eight variables set in the RUN, both endpoints answering
+TCP from inside it, none in the next RUN, and the gate green. Neither host, the region,
+the key id nor the key appeared in the config, the build record, its provenance or the
+progress log (0 of each); the record's FrontendAttrs held only `filename`,
+`image-resolve-mode` and the nonce. The same stage with an `ARG` and `build-arg:` wrote
+the value twice into the config and three times into the record and its provenance. A run
+with no level passed no secret and built. On the configs of the four published images
+(ghcr, 2026-10-20) the gate found 134 (`:winamd64`, 156 entries, 30 of them addresses),
+134 (`-nvidia`, 191), 196 (`-rocm`, 248) and 144 (`:winarm64`, 146) findings, every one
+on an sccache setting or `VULKAN_PRESEED_ENDPOINT`, none elsewhere.
 
 #### An image this run did not build
 
@@ -766,7 +810,9 @@ reused.
 base and the sdk slot do not. The full re-key set is in `CHANGELOG.md`, 2026-09-23.
 The 2026-09-24 follow-up (the parent gate, the probe, the forward) re-keys nothing
 beyond that: its only image input is two modules that just the final
-`windows/Dockerfile` copies.
+`windows/Dockerfile` copies. The 2026-10-20 secrets re-key every layer from the base's
+`Install-ScoopTools.ps1` RUN on; an image built before them fails the history gate, so
+start the next chain at `base`.
 
 ### The consumer-side probe
 

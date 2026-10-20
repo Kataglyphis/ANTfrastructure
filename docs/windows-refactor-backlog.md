@@ -188,27 +188,40 @@ this repo's cp314 pin).
   at it, delete `Expand-PinnedArchive`, and delete its row in
   `docs/scripts/code-dupes.allow` (the `WindowsMigraphx.Common` ↔
   `WindowsSourceBuild.Common` pair). Rebuild-coupled like CON34 in `BACKLOG.md`.
-- **#177 — the image history still names the build host's endpoint (opened 2026-09-23).**
-  Since 2026-09-23 `SCCACHE_WEBDAV_ENDPOINT` reaches the compiling RUNs as an ARG, so
-  no published ENV carries it and the publish gate refuses one that does. But BuildKit
-  writes a RUN's build args into that layer's history `created_by`
-  (`|3 SCCACHE_WEBDAV_ENDPOINT=http://… RUN …`), and the final image inherits every
-  one. Nothing reads history at run time, so consumers are unaffected; it still
-  publishes an RFC1918 address. The fix is to pass the endpoint as a secret
-  (`RUN --mount=type=secret,id=sccache_endpoint,env=SCCACHE_WEBDAV_ENDPOINT`, with
-  `buildctl --secret`), which records nothing. **Verified on WCOW 2026-10-12**
-  (buildkitd v0.33.0, a buildctl probe over `bk-windows-toolchain`): the `env=` form
-  sets the variable in its RUN, the next RUN no longer sees it, and no file is left
-  in `C:\`, `C:\run`, `%TEMP%`, `C:\Windows\Temp` or `C:\ProgramData`. Its value also
-  stays out of the cache key, which an ARG's does not. **Never the file form on WCOW:**
-  a `target=C:\…` secret mount stays in the snapshot, so the next RUN still reads the
-  file and the layer carries it (an upstream defect to report, owner's call). Since the S3
-  level (2026-10-17) the history also names its endpoint, bucket and region: the four
-  Windows images of 2026-10-17 carry `SCCACHE_ENDPOINT`, `SCCACHE_BUCKET` and `SCCACHE_REGION`
-  beside `SCCACHE_WEBDAV_ENDPOINT`, 30 mentions of an RFC1918 address in `:winamd64`'s
-  history, no key (read 2026-10-20; `:latest-nvidia`'s has none). Left: change all ten
-  compiling stages at one planned re-key, the S3 args with them. Context:
-  [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
+- **#177 — the image history named the build host's endpoints. DONE in source 2026-10-20**
+  (owner: no endpoint, bucket, region or LAN address of the S3 cache in a Windows image's
+  history or config). BuildKit wrote each `ARG SCCACHE_*=<value>` and every RUN's build args
+  (`RUN |9 … SCCACHE_BUCKET=… pwsh …`) into the history, and the base's
+  `ARG VULKAN_PRESEED_ENDPOINT` into five more entries; the four images of 2026-10-17 named
+  both endpoints, the bucket and the region, `:winamd64` 30 times an RFC1918 address, no key.
+  - **Mechanism.** Every setting is an env-sourced secret (`Get-BkSccacheConfig`): the driver
+    sets `KATAGLYPHIS_BK_<NAME>` in its process and passes `--secret id=<name>,env=…`; the 16
+    compiling RUNs mount all eight (`Get-BkSccacheSecretMount`), the litert wheel RUN and the
+    base's `Install-ScoopTools.ps1` RUN the WebDAV one. No ARG of them is left; the levels
+    line prints no endpoint. The write probe passes its endpoint the same way
+    (`Invoke-DiagnosticProbe.ps1 -Secret`). Never the file form on WCOW: a `target=C:\…`
+    secret stays in the snapshot.
+  - **Gates.** `Invoke-BkHistoryGate` reads every exported image's config
+    (`--metadata-file`, `buildctl debug get`) and fails on a host-carrying sccache setting
+    with a value, an RFC1918 address, either endpoint's host, the bucket or region as a
+    `*BUCKET*`/`*REGION*` value; it prints no value. The static lint refuses an ARG of an
+    endpoint, bucket, region or key name and a compiling RUN without the WebDAV secret.
+  - **Proved 2026-10-20** on this host: a stage on the bare servercore base with the real
+    settings had all eight set, both endpoints answering TCP, none in the next RUN, and 0
+    mentions of either host, the region or the key in the config, the build record, its
+    provenance and the log; the gate passed. On the four published configs it found 134,
+    134, 196 and 144 findings (`:winamd64`, `-nvidia`, `-rocm`, `:winarm64`), all on the
+    known carriers, so it raises no false positive on any lane's history.
+  - **The next full chain must show:** it rebuilds from the base's scoop layer (the base's
+    RUN changed) and re-keys every sccache stage; the stages' hit rates match the last
+    chain's, since the RUN env is the same (`patched-llvm` hit 4233 of 4233 from level 0 on
+    2026-10-16), and each compiling RUN still prints `sccache enabled at: … (remote backend`
+    and a `sccache-drain|` line; each stage prints
+    `history gate: … no build-host address`; the published images' history has no RFC1918
+    address and no `SCCACHE_ENDPOINT`/`_BUCKET`/`_REGION`/`_WEBDAV_ENDPOINT` entry. An image
+    built before this change fails the gate, so `-Stages final` on old bk- tags refuses to
+    push them. Context:
+    [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
   silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
   The genuine switches, all verified defined at v2.2.0:

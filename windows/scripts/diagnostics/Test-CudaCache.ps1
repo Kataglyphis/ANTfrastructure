@@ -24,14 +24,13 @@ New-Item -ItemType Directory -Force -Path $ctx | Out-Null
 try {
     # A COPY'd payload script, since the frontend strips double quotes from shell-form RUN lines.
     Copy-Item -Path (Join-Path $PSScriptRoot 'verify-cuda-cache\Test-Cache.ps1') -Destination (Join-Path $ctx 'Test-Cache.ps1')
+    # A secret, as in the image chain, so neither the build record nor a history names the endpoint.
     $runLines = @(
-        "ARG SCCACHE_EP",
         "FROM $BaseImage",
-        "ARG SCCACHE_EP",
-        'ENV SCCACHE_WEBDAV_ENDPOINT=$SCCACHE_EP',
         'COPY Test-Cache.ps1 C:/Test-Cache.ps1',
-        'RUN & C:\Test-Cache.ps1'
+        'RUN --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT & C:\Test-Cache.ps1'
     )
+    $env:KATAGLYPHIS_BK_SCCACHE_WEBDAV_ENDPOINT = $Endpoint
     Set-Content -Path (Join-Path $ctx 'Dockerfile') -Value ($runLines -join "`n") -Encoding ascii
 
     Write-Host "== CUDA cache verify: $BaseImage vs $Endpoint ==" -ForegroundColor Cyan
@@ -40,7 +39,7 @@ try {
     # No --output: the verdict is the RUN's exit code, and an export would only litter the store.
     & $BuildCtl --addr npipe:////./pipe/buildkitd build --frontend dockerfile.v0 `
         --local "context=$ctx" --local "dockerfile=$ctx" `
-        --opt image-resolve-mode=local --opt "build-arg:SCCACHE_EP=$Endpoint" --no-cache 2>&1 |
+        --opt image-resolve-mode=local --secret id=sccache_webdav_endpoint,env=KATAGLYPHIS_BK_SCCACHE_WEBDAV_ENDPOINT --no-cache 2>&1 |
         Tee-Object -FilePath $fullLog | ForEach-Object { Write-Host $_ }
     $code = $LASTEXITCODE
     Write-Host "[full log: $fullLog]"

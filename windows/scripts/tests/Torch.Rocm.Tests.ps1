@@ -825,7 +825,7 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
         Assert-Equal '${BASE_IMAGE}' $w.From 'FROM the rocm base, not app'
         Assert-False (($w.Lines -join "`n") -match 'APP_REF') 'no APP_REF in the stage'
         Assert-False ((@($byName['rocm-0'].Lines) + @($byName['app'].Lines)) -join "`n" -match 'torch-rocm-wheels') 'only rocm-1 reaches it, so cpu/nvidia never build it'
-        Assert-Equal 1 @($w.Lines | Where-Object { $_ -match '^ARG SCCACHE_WEBDAV_ENDPOINT$' }).Count 'a compiling stage declares the build-host sccache ARG'
+        Assert-Equal 0 @($w.Lines | Where-Object { $_ -match '^ARG SCCACHE_WEBDAV_ENDPOINT$' }).Count 'the endpoint is a secret mount, never an ARG the history records'
     }
 
     It 'torch-rocm-wheels: a torch RUN, then a torchvision RUN, each with Import-Versions, both sccache caches and the module closure' {

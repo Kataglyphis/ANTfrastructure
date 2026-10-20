@@ -1543,8 +1543,10 @@ reaching `:latest`:
   Dockerfiles. It refuses an ENV of an sccache remote-backend or layout name
   (`SCCACHE_WEBDAV_*`, `SCCACHE_REDIS*`, `SCCACHE_BUCKET`, `SCCACHE_MULTILEVEL_CHAIN`,
   `SCCACHE_FORCE_LOCAL`, …), an ENV that expands one under another name, and an
-  RFC1918 or link-local literal in an ENV or an ARG default. On Windows it also
-  refuses a compiling RUN whose stage never declares `ARG SCCACHE_WEBDAV_ENDPOINT`.
+  RFC1918 or link-local literal in an ENV or an ARG default, and an ARG of an endpoint,
+  bucket, region or key name, whose value BuildKit writes into the image history. On
+  Windows it also refuses a compiling RUN that does not mount the
+  `sccache_webdav_endpoint` secret.
 - **`_manifest_image_env_gate`**, the first step of `create_manifest` in
   `build-runtime-manifest.sh`, reads each wrapper's config ENV with `nerdctl image
   inspect --platform linux/<arch> --format '{{range .Config.Env}}…'` and runs the same
@@ -1558,10 +1560,11 @@ reaching `:latest`:
   gate, as they always were.
 
 The address rule, the version exemption and what neither pass covers (hostnames,
-loopback, files, image history) are the same on both lanes, because one case file,
+loopback, files) are the same on both lanes, because one case file,
 `linux/scripts/tests/image-env-cases.json`, grades this script and the Windows
-PowerShell twin alike. Tests: `linux/scripts/tests/test-image-env.sh`; mutations
-`dockerfile-lint.image-env-*` and `image-env.*`.
+PowerShell twin alike. The Windows lane also grades each exported image's history
+([`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries)).
+Tests: `linux/scripts/tests/test-image-env.sh`; mutations `dockerfile-lint.image-env-*` and `image-env.*`.
 
 ## The shared S3 level
 
@@ -1574,8 +1577,9 @@ hits on another host, and on this host after a `nerdctl system prune` empties th
 **Setting up a host** (once; the key is the `sccache-client` one from the server's
 `/root/sccache-s3-key.txt`): [`linux-host-setup.md` § B9](linux-host-setup.md#b9-the-shared-s3-level-for-sccache).
 
-**How the level reaches a RUN.** Unlike on Windows, everything goes in one BuildKit secret,
-the key and the endpoint alike:
+**How the level reaches a RUN.** Everything goes in one BuildKit file secret, the key and the
+endpoint alike; Windows passes one env secret per setting, since a file secret stays in a WCOW
+layer:
 
 - `_cross_build_append_sccache_s3_secret` (`cross-stage-build.sh`) passes the host's
   `~/.config/kataglyphis/sccache-s3.env` as `--secret id=sccache_s3,src=…` when it is mode 600,

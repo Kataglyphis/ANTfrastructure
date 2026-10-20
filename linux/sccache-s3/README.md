@@ -187,7 +187,7 @@ systemctl list-timers 'wg-reresolve-dns@*' sccache-evict.timer
 ```
 
 On each Windows client: `Test-HostSetup.ps1` reports `sccache S3 level reachable`. The next
-`Build-Buildkit.ps1` run prints `sccache levels: webdav … -> s3 …`, and each sccache RUN
+`Build-Buildkit.ps1` run prints `sccache levels: webdav -> s3`, and each sccache RUN
 ends with a `sccache-drain|` line.
 
 ## The client side

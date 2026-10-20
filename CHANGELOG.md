@@ -11,6 +11,37 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The Windows images' history names no cache endpoint, bucket or LAN address (#177)
+
+- **The leak.** BuildKit writes an `ARG`'s value into its history entry and a RUN's build args
+  into the RUN's (`RUN |9 … SCCACHE_BUCKET=… pwsh …`). The 2026-10-17 images named the WebDAV and
+  S3 endpoints, the bucket and the region; `:winamd64` carried 30 RFC1918 mentions. The base's
+  `ARG VULKAN_PRESEED_ENDPOINT` added five more entries. No key leaked.
+- **Secrets only.** `Get-BkSccacheConfig` now returns only secrets: the driver sets
+  `KATAGLYPHIS_BK_<NAME>` in its process and passes `--secret id=<name>,env=…`. The 16 compiling
+  RUNs mount all eight settings as env secrets (`Get-BkSccacheSecretMount`). The litert wheel RUN
+  (Bazel's remote cache) and the base's `Install-ScoopTools.ps1` RUN mount the WebDAV one. The
+  stages declare none of them as an ARG any more. `sccache levels:` names no endpoint. The write
+  probe passes its endpoint through `Invoke-DiagnosticProbe.ps1 -Secret`.
+- **The history gate.** `Invoke-BkHistoryGate` reads every exported image's config
+  (`--metadata-file`, `buildctl debug get`) and runs `Assert-ImageConfigPublishable`
+  (`WindowsImageEnv.Common`). It fails on:
+  - a host-carrying sccache setting or key half with a value;
+  - an RFC1918 or link-local address;
+  - either endpoint's host;
+  - the bucket or the region as a `*BUCKET*`/`*REGION*` value.
+
+  It prints entries and reasons, never values. A missing digest fails it.
+  `verify_image_env.py` refuses an ARG of an endpoint, bucket, region or key name, and a compiling
+  RUN without the WebDAV secret.
+- **Proved on this host** (buildkitd v0.33.0, real settings, bare servercore base): all eight set
+  in the RUN, both endpoints answering, none in the next RUN, 0 mentions in the config, the build
+  record, its provenance and the log. The four published configs gave 134, 134, 196 and 144
+  findings (`:winamd64`, `-nvidia`, `-rocm`, `:winarm64`), all on the known carriers. Tests: `ImageEnv.HistoryGate.Tests.ps1`, the history scenarios in
+  `ImageEnv.PublishGate.Tests.ps1`, `BuildDriver.SccacheLevels.Tests.ps1`, `test-image-env.sh`.
+- **Re-key:** the next chain rebuilds from the base's scoop layer on. An image built before it
+  fails the gate, so `-Stages final -PushRef` refuses old bk- tags.
+
 ## 2026-10-20 — `doc-links` grades a link the way pandoc resolves it (CON119)
 
 - DocumANTation's pandoc sources link from the repo root (`--resource-path .`, `pandoc_builder.py:83`),
