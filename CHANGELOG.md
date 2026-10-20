@@ -11,6 +11,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The base's toolchain check reads the hub sccache build's banner
+
+- **The next stop was `Test-Toolchain.ps1`**: the hub's build reports `sccache 0.18.0+1bd7432.pr2809`,
+  the pin is `0.18.0-1bd7432-pr2809`, and the check wanted the pin verbatim. `Test-PinnedBanner`
+  accepts the pin or a hub build id in semver's build-metadata spelling, and no other commit; clang-cl
+  and CMake take it too, CMake now in the ninja/nasm/sccache loop. Test:
+  `Build.ToolchainBanner.Tests.ps1`.
+
 ## 2026-10-20 — The Windows base passes `SCCACHE_DOWNLOAD_BASE` to the rust step
 
 - **The first Windows chain after b9e451da stopped in `Dockerfile.base`** (arm64, 2026-10-20, 25 min

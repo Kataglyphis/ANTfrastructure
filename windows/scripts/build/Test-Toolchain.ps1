@@ -16,6 +16,12 @@ if (-not (Test-Path $sharedModulePath)) {
 
 Import-Module $sharedModulePath -Force
 
+# Whether -Banner names -Expected, or a hub build's id in semver's build-metadata spelling (0.18.0-1bd7432-pr2809 reports 0.18.0+1bd7432.pr2809).
+function Test-PinnedBanner([string]$Banner, [string]$Expected) {
+    $spellings = @($Expected) + @(if ($Expected -match '^(\d+\.\d+\.\d+)-(.+)$') { "$($Matches[1])+$($Matches[2] -replace '-', '.')" })
+    return [bool]@($spellings | Where-Object { $Banner -match [regex]::Escape($_) }).Count
+}
+
 Assert-ContainerCommandAvailable -Name 'flutter' | Out-Null
 Assert-ContainerCommandAvailable -Name 'wix' | Out-Null
 Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
@@ -28,7 +34,7 @@ if ($LASTEXITCODE -ne 0) { throw "clang-cl --version failed (exit code $LASTEXIT
 $clangBanner = $clangOut | Select-Object -First 1
 Write-Host ("clang-cl (provenance): {0}" -f $clangBanner)
 $expectedLlvm = Resolve-ContainerImageValue -EnvironmentVariable 'LLVM_WINDOWS_VERSION' -DefaultValue ''
-if ($expectedLlvm -and $clangBanner -notmatch [regex]::Escape($expectedLlvm)) {
+if ($expectedLlvm -and -not (Test-PinnedBanner -Banner $clangBanner -Expected $expectedLlvm)) {
     throw ("clang-cl version mismatch: expected $expectedLlvm (versions.env LLVM_WINDOWS_VERSION), got '$clangBanner'. " +
         'Either scoop could not serve the pinned manifest, or the pin was bumped without rebuilding this layer. ' +
         'A version change here invalidates the clang-cl-shaped patches under windows/scripts/patches/ — ' +
@@ -49,8 +55,9 @@ if ($expectedLlvm) {
     }
 }
 
-# ninja and nasm shape what ships; an sccache older than v0.16.0 silently ignores SCCACHE_MULTILEVEL_CHAIN.
+# ninja and nasm shape what ships, an sccache older than v0.16.0 ignores SCCACHE_MULTILEVEL_CHAIN, and a CMake mismatch fails here, not in a media build.
 foreach ($pinned in @(
+        @{ Tool = 'cmake';   Args = @('--version'); EnvVar = 'CMAKE_VERSION' },
         @{ Tool = 'ninja';   Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
         @{ Tool = 'nasm';    Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' },
         @{ Tool = 'sccache'; Args = @('--version'); EnvVar = 'SCCACHE_WINDOWS_VERSION' })) {
@@ -60,22 +67,10 @@ foreach ($pinned in @(
     $toolArgs = $pinned.Args
     $banner = (& $pinned.Tool @toolArgs 2>&1 | Select-Object -First 1)
     if ($LASTEXITCODE -ne 0) { throw "$($pinned.Tool) $($toolArgs -join ' ') failed (exit code $LASTEXITCODE)" }
-    if ($banner -notmatch [regex]::Escape($expected)) {
+    if (-not (Test-PinnedBanner -Banner $banner -Expected $expected)) {
         throw "$($pinned.Tool) version mismatch: expected $expected (versions.env $($pinned.EnvVar)), got '$banner'"
     }
     Write-Host "$($pinned.Tool) OK: $banner"
-}
-
-# Fail the base build on a CMake pin mismatch, not hours later in a media build.
-$expectedCmake = Resolve-ContainerImageValue -EnvironmentVariable 'CMAKE_VERSION' -DefaultValue ''
-if ($expectedCmake) {
-    $cmakeOut = & cmake --version
-    if ($LASTEXITCODE -ne 0) { throw "cmake --version failed (exit code $LASTEXITCODE)" }
-    $cmakeBanner = $cmakeOut | Select-Object -First 1
-    if ($cmakeBanner -notmatch [regex]::Escape($expectedCmake)) {
-        throw "cmake version mismatch: expected $expectedCmake (versions.env), got '$cmakeBanner'"
-    }
-    Write-Host "cmake OK: $cmakeBanner"
 }
 
 # Captured first: .Source on a miss would throw under StrictMode.
