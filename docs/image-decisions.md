@@ -70,6 +70,8 @@ These are recorded so nobody files them as gaps:
 - The distro `libgstreamer*-dev` packages are purged.
 - Only the pinned CPython (`PYTHON_VERSION`), once with the GIL and once free-threaded (owner,
   2026-10-20).
+- The exception: `develop-red.yml` runs on `actions/setup-python` at `versions.env`'s X.Y, a ~3 s
+  download each run, not the image and not an `actions/github-script` port (owner, 2026-10-20).
 - cmake-format stays at 0.6.13, its last release (2020-08-19), with `lib/cmakelang-py315.py`'s
   lexer patch for CPython 3.15 (owner, 2026-10-20: keep, do not replace). Re-open only when a
   later Python breaks the patch.
