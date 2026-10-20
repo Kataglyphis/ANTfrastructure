@@ -8,7 +8,8 @@ WHEELHOUSE_SH="${TESTS_DIR}/../05-frameworks/torch/build-app-wheelhouse.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 APP_WHEELHOUSE_BUILD_ROOT="${_work}/build"
-export BUILD_PYTHON="$(command -v python3)"
+BUILD_PYTHON="$(command -v python3)"
+export BUILD_PYTHON
 
 # A GIL cross tree as staged: the host's data, no target-named sysconfigdata, and a json that refuses to load so a PYTHONPATH leak shows.
 _sysroot="${_work}/sysroot"
