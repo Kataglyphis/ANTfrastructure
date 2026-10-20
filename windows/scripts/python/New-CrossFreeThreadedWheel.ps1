@@ -38,9 +38,7 @@ Write-Host $plan.Reason
 if (-not $plan.Build) { exit 0 }
 
 # As declared, as the native lane's isolated build resolves them.
-$requires = @(& $gil.Exe -I -c "import sys, tomllib; print('\n'.join(tomllib.load(open(sys.argv[1], 'rb')).get('build-system', {}).get('requires', [])))" $pyproject |
-        Where-Object { $_ })
-if ($LASTEXITCODE -ne 0 -or $requires.Count -eq 0) { throw "$pyproject declares no [build-system] requires to build the $tag wheel with" }
+$requires = (Get-PyprojectBuildInfo -Python $gil.Exe -PyprojectPath $pyproject).Requires
 
 Enter-VsDevCmdEnvironment -Arch $arch
 $work = [IO.Directory]::CreateTempSubdirectory('ft-cross-').FullName

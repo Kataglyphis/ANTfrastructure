@@ -176,7 +176,7 @@ Describe 'Invoke-FreeThreadedWheelProof and Add-PythonLibPath' {
     }
 }
 
-Describe 'Resolve-PythonLegList and Get-NativeWheelCheck (Invoke-NativeWheelBuild.ps1)' {
+Describe 'Resolve-PythonLegList and Get-NativeWheelCheck (New-Arm64PythonTestStage.ps1)' {
 
     It 'reads empty as the pinned X.Y, pinned and pinnedt as it and its twin, and either separator' {
         Invoke-InTestDir { param($d)

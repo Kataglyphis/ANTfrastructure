@@ -169,13 +169,53 @@ Describe 'Add-PurePythonWheel' {
             $run = Invoke-PureBuild -Dir $d -Whole
             $deps = @($run.Calls | Where-Object { $_ -like 'pip install *--requirement *' })
             Assert-Equal 1 $deps.Count 'one install of the locked dependencies'
-            Assert-Match "--find-links $([regex]::Escape((Join-Path $d 'pure-wheels'))) --only-binary pyyaml --requirement " $deps[0] 'the built wheel, and no fallback to building the sdist'
+            Assert-Match "--find-links $([regex]::Escape((Join-Path $d 'pure-wheels'))) --only-binary pyyaml --no-deps --requirement " $deps[0] 'the built wheel, and no fallback to building the sdist'
         }
     }
 
     It 'refuses a wheel that carries a binary, which would be the build host''s arch' {
         Invoke-InTestDir { param($d)
             Assert-Throws { $null = Invoke-PureBuild -Dir $d -Entries 'yaml/__init__.py', 'yaml/_yaml.cp315-win_amd64.pyd' } -MessagePattern 'carries yaml/_yaml\.cp315-win_amd64\.pyd'
+        }
+    }
+}
+
+Describe 'Install-PythonCrossSite (CON113)' {
+
+    It 'exports every extra on request, then installs the wheel and each extra wheel from its file alone' {
+        Invoke-InTestDir { param($d)
+            $calls = Invoke-WithFakeUv {
+                Install-PythonCrossSite -HostPython 'C:\host\python3.15t.exe' -SitePackages (Join-Path $d 'site') -RepoRoot $d -Wheel 'p.whl' -AllExtras `
+                    -WorkDir $d -Platform 'aarch64-pc-windows-msvc' -PythonVersion '3.15' -ExtraWheel 'x.whl'
+            }
+            Assert-Match '^export --locked --no-dev --no-emit-project --format requirements\.txt --all-extras --output-file ' $calls[0] 'every extra'
+            Assert-Match ' --no-deps --requirement .*requirements\.cross\.txt$' $calls[1] 'the lock''s closure as exported, no fresh resolve that drops [tool.uv] overrides (mutation)'
+            Assert-Match '--no-deps p\.whl$' $calls[2] 'the project without its dependencies'
+            Assert-Match '--no-index --no-deps x\.whl$' $calls[3] 'an extra wheel from its file alone'
+        }
+    }
+
+    It 'takes store wheels through --find-links on the stores, and --only-binary so uv does not build the sdist instead' {
+        $links = & (Get-Module WindowsPythonApp.Common) { Get-CrossFindLinkArgument -Pure 'P' -Built 'pyyaml' -Store 'S1', 'S2' -Stored 'psutil' }
+        Assert-Equal '--find-links P --find-links S1 --find-links S2 --only-binary pyyaml --only-binary psutil' ($links -join ' ') 'both sources, both pinned to their wheel'
+        $none = & (Get-Module WindowsPythonApp.Common) { Get-CrossFindLinkArgument -Pure 'P' -Store 'S1' }
+        Assert-Equal '' ($none -join ' ') 'no store wheel taken, no store in view'
+    }
+
+    It 'adds a store wheel''s own hash only for the version and tag the lock pins (mutation)' {
+        Invoke-InTestDir { param($d)
+            $store = Join-Path $d 'deps'
+            $null = New-Item -ItemType Directory -Path $store
+            foreach ($n in 'psutil-7.2.2-cp315-cp315t-win_arm64', 'psutil-7.2.1-cp315-cp315t-win_arm64', 'rich-14.0-cp315-cp315-win_arm64') {
+                Set-Content -LiteralPath (Join-Path $store "$n.whl") -Value $n
+            }
+            Set-Content -LiteralPath (Join-Path $d 'req.txt') -Value @("psutil==7.2.2 ; sys_platform == 'win32' \", '    --hash=sha256:111', 'rich==14.0 \', '    --hash=sha256:222')
+            $added = & (Get-Module WindowsPythonApp.Common) { Add-StoreWheelHash -Requirements $args[0] -Store $args[1] -Tag 'cp315t-win_arm64' } (Join-Path $d 'req.txt') @($store)
+            Assert-Equal 'psutil' ($added -join ',') 'the pinned version, of the leg''s tag, alone'
+            $want = (Get-FileHash -LiteralPath (Join-Path $store 'psutil-7.2.2-cp315-cp315t-win_arm64.whl') -Algorithm SHA256).Hash.ToLowerInvariant()
+            $req = (Get-Content -LiteralPath (Join-Path $d 'req.txt')) -join "`n"
+            Assert-Match "--hash=sha256:111 \\\n    --hash=sha256:$want\nrich" $req 'its hash joins psutil''s'
+            Assert-False ($req -match 'sha256:222 \\') 'rich untouched'
         }
     }
 }

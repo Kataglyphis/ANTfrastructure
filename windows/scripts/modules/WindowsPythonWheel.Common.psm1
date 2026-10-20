@@ -118,6 +118,21 @@ function Split-PythonWheelName {
     return $parts
 }
 
+function Get-PyprojectBuildInfo {
+    <#
+    .SYNOPSIS
+        -PyprojectPath's [project] name and its [build-system] requires as declared, read by -Python; throws when either is missing.
+    #>
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$PyprojectPath)
+    $code = "import json, sys, tomllib; d = tomllib.load(open(sys.argv[1], 'rb')); " +
+        "print(json.dumps({'name': d.get('project', {}).get('name', ''), 'requires': d.get('build-system', {}).get('requires', [])}))"
+    $json = "$(& $Python -I -c $code $PyprojectPath)"
+    if ($LASTEXITCODE -ne 0) { throw "$Python could not read $PyprojectPath (exit $LASTEXITCODE)" }
+    $info = $json | ConvertFrom-Json
+    if (-not $info.name -or @($info.requires).Count -eq 0) { throw "$PyprojectPath declares no [project] name or no [build-system] requires to build a wheel with" }
+    return [pscustomobject]@{ Name = [string]$info.name; Requires = [string[]]@($info.requires) }
+}
+
 function Find-UvPython {
     <#
     .SYNOPSIS
@@ -395,7 +410,7 @@ function Get-WheelMemberDifference {
     }
 }
 
-Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Find-UvPython,
+Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Get-PyprojectBuildInfo, Find-UvPython,
     Resolve-PythonLegList, Get-NativeWheelCheck,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
     Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,

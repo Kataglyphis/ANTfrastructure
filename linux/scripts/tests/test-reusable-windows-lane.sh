@@ -27,6 +27,20 @@ steps = V.value(job, 'steps') if job else []
 raw = pathlib.Path('${LANE_REL}').read_text(encoding='utf-8')
 def run_text():
     return '\n'.join(str(V.value(s, 'run') or '') for s in (steps or []))
+def run_blocks(name):
+    # The loader keeps a run: | block empty, so a job's scripts are read from the raw file by indentation.
+    import re
+    lines = raw.splitlines()
+    start = lines.index('  %s:' % name)
+    end = next((i for i in range(start + 1, len(lines)) if re.match(r'^  [A-Za-z0-9_-]+:\s*$', lines[i])), len(lines))
+    out, i = [], start
+    while i < end:
+        m = re.match(r'^(\s*)run: \|', lines[i])
+        i += 1
+        while m and i < end and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > len(m.group(1))):
+            out.append(lines[i])
+            i += 1
+    return '\n'.join(out)
 print($1)
 " 2>&1)
 }
@@ -109,17 +123,32 @@ t_case "a missing submodule fails with a message that names the fix"
 # `pwsh -File <absent>` reads as a broken lane, not an un-checked-out submodule.
 t_assert_eq "True" "$(_raw_has 'Test-Path -LiteralPath $gate')"
 
-t_case "arm64-tests is a boolean that DEFAULTS OFF, and its job is gated on it"
+t_case "arm64-tests is a boolean that DEFAULTS OFF, and both arm64 jobs are gated on it"
 # Defaulting on would hand every existing caller a windows-11-arm job its lock was never checked for.
 t_assert_eq "boolean" "$(_q "V.value(V.value(inputs,'arm64-tests'),'type')")"
 t_assert_eq "false" "$(_q "V.value(V.value(inputs,'arm64-tests'),'default')")"
-t_assert_contains "$(_q "V.value(V.value(jobs,'test-python-on-windows-arm64'),'if')")" "inputs.arm64-tests" \
-  "an ungated job runs on every caller"
+for arm64_job in stage-python-for-windows-arm64 test-python-on-windows-arm64; do
+  t_assert_contains "$(_q "V.value(V.value(jobs,'${arm64_job}'),'if')")" "inputs.arm64-tests" \
+    "an ungated job runs on every caller"
+done
 t_assert_eq "windows-11-arm" "$(_q "V.value(V.value(jobs,'test-python-on-windows-arm64'),'runs-on')")"
+t_assert_eq "stage-python-for-windows-arm64" "$(_q "V.value(V.value(jobs,'test-python-on-windows-arm64'),'needs')")"
 
-t_case "the arm64 job hands its inputs over through env, never interpolated into the script"
-t_assert_eq "False" "$(_q "'\${{' in '\n'.join(str(V.value(s,'run') or '') for s in V.value(V.value(jobs,'test-python-on-windows-arm64'),'steps'))")"
-t_assert_eq "True" "$(_raw_has '& $legs -InstallUv -PythonVersions $env:PY_VERSIONS -Extras $env:PY_EXTRAS -FreeThreadedExtras $env:FT_EXTRAS -TestPaths $env:TEST_PATHS')"
+t_case "the stage runs in :winarm64 and hands its inputs over as container env, never interpolated into a script"
+stage_steps="V.value(V.value(jobs,'stage-python-for-windows-arm64'),'steps')"
+t_assert_eq "True" "$(_q "'GetEnvironmentVariable' in run_blocks('stage-python-for-windows-arm64')")"
+t_assert_eq "False" "$(_q "'\${{' in run_blocks('stage-python-for-windows-arm64')")"
+t_assert_eq "True" "$(_q "all(str(V.value(V.value(s,'with'),'target-arch')) == 'arm64' for s in ${stage_steps} if 'windows-container' in str(V.value(s,'uses')))")"
+t_assert_eq "True" "$(_raw_has 'file: C:\ws\third_party\ANTfrastructure\windows\scripts\python\New-Arm64PythonTestStage.ps1')"
+t_assert_eq "True" "$(_raw_has "foreach (\$name in 'PY_VERSIONS', 'PY_EXTRAS', 'FT_EXTRAS', 'TEST_PATHS', 'TEST_FILES', 'TEST_ENV') { '--env';")"
+
+t_case "the device job installs nothing: no checkout, no uv, no download but the stage"
+device_steps="V.value(V.value(jobs,'test-python-on-windows-arm64'),'steps')"
+t_assert_eq "False" "$(_q "any('checkout' in str(V.value(s,'uses')) for s in ${device_steps})")"
+t_assert_eq "True" "$(_q "'Invoke-StagedTests.ps1' in run_blocks('test-python-on-windows-arm64')")"
+t_assert_eq "False" "$(_q "any(w in run_blocks('test-python-on-windows-arm64') for w in ('uv ', 'pip ', 'Invoke-WebRequest', 'python install'))")"
+t_assert_eq "True" "$(_raw_has 'name: python-windows-arm64-stage')"
+t_assert_eq "True" "$(_raw_has "if (\$failed -gt 0) { throw \"\$failed arm64 test(s) or wheel proof(s) failed\" }")"
 
 t_case "build-script defaults to empty: the repo's own Build-Windows.ps1 first, else the hub driver"
 # A caller that relies on the default keeps running its own script until it deletes it.

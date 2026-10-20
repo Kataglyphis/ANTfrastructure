@@ -8085,18 +8085,42 @@
  {
   "id": "windows-lane.arm64-job-gated",
   "target": ".github/workflows/python-ci-windows.yml",
-  "find": "    if: ${{ inputs.arm64-tests }}\n",
-  "replace": "    if: ${{ true }}\n",
+  "find": "    if: ${{ inputs.arm64-tests }}\n    needs: stage-python-for-windows-arm64\n",
+  "replace": "    if: ${{ true }}\n    needs: stage-python-for-windows-arm64\n",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
-  "why": "an ungated arm64 job runs on every caller, whatever arm64-tests says"
+  "why": "an ungated device job runs on every caller, whatever arm64-tests says"
  },
  {
   "id": "windows-lane.arm64-inputs-through-env",
   "target": ".github/workflows/python-ci-windows.yml",
-  "find": "-InstallUv -PythonVersions $env:PY_VERSIONS ",
-  "replace": "-InstallUv -PythonVersions '${{ inputs.arm64-python-versions }}' ",
+  "find": "\"$name=$([Environment]::GetEnvironmentVariable($name))\"",
+  "replace": "\"$name=${{ inputs.arm64-python-versions }}\"",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
-  "why": "an input interpolated into the script is a script injection; env carries it as data"
+  "why": "an input interpolated into the script is a script injection; env carries it as data into the container"
+ },
+ {
+  "id": "windows-lane.arm64-stage-gated",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "find": "    if: ${{ inputs.arm64-tests }}\n    name: stage the arm64 legs in :winarm64\n",
+  "replace": "    if: ${{ true }}\n    name: stage the arm64 legs in :winarm64\n",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "an ungated stage job pulls :winarm64 and cross-builds for every caller, whatever arm64-tests says"
+ },
+ {
+  "id": "windows-lane.arm64-device-installs-nothing",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "find": "          ./Invoke-StagedTests.ps1 *>&1 | Tee-Object -FilePath $log\n",
+  "replace": "          uv pip install --system pytest\n          ./Invoke-StagedTests.ps1 *>&1 | Tee-Object -FilePath $log\n",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "the device runs what :winarm64 staged; an install there is a CI-time download the image exists to remove (CON113)"
+ },
+ {
+  "id": "windows-lane.arm64-failed-leg-fails",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "find": "if ($failed -gt 0) { throw \"$failed arm64 test(s) or wheel proof(s) failed\" }",
+  "replace": "if ($false) { throw \"$failed arm64 test(s) or wheel proof(s) failed\" }",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "a failed test or wheel proof on the device must red the job, not only the summary line"
  },
  {
   "id": "windows-lane.powershell-lint-job-is-gated",

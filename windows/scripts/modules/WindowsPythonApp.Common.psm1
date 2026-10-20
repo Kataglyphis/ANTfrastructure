@@ -123,9 +123,10 @@ function Invoke-AppUv {
 
 # The lock as requirements.txt in -OutFile, without the project and without -Exclude, which chain wheels replace.
 function Export-AppRequirement {
-    param([Parameter(Mandatory)][string]$RepoRoot, [string[]]$Extras = @(), [string[]]$Exclude = @(), [Parameter(Mandatory)][string]$OutFile)
+    param([Parameter(Mandatory)][string]$RepoRoot, [string[]]$Extras = @(), [switch]$AllExtras, [string[]]$Exclude = @(), [Parameter(Mandatory)][string]$OutFile)
     $export = @('export', '--locked', '--no-dev', '--no-emit-project', '--format', 'requirements.txt') +
-        @($Extras | ForEach-Object { '--extra', $_ }) + @($Exclude | ForEach-Object { '--no-emit-package', $_ }) + @('--output-file', $OutFile)
+        @(if ($AllExtras) { '--all-extras' } else { $Extras | ForEach-Object { '--extra', $_ } }) +
+        @($Exclude | ForEach-Object { '--no-emit-package', $_ }) + @('--output-file', $OutFile)
     Push-Location $RepoRoot
     try { Invoke-AppUv -What 'uv export' -Arguments $export } finally { Pop-Location }
 }
@@ -271,18 +272,86 @@ function Add-PurePythonWheel {
     return [string[]]$built
 }
 
+# Adds the hash of each -Store wheel tagged -Tag (cp315t-win_arm64) whose name and version -Requirements pins; returns their names.
+function Add-StoreWheelHash {
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][string]$Requirements, [string[]]$Store = @(), [Parameter(Mandatory)][string]$Tag)
+    [string[]]$lines = Get-Content -LiteralPath $Requirements
+    $added = [Collections.Generic.List[string]]::new()
+    foreach ($whl in @($Store | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter "*-$Tag.whl" -File })) {
+        $name = ($whl.Name.Split('-')[0] -replace '[-_.]+', '-').ToLowerInvariant()
+        if (-not @($lines -match "^$([regex]::Escape($name))==$([regex]::Escape($whl.Name.Split('-')[1]))(\s|$)").Count) { continue }
+        $lines = Add-RequirementHash -Lines $lines -Name $name -Sha256 (Get-FileHash -LiteralPath $whl.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $added.Add($name)
+    }
+    if ($added.Count -gt 0) { Set-Content -LiteralPath $Requirements -Value $lines -Encoding utf8NoBOM }
+    return [string[]]$added
+}
+
+# --find-links on the pure builds and the stores, and --only-binary for every package taken from them.
+function Get-CrossFindLinkArgument {
+    [OutputType([string[]])]
+    param([string]$Pure = '', [string[]]$Built = @(), [string[]]$Store = @(), [string[]]$Stored = @())
+    # With the registry's sdist in view, uv builds it rather than take the --find-links wheel (measured).
+    return [string[]](@(if ($Built.Count -gt 0) { '--find-links', $Pure }) + @(if ($Stored.Count -gt 0) { $Store | ForEach-Object { '--find-links', $_ } }) +
+        @(@($Built) + @($Stored) | ForEach-Object { '--only-binary', $_ }))
+}
+
+function Install-PythonCrossSite {
+    <#
+    .SYNOPSIS
+        Installs the lock's set, then -Wheel and each -ExtraWheel without dependencies, into -SitePackages for -Platform with -HostPython's ABI.
+    .DESCRIPTION
+        uv resolves for -Platform from the host interpreter and writes with --target, since the target interpreter cannot
+        run here. A dependency with no wheel at all (antlr4-python3-runtime) is built by the host; a compiled one would
+        carry host binaries, which the arch gate refuses. -Exclude leaves packages out of the lock export.
+        -PureBuild names packages with no wheel for the target but a pure-Python build (pyyaml on cp315 win_arm64):
+        each is built here from uv.lock's hash-checked sdist with its env, must come out py3-none-any without binaries,
+        and goes in by its own hash. -Store names directories of wheels tagged -StoreTag that PyPI lacks (the image's psutil
+        cp315t): a requirement pinned at one's version goes in by that wheel's hash. -ExtraWheel goes in from its file alone (the chain ORT).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$HostPython,
+        [Parameter(Mandatory)][string]$SitePackages,
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$Wheel,
+        [string[]]$Extras = @(),
+        [switch]$AllExtras,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [Parameter(Mandatory)][string]$Platform,
+        [Parameter(Mandatory)][string]$PythonVersion,
+        [string[]]$Exclude = @(),
+        [hashtable]$PureBuild = @{ pyyaml = @{ PYYAML_FORCE_LIBYAML = '0' } },
+        [string[]]$Store = @(),
+        [string]$StoreTag = '',
+        [string[]]$ExtraWheel = @()
+    )
+
+    $requirements = Join-Path $WorkDir 'requirements.cross.txt'
+    Export-AppRequirement -RepoRoot $RepoRoot -Extras $Extras -AllExtras:$AllExtras -Exclude $Exclude -OutFile $requirements
+    $pure = Join-Path $WorkDir 'pure-wheels'
+    $built = @(Add-PurePythonWheel -Requirements $requirements -Lock (Join-Path $RepoRoot 'uv.lock') -HostPython $HostPython -OutDir $pure -PureBuild $PureBuild)
+    $stored = @(if ($Store.Count -gt 0) { Add-StoreWheelHash -Requirements $requirements -Store $Store -Tag $StoreTag })
+    $common = @('pip', 'install', '--python', $HostPython, '--target', $SitePackages, '--python-platform', $Platform,
+        '--python-version', $PythonVersion, '--compile-bytecode')
+    $findLinks = Get-CrossFindLinkArgument -Pure $pure -Built $built -Store $Store -Stored $stored
+    # --no-deps: the export is the lock's whole closure, and a fresh resolve would drop the project's [tool.uv] overrides.
+    Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + $findLinks + @('--no-deps', '--requirement', $requirements))
+    Invoke-AppUv -What "installing $Wheel" -Arguments ($common + @('--no-deps', $Wheel))
+    foreach ($extra in $ExtraWheel) { Invoke-AppUv -What "installing $extra" -Arguments ($common + @('--no-index', '--no-deps', $extra)) }
+    # uv's script trampolines match the HOST arch; the arch gate would refuse them.
+    $scripts = Join-Path $SitePackages 'bin'
+    if (Test-Path -LiteralPath $scripts) { Remove-Item -LiteralPath $scripts -Recurse -Force }
+}
+
 function Install-PythonAppCrossPackage {
     <#
     .SYNOPSIS
         Installs the locked dependencies, the app wheel and the chain ORT wheel into a target runtime's site-packages.
     .DESCRIPTION
-        uv resolves for -Platform from the host interpreter and writes with --target, since the target interpreter cannot
-        run here. A dependency with no wheel at all (antlr4-python3-runtime) is built by the host; a compiled one would
-        carry host binaries, which the bundle's arch gate refuses. -Exclude leaves packages out of the lock export: the
-        PyPI ORT the chain wheel replaces, and an OpenCV the chain cv2 replaces (PyPI has no win_arm64 opencv-python).
-        -PureBuild names packages with no wheel for the target but a pure-Python build (pyyaml on cp315 win_arm64):
-        each is built here from uv.lock's hash-checked sdist with its env, must come out py3-none-any without binaries,
-        and goes in by its own hash.
+        Install-PythonCrossSite, then the chain ORT. -Exclude leaves packages out of the lock export: the PyPI ORT the chain
+        wheel replaces, and an OpenCV the chain cv2 replaces (PyPI has no win_arm64 opencv-python).
     #>
     [CmdletBinding()]
     param(
@@ -299,20 +368,8 @@ function Install-PythonAppCrossPackage {
         [hashtable]$PureBuild = @{ pyyaml = @{ PYYAML_FORCE_LIBYAML = '0' } }
     )
 
-    $requirements = Join-Path $WorkDir 'requirements.cross.txt'
-    Export-AppRequirement -RepoRoot $RepoRoot -Extras $Extras -Exclude $Exclude -OutFile $requirements
-    $pure = Join-Path $WorkDir 'pure-wheels'
-    $built = @(Add-PurePythonWheel -Requirements $requirements -Lock (Join-Path $RepoRoot 'uv.lock') -HostPython $HostPython -OutDir $pure -PureBuild $PureBuild)
-    $common = @('pip', 'install', '--python', $HostPython, '--target', $SitePackages, '--python-platform', $Platform,
-        '--python-version', $PythonVersion, '--compile-bytecode')
-    # --only-binary: with the registry's sdist in view, uv builds it rather than take the --find-links wheel (measured).
-    $findLinks = if ($built.Count -gt 0) { @('--find-links', $pure) + @($built | ForEach-Object { '--only-binary', $_ }) } else { @() }
-    Invoke-AppUv -What 'installing the locked dependencies' -Arguments ($common + $findLinks + @('--requirement', $requirements))
-    Invoke-AppUv -What "installing $AppWheel" -Arguments ($common + @('--no-deps', $AppWheel))
-    Invoke-AppUv -What "installing the chain ORT wheel $OrtWheel" -Arguments ($common + @('--no-index', '--no-deps', $OrtWheel))
-    # uv's script trampolines match the HOST arch; the bundle has launchers of its own, and the arch gate would refuse these.
-    $scripts = Join-Path $SitePackages 'bin'
-    if (Test-Path -LiteralPath $scripts) { Remove-Item -LiteralPath $scripts -Recurse -Force }
+    Install-PythonCrossSite -HostPython $HostPython -SitePackages $SitePackages -RepoRoot $RepoRoot -Wheel $AppWheel -Extras $Extras `
+        -WorkDir $WorkDir -Platform $Platform -PythonVersion $PythonVersion -Exclude $Exclude -PureBuild $PureBuild -ExtraWheel $OrtWheel
 }
 
 function Copy-ChainOpenCvPackage {
@@ -721,6 +778,6 @@ $(($apps -join "`n").TrimEnd())
     return $Destination
 }
 
-Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
+Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs,
     New-PythonAppAppxManifest

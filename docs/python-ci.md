@@ -478,58 +478,55 @@ To run it by hand, start it from the repo root inside `:winamd64`:
 `windows/scripts/tests/PythonCiBuild.Tests.ps1`, with a uv, a python and both child drivers
 replaced by stand-ins that record each call.
 
-## Windows arm64: the runner-native test job
+## Windows arm64: the staged test job
 
-`python-ci-windows.yml` with `arm64-tests: true` adds a `windows-11-arm` job. No Windows arm64
-image runs on a hosted runner, so it takes no container: it checks the caller out with its
-ANTfrastructure pin and runs `windows/scripts/python/Invoke-PythonTestLegs.ps1 -InstallUv`.
+`python-ci-windows.yml` with `arm64-tests: true` adds two jobs (CON113, 2026-10-20). A hosted
+`windows-11-arm` runner has no image, so a `windows-2025` job stages everything the device runs in
+`:winarm64`, and the device job installs nothing. Before, the device job installed uv and the pinned
+CPython through uv (`Downloading cpython-3.15.0-windows-aarch64-none`, WebDavClient run
+39336879640) and built the wheels with the runner's Visual Studio.
 
-- **uv** is the `UV_VERSION` release zip, checked against `UV_WINDOWS_ARM64_SHA256` in
-  `versions.env`; `bump_versions.py` refreshes that pin with the Linux ones.
-- **Legs** come from `arm64-python-versions`. Empty is the pinned X.Y, plus X.Yt when
-  `pyproject.toml` declares free-threading, the x64 driver's and the Linux lane's rule
-  (`Resolve-PythonLegList`); uv installs the pinned X.Y first to read the classifier. `pinned` and
-  `pinnedt` in a list stand for X.Y and X.Yt. Each leg gets its own venv through
-  `New-UvProjectEnvironment`, so a bare `X.Y` asks for `X.Y+gil`; otherwise an `X.Yt` leg earlier
-  in the same job would hand it the free-threaded build (§ Free-threaded and GIL legs in one
-  container).
-- **Extras:** `arm64-extras` (empty means all extras), `free-threaded-extras` for a `t` leg, and
-  `test-paths`, all as on Linux. Every leg gates. A failed leg does not stop the next one, and the
-  error names every failed leg and its step: venv, sync or pytest.
-- **Wheels only, in practice.** The test legs never enter Visual Studio's environment, so a package
-  without a `win_arm64` wheel would build with the default `cl`. Keep such packages off ARM64 with a
-  marker, `"<pkg>; platform_machine != 'ARM64'"`; Linux aarch64 reports `aarch64`, so the marker
-  leaves Linux alone. WebDavClient does that for py-spy (no `win_arm64` wheel) and line_profiler
-  (none for 3.14t). Check a lock before you turn the job on: `uv export --locked`, then
-  `uv pip install --dry-run --no-deps --only-binary :all: --python-platform aarch64-pc-windows-msvc`,
-  once per leg's interpreter (`--python 3.14t` for the free-threaded leg).
+**The stage**, `windows/scripts/python/New-Arm64PythonTestStage.ps1` from the caller's ANTfrastructure
+pin, writes `dist\windows-arm64-python`:
 
-The consumer must pin an ANTfrastructure that ships the script; the job refuses an older pin by name
-instead of failing on a missing file. Test: `windows/scripts/tests/PythonTestLegs.Tests.ps1` (a uv
-stand-in that records each call).
+- **Legs** from `arm64-python-versions`. Empty is the pinned X.Y, plus X.Yt when `pyproject.toml`
+  declares free-threading (`Resolve-PythonLegList`); `pinned` and `pinnedt` stand for X.Y and X.Yt.
+- **Interpreters:** per leg a copy of the image's target tree, `C:\runtime\python` or
+  `C:\runtime\python-freethreaded`, with its site-packages emptied.
+- **Wheels:** the leg's `cpXY` or `cpXYt` `win_arm64` wheel, cross-built with the image's VS 2026 and
+  clang-cl in a child process (`New-CrossBuildPython`, `Invoke-CrossWheelBuild`, `CYTHONIZE=True`).
+  `CL` carries `--target=aarch64-pc-windows-msvc`, so a `setup.py` that swaps in clang-cl needs no
+  target flag of its own.
+- **Site-packages:** the lock's set and the leg's wheel, installed for the target with the host's
+  interpreter of the same ABI (`Install-PythonCrossSite`). Extras: `arm64-extras` (empty is all),
+  `free-threaded-extras` for an X.Yt leg. Every package is hash-checked from `uv.lock`; pyyaml is built
+  pure from its locked sdist; a `cp3XYt` wheel PyPI lacks (psutil) comes from the image's
+  `wheels-free-threaded\deps`, by its own hash.
+- **Tests:** `arm64-test-files` (empty: `tests` and the root's pytest configuration files) are copied
+  to `run\` without the package, so the tests import the installed wheel. `arm64-test-env` takes
+  `NAME=value` pairs, `test-paths` pytest's paths.
+- **Proofs:** each binary wheel unpacked alone to `proof-<leg>`, for `free-threaded-wheel.py load` on
+  a GIL leg and `prove` on an X.Yt leg (`Get-NativeWheelCheck`), under `python -S`.
 
-### Native arm64 wheels
+The arch gate then grades the tree standalone (every PE ARM64, at least 10, every import resolved
+in the stage or Windows), and the tree uploads as `python-windows-arm64-stage`.
 
-`arm64-wheels: true` adds two steps to the same job, after the tests:
-`windows/scripts/python/Invoke-NativeWheelBuild.ps1`, then an upload of `dist/*.whl` as
-`packages-windows-arm64-wheels`. They exist because the `:winarm64` container cross-builds a Cython
-project's free-threaded wheel but no GIL one (`Invoke-CiPackaging.ps1`): before 2026-10-17
-WebDavClient's releases carried `win_amd64` wheels and nothing for arm64.
+**The device** runs `Invoke-StagedTests.ps1` over its `tests.json`: per leg `run-pytest-<leg>.cmd` and
+`prove-<leg>.cmd`. The one `TESTS:` line goes to the summary; a failed test or proof, or no passing
+test, fails the job. With `arm64-wheels: true` it then uploads the wheels as
+`packages-windows-arm64-wheels`.
 
-- **Compiler:** `VsDevCmd -arch=arm64 -host_arch=arm64`, then Visual Studio's own
-  `Tools\Llvm\ARM64\bin` first on `PATH`, since the family's `setup.py` swaps `cl` and `link` for
-  `clang-cl` and `lld-link`. OmniAccelerANT's arm64 app builds with the same pair on the same
-  runner.
-- **One wheel per leg,** with `CYTHONIZE=True` and the interpreter the test legs already installed
-  (`uv python find`, so nothing downloads twice). It must be that leg's `cpXY` or `cpXYt` wheel for
-  `win_arm64`: an x64 interpreter would build `win_amd64`, and the build stops there.
-- **Each wheel installs alone, offline, into a fresh venv,** and every compiled module must load
-  there: on a GIL leg `free-threaded-wheel.py load`; on an `X.Yt` leg `prove`, which also needs the
-  GIL to stay off.
+**What fails the stage:** a locked package with no `win_arm64` wheel for a leg and no pure build. uv
+builds it with the host interpreter and refuses the result. Keep it off ARM64 with a marker,
+`"<pkg>; platform_machine != 'ARM64'"` (Linux aarch64 reports `aarch64`), as WebDavClient does for
+py-spy and line_profiler, or give the image its wheel (`Build-TargetSdistWheel.ps1`).
 
-Tests: `PythonWheel.FreeThreaded.Tests.ps1` (`Resolve-PythonLegList`, `Get-NativeWheelCheck`,
-`-Check load`) and `test-python-free-threaded-wheel.sh` (`load` against a real C extension and a
-broken one). The build itself runs only on the runner.
+**A release** that collects `*.whl` from every upload must skip the stage
+(`--skip python-windows-arm64-stage`): its two interpreters carry ensurepip's pip wheel.
+
+Tests: `PythonArm64Stage.Tests.ps1`, `PythonApp.Cross.Tests.ps1` (`Install-PythonCrossSite`),
+`PythonWheel.FreeThreaded.Tests.ps1` (`Resolve-PythonLegList`, `Get-NativeWheelCheck`) and
+`test-reusable-windows-lane.sh`. The stage itself runs only in `:winarm64`.
 
 ## Free-threaded and GIL legs in one container
 
@@ -570,8 +567,7 @@ A Windows `3.14t` leg gets the image's interpreter too: a `:winamd64` built afte
 `C:\python-freethreaded\python3.14t.exe`, source-built beside the GIL build and last on `PATH`
 ([`windows-builds.md` § The free-threaded CPython](windows-builds.md#the-free-threaded-cpython)).
 `uv venv --python 3.14t` and `uv build --python 3.14t` resolve to it with
-`UV_PYTHON_DOWNLOADS=never`. An older image still has uv download one, and so does the arm64
-runner-native job above, which runs without an image.
+`UV_PYTHON_DOWNLOADS=never`. An older image still has uv download one.
 
 **The chain's own twins.** The same `:winamd64` ships `cp3XY-cp3XYt` builds of the chain wheels whose
 code declares free-threading (ONNX Runtime, PyAV, apache-tvm-ffi and the two IREE packages) in
@@ -777,7 +773,7 @@ One line moves every image, lane and default: `PYTHON_VERSION` in
 - The drivers' defaults. `ci_tests.sh` runs X.Y, plus X.Yt when `pyproject.toml` declares
   free-threading; the packaging, static-analysis, docs, wheel-smoke and wheel-test drivers take X.Y,
   and so do Windows' `Invoke-CiPackaging.ps1`, `Invoke-CiStaticAnalysis.ps1` and
-  `Invoke-PythonTestLegs.ps1` (`Get-PinnedPythonVersion`). A consumer that passes no version follows
+  `New-Arm64PythonTestStage.ps1` (`Get-PinnedPythonVersion`). A consumer that passes no version follows
   the image; one that picks its legs writes `pinned` (`pinned` alone for the GIL leg, `pinnedt` for
   its twin). `ci_build_docs.sh` also publishes the default leg's reports as `pytest-report.html`/`.md`
   and `pytest-report-free-threaded.html`, so a docs page links names without a version.

@@ -11,6 +11,34 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The Windows arm64 Python job runs on `:winarm64`'s interpreters and toolchain (CON113)
+
+- **`windows-11-arm` downloaded its CPython and built with the runner's Visual Studio.** WebDavClient
+  run 39336879640 logged `Downloading cpython-3.15.0-windows-aarch64-none` and its `+freethreaded`
+  twin through uv, then built the `win_arm64` wheels with the runner's VS. `python-ci-windows.yml`'s
+  `arm64-tests` now runs two jobs: a `windows-2025` job stages every leg in `:winarm64`
+  (`New-Arm64PythonTestStage.ps1`), and the `windows-11-arm` job runs that stage and installs nothing.
+- **The stage:** per leg the image's target interpreter, the leg's `cpXY` or `cpXYt` `win_arm64` wheel
+  cross-built with the image's VS 2026 and clang-cl, and the lock's set with that wheel in the
+  interpreter's site-packages (`Install-PythonCrossSite`: hash-checked, `--no-deps` on the exported
+  closure so a project's `[tool.uv]` overrides hold, pyyaml pure, psutil's `cp315t` from the image's
+  store). `CL` names the target, so a `setup.py` that swaps in clang-cl needs no flag of its own. The
+  tests run from a copy without the package and import the installed wheel; each wheel is also
+  proved alone (`load`, `prove` on X.Yt). The tree is built container-local and copied out: on a bind
+  mount uv cannot rename its temporary files (`os error 3`). The arch gate grades it standalone.
+- **New inputs:** `arm64-test-files`, `arm64-test-env`. `arm64-wheels` now only uploads, after the
+  device proved the wheels. A release that collects `*.whl` skips `python-windows-arm64-stage`.
+- **Gone:** `Invoke-PythonTestLegs.ps1`, `Invoke-NativeWheelBuild.ps1` and `PythonTestLegs.Tests.ps1`;
+  only this workflow called them. `UV_WINDOWS_ARM64_SHA256` goes with the next chain (CON89).
+- **Shared now:** the arm64 bundle's `Install-PythonAppCrossPackage` is `Install-PythonCrossSite`
+  plus the chain ORT; `Get-PyprojectBuildInfo` reads a project's name and build requires.
+- Measured in `:winarm64` (2026-10-17, with the chain's psutil wheel): WebDavClient's two legs staged
+  in 78 s, `kataglyphis_webdavclient-0.10.1-cp315-cp315{,t}-win_arm64.whl`; the standalone arch gate
+  inspected 213 PE files, 0 violations, 0 unresolved imports.
+- Tests: `PythonArm64Stage.Tests.ps1`, `PythonApp.Cross.Tests.ps1`, `test-reusable-windows-lane.sh`
+  (both jobs gated, inputs as container env, the device installs nothing); mutations
+  `windows-lane.arm64-stage-gated`, `.arm64-device-installs-nothing`, `.arm64-failed-leg-fails`.
+
 ## 2026-10-20 — ModelANT builds its models in `:latest` (CON112)
 
 - **ModelANT's `build.sh` runs only in the image** (ModelANT 038ca50): a venv on the pinned
