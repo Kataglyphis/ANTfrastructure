@@ -656,14 +656,38 @@ owner carries the breakage that costs.
         it falls back with `No devices detected that match the filter criteria`).
       - Still unproven on a device: a camera pipeline and a GPU execution provider. No `windows-11-arm`
         runner has either; the Snapdragon X's DirectML is the one adapter in reach.
-- [b] **CON31 — Variants that are not published** [L, ★]. Blocked on owner decisions.
-      - `:latest-nvidia`: no arm64 route, and no TensorRT 11 (`ENABLE_TENSORRT=false`). Read in the published image on
-        2026-10-12 (`23e3cc9e…`): the only `libnvinfer` is DeepStream's TensorRT 10.16.1 under
-        `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib`, which `ldconfig -p` resolves; ONNX Runtime has no TensorRT EP.
-        The stale `tensorrt.conf` naming the absent `/usr/local/tensorrt/lib` is gone from the source since 2026-10-12;
-        the next nvidia chain proves it.
-      - `:latest-rocm`: the wrapper lacks `ROCM_PATH`/`HIP_PATH` and cannot open
-        the device as shipped.
+- [b] **CON31 — Variants that are not published** [L, ★]. Blocked on the next nvidia and rocm chains (the owner's
+      build host), and for arm64 on an owner decision. The owner chose on 2026-10-20: TensorRT 11 and the ORT TensorRT
+      EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU; not the arm64 nvidia route.
+      Both are in the source since 2026-10-21 (`docs/linux-accelerator-images.md` § TensorRT 11, § Running it on an AMD
+      GPU, § The GPU runtime gate). No image carries them yet.
+      - `:latest-nvidia`, TensorRT 11: `ENABLE_TENSORRT=true` on amd64; exactly `11.4.0.106-1+cuda13.4` from NVIDIA's
+        `ubuntu2604` repo; only the runtime `.so` files ship, which the SLA names distributable (§ Redistribution).
+        Proved in a throwaway container on the published `0e9dec34…` (no GPU): the hub's `install-tensorrt.sh`
+        installed the twelve packages (1.93 GB of debs), `getInferLibVersion()` 110400, and ORT v1.31.0 with the hub's
+        flags configured (`NV_TENSORRT_MAJOR is 11`) and built its TensorRT EP (§ TensorRT 11, Measured). The next
+        nvidia chain must show:
+        - gpu: `TensorRT: 11.4.0.106-1+cuda13.4 installed (12 packages)`;
+        - media: the GPU ORT's `NV_TENSORRT_MAJOR is 11`, GenAI built without `--use_trt_rtx`, and
+          `deepstream-verify.sh`'s `DeepStream links TensorRT 10 from … only`;
+        - wrapper: `assemble-torch-app.sh verify` passing its `TensorrtExecutionProvider` assert;
+        - runtime smoke: every `GPU-RUNTIME` row passing, the TensorRT ones included, and the image about 2.8 GB
+          larger than `0e9dec34…`;
+        - on the RTX 2080 host: a session over the smoke's Add graph with `TensorrtExecutionProvider` building an sm_75
+          engine and returning `[[11, 22, 33, 44]]`, and the DeepStream gate pipeline still passing.
+      - `:latest-rocm` (published `a5d68fbe…`): it had no `ROCM_PATH`, `HIP_PATH` or `/opt/rocm/bin` on `PATH`, so the
+        venv's rocm-sdk `hipcc` could not link a HIP program; and uid 1001 cannot open a `0660` render node without
+        `--group-add`. Fixed in `Dockerfile.package` (the roots), the entrypoint (a warning that names the
+        `--group-add`), the documented run line, and `check_gpu_runtime`, which fails the published image on six rows.
+        Proved on this host's WSL VM: `/dev/kfd` does not exist there, but over `/dev/dxg` a `hipcc`-built program ran
+        on the Ryzen iGPU (gfx1036) as uid 1001 with the roots set and did not link without them, and ORT's MIGraphX EP
+        served the Add graph. The RX 9070 XT is not enumerated over DXG. The next rocm chain must show every rocm
+        `GPU-RUNTIME` row passing, and on a native Linux host with an AMD GPU, as uid 1001 with the documented run line:
+        `rocminfo` listing the GPU, a `hipcc`-built program running, the Add graph through MIGraphX, and torch
+        `cuda.is_available()` with a tensor op; without `--group-add`, the entrypoint's warning.
+      - `:latest-nvidia` has no arm64 route; out of scope (owner 2026-10-20).
+      - The stale `tensorrt.conf` naming `/usr/local/tensorrt/lib` is gone: checked in the published `0e9dec34…`
+        (2026-10-19) on 2026-10-21.
       - `:winamd64-rocm`: published (first 2026-09-28 at 73a8dd74, again 2026-10-03 at
         49fe27ef, with TheRock 10.1 on 2026-10-09 at c0969e22); the redistribution decision is recorded in `docs/windows-rocm.md`
         § Redistribution.

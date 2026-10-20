@@ -811,6 +811,12 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   10.x beside the variant's 11.x, and no process may hold TensorRT 11 in its global symbol scope
   while it runs `nvinfer`:
   [`linux-accelerator-images.md` § DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant).
+- **TensorRT 11 is on in every amd64 nvidia build** (`ENABLE_TENSORRT`, CON31; owner 2026-10-20),
+  at exactly `TENSORRT_VERSION`-1+cuda`TENSORRT_LINUX_CUDA` from NVIDIA's apt repo, and the image
+  ships only its runtime `.so` files: the SLA names nothing else distributable. Never install the
+  `tensorrt*` metapackages (the 1.9 GB Windows builder resource) and never ask GenAI for
+  `--use_trt_rtx` (TensorRT-RTX, not TensorRT):
+  [`linux-accelerator-images.md` § TensorRT 11](docs/linux-accelerator-images.md#tensorrt-11).
 - **The image's Chrome starts through `/usr/local/bin/chrome`; its emulator is amd64-only**
   (CON50). `CHROME_EXECUTABLE` names that wrapper, which adds `--no-sandbox --no-zygote`: never
   point it at the binary, and never ship a setuid sandbox helper. Keep the emulator's system image

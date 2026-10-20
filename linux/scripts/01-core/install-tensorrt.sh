@@ -1,51 +1,65 @@
 #!/usr/bin/env bash
-# TensorRT: staged local repo deb, then NVIDIA apt pinned to TENSORRT_VERSION, then unpinned, then skip.
+# TensorRT at TENSORRT_VERSION for TENSORRT_LINUX_CUDA from NVIDIA's apt repo (or a staged local repo); any other version fails.
 set -euo pipefail
 
-_trt_ok=0
-if [ -f /tmp/tensorrt-local-repo.deb ]; then
-    echo "TensorRT: installing local repo deb..."
-    dpkg -i /tmp/tensorrt-local-repo.deb 2>/dev/null || true
-    _trt_key="$(find /var -name 'nv-tensorrt-local-*-keyring.gpg' 2>/dev/null | head -1 || true)"
-    if [ -n "${_trt_key}" ]; then
-        cp "${_trt_key}" /usr/share/keyrings/ 2>/dev/null || true
-    fi
-    apt-get update -qq 2>/dev/null || true
-    if apt-get install -y --no-install-recommends tensorrt tensorrt-dev tensorrt-libs 2>/dev/null; then
-        echo "TensorRT: installed from local repo"
-        _trt_ok=1
-    else
-        echo "TensorRT: local repo install failed; trying NVIDIA repo..."
-    fi
-fi
-if [ "${_trt_ok}" -eq 0 ]; then
-    # Refresh first: empty indices in the shared apt cache mount would make the chain below skip silently.
-    apt-get update -qq || echo "TensorRT: apt-get update failed; install may find no candidates" >&2
-    if apt-get install -y --no-install-recommends "tensorrt-dev=${TENSORRT_VERSION}*" "tensorrt-libs=${TENSORRT_VERSION}*" 2>/dev/null; then
-        echo "TensorRT: installed ${TENSORRT_VERSION} from NVIDIA apt repo"
-        _trt_ok=1
-    elif apt-get install -y --no-install-recommends tensorrt-dev tensorrt-libs 2>/dev/null; then
-        # Loud on purpose: the pin tracks the Windows zip, possibly an Enterprise build apt does not serve.
-        _trt_actual="$(dpkg-query -W -f='${Version}' tensorrt-dev 2>/dev/null || echo 'unknown')"
-        echo "=============================================================" >&2
-        echo "WARNING: TensorRT is UNPINNED on this build." >&2
-        echo "  requested (versions.env TENSORRT_VERSION): ${TENSORRT_VERSION}" >&2
-        echo "  installed (newest in NVIDIA apt repo):     ${_trt_actual}" >&2
-        echo "  The pinned version is not served by apt — expected when the pin" >&2
-        echo "  tracks an Enterprise zip staged for the Windows lane." >&2
-        echo "=============================================================" >&2
-        echo "TensorRT: installed ${_trt_actual} from NVIDIA apt repo (UNPINNED — see warning above)"
-        _trt_ok=1
-    else
-        echo "TensorRT: not available in any repo; skipping"
-    fi
-fi
-if [ ! -f /usr/local/tensorrt/include/NvInfer.h ]; then
-    TRT_INC=$(find /usr/include /usr/local -name "NvInfer.h" -print -quit 2>/dev/null || true)
-    if [ -n "$TRT_INC" ]; then
-        mkdir -p /usr/local/tensorrt
-        ln -snf "$(dirname "$TRT_INC")" /usr/local/tensorrt/include
-        ARCH="$(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || echo amd64)"
-        ln -snf "/usr/lib/${ARCH}" /usr/local/tensorrt/lib 2>/dev/null || true
-    fi
+# The runtime libraries plus the headers ORT builds against; the metapackages would add the 1.9 GB Windows builder resource.
+trt_packages() {
+  local major="$1" ver="$2" p
+  for p in "libnvinfer${major}" "libnvinfer-plugin${major}" "libnvonnxparsers${major}" \
+           "libnvinfer-lean${major}" "libnvinfer-dispatch${major}" "libnvinfer-vc-plugin${major}" \
+           libnvinfer-dev libnvinfer-headers-dev libnvinfer-safe-headers-dev \
+           libnvinfer-plugin-dev libnvinfer-headers-plugin-dev libnvonnxparsers-dev; do
+    printf '%s=%s\n' "${p}" "${ver}"
+  done
+}
+
+# <"pkg=version" lines wanted> <"pkg version" lines installed>: one line per package off its pin.
+trt_version_mismatches() {
+  local want="$1" row pkg ver
+  local -A got=()
+  while IFS= read -r row; do
+    [ -n "${row}" ] || continue
+    got["${row%% *}"]="${row#* }"
+  done <<< "$2"
+  while IFS='=' read -r pkg ver; do
+    [ -n "${pkg}" ] || continue
+    [ "${got[${pkg}]:-<none>}" = "${ver}" ] || printf '%s wants %s, has %s\n' "${pkg}" "${ver}" "${got[${pkg}]:-<none>}"
+  done <<< "${want}"
+}
+
+trt_main() {
+  : "${TENSORRT_VERSION:?TENSORRT_VERSION is unset}" "${TENSORRT_LINUX_CUDA:?TENSORRT_LINUX_CUDA is unset}"
+  local ver="${TENSORRT_VERSION}-1+cuda${TENSORRT_LINUX_CUDA}" want key bad f
+  local -a pkgs
+  want="$(trt_packages "${TENSORRT_VERSION%%.*}" "${ver}")"
+  if [ -f /tmp/tensorrt-local-repo.deb ]; then
+    echo "TensorRT: registering the staged local repo"
+    dpkg -i /tmp/tensorrt-local-repo.deb
+    key="$(find /var -name 'nv-tensorrt-local-*-keyring.gpg' -print -quit 2>/dev/null || true)"
+    [ -z "${key}" ] || cp "${key}" /usr/share/keyrings/
+  fi
+  apt-get update -qq
+  mapfile -t pkgs <<< "${want}"
+  if ! apt-get install -y --no-install-recommends "${pkgs[@]}"; then
+    echo "ERROR: TensorRT ${ver} is not served; the repo has libnvinfer${TENSORRT_VERSION%%.*}:" >&2
+    apt-cache madison "libnvinfer${TENSORRT_VERSION%%.*}" >&2 || true
+    return 1
+  fi
+  bad="$(trt_version_mismatches "${want}" "$(dpkg-query -W -f='${Package} ${Version}\n' "${pkgs[@]%%=*}" 2>/dev/null || true)")"
+  [ -z "${bad}" ] || { printf 'ERROR: TensorRT is not at %s:\n%s\n' "${ver}" "${bad}" >&2; return 1; }
+  echo "TensorRT: ${ver} installed (${#pkgs[@]} packages)"
+  # TensorRT's own files only: Dockerfile.nvidia puts TENSORRT_HOME/lib on LD_LIBRARY_PATH, which must not become /usr/lib/<triplet>.
+  mkdir -p /usr/local/tensorrt/include /usr/local/tensorrt/lib
+  while IFS= read -r f; do
+    case "${f}" in
+      /usr/include/*/Nv*.h) ln -sf "${f}" /usr/local/tensorrt/include/ ;;
+      /usr/lib/*/lib*.so*) ln -sf "${f}" /usr/local/tensorrt/lib/ ;;
+    esac
+  done < <(dpkg -L "${pkgs[@]%%=*}")
+  [ -e /usr/local/tensorrt/include/NvInfer.h ] && [ -e "/usr/local/tensorrt/lib/libnvinfer.so.${TENSORRT_VERSION%%.*}" ] \
+    || { echo "ERROR: TENSORRT_HOME=/usr/local/tensorrt lacks NvInfer.h or libnvinfer.so.${TENSORRT_VERSION%%.*}" >&2; return 1; }
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  trt_main "$@"
 fi

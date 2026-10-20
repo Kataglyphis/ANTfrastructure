@@ -635,6 +635,9 @@ verify_project_environment() {
     rm -f /usr/local/tensorrt/lib/libstdc++.so* || true
     uv run --no-sync --active python -c "import torch; cuda_ver = torch.version.cuda; print(f'PyTorch CUDA Build Version: {cuda_ver}'); assert cuda_ver is not None, 'ERROR: PyTorch was NOT built with CUDA!'"
     uv run --no-sync --active python -c "import onnxruntime as ort; providers = ort.get_available_providers(); print(f'ONNX Runtime Available Providers: {providers}'); assert 'CUDAExecutionProvider' in providers, 'ERROR: ONNX Runtime does NOT have CUDAExecutionProvider!'"
+    if [ "${ENABLE_TENSORRT:-false}" = "true" ]; then
+      uv run --no-sync --active python -c "import onnxruntime as ort; assert 'TensorrtExecutionProvider' in ort.get_available_providers(), 'ERROR: ENABLE_TENSORRT=true but ONNX Runtime has no TensorrtExecutionProvider!'"
+    fi
   elif [ "${ENABLE_AMD:-false}" = "true" ]; then
     # Without this a ROCm image with CPU torch and no MIGraphX EP ships green.
     echo "Testing ROCm Support (Build checks only, not runtime)"

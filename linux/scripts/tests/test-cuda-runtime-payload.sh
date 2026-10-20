@@ -7,7 +7,7 @@ PAY="${TESTS_DIR}/../06-packaging/copy-media-payloads.sh"
 PKG="${TESTS_DIR}/../../Dockerfile.package"
 
 _FNS='warn() { printf "[WARN] %s\n" "$*" >&2; }'$'\n'
-for _fn in _dest copy_path copy_glob copy_cuda_payload; do
+for _fn in _dest copy_path copy_glob copy_cuda_payload copy_tensorrt_payload; do
   _FNS+="$(t_fn_src "${PAY}" "${_fn}")"$'\n' || exit 1
 done
 
@@ -28,10 +28,9 @@ _mk_artifact() {
   echo h > "${a}/usr/include/nccl.h"
 }
 
-_run() {  # <ENABLE_NVIDIA> <src> <dst>
-  ENABLE_NVIDIA="$1" SRCPREFIX="$2" COPY_TARGET_DIR="$3" \
-    bash -c "set -euo pipefail"$'\n'"${_FNS}"$'\ncopy_cuda_payload' 2>&1
-}
+# <function> <VAR=value>...: one copy-media-payloads.sh function in a fresh bash with that environment.
+_call() { local fn="$1"; shift; env "$@" bash -c "set -euo pipefail"$'\n'"${_FNS}"$'\n'"${fn}" 2>&1; }
+_run() { _call copy_cuda_payload ENABLE_NVIDIA="$1" SRCPREFIX="$2" COPY_TARGET_DIR="$3"; }
 
 t_case "ENABLE_NVIDIA=true carries the toolkit, cuDNN, NCCL and their headers"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
@@ -59,7 +58,7 @@ t_assert_eq 1 "${_rc}" "a GPU build that lost its toolkit must not ship silently
 t_assert_contains "${_out}" "no /usr/local/cuda-X.Y" "and says what is missing"
 
 t_case "Dockerfile.package hands the switch and the environment to the image"
-t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \\\n      SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
+t_assert_contains "$(cat "${PKG}")" $'ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \\\n      ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \\\n      ENABLE_TENSORRT="${ENABLE_TENSORRT:-false}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh' \
   "the payload RUN receives ENABLE_NVIDIA (an undeclared ARG reaches no RUN)"
 t_assert_contains "$(cat "${PKG}")" ':/usr/local/cuda/bin:' "nvcc is on the shipped PATH"
 t_assert_contains "$(cat "${PKG}")" 'NVCC_PREPEND_FLAGS=-allow-unsupported-compiler' \
@@ -68,6 +67,35 @@ t_assert_contains "$(t_fn_src "${PAY}" copy_media_payloads)" $'\n  copy_cuda_pay
   "the payload copy actually runs it (the suite above calls it directly)"
 t_assert_contains "$(cat "${PAY}")" $'  copy_media_payloads "${1:-}"\n  publish_cuda_ld_path' \
   "the toolkit's targets/<arch>/lib reaches the loader"
+
+t_case "ENABLE_TENSORRT=true carries TensorRT's runtime .so files and licence notes, never its headers or dev links"
+_TSRC="$(mktemp -d)"; _TDST="$(mktemp -d)"
+_L="${_TSRC}/usr/lib/x86_64-linux-gnu"
+mkdir -p "${_L}" "${_TSRC}/usr/include/x86_64-linux-gnu" "${_TSRC}/usr/share/doc/libnvinfer11" \
+  "${_TSRC}/usr/share/doc/libnvinfer-dev" "${_TSRC}/usr/share/doc/tensorrt-11.4.0.106"
+for f in libnvinfer.so.11.4.0 libnvinfer_plugin.so.11.4.0 libnvonnxparser.so.11.4.0 libnvinfer_lean.so.11.4.0 \
+         libnvinfer_builder_resource_sm75.so.11.4.0 libnvinfer_builder_resource_ptx.so.11.4.0 libtensorrt_shim.so \
+         libnvinfer_builder_resource_sm75.so.10.16.1; do echo "${f}" > "${_L}/${f}"; done
+for f in libnvinfer libnvinfer_plugin libnvonnxparser libnvinfer_lean; do echo "${f}.so.11" > "${_L}/${f}.so.11"; echo dev > "${_L}/${f}.so"; done
+echo h > "${_TSRC}/usr/include/x86_64-linux-gnu/NvInfer.h"
+echo c > "${_TSRC}/usr/share/doc/libnvinfer11/copyright"; echo c > "${_TSRC}/usr/share/doc/libnvinfer-dev/copyright"
+echo r > "${_TSRC}/usr/share/doc/tensorrt-11.4.0.106/README.txt"
+_trun() { _call copy_tensorrt_payload ENABLE_TENSORRT="$1" TENSORRT_VERSION="${4:-11.4.0.106}" SRCPREFIX="$2" COPY_TARGET_DIR="$3"; }
+_trun true "${_TSRC}" "${_TDST}" >/dev/null; t_assert_eq 0 $? "a TensorRT artifact copies cleanly"
+_got="$(cd "${_TDST}" && find . -type f | LC_ALL=C sort | tr '\n' ' ')"
+_want="libnvinfer.so.11 libnvinfer.so.11.4.0 libnvinfer_builder_resource_ptx.so.11.4.0 libnvinfer_builder_resource_sm75.so.11.4.0"
+_want+=" libnvinfer_lean.so.11 libnvinfer_lean.so.11.4.0 libnvinfer_plugin.so.11 libnvinfer_plugin.so.11.4.0"
+_want+=" libnvonnxparser.so.11 libnvonnxparser.so.11.4.0"
+t_assert_eq "$(for f in ${_want}; do printf './usr/lib/x86_64-linux-gnu/%s ' "${f}"; done)./usr/share/doc/libnvinfer11/copyright ./usr/share/doc/tensorrt-11.4.0.106/README.txt " \
+  "${_got}" "the runtime .so files of TENSORRT_VERSION's major, its README and the runtime packages' licence only"
+_TDST2="$(mktemp -d)"
+_trun false "${_TSRC}" "${_TDST2}" >/dev/null; t_assert_eq 0 $? "ENABLE_TENSORRT=false is a no-op"
+t_assert_eq "" "$(ls -A "${_TDST2}")" "and leaves the image untouched"
+_out="$(_trun true "$(mktemp -d)" "$(mktemp -d)")"; _rc=$?
+t_assert_eq 1 "${_rc}" "an artifact without TensorRT is fatal when the image asks for it"
+t_assert_contains "${_out}" "has no libnvinfer.so.11 (TENSORRT_VERSION=11.4.0.106)"
+t_assert_eq 1 "$(_trun true "${_TSRC}" "$(mktemp -d)" 12.0.0.1 >/dev/null; echo $?)" "a pin whose major the artifact lacks is fatal"
+t_assert_contains "$(t_fn_src "${PAY}" copy_media_payloads)" $'\n  copy_tensorrt_payload\n' "the payload copy runs it"
 
 t_case "the torch pin enforcement installs from the SELECTED backend's index"
 # Stubs: python3 reports the app lock's 2.13/0.28, uname says arm64, uv logs.

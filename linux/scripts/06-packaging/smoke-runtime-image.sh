@@ -7,6 +7,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/smoke-common.sh"
 source "${_SCRIPT_DIR}/check-ort-provenance.sh"
 source "${_SCRIPT_DIR}/check-free-threaded-wheels.sh"
+source "${_SCRIPT_DIR}/check-gpu-runtime.sh"
 
 NERDCTL_BIN="${NERDCTL_BIN:-nerdctl}"
 
@@ -2748,6 +2749,7 @@ main() {
     check_gstreamer_core_pipeline "${image_tag}" "${target_arch}"
     check_gstreamer_mandatory_plugins "${image_tag}" "${target_arch}"
     check_deepstream "${image_tag}" "${target_arch}"
+    check_gpu_runtime "${image_tag}" "${target_arch}"
     check_application_import "${image_tag}" "${target_arch}"
     check_healthcheck_exec "${image_tag}" "${target_arch}"
     check_webrtc_signalling "${image_tag}" "${target_arch}"

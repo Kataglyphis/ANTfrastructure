@@ -9,6 +9,8 @@ FROM ${BASE_IMAGE}
 ARG CUDA_VERSION=13.4.3
 ARG CUDNN_VERSION=9.27.0.42
 ARG TENSORRT_VERSION=11.4.0.106
+# The "+cudaX.Y" of the TensorRT debs; install-tensorrt.sh installs exactly that build.
+ARG TENSORRT_LINUX_CUDA=13.4
 # false = CUDA + cuDNN without TensorRT (Jetson); gates both the install and the strict verify.
 ARG ENABLE_TENSORRT=true
 # 0 on Jetson, whose host-injected libcuda the datacenter compat driver would shadow; must be an ARG to reach the script.

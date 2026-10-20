@@ -78,6 +78,7 @@ copy_media_payloads() {
   done
 
   copy_cuda_payload
+  copy_tensorrt_payload
   copy_rocm_payload
   copy_deepstream_payload
 
@@ -108,6 +109,23 @@ copy_cuda_payload() {
     '/usr/include/nccl*'; do
     copy_glob "${pattern}"
   done
+}
+
+# The SLA lets only TensorRT's runtime .so files ship, so headers and dev links stay behind: docs/linux-accelerator-images.md#tensorrt-11
+copy_tensorrt_payload() {
+  [ "${ENABLE_TENSORRT:-false}" = "true" ] || return 0
+  local m="${TENSORRT_VERSION%%.*}" pattern
+  if [ -z "${m}" ] || ! compgen -G "${SRCPREFIX}/usr/lib/*-linux-gnu/libnvinfer.so.${m}" >/dev/null; then
+    printf '[ERROR] ENABLE_TENSORRT=true but the artifact has no libnvinfer.so.%s (TENSORRT_VERSION=%s)\n' "${m}" "${TENSORRT_VERSION:-}" >&2
+    return 1
+  fi
+  for pattern in \
+    "/usr/lib/*-linux-gnu/libnvinfer*.so.${m}" "/usr/lib/*-linux-gnu/libnvinfer*.so.${m}.*" \
+    "/usr/lib/*-linux-gnu/libnvonnxparser.so.${m}" "/usr/lib/*-linux-gnu/libnvonnxparser.so.${m}.*" \
+    "/usr/share/doc/libnvinfer*${m}" "/usr/share/doc/libnvonnxparsers${m}*"; do
+    copy_glob "${pattern}"
+  done
+  copy_path "/usr/share/doc/tensorrt-${TENSORRT_VERSION}"
 }
 
 # Only on request: an image built without ENABLE_DEEPSTREAM=true must not carry it, whatever its artifact holds.

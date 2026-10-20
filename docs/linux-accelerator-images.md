@@ -13,7 +13,7 @@ default chain's tags. Before 2026-09-22 `ENABLE_NVIDIA=true` changed only the
 build args, and a GPU run pushed its bytes under the default `cross-media-<arch>`
 and `:latest`. The rules: [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
 
-- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt --> (off by default), NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. The chain's `gpu` stage, after `:cross-sdk-<arch>`.
+- `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt --> (amd64, [§ TensorRT 11](#tensorrt-11)), NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. The chain's `gpu` stage, after `:cross-sdk-<arch>`.
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
 - `linux/Dockerfile.torch`: Torch/Python add-on on top of the Android NVIDIA layer.
@@ -57,10 +57,10 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
 
 - **It starts at `gpu`** and refuses `--from-stage base|compiler|sdk`: those are
   the default chain's, so run that chain first when they are stale.
-- **`ENABLE_TENSORRT=false` by default** (owner decision 2026-09-22): the runtime
-  payload carries no TensorRT 11. Its only `libnvinfer` is DeepStream's TensorRT 10
-  ([§ TensorRT 10 beside 11](#tensorrt-10-beside-11)). Set `ENABLE_TENSORRT=true` only
-  together with a TensorRT 11 copy into the package.
+- **TensorRT 11 on amd64** (owner 2026-10-20): `ENABLE_TENSORRT=true` by default on an amd64
+  build platform, `false` elsewhere; `ENABLE_TENSORRT=false` opts one run out
+  ([§ TensorRT 11](#tensorrt-11)). From 2026-09-22 to 2026-10-20 the default was `false`, and the
+  only `libnvinfer` was DeepStream's TensorRT 10.
 - **amd64 only, and it pushes only from `CROSS_BUILD_PLATFORM=linux/amd64`.**
   Every target must BE the build platform's arch: `Dockerfile.nvidia` installs
   the build platform's CUDA and the ORT/OpenCV/TVM CUDA builds compile for it,
@@ -108,7 +108,7 @@ every stage as build-args. Change them there, not per command. The apt forms
 | --- | --- | --- |
 | CUDA Toolkit | Not installed | CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda --> |
 | cuDNN | Not installed | cuDNN 9 |
-| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt --> with `ENABLE_TENSORRT=true` (off by default) |
+| TensorRT | Not installed | TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt -->'s runtime `.so` files (amd64, [§ TensorRT 11](#tensorrt-11)) |
 | NCCL | Not installed | Installed |
 | cuBLAS/cuSPARSE/cuFFT | Not installed | Installed |
 | NVTX | Not installed | Installed |
@@ -123,6 +123,114 @@ The standard build's release target is the multi-arch manifest `:latest`
 ([`linux-build-basics.md` § Image Hierarchy](linux-build-basics.md#image-hierarchy)
 owns the tag scheme). `:latest-cross` is its retired old name; details in
 [`rancher-desktop-linux-containers.md` § The image: always `:latest`](rancher-desktop-linux-containers.md#the-image-always-latest).
+
+### TensorRT 11
+
+> **On in every amd64 nvidia build** from the first chain after 2026-10-20 (owner decision,
+> CON31). `ENABLE_TENSORRT=false` opts one run out; an arm64 nvidia build gets no default.
+
+**What ships**: TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt -->'s runtime `.so` files in
+`/usr/lib/x86_64-linux-gnu`, and nothing else of its SDK ([§ Redistribution](#redistribution)):
+
+| Files | What |
+| --- | --- |
+| `libnvinfer.so.11`, `libnvinfer_plugin.so.11`, `libnvonnxparser.so.11` | the runtime, its plugins, its ONNX parser |
+| `libnvinfer_lean.so.11`, `libnvinfer_dispatch.so.11`, `libnvinfer_vc_plugin.so.11` | the lean and dispatch runtimes, the version-compatibility plugin |
+| `libnvinfer_builder_resource_{sm75,sm80,sm86,sm89,sm90,sm100,sm120,ptx}.so.11.4.0` | every GPU generation from Turing on, the RTX 2080's sm_75 included; `libnvinfer` `dlopen()`s them by file name from this default dir |
+| `/usr/share/doc/libnvinfer*11`, `…/libnvonnxparsers11`, `…/tensorrt-11.4.0.106/README.txt` | the debs' notes; the README names the SLA |
+
+`libnvinfer.so.11` needs only glibc, libgcc and libstdc++: it loads CUDA at run time and never
+cuDNN.
+
+**Where it comes from.** NVIDIA's CUDA apt repo for Ubuntu 26.04 (`ubuntu2604/x86_64`) serves
+11.4.0.106 built for CUDA 13.4, the image's line. `install-tensorrt.sh` installs exactly
+`${TENSORRT_VERSION}-1+cuda${TENSORRT_LINUX_CUDA}` (both in `versions.env`) and fails on
+anything else. apt checks every deb against the repo's signed index, and the repo's keyring is
+SHA-pinned (`CUDA_KEYRING_DEB_SHA256_X86_64`). It names twelve packages and never the
+`tensorrt`, `tensorrt-libs` or `tensorrt-dev` metapackages, which pull
+`libnvinfer-win-builder-resource11` (1.65 GB to download, 1.90 GB installed), which builds
+Windows engines.
+`TENSORRT_HOME=/usr/local/tensorrt` links TensorRT's own headers and libraries only, since
+`Dockerfile.nvidia` puts its `lib` on `LD_LIBRARY_PATH`. The package stage copies the runtime
+files above (`copy_tensorrt_payload`).
+
+**The ORT TensorRT EP.** `30-build-native-nvidia.sh` adds `--use_tensorrt --use_full_protobuf
+--tensorrt_home /usr/local/tensorrt` (ORT's built-in parser, the default). ORT v1.31.0 handles
+TensorRT 11 in its source: networks are strongly typed, and the FP16/INT8 options only log a
+warning. The EP ships in the native GPU tree and in the `onnxruntime-gpu` wheels. It links
+`libnvinfer.so.11` and `libnvonnxparser.so.11` and `dlopen()`s `libnvinfer_plugin.so.11`, all
+with local binding ([§ TensorRT 10 beside 11](#tensorrt-10-beside-11)). GenAI stays a plain CUDA
+build: its `--use_trt_rtx` is TensorRT-RTX, whose wheel requires `onnxruntime-trt-rtx`, which
+nothing here builds.
+
+**Size**: +2.81 GB in the runtime image (14 files; 1.93 GB of debs), +2.82 GB in the `gpu` stage,
+which media and android inherit, plus the EP library (957 KB). DeepStream's TensorRT 10 (2.6 GB)
+stays beside it.
+
+**Measured** on 2026-10-21 in a throwaway container on the published `:latest-nvidia`
+(`sha256:0e9dec34…`, built 2026-10-19), as root, without a GPU:
+
+| Step | Result |
+| --- | --- |
+| `setup-cuda-repo.sh`, then `install-tensorrt.sh` | the twelve packages at `11.4.0.106-1+cuda13.4` in 164 s: 1932 MB of debs, 2817 MB installed |
+| `TENSORRT_HOME` | links to TensorRT's 20 headers and 24 library files, nothing else |
+| The files `copy_tensorrt_payload` takes | 14 files, 2.81 GB |
+| `getInferLibVersion()` of `libnvinfer.so.11` | 110400 |
+| `ldconfig -p` | the `.so.11` files from `/usr/lib/x86_64-linux-gnu`, DeepStream's `.so.10` ones from its prefix |
+| ORT v1.31.0 configured with `30-build-native-nvidia.sh`'s flags | 65 s: CUDA 13.4.92 with GCC 16.2.0, `NV_TENSORRT_MAJOR is 11`, `Find TensorRT libs at /usr/local/tensorrt/lib/libnvinfer.so;/usr/local/tensorrt/lib/libnvonnxparser.so` |
+| The `onnxruntime_providers_tensorrt` target | built in 359 s at 8 jobs, 957 KB; it needs `libnvinfer.so.11`, `libnvonnxparser.so.11`, `libcudnn.so.9`, `libcublas.so.13` and `libcudart.so.13`, all resolved |
+
+A session through the EP needs a GPU: the RTX 2080 run of the next build (`BACKLOG.md` CON31).
+
+#### Redistribution
+
+TensorRT ships under NVIDIA's *License Agreement for NVIDIA Software Development Kits*
+(v. May 24, 2021) with its *TensorRT Supplement* (v. February 25, 2021):
+[the SLA](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/sla.html), which the
+debs' README names. Each deb's `copyright` file carries an Apache-2.0 header; the SLA is the
+stricter text, and it is the one applied. The passages that decide:
+
+- § 1.1: the licence to distribute the portions "identified in this Agreement as distributable",
+  "as incorporated in object code format into a software application" that meets § 1.2.
+- Supplement § 2: "The following portions of the SDK are distributable under the Agreement: the
+  runtime files .so and .dll."
+- § 1.2: the application must add material functionality beyond the SDK, and the distributable
+  portions "shall only be accessed by your application". A developer tool not named as
+  distributable is for internal use only.
+- Supplement § 1: "The SDK is licensed for you to develop applications only for use in systems
+  with NVIDIA GPUs."
+
+**Decided 2026-10-20**: the owner asked for TensorRT 11 in `:latest-nvidia` if the SLA allows it.
+It allows the runtime `.so` files under § 1.2, the conditions the owner accepted for DeepStream's
+licence of the same family on 2026-10-01 (§ [Licence](#licence-the-owner-decision)). So only those
+ship: no header, dev link, `trtexec` (`libnvinfer-bin`) or Python binding, and the GPU runtime
+gate fails an image that carries a header or a dev link.
+
+Open, for the owner: DeepStream's TensorRT 10 prefix ships headers and dev links
+(`/opt/nvidia/deepstream/tensorrt-10.16.1.11/{include,lib/libnvinfer.so}`), which Supplement § 2
+does not name, and `:winamd64` ships the whole TensorRT zip tree (`docs/third-party-licenses.md`,
+`eula-review`).
+
+## The GPU runtime gate
+
+`check_gpu_runtime` (`linux/scripts/06-packaging/check-gpu-runtime.sh`) runs in the runtime smoke
+on every image, without a GPU:
+
+- **rocm**: `ROCM_PATH` and `HIP_PATH` are `/opt/rocm`, `/opt/rocm/bin` is on `PATH`, the
+  `hipconfig` on `PATH` names `/opt/rocm`, `hipcc`'s clang is `/opt/rocm`'s, `hipcc` builds a HIP
+  program for gfx1201, and ORT lists `MIGraphXExecutionProvider`. Any other image advertises no
+  ROCm root.
+- **`ENABLE_TENSORRT=true`**: `libnvinfer`, `libnvinfer_plugin` and `libnvonnxparser` of
+  `TENSORRT_VERSION`'s major resolve from `/usr/lib/<triplet>`, `getInferLibVersion()` equals the
+  pin, its builder resources are in that dir, no TensorRT header or dev link ships, the ORT
+  TensorRT EP is in the native tree and the venv and resolves that TensorRT, and ORT lists
+  `TensorrtExecutionProvider`. Without it, no TensorRT of that major and no TensorRT EP.
+- A probe that printed nothing fails.
+
+`deepstream-verify.sh` adds one gate: no DeepStream library resolves a TensorRT outside its own
+10.x prefix. On 2026-10-21 the published `:latest-rocm` failed six of the rocm rows (no roots, and
+`hipcc` could not link); the published `:latest-nvidia` passed as an image without TensorRT.
+`test-gpu-runtime-check.sh` keeps both probes.
 
 ## NVIDIA on arm64 (SBSA): one image for servers and Jetson
 
@@ -183,7 +291,7 @@ The knobs that exist for this lane:
 
 | Knob | Default | What it does |
 |---|---|---|
-| `ENABLE_TENSORRT` | `true` | `false` builds CUDA + cuDNN with no TensorRT anywhere: there are no SBSA TensorRT packages for this pin, and GenAI then skips `--use_trt_rtx`. |
+| `ENABLE_TENSORRT` | `true` in `Dockerfile.nvidia`; the chain sets `false` off amd64 | `false` builds CUDA + cuDNN with no TensorRT anywhere: this lane has no TensorRT route. |
 | `CUDA_INSTALL_COMPAT` | `1` | `0` skips `cuda-compat`, the datacenter forward-compat driver. On a Jetson the driver comes from L4T and the compat `libcuda` can shadow it. |
 | `CUDA_MB_PER_CICC` | `3500` | Memory budget per `cicc` process for the ORT GPU job count. Heavy CUDA files peak at 3.5-6 GB; the average lies, because they are staggered. |
 | `NVCC_PREPEND_FLAGS` | `-allow-unsupported-compiler` | nvcc rejects the image's GCC 16 by version. Set in `Dockerfile.media` and `Dockerfile.package`. |
@@ -494,7 +602,7 @@ ONNX Runtime and OpenCV.
 
 ### TensorRT 10 beside 11
 
-DeepStream 9.1 needs TensorRT 10, and the variant pins 11.3:
+DeepStream 9.1 needs TensorRT 10, and the variant ships TensorRT 11:
 
 - NVIDIA's prebuilt `libnvds_nvmultiobjecttracker.so`, `libnvds_inferutils.so` and
   `libnvds_utils.so` link `libnvinfer.so.10` (and `libnvonnxparser.so.10`).
@@ -522,15 +630,13 @@ way, so the image's own consumers stay apart. An application that links `libnvin
 directly, or `dlopen`s it with `RTLD_GLOBAL`, must not also run DeepStream's `nvinfer` or
 `nvtracker`.
 
-`ENABLE_TENSORRT` stays `false` for the variant; DeepStream does not need it.
-
-So the published image carries no TensorRT 11 at all, and the clash above cannot happen in it
-as shipped. Measured 2026-10-12: its only `libnvinfer` files are this TensorRT 10 (the library,
-`libnvinfer_plugin`, `libnvonnxparser` and the eight builder resources), and `ldconfig -p`
-resolves `libnvinfer.so.10`, `libnvinfer_plugin.so.10` and `libnvonnxparser.so.10` to its
-prefix. ONNX Runtime's GPU build has the CUDA EP only. `/etc/ld.so.conf.d/tensorrt.conf` still
-names `/usr/local/tensorrt/lib`, which does not exist: `configure-runtime.sh` writes it for every
-nvidia build.
+Both ship from the first build after 2026-10-20 ([§ TensorRT 11](#tensorrt-11)): TensorRT 11's
+runtime in `/usr/lib/<triplet>`, DeepStream's 10 in its prefix. `deepstream-verify.sh` fails a
+DeepStream library that resolves a TensorRT outside that prefix, and the GPU runtime gate fails
+an ORT TensorRT EP that resolves anything but TensorRT 11 from the default dir
+([§ The GPU runtime gate](#the-gpu-runtime-gate)). Until then the image carried no TensorRT 11:
+measured on 2026-10-12 and on the 2026-10-19 build (`sha256:0e9dec34…`), its only `libnvinfer`
+is this TensorRT 10, ORT has the CUDA EP only, and no stale `tensorrt.conf` is left.
 
 ### CUDA 13.2 vs 13.4
 
@@ -643,8 +749,8 @@ passages that decide publishing on GHCR:
 
 What the image would redistribute that is not a `.so`: `LicenseAgreement.pdf`, the static
 `libnvdsgst_multistream_legacy.a` and `libnvds_service_maker_utils.a`, and the
-`pyservicemaker` wheel. TensorRT 10 falls under its own EULA, like the TensorRT 11 question
-already open for `:winamd64` (`docs/third-party-licenses.md`, `eula-review`).
+`pyservicemaker` wheel. TensorRT 10 falls under TensorRT's own SLA
+([§ Redistribution](#redistribution)).
 
 Whether a general-purpose development image counts as an "application" with "material
 additional functionality" is a legal question, not a build one.
@@ -744,11 +850,51 @@ deps, so `triton-rocm` moves with it) only acts if the two drift. The extra was
 `develop` since 2026-09-29
 ([`linux-cross-builds.md`](linux-cross-builds.md#the-app-the-wrapper-builds)).
 
-**Run with GPU access:**
+### Running it on an AMD GPU
+
+The image runs as uid 1001, and `--device` keeps each node's host owner and mode: on Ubuntu
+`/dev/kfd` and `/dev/dri/renderD*` are `root:render 0660`. Pass the host's group numbers:
 
 ```bash
-sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm
+sudo nerdctl run --rm -it --device=/dev/kfd --device=/dev/dri \
+  --group-add "$(stat -c %g /dev/kfd)" --group-add "$(stat -c %g /dev/dri/renderD128)" \
+  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-rocm
 ```
+
+- Without them the node stays closed, and the entrypoint names the flag:
+  `Warning: /dev/dri/renderD128 is closed to uid 1001: add --group-add 990 to the run`.
+  Measured 2026-10-21 on a 0660 render node: `open()` fails as shipped and succeeds with
+  `--group-add`.
+- A rootless engine maps no host group into the container: the node shows group 65534, and
+  `--group-add` cannot reach it. Make the nodes `0666` on the host (a udev rule), or run rootful.
+- PyTorch's DataLoader workers need shared memory: add `--ipc=host` or `--shm-size`.
+
+**The ROCm roots.** The wrapper sets `ROCM_PATH=/opt/rocm` and `HIP_PATH=/opt/rocm` and appends
+`/opt/rocm/bin` to `PATH`; outside the rocm variant they are empty (`Dockerfile.package`, CON31).
+The image holds two ROCm stacks:
+
+| Stack | Used by |
+| --- | --- |
+| `/opt/rocm` → `core-10.1` (HIP 7.16.26385), MIGraphX 2.18 in `extras-10` | ORT's MIGraphX EP (through `000-rocm.conf`), GStreamer's `hip` plugin, every HIP build |
+| `rocm-sdk` 7.14.1 in `/opt/venv` (HIP 7.14.60850), from torch's `rocm7.14` wheels | torch at run time. Its `hipcc`, `hipconfig`, `rocminfo` and `amd-smi` shims come first on `PATH` |
+
+The venv's shims follow `ROCM_PATH`. Measured on the published image (`sha256:a5d68fbe…`, built
+2026-10-09) on 2026-10-21: without the roots, `hipcc` compiles with the venv's clang 23 and cannot
+link (`ld.lld: error: cannot open …/_rocm_sdk_core/lib/libamdhip64.so`; the venv SDK has no devel
+files). With them it builds with `/opt/rocm`'s clang 24. `torch.utils.cpp_extension.ROCM_HOME`
+follows as well, so a torch extension compiles against HIP 7.16 and runs on torch's HIP 7.14.
+
+**A GPU run on a Windows host** (2026-10-21, Rancher Desktop's WSL VM). WSL has no `/dev/kfd`;
+ROCm reaches the GPU through `/dev/dxg` and `librocdxg`, which both stacks ship. Run with
+`--device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib`, as uid 1001:
+
+| Check | Result |
+| --- | --- |
+| `rocminfo`, both stacks | the Ryzen 9 9950X's iGPU (gfx1036). The RX 9070 XT (gfx1201) is not enumerated over DXG on this host |
+| A HIP program from `hipcc`, roots set | builds and runs on gfx1036: 64 of 64 values right |
+| The same, roots unset (as published) | does not link |
+| The smoke's Add graph through ORT's MIGraphX EP | MIGraphX compiles and serves it, roots set or not |
+| torch 2.14.1+rocm7.14 | sees the iGPU, then `hipErrorInvalidImage`: its wheels carry no gfx1036 kernels |
 
 ### The ROCm release is in every package name
 
@@ -931,10 +1077,10 @@ has.
 | # | Change | Why |
 | --- | --- | --- |
 | 1 | Install per-gfx metapackages instead of the all-architecture ones | `amdrocm-core-dev10.0` pulls all 25 gfx targets (19.6 GiB). The single largest size win: ~18.4 GiB → 9-13 GiB. |
-| 2 | `ROCM_PATH`, `HIP_PATH` and `/opt/rocm/bin` on `PATH` in the shipped image | The wrapper has none of them today; every consumer recipe starts by setting them. |
+| 2 | `ROCM_PATH`, `HIP_PATH` and `/opt/rocm/bin` on `PATH` in the shipped image | **Done 2026-10-21** in the source (CON31): without them `hipcc` could not link ([§ Running it on an AMD GPU](#running-it-on-an-amd-gpu)). |
 | 3 | Assert the installed ROCm and MIGraphX versions at the end of `Dockerfile.amd` | **Done 2026-10-07**, in `setup-rocm-repo.sh`: every name carries the release, MIGraphX is pinned through apt, and a package of another release fails the build ([§ The ROCm release is in every package name](#the-rocm-release-is-in-every-package-name)). |
 | 4 | Write the RESOLVED path into `/etc/ld.so.conf.d/000-rocm.conf` | It currently writes the literal `/opt/rocm/lib`, which re-resolves through alternatives in a derived image. |
-| 5 | `/dev/kfd` access for uid 1001, documented with numeric host GIDs (or the udev rule), plus `--device /dev/kfd --device /dev/dri --group-add`, `--ipc=host`, `--shm-size` | Our documented run line is incomplete; the image runs non-root and cannot open the device as shipped. |
+| 5 | `/dev/kfd` access for uid 1001, documented with numeric host GIDs (or the udev rule), plus `--device /dev/kfd --device /dev/dri --group-add`, `--ipc=host`, `--shm-size` | **Done 2026-10-21** (CON31): the run line, and an entrypoint warning that names the missing `--group-add` ([§ Running it on an AMD GPU](#running-it-on-an-amd-gpu)). |
 | 6 | Do NOT add `--security-opt seccomp=unconfined` to the documented run command, and never bake `HSA_OVERRIDE_GFX_VERSION` | Both are cargo-cult carried from old ROCm guides; the first weakens every consumer's sandbox, the second silently lies about the GPU. |
 | 7 | Writable MIOpen cache/db paths | The image is designed to run `--read-only`; MIOpen writes on first use. |
 | 8 | Build-time self-check that works with NO GPU | `hipconfig`, `rocm_agent_enumerator`, `migraphx-driver`, `ldd`, and ONNX Runtime listing `MIGraphXExecutionProvider` all work GPU-less; `rocminfo`/`amd-smi` need a device. Write `amd-smi`, not `rocm-smi` (deprecated in ROCm 10.0). |

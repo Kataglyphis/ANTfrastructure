@@ -201,9 +201,8 @@ if [ "${ENABLE_NVIDIA:-false}" = "true" ]; then
     warn "No versioned libonnxruntime.so found in ${ORT_HOME}/lib"
   fi
 
-  # --use_trt_rtx makes the wheel require onnxruntime-trt-rtx, which nothing ships without TensorRT.
+  # Never --use_trt_rtx: it is TensorRT-RTX, not TensorRT, and its wheel requires onnxruntime-trt-rtx, which the chain never builds.
   _genai_gpu_args=(--use_cuda --cuda_home "${CUDA_HOME:-/usr/local/cuda}")
-  [ "${ENABLE_TENSORRT:-true}" = "false" ] || _genai_gpu_args+=(--use_trt_rtx)
   info "GenAI build args: ${GENAI_BASE_ARGS[*]} ${_genai_gpu_args[*]}"
   retry 3 10 "ONNX Runtime GenAI GPU build" "${HOST_PYTHON}" build.py \
     "${GENAI_BASE_ARGS[@]}" \

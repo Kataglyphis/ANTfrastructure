@@ -121,6 +121,8 @@ The two halves of one topic often split:
 | CUDA / ROCm / accelerator image variants | [`linux-accelerator-images.md`](linux-accelerator-images.md) |
 | **NVIDIA on arm64 (SBSA)**: building natively on an arm64 host, and running the image on a Jetson | [`linux-accelerator-images.md`](linux-accelerator-images.md#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson) |
 | **DeepStream** in the nvidia variant: what ships, TensorRT 10 beside 11, the gates, the licence decision | [`linux-accelerator-images.md`](linux-accelerator-images.md#deepstream-nvidia-variant) |
+| **TensorRT 11** in the nvidia variant: the runtime `.so` files only, the ORT TensorRT EP, the SLA's redistribution terms | [`linux-accelerator-images.md`](linux-accelerator-images.md#tensorrt-11) |
+| **Running `:latest-rocm` on an AMD GPU**: `--group-add`, the ROCm roots, the two ROCm stacks; the GPU runtime gate | [`linux-accelerator-images.md`](linux-accelerator-images.md#running-it-on-an-amd-gpu) |
 | **Setting up a Linux build host**: GPU drivers, CUDA, runtime config, performance mode, GRUB recovery | [`linux-host-setup.md`](linux-host-setup.md) |
 | **General Linux commands** — disk, text/log filtering, users, networking, SSH, media/OCR, remote desktop, git. Not repo-specific | [`linux-reference.md`](linux-reference.md) |
 | Hailo `.hef` compilation and Jetson board procedures | [`linux-accelerator-images.md`](linux-accelerator-images.md#edge-accelerators) |

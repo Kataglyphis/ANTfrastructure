@@ -161,6 +161,16 @@ t_assert_eq "" "$(_gst 'libnvdsgst_infer.so libgstreamer-1.0.so.0 /opt/gstreamer
   "GLib is the distro's by design; GStreamer from the prefix"
 t_assert_contains "$(_gst 'libgstnvvideoconvert.so libgstvideo-1.0.so.0 /usr/lib/x86_64-linux-gnu/libgstvideo-1.0.so.0\n')" "SECOND-GSTREAMER libgstnvvideoconvert.so"
 
+t_case "DeepStream resolves TensorRT 10 from its own prefix, never the image's TensorRT 11"
+_P=/opt/nvidia/deepstream/tensorrt-10.16.1.11
+_trtv() { printf '%b' "$1" | DS_TRT_PREFIX="${_P}" bash -c 'source "$1"; dsv_trt_origin_verdict' _ "${DSV}"; }
+t_assert_eq "" "$(_trtv "lib/libnvds_infer.so libnvinfer.so.10 ${_P}/lib/libnvinfer.so.10\nlib/libnvds_infer.so libnvonnxparser.so.10 ${_P}/lib/libnvonnxparser.so.10\nlib/libnvds_infer.so libcudart.so.13 /usr/local/cuda/lib64/libcudart.so.13\n")" \
+  "TensorRT 10 from the prefix, nothing else judged"
+t_assert_contains "$(_trtv 'lib/libnvds_infer.so libnvinfer.so.11 /usr/lib/x86_64-linux-gnu/libnvinfer.so.11\n')" "FOREIGN-TRT lib/libnvds_infer.so -> libnvinfer.so.11"
+t_assert_contains "$(_trtv 'lib/libnvds_utils.so libnvinfer_plugin.so.10 /usr/lib/x86_64-linux-gnu/libnvinfer_plugin.so.10\n')" "TRT10-ELSEWHERE lib/libnvds_utils.so"
+t_assert_contains "$(_trtv 'lib/libnvds_utils.so libnvinfer.so.10 NOTFOUND\n')" "TRT10-ELSEWHERE" "an unresolved TensorRT 10 is a finding too"
+t_assert_contains "$(cat "${DSV}")" $'  dsv_check_trt_builder_resources\n  dsv_check_trt_origin' "dsv_main runs the check"
+
 t_case "an engine build finds TensorRT 10's builder resources, which it dlopen()s by file name"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _TRT="${_T}/opt/tensorrt-10.16.1.11/lib"; _SYS="${_T}/syslib"

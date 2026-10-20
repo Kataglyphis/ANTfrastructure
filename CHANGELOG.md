@@ -12,6 +12,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — TensorRT 11 and its ORT EP in `:latest-nvidia`; `:latest-rocm` finds its ROCm (CON31)
+
+- **Owner decision 2026-10-20.** Every amd64 nvidia build gets TensorRT 11.4.0.106
+  (`ENABLE_TENSORRT=true`; arm64 stays without). `install-tensorrt.sh` installs exactly
+  `11.4.0.106-1+cuda13.4` (new pin `TENSORRT_LINUX_CUDA`) as twelve named packages, never the
+  metapackages and their 1.9 GB Windows builder resource, and fails on any other version. ORT's GPU
+  build gets its TensorRT EP; the package stage copies only TensorRT's runtime `.so` files, the
+  only part its SLA names distributable. GenAI no longer asks for `--use_trt_rtx` (TensorRT-RTX,
+  whose wheel requires an ORT the chain never builds). Proved on the published `0e9dec34…` without
+  a GPU: the install, `getInferLibVersion()` 110400, ORT v1.31.0's TensorRT EP configured and built.
+- **`:latest-rocm`.** The wrapper sets `ROCM_PATH`/`HIP_PATH` and appends `/opt/rocm/bin`: without
+  them the venv's rocm-sdk `hipcc` could not link a HIP program. The entrypoint names the
+  `--group-add` a closed `/dev/kfd` or render node needs, and the run line carries it. On this
+  host's WSL VM (`/dev/dxg`, no `/dev/kfd`) a `hipcc`-built program ran on the Ryzen iGPU.
+- **Gates.** `check_gpu_runtime` in the runtime smoke (the published `:latest-rocm` fails six of
+  its rows), `deepstream-verify.sh` fails a DeepStream library that resolves TensorRT 11, and
+  20 new mutations.
+  [linux-accelerator-images.md § TensorRT 11](docs/linux-accelerator-images.md#tensorrt-11),
+  [§ Running it on an AMD GPU](docs/linux-accelerator-images.md#running-it-on-an-amd-gpu).
+
 ## 2026-10-21 — Security: the Windows arm64 wheel store's Pillow and certifi
 
 - `TORCH_WINDOWS_ARM64_PILLOW` 12.3.0 → 13.0.0 (cp313 win_arm64): GHSA-8g5g-8vmr-9782 (critical),

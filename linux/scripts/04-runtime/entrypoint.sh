@@ -94,6 +94,20 @@ if declare -F vulkan_env_prefer_active_link >/dev/null 2>&1 || _safe_source /opt
 fi
 fi
 
+# A GPU node passed in keeps the host's group, which uid 1001 lacks: docs/linux-accelerator-images.md#running-it-on-an-amd-gpu
+_gpu_node_hint() {
+  if [ "$2" = 65534 ]; then
+    printf 'Warning: %s is closed to uid %s and its group is unmapped (rootless engine): make the node mode 0666 on the host\n' "$1" "$(id -u)"
+  else
+    printf 'Warning: %s is closed to uid %s: add --group-add %s to the run\n' "$1" "$(id -u)" "$2"
+  fi
+}
+for _gpu_node in /dev/kfd /dev/dri/renderD*; do
+  [ -c "${_gpu_node}" ] || continue
+  { [ -r "${_gpu_node}" ] && [ -w "${_gpu_node}" ]; } || _gpu_node_hint "${_gpu_node}" "$(stat -c %g "${_gpu_node}")" >&2
+done
+unset _gpu_node
+
 # Optional: run a one-shot setup script (execute, not source) if present
 if [ -x /usr/local/bin/one-time-setup.sh ]; then
   echo "Running one-time setup..."

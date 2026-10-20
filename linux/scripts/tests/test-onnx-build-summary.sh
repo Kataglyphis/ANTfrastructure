@@ -81,15 +81,15 @@ t_assert_ok grep -q "NVCC_PREPEND_FLAGS" "${_DF_MEDIA}"
 t_assert_eq "0" "$(sed 's/#.*$//' "${ORT}/30-build-native-nvidia.sh" | grep -cE 'CUDAHOSTCXX|CUDAHOSTCC|ccbin' || true)" \
   "30-build-native-nvidia.sh must not redirect nvcc to another host compiler"
 
-t_case "GenAI's GPU build asks for TRT-RTX only when TensorRT ships"
-# --use_trt_rtx needs onnxruntime-trt-rtx, which the Jetson lane (no TensorRT) does not ship.
+t_case "GenAI's GPU build never asks for TRT-RTX, with or without TensorRT"
+# --use_trt_rtx builds onnxruntime-genai-trt-rtx, which requires onnxruntime-trt-rtx; the chain ORT is onnxruntime-gpu.
 _GENAI="${TESTS_DIR}/../03-media/build/onnxruntime/build/60-build-genai.sh"
-_sel="$(grep -E '^  (_genai_gpu_args=|\[ "\$\{ENABLE_TENSORRT)' "${_GENAI}")"
-t_assert_eq 2 "$(printf '%s\n' "${_sel}" | grep -c .)" "the selection is two lines this case can run"
+_sel="$(grep -E '^  _genai_gpu_args' "${_GENAI}")"
+t_assert_eq 1 "$(printf '%s\n' "${_sel}" | grep -c .)" "the selection is one line this case can run"
 _gargs() { ENABLE_TENSORRT="$1" bash -c "${_sel}"$'\nprintf "%s " "${_genai_gpu_args[@]}"'; }
-t_assert_eq "--use_cuda --cuda_home /usr/local/cuda " "$(CUDA_HOME='' _gargs false)" \
-  "no TensorRT: a plain CUDA GenAI (no dangling onnxruntime-trt-rtx edge)"
-t_assert_contains "$(_gargs true)" "--use_trt_rtx" "TensorRT lanes keep TRT-RTX"
+t_assert_eq "--use_cuda --cuda_home /usr/local/cuda " "$(CUDA_HOME='' _gargs false)" "no TensorRT: a plain CUDA GenAI"
+t_assert_eq "--use_cuda --cuda_home /usr/local/cuda " "$(CUDA_HOME='' _gargs true)" "TensorRT: still a plain CUDA GenAI"
+t_assert_eq 0 "$(sed 's/#.*$//' "${_GENAI}" | grep -c -- '--use_trt_rtx' || true)" "no line adds --use_trt_rtx"
 t_assert_contains "$(grep -A4 'ONNX Runtime GenAI GPU build' "${_GENAI}")" '"${_genai_gpu_args[@]}"' \
   "the build call uses the selection"
 

@@ -22,6 +22,17 @@ fi
 pass() { printf '  PASS %s\n' "$*"; }
 fail() { printf '  FAIL %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }
 
+# <label> <arch>, stdin "OK …"/"BAD …" lines: a pass or a fail each; feed it with < <(…), a pipe would lose FAILURES.
+smoke_verdict_lines() {
+  local line
+  while IFS= read -r line; do
+    case "${line}" in
+      OK\ *) pass "$1: ${line#OK }" ;;
+      BAD\ *) fail "$1: ${line#BAD } ($2)" ;;
+    esac
+  done
+}
+
 # Prints the result banner and exits non-zero on any failure.
 smoke_summary() {
   echo "=== Results: ${FAILURES} failure(s) ==="

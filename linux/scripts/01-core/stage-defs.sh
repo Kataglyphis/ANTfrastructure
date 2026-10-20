@@ -16,11 +16,12 @@ if [ -n "${CROSS_GPU_VARIANT}" ]; then
   CROSS_STAGE_ORDER=(base compiler sdk gpu media android runtime)
   CROSS_PER_ARCH_STAGES=(sdk gpu media android)
 fi
-# Set ENABLE_* here for every entry point, so no -<variant> tag gets CPU args; TensorRT is off (no libnvinfer shipped).
+# Set ENABLE_* here for every entry point, so no -<variant> tag gets CPU args.
 case "${CROSS_GPU_VARIANT}" in
-  nvidia) ENABLE_NVIDIA=true; ENABLE_AMD=false; : "${ENABLE_TENSORRT:=false}"
-          # DeepStream ships in every amd64 nvidia build at full size (owner 2026-10-07); ENABLE_DEEPSTREAM=false opts a run out.
-          case "$(cross_build_platform)" in */amd64) : "${ENABLE_DEEPSTREAM:=true}" ;; esac
+  nvidia) ENABLE_NVIDIA=true; ENABLE_AMD=false
+          # TensorRT 11 (owner 2026-10-20) and DeepStream at full size (2026-10-07) ship in every amd64 build; =false opts a run out.
+          case "$(cross_build_platform)" in */amd64) : "${ENABLE_TENSORRT:=true}" "${ENABLE_DEEPSTREAM:=true}" ;; esac
+          : "${ENABLE_TENSORRT:=false}"
           export CROSS_VARIANT=nvidia ENABLE_NVIDIA ENABLE_AMD ENABLE_TENSORRT
           [ -z "${ENABLE_DEEPSTREAM:-}" ] || export ENABLE_DEEPSTREAM ;;
   rocm)   ENABLE_AMD=true; ENABLE_NVIDIA=false

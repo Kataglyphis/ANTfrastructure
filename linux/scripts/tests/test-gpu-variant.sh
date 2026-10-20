@@ -7,7 +7,7 @@ CORE="${TESTS_DIR}/../01-core"
 
 # Run <snippet> with the real modules sourced under the given environment.
 _graph() {
-  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u CROSS_BUILD_PLATFORM "$@" bash -c '
+  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_BUILD_PLATFORM "$@" bash -c '
     set -u
     source "'"${CORE}"'/platform.sh"; source "'"${CORE}"'/build-helpers.sh"
     source "'"${CORE}"'/tag-naming.sh"; source "'"${CORE}"'/stage-defs.sh" || exit 3
@@ -52,7 +52,7 @@ CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cr
 # Leading VAR=value words are the environment; the rest runs time-boxed.
 _chain() {
   local -a _e=(); while [[ "${1:-}" == *=* ]]; do _e+=("$1"); shift; done
-  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM "${_e[@]}" timeout 60 "$@" 2>&1 \
+  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM "${_e[@]}" timeout 60 "$@" 2>&1 \
     | grep -E '^\[(ERROR|INFO)\] (Cross chain|the |an? )' | head -1
 }
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64)" \
@@ -78,9 +78,21 @@ t_case "the variant's build args reach every entry point, not just the chain"
 _args() { SNIPPET='args=(); cross_stage_build_args args '"$1"' amd64; printf "%s " "${args[@]}"' _graph "${@:2}"; }
 t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_NVIDIA=true" \
   "a variant media stage built through ANY entry point is a CUDA media stage"
-t_assert_contains "$(_args gpu CROSS_VARIANT=nvidia)" "ENABLE_TENSORRT=false" "TensorRT is off by default"
 t_assert_contains "$(_args media CROSS_VARIANT=rocm)" "ENABLE_AMD=true"
 t_assert_eq "" "$(_args media | grep -o 'ENABLE_[A-Z]*=')" "the default media stage forwards no accelerator toggle"
+
+t_case "TensorRT 11 is on in every amd64 nvidia build unless a run opts out (owner 2026-10-20)"
+# <stage> <env...>: the ENABLE_TENSORRT value that stage's build gets, or empty.
+_trt_arg() { _args "$@" | grep -o 'ENABLE_TENSORRT=[a-z]*' | head -1; }
+for _st in gpu media; do
+  t_assert_eq "ENABLE_TENSORRT=true" "$(_trt_arg "${_st}" CROSS_VARIANT=nvidia)" "the ${_st} stage gets it"
+  t_assert_eq "ENABLE_TENSORRT=false" "$(_trt_arg "${_st}" CROSS_VARIANT=nvidia ENABLE_TENSORRT=false)" "an explicit false reaches ${_st}"
+done
+t_assert_eq "ENABLE_TENSORRT=false" "$(_trt_arg gpu CROSS_VARIANT=nvidia CROSS_BUILD_PLATFORM=linux/arm64)" \
+  "an arm64 (Jetson) nvidia build has no TensorRT route"
+t_assert_eq "" "$(_trt_arg gpu CROSS_VARIANT=rocm)" "rocm never asks for it"
+t_assert_contains "$(SNIPPET='a=(); append_runtime_accelerator_build_args a; echo "${a[*]}"' _graph CROSS_VARIANT=nvidia)" \
+  "ENABLE_TENSORRT=true" "the package stage copies its runtime"
 
 t_case "DeepStream is on in every amd64 nvidia build unless a run opts out (owner 2026-10-07)"
 t_assert_contains "$(_args media CROSS_VARIANT=nvidia)" "ENABLE_DEEPSTREAM=true" "no ask needed"

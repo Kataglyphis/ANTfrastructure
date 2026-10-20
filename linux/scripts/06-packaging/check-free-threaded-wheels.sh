@@ -120,14 +120,9 @@ _ft_store_verdict_native() {
 # <image> <arch>: runs the probe in the shipped image and turns each verdict line into pass or fail.
 check_free_threaded_wheels() {
   # shellcheck disable=SC2034  # _rt_run reads image_tag by dynamic scope
-  local image_tag="$1" target_arch="$2" probe line
+  local image_tag="$1" target_arch="$2" probe
   echo "--- Free-threaded wheels: the free-threaded store on the free-threaded python (${target_arch}) ---"
   probe="$(_rt_run bash -lc "$(ft_store_probe_script)" 2>/dev/null)" || true
-  while IFS= read -r line; do
-    case "${line}" in
-      OK\ *) pass "FT-STORE: ${line#OK }" ;;
-      BAD\ *) fail "FT-STORE: ${line#BAD } (${target_arch})" ;;
-    esac
-  done < <(ft_store_verdict "${probe}")
+  smoke_verdict_lines FT-STORE "${target_arch}" < <(ft_store_verdict "${probe}")
   echo ""
 }

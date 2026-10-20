@@ -103,7 +103,7 @@ t_case "the advertised root is a tree this Dockerfile actually copies in"
 t_assert_ok grep -qE '^COPY .*--from=artifact-source /opt/android-sdk /opt/android-sdk$' "${PKG}"
 
 t_case "the android PATH entries are APPENDED, never fronted"
-_p="$(grep -E '^ENV PATH="\$\{PATH\}' "${PKG}")"
+_p="$(grep -E '^ENV PATH="\$\{PATH\}.*ANDROID_HOME' "${PKG}")"
 t_assert_contains "${_p}" '${ANDROID_HOME}/cmdline-tools/latest/bin'
 t_assert_contains "${_p}" '${ANDROID_HOME}/platform-tools'
 t_assert_eq 'ENV PATH="${PATH}' "$(printf '%s' "${_p}" | cut -c1-17)"

@@ -122,6 +122,21 @@ dsv_check_no_v4l2_hijack() {
 dsv_syslib_dir() { printf '%s' "${DS_SYSLIB_DIR:-/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)}"; }
 dsv_v4l2_plugin_dir() { printf '%s' "${DS_V4L2_PLUGIN_DIR:-$(dsv_syslib_dir)/libv4l/plugins}"; }
 
+# stdin: "<file> <soname> <path>"; prints every TensorRT soname not resolved from DeepStream's own TensorRT 10 prefix.
+dsv_trt_origin_verdict() {
+  awk -v p="${DS_TRT_PREFIX}/lib/" '$2 !~ /^lib(nvinfer[a-z_]*|nvonnxparser)\.so/ {next}
+    $2 !~ /\.so\.10$/ {print "FOREIGN-TRT", $1, "->", $2, "=>", $3; next}
+    index($3, p) != 1 {print "TRT10-ELSEWHERE", $1, "->", $2, "=>", $3}'
+}
+
+# DeepStream 9.1 is a TensorRT 10 build; the image's TensorRT 11 sits in the default lib dir beside it.
+dsv_check_trt_origin() {
+  [ -n "${DS_TRT_PREFIX}" ] || return 0
+  local verdict
+  verdict="$(dsv_ldd_table "${DS_ROOT}/lib" | dsv_trt_origin_verdict)"
+  if [ -n "${verdict}" ]; then printf '    %s\n' "${verdict}"; dsv_bad "DeepStream resolves a TensorRT outside ${DS_TRT_PREFIX}"; else dsv_ok "DeepStream links TensorRT 10 from ${DS_TRT_PREFIX} only"; fi
+}
+
 # dsv_trt_builder_resources <trt prefix>: the files libnvinfer.so.10 dlopen()s by name during an engine build.
 dsv_trt_builder_resources() {
   local f
@@ -215,6 +230,7 @@ dsv_main() {
   dsv_check_no_v4l2_hijack
   dsv_check_v4l2_plugin
   dsv_check_trt_builder_resources
+  dsv_check_trt_origin
   dsv_check_elements
   [ "${dsv_fail}" = 0 ] || { echo "DeepStream gates FAILED"; return 1; }
   echo "DeepStream gates passed"

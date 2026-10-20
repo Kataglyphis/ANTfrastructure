@@ -1202,7 +1202,7 @@ is built and gated, and every pipeline that ran:
 | DeepStream root | `/opt/nvidia/deepstream/deepstream`, a link to the versioned `/opt/nvidia/deepstream/deepstream-9.1`; the SDK headers are in its `sources/includes` |
 | GStreamer plugins | the link `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/deepstream` puts them on the image's own plugin path. They registered with `GST_PLUGIN_PATH` unset, replaced or appended to, so a consumer sets nothing |
 | `nvstreammux` | `ENV USE_NEW_NVSTREAMMUX=yes` selects the new mux, the only one that runs here. It has no `width`/`height`; a source with several surfaces per frame, such as `nvdewarper`, needs `num-surfaces-per-frame` |
-| TensorRT | DeepStream's TensorRT 10.16.1, on the loader path through `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf`: `libnvinfer.so.10` resolves to `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib`. The image has no TensorRT 11 |
+| TensorRT | DeepStream's TensorRT 10.16.1, on the loader path through `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf`: `libnvinfer.so.10` resolves to `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib`. From the first build after 2026-10-20, TensorRT 11's runtime `.so` files sit in `/usr/lib/x86_64-linux-gnu` beside it, without headers ([§ TensorRT 11](linux-accelerator-images.md#tensorrt-11)); never load TensorRT 11 with `RTLD_GLOBAL` in a process that runs `nvinfer` |
 | Helper libraries | `libcustom2d_preprocess.so`, `libpostprocess_impl.so` and `libcustom_videoimpl.so` live in `…/deepstream/lib/`, not in `lib/gst-plugins/`. NVIDIA configs that name the latter need editing |
 | Sample data | not in the image. NVIDIA's `deepstream-sample-data_9.1.0.deb` installs into the tree with `dpkg -i`, as root |
 

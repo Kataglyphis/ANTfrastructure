@@ -12917,16 +12917,16 @@
  {
   "id": "stage-graph.deepstream-default-on",
   "target": "linux/scripts/01-core/stage-defs.sh",
-  "find": "          case \"$(cross_build_platform)\" in */amd64) : \"${ENABLE_DEEPSTREAM:=true}\" ;; esac\n",
-  "replace": "",
+  "find": ": \"${ENABLE_TENSORRT:=true}\" \"${ENABLE_DEEPSTREAM:=true}\" ;;",
+  "replace": ": \"${ENABLE_TENSORRT:=true}\" ;;",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "every amd64 nvidia build carries DeepStream without being asked (owner 2026-10-07)"
  },
  {
   "id": "stage-graph.deepstream-default-amd64-only",
   "target": "linux/scripts/01-core/stage-defs.sh",
-  "find": "case \"$(cross_build_platform)\" in */amd64) : \"${ENABLE_DEEPSTREAM:=true}\" ;; esac",
-  "replace": ": \"${ENABLE_DEEPSTREAM:=true}\"",
+  "find": "case \"$(cross_build_platform)\" in */amd64) : \"${ENABLE_TENSORRT:=true}\" \"${ENABLE_DEEPSTREAM:=true}\" ;; esac",
+  "replace": ": \"${ENABLE_DEEPSTREAM:=true}\"; case \"$(cross_build_platform)\" in */amd64) : \"${ENABLE_TENSORRT:=true}\" ;; esac",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "an arm64 nvidia build defaulting to DeepStream would die in deepstream.sh, which refuses arm64 (phase 7)"
  },
@@ -15673,5 +15673,165 @@
   "replace": "        if False:\n",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
   "why": "a row no link needs is cover for the next broken link from those pages"
+ },
+ {
+  "id": "stage-graph.tensorrt-default-on",
+  "target": "linux/scripts/01-core/stage-defs.sh",
+  "find": ": \"${ENABLE_TENSORRT:=true}\" \"${ENABLE_DEEPSTREAM:=true}\" ;;",
+  "replace": ": \"${ENABLE_DEEPSTREAM:=true}\" ;;",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "every amd64 nvidia build carries TensorRT 11 without being asked (owner 2026-10-20)"
+ },
+ {
+  "id": "stage-graph.tensorrt-default-amd64-only",
+  "target": "linux/scripts/01-core/stage-defs.sh",
+  "find": "          : \"${ENABLE_TENSORRT:=false}\"\n",
+  "replace": "          : \"${ENABLE_TENSORRT:=true}\"\n",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "an arm64 nvidia build has no TensorRT route, so it must not default to one"
+ },
+ {
+  "id": "gpu-runtime.rocm-roots-read",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "if [ \"$(_gpur \"${probe}\" \"${k}\")\" = /opt/rocm ]; then echo \"OK ${k}=/opt/rocm\"; else",
+  "replace": "if true; then echo \"OK ${k}=/opt/rocm\"; else",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "the published :latest-rocm shipped without ROCM_PATH and HIP_PATH; the verdict must read them"
+ },
+ {
+  "id": "gpu-runtime.hipcc-must-link",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "    ok) echo \"OK hipcc builds a HIP program for gfx1201\" ;;",
+  "replace": "    *) echo \"OK hipcc builds a HIP program for gfx1201\" ;;",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "without the roots the venv's hipcc compiled but could not link a HIP program"
+ },
+ {
+  "id": "gpu-runtime.hipcc-clang-root",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "    \"${root}\"/*) echo \"OK hipcc's clang is ${root}'s\" ;;",
+  "replace": "    *) echo \"OK hipcc's clang is ${root}'s\" ;;",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "the venv's clang 23 is torch's ROCm 7.14, not the image's /opt/rocm"
+ },
+ {
+  "id": "gpu-runtime.non-rocm-roots",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "      \"\"|\"<unset><unset>\") echo \"OK no ROCm root is advertised\" ;;",
+  "replace": "      *) echo \"OK no ROCm root is advertised\" ;;",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "a cpu or nvidia image must advertise no ROCm root"
+ },
+ {
+  "id": "gpu-runtime.probe-ran",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "  _gpur \"$1\" ENABLE | grep -q . || { echo \"BAD the GPU probe printed nothing; the container did not run it\"; return 0; }",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "an empty probe reads as an image without any GPU stack and would pass"
+ },
+ {
+  "id": "gpu-runtime.trt-version",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "if [ \"${got}\" = \"$(( m * 10000 + mm * 100 + pp ))\" ]; then",
+  "replace": "if [ -n \"${got}\" ]; then",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "the TensorRT the image loads must be TENSORRT_VERSION"
+ },
+ {
+  "id": "gpu-runtime.trt-runtime-only",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "if [ -z \"${bad//[[:space:]]/}\" ]; then echo \"OK only TensorRT's runtime .so files ship",
+  "replace": "if true; then echo \"OK only TensorRT's runtime .so files ship",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "the SLA names only the runtime .so files distributable; a header or dev link must fail"
+ },
+ {
+  "id": "gpu-runtime.trt-ep-shim",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "    $2 ~ /^libtensorrt/ {print; next}",
+  "replace": "    $2 ~ /^libtensorrt/ {next}",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "libtensorrt_shim.so is a dev-package file the runtime lacks; an EP that needs it does not load"
+ },
+ {
+  "id": "gpu-runtime.trt-ep-listed",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "    *,\"$2\",*) echo \"OK onnxruntime lists $2\" ;;",
+  "replace": "    *) echo \"OK onnxruntime lists $2\" ;;",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "an image whose ORT lost its EP must fail, as a MIGraphX-less rocm one would"
+ },
+ {
+  "id": "cuda-stack.tensorrt-copy-gate",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "  [ \"${ENABLE_TENSORRT:-false}\" = \"true\" ] || return 0\n  local m=",
+  "replace": "  local m=",
+  "test": "bash linux/scripts/tests/test-cuda-runtime-payload.sh",
+  "why": "an image that did not ask must not receive the artifact's TensorRT"
+ },
+ {
+  "id": "cuda-stack.tensorrt-copy-runtime-only",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "\"/usr/lib/*-linux-gnu/libnvinfer*.so.${m}\" \"/usr/lib/*-linux-gnu/libnvinfer*.so.${m}.*\"",
+  "replace": "\"/usr/lib/*-linux-gnu/libnvinfer*\"",
+  "test": "bash linux/scripts/tests/test-cuda-runtime-payload.sh",
+  "why": "the dev links and the shim must stay behind: the SLA names only the runtime .so files"
+ },
+ {
+  "id": "cuda-stack.tensorrt-copy-missing-fatal",
+  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
+  "find": "    printf '[ERROR] ENABLE_TENSORRT=true but the artifact has no libnvinfer.so.%s (TENSORRT_VERSION=%s)\\n' \"${m}\" \"${TENSORRT_VERSION:-}\" >&2\n    return 1",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-cuda-runtime-payload.sh",
+  "why": "an EP built against TensorRT must not ship without it"
+ },
+ {
+  "id": "cuda-stack.tensorrt-install-pin-checked",
+  "target": "linux/scripts/01-core/install-tensorrt.sh",
+  "find": "[ \"${got[${pkg}]:-<none>}\" = \"${ver}\" ] ||",
+  "replace": "true ||",
+  "test": "bash linux/scripts/tests/test-tensorrt-install.sh",
+  "why": "an install off the pin must be named, never shipped unpinned"
+ },
+ {
+  "id": "cuda-stack.tensorrt-install-no-metapackage",
+  "target": "linux/scripts/01-core/install-tensorrt.sh",
+  "find": "libnvinfer-plugin-dev libnvinfer-headers-plugin-dev libnvonnxparsers-dev; do",
+  "replace": "libnvinfer-plugin-dev libnvinfer-headers-plugin-dev libnvonnxparsers-dev tensorrt-libs; do",
+  "test": "bash linux/scripts/tests/test-tensorrt-install.sh",
+  "why": "the metapackages pull the 1.9 GB Windows builder resource"
+ },
+ {
+  "id": "deepstream.verify-foreign-trt",
+  "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+  "find": "    $2 !~ /\\.so\\.10$/ {print \"FOREIGN-TRT\", $1, \"->\", $2, \"=>\", $3; next}",
+  "replace": "    $2 !~ /\\.so\\.10$/ {next}",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "DeepStream 9.1 is a TensorRT 10 build; linking the image's TensorRT 11 is the wrong ABI"
+ },
+ {
+  "id": "cuda-stack.genai-no-trt-rtx",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "  _genai_gpu_args=(--use_cuda --cuda_home \"${CUDA_HOME:-/usr/local/cuda}\")",
+  "replace": "  _genai_gpu_args=(--use_cuda --cuda_home \"${CUDA_HOME:-/usr/local/cuda}\" --use_trt_rtx)",
+  "test": "bash linux/scripts/tests/test-onnx-build-summary.sh",
+  "why": "--use_trt_rtx makes a wheel that requires onnxruntime-trt-rtx, which the chain never builds"
+ },
+ {
+  "id": "rocm-stack.gpu-node-hint",
+  "target": "linux/scripts/04-runtime/entrypoint.sh",
+  "find": "add --group-add %s to the run\\n' \"$1\" \"$(id -u)\" \"$2\"",
+  "replace": "add the render group\\n' \"$1\" \"$(id -u)\"",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "uid 1001 opens a 0660 GPU node only with the host group's number, which the warning must name"
+ },
+ {
+  "id": "rocm-stack.wrapper-roots",
+  "target": "linux/Dockerfile.package",
+  "find": "ENV ROCM_PATH=${ROCM_ON:+/opt/rocm} \\",
+  "replace": "ENV ROCM_PATH= \\",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "without ROCM_PATH the published hipcc could not link a HIP program"
  }
 ]
