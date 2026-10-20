@@ -38,7 +38,8 @@ function fail(message, code = 2) {
 }
 
 function findChrome() {
-  const candidates = [process.env.CHROME_EXECUTABLE, 'chrome', 'chromium', 'chromium-browser', 'google-chrome'];
+  // google-chrome before chromium: a runner's chromium can be a snap launcher, which took over 15 s to start.
+  const candidates = [process.env.CHROME_EXECUTABLE, 'chrome', 'google-chrome', 'chromium', 'chromium-browser'];
   for (const c of candidates.filter(Boolean)) {
     const found = c.includes('/') ? fs.existsSync(c) : spawnSync('sh', ['-c', `command -v ${c}`]).status === 0;
     if (found) return c;
@@ -66,8 +67,8 @@ async function launch(chrome) {
     '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
   { stdio: 'ignore' });
   const portFile = path.join(profile, 'DevToolsActivePort');
-  for (let i = 0; i < 150 && !fs.existsSync(portFile); i++) await sleep(100);
-  if (!fs.existsSync(portFile)) { proc.kill('SIGKILL'); fail(`${chrome} started no DevTools endpoint in 15 s`); }
+  for (let i = 0; i < 600 && !fs.existsSync(portFile); i++) await sleep(100);
+  if (!fs.existsSync(portFile)) { proc.kill('SIGKILL'); fail(`${chrome} started no DevTools endpoint in 60 s`); }
   const port = fs.readFileSync(portFile, 'utf8').split('\n')[0];
   let targets = [];
   for (let i = 0; i < 50 && !targets.some((t) => t.type === 'page'); i++) {

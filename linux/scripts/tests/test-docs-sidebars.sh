@@ -10,10 +10,10 @@ trap 'rm -rf "${_tmp}"' EXIT
 
 t_skip_unless "node with a global WebSocket (22 and later)" node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'
 _chrome=""
-for c in "${CHROME_EXECUTABLE:-}" chrome chromium chromium-browser google-chrome; do
+for c in "${CHROME_EXECUTABLE:-}" chrome google-chrome chromium chromium-browser; do
   [ -n "${c}" ] && command -v "${c}" >/dev/null 2>&1 && { _chrome="${c}"; break; }
 done
-t_skip_unless "Chrome (CHROME_EXECUTABLE, chrome, chromium or google-chrome)" test -n "${_chrome}"
+t_skip_unless "Chrome (CHROME_EXECUTABLE, chrome, google-chrome or chromium)" test -n "${_chrome}"
 _chrome="$(command -v "${_chrome}")"
 export CHECK_DOCS_SIDEBARS_VIEWPORTS="1000x700"
 
