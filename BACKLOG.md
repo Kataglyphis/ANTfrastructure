@@ -29,6 +29,18 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
+- [ ] **CON115 — every hub pipeline runs at the host's parallelism, never one step at a time** [L, ★★★].
+      Owner directive 2026-10-20: "alles innerhalb von ANTfrastructure massiv parallel (soviel wie
+      möglich)". Measured on that day's 3-arch `:latest` rebuild: the cross stages already run two
+      arches at a time (`--parallel-archs`), but the **runtime lane serialises per arch** — amd64
+      finished at 13:45 and riscv64 did not start while arm64's ~20 GB push streamed, so each arch
+      leaves ~1.2 h of idle upload at the measured 5 MiB/s (3 arches ≈ 2–3 h of wall clock). Work:
+      start an arch's successor as soon as that arch's **build** ends, not its push (a push needs no
+      CPU); make `MAX_PARALLEL_ARCHS=3` usable by sizing the memory divisor and the disk gate for it
+      rather than by refusing; and keep every push off the critical path of the next build. Done when
+      a 3-arch run shows the next arch's `RUN` lines while the previous arch's `nerdctl push` is
+      still streaming, and the wall clock drops by roughly the summed upload time.
+
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
       `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
       3.14, and `scripts/build.sh` pip-installs `onnxruntime==1.31.0` from PyPI
