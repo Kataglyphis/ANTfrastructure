@@ -77,6 +77,9 @@ These are recorded so nobody files them as gaps:
 - The CUDA arch set is `86;87;89;120`, with no PTX.
 - riscv64 is built for the RVA23 baseline.
 - riscv64 uses the distro CMake 4.2.3.
+- riscv64's GStreamer runs on Ubuntu's GLib: `yield_older_prefix_glib` drops the prefix's GLib when it is
+  older than the distro's (2.86.3 vs 2.88.0), which GTK 4 4.22.4 and PyGObject need, as amd64 and arm64
+  already do (owner, 2026-10-20: not a rebuilt GLib; CON129).
 - riscv64 has no IREE compiler, no `ml-ai` extra, no Flutter, appimagetool,
   Flatpak runtimes or Hailo, because upstream ships none for it.
 - ORT QNN is opt-in on arm64.
