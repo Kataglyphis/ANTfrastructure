@@ -135,7 +135,8 @@ function treeProbe() {
     if (!li) return { applied: false };
     li.setAttribute('data-check-docs-tree', '');
   }
-  li.scrollIntoView({ block: 'center' });
+  // Its first line, not the whole item: an open namespace is taller than the viewport, and centring it hides its text.
+  (li.querySelector(':scope > a') || li).scrollIntoView({ block: 'center' });
   // The item's own text, not its link: a click on the link navigates away.
   const text = [...li.childNodes].find((n) => n.nodeType === Node.TEXT_NODE && n.textContent.trim());
   const range = document.createRange();

@@ -54,6 +54,8 @@
   site, and in a built Sphinx site every page with a tree view. Eight new `docs-site.sidebars-*`
   mutations. The other seven published sites pass it as they are.
   [docs-sites.md § The sidebar toggle check](docs/docs-sites.md#the-sidebar-toggle-check).
+- **An open item taller than the viewport** is scrolled to by its first line: BeschleunigerBallett's
+  first namespace, centred whole, hid its own text, and run 39511861138 failed `does not go back`.
 
 ## 2026-10-20 — The last 23 Apache-2.0 headers are MIT, as `LICENSE` says (CON69)
 

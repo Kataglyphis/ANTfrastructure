@@ -68,7 +68,9 @@ _tree() {
     jquery) bind="${unfold}"; call='$(document).ready(apply);' ;;
   esac
   mkdir -p "${d}/api"
-  printf '<!DOCTYPE html><html><body><ul class="treeView"><li><ul class="collapsibleList"><li>Namespace <a href="../index.html">ns</a><ul><li>Class <a href="../index.html">Foo</a></li></ul></li></ul></li></ul><script>%s</script></body></html>\n' \
+  # Taller than the viewport once open, as BeschleunigerBallett's first namespace is.
+  printf '<!DOCTYPE html><html><body><ul class="treeView"><li><ul class="collapsibleList"><li>Namespace <a href="../index.html">ns</a><ul>%s</ul></li></ul></li></ul><script>%s</script></body></html>\n' \
+    "$(for n in $(seq 80); do printf '<li>Class <a href="../index.html">Foo%s</a></li>' "${n}"; done)" \
     "const fold = (li) => { const ul = li.querySelector(':scope > ul'); const open = ul.style.display === 'none'; ul.style.display = open ? 'block' : 'none'; li.className = open ? 'collapsibleListOpen' : 'collapsibleListClosed'; }; const apply = () => document.querySelectorAll('ul.collapsibleList li').forEach((li) => { if (!li.querySelector(':scope > ul')) return; fold(li); ${bind} }); ${call}" \
     > "${d}/api/library_root.html"
   printf '%s\n' "${d}"

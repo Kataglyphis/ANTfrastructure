@@ -15411,6 +15411,14 @@
   "why": "the reader folds an item on its own text: its link opens another page"
  },
  {
+  "id": "docs-site.sidebars-tree-first-line",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "(li.querySelector(':scope > a') || li).scrollIntoView({ block: 'center' });",
+  "replace": "li.scrollIntoView({ block: 'center' });",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "BeschleunigerBallett's open first namespace is taller than the viewport: centring the whole item scrolled its text away, and the second click missed"
+ },
+ {
   "id": "docs-site.sidebars-tree-pages-found",
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])",
