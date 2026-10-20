@@ -615,6 +615,19 @@ owner carries the breakage that costs.
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON121 — the sidebars on the docs sites cannot be toggled** [S–M, ★★]. Owner report
+      2026-10-20. Sites: the Sphinx sites on DocumANTation's `sphinx-kataglyphis-theme`
+      (`setup_theme()`: hub, AccelerANTgine, BeschleunigerBallett, OrchestrANT, WebDavClient,
+      DocumANTation) and the dartdoc sites on its `style/dartdoc.css` (OmniAccelerANT, ANThology,
+      jotrockenmitlocken). Not narrowed down yet: which sites, which sidebar (navigation or page
+      TOC), which browser and its console errors. Leads, unverified: `docs-site.htaccess` sets
+      `nosniff`, so a theme script or module served with a wrong MIME type is refused (the template
+      has no `AddType` lines, unlike `flutter-web.htaccess`); DocumANTation 92f776b dropped the
+      sphinx-book CSS copy; `dartdoc.css` restyles `#sidenav-left-toggle` and `.sidebar-offcanvas-*`.
+      Same check as BeschleunigerBallett's broken WebGPU demo row. Done when the toggles work on
+      every published site, and a check would catch it again (a headless-browser click in the
+      docs-site gate).
+
 - [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
       `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb
       added the first as a 5-line copy of the second's sysconfigdata lookup; `code-dupes.allow`
