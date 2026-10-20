@@ -526,9 +526,7 @@ _torch_pin_gpu_index() {
   esac
 }
 
-# A relocated native riscv64/aarch64 GCC looks its programs up UNPREFIXED, so the image's x86
-# `as` rejected its -march and pillow died in the wheelhouse (2026-10-20). -B prepends the
-# target prefix; the symlinks cover the paths sysconfig reports (AR, AS).
+# A relocated native GCC looks programs up unprefixed and took the x86 `as`; -B gives it the target's.
 ensure_target_binutils() {
   local triplet bindir tool
   case "$(uname -m)" in

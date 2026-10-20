@@ -34,9 +34,7 @@ _assert_and_relocate_native_gcc() {
   echo "Replaced host GCC with target-native ${TARGET_ARCH} GCC at /opt/gcc-${GCC_VERSION}"
 }
 
-# The relocated GCC's target lib/include dirs are empty; point them at the image's multiarch dirs.
-# The relocated GCC's driver looks programs up unprefixed, and sysconfig reports AR/AS under
-# this prefix: without these links the target build runs the host's x86 tools (2026-10-20).
+# sysconfig reports AR/AS under this prefix; without the links a target build runs the host's x86 tools.
 _link_target_binutils() {
   local triplet="$1" gcc_bindir="/opt/gcc-${GCC_VERSION}/bin" tool src
   for tool in as ar ld nm ranlib strip objcopy; do
@@ -46,6 +44,7 @@ _link_target_binutils() {
   done
 }
 
+# The relocated GCC's target lib/include dirs are empty; point them at the image's multiarch dirs.
 _link_multiarch_dirs() {
   local triplet="$1"
   local gcc_target_lib="/opt/gcc-${GCC_VERSION}/${triplet}/lib"

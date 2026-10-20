@@ -109,7 +109,7 @@ _san_check() {  # <prefix> <arch>
 _swap_main() {  # <target-arch> <build-arch>
   _with_rc env TARGET_ARCH="$1" BUILDARCH="$2" BUILD_MODE=cross GCC_VERSION="${GCCV}" bash -c '
     set -euo pipefail; source "$1"
-    for f in _assert_and_relocate_native_gcc _link_multiarch_dirs _write_native_gcc_profile_d \
+    for f in _assert_and_relocate_native_gcc _link_multiarch_dirs _link_target_binutils _write_native_gcc_profile_d \
              _wrap_native_gcc_drivers _assert_native_gcc_multiarch _smoke_native_gcc; do
       eval "${f}() { echo STEP ${f}; }"; done
     eval "$2"; main' _ "${PLATFORM}" "${_swap_fns}"
