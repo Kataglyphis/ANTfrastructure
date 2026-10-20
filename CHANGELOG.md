@@ -37,8 +37,10 @@
   re-key.
 - **Measured in `:latest`'s riscv64 child under QEMU** (Python 3.14.4 and 3.14.8t, OrchestrANT
   de144d10): with the GIL pass warm from the image's seed, 1271 s, 7 compiled wheels built as
-  `cp314t`; 15 wheels, 40 MB, both proofs ok, `verify` passes. Waits for the next `:latest`: the
-  seed and the fix ship with it; then OrchestrANT's riscv64 lane asks for `pinned pinnedt`.
+  `cp314t`; 15 wheels, 40 MB, both proofs ok, `verify` passes. From it, that commit's `3.14t` leg
+  built no dependency and passed its tests in 62 min. arm64's X.Yt lacks its `ar` the same way,
+  and `fix` repairs it there too. Waits for the next `:latest`: the seed and the fix ship with it;
+  then OrchestrANT's riscv64 lane asks for `pinned pinnedt`.
 - Tests: `test-uv-cache-seed.sh` 74 assertions (both passes, the ABI-tag verify, a missing or GIL
   X.Yt), `test-free-threaded-sysconfig-tools.sh` 19; mutations
   `uv-cache-seed.seeds-the-free-threaded-twin`, `.verify-wants-a-free-threaded-pass`,

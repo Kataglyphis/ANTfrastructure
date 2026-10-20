@@ -758,10 +758,10 @@ Python legs refuse to: a missing one fails the leg ([`python-ci.md` § Free-thre
   - The `free-threaded-python` contract row checks the same on the shipped image, and
     that `sysconfig`'s prefix is `/opt/python-freethreaded`, which tells the source build
     from a python-build-standalone one.
-- **Its sysconfig names only tools the image runs.** A cross arch's tree records the
-  toolchain stage's `/opt/gcc-<ver>/bin/<triplet>-ar`, and the target image's GCC prefix has
-  no `ar`: on riscv64, pillow's `cp314t` build died with exit 127 (measured 2026-10-20 in
-  `:latest`). The torch stage runs `06-packaging/free-threaded-sysconfig-tools.py fix`, which
+- **Its sysconfig names only tools the image runs.** A cross arch's tree (arm64, riscv64)
+  records the toolchain stage's `/opt/gcc-<ver>/bin/<triplet>-ar`, and the target image's GCC
+  prefix has no `ar`: on riscv64, pillow's `cp314t` build died with exit 127 (measured 2026-10-20
+  in `:latest`; arm64's `aarch64-linux-gnu-ar` is missing the same way). The torch stage runs `06-packaging/free-threaded-sysconfig-tools.py fix`, which
   points every compiler tool (`CC`, `CXX`, `AR`, the link commands) that does not exist at the
   same name on `PATH` (`riscv64-linux-gnu-ar`, from binutils), in the sysconfig data, its JSON
   twin and the config `Makefile`, then fails the build if any tool still does not run. Test:

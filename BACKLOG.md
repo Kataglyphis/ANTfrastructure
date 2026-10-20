@@ -42,7 +42,8 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       image's versions, and the hub's ORT census must pass first; `release.yml` uses the hub's
       container actions, and a dispatch builds without publishing. Dispatch run 39392921386 on
       `:latest` (3.14.4, ORT 1.30.0 dnnl from `/opt/venv`, torch 2.14.1+cpu): census PASS, all five
-      files byte-identical to `deim_dfine_n_coco-v1`. Left: the next tag publishes from it, and
+      files byte-identical to `deim_dfine_n_coco-v1`; again with SHA-pinned actions (1f37627, run
+      39394810441). Left: the next tag publishes from it, and
       the 3.15 `:latest`, where pip's additions resolve from cp315 or abi3 wheels (read 2026-10-20).
 
 - [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [S, ★★]. Since
@@ -371,8 +372,10 @@ owner carries the breakage that costs.
       the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU (its lock
       had moved past the seed's numpy, matplotlib and contourpy) and 74 min pytest. In source since
       2026-10-20 (CHANGELOG): the seed's second pass on X.Yt, and the torch stage's fix for the X.Yt
-      sysconfig's `ar`, which the riscv64 image lacked; proved in `:latest`'s riscv64 child, 15
-      wheels for 3.14.4 and 3.14.8t. Left:
+      sysconfig's `ar`, which the riscv64 and arm64 images lacked; proved in `:latest`'s riscv64
+      child, 15 wheels for 3.14.4 and 3.14.8t. From that seed, OrchestrANT de144d10's `3.14t` leg
+      under QEMU built no dependency and passed (2529 tests in 62 min; the 6 that read the hub
+      submodule's `backends.json` passed with it checked out). Left:
       1. a `:latest` built from it;
       2. OrchestrANT's `linux-riscv64.yml` asks for `pinned pinnedt`, and a dispatched run passes
          both legs inside 360 min.
