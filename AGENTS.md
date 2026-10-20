@@ -844,7 +844,7 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 
 - **riscv64's Python lane gets a uv cache seed, not a wheel store** (CON83). `/opt/uv-cache-seed`
   (`PYTHON_UV_CACHE_SEED`) is a uv cache of the wheels the app lock's `test` extra builds from
-  source, which `ci_tests.sh` copies into its own cache. A locked `uv sync` takes a built sdist
+  source, on `X.Y` and on `X.Yt` (CON110), which `ci_tests.sh` copies into its own cache. A locked `uv sync` takes a built sdist
   from the cache only, so never turn it into a `--find-links` store, and never prove it with
   `--no-build`, which refuses every sdist, cached or not. The torch stage also installs shellcheck
   and hadolint at their `tool-pins.env` pins on every arch; riscv64's hadolint is a source build

@@ -184,7 +184,11 @@ RUN --mount=type=bind,from=hadolint-build,source=/out,target=/tmp/hadolint-build
         bash /opt/scripts/packaging/install-lint-tools.sh; \
     fi
 
-# The wheels the app lock's test extra builds from source under QEMU, as a uv cache. docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
+# A cross-built X.Yt names the toolchain stage's <triplet>-ar, which this image has only on PATH. docs/consumer-image-contract.md#the-free-threaded-python
+COPY --chmod=755 linux/scripts/06-packaging/free-threaded-sysconfig-tools.py /opt/scripts/packaging/free-threaded-sysconfig-tools.py
+RUN python3 -I /opt/scripts/packaging/free-threaded-sysconfig-tools.py fix /opt/python-freethreaded
+
+# The wheels the app lock's test extra builds from source under QEMU, on X.Y and X.Yt, as a uv cache. docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
 ARG TARGETARCH
 COPY --chmod=755 linux/scripts/06-packaging/uv-cache-seed.sh /opt/scripts/packaging/uv-cache-seed.sh
 RUN --mount=type=cache,target=/var/cache/uv-seed,id=uv-seed-${TARGETARCH} \

@@ -361,12 +361,16 @@ owner carries the breakage that costs.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
-      the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU and 74 min
-      pytest. `uv-cache-seed.sh build` seeds one sync, the test extra on `--python` (the image's
-      X.Y), so an X.Yt leg would build every compiled dependency again and run ~7 h, past the
-      360-min job limit. Left: seed the free-threaded test-extra sync too (a second pass on X.Yt
-      into the same seed, proven like the first), then the lane asks for `pinned pinnedt`. Done
-      when both legs pass in one run inside the budget.
+      the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU (its lock
+      had moved past the seed's numpy, matplotlib and contourpy) and 74 min pytest. In source since
+      2026-10-20 (CHANGELOG): the seed's second pass on X.Yt, and the torch stage's fix for the X.Yt
+      sysconfig's `ar`, which the riscv64 image lacked; proved in `:latest`'s riscv64 child, 15
+      wheels for 3.14.4 and 3.14.8t. Left:
+      1. a `:latest` built from it;
+      2. OrchestrANT's `linux-riscv64.yml` asks for `pinned pinnedt`, and a dispatched run passes
+         both legs inside 360 min.
+
+      The seed covers the lock at `APP_REF`; a lock that moved since rebuilds what moved, once per leg.
 
 - [b] **CON70 — a riscv64 Flutter engine, for OmniAccelerANT's riscv64 lane** [L, ★]. CON48's
       riscv64 consumer lanes (OxidANT, AccelerANTgine, BeschleunigerBallett) cross-build on

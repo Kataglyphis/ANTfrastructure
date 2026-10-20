@@ -13,14 +13,35 @@ Usage:
   uv-cache-seed.sh verify SEED [ARCH]
 
 build   syncs the app's committed lock (--locked --dev, the extras, no project) through
-        --work-cache, copies the wheels uv built from source into --out, and proves a fresh
-        copy of --out syncs the same lock without building. An arch outside --arches
-        (default riscv64) gets a record that says so and no cache.
-verify  checks a seed's record: its arch, the proof, and every listed wheel in the cache.
+        --work-cache on X.Y and on its free-threaded X.Yt, copies the wheels uv built from
+        source into --out, and proves a fresh copy of --out syncs the same lock on both without
+        building. An arch outside --arches (default riscv64) gets a record that says so and no cache.
+verify  checks a seed's record: its arch, a GIL and a free-threaded pass, each one's proof, and
+        every listed wheel in the cache.
 EOF
 }
 
 SEED_RECORD="seed-record.txt"
+
+# <request>: the venv interpreters a seed covers, the GIL build and its free-threaded twin.
+seed_requests() { printf '%s+gil\n%st\n' "$1" "$1"; }
+
+# <venv>: X.Y.Z, with a t for a free-threaded build.
+venv_python() {
+  "$1/bin/python" -c 'import platform, sysconfig; print(platform.python_version() + ("t" if sysconfig.get_config_var("Py_GIL_DISABLED") else ""))'
+}
+
+# <request> <dir>: a venv on the image's interpreter, refused when uv hands over the other build.
+seed_venv() {
+  local request="$1" dir="$2" got
+  # The image ships both builds; a download would seed for an interpreter no lane runs.
+  UV_PYTHON_DOWNLOADS=never uv venv -q --python "${request}" "${dir}" || die "no ${request} interpreter for the seed"
+  got="$(venv_python "${dir}")" || die "the ${request} venv's python does not run"
+  case "${request}:${got}" in
+    *t:*t | *+gil:*[0-9]) printf '%s\n' "${got}" ;;
+    *) die "asked uv for ${request}, it gave ${got}" ;;
+  esac
+}
 
 # The sync ci_tests.sh runs (uv_sync_project), minus the project: its Cython build is not a dependency.
 seed_sync() {
@@ -46,14 +67,18 @@ built_wheels() {
   (cd "$1" && find . -path './sdists-v*/pypi/*/*/*/*.whl' -print) | LC_ALL=C sort
 }
 
-# Every "built" row of a record names a wheel the cache holds; prints the misses.
+# Every "built <name> <version> <abi>" row of a record names a wheel the cache holds; prints the misses.
 record_misses() {
-  local seed="$1" name version norm
-  while read -r name version; do
+  local seed="$1" name version abi norm whl re hit
+  while read -r name version abi; do
     norm="$(printf '%s' "${name}" | tr '[:upper:]_.' '[:lower:]--')"
-    if ! compgen -G "${seed}/sdists-v*/pypi/${norm}/${version}/*/*.whl" >/dev/null; then
-      printf '%s==%s\n' "${name}" "${version}"
-    fi
+    # The ABI tag is the wheel name's second-to-last field: cp314 and cp314t share the python tag cp314.
+    re="-${abi:-[^-]+}-[^-]+\\.whl\$"
+    hit=""
+    for whl in "${seed}"/sdists-v*/pypi/"${norm}"/"${version}"/*/*.whl; do
+      [[ "${whl##*/}" =~ ${re} ]] && { hit=1; break; }
+    done
+    [ -n "${hit}" ] || printf '%s==%s%s\n' "${name}" "${version}" "${abi:+ (${abi})}"
   done < <(sed -n 's/^built //p' "${seed}/${SEED_RECORD}")
 }
 
@@ -75,16 +100,19 @@ seed_tree() {
   git -C "${repo}" rev-parse "${rev}"
 }
 
-# <work> <out> <venv>: the work cache's built wheels for what the venv holds, without downloads or sources.
+# <work> <out> <venv>...: the work cache's built wheels for what the venvs hold, without downloads or sources.
 seed_copy() {
-  local work="$1" out="$2" venv="$3" keep dir name version
+  local work="$1" out="$2" keep="" dir name version venv
+  shift 2
   cp -a "${work}/." "${out}/"
   uv cache prune --ci --cache-dir "${out}" >/dev/null || die "uv cache prune --ci failed on ${out}"
   rm -rf "${out}/interpreter-v"* "${out}/builds-v"*
-  # The work cache keeps every version it ever built; the seed keeps only what this sync installed.
-  keep="$(uv pip list --python "${venv}/bin/python" --format freeze \
-    | awk -F'==' 'NF == 2 { n = tolower($1); gsub(/[_.]/, "-", n); print n, $2 }')"
-  [ -n "${keep}" ] || die "the seed venv lists no installed distribution"
+  # The work cache keeps every version it ever built; the seed keeps only what these syncs installed.
+  for venv in "$@"; do
+    keep+="$(uv pip list --python "${venv}/bin/python" --format freeze \
+      | awk -F'==' 'NF == 2 { n = tolower($1); gsub(/[_.]/, "-", n); print n, $2 }')"$'\n'
+  done
+  [ -n "${keep//$'\n'/}" ] || die "the seed venvs list no installed distribution"
   for dir in "${out}"/sdists-v*/pypi/*/*/; do
     [ -d "${dir}" ] || continue
     version="$(basename "${dir}")"
@@ -94,20 +122,26 @@ seed_copy() {
   find "${out}" -depth -type d -empty -delete
 }
 
-# <out> <tmp> <python> <extras>: a fresh copy syncs the lock into a fresh venv and builds nothing.
+# <out> <tmp> <python> <extras>: one fresh copy syncs the lock into a fresh venv per interpreter and builds nothing.
 seed_prove() {
-  local out="$1" tmp="$2" python="$3" extras="$4" cache="$2/proof-cache"
+  local out="$1" tmp="$2" python="$3" extras="$4" cache="$2/proof-cache" request i=0 got
+  local -a requests=()
+  mapfile -t requests < <(seed_requests "${python}")
   cp -a "${out}" "${cache}"
   rm -f "${cache}/${SEED_RECORD}"
-  built_wheels "${cache}" > "${tmp}/before.txt"
-  uv venv -q --python "${python}+gil" "${tmp}/.venv-proof"
-  seed_sync "${tmp}/app" "${cache}" "${tmp}/.venv-proof" "${extras}" 2>&1 | tee "${tmp}/proof.log" \
-    || die "a fresh copy of the seed does not sync the lock"
-  built_wheels "${cache}" > "${tmp}/after.txt"
-  # --no-build cannot say it: it refuses every sdist, cached or not.
-  if grep -qE '^[[:space:]]*(Building|Built) ' "${tmp}/proof.log" || ! cmp -s "${tmp}/before.txt" "${tmp}/after.txt"; then
-    die "the seed does not cover the lock, the proof sync built: $(built_from_log "${tmp}/proof.log" | tr '\n' ' ')$(LC_ALL=C comm -13 "${tmp}/before.txt" "${tmp}/after.txt" | tr '\n' ' ')"
-  fi
+  for request in "${requests[@]}"; do
+    i=$((i + 1))
+    built_wheels "${cache}" > "${tmp}/before.txt"
+    got="$(seed_venv "${request}" "${tmp}/.venv-proof-${i}")" || exit 1
+    seed_sync "${tmp}/app" "${cache}" "${tmp}/.venv-proof-${i}" "${extras}" 2>&1 | tee "${tmp}/proof-${i}.log" \
+      || die "a fresh copy of the seed does not sync the lock on ${got}"
+    built_wheels "${cache}" > "${tmp}/after.txt"
+    # --no-build cannot say it: it refuses every sdist, cached or not.
+    if grep -qE '^[[:space:]]*(Building|Built) ' "${tmp}/proof-${i}.log" || ! cmp -s "${tmp}/before.txt" "${tmp}/after.txt"; then
+      die "the seed does not cover the lock on ${got}, the proof sync built: $(built_from_log "${tmp}/proof-${i}.log" | tr '\n' ' ')$(LC_ALL=C comm -13 "${tmp}/before.txt" "${tmp}/after.txt" | tr '\n' ' ')"
+    fi
+    printf 'proof %s a fresh copy synced the lock and built nothing: ok\n' "${got}" >> "${tmp}/proofs.txt"
+  done
 }
 
 # Sets APP URL REF OUT WORK EXTRAS PY ARCHES from build's flags.
@@ -128,6 +162,8 @@ parse_build_args() {
 cmd_build() {
   parse_build_args "$@"
   local app="${APP}" out="${OUT}" work="${WORK}" extras="${EXTRAS}" python="${PY}" arches="${ARCHES}" arch tmp commit built
+  local request got i=0
+  local -a requests=() venvs=()
   # The image's own X.Y by default, so a Python upgrade reseeds for the new interpreter.
   [ -n "${python}" ] || die "build: no --python, and no PYTHON_MAJOR_MINOR in the environment"
   arch="$(uname -m)"
@@ -142,24 +178,31 @@ cmd_build() {
   command -v uv >/dev/null 2>&1 || die "uv is not on PATH"
   tmp="$(mktemp -d)"
   commit="$(seed_tree "${tmp}" "${app}" "${URL}" "${REF}")"
+  mapfile -t requests < <(seed_requests "${python}")
 
-  say "syncing the app @ ${commit} (extras: ${extras}) through ${work}"
-  uv venv -q --python "${python}+gil" "${tmp}/.venv-work" || die "no ${python} interpreter for the seed"
-  seed_sync "${tmp}/app" "${work}" "${tmp}/.venv-work" "${extras}" 2>&1 | tee "${tmp}/work.log" \
-    || die "the seed sync failed; see the output above"
-  seed_copy "${work}" "${out}" "${tmp}/.venv-work"
-  printf 'arch %s\napp %s\nextras %s\nuv %s\npython %s\nseeded yes\n' "${arch}" "${commit}" "${extras}" \
-    "$(uv --version | awk '{print $2}')" "$("${tmp}/.venv-work/bin/python" -c 'import platform; print(platform.python_version())')" \
-    > "${out}/${SEED_RECORD}"
-  # A warm work cache prints no Built line, so the record lists the wheels the seed holds.
-  built_wheels "${out}" | sed -n 's|.*/\([^/-]*\)-\([^/-]*\)-[^/]*\.whl$|built \1 \2|p' \
+  printf 'arch %s\napp %s\nextras %s\nuv %s\n' "${arch}" "${commit}" "${extras}" "$(uv --version | awk '{print $2}')" \
+    > "${tmp}/record-head.txt"
+  # One work cache for both passes: a pure-Python sdist built on the first serves the second.
+  for request in "${requests[@]}"; do
+    i=$((i + 1))
+    got="$(seed_venv "${request}" "${tmp}/.venv-work-${i}")" || exit 1
+    say "syncing the app @ ${commit} (extras: ${extras}) on ${got} through ${work}"
+    seed_sync "${tmp}/app" "${work}" "${tmp}/.venv-work-${i}" "${extras}" 2>&1 | tee -a "${tmp}/work.log" \
+      || die "the seed sync on ${got} failed; see the output above"
+    venvs+=("${tmp}/.venv-work-${i}")
+    printf 'python %s\n' "${got}" >> "${tmp}/record-head.txt"
+  done
+  seed_copy "${work}" "${out}" "${venvs[@]}"
+  { cat "${tmp}/record-head.txt"; printf 'seeded yes\n'; } > "${out}/${SEED_RECORD}"
+  # A warm work cache prints no Built line, so the record lists the wheels the seed holds, by ABI tag.
+  built_wheels "${out}" | sed -n 's|.*/\([^/-]*\)-\([^/-]*\)-.*-\([^/-]*\)-[^/-]*\.whl$|built \1 \2 \3|p' \
     | LC_ALL=C sort -u >> "${out}/${SEED_RECORD}"
   built="$(built_from_log "${tmp}/work.log" | tr '\n' ' ')"
   say "built this run: ${built:-nothing, the work cache held every wheel}"
 
-  say "proving the seed: a fresh copy syncs without building"
+  say "proving the seed: a fresh copy syncs on each interpreter without building"
   seed_prove "${out}" "${tmp}" "${python}" "${extras}"
-  printf 'proof a fresh copy synced the lock and built nothing: ok\n' >> "${out}/${SEED_RECORD}"
+  cat "${tmp}/proofs.txt" >> "${out}/${SEED_RECORD}"
   chmod -R a+rX "${out}"
   rm -rf "${tmp}"
   say "seed ready: $(du -sh "${out}" | cut -f1), $(grep -c '^built ' "${out}/${SEED_RECORD}" || true) wheel(s) built from source"
@@ -167,7 +210,7 @@ cmd_build() {
 
 # <seed> [arch]: 0 for a proved seed of the arch, or a record that says it is not seeded.
 cmd_verify() {
-  local seed="${1:-}" arch="${2:-}" record misses
+  local seed="${1:-}" arch="${2:-}" record misses pythons python
   [ -n "${seed}" ] || { usage >&2; exit 2; }
   [ -n "${arch}" ] || arch="$(uname -m)"
   record="${seed}/${SEED_RECORD}"
@@ -177,11 +220,17 @@ cmd_verify() {
     say "not seeded: $(sed -n 's/^seeded no: //p' "${record}")"
     return 0
   fi
-  grep -q '^proof .*: ok$' "${record}" || die "the record carries no passed proof"
+  pythons="$(sed -n 's/^python //p' "${record}" | tr '\n' ' ')"
+  grep -q '^python .*[0-9]$' "${record}" || die "the record has no GIL pass: python ${pythons:-none}"
+  grep -q '^python .*t$' "${record}" || die "the record has no free-threaded pass: python ${pythons:-none}"
+  for python in ${pythons}; do
+    awk -v p="${python}" '$1 == "proof" && $2 == p && /: ok$/ { f = 1 } END { exit !f }' "${record}" \
+      || die "the record carries no passed proof for ${python}"
+  done
   grep -q '^built ' "${record}" || die "seeded, yet the record lists no wheel built from source"
   misses="$(record_misses "${seed}")"
   [ -z "${misses}" ] || die "the record lists wheels the cache lacks: $(printf '%s' "${misses}" | tr '\n' ' ')"
-  say "seeded for ${arch}: $(grep -c '^built ' "${record}") wheel(s), proved"
+  say "seeded for ${arch}: $(grep -c '^built ' "${record}") wheel(s) for Python ${pythons% }, proved"
 }
 
 case "${1:-}" in

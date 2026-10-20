@@ -118,10 +118,10 @@ could not fit the 360-minute job. The app packages of a `packaging/app.json` app
 they need the AppImage tooling the image ships for amd64/arm64 only, so `ci_packaging.sh` warns and
 ships wheels only there.
 
-**The test leg starts from the image's uv cache seed.** `ci_tests.sh` copies
+**The test legs start from the image's uv cache seed.** `ci_tests.sh` copies
 `PYTHON_UV_CACHE_SEED` into uv's cache before its first sync, so the wheels the app lock's `test`
 extra would build under QEMU (numpy, matplotlib, contourpy, pillow, line-profiler, psutil, pyyaml:
-108 min on 2026-10-07) are already built
+108 min on 2026-10-07) are already built, for the `X.Y` leg and, since CON110, the `X.Yt` one
 ([`consumer-image-contract.md` § The riscv64 uv cache seed](consumer-image-contract.md#the-riscv64-uv-cache-seed)).
 It covers the lock of the OrchestrANT commit the image was built from; a package the consumer's
 lock moved since builds as before.

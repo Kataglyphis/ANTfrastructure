@@ -662,9 +662,10 @@ every arch.
 ### The riscv64 uv cache seed
 
 PyPI has no cp314 riscv64 wheel for numpy, matplotlib, contourpy, pillow, line-profiler,
-psutil or pyyaml. OrchestrANT's riscv64 lane therefore built all of them under QEMU in
+psutil or pyyaml, and no cp314t one either. OrchestrANT's riscv64 lane therefore built all of them under QEMU in
 every run's `uv sync --extra test`: 108 min of a 6 h job, numpy alone 107 min
-(2026-10-07). The image ships the result instead (CON83).
+(2026-10-07). The image ships the result instead (CON83), for the GIL and the
+free-threaded leg (CON110).
 
 - **The contract is a uv cache, not a wheel store.** `PYTHON_UV_CACHE_SEED`
   (`/opt/uv-cache-seed`) is a uv cache directory holding only the wheels uv built from
@@ -681,21 +682,28 @@ every run's `uv sync --extra test`: 108 min of a 6 h job, numpy alone 107 min
 - **How it is built.** `06-packaging/uv-cache-seed.sh build`, in the torch stage's last
   layers, fetches the app at `APP_REF` (the shipped tree has no `.git`, and its riscv64
   `pyproject.toml` is edited), and runs ci_tests' own sync, `uv sync --locked --dev
-  --extra test`, without the project. The `uv-seed-<arch>` cache mount keeps the builds
+  --extra test`, without the project, twice through one cache: on `X.Y+gil` and on the
+  free-threaded `X.Yt` (CON110), each on the image's interpreter with
+  `UV_PYTHON_DOWNLOADS=never`; a venv that comes back as the other build fails the stage.
+  The `uv-seed-<arch>` cache mount keeps the builds
   between chains. The seed is a copy of that cache after `uv cache prune --ci`, which
   drops every download and unpacked sdist and keeps the built wheels, and after removing
-  every version the sync did not install.
-- **How it is proved.** At build, a fresh copy syncs the same lock into a fresh venv,
-  and the stage fails when uv prints a `Built` line or adds a wheel under `sdists-v*/`.
-  `seed-record.txt` names the arch, the app commit, the extras, uv and Python, every
-  built wheel, and the proof. `uv-cache-seed.sh verify` checks that record and that
-  every listed wheel is in the cache; the `uv-cache-seed` contract row runs it. On
+  every version neither sync installed.
+- **How it is proved.** At build, a fresh copy syncs the same lock into a fresh venv per
+  interpreter, and the stage fails when uv prints a `Built` line or adds a wheel under `sdists-v*/`.
+  `seed-record.txt` names the arch, the app commit, the extras, uv, both Pythons, every
+  built wheel by its ABI tag (`built numpy 2.5.1 cp314t`), and one proof per Python.
+  `uv-cache-seed.sh verify` checks that record, both passes and their proofs, and that
+  every listed wheel is in the cache under its own ABI tag (`cp314` and `cp314t` share the
+  python tag); the `uv-cache-seed` contract row runs it. On
   riscv64 it wants `seeded for riscv64`, elsewhere a `not seeded` record.
 - **What it costs.** Measured 2026-10-09 in `:latest`'s riscv64 child under QEMU on the
   32-core build host, for OrchestrANT 5785f696: 3172 s cold, building 8 wheels (the 7 above
   and the pure-Python sdist `antlr4-python3-runtime`), and 89 s warm, sync, copy and proof
   included. The seed is 21 MB; the work cache 671 MB. A chain pays the cold build once, then
-  only for a package whose locked version moved.
+  only for a package whose locked version moved. The `X.Yt` pass, measured 2026-10-20 in the same
+  child for OrchestrANT de144d10, with the GIL pass warm: 1271 s, building the 7 compiled wheels
+  again as `cp314t` (the pure `antlr4` wheel serves both). The seed is then 40 MB and 15 wheels.
 - **What it does not cover.** Only the `test` extra of the app the image builds
   (OrchestrANT). Another consumer's lock hits the seed only where it resolves the same
   versions from PyPI. A uv bump re-keys the cache layout, and the next chain rebuilds
@@ -750,6 +758,14 @@ Python legs refuse to: a missing one fails the leg ([`python-ci.md` § Free-thre
   - The `free-threaded-python` contract row checks the same on the shipped image, and
     that `sysconfig`'s prefix is `/opt/python-freethreaded`, which tells the source build
     from a python-build-standalone one.
+- **Its sysconfig names only tools the image runs.** A cross arch's tree records the
+  toolchain stage's `/opt/gcc-<ver>/bin/<triplet>-ar`, and the target image's GCC prefix has
+  no `ar`: on riscv64, pillow's `cp314t` build died with exit 127 (measured 2026-10-20 in
+  `:latest`). The torch stage runs `06-packaging/free-threaded-sysconfig-tools.py fix`, which
+  points every compiler tool (`CC`, `CXX`, `AR`, the link commands) that does not exist at the
+  same name on `PATH` (`riscv64-linux-gnu-ar`, from binutils), in the sysconfig data, its JSON
+  twin and the config `Makefile`, then fails the build if any tool still does not run. Test:
+  `test-free-threaded-sysconfig-tools.sh`.
 
 ### The free-threaded wheels
 

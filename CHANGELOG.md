@@ -11,6 +11,32 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — riscv64's uv cache seed covers the free-threaded leg (CON110)
+
+- **`uv-cache-seed.sh build` syncs the app lock twice through one cache**, on `X.Y+gil` and on
+  `X.Yt`, each venv on the image's interpreter with `UV_PYTHON_DOWNLOADS=never`, and refuses a venv
+  that comes back as the other build. The proof syncs a fresh copy once per interpreter. The record
+  lists both Pythons, every built wheel by its ABI tag (`cp314` and `cp314t` share the python tag)
+  and one proof each; `verify` wants both passes, both proofs and each wheel under its own tag.
+  `ci-common.sh`'s restore names the Pythons it seeds.
+- **The X.Yt tree's sysconfig names only tools the image runs.** A cross arch's tree recorded the
+  toolchain stage's `/opt/gcc-16.2.0/bin/riscv64-linux-gnu-ar`, absent from the riscv64 image, so
+  pillow's `cp314t` build died with exit 127 (measured in `:latest`'s riscv64 child). The torch stage
+  runs `06-packaging/free-threaded-sysconfig-tools.py fix`, which points a missing compiler tool at
+  its name on `PATH` in the sysconfig data, its JSON twin and the config `Makefile`, then fails on any
+  tool that still does not run. It lands before the seed RUN, so only the torch stage's last layers
+  re-key.
+- **Measured in `:latest`'s riscv64 child under QEMU** (Python 3.14.4 and 3.14.8t, OrchestrANT
+  de144d10): with the GIL pass warm from the image's seed, 1271 s, 7 compiled wheels built as
+  `cp314t`; 15 wheels, 40 MB, both proofs ok, `verify` passes. Waits for the next `:latest`: the
+  seed and the fix ship with it; then OrchestrANT's riscv64 lane asks for `pinned pinnedt`.
+- Tests: `test-uv-cache-seed.sh` 74 assertions (both passes, the ABI-tag verify, a missing or GIL
+  X.Yt), `test-free-threaded-sysconfig-tools.sh` 19; mutations
+  `uv-cache-seed.seeds-the-free-threaded-twin`, `.verify-wants-a-free-threaded-pass`,
+  `.verify-matches-the-abi-tag`, `.venv-refuses-the-other-build`, `.never-downloads-an-interpreter`,
+  `python.ft-sysconfig-fix-swaps-a-missing-tool`, `.swap-replaces-the-whole-path`,
+  `.check-fails-a-missing-tool`.
+
 ## 2026-10-20 — The base's toolchain check reads the hub sccache build's banner
 
 - **The next stop was `Test-Toolchain.ps1`**: the hub's build reports `sccache 0.18.0+1bd7432.pr2809`,

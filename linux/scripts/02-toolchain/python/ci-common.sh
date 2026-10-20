@@ -68,5 +68,5 @@ uv_cache_seed_restore() {
   # -R copies uv's relative archive symlinks as links; a seed entry may replace one of the same name.
   cp -R "${seed}/." "${cache}/" \
     || { warn "copying the uv cache seed into ${cache} failed; uv builds what it lacks"; return 0; }
-  info "uv cache seeded from ${seed} into ${cache}: $(grep -c '^built ' "${record}") wheel(s) built from source for app $(sed -n 's/^app //p' "${record}")"
+  info "uv cache seeded from ${seed} into ${cache}: $(grep -c '^built ' "${record}") wheel(s) built from source for app $(sed -n 's/^app //p' "${record}") on Python $(sed -n 's/^python //p' "${record}" | tr '\n' ' ')"
 }

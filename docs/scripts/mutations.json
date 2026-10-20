@@ -13429,8 +13429,8 @@
  {
   "id": "uv-cache-seed.proof-detects-a-build",
   "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
-  "find": "  if grep -qE '^[[:space:]]*(Building|Built) ' \"${tmp}/proof.log\" || ! cmp -s \"${tmp}/before.txt\" \"${tmp}/after.txt\"; then",
-  "replace": "  if false; then",
+  "find": "    if grep -qE '^[[:space:]]*(Building|Built) ' \"${tmp}/proof-${i}.log\" || ! cmp -s \"${tmp}/before.txt\" \"${tmp}/after.txt\"; then",
+  "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
   "why": "a seed that does not cover the lock would ship as proved, and the riscv64 lane would build numpy again"
  },
@@ -13465,6 +13465,70 @@
   "replace": "      *) printf 'OK %s %s' \"${row}\" \"${have}\" ;;",
   "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
   "why": "a riscv64 image without its seed would pass the contract"
+ },
+ {
+  "id": "uv-cache-seed.seeds-the-free-threaded-twin",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "seed_requests() { printf '%s+gil\\n%st\\n' \"$1\" \"$1\"; }",
+  "replace": "seed_requests() { printf '%s+gil\\n' \"$1\"; }",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "the seed would cover the GIL leg alone, and the riscv64 X.Yt leg would build every compiled dependency under QEMU again"
+ },
+ {
+  "id": "uv-cache-seed.verify-wants-a-free-threaded-pass",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "  grep -q '^python .*t$' \"${record}\" || die",
+  "replace": "  true || die",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "an image whose seed lost its X.Yt pass would pass the contract row"
+ },
+ {
+  "id": "uv-cache-seed.verify-matches-the-abi-tag",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "    re=\"-${abi:-[^-]+}-[^-]+\\\\.whl\\$\"",
+  "replace": "    re=\"-[^-]+-[^-]+\\\\.whl\\$\"",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "a cp314 wheel would stand in for its missing cp314t twin, since both carry the python tag cp314"
+ },
+ {
+  "id": "uv-cache-seed.venv-refuses-the-other-build",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "    *) die \"asked uv for ${request}, it gave ${got}\" ;;",
+  "replace": "    *) printf '%s\\n' \"${got}\" ;;",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "a GIL venv standing in for X.Yt would seed and prove the cp314 wheels twice and no cp314t one"
+ },
+ {
+  "id": "uv-cache-seed.never-downloads-an-interpreter",
+  "target": "linux/scripts/06-packaging/uv-cache-seed.sh",
+  "find": "  UV_PYTHON_DOWNLOADS=never uv venv -q",
+  "replace": "  uv venv -q",
+  "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
+  "why": "a missing image interpreter would be downloaded, and the seed built for a Python no lane runs"
+ },
+ {
+  "id": "python.ft-sysconfig-fix-swaps-a-missing-tool",
+  "target": "linux/scripts/06-packaging/free-threaded-sysconfig-tools.py",
+  "find": "            new = re.sub(re.escape(old) + r\"(?![\\w.+-])\", name, new)",
+  "replace": "            new = new",
+  "test": "bash linux/scripts/tests/test-free-threaded-sysconfig-tools.sh",
+  "why": "the riscv64 X.Yt would keep naming an ar the image lacks, and pillow's cp314t build dies with exit 127"
+ },
+ {
+  "id": "python.ft-sysconfig-swap-replaces-the-whole-path",
+  "target": "linux/scripts/06-packaging/free-threaded-sysconfig-tools.py",
+  "find": "re.escape(old) + r\"(?![\\w.+-])\"",
+  "replace": "re.escape(old)",
+  "test": "bash linux/scripts/tests/test-free-threaded-sysconfig-tools.sh",
+  "why": "swapping a missing gcc would also rewrite the longer gcc-ar path it prefixes"
+ },
+ {
+  "id": "python.ft-sysconfig-check-fails-a-missing-tool",
+  "target": "linux/scripts/06-packaging/free-threaded-sysconfig-tools.py",
+  "find": "    if bad:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-free-threaded-sysconfig-tools.sh",
+  "why": "the torch stage would ship an X.Yt whose sysconfig names a tool the image lacks"
  },
  {
   "id": "lint-tools.row-compares-the-pins",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The riscv64 uv cache seed: what the build keeps, its proof, the record verify reads, and the consumer's restore; see docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
+# The riscv64 uv cache seed: what the build keeps on X.Y and X.Yt, its proofs, the record verify reads, and the consumer's restore; see docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -12,16 +12,24 @@ ARCH="$(uname -m)"
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 mkdir -p "${_work}/bin"
 
-# A uv that models what the seed relies on: sdists build into sdists-v9 (printing Built), wheels download into wheels-v6.
+# A uv that models what the seed relies on: sdists build into sdists-v9 per ABI tag (printing Built), wheels download into wheels-v6.
 cat > "${_work}/bin/uv" <<'UV'
 #!/usr/bin/env bash
 set -eu
 case "$1" in
   --version) echo "uv 0.12.23"; exit 0 ;;
   venv)
-    for a in "$@"; do d="$a"; done
+    req="" prev=""
+    for a in "$@"; do [ "${prev}" != --python ] || req="$a"; prev="$a"; d="$a"; done
+    echo "${req} ${UV_PYTHON_DOWNLOADS:-unset}" >> "${FAKE_UV_VENV_LOG:-/dev/null}"
+    v=3.14.4 abi=cp314
+    case "${req}" in
+      *t) [ -z "${FAKE_UV_NO_T_PYTHON:-}" ] || { echo "error: No interpreter found for ${req}" >&2; exit 2; }
+          [ -n "${FAKE_UV_NO_FT:-}" ] || { v=3.14.4t abi=cp314t; } ;;
+    esac
     mkdir -p "$d/bin"
-    printf '#!/bin/sh\necho 3.14.4\n' > "$d/bin/python"; chmod +x "$d/bin/python"
+    printf '#!/bin/sh\necho %s\n' "${v}" > "$d/bin/python"; chmod +x "$d/bin/python"
+    echo "${abi}" > "$d/abi.txt"
     : > "$d/installed.txt"; exit 0 ;;
   cache)
     case "$2" in
@@ -35,17 +43,20 @@ case "$1" in
     sed 's/ /==/' "${venv}/installed.txt"; exit 0 ;;
   sync)
     [ -z "${FAKE_UV_SYNC_FAIL:-}" ] || { echo "error: resolution failed" >&2; exit 1; }
-    cache="${UV_CACHE_DIR}"; venv="${UV_PROJECT_ENVIRONMENT}"
+    cache="${UV_CACHE_DIR}"; venv="${UV_PROJECT_ENVIRONMENT}"; abi="$(cat "${venv}/abi.txt")"
     while read -r name version kind; do
       [ -n "${name}" ] || continue
-      if [ "${kind}" = sdist ]; then
-        hit="$(ls "${cache}"/sdists-v9/pypi/"${name}"/"${version}"/*/"${name//-/_}-${version}"-*.whl 2>/dev/null | head -1 || true)"
-        case "${cache}" in *"${FAKE_UV_FORGET_IN:-/nowhere}"*) hit="" ;; esac
+      kind="${kind%$'\r'}"
+      if [ "${kind}" != wheel ]; then
+        tag="${abi}"; whl="${name//-/_}-${version}-cp314-${abi}-linux_riscv64.whl"
+        [ "${kind}" != pure ] || { tag=none; whl="${name//-/_}-${version}-py3-none-any.whl"; }
+        hit="$(ls "${cache}"/sdists-v9/pypi/"${name}"/"${version}"/*/"${whl}" 2>/dev/null | head -1 || true)"
+        case "${cache}:${tag}" in *"${FAKE_UV_FORGET_IN:-/nowhere}"*:${FAKE_UV_FORGET_ABI:-*}) hit="" ;; esac
         if [ -z "${hit}" ]; then
           echo "   Building ${name}==${version}"
-          d="${cache}/sdists-v9/pypi/${name}/${version}/ID$$"
+          d="${cache}/sdists-v9/pypi/${name}/${version}/REV"
           mkdir -p "${d}/src"; : > "${d}/src/setup.py"
-          : > "${d}/${name//-/_}-${version}-cp314-cp314-linux_riscv64.whl"
+          : > "${d}/${whl}"
           echo "      Built ${name}==${version}"
         fi
       else
@@ -64,7 +75,7 @@ export PATH="${_work}/bin:${PATH}"
 _app() {
   mkdir -p "$1"
   git -C "$1" init -q
-  printf 'pyyaml 6.0.3 sdist\nline-profiler 5.0.0 sdist\nsix 1.17.0 wheel\n' > "$1/deps.txt"
+  printf 'pyyaml 6.0.3 sdist\nline-profiler 5.0.0 sdist\nantlr4-python3-runtime 4.13.2 pure\nsix 1.17.0 wheel\n' > "$1/deps.txt"
   : > "$1/uv.lock"; : > "$1/pyproject.toml"
   t_git_commit "$1"
   printf 'edited 9.9.9 sdist\n' >> "$1/deps.txt"
@@ -82,26 +93,42 @@ t_assert_ok _seed verify "${_work}/none"
 
 t_case "the seed keeps the wheels the lock built from source, from the COMMITTED tree, and proves a fresh copy builds nothing"
 mkdir -p "${_work}/w1/sdists-v9/pypi/pyyaml/5.4.1/OLD"; : > "${_work}/w1/sdists-v9/pypi/pyyaml/5.4.1/OLD/pyyaml-5.4.1-cp314-cp314-linux_riscv64.whl"
-_out="$(t_out _seed build --app-dir "${_work}/app" --out "${_work}/s1" --work-cache "${_work}/w1" --arches "${ARCH}")"
+_out="$(FAKE_UV_VENV_LOG="${_work}/venvs.log" t_out _seed build --app-dir "${_work}/app" --out "${_work}/s1" --work-cache "${_work}/w1" --arches "${ARCH}")"
 t_assert_eq 0 "$(t_rc test -f "${_work}/s1/seed-record.txt")" "a record: ${_out}"
 _rec="$(cat "${_work}/s1/seed-record.txt")"
 t_assert_contains "${_rec}" "seeded yes"
 t_assert_contains "${_rec}" "built pyyaml 6.0.3"
 t_assert_contains "${_rec}" "built line_profiler 5.0.0"
 t_assert_contains "${_rec}" "app $(git -C "${_work}/app" rev-parse HEAD)"
-t_assert_contains "${_rec}" "proof a fresh copy synced the lock and built nothing: ok"
+t_assert_contains "${_rec}" "proof 3.14.4 a fresh copy synced the lock and built nothing: ok"
 t_assert_eq 0 "$(grep -c -e edited -e six <<<"${_rec}")" "neither the uncommitted edit nor a downloaded wheel is in the record"
 t_assert_eq "" "$(ls -d "${_work}/s1/wheels-v6" "${_work}"/s1/sdists-v9/pypi/*/*/*/src 2>/dev/null)" "prune --ci dropped the downloads and the unpacked sdists"
 # A version the lock no longer names stays in the work cache only.
 t_assert_fails test -e "${_work}/s1/sdists-v9/pypi/pyyaml/5.4.1"
 t_assert_ok test -e "${_work}/w1/sdists-v9/pypi/pyyaml/5.4.1"
-t_assert_contains "${_out}" "built this run: line-profiler 5.0.0 pyyaml 6.0.3"
+t_assert_contains "${_out}" "built this run: antlr4-python3-runtime 4.13.2 line-profiler 5.0.0 pyyaml 6.0.3"
 t_assert_ok _seed verify "${_work}/s1"
+
+t_case "the same seed covers the free-threaded twin: its wheels by ABI tag, a pure sdist once, each pass proved"
+t_assert_contains "${_rec}" $'python 3.14.4\npython 3.14.4t\nseeded yes'
+t_assert_contains "${_rec}" $'built line_profiler 5.0.0 cp314\nbuilt line_profiler 5.0.0 cp314t\nbuilt pyyaml 6.0.3 cp314\nbuilt pyyaml 6.0.3 cp314t'
+t_assert_eq 1 "$(grep -c '^built antlr4_python3_runtime ' <<<"${_rec}")" "the pure wheel serves both interpreters"
+t_assert_contains "${_rec}" "built antlr4_python3_runtime 4.13.2 none"
+t_assert_contains "${_rec}" "proof 3.14.4t a fresh copy synced the lock and built nothing: ok"
+t_assert_ok test -f "${_work}/s1/sdists-v9/pypi/pyyaml/6.0.3/REV/pyyaml-6.0.3-cp314-cp314t-linux_riscv64.whl"
+t_assert_eq $'3.14+gil never\n3.14t never\n3.14+gil never\n3.14t never' "$(cat "${_work}/venvs.log")" "work and proof venvs, never a downloaded interpreter"
+
+t_case "a free-threaded pass that uv cannot or does not serve fails the seed"
+t_assert_contains "$(FAKE_UV_NO_T_PYTHON=1 t_out _seed build --app-dir "${_work}/app" --out "${_work}/s7" --work-cache "${_work}/w1" --arches "${ARCH}")" \
+  "no 3.14t interpreter for the seed"
+t_assert_eq 1 "$(FAKE_UV_NO_FT=1 t_rc _seed build --app-dir "${_work}/app" --out "${_work}/s7" --work-cache "${_work}/w1" --arches "${ARCH}")"
+t_assert_contains "$(FAKE_UV_NO_FT=1 t_out _seed build --app-dir "${_work}/app" --out "${_work}/s7" --work-cache "${_work}/w1" --arches "${ARCH}")" \
+  "asked uv for 3.14t, it gave 3.14.4"
 
 t_case "a warm work cache builds nothing, and the record still lists every built wheel it holds"
 _out="$(t_out _seed build --app-dir "${_work}/app" --out "${_work}/s2" --work-cache "${_work}/w1" --arches "${ARCH}")"
 t_assert_contains "${_out}" "built this run: nothing, the work cache held every wheel"
-t_assert_eq 2 "$(grep -c '^built ' "${_work}/s2/seed-record.txt")"
+t_assert_eq 5 "$(grep -c '^built ' "${_work}/s2/seed-record.txt")"
 
 t_case "with no --python the seed takes the image's PYTHON_MAJOR_MINOR, and refuses when there is none"
 t_assert_eq 1 "$(t_rc env -u PYTHON_MAJOR_MINOR bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s0" --work-cache "${_work}/w0" --arches "${ARCH}")"
@@ -111,9 +138,13 @@ t_assert_contains "$(t_out env -u PYTHON_MAJOR_MINOR bash "${SEED}" build --app-
 t_case "a proof sync that has to build fails the seed: the copy must cover the lock on its own"
 _out="$(t_out env PYTHON_MAJOR_MINOR=3.14 FAKE_UV_FORGET_IN=proof-cache bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s3" --work-cache "${_work}/w1" --arches "${ARCH}")"
 t_assert_eq 1 "$(t_rc env PYTHON_MAJOR_MINOR=3.14 FAKE_UV_FORGET_IN=proof-cache bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s3" --work-cache "${_work}/w1" --arches "${ARCH}")"
-t_assert_contains "${_out}" "the seed does not cover the lock, the proof sync built: line-profiler 5.0.0 pyyaml 6.0.3"
+t_assert_contains "${_out}" "the seed does not cover the lock on 3.14.4, the proof sync built: antlr4-python3-runtime 4.13.2 line-profiler 5.0.0 pyyaml 6.0.3"
 t_assert_fails grep -q '^proof' "${_work}/s3/seed-record.txt"
 t_assert_fails _seed verify "${_work}/s3"
+# The GIL proof passes; only the free-threaded sync misses its cp314t wheels.
+_out="$(FAKE_UV_FORGET_IN=proof-cache FAKE_UV_FORGET_ABI=cp314t t_out _seed build --app-dir "${_work}/app" --out "${_work}/s8" --work-cache "${_work}/w1" --arches "${ARCH}")"
+t_assert_contains "${_out}" "the seed does not cover the lock on 3.14.4t, the proof sync built: line-profiler 5.0.0 pyyaml 6.0.3"
+t_assert_fails grep -q '^proof' "${_work}/s8/seed-record.txt"
 
 t_case "a failed seed sync fails the build"
 t_assert_eq 1 "$(t_rc env PYTHON_MAJOR_MINOR=3.14 FAKE_UV_SYNC_FAIL=1 bash "${SEED}" build --app-dir "${_work}/app" --out "${_work}/s4" --work-cache "${_work}/w4" --arches "${ARCH}")"
@@ -133,12 +164,27 @@ t_assert_contains "$(t_out _seed verify "${_work}/v2")" "no passed proof"
 cp -a "${_work}/s1" "${_work}/v3"; sed -i '/^built /d' "${_work}/v3/seed-record.txt"
 t_assert_contains "$(t_out _seed verify "${_work}/v3")" "lists no wheel built from source"
 
+t_case "verify wants both passes, each one's proof, and each listed wheel by its ABI tag"
+cp -a "${_work}/s1" "${_work}/v4"; sed -i '/^python .*t$/d; /^proof [^ ]*t /d' "${_work}/v4/seed-record.txt"
+t_assert_contains "$(t_out _seed verify "${_work}/v4")" "the record has no free-threaded pass: python 3.14.4"
+cp -a "${_work}/s1" "${_work}/v5"; sed -i '/^proof [^ ]*t /d' "${_work}/v5/seed-record.txt"
+t_assert_contains "$(t_out _seed verify "${_work}/v5")" "the record carries no passed proof for 3.14.4t"
+cp -a "${_work}/s1" "${_work}/v6"; sed -i '/^python [0-9.]*$/d' "${_work}/v6/seed-record.txt"
+t_assert_contains "$(t_out _seed verify "${_work}/v6")" "the record has no GIL pass: python 3.14.4t"
+# A GIL wheel must not stand in for its free-threaded twin: both share the python tag cp314.
+cp -a "${_work}/s1" "${_work}/v7"; mv "${_work}"/v7/sdists-v9/pypi/pyyaml/6.0.3/REV/pyyaml-6.0.3-cp314-cp314t-linux_riscv64.whl "${_work}/v7/gone.whl"
+_out="$(t_out _seed verify "${_work}/v7")"
+t_assert_contains "${_out}" "the record lists wheels the cache lacks: pyyaml==6.0.3 (cp314t)"
+t_assert_eq 0 "$(grep -c '(cp314)' <<<"${_out}")" "the GIL wheel is still there"
+
 t_case "the consumer copies a seed of its own arch into uv's cache, and nothing else"
 _restore() { bash -c 'source "$1"; uv_cache_seed_restore' _ "${CI_COMMON}"; }
 export UV_CACHE_DIR="${_work}/consumer-cache"
 _out="$(PYTHON_UV_CACHE_SEED="${_work}/s1" t_out _restore)"
-t_assert_contains "${_out}" "uv cache seeded from ${_work}/s1 into ${_work}/consumer-cache: 2 wheel(s)"
-t_assert_ok test -f "${_work}/consumer-cache/sdists-v9/pypi/pyyaml/6.0.3/$(ls "${_work}/s1/sdists-v9/pypi/pyyaml/6.0.3")/pyyaml-6.0.3-cp314-cp314-linux_riscv64.whl"
+t_assert_contains "${_out}" "uv cache seeded from ${_work}/s1 into ${_work}/consumer-cache: 5 wheel(s)"
+t_assert_contains "${_out}" "on Python 3.14.4 3.14.4t"
+t_assert_ok test -f "${_work}/consumer-cache/sdists-v9/pypi/pyyaml/6.0.3/REV/pyyaml-6.0.3-cp314-cp314-linux_riscv64.whl"
+t_assert_ok test -f "${_work}/consumer-cache/sdists-v9/pypi/pyyaml/6.0.3/REV/pyyaml-6.0.3-cp314-cp314t-linux_riscv64.whl"
 export UV_CACHE_DIR="${_work}/c2"
 _out="$(PYTHON_UV_CACHE_SEED="${_work}/none" t_out _restore)"
 t_assert_contains "${_out}" "uv cache seed: only not-an-arch is seeded"
@@ -163,9 +209,9 @@ SMOKE="${SCRIPTS}/06-packaging/smoke-runtime-image.sh"
 _fns="$(t_fn_src "${SMOKE}" _consumer_contract_fact)
 $(t_fn_src "${SMOKE}" _consumer_uv_seed_verdict)" || exit 1
 _row() { bash -c "${_fns}"$'\n''_consumer_uv_seed_verdict uv-cache-seed "$1" "$2"' _ "$1" "$2"; }
-_ok_rv=$'ENV uv-cache-seed /opt/uv-cache-seed\nFACT uv-cache-seed [uv-cache-seed] seeded for riscv64: 9 wheel(s), proved'
+_ok_rv=$'ENV uv-cache-seed /opt/uv-cache-seed\nFACT uv-cache-seed [uv-cache-seed] seeded for riscv64: 16 wheel(s) for Python 3.15.0 3.15.0t, proved'
 _no_amd=$'ENV uv-cache-seed /opt/uv-cache-seed\nFACT uv-cache-seed [uv-cache-seed] not seeded: only riscv64 is seeded, PyPI publishes the other arches their wheels'
-t_assert_eq "OK uv-cache-seed 9 wheel(s), proved" "$(_row "${_ok_rv}" riscv64)"
+t_assert_eq "OK uv-cache-seed 16 wheel(s) for Python 3.15.0 3.15.0t, proved" "$(_row "${_ok_rv}" riscv64)"
 t_assert_eq "OK uv-cache-seed not seeded on amd64, by its record" "$(_row "${_no_amd}" amd64)"
 t_assert_contains "$(_row "${_no_amd}" riscv64)" "BAD uv-cache-seed the riscv64 seed does not verify"
 t_assert_contains "$(_row "${_ok_rv}" amd64)" "BAD uv-cache-seed the amd64 record is not a \"not seeded\" one"
@@ -174,6 +220,6 @@ t_assert_contains "$(_row 'FACT uv-cache-seed [uv-cache-seed] ERROR: no /opt/uv-
 t_assert_contains "$(_row 'ENV uv-cache-seed /opt/uv-cache-seed' riscv64)" "NOFACT uv-cache-seed"
 t_assert_contains "$(sed -n '/^_CONSUMER_CONTRACT_ROWS=/p' "${SMOKE}")" " uv-cache-seed"
 t_assert_contains "$(cat "${SMOKE}")" 'uv-cache-seed.sh verify "${PYTHON_UV_CACHE_SEED:-/nonexistent}"'
-t_assert_eq "[uv-cache-seed] seeded for ${ARCH}: 2 wheel(s), proved" "$(_seed verify "${_work}/s1" 2>&1 | tail -1)" "the probe's tail -1 is the line the row reads"
+t_assert_eq "[uv-cache-seed] seeded for ${ARCH}: 5 wheel(s) for Python 3.14.4 3.14.4t, proved" "$(_seed verify "${_work}/s1" 2>&1 | tail -1)" "the probe's tail -1 is the line the row reads"
 
 t_summary
