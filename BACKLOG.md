@@ -540,20 +540,6 @@ owner carries the breakage that costs.
         `Invoke-PythonTestLegs.ps1` (2026-10-20); dropping the key re-keys the Windows base, so it waits for this rebuild.
 ## Open — the Windows arm64 bundle and unpublished variants
 
-- [ ] **CON111 — a free-threaded leg for OrchestrANT's `windows-11-arm` device tests** [M, ★].
-      `Stage-Arm64Tests.ps1` stages one site, and `run-pytest.cmd` runs the bundle's GIL
-      `runtime\python.exe` alone. A cp315t leg needs a second staged site, cp315t `win_arm64`
-      wheels of the test extra's compiled dependencies (psutil, pyyaml, line-profiler; py-spy and
-      the antlr runtime are sdist-only) in `:winarm64`'s `PYTHON_WHEELS`, and a
-      `run-pytest-ft.cmd` on the bundle's free-threaded interpreter. Done when the device job runs
-      both legs.
-      - **In source since 2026-10-20.** The arm64 merge builds psutil 7.2.2's cp315t wheel, which PyPI
-        lacks, into `wheels-free-threaded\deps` (02be3a97; the local chain at 6a38dc14 passed its gates).
-        OrchestrANT stages `site-ft` with `Install-PythonCrossSite`: the lock's core and `test` set,
-        pyyaml pure, antlr4 built pure by the host; line-profiler (no free-threading declared) and
-        py-spy (a Rust binary from an sdist) stay off the leg, and no test imports either.
-      - **Left:** waits for the `:winarm64` publish of chain 20261020-095644 (hub 6a38dc14), then
-        OrchestrANT's `windows-arm64-cross.yml` run.
 - [ ] **CON108 — the Windows arm64 device runs OrchestrANT's Flet tests** [S, ★].
       `Stage-Arm64Tests.ps1` stages from `:winarm64`'s `PYTHON_WHEELS`, which has no Flet, so
       `test_view.py`, `test_flet_viewer.py` and `test_streaming.py` skip on the device. flet,
