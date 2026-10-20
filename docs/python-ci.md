@@ -686,6 +686,10 @@ bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threade
 - **When it skips.** In the three cases in which the driver builds no free-threaded wheel: a cross
   build, `PYTHON_FREE_THREADED_WHEEL=off`, and `auto` without the classifier. A declared project with
   no `cp3XYt` wheel of this arch in `dist/` fails, and so does a call without `--copy`.
+- **What a test may not assume there.** A compiled module's `__file__` is its extension, a
+  source-stripped wheel has no `.py` for `inspect` or a hash, and Cython's `import` returns a `None`
+  in `sys.modules` as the module instead of raising. Fake an absent module with a `sys.meta_path`
+  finder that raises `ModuleNotFoundError`.
 
 OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite. Windows has no
 twin yet: its packaging only loads the wheel (BACKLOG CON122).
