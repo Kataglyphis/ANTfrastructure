@@ -42,6 +42,14 @@
 - **Re-key:** the next chain rebuilds from the base's scoop layer on. An image built before it
   fails the gate, so `-Stages final -PushRef` refuses old bk- tags.
 
+## 2026-10-20 — WebDavClient's docs copy README and CHANGELOG instead of tracking them (CON117)
+
+- WebDavClient 9944a9e: `docs/source/README.md` and `CHANGELOG.md` are gitignored, and its
+  `docs/Makefile` and `make.bat` copy the root files before every build, as `ci_build_docs.sh` already
+  does; its `doc-link-roots.allow` resolves `getting-started.md`'s `README.md#quick-start` from the
+  root (f621c7c moves its pin here, b8be92b8). In `:latest`, `make html` and `sphinx-build -W` both
+  render the two pages with no warning.
+
 ## 2026-10-20 — `doc-links` grades a link the way pandoc resolves it (CON119)
 
 - DocumANTation's pandoc sources link from the repo root (`--resource-path .`, `pandoc_builder.py:83`),

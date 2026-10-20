@@ -200,11 +200,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       leg on `ubuntu-26.04` through `setup-uv` with `python-version: "3.15"` (a uv download), no `3.15t` leg, and
       downloads pandoc at run time. The `Dockerfile` builds its `md2pdf` venv on Ubuntu's `python3-full`. Fix:
       the lane in the family image on the pinned X.Y and X.Yt, and the Dockerfile's venv on the pin.
-- [ ] **CON117 — WebDavClient tracks copies of its README and CHANGELOG in `docs/source/`** [S, ★]. The
-      hub's `ci_build_docs.sh` (lines 24-25) copies the root files over them before every build; WebDavClient's
-      `AGENTS.md` has each commit re-sync them by hand, so `docs/Makefile` builds without that copy. Both have
-      drifted (2026-10-20: the CHANGELOG copy lacks 5dad56c's and 970353a's entries). One source: untrack
-      them and let `docs/Makefile` and `make.bat` copy too, or include the root files from Sphinx.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
