@@ -28,7 +28,8 @@ Every driver reads its positionals as `"${N:-default}"`, which treats an **empty
 an absent one. So the reusable workflows pass every version input unconditionally and let an
 empty value fall through to the driver's default: no conditional command building anywhere, and a
 caller names a version only to override it. That is why two consumers that *looked* different ran
-identical commands: `'3.14'` is `ci_static_analysis.sh`'s default.
+identical commands: the pinned X.Y is `ci_static_analysis.sh`'s default (`DEFAULT_PYTHON_VERSION`: the
+image's `PYTHON_MAJOR_MINOR`, else `versions.env`'s `PYTHON_VERSION`; § Upgrading Python).
 
 ## One arch per caller: the `arches` input
 
@@ -414,7 +415,7 @@ every lane narrowed to that directory, and its six WebDAV client tests and the i
 on no lane until 2026-10-01. The Windows driver takes the same list as `TestPaths`
 (§ The Windows build driver).
 
-**A free-threaded leg that gates.** `3.14t` sits in `EXPERIMENTAL_PYTHON_VERSIONS` by default,
+**A free-threaded leg that gates.** The pinned X.Yt sits in `EXPERIMENTAL_PYTHON_VERSIONS` by default,
 because `--all-extras` pulls in wheels that exist only for the GIL build (onnxruntime-genai-cuda,
 ai-edge-litert, atheris, bcrypt 4). Measured 2026-10-01: that leg synced nothing and ran no test on
 any lane of OrchestrANT or WebDavClient, while every job stayed green. The `free-threaded-extras`
@@ -660,14 +661,14 @@ free-threaded target interpreter`. The Windows arm64 cross lane builds it, as be
 
 ### The suite on the installed wheel
 
-The proof loads the wheel's modules; it runs none of their code. The `3.14t` test leg runs the code,
+The proof loads the wheel's modules; it runs none of their code. The X.Yt test leg runs the code,
 but from the sources, not the Cython build. A project that wants its tests on the compiled modules
 runs `linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh` after `ci_packaging.sh`, from its
 own packaging wrapper:
 
 ```bash
 bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh)" \
-  --python-version "${1:-3.14}" --extra test --copy tests/unit/test_thread_safety.py \
+  ${1:+--python-version "$1"} --extra test --copy tests/unit/test_thread_safety.py \
   --env ORCHESTRANT_REQUIRE_COMPILED=1 --isolated -- -W error tests/unit/test_thread_safety.py
 ```
 
@@ -686,7 +687,8 @@ bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threade
   build, `PYTHON_FREE_THREADED_WHEEL=off`, and `auto` without the classifier. A declared project with
   no `cp3XYt` wheel of this arch in `dist/` fails, and so does a call without `--copy`.
 
-OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite.
+OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite. Windows has no
+twin yet: its packaging only loads the wheel (BACKLOG CON122).
 
 ### The arm64 cross lane's free-threaded wheel
 

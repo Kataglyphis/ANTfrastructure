@@ -11,6 +11,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — `python-ci.md` names the pinned X.Y as the drivers' default, not `3.14`
+
+- `ci_static_analysis.sh` and `test-free-threaded-wheel.sh` default to `DEFAULT_PYTHON_VERSION`
+  (`python_uv.sh`: the image's `PYTHON_MAJOR_MINOR`, else `versions.env`), and the experimental leg
+  to its X.Yt. The installed-wheel example passes `${1:+--python-version "$1"}`, as OrchestrANT's
+  wrapper does.
+
 ## 2026-10-20 — The consumers' free-threaded legs on the image's interpreter, proved in CI (CON66)
 
 - OrchestrANT and WebDavClient ran both Linux legs on `:latest`'s interpreters with no download
