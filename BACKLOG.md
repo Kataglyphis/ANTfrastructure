@@ -650,10 +650,6 @@ owner carries the breakage that costs.
       Sphinx stopped shipping it in version 6. Fix in DocumANTation's theme (`setup_theme()`: ship jQuery for
       Exhale, or switch Exhale to a jQuery-free tree view), and let `linux/scripts/check-docs-sidebars.js`
       fail on any page `ReferenceError`. Done when both sites' tree views collapse and the check is green.
-- [ ] **CON128 — a headless screenshot of a WebGPU canvas is white** [S, ★]. In the image's Chrome 155 a
-      correctly cleared WebGPU canvas still screenshots white, so the BeschleunigerBallett demo proof of
-      2026-10-20 read the canvas texture back instead (3575 colours, run 39440853860). Record the read-back
-      as the way to prove a WebGPU page in `docs/docs-sites.md`, next to the sidebar toggle check.
 
 - [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
       `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb

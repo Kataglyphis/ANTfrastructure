@@ -15355,6 +15355,62 @@
   "why": "a published site has no file list to search: the live check names its API page"
  },
  {
+  "id": "docs-site.webgpu-readback-copy-src",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "| GPUTextureUsage.COPY_SRC });",
+  "replace": " });",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "a canvas configured for RENDER_ATTACHMENT alone cannot be copied out"
+ },
+ {
+  "id": "docs-site.webgpu-readback-row-padding",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "Math.ceil((w * 4) / 256) * 256",
+  "replace": "w * 4",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "copyTextureToBuffer pads each row to 256 bytes; unpadded offsets read the wrong pixels"
+ },
+ {
+  "id": "docs-site.webgpu-readback-bgra-order",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "src[s + (bgra ? 2 : 0)]",
+  "replace": "src[s]",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "Chrome's preferred canvas format is BGRA on most platforms; read as RGBA, red and blue swap"
+ },
+ {
+  "id": "docs-site.webgpu-readback-after-submit",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "    if (st.want && st.texture) {",
+  "replace": "    if (false) {",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "the copy is taken in the frame that rendered, after its submit and before its texture is presented"
+ },
+ {
+  "id": "docs-site.webgpu-readback-eight-bit-only",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "if (!/^(rgba|bgra)8unorm/.test(format)) return",
+  "replace": "if (false) return",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "a half-float canvas has 8 bytes a pixel: read as 4 it is noise, not a frame"
+ },
+ {
+  "id": "docs-site.webgpu-readback-verdict-colours",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "  if (frame.colours < minColours) return",
+  "replace": "  if (false) return",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "a canvas that only clears has one colour and shows no scene"
+ },
+ {
+  "id": "docs-site.webgpu-readback-no-frame-fails",
+  "target": "linux/scripts/webgpu-canvas-readback.js",
+  "find": "  if (why) fail(why, 1);",
+  "replace": "  if (false) fail(why, 1);",
+  "test": "bash linux/scripts/tests/test-webgpu-canvas-readback.sh",
+  "why": "a page that never draws a frame must fail, not print an empty read-back and exit 0"
+ },
+ {
   "id": "docs-site.check-runs-the-click-check",
   "target": "linux/scripts/docs-site.sh",
   "find": "  node \"${DOCS_SITE_HUB}/linux/scripts/check-docs-sidebars.js\" \"${site}\"",

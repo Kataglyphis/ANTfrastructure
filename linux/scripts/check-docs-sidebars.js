@@ -64,9 +64,10 @@ function serve(root) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-async function launch(chrome) {
+// launch(chrome, gpuFlags): webgpu-canvas-readback.js passes SwiftShader's WebGPU flags instead of --disable-gpu.
+async function launch(chrome, gpuFlags = ['--disable-gpu']) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
-  const proc = spawn(chrome, ['--headless=new', '--no-sandbox', '--disable-gpu', '--no-first-run',
+  const proc = spawn(chrome, ['--headless=new', '--no-sandbox', ...gpuFlags, '--no-first-run',
     '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
   { stdio: 'ignore' });
   const portFile = path.join(profile, 'DevToolsActivePort');
@@ -281,4 +282,5 @@ async function main() {
   if (failed) fail(`${failed} check(s) failed; see docs/docs-sites.md#the-sidebar-toggle-check`, 1);
 }
 
-main().catch((e) => fail(e.stack || String(e)));
+if (require.main === module) main().catch((e) => fail(e.stack || String(e)));
+else module.exports = { findChrome, launch, serve, sleep };

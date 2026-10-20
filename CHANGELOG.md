@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — A WebGPU page is proved by reading its frame back, not by a screenshot (CON128)
+
+- In the image's headless Chrome 155 a WebGPU canvas screenshots white.
+  `linux/scripts/webgpu-canvas-readback.js` runs WebGPU on SwiftShader, copies the next frame out
+  after its last submit and counts its colours; it exits 1 below `--min-colours` (2) and paints the
+  frame over the canvas for `--screenshot`. It reuses `check-docs-sidebars.js`'s Chrome launcher.
+- BeschleunigerBallett's published demo reads back 3124 colours, `1280x743 rgba8unorm`.
+  [docs-sites.md § Proving a WebGPU page](docs/docs-sites.md#proving-a-webgpu-page).
+
 ## 2026-10-20 — Exhale's tree views fold again; the sidebar check fails on an uncaught exception (CON127)
 
 - **Cause.** Exhale 0.3.7's `apply-collapsible-lists.js` is `$(document).ready(...)`, and

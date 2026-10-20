@@ -195,6 +195,33 @@ builds one; Exhale's own `CollapsibleLists.js` needs no jQuery.
 Suite `linux/scripts/tests/test-docs-sidebars.sh` (fixture sites, one per failure); the
 `docs-site.sidebars-*` and `docs-site.*-clicks-the-toggles` mutations prove it.
 
+## Proving a WebGPU page
+
+In the image's headless Chrome 155 a WebGPU canvas screenshots white even when the page renders
+it (CON128). Read the frame back instead:
+
+```bash
+node linux/scripts/webgpu-canvas-readback.js <URL | page.html> [--min-colours N] [--wait-ms N] [--screenshot FILE]
+```
+
+- Chrome runs WebGPU on SwiftShader (`--enable-unsafe-webgpu --enable-features=Vulkan
+  --use-angle=swiftshader --use-webgpu-adapter=swiftshader`): the image has no GPU.
+- An init script (`Page.addScriptToEvaluateOnNewDocument`) adds `COPY_SRC` to the canvas's
+  `configure()` usage and keeps the texture `getCurrentTexture()` hands out. After `--wait-ms`
+  (3000) it copies the next frame out after that frame's last `submit()`
+  (`copyTextureToBuffer`, rows padded to 256 bytes, then `mapAsync`).
+- It prints size, format and distinct colours and paints the frame into a 2D canvas over the
+  WebGPU one, so `--screenshot` shows it. Exit 1 on fewer than `--min-colours` (2: a cleared
+  canvas has one), no frame in 10 s, or a format other than 8-bit RGBA/BGRA; 2 on a usage
+  error or no Chrome.
+
+BeschleunigerBallett's published demo (`/webgpu-demo/index.html`), 2026-10-20: 3575 colours for
+the proof of run 39440853860, 3124 from this tool at `--wait-ms 8000`, both `1280x743 rgba8unorm`;
+its plain screenshot was white.
+
+Suite `linux/scripts/tests/test-webgpu-canvas-readback.sh` (the read-back against fakes of the
+WebGPU API, a page with no frame in Chrome); the `docs-site.webgpu-readback-*` mutations prove it.
+
 ## The site's .htaccess
 
 `linux/webserver/templates/docs-site.htaccess` goes into every docs site's root, with
