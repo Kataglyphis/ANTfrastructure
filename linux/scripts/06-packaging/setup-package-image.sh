@@ -139,7 +139,10 @@ select_dev_packages() {
     append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
         libgoogle-perftools-dev jq xvfb ripgrep
 
-    # Never libgstreamer*-dev (ours is source-built, the distro one purged) or libgtk-4-dev (breaks cross builds).
+    # Never libgstreamer*-dev: ours is source-built, the distro one purged.
+
+    # By name, not append_available_packages: OxidANT's GTK GUI is mandatory (CON129).
+    mapfile -t -O "${#_sdp_out[@]}" _sdp_out < <(gtk4_dev_packages)
 
     # Gradle needs a JDK; by name, since a silently skipped JDK ships an Android SDK that builds nothing.
     _sdp_out+=("${JDK_PACKAGE:?JDK_PACKAGE is required (01-core/versions.env)}")
@@ -350,7 +353,7 @@ repair_gstreamer_multiarch_link() {
     return 0   # nothing found — let verify_consumer_dev_surface fail loudly
 }
 
-# Fail here, not in a consumer's CI: at uid 1001 a consumer cannot apt-get the fix. GTK 4 dev is absent by design.
+# Fail here, not in a consumer's CI: at uid 1001 a consumer cannot apt-get the fix.
 verify_consumer_dev_surface() {
     local missing=() mod
     # The source-built GStreamer, and openssl for openssl-sys.
@@ -375,14 +378,7 @@ verify_consumer_dev_surface() {
         echo "WARN: absent on this arch: ${absent[*]}"
     fi
 
-    if pkg-config --exists gtk4 2>/dev/null; then
-        echo "NOTE: gtk4 dev files are present. They are normally excluded on purpose;"
-        echo "      if that was not deliberate, check whether the GLib/GIR dev chain"
-        echo "      came along and broke a cross build's python3-minimal postinst."
-    else
-        echo "NOTE: no gtk4 dev files (expected). Consumers cannot build gui_unix /"
-        echo "      gui_linux against this image; only gui_wgpu-style features work."
-    fi
+    verify_gtk4_dev_surface
 }
 
 # Prints which Rust won, as rustup's and Ubuntu's can coexist; only the RUST_VERSION check is a gate.
@@ -628,6 +624,7 @@ main() {
     select_dev_packages _dev_packages "${python_mm}" "${gcc_major}"
     install_dev_packages "${_dev_packages[@]}"
     drop_redundant_distro_gtk4
+    yield_older_prefix_glib
     anchor_java_home
     pin_clang_alternatives
     wire_python_symlinks "${python_mm}"

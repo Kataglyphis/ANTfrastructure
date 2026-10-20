@@ -81,7 +81,7 @@ needs neither.
 
 **Sysroot: the riscv64 child of the same index.** The libraries a test binary links and
 loads are the target image's own: glibc, GCC 16.2.0's libstdc++ (`/opt/gcc-16.2.0/lib`),
-GStreamer, ONNX Runtime, OpenCV, the Vulkan SDK prefix, Mesa. `riscv64-sysroot.sh` takes
+GStreamer, ONNX Runtime, OpenCV, the Vulkan SDK prefix, Mesa, GTK 4 (CON129). `riscv64-sysroot.sh` takes
 the index digest the local tag was pulled from (`RepoDigests`), looks up its
 `linux/riscv64` manifest, and exports an allowlist (`RISCV64_SYSROOT_PATHS`): 4.9 GB, 90 s
 locally. A path missing from the image fails the export: the contract moved. 149

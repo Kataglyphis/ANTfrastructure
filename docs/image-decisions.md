@@ -66,7 +66,6 @@ still guards a host whose own environment names an unreachable one.
 ## Deliberate — not gaps
 
 These are recorded so nobody files them as gaps:
-- No GTK4 dev headers.
 - The distro `libgstreamer*-dev` packages are purged.
 - Only the pinned CPython (`PYTHON_VERSION`), once with the GIL and once free-threaded (owner,
   2026-10-20).

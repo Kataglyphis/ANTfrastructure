@@ -43,7 +43,7 @@ normalize_vvdec_soname_link() {
 }
 
 DEBIAN_FRONTEND=noninteractive apt-get purge -y $(dpkg -l 'gstreamer*' 'gstreamer1.0*' 'libgstreamer*' 'libunwind-*-dev' 2>/dev/null | grep '^ii' | awk '{print $2}') 2>/dev/null || true
-# GTK runtime only: the dev package pulls target-side Python, whose postinst breaks cross builds.
+# The GTK 4 runtime only; select_dev_packages adds what gtk4-rs builds against (CON129).
 target_packages=(
     libunwind-dev libdw-dev libv4l-0 dbus-x11
     # riscv64 builds Pillow from source, which hard-fails without jpeglib.h.

@@ -471,7 +471,7 @@ check_rust_toolchain() {
 }
 
 # Consumer contract. See docs/consumer-image-contract.md#the-contract
-_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed"
+_CONSUMER_CONTRACT_ROWS="ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev"
 
 # Staged-or-every-run-pays rows. See docs/consumer-image-contract.md#what-the-image-stages-so-a-run-does-not
 _consumer_present_verdict() {
@@ -503,6 +503,7 @@ _consumer_contract_symptom() {
     free-threaded-python) printf '%s' 'every X.Yt leg has uv download a free-threaded CPython first, its patch version unpinned' ;;
     lint-tools)    printf '%s' 'OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted' ;;
     uv-cache-seed) printf '%s' 'the riscv64 Python lane'"'"'s uv sync of the test extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job' ;;
+    gtk4-dev)      printf '%s' 'OxidANT'"'"'s GTK GUI stops in a gtk4-rs -sys build script ("The system library `graphene-gobject-1.0` required by crate `graphene-sys` was not found" on amd64, `gtk4` elsewhere), and uid 1001 cannot apt-get the dev package' ;;
     *)             printf '%s' 'no symptom recorded for this row' ;;
   esac
 }
@@ -675,6 +676,7 @@ printf 'FACT lint-tools shellcheck=%s hadolint=%s\n' "$(shellcheck --version 2>/
   "$(hadolint --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
 printf 'ENV uv-cache-seed %s\n' "${PYTHON_UV_CACHE_SEED:-}"
 printf 'FACT uv-cache-seed %s\n' "$(bash /opt/scripts/packaging/uv-cache-seed.sh verify "${PYTHON_UV_CACHE_SEED:-/nonexistent}" 2>&1 | tail -1)"
+printf 'FACT gtk4-dev %s\n' "$(bash -c 'source /opt/scripts/packaging/package-image-wiring.sh && verify_gtk4_dev_surface' 2>&1 | tail -1)"
 PROBE
 }
 
@@ -934,6 +936,17 @@ _consumer_uv_seed_verdict() {
   fi
 }
 
+# CON129's GTK 4, read through the package stage's own gate: docs/consumer-image-contract.md#gtk-4-for-gtk4-rs
+_consumer_gtk4_verdict() {
+  local row="$1" have
+  have="$(_consumer_contract_fact "$2" FACT gtk4-dev)"
+  case "${have}" in
+    '')           printf 'NOFACT %s no FACT gtk4-dev line' "${row}" ;;
+    "OK: gtk4 "*) printf 'OK %s %s' "${row}" "${have#OK: }" ;;
+    *)            printf 'BAD %s %s' "${row}" "${have}" ;;
+  esac
+}
+
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
@@ -1013,6 +1026,7 @@ _consumer_contract_verdicts() {
         lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"
                        line="$(_consumer_lint_tools_verdict "${row}" "${probe}" "shellcheck=${_sc#v} hadolint=${_hl#v}")" ;;
         uv-cache-seed) line="$(_consumer_uv_seed_verdict "${row}" "${probe}" "${arch}")" ;;
+        gtk4-dev)      line="$(_consumer_gtk4_verdict "${row}" "${probe}")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;

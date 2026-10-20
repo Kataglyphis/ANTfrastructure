@@ -1,12 +1,60 @@
 #!/usr/bin/env bash
 # Package-stage fixes to the toolchain and runtime a consumer sees; sourced by setup-package-image.sh.
 
+# Empty where the prefix has no GTK 4: arm64 and riscv64 cross-build GStreamer without it.
+prefix_gtk4_lib() {
+    find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -maxdepth 2 -name libgtk-4.so.1 -print -quit 2>/dev/null || true
+}
+
+# gtk4-rs builds against the GTK 4 the image runs; the prefix's gtk4.pc lacks only these two Requires (CON129).
+gtk4_dev_packages() {
+    if [ -n "$(prefix_gtk4_lib)" ]; then
+        printf '%s\n' libgraphene-1.0-dev libvulkan-dev
+    else
+        printf '%s\n' libgtk-4-dev
+    fi
+}
+
+# The floor is gtk4-rs 0.11's v4_10 (OxidANT's GTK GUI); --libs resolves every Requires, ldd -r every symbol.
+verify_gtk4_dev_surface() {
+    local floor="${1:-4.10}" lib unresolved
+    if ! pkg-config --atleast-version="${floor}" gtk4 2>/dev/null || ! pkg-config --cflags --libs gtk4 >/dev/null; then
+        echo "ERROR: gtk4 >= ${floor} with every Requires is not reachable: $(pkg-config --modversion gtk4 2>&1 | head -n 1)" >&2
+        return 1
+    fi
+    lib="$(pkg-config --variable=libdir gtk4)/libgtk-4.so.1"
+    unresolved="$(ldd -r "${lib}" 2>&1 | grep -E 'not found|undefined symbol' || true)"
+    if [ -n "${unresolved}" ]; then
+        echo "ERROR: ${lib} does not load: ${unresolved}" >&2
+        return 1
+    fi
+    echo "OK: gtk4 $(pkg-config --modversion gtk4) at ${lib}: every Requires, NEEDED and symbol resolves"
+}
+
+# riscv64's GStreamer cross build falls back to its own GLib; a newer distro GLib serves it, GTK 4 and PyGObject (CON129).
+yield_older_prefix_glib() {
+    local sys="${1:-}" ours theirs dir
+    [ -n "${sys}" ] || sys="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null)"
+    ours="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -maxdepth 2 -name libglib-2.0.so.0 -print -quit 2>/dev/null || true)"
+    [ -n "${ours}" ] || { echo "KEEP: no GLib in the GStreamer prefix"; return 0; }
+    ours="$(readlink -f "${ours}")"
+    theirs="$(readlink -f "${sys}/libglib-2.0.so.0" 2>/dev/null || true)"
+    if [ ! -f "${theirs}" ] || [ "$(printf '%s\n' "${theirs##*/}" "${ours##*/}" | sort -V | tail -n 1)" = "${ours##*/}" ]; then
+        echo "KEEP: the prefix's ${ours##*/} is not older than ${theirs:-a distro GLib}"
+        return 0
+    fi
+    dir="${ours%/*}"
+    rm -f "${dir}"/lib{glib,gobject,gio,gmodule,gthread,girepository}-2.0.so* \
+        "${dir}"/pkgconfig/{glib,gobject,gio,gio-unix,gmodule,gmodule-export,gmodule-no-export,gthread,girepository}-2.0.pc
+    echo "OK: ${ours##*/} left ${dir}; ${theirs##*/} serves GStreamer, GTK 4 and PyGObject"
+}
+
 # libgtk-4-1 pulls a distro GStreamer beside ours; drop both only where our prefix has its own GTK 4.
 drop_redundant_distro_gtk4() {
     local ours extra
     local -a pkgs=(libgtk-4-1 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0
         libgstreamer-gl1.0-0 libgstreamer-plugins-extra1.0-0)
-    ours="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -maxdepth 2 -name libgtk-4.so.1 -print -quit 2>/dev/null || true)"
+    ours="$(prefix_gtk4_lib)"
     if [ -z "${ours}" ] || ! dpkg -s libgtk-4-1 >/dev/null 2>&1; then
         echo "KEEP: distro GTK 4 (${ours:-no GTK 4 in the GStreamer prefix}${ours:+, libgtk-4-1 not installed})"
         return 0

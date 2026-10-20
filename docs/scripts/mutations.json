@@ -3482,8 +3482,8 @@
  {
   "id": "probe.jdk-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row ships an Android SDK with no JDK again: Gradle stops the whole lane and the gate says nothing"
  },
@@ -3522,16 +3522,16 @@
  {
   "id": "probe.appimagetool-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row lets an unreadable appimagetool ship again and the gate says nothing"
  },
  {
   "id": "probe.flatpak-row-asserted",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
-  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "find": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner flatpak-runtimes appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
+  "replace": "_CONSUMER_CONTRACT_ROWS=\"ccache-dir sccache-dir rustup-tmp cargo-home android-home jdk appimagetool dart-tool flutter-owner appimage-runtime web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "dropping the row from the list is how a contract stops being asserted without anything looking broken: the gate still passes, and the seven missing runtimes cost every consumer run ~1.9 GB again"
  },
@@ -5978,8 +5978,8 @@
  {
   "id": "probe.ort-crate-env-row",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": " web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
-  "replace": " web-lane-tools chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed\"",
+  "find": " web-lane-tools ort-crate-env chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
+  "replace": " web-lane-tools chrome android-emulator cargo-qa-tools free-threaded-python lint-tools uv-cache-seed gtk4-dev\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "G3 on the shipped Linux image: the row is the assertion"
  },
@@ -11481,6 +11481,94 @@
   "replace": "        :",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
   "why": "TheRock's staged fuzzer_no_main carries only the suffixed name (CON38)"
+ },
+ {
+  "id": "packaging.gtk4-prefix-dev-packages",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "        printf '%s\\n' libgraphene-1.0-dev libvulkan-dev",
+  "replace": "        printf '%s\\n' libgtk-4-dev",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "amd64 would take the distro libgtk-4-dev, and with it the distro GStreamer runtime CON21 drops (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-floor",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    if ! pkg-config --atleast-version=\"${floor}\" gtk4 2>/dev/null || ! pkg-config --cflags --libs gtk4 >/dev/null; then",
+  "replace": "    if ! pkg-config --cflags --libs gtk4 >/dev/null; then",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a gtk4 older than gtk4-rs 0.11's v4_10 would ship, and OxidANT's GTK GUI would fail in a consumer lane (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-every-requires",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    if ! pkg-config --atleast-version=\"${floor}\" gtk4 2>/dev/null || ! pkg-config --cflags --libs gtk4 >/dev/null; then",
+  "replace": "    if ! pkg-config --atleast-version=\"${floor}\" gtk4 2>/dev/null; then",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "--modversion answers while a Requires is missing; :latest's amd64 gtk4.pc lacked graphene-gobject-1.0 (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-library-loads",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    if [ -n \"${unresolved}\" ]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a libgtk-4.so.1 with an unresolved NEEDED builds gtk4-rs and fails at its first start (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-dev-packages-installed",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    mapfile -t -O \"${#_sdp_out[@]}\" _sdp_out < <(gtk4_dev_packages)",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "the package stage would install no GTK 4 dev package (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-gate-wired",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    verify_gtk4_dev_surface\n}",
+  "replace": "}",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "an image without a buildable GTK 4 would pass the package stage (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-contract-row-listed",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": " uv-cache-seed gtk4-dev\"",
+  "replace": " uv-cache-seed\"",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "the shipped-image smoke would never check GTK 4 as uid 1001 (CON129)"
+ },
+ {
+  "id": "packaging.gtk4-contract-row-bad",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "    \"OK: gtk4 \"*) printf 'OK %s %s' \"${row}\" \"${have#OK: }\" ;;",
+  "replace": "    *) printf 'OK %s %s' \"${row}\" \"${have#OK: }\" ;;",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "the gate's ERROR line would read as a passing contract row (CON129)"
+ },
+ {
+  "id": "packaging.glib-yield-only-when-older",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    if [ ! -f \"${theirs}\" ] || [ \"$(printf '%s\\n' \"${theirs##*/}\" \"${ours##*/}\" | sort -V | tail -n 1)\" = \"${ours##*/}\" ]; then",
+  "replace": "    if [ ! -f \"${theirs}\" ]; then",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "a prefix GLib as new as the distro's would be deleted too, against the rule that our build wins its soname (CON129)"
+ },
+ {
+  "id": "packaging.glib-yield-removes-the-family",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
+  "find": "    rm -f \"${dir}\"/lib{glib,gobject,gio,gmodule,gthread,girepository}-2.0.so* \\",
+  "replace": "    rm -f \"${dir}\"/libglib-2.0.so* \\",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "half a GLib in the prefix: riscv64 would load the prefix's 2.86 gobject/gio beside Ubuntu's 2.88 glib (CON129)"
+ },
+ {
+  "id": "packaging.glib-yield-wired",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    yield_older_prefix_glib\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "riscv64's GTK 4 would ship unloadable: undefined symbol g_get_monotonic_time_ns (CON129)"
  },
  {
   "id": "packaging.atheris-probes-legacy-path",

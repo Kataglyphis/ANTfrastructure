@@ -12,6 +12,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — GTK 4 for gtk4-rs in every Linux image, from the next build (CON129)
+
+- **Why.** OxidANT's GTK GUI (`gui_unix`, gtk4-rs 0.11 `v4_10`) is mandatory (owner, 2026-10-20),
+  and `:latest` could not build it: amd64's `/opt/gstreamer` GTK 4.14.5 `gtk4.pc` lacked
+  `graphene-gobject-1.0`, arm64 and riscv64 had no `gtk4.pc`.
+- **The package stage** adds `libgraphene-1.0-dev` and `libvulkan-dev` on amd64 and Ubuntu's
+  `libgtk-4-dev` 4.22.4 on arm64 and riscv64 (`gtk4_dev_packages`). On riscv64
+  `yield_older_prefix_glib` drops the prefix's GLib 2.86.3 for Ubuntu's 2.88.0: Ubuntu's GTK 4
+  died at start on `undefined symbol: g_get_monotonic_time_ns`, and PyGObject could not import
+  GObject, in the published image too. GStreamer keeps its 290 plugins.
+- **Gates.** `verify_gtk4_dev_surface` (gtk4 >= 4.10, every `Requires`, `ldd -r`) fails the
+  package stage, and contract row 9 (`gtk4-dev`) runs it as uid 1001 in the shipped image; eleven
+  mutations in `test-package-image-wiring.sh`.
+- **Proved** in throwaway containers of `:latest` `b52f8c34`: OxidANT's `kataglyphis_cli` with
+  `gui_unix` built and its GUI stayed up under Xvfb on amd64, and cross-built for riscv64 and stayed
+  up under QEMU; arm64 under QEMU ran a gtk4-rs window and passed `cargo check`.
+- **Docs.** [`consumer-image-contract.md` § GTK 4 for gtk4-rs](docs/consumer-image-contract.md#gtk-4-for-gtk4-rs);
+  `image-decisions.md` no longer lists GTK 4 dev headers as left out.
+
 ## 2026-10-20 — `python-ci.md` names the pinned X.Y as the drivers' default, not `3.14`
 
 - `ci_static_analysis.sh` and `test-free-threaded-wheel.sh` default to `DEFAULT_PYTHON_VERSION`

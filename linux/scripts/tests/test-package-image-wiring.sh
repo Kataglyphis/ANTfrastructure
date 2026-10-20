@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The package stage's clang wiring on a fake LLVM tree: the pinned tool names, the toolchain cfg pair, atheris' legacy compiler-rt names.
+# The package stage's clang wiring on a fake LLVM tree: the pinned tool names, the toolchain cfg pair, atheris' legacy compiler-rt names; its GTK 4 gate.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -221,5 +221,116 @@ ln -s ../lib/llvm-21/bin/clang-tidy "${_p}/usr/bin/llvm-cov"
 _out="$(_vers 23.1.1)"
 t_assert_contains "${_out}" "FAIL [llvm-tool-distro]: ${_p}/usr/bin/llvm-cov is ${_p}/usr/lib/llvm-21/bin/clang-tidy"
 t_assert_eq "1" "$(grep -c 'FAIL \[llvm-tool-distro\]' <<< "${_out}")" "clang-tidy-21 and rust-clang are not failures"
+
+# --- the GTK 4 gtk4-rs builds against (CON129) --------------------------------
+_g4fns=""
+for _f in prefix_gtk4_lib gtk4_dev_packages verify_gtk4_dev_surface; do
+  _src="$(t_fn_src "${WIRING}" "${_f}")" || exit 1
+  _g4fns+="${_src}"$'\n'
+done
+mkdir -p "${_w}/gst-gtk/lib/x86_64-linux-gnu" "${_w}/gst-nogtk/lib"
+: > "${_w}/gst-gtk/lib/x86_64-linux-gnu/libgtk-4.so.1"
+_g4pkgs() { GSTREAMER_PREFIX="$1" bash -c "${_g4fns}"$'\n''gtk4_dev_packages' | paste -sd' ' -; }
+
+t_case "a prefix with its own GTK 4 gets the two dev packages its gtk4.pc lacks, any other image the distro's"
+t_assert_eq "libgraphene-1.0-dev libvulkan-dev" "$(_g4pkgs "${_w}/gst-gtk")" \
+  "amd64: the distro libgtk-4-dev would bring back the GStreamer runtime CON21 drops"
+t_assert_eq "libgtk-4-dev" "$(_g4pkgs "${_w}/gst-nogtk")" "arm64 and riscv64 run the distro GTK 4"
+
+# _g4 <gtk4 version> <--cflags rc> <ldd output>: the gate over stubbed pkg-config and ldd.
+_g4() {
+  G4_VER="$1" G4_RC="$2" G4_LDD="$3" bash -c '
+    pkg-config() {
+      case "$1" in
+        --atleast-version=*) [ "$(printf "%s\n%s\n" "${1#*=}" "${G4_VER}" | sort -V | head -n 1)" = "${1#*=}" ] ;;
+        --cflags) [ "${G4_RC}" = 0 ] || echo "Package vulkan was not found" >&2; return "${G4_RC}" ;;
+        --modversion) echo "${G4_VER}" ;;
+        --variable=libdir) echo /usr/lib/x86_64-linux-gnu ;;
+      esac
+    }
+    ldd() { [ "$1" = -r ] || return 2; printf "%s\n" "${G4_LDD}"; }
+    '"${_g4fns}"'
+    verify_gtk4_dev_surface; echo "rc=$?"' 2>&1
+}
+
+t_case "gtk4 at the floor, with every Requires and a library that loads, passes"
+_out="$(_g4 4.14.5 0 'libgraphene-1.0.so.0 => /usr/lib/x86_64-linux-gnu/libgraphene-1.0.so.0')"
+t_assert_contains "${_out}" "OK: gtk4 4.14.5 at /usr/lib/x86_64-linux-gnu/libgtk-4.so.1"
+t_assert_contains "${_out}" "rc=0"
+
+t_case "a gtk4 below gtk4-rs 0.11's v4_10 fails the stage"
+_out="$(_g4 4.8.3 0 '')"
+t_assert_contains "${_out}" "ERROR: gtk4 >= 4.10 with every Requires is not reachable: 4.8.3"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a gtk4.pc whose Requires do not resolve fails, though --modversion answers"
+_out="$(_g4 4.22.4 1 '')"
+t_assert_contains "${_out}" "Package vulkan was not found"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a libgtk-4.so.1 with an unresolved NEEDED fails"
+_out="$(_g4 4.22.4 0 'libgraphene-1.0.so.0 => not found')"
+t_assert_contains "${_out}" "does not load: libgraphene-1.0.so.0 => not found"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a symbol an older GLib lacks fails, though every NEEDED resolves (riscv64's prefix GLib 2.86)"
+_out="$(_g4 4.22.4 0 'undefined symbol: g_get_monotonic_time_ns	(/usr/lib/riscv64-linux-gnu/libgtk-4.so.1)')"
+t_assert_contains "${_out}" "does not load: undefined symbol: g_get_monotonic_time_ns"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "the package stage installs and gates it, and drops the distro GTK 4 by the same test"
+_setup="${TESTS_DIR}/../06-packaging/setup-package-image.sh"
+t_assert_contains "$(t_fn_src "${_setup}" select_dev_packages)" 'mapfile -t -O "${#_sdp_out[@]}" _sdp_out < <(gtk4_dev_packages)'
+t_assert_contains "$(t_fn_src "${_setup}" verify_consumer_dev_surface)" '    verify_gtk4_dev_surface'
+t_assert_contains "$(t_fn_src "${WIRING}" drop_redundant_distro_gtk4)" 'ours="$(prefix_gtk4_lib)"'
+t_assert_contains "$(t_fn_src "${_setup}" main)" $'    drop_redundant_distro_gtk4\n    yield_older_prefix_glib'
+
+# _glib <prefix GLib version|-> <distro GLib version>: the yield over a fake prefix and distro libdir.
+_glibsrc="$(t_fn_src "${WIRING}" yield_older_prefix_glib)" || exit 1
+_glib() {
+  local g="${_w}/glib-$1-$2" f
+  rm -rf "${g}"; mkdir -p "${g}/gst/lib/pkgconfig" "${g}/sys"
+  : > "${g}/sys/libglib-2.0.so.0.$2"; ln -s "libglib-2.0.so.0.$2" "${g}/sys/libglib-2.0.so.0"
+  : > "${g}/gst/lib/libgstreamer-1.0.so.0.2902.0"; : > "${g}/gst/lib/pkgconfig/gstreamer-1.0.pc"
+  if [ "$1" != - ]; then
+    for f in glib gobject gio gmodule gthread girepository; do
+      : > "${g}/gst/lib/lib${f}-2.0.so.0.$1"; ln -s "lib${f}-2.0.so.0.$1" "${g}/gst/lib/lib${f}-2.0.so.0"
+      ln -s "lib${f}-2.0.so.0" "${g}/gst/lib/lib${f}-2.0.so"; : > "${g}/gst/lib/pkgconfig/${f}-2.0.pc"
+    done
+    : > "${g}/gst/lib/pkgconfig/gio-unix-2.0.pc"
+  fi
+  GSTREAMER_PREFIX="${g}/gst" bash -c "${_glibsrc}"$'\n''yield_older_prefix_glib "$1"' _ "${g}/sys" 2>&1
+  echo "LEFT $(cd "${g}/gst/lib" && find . -type f -o -type l | sort | tr '\n' ' ')"
+}
+
+t_case "an older prefix GLib yields to the distro's: libraries and .pc files go, GStreamer stays"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+_out="$(_glib 8600.3 8800.0)"
+t_assert_contains "${_out}" "OK: libglib-2.0.so.0.8600.3 left"
+t_assert_contains "${_out}" "LEFT ./libgstreamer-1.0.so.0.2902.0 ./pkgconfig/gstreamer-1.0.pc "
+t_assert_eq "" "$(grep -oE '(glib|gobject|gio|gmodule|gthread|girepository)[-a-z]*-2\.0' <<< "${_out#*LEFT}")" \
+  "no GLib library, link or .pc may survive: half a GLib in the prefix splits the process"
+
+t_case "a prefix GLib as new as the distro's stays: ours wins its soname"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+_out="$(_glib 8800.0 8800.0)"
+t_assert_contains "${_out}" "KEEP: the prefix's libglib-2.0.so.0.8800.0 is not older than"
+t_assert_contains "${_out}" "./libglib-2.0.so.0.8800.0"
+
+t_case "a prefix without GLib (amd64, arm64) is left alone"
+_out="$(_glib - 8800.0)"
+t_assert_contains "${_out}" "KEEP: no GLib in the GStreamer prefix"
+
+t_case "the shipped-image contract row reads the same gate as uid 1001"
+_smoke="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+_row="$(t_fn_src "${_smoke}" _consumer_contract_fact)"$'\n'"$(t_fn_src "${_smoke}" _consumer_gtk4_verdict)" || exit 1
+_g4row() { bash -c "${_row}"$'\n''_consumer_gtk4_verdict gtk4-dev "$1"' _ "$1"; }
+t_assert_eq "OK gtk4-dev gtk4 4.22.4 at /usr/lib/riscv64-linux-gnu/libgtk-4.so.1: every Requires, NEEDED and symbol resolves" \
+  "$(_g4row 'FACT gtk4-dev OK: gtk4 4.22.4 at /usr/lib/riscv64-linux-gnu/libgtk-4.so.1: every Requires, NEEDED and symbol resolves')"
+t_assert_eq "BAD gtk4-dev ERROR: gtk4 >= 4.10 with every Requires is not reachable: 4.14.5" \
+  "$(_g4row 'FACT gtk4-dev ERROR: gtk4 >= 4.10 with every Requires is not reachable: 4.14.5')"
+t_assert_contains "$(_g4row 'FACT other x')" "NOFACT gtk4-dev"
+t_assert_contains "$(grep '^_CONSUMER_CONTRACT_ROWS=' "${_smoke}")" " gtk4-dev"
+t_assert_contains "$(cat "${_smoke}")" "printf 'FACT gtk4-dev %s\n' \"\$(bash -c 'source /opt/scripts/packaging/package-image-wiring.sh && verify_gtk4_dev_surface' 2>&1 | tail -1)\""
 
 t_summary

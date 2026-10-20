@@ -31,6 +31,7 @@ and no extra `-e`:
 | 6 | Every path under `/opt/flutter` is owned by uid 1001, `packages/flutter_tools/.dart_tool` included | `flutter pub get` fails with *"Cannot open file … package_config.json (OS Error: Permission denied, errno = 13)"* |
 | 7 | `CHROME_EXECUTABLE` names Chrome for Testing, which renders a page headless as uid 1001, and `chromedriver` of the same version is on `PATH` (amd64, arm64; [why](#browser-tests-run-in-chrome-for-testing)) | `flutter doctor` reports *"Cannot find Chrome executable at google-chrome"*, and `flutter test --platform chrome` has no browser |
 | 8 | On amd64, `$ANDROID_HOME` holds the pinned emulator and one x86_64 system image with ARM translation, and `android-avd.sh` is on `PATH` ([why](#the-android-emulator-runs-on-amd64-with-kvm)) | an Android lane has no device: `adb` reports *"no devices/emulators found"* |
+| 9 | `pkg-config gtk4` is >= 4.10 and resolves every `Requires`, and `ldd -r` resolves every library and symbol of the `libgtk-4.so.1` it names (`gtk4-dev`, [why](#gtk-4-for-gtk4-rs)) | OxidANT's GTK GUI stops in a gtk4-rs build script: *"The system library `graphene-gobject-1.0` required by crate `graphene-sys` was not found"*; on riscv64 it builds and dies at start: *"symbol lookup error: /usr/lib/riscv64-linux-gnu/libgtk-4.so.1: undefined symbol: g_get_monotonic_time_ns"* |
 
 Row 6 is the one a consumer **cannot** repair at runtime. The directory sits in a
 read-only overlay layer, so a non-owner can neither empty nor rename it — both
@@ -1013,6 +1014,52 @@ beside a plugin. A bundle fails as STALE with an older chain DLL, FOREIGN with a
 NuGet, PyPI or pyke ORT (statically linked ones included), and UNRESOLVED when an
 importer has no app-local chain copy or a Linux `.so` has no `$ORIGIN` RUNPATH to
 one.
+
+## GTK 4 for gtk4-rs
+
+OxidANT's GTK GUI (`gui_unix`, gtk4-rs 0.11 with `v4_10`) is mandatory since 2026-10-20, so
+every Linux image builds and runs it (CON129). Each arch builds against the GTK 4 it already
+runs:
+
+| Arch | `gtk4` | The package stage adds |
+| --- | --- | --- |
+| amd64 | 4.14.5, `/opt/gstreamer`'s own | `libgraphene-1.0-dev`, `libvulkan-dev`: the two `Requires` its `gtk4.pc` lacked |
+| arm64 | 4.22.4, Ubuntu's | `libgtk-4-dev` |
+| riscv64 | 4.22.4, Ubuntu's | `libgtk-4-dev`; the prefix's GLib 2.86.3 yields to Ubuntu's 2.88.0 |
+
+`gtk4_dev_packages` (`06-packaging/package-image-wiring.sh`) picks the row by whether the
+GStreamer prefix ships `libgtk-4.so.1`, so a variant follows its own prefix. amd64 takes no
+`libgtk-4-dev`: it would pull back `libgtk-4-1` and the distro GStreamer 1.28 runtime that
+`drop_redundant_distro_gtk4` drops (CON21), and `PKG_CONFIG_PATH` and `000-gstreamer.conf`
+would still pick the prefix's GTK 4.
+
+- **riscv64's GLib.** GStreamer's riscv64 cross build falls back to its own GLib 2.86.3, and
+  the loader took it before Ubuntu's 2.88.0. Ubuntu's GTK 4 then died at start
+  (`undefined symbol: g_get_monotonic_time_ns`, and `g_markup_parse_context_get_offset`),
+  and PyGObject could not import (*"Typelib file for namespace 'GObject', version '2.0' not
+  found"*, in the `:latest` of 2026-10-11 too). `yield_older_prefix_glib` deletes the prefix's
+  GLib libraries and `.pc` files when the distro's GLib is newer, so riscv64 runs GStreamer on
+  Ubuntu's GLib, as amd64 and arm64 do: 290 plugins, none blacklisted, before and after. A
+  prefix GLib as new as the distro's stays; our build wins its soname.
+- **`/usr/include/vulkan` exists now** (Ubuntu's 1.4.341, from `libvulkan-dev`, every arch).
+  The SDK's headers stay `$VULKAN_SDK/include`; CMake's `FindVulkan` takes those first.
+- **The gate.** `verify_gtk4_dev_surface` fails the package stage unless `gtk4` >= 4.10
+  resolves with every `Requires` and `ldd -r` resolves its library. Row 9 runs the same
+  function as uid 1001 in the shipped image.
+- **riscv64 cross lanes need nothing new.** The sysroot's allowlist already carries
+  `usr/include`, `usr/lib/riscv64-linux-gnu` and `usr/share/pkgconfig`. The old "breaks cross
+  builds" reason was the media stage's `:riscv64` installs into the amd64 build container,
+  whose `python3-minimal` postinst cannot run there; the package stage installs on the target
+  platform.
+
+Measured on 2026-10-20 in throwaway containers of `:latest` (`b52f8c34`) with these functions
+applied, as uid 1001:
+
+| Arch | Build | Run |
+| --- | --- | --- |
+| amd64 | `cargo build -p kataglyphis_cli --features gui_unix`, 1 min 58 s | `kataglyphis_cli gui` up after 12 s under Xvfb |
+| arm64 (QEMU) | `cargo check -p kataglyphis_gui --features gui_unix`, 17 min 53 s | a gtk4-rs window on GTK 4.22.4 |
+| riscv64 | `cargo build -p kataglyphis_cli --features gui_unix --target riscv64gc-unknown-linux-gnu` in the amd64 image, against the yielded child's sysroot | `kataglyphis_cli gui` up after 90 s under QEMU and Xvfb; 290 GStreamer plugins, PyGObject imports |
 
 ## Browser tests run in Chrome for Testing
 

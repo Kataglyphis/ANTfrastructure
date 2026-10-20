@@ -304,6 +304,25 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON129 — GTK 4 for OxidANT's mandatory GTK GUI: lands with the next image build** [M, ★★★].
+      Owner decision 2026-10-20: every Rust feature is mandatory, `gui_unix` (gtk4-rs 0.11, `v4_10`)
+      included. In source: the package stage installs the dev surface of the GTK 4 each arch runs,
+      riscv64's prefix GLib 2.86.3 yields to Ubuntu's 2.88.0, and `verify_gtk4_dev_surface` plus
+      contract row 9 (`gtk4-dev`) gate it ([`consumer-image-contract.md` § GTK 4 for
+      gtk4-rs](docs/consumer-image-contract.md#gtk-4-for-gtk4-rs)). Proved in throwaway containers of
+      `:latest` `b52f8c34`, no chain build. The next `:latest` (and `-nvidia`, `-rocm`) must show:
+      1. Package stage: amd64 `OK: gtk4 4.14.5 at /opt/gstreamer/lib/x86_64-linux-gnu/libgtk-4.so.1:
+         every Requires, NEEDED and symbol resolves` and still `OK: dropped the distro GTK 4 and
+         GStreamer runtime`; arm64 and riscv64 `OK: gtk4 4.22.4 at /usr/lib/<triplet>/libgtk-4.so.1: …`;
+         riscv64 `OK: libglib-2.0.so.0.8600.3 left /opt/gstreamer/lib; libglib-2.0.so.0.8800.0 serves
+         GStreamer, GTK 4 and PyGObject`.
+      2. Runtime smoke: `OK   gtk4-dev gtk4 …` in every arch's CONSUMER CONTRACT, and riscv64's
+         plugin health (290 plugins, none blacklisted) and SHIPPED-TRUTH D unchanged.
+      3. OxidANT on that image: `cargo build -p kataglyphis_cli --features gui_unix` in its x64 and
+         arm64 lanes, and in its riscv64-test step against the new child's sysroot.
+      Then OxidANT drops AGENTS.md's `gui_unix` "No, by design" row and its `--all-features` and
+      feature-check exclusions (OxidANT's change).
+
 - [ ] **CON99 — measure, then maybe publish `:latest` with zstd layers** [M, ★★]. Every Linux CI
       job pulls the whole image: `:latest` amd64 is 72 layers, 12.84 GB, all `tar+gzip`
       (manifest read 2026-10-17). In OmniAccelerANT's Linux x64 run 39041777817 the background
@@ -394,6 +413,17 @@ owner carries the breakage that costs.
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
 ## Open — Linux arm64 and riscv64
+
+- [ ] **CON130 — riscv64 cross builds read the amd64 image's `PKG_CONFIG_PATH` first** [S, ★★].
+      Found with CON129 (2026-10-20): `riscv64_cross_env` sets the target's `PKG_CONFIG_LIBDIR_*` and
+      sysroot, but the pkg-config crate falls back to the plain `PKG_CONFIG_PATH`, whose first entries
+      are the amd64 trees. gtk4-sys took amd64's `/opt/gstreamer/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc`
+      (4.14.5, not riscv64's 4.22.4) and emitted `-L/opt/riscv64-sysroot/opt/gstreamer/lib/x86_64-linux-gnu`;
+      the link still found riscv64's libraries through the sysroot's default paths, so nothing failed.
+      `riscv64-cross-smoke.sh` inherits the same variable. A version or arch-specific header that
+      differs would go wrong silently. Candidate: export `PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu=`
+      (empty) in `riscv64_cross_env`; prove it on the three riscv64 lanes first, which load the library
+      at `@develop`.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
