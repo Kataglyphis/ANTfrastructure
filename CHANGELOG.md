@@ -11,6 +11,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The wxPython plumbing is gone (CON107)
+
+- OrchestrANT, its one consumer, dropped wxPython in d954e86; `git grep -il wxpython` over the
+  thirteen family repos' develop tips finds only OrchestrANT's CHANGELOG and one comment.
+- `uv_sync_project` loses `--no-wxpython` and its `pyproject.toml` sniff (an unknown flag is still
+  skipped, so a stale caller does not break); its seven calls in `ci_tests.sh`, `ci_static_analysis.sh`,
+  `ci_packaging.sh` and `ci_build_docs.sh` pass nothing.
+- `Sync-UvProjectDependencies` loses `-NoBuildIsolationPackageWxPython`; no consumer passes it.
+  `Invoke-CiStaticAnalysis.ps1`, `Invoke-CiPackaging.ps1` and `Invoke-PythonCiBuild.ps1` stop passing it.
+- `assemble-torch-app.sh`'s "it pulls wxPython" comment stays for CON106, which decides the
+  `frontend` extra.
+
 ## 2026-10-20 — A red `develop` anywhere in the family opens an issue here (CON120)
 
 - **A red run told nobody.** `Windows x64 · script tests` stayed red 11 h (run 39345711596 to

@@ -33,7 +33,7 @@ VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
 
 UV_VENV_CLEAR=1 uv_venv_ensure "$VENV_DIR" "$PYTHON_VERSION" "virtual environment" VENV_WAS_PRESENT
 
-uv_sync_project --no-wxpython
+uv_sync_project
 
 # Every analyser runs, so one push names every finding, and assert_gates gives one verdict.
 gate_reset "static analysis (${PACKAGE_NAME})"

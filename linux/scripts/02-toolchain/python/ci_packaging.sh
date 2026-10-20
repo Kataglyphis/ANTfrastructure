@@ -174,7 +174,7 @@ fi
 VENV_SOURCES="$WORKSPACE_ROOT/.venv_packaging_sources"
 uv_venv_ensure "$VENV_SOURCES" "$PYTHON_VERSION" "source packaging venv"
 
-uv_sync_project --no-wxpython
+uv_sync_project
 
 package_build "$VENV_SOURCES"
 
@@ -183,7 +183,7 @@ export CYTHONIZE="True"
 VENV_BINARIES="$WORKSPACE_ROOT/.venv_packaging_binaries"
 uv_venv_ensure "$VENV_BINARIES" "$PYTHON_VERSION" "binary packaging venv"
 
-uv_sync_project --no-wxpython
+uv_sync_project
 
 package_build "$VENV_BINARIES"
 

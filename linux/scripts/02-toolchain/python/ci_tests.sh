@@ -99,7 +99,7 @@ for V in $PY_VERSIONS; do
 
   # An experimental interpreter may fail its sync without failing the matrix, but never silently.
   if [ "$experimental" -eq 1 ]; then
-    if ! uv_sync_project --no-wxpython; then
+    if ! uv_sync_project; then
       echo "::warning title=Python ${V} not tested::its dependencies did not sync, so no test ran on it (experimental leg)"
       warn "[experimental] Failed to sync dependencies for $V; continuing"
       uv_venv_deactivate
@@ -107,9 +107,9 @@ for V in $PY_VERSIONS; do
       continue
     fi
   elif [ -n "$leg_extras" ]; then
-    UV_SYNC_EXTRAS="$leg_extras" uv_sync_project --no-wxpython
+    UV_SYNC_EXTRAS="$leg_extras" uv_sync_project
   else
-    uv_sync_project --no-wxpython
+    uv_sync_project
   fi
 
   pytest_args=(

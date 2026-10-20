@@ -341,7 +341,6 @@ function Sync-UvProjectDependencies {
         With -UseLocked, retry once unlocked on a stale lockfile; never on the lane that guards the lockfile.
     #>
     param(
-        [switch]$NoBuildIsolationPackageWxPython,
         [switch]$UseLocked,
         [switch]$RetryWithoutLocked,
         # Defaults to the current directory's, the one `uv sync` reads too.
@@ -383,7 +382,6 @@ function Sync-UvProjectDependencies {
         $a = @('-v', 'sync', '--dev') + $extraArgs
         if ($Locked) { $a += '--locked' }
         $a += $skipArgs
-        if ($NoBuildIsolationPackageWxPython) { $a += @('--no-build-isolation-package', 'wxpython') }
         return $a
     }
 

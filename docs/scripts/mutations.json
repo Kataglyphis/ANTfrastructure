@@ -7813,8 +7813,8 @@
  {
   "id": "python.ci-tests-free-threaded-leg-syncs-its-own-extras",
   "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
-  "find": "    UV_SYNC_EXTRAS=\"$leg_extras\" uv_sync_project --no-wxpython",
-  "replace": "    uv_sync_project --no-wxpython",
+  "find": "    UV_SYNC_EXTRAS=\"$leg_extras\" uv_sync_project",
+  "replace": "    uv_sync_project",
   "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
   "why": "with all extras the free-threaded leg needs wheels that only exist for the GIL build, so its sync fails and it tests nothing"
  },

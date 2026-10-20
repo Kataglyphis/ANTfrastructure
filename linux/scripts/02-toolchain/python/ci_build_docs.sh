@@ -19,7 +19,7 @@ uv_venv_ensure "$VENV_DIR" "${COVERAGE_VERSION}" "docs venv" venv_existed
 if [ "$venv_existed" -eq 0 ]; then
   uv_venv_activate "$VENV_DIR"
 fi
-uv_sync_project --no-wxpython
+uv_sync_project
 
 cp "$WORKSPACE_ROOT/README.md" "$WORKSPACE_ROOT/docs/source/README.md" 2>/dev/null || true
 cp "$WORKSPACE_ROOT/CHANGELOG.md" "$WORKSPACE_ROOT/docs/source/CHANGELOG.md" 2>/dev/null || true

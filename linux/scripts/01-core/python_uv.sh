@@ -287,12 +287,10 @@ _uv_extras_to_exclude() {
 
 uv_sync_project() {
   local use_locked=0
-  local no_wxpython=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --locked) use_locked=1; shift ;;
-      --no-wxpython) no_wxpython=1; shift ;;
       *) shift ;;
     esac
   done
@@ -334,12 +332,6 @@ uv_sync_project() {
   
   _uv_chain_ort_skip_args sync_args
 
-  if [ $no_wxpython -eq 1 ]; then
-    sync_args+=(--no-build-isolation-package wxpython)
-  elif [ -f pyproject.toml ] && grep -q "wxpython" pyproject.toml 2>/dev/null; then
-    sync_args+=(--no-build-isolation-package wxpython)
-  fi
-  
   # Why venv creation branches on the interpreter: docs/cross-build-verification.md
   local _venv="${_CURRENT_VENV_PATH:-${VIRTUAL_ENV:-}}"
   # Pin only a writable venv: an unwritable pin fails deep in the sync instead of falling back.

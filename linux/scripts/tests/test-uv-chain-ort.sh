@@ -252,7 +252,7 @@ _sync() {
   local body target
   target="$(printf 'export UV_PROJECT_ENVIRONMENT=%q' "${VENV}")"
   [ -z "${1:-}" ] || target="$(printf 'unset UV_PROJECT_ENVIRONMENT\n_CURRENT_VENV_PATH=%q' "$1")"
-  body="$(printf 'set -uo pipefail\nunset VIRTUAL_ENV UV_PYTHON\nsource %q\n%s\ncd %q\nrc=0; uv_sync_project --no-wxpython || rc=$?\n' "${UV_SH}" "${target}" "${_work}/proj")"
+  body="$(printf 'set -uo pipefail\nunset VIRTUAL_ENV UV_PYTHON\nsource %q\n%s\ncd %q\nrc=0; uv_sync_project || rc=$?\n' "${UV_SH}" "${target}" "${_work}/proj")"
   body+=$'\nprintf "rc=%s NO_SYNC=%s\\n" "${rc}" "${UV_NO_SYNC-<unset>}"'
   PATH="${_work}/bin:${PATH}" STUB_UV_LOG="${LOG}" STUB_SYNC_WHEELS="${FEED}" bash -c "${body}" 2>&1
 }

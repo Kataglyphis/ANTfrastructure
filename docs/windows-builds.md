@@ -1542,7 +1542,7 @@ image builds FROM:
     `_yaml` with clang-cl, finds no `yaml.h` and falls back to pure Python, as designed.
   - The shim is for native builds only, because a cross target would need `--target`.
 - **Environment**: `uv sync` on the source-built CPython (extras `ml-ai`, `docs`, `pytorch-cpu`
-  (`pytorch-cu130` on the nvidia lane) and `test`; the wxPython GUI extra excluded, like linux),
+  (`pytorch-cu130` on the nvidia lane) and `test`; no `frontend` extra, like Linux),
   with `--no-install-package` for every `onnxruntime*` name in `uv.lock` (a locked name whose family
   has no chain wheel stops the stage), then a reconcile so this lane's wheels always win.
   - The ORT census (`ort-venv-census.py --purge-list`, run in the venv) names every installed ONNX

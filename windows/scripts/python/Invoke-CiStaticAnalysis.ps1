@@ -47,7 +47,7 @@ $envPath = Join-Path $repoRoot ".venv-static-analysis"
 try {
     New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-static-analysis" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
 
-    Sync-UvProjectDependencies -NoBuildIsolationPackageWxPython
+    Sync-UvProjectDependencies
 
     $analysisPaths = @($PackageName, "tests", "docs/source/conf.py", "setup.py", "README.md") + $ExtraPaths
     # Named, not an index slice, so appended extra paths are never dropped.

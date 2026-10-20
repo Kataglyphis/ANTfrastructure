@@ -97,7 +97,7 @@ function Invoke-TestLeg([string]$Version, [string]$Extras) {
     $envPath = New-TrackedUvEnvironment -Workspace $repoRoot -PythonVersion $Version -EnvName ".venv-$Version" -Tracker $tracker @uv
     try {
         $env:UV_SYNC_EXTRAS = $Extras
-        try { Sync-UvProjectDependencies -NoBuildIsolationPackageWxPython -UseLocked:(Test-Path -LiteralPath 'uv.lock') @uv }
+        try { Sync-UvProjectDependencies -UseLocked:(Test-Path -LiteralPath 'uv.lock') @uv }
         finally { Remove-Item Env:UV_SYNC_EXTRAS -ErrorAction SilentlyContinue }
         $out = 'docs/test_results'
         Invoke-BuildExternal -Context $context -File 'uv' -Parameters (@('run', 'pytest') + @($TestPaths -split '[,\s]+' | Where-Object { $_ }) + @(

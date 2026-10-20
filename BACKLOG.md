@@ -646,17 +646,6 @@ owner carries the breakage that costs.
       AGENTS.md's push rules say to read develop's last Linux and Windows runs first and fix a red tree before
       pushing; a red develop run notifies the owner.
 
-- [ ] **CON107 — retire the wxPython plumbing** [S, ★]. OrchestrANT dropped wxPython in d954e86
-      and was its one consumer: on 2026-10-20 `rg -il wxpython` over the family's develop tips found only a
-      comment in OrchestrANT's `flet_viewer.py`. Left
-      behind: `uv_sync_project --no-wxpython` and its `grep -q wxpython` sniff
-      (`linux/scripts/01-core/python_uv.sh`, called from `ci_tests.sh`, `ci_static_analysis.sh`,
-      `ci_packaging.sh` and `ci_build_docs.sh`), `Sync-UvProjectDependencies
-      -NoBuildIsolationPackageWxPython` (`WindowsUv.Common.psm1`, `Invoke-CiStaticAnalysis.ps1`,
-      `Invoke-CiPackaging.ps1`, and since 2026-10-19 `Invoke-PythonCiBuild.ps1` with `PythonCiBuild.Tests.ps1`),
-      `assemble-torch-app.sh`'s comment (CON106), `docs/windows-builds.md`'s "wxPython GUI extra excluded", the
-      `docs/scripts/mutations.json` rows and `test-uv-chain-ort.sh`. Harmless meanwhile: uv takes
-      `--no-build-isolation-package wxpython` with no wxPython in the lock (checked 2026-10-19).
 - [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner
       decision needed (2026-10-06). The hub has carried an MIT `LICENSE` since 84709078
       (2026-08-02), but 23 files outside `third_party/` still say

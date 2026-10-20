@@ -68,7 +68,7 @@ Describe 'Invoke-PythonCiBuild.ps1' {
             $r = Invoke-CiBuildFixture -Dir $d
             Assert-Equal 0 $r.Code $r.Text
             $calls = $r.Calls -join '|'
-            $sync = '-v sync --dev {0} --locked --no-build-isolation-package wxpython'
+            $sync = '-v sync --dev {0} --locked'
             foreach ($want in @("uv venv --python 3.13+gil --clear <d>\.venv-3.13|uv $($sync -f '--all-extras')",
                     "uv venv --python 9.87t --clear <d>\.venv-9.87t|uv $($sync -f '--extra tests')",
                     'uv run pytest -v --cov=demo_pkg --cov-report=term-missing --cov-report=html:docs/test_results/coverage-html-9.87t',
