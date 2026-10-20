@@ -602,6 +602,7 @@ if ($Stages -contains 'base') {
         VCPKG_REF                    = Get-Ver 'VCPKG_REF'
         SCCACHE_WINDOWS_VERSION      = Get-Ver 'SCCACHE_WINDOWS_VERSION'
         SCCACHE_WINDOWS_ZIP_SHA256   = Get-Ver 'SCCACHE_WINDOWS_ZIP_SHA256'
+        SCCACHE_DOWNLOAD_BASE        = Get-Ver 'SCCACHE_DOWNLOAD_BASE'
     }
 }
 

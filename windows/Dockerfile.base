@@ -92,6 +92,7 @@ ENV PATH=$PWSH_PATH;$CMAKE_BIN;$CARGO_BIN;$FLUTTER_BIN;$LLVM_USER_BIN;$WIX;$VULK
 ARG RUST_VERSION=1.99.0
 ARG FLUTTER_RUST_BRIDGE_VERSION=2.13.0
 ARG SCCACHE_WINDOWS_ZIP_SHA256=0c8529046b48b4f464d340fefe667839b17411d59a5bb90df83f35965631ec46
+ARG SCCACHE_DOWNLOAD_BASE=https://github.com/Kataglyphis/ANTfrastructure/releases/download/sccache-v
 COPY windows\scripts\host\Install-RustToolchain.ps1 C:\temp\scripts\
 RUN & 'C:\temp\scripts\Install-RustToolchain.ps1'
 

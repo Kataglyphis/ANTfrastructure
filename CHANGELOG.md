@@ -11,6 +11,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — The Windows base passes `SCCACHE_DOWNLOAD_BASE` to the rust step
+
+- **The first Windows chain after b9e451da stopped in `Dockerfile.base`** (arm64, 2026-10-20, 25 min
+  in): `Install-RustToolchain.ps1` runs before the base bakes `versions.env`, and it threw
+  `SCCACHE_DOWNLOAD_BASE is not set (versions.env not loaded?)`. The base now declares
+  `ARG SCCACHE_DOWNLOAD_BASE` above that RUN and `Build-Buildkit.ps1` forwards it with the other
+  sccache pins. Test: `Build.BaseRustArgs.Tests.ps1` (every pin the script reads is an ARG above its
+  RUN at the `versions.env` value).
+
 ## 2026-10-20 — `:winarm64` builds the cp315t psutil wheel PyPI lacks
 
 - **psutil 7.2.2 has no `cp315t` `win_arm64` wheel on PyPI** (`cp313t` and `cp314t` only), and
