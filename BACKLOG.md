@@ -674,6 +674,12 @@ owner carries the breakage that costs.
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
+      `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb
+      added the first as a 5-line copy of the second's sysconfigdata lookup; `code-dupes.allow`
+      holds the pair at 40 as a pending dedupe. Done when both call one helper in `01-core` and
+      the pair's budget drops back.
+
 - [ ] **CON107 — retire the wxPython plumbing** [S, ★]. OrchestrANT dropped wxPython in d954e86
       and was its one consumer (check the others first: `rg -il wxpython` over the family). Left
       behind: `uv_sync_project --no-wxpython` and its `grep -q wxpython` sniff

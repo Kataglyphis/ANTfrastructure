@@ -264,10 +264,7 @@ resolve_target_python_sysconfig_export() {
         return 0
     fi
 
-    # ${dir} is the target's lib/pythonX.Y. Putting it on PYTHONPATH lets its importlib
-    # and json shadow the pinned interpreter's, and a 3.14 tree under a 3.15 venv dies
-    # with `JSONDecoder has no attribute array_hook` (2026-10-19). Same shape as
-    # free-threaded-wheels.sh's FT_TARGET_SYSCONFIG_DIR: a dir holding only the module.
+    # A dir holding only the module: the target's lib/pythonX.Y on PYTHONPATH shadows the pinned interpreter's json (`array_hook`, 2026-10-19).
     sysdir="${APP_WHEELHOUSE_BUILD_ROOT}/sysconfigdata-${target_triplet}"
     mkdir -p "${sysdir}" && cp -f "${dir}/${name}.py" "${sysdir}/" || return 1
 

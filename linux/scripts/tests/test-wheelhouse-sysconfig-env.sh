@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# The cross-wheel sysconfig export must expose ONLY the target's sysconfigdata module.
-# Pointing PYTHONPATH at the target's lib/pythonX.Y put a 3.14 stdlib under a 3.15
-# interpreter and killed the IREE arm64 wheelhouse with
-# `JSONDecoder has no attribute array_hook` (2026-10-19).
+# The cross-wheel sysconfig export exposes only the target's sysconfigdata: its 3.14 stdlib under 3.15 killed the IREE arm64 wheelhouse (2026-10-19).
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -12,8 +9,7 @@ _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 APP_WHEELHOUSE_BUILD_ROOT="${_work}/build"
 
-# A target tree shaped like a real one: the sysconfigdata beside a stdlib whose json
-# refuses to load, so any leak of that directory onto PYTHONPATH is visible.
+# The sysconfigdata beside a stdlib whose json refuses to load, so a leak of that dir onto PYTHONPATH shows.
 _sysroot="${_work}/sysroot"
 mkdir -p "${_sysroot}/lib/python3.14/json"
 printf 'build_time_vars = {"SOABI": "cpython-314-riscv64-linux-gnu"}\n' \
