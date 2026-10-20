@@ -201,9 +201,13 @@ def main(argv: list[str] | None = None) -> int:
     now = (dt.datetime.strptime(args.now, ISO).replace(tzinfo=dt.timezone.utc) if args.now
            else dt.datetime.now(dt.timezone.utc))
     issues = latest_issues(client)
-    for repo in family_repos(client):
+    repos, watched = family_repos(client), 0
+    for repo in repos:
         for workflow_id, runs in sorted(decisive_runs(client, repo).items()):
             settle(client, repo, runs, issues.get((repo, workflow_id)), now)
+            watched += 1
+    # A silent run must still say what it read, or a token that sees nothing looks like a green family.
+    print("watched: %d workflow(s) in %d repositories: %s" % (watched, len(repos), " ".join(repos)))
     return 0
 
 

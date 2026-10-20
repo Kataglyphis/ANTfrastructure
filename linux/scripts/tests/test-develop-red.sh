@@ -83,7 +83,11 @@ PY
   printf '%s' "${out}"
 }
 
-_watch() { "${PY}" "${SCRIPT}" --replay "$(_replay "$1")" --now "${NOW}" 2>&1; }
+_watch() { "${PY}" "${SCRIPT}" --replay "$(_replay "$1")" --now "${NOW}" 2>&1 | grep -v '^watched: '; }
+
+t_case "every run says what it read: only the family repository Fam"
+t_assert_eq "watched: 1 workflow(s) in 1 repositories: Fam" \
+  "$("${PY}" "${SCRIPT}" --replay "$(_replay green-quiet)" --now "${NOW}" 2>&1)"
 
 t_case "a red newest run opens one issue naming only its red job"
 out="$(_watch red-opens)"
