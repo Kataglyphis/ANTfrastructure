@@ -8,7 +8,8 @@
 .DESCRIPTION
     Per leg (X.Y, X.Yt): the image's target interpreter; the project's win_arm64 wheel, cross-built with the image's VS and clang-cl; the
     lock's set for the leg's extras and that wheel in the interpreter's site-packages; the wheel alone for the load proof; the leg's run
-    and proof scripts. Then the test files, Invoke-StagedTests.ps1 and its tests.json. See docs/python-ci.md § Windows arm64: the staged test job.
+    and proof scripts; on an X.Yt leg, pyproject.toml's free-threaded wheel tests. Then the test files, Invoke-StagedTests.ps1 and its
+    tests.json. See docs/python-ci.md § Windows arm64: the staged test job.
 .PARAMETER TestFiles
     Paths, relative to -RepoRoot, staged as the tests' working directory; empty takes tests\ and the pytest configuration files the root has.
 .PARAMETER TestEnv
@@ -34,7 +35,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-foreach ($m in 'WindowsSourceBuild.Common', 'WindowsPythonWheel.Common', 'WindowsPythonApp.Common') {
+foreach ($m in 'WindowsSourceBuild.Common', 'WindowsPythonWheel.Common', 'WindowsPythonApp.Common', 'WindowsPythonWheel.Suite') {
     Import-Module (Join-Path $PSScriptRoot "..\modules\$m.psm1") -DisableNameChecking
 }
 
@@ -117,6 +118,7 @@ $wheels = Join-Path $out 'wheels'
 if ($LASTEXITCODE -ne 0) { throw "building the legs' wheels failed (exit $LASTEXITCODE)" }
 
 $distribution = (Get-PyprojectBuildInfo -Python $gil.Exe -PyprojectPath $pyproject).Name
+$suite = Get-FreeThreadedWheelSuite -Python $gil.Exe -PyprojectPath $pyproject
 $platform = Get-ClangTargetTriple -Arch (Get-WindowsTargetArch)
 $manifest = [Collections.Generic.List[object]]::new()
 foreach ($leg in $legs) {
@@ -152,6 +154,16 @@ foreach ($leg in $legs) {
         if ($LASTEXITCODE -ne 0) { throw "unpacking $($wheel.Name) for its proof failed (exit $LASTEXITCODE)" }
         Set-Content -LiteralPath (Join-Path $out "prove-$leg.cmd") -Value $scripts.Proof -Encoding ascii
         $manifest.Add([ordered]@{ exe = "prove-$leg.cmd"; args = @(); kind = 'exitcode' })
+    }
+    if ($ft -and $binary -and $suite) {
+        # The leg's site is the tests' only environment, so it must hold their extra.
+        if ($suite.Extra -and $legExtras.Count -gt 0 -and $suite.Extra -notin $legExtras) {
+            throw "the free-threaded wheel tests need the '$($suite.Extra)' extra, which the $leg leg does not install ($($legExtras -join ', '))"
+        }
+        $manifest.Add((New-FreeThreadedWheelTestStage -Suite $suite -RepoRoot $repo -StageDir $out -Name "wheel-tests-$leg" `
+                    -Python "python-$leg\$($exe[0].Name)" -Wheel $wheel.Name))
+    } elseif ($ft -and $binary) {
+        Write-Host "Python ${leg}: free-threaded wheel tests skipped: pyproject.toml has no [tool.antfrastructure.free-threaded-wheel-tests]"
     }
 }
 

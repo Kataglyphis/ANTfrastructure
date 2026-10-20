@@ -12,7 +12,8 @@ WS="${_work}/ws"; TREE="${_work}/tree"; CALLS="${_work}/calls"; OUT="${_work}/ou
 mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${WS}/tests/unit" "${WS}/fixture_app" "${BIN}"
 cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${SCRIPTS}/01-core/versions.env" "${TREE}/01-core/"
 cp "${SCRIPTS}/02-toolchain/python/test-free-threaded-wheel.sh" "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" \
-  "${TREE}/02-toolchain/python/"
+  "${SCRIPTS}/02-toolchain/python/free-threaded-wheel-tests.py" "${TREE}/02-toolchain/python/"
+RUNNER="${TREE}/02-toolchain/python/free-threaded-wheel-tests.py"
 cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
 detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
@@ -50,7 +51,15 @@ MM="$(sed -n 's/^PYTHON_VERSION=\([0-9]*\.[0-9]*\)\..*/\1/p' "${SCRIPTS}/01-core
 CP="cp${MM//./}"
 WHEEL="fixture_app-1.0-${CP}-${CP}t-manylinux_2_17_$(uname -m).whl"
 DECLARED='"Programming Language :: Python :: Free Threading :: 2 - Beta"'
-_pyproject() { printf '[project]\nname = "fixture_app"\nclassifiers = [%s]\n' "$1" > "${WS}/pyproject.toml"; }
+# _pyproject <classifiers> [<toml>]: the fixture's pyproject.toml, with more TOML after [project].
+_pyproject() { printf '[project]\nname = "fixture_app"\nclassifiers = [%s]\n%s' "$1" "${2:-}" > "${WS}/pyproject.toml"; }
+TABLE='[tool.antfrastructure.free-threaded-wheel-tests]
+extra = "test"
+copy = ["tests/unit/test_threads.py"]
+env = { FIXTURE_COMPILED = "1" }
+isolated = true
+pytest-args = ["-W", "error", "tests/unit/test_threads.py"]
+'
 # _dist <wheel>...: what ci_packaging.sh left in dist/.
 _dist() { rm -rf "${WS}/dist"; mkdir -p "${WS}/dist"; local w; for w in "$@"; do : > "${WS}/dist/${w}"; done; }
 # _run <args>: the script on a bare PATH.
@@ -69,20 +78,20 @@ t_assert_contains "$(cat "${CALLS}")" "uv python find ${MM}t" "the image's inter
 t_assert_contains "$(cat "${CALLS}")" "uv export --locked --no-emit-project --extra test --format requirements.txt" "the lock's set with the test extra, without the project"
 t_assert_contains "$(cat "${CALLS}")" "uv pip install --python ${_work}/tmp." "into a fresh venv"
 t_assert_contains "$(cat "${CALLS}")" "--no-deps dist/${WHEEL}" "the shipped wheel, without re-resolving its dependencies"
-t_assert_contains "$(cat "${CALLS}")" "pytest -I -m pytest -p no:cacheprovider -W error tests/unit/test_threads.py" "isolated, with the caller's pytest arguments"
+t_assert_contains "$(cat "${CALLS}")" "pytest -I ${RUNNER} run -- -W error tests/unit/test_threads.py" "isolated, through the GIL-checking runner"
 t_assert_contains "$(cat "${CALLS}")" "FIXTURE_COMPILED=1 | staged ./tests/unit/test_threads.py " "the env reaches pytest, and only the copied file is staged"
 t_assert_eq "0" "$(grep -c "cwd ${WS}" "${CALLS}")" "never run from the checkout, where the sources would shadow the wheel"
 t_assert_contains "$(cat "${OUT}")" "free-threaded wheel tests passed: ${WHEEL}"
 t_assert_eq "" "$(find "${_work}" -mindepth 1 -maxdepth 1 -name 'tmp.*')" "the venv and the run directory are removed"
 
-t_case "without --isolated pytest runs as python -m, so the run directory is importable"
+t_case "without --isolated the runner is not isolated either, so the run directory is importable"
 t_assert_ok _run --copy tests --copy pyproject.toml -- -v
-t_assert_contains "$(cat "${CALLS}")" "pytest -m pytest -p no:cacheprovider -v | "
+t_assert_contains "$(cat "${CALLS}")" "pytest ${RUNNER} run -- -v | "
 t_assert_contains "$(cat "${CALLS}")" "staged ./pyproject.toml ./tests/unit/test_threads.py " "a directory is copied whole, at its relative path"
 
 t_case "failing tests fail the run and name the wheel"
 FAKE_PYTEST_RC=1 t_assert_fails _run "${ARGS[@]}"
-t_assert_contains "$(cat "${OUT}")" "the tests failed against ${WHEEL}"
+t_assert_contains "$(cat "${OUT}")" "the tests failed against ${WHEEL}, or left the GIL enabled"
 
 t_case "the cases in which ci_packaging.sh builds no free-threaded wheel skip, and say why"
 PACKAGING_CROSS_TARGET=riscv64 t_assert_ok _run "${ARGS[@]}"
@@ -110,7 +119,59 @@ FAKE_NO_FT=1 t_assert_fails _run "${ARGS[@]}"
 t_assert_contains "$(cat "${OUT}")" "no ${MM}t interpreter for the wheel tests"
 t_assert_eq "0" "$(grep -c 'python install' "${CALLS}")"
 
+t_case "with no flag naming the tests, pyproject.toml's table names them, for the same run"
+_pyproject "${DECLARED}" "${TABLE}"
+_dist "${WHEEL}"
+t_assert_ok _run --python-version "${MM}"
+t_assert_contains "$(cat "${CALLS}")" "uv export --locked --no-emit-project --extra test --format requirements.txt" "the table's extra"
+t_assert_contains "$(cat "${CALLS}")" "pytest -I ${RUNNER} run -- -W error tests/unit/test_threads.py" "isolated, with the table's pytest arguments"
+t_assert_contains "$(cat "${CALLS}")" "FIXTURE_COMPILED=1 | staged ./tests/unit/test_threads.py " "the table's env and copy"
+t_assert_contains "$(cat "${OUT}")" "free-threaded wheel tests passed: ${WHEEL}"
+
+t_case "the flags and a table together fail, and so does neither: one definition of the tests"
+t_assert_fails _run "${ARGS[@]}"
+t_assert_contains "$(cat "${OUT}")" "both the flags and pyproject.toml's [tool.antfrastructure.free-threaded-wheel-tests] name the tests: keep one"
+_pyproject "${DECLARED}"
+t_assert_fails _run
+t_assert_contains "$(cat "${OUT}")" "no --copy, and no [tool.antfrastructure.free-threaded-wheel-tests] in pyproject.toml"
+t_assert_eq "0" "$(grep -c '^pytest' "${CALLS}")"
+
+t_case "a misspelt or invalid table fails, naming what is wrong"
+_pyproject "${DECLARED}" $'[tool.antfrastructure.free-threaded-wheel-test]\ncopy = ["tests"]\n'
+t_assert_fails _run
+t_assert_contains "$(cat "${OUT}")" "holds free-threaded-wheel-test; the one table is 'free-threaded-wheel-tests'"
+_pyproject "${DECLARED}" $'[tool.antfrastructure.free-threaded-wheel-tests]\ncopy = ["../outside"]\nisolate = true\n'
+t_assert_fails _run
+t_assert_contains "$(cat "${OUT}")" "unknown key 'isolate'"
+t_assert_contains "$(cat "${OUT}")" "'copy' path '../outside' must stay inside the checkout"
+
+t_case "table: JSON with the defaults filled in, or the twin's own arguments; 1 without a table"
+_tbl() { python3 -I "${RUNNER}" table "$@" "${WS}/pyproject.toml"; }
+_pyproject "${DECLARED}" $'[tool.antfrastructure.free-threaded-wheel-tests]\ncopy = ["tests"]\n'
+t_assert_eq '{"extra": "", "copy": ["tests"], "env": {}, "isolated": false, "pytest-args": []}' "$(_tbl)"
+_pyproject "${DECLARED}" "${TABLE}"
+t_assert_eq "--extra|test|--copy|tests/unit/test_threads.py|--env|FIXTURE_COMPILED=1|--isolated|--|-W|error|tests/unit/test_threads.py" \
+  "$(_tbl --format argv | tr '\n' '|' | sed 's/|$//')"
+_pyproject "${DECLARED}"
+t_assert_eq "1" "$(t_rc _tbl)" "no table"
+t_assert_eq "1" "$(t_rc python3 -I "${RUNNER}" table "${_work}/absent.toml")" "no pyproject.toml"
+
+t_case "table: every value is checked, so a typo cannot read as no tests or as other tests"
+for bad in 'copy = []' 'copy = ["/abs"]' 'copy = ["C:\\\\x"]' 'copy = ["a/../../b"]' 'copy = ["t"]\nenv = { 1X = "1" }' \
+  'copy = ["t"]\nenv = { X = 1 }' 'copy = ["t"]\nisolated = "yes"' 'copy = ["t"]\nextra = ["a"]' 'copy = ["t"]\npytest-args = "-v"' \
+  'copy = ["t"]\npytest-args = ["-k", "a\\nb"]'; do
+  _pyproject "${DECLARED}" "$(printf '[tool.antfrastructure.free-threaded-wheel-tests]\n%b\n' "${bad}")"
+  t_assert_eq "2" "$(t_rc _tbl)" "refused: ${bad}"
+done
+_pyproject "${DECLARED}" '[tool.antfrastructure.free-threaded-wheel-tests'
+t_assert_eq "2" "$(t_rc _tbl)" "unreadable TOML is not a verdict"
+
+t_case "run: a GIL interpreter runs no test"
+t_assert_eq "2" "$(t_rc python3 -I "${RUNNER}" run -- -v)"
+t_assert_contains "$(python3 -I "${RUNNER}" run -- -v 2>&1)" "is not a free-threaded interpreter"
+
 t_case "a call without --copy, with a bad --env or with a missing path fails before any test"
+_pyproject "${DECLARED}"
 t_assert_fails _run --extra test
 t_assert_contains "$(cat "${OUT}")" "no --copy: name the tests to run against the installed wheel"
 t_assert_fails _run --copy tests --env 1BAD

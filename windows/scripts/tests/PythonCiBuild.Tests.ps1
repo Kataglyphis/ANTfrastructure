@@ -5,18 +5,14 @@
 
 $script:CiBuild = Join-Path (Get-RepoRoot) 'windows\scripts\python\Invoke-PythonCiBuild.ps1'
 
-# A demo repo, a uv and a python that log each call ("python find" prints the fake python), and stubs of the two child drivers.
+# A demo repo, a uv and a python that log each call ("python find" prints the fake python), and stubs of the three child drivers.
 function script:New-CiBuildFixture([string]$Dir, [string]$Settings = '') {
     $fake = Join-Path $Dir 'fake'
     $null = New-Item -ItemType Directory -Force -Path $fake, (Join-Path $Dir 'repo\scripts\windows')
     Set-Content -LiteralPath (Join-Path $Dir 'repo\pyproject.toml') -Value @('[project]', 'name = "demo-dist"')
     Set-Content -LiteralPath (Join-Path $Dir 'repo\uv.lock') -Value 'version = 1'
     if ($Settings) { Set-Content -LiteralPath (Join-Path $Dir 'repo\scripts\windows\python-ci.psd1') -Value $Settings }
-    # The .cmd logs %* itself: pwsh -File would split an argument like --cov-report=html:dir at its colon.
-    foreach ($tool in 'uv', 'python') {
-        Set-Content -LiteralPath (Join-Path $fake "$tool.cmd") -Encoding ascii -Value @(
-            '@echo off', ">>`"%FAKE_LOG%`" echo $tool %*", "pwsh -NoProfile -File `"%~dp0fake-$tool.ps1`" %*")
-    }
+    New-FakeToolShim -Dir $fake -Tool uv, python
     Set-Content -LiteralPath (Join-Path $fake 'fake-uv.ps1') -Encoding utf8 -Value @(
         'if ("$args" -eq "python find $($args[2])") { Write-Output (Join-Path $PSScriptRoot "python.cmd") }'
         'if ($env:FAKE_FAIL -and "uv $args" -match $env:FAKE_FAIL) { exit 1 }'
@@ -25,7 +21,8 @@ function script:New-CiBuildFixture([string]$Dir, [string]$Settings = '') {
         'if ($args[2] -eq "declares") { if ($env:FAKE_DECLARES) { "Free Threading"; exit 0 }; "no classifier"; exit 1 }'
     )
     foreach ($stub in @(@{ n = 'static'; p = 'PythonVersion, PackageName, RepoRoot, ExtraPaths, BanditExcludes' },
-            @{ n = 'packaging'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' })) {
+            @{ n = 'packaging'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' },
+            @{ n = 'wheeltests'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' })) {
         $params = ($stub.p -split ', ' | ForEach-Object { "[string[]]`$$_" }) -join ', '
         Set-Content -LiteralPath (Join-Path $fake "$($stub.n).ps1") -Encoding utf8 -Value @(
             "param($params)"
@@ -44,7 +41,8 @@ function script:Invoke-CiBuildFixture {
     $vars = @{ FAKE_LOG = $log; FAKE_FAIL = $Fail; FAKE_DECLARES = $(if ($Declares) { '1' } else { $null }); PATH = "$fake;$env:PATH"
         PYTHON_VERSION = '9.87.6'; EXPERIMENTAL_PYTHON_VERSIONS = $null; ORT_CHAIN_WHEEL_DIR = $null; PYTHON_WHEELS = $null; UV_PROJECT_ENVIRONMENT = $null
     }
-    $seams = @('-StaticAnalysisScript', (Join-Path $fake 'static.ps1'), '-PackagingScript', (Join-Path $fake 'packaging.ps1'))
+    $seams = @('-StaticAnalysisScript', (Join-Path $fake 'static.ps1'), '-PackagingScript', (Join-Path $fake 'packaging.ps1'),
+        '-WheelTestsScript', (Join-Path $fake 'wheeltests.ps1'))
     $output = Invoke-WithEnv $vars {
         Push-Location (Join-Path $Dir 'repo')
         try { & pwsh -NoProfile -File $script:CiBuild @seams @Arguments 2>&1 | ForEach-Object { "$_" } } finally { Pop-Location }
@@ -78,6 +76,7 @@ Describe 'Invoke-PythonCiBuild.ps1' {
             }
             $fetcher = [regex]::Escape((Join-Path (Get-RepoRoot) 'linux\scripts\lib\fetch-data-lock.py'))
             Assert-Match "\|python -I $fetcher --lock <d>\\models\\models\.lock\|packaging " $calls 'the hub''s fetcher takes the lock before packaging'
+            Assert-Match '\|packaging RepoRoot=<d>\|wheeltests RepoRoot=<d>$' $calls 'the installed-wheel tests last, on what packaging left'
             Assert-Equal 2 @($r.Calls | Where-Object { $_ -like 'uv run pytest -v *' }).Count 'one pytest run per leg'
             Assert-Equal '' (@($r.Summary.failedSteps) -join ',') 'nothing failed'
         }
@@ -108,7 +107,7 @@ Describe 'Invoke-PythonCiBuild.ps1' {
             Assert-Match 'Python 9\.87t - Tests' $r.Text 'the experimental leg is reported'
             Assert-Equal 'demo-dist' ([regex]::Match(($r.Calls -join '|'), '--cov=([^ ]+)').Groups[1].Value) 'the package name from pyproject.toml'
             foreach ($case in @(@{ fail = 'report-9\.87\.xml'; step = 'Python 9.87 - Tests' }, @{ fail = '^static$'; step = 'Static Analysis' },
-                    @{ fail = '^packaging$'; step = 'Packaging (source + Windows binaries)' })) {
+                    @{ fail = '^packaging$'; step = 'Packaging (source + Windows binaries)' }, @{ fail = '^wheeltests$'; step = 'Free-threaded wheel tests' })) {
                 $r = Invoke-CiBuildFixture -Dir $d -Fail $case.fail
                 Assert-Equal 1 $r.Code "a failed $($case.step) must fail the run"
                 Assert-Equal $case.step (@($r.Summary.failedSteps) -join ',')
@@ -128,9 +127,10 @@ Describe 'Invoke-PythonCiBuild.ps1' {
     It 'passes the child drivers only parameters they declare' {
         $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:CiBuild, [ref]$null, [ref]$null)
         $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-ChildDriver' }, $true))
-        Assert-Equal 2 $calls.Count 'the static-analysis and packaging calls'
+        Assert-Equal 3 $calls.Count 'the static-analysis, packaging and wheel-tests calls'
+        $drivers = @{ '$StaticAnalysisScript' = 'Invoke-CiStaticAnalysis.ps1'; '$PackagingScript' = 'Invoke-CiPackaging.ps1'; '$WheelTestsScript' = 'Invoke-FreeThreadedWheelTests.ps1' }
         foreach ($call in $calls) {
-            $driver = Join-Path (Split-Path $script:CiBuild) ($(if ($call.CommandElements[1].Extent.Text -match 'Static') { 'Invoke-CiStaticAnalysis.ps1' } else { 'Invoke-CiPackaging.ps1' }))
+            $driver = Join-Path (Split-Path $script:CiBuild) $drivers[$call.CommandElements[1].Extent.Text]
             $declared = @([System.Management.Automation.Language.Parser]::ParseFile($driver, [ref]$null, [ref]$null).ParamBlock.Parameters.Name.VariablePath.UserPath)
             $passed = @($call.CommandElements[2].Find({ param($n) $n -is [System.Management.Automation.Language.HashtableAst] }, $true).KeyValuePairs.Item1.Value)
             foreach ($name in $passed) { Assert-True ($name -in $declared) "$(Split-Path $driver -Leaf) has no -$name" }

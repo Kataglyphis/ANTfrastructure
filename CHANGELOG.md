@@ -12,6 +12,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — Windows runs the suite on the installed cp3XYt wheel too (CON122)
+
+- **Why.** Windows packaging only loaded the free-threaded wheel (OrchestrANT job 118384523138: `63
+  compiled module(s) of orchestrant loaded on free-threaded 3.15.0`); no test ran its code there.
+- **One definition.** A project names the tests in `pyproject.toml`'s
+  `[tool.antfrastructure.free-threaded-wheel-tests]` (`extra`, `copy`, `env`, `isolated`,
+  `pytest-args`); `free-threaded-wheel-tests.py table` validates and prints it. The Linux twin
+  reads it when no flag names the tests; flags and a table together fail.
+- **The GIL check.** `free-threaded-wheel-tests.py run` runs pytest in-process and fails when the
+  GIL is on before or after the tests. All three lanes run through it, the Linux twin included.
+- **Windows x64.** `Invoke-FreeThreadedWheelTests.ps1`, step 4 of `Invoke-PythonCiBuild.ps1`: a
+  fresh venv of `C:\python-freethreaded`, the lock's set, the wheel `--no-deps`, the tests outside
+  the checkout. **Windows arm64:** `New-Arm64PythonTestStage.ps1` stages `wheel-tests-<leg>.cmd` on
+  the X.Yt leg; `New-FreeThreadedWheelTestStage` (`WindowsPythonWheel.Suite.psm1`) does it for
+  OrchestrANT's own stage. A new module and a new helper, so no image layer re-keys.
+- **Docs.** [`python-ci.md` § The suite on the installed wheel](docs/python-ci.md#the-suite-on-the-installed-wheel).
+
 ## 2026-10-20 — GTK 4 for gtk4-rs in every Linux image, from the next build (CON129)
 
 - **Why.** OxidANT's GTK GUI (`gui_unix`, gtk4-rs 0.11 `v4_10`) is mandatory (owner, 2026-10-20),

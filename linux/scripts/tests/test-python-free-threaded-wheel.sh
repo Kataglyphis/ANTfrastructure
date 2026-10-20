@@ -180,7 +180,8 @@ t_case "prove: a GIL interpreter cannot prove anything"
 t_assert_eq "2" "$(t_rc python3 -I "${HELPER}" prove pip)"
 t_assert_contains "$(python3 -I "${HELPER}" prove pip 2>&1)" "is not a free-threaded interpreter"
 
-FT_PY="${FT_PYTHON:-/opt/python-freethreaded/bin/python3.14t}"
+# The image's interpreter of whatever X.Y it pins; none found skips the cases below.
+FT_PY="${FT_PYTHON:-$(compgen -G '/opt/python-freethreaded/bin/python3.*t' | head -n 1)}"
 # _ft_ext <venv> <name> <slot>: a C extension built against the venv's 3.14t headers, installed as distribution <name>.
 _ft_ext() {
   local venv="$1" name="$2" slot="$3" paths dist
@@ -205,6 +206,25 @@ if "${FT_PY}" -c 'import sysconfig, sys; sys.exit(not sysconfig.get_config_var("
   t_assert_contains "$(_ft_prove ftfix_free)" "the GIL stayed disabled"
   t_assert_eq "1" "$(t_rc _ft_prove ftfix_gil)" "the undeclared extension fails the proof"
   t_assert_contains "$(_ft_prove ftfix_gil)" "ERROR: the GIL was re-enabled, first by ftfix_gil; Cython needs freethreading_compatible=True"
+
+  t_case "run, for real: pytest's code, -p no:cacheprovider first, the sites ahead, and a failure when a test re-enabled the GIL"
+  RUNNER="${SCRIPTS}/02-toolchain/python/free-threaded-wheel-tests.py"
+  mkdir -p "${_work}/fakesite" "${_work}/rundir"
+  printf '%s\n' 'import os, sys' 'def main(args):' \
+    '    print("pytest", " ".join(args), "| path", sys.path.index(os.path.dirname(__file__)), sys.path[0], flush=True)' \
+    '    if os.environ.get("FAKE_IMPORT"): __import__(os.environ["FAKE_IMPORT"])' \
+    '    return int(os.environ.get("FAKE_RC", "0"))' > "${_work}/fakesite/pytest.py"
+  _ft_run() { (cd "${_work}/rundir" && env -u PYTHON_GIL "${_work}/ftvenv/bin/python" "$@" 2>&1); }
+  out="$(_ft_run -I "${RUNNER}" run --site "${_work}/fakesite" -- -v x.py)"
+  t_assert_contains "${out}" "pytest -p no:cacheprovider -v x.py | path 0 " "isolated: the site leads sys.path"
+  t_assert_contains "${out}" "the GIL stayed disabled through the tests on free-threaded 3."
+  t_assert_eq "0" "$(t_rc _ft_run -I "${RUNNER}" run --site "${_work}/fakesite" -- -v)"
+  t_assert_contains "$(_ft_run "${RUNNER}" run --site "${_work}/fakesite" -- -v)" "| path 1 ${_work}/rundir" "not isolated: the run directory, then the site, as python -m pytest with PYTHONPATH"
+  t_assert_eq "3" "$(FAKE_RC=3 t_rc _ft_run -I "${RUNNER}" run --site "${_work}/fakesite")" "pytest's own exit code"
+  t_assert_eq "1" "$(FAKE_IMPORT=ftfix_gil t_rc _ft_run -I "${RUNNER}" run --site "${_work}/fakesite")" "passing tests that re-enabled the GIL fail"
+  t_assert_contains "$(FAKE_IMPORT=ftfix_gil _ft_run -I "${RUNNER}" run --site "${_work}/fakesite")" "ERROR: the GIL was enabled during the tests"
+  t_assert_eq "0" "$(FAKE_IMPORT=ftfix_free t_rc _ft_run -I "${RUNNER}" run --site "${_work}/fakesite")" "a module declaring Py_MOD_GIL_NOT_USED keeps it off"
+  t_assert_eq "2" "$(t_rc _ft_run -X gil=1 -I "${RUNNER}" run --site "${_work}/fakesite")" "the GIL on before any test is no run"
 else
   # CI's host has no 3.14t; the image's /opt/python-freethreaded does (FT_PYTHON names another).
   printf '  SKIP [%s] no free-threaded interpreter at %s\n' "${_T_CASE}" "${FT_PY}"

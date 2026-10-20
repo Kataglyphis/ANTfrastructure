@@ -17,6 +17,7 @@ The Python consumers (OrchestrANT, WebDavClient) share their whole CI surface wi
 | Chain OpenCV (Windows) | `Sync-UvChainOpenCv` in `WindowsUv.Common.psm1`, over `Copy-ChainOpenCvPackage` in `WindowsPythonApp.Common.psm1` |
 | App bundles (zip/MSI/deb/… inputs) | [`python-app-bundles.md`](python-app-bundles.md) |
 | Free-threaded wheel (declared, proved) | `linux/scripts/02-toolchain/python/free-threaded-wheel.py`, run by both packaging drivers (§ Two wheels: GIL and free-threaded) |
+| Tests on the installed cp3XYt wheel | `test-free-threaded-wheel.sh`, `windows/scripts/python/Invoke-FreeThreadedWheelTests.ps1` and the arm64 stage, over `free-threaded-wheel-tests.py` (§ The suite on the installed wheel) |
 
 A consumer's workflow is configuration, not steps: its `scripts/linux/ci_*.sh` wrappers
 `antfrastructure_exec` into the drivers above
@@ -438,7 +439,7 @@ Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
 `python-ci-windows.yml`'s build job runs `build-script` in the `:winamd64` container. Left empty,
 that is the repo's own `scripts\windows\Build-Windows.ps1` when the checkout has one, else
 [`windows/scripts/python/Invoke-PythonCiBuild.ps1`](../windows/scripts/python/Invoke-PythonCiBuild.ps1)
-with `-RepoRoot` set to the mount. The driver runs the Linux lane's three steps, logging to
+with `-RepoRoot` set to the mount. The driver runs the Linux lane's four steps, logging to
 `logs\build-windows-*.log` and `logs\build-summary-*.json`:
 
 1. **pytest per leg**, each leg in its own venv, synced `--locked` when `uv.lock` exists. The
@@ -447,6 +448,8 @@ with `-RepoRoot` set to the mount. The driver runs the Linux lane's three steps,
 2. **`Invoke-CiStaticAnalysis.ps1`**, which gates.
 3. **`DataLocks`**, each fetched beside itself by the hub's `fetch-data-lock.py`
    ([`data-repositories.md`](data-repositories.md#the-hubs-fetcher)), then **`Invoke-CiPackaging.ps1`**.
+4. **`Invoke-FreeThreadedWheelTests.ps1`**, the tests on the installed cp3XYt wheel
+   (§ The suite on the installed wheel), which gates.
 
 A repo keeps its values in `scripts\windows\python-ci.psd1`, under the driver's parameter names. A
 parameter on the command line wins; a key that is no parameter fails the run.
@@ -476,7 +479,7 @@ parameter on the command line wins; a key that is no parameter fails the run.
 
 To run it by hand, start it from the repo root inside `:winamd64`:
 `pwsh -File third_party\ANTfrastructure\windows\scripts\python\Invoke-PythonCiBuild.ps1`. Test:
-`windows/scripts/tests/PythonCiBuild.Tests.ps1`, with a uv, a python and both child drivers
+`windows/scripts/tests/PythonCiBuild.Tests.ps1`, with a uv, a python and the three child drivers
 replaced by stand-ins that record each call.
 
 ## Windows arm64: the staged test job
@@ -508,13 +511,16 @@ pin, writes `dist\windows-arm64-python`:
   `NAME=value` pairs, `test-paths` pytest's paths.
 - **Proofs:** each binary wheel unpacked alone to `proof-<leg>`, for `free-threaded-wheel.py load` on
   a GIL leg and `prove` on an X.Yt leg (`Get-NativeWheelCheck`), under `python -S`.
+- **Wheel tests:** on an X.Yt leg, `pyproject.toml`'s free-threaded wheel tests in `wheel-tests-<leg>\`
+  and `wheel-tests-<leg>.cmd`, on the leg's own interpreter and site (§ The suite on the installed
+  wheel). The leg must install the table's `extra`, or the stage fails.
 
 The arch gate then grades the tree standalone (every PE ARM64, at least 10, every import resolved
 in the stage or Windows), and the tree uploads as `python-windows-arm64-stage`.
 
 **The device** runs `Invoke-StagedTests.ps1` over its `tests.json`: per leg `run-pytest-<leg>.cmd` and
-`prove-<leg>.cmd`. The one `TESTS:` line goes to the summary; a failed test or proof, or no passing
-test, fails the job. With `arm64-wheels: true` it then uploads the wheels as
+`prove-<leg>.cmd`, and `wheel-tests-<leg>.cmd` on an X.Yt leg. The one `TESTS:` line goes to the
+summary; a failed test or proof, or no passing test, fails the job. With `arm64-wheels: true` it then uploads the wheels as
 `packages-windows-arm64-wheels`.
 
 **What fails the stage:** a locked package with no `win_arm64` wheel for a leg and no pure build. uv
@@ -663,36 +669,54 @@ free-threaded target interpreter`. The Windows arm64 cross lane builds it, as be
 
 The proof loads the wheel's modules; it runs none of their code. The X.Yt test leg runs the code,
 but from the sources, not the Cython build. A project that wants its tests on the compiled modules
-runs `linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh` after `ci_packaging.sh`, from its
-own packaging wrapper:
+names them once, in `pyproject.toml`, and every lane reads that table (CON122):
 
-```bash
-bash "$(antfrastructure_path linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh)" \
-  ${1:+--python-version "$1"} --extra test --copy tests/unit/test_thread_safety.py \
-  --env ORCHESTRANT_REQUIRE_COMPILED=1 --isolated -- -W error tests/unit/test_thread_safety.py
+```toml
+[tool.antfrastructure.free-threaded-wheel-tests]
+extra = "test"
+copy = ["tests/unit/test_thread_safety.py"]
+env = { ORCHESTRANT_REQUIRE_COMPILED = "1" }
+isolated = true
+pytest-args = ["-W", "error", "tests/unit/test_thread_safety.py"]
 ```
 
+| Lane | Runs it | Where |
+|---|---|---|
+| Linux, each arch | `linux/scripts/02-toolchain/python/test-free-threaded-wheel.sh`, from the project's `ci_packaging.sh` wrapper after the hub's | `:latest` |
+| Windows x64 | `windows/scripts/python/Invoke-FreeThreadedWheelTests.ps1`, step 4 of the Windows build driver | `:winamd64` |
+| Windows arm64 | `wheel-tests-<leg>.cmd`, staged on the X.Yt leg (§ Windows arm64: the staged test job); OrchestrANT's own stage calls `New-FreeThreadedWheelTestStage` | `windows-11-arm` |
+
+- **The table.** `copy` is required: paths, relative to the checkout, staged at the same relative
+  path in a temporary directory. `extra` is one extra of the lock, `env` pairs reach pytest only,
+  `isolated` adds `python -I`, `pytest-args` go to pytest. `free-threaded-wheel-tests.py table` reads
+  it; an unknown key, a path that leaves the checkout, a wrong type or any other table under
+  `[tool.antfrastructure]` (a misspelt name) fails the run.
 - **What it installs.** A fresh venv of the image's free-threaded interpreter, found and never
-  downloaded, gets the lock's set (`uv export --locked --no-emit-project`, with `--extra` if given),
-  then the shipped `cp3XYt` wheel of this arch with `--no-deps`.
-- **Where it runs.** Each `--copy` is staged at its relative path in a temporary directory, and
-  pytest runs there, because from the checkout the sources would shadow the installed modules. Do
-  not copy the package itself. `--isolated` adds `python -I`; leave it off when the tests import
+  downloaded, gets the lock's set (`uv export --locked --no-emit-project`, with the `extra`), then
+  the shipped `cp3XYt` wheel of this arch with `--no-deps`. The device has no uv: the stage's leg
+  site already holds the same set and wheel.
+- **Where it runs.** In the staged directory, because from the checkout the sources would shadow
+  the installed modules. Do not copy the package itself. Leave `isolated` off when the tests import
   siblings by package path (`from tests.helpers import …`), which needs the run directory on
-  `sys.path`.
-- **What it passes on.** `--env NAME=VALUE` reaches the pytest process only, and everything after
-  `--` goes to pytest. The project's pytest config is not copied unless a `--copy` names it, so pass
-  its warning filters there.
-- **When it skips.** In the three cases in which the driver builds no free-threaded wheel: a cross
-  build, `PYTHON_FREE_THREADED_WHEEL=off`, and `auto` without the classifier. A declared project with
-  no `cp3XYt` wheel of this arch in `dist/` fails, and so does a call without `--copy`.
+  `sys.path`. The project's pytest config is not copied unless `copy` names it, so pass its warning
+  filters in `pytest-args`.
+- **The GIL check.** `free-threaded-wheel-tests.py run` runs pytest in-process on the free-threaded
+  interpreter and fails when the GIL is on before the tests or after them, even when every test
+  passed; pytest's warnings summary then names the module that re-enabled it. Every lane logs
+  `free-threaded wheel tests passed: <wheel>` on success.
+- **When it skips.** In the three cases in which the packaging driver builds no free-threaded
+  wheel: a cross build, `PYTHON_FREE_THREADED_WHEEL=off`, and `auto` without the classifier. Windows
+  also skips a project without the table, saying so. A declared project with no `cp3XYt` wheel of
+  this arch in `dist/` fails. On Linux, flags (`--copy`, `--extra`, `--env`, `--isolated`, `--`)
+  can stand in for the table; both together fail, and so does neither.
 - **What a test may not assume there.** A compiled module's `__file__` is its extension, a
   source-stripped wheel has no `.py` for `inspect` or a hash, and Cython's `import` returns a `None`
   in `sys.modules` as the module instead of raising. Fake an absent module with a `sys.meta_path`
   finder that raises `ModuleNotFoundError`.
 
-OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite. Windows has no
-twin yet: its packaging only loads the wheel (BACKLOG CON122).
+OrchestrANT runs its thread-safety tests this way, WebDavClient its whole suite. Tests:
+`linux/scripts/tests/test-python-free-threaded-wheel-tests.sh`, the real-interpreter `run` cases in
+`test-python-free-threaded-wheel.sh`, and `windows/scripts/tests/PythonWheel.Suite.Tests.ps1`.
 
 ### The arm64 cross lane's free-threaded wheel
 

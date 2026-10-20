@@ -4,10 +4,10 @@
 
 <#
 .SYNOPSIS
-    A Python repo's Windows CI build: pytest on each Python leg, the gating static analysis, then the packaging driver.
+    A Python repo's Windows CI build: pytest on each Python leg, the gating static analysis, the packaging driver, then the tests on its cp3XYt wheel.
 .DESCRIPTION
     python-ci-windows.yml's build script for a repo that ships none of its own; the twin of the Linux lane's ci_tests.sh,
-    ci_static_analysis.sh and ci_packaging.sh. -SettingsFile sets any parameter below except the four paths, by name, and
+    ci_static_analysis.sh, ci_packaging.sh and test-free-threaded-wheel.sh. -SettingsFile sets any parameter below except the five paths, by name, and
     one passed on the command line wins. See docs/python-ci.md § The Windows build driver.
 .PARAMETER RepoRoot
     The checkout to build; empty is the current directory.
@@ -34,6 +34,8 @@
     Test seam: the static-analysis driver, run as a child process.
 .PARAMETER PackagingScript
     Test seam: the packaging driver, run as a child process.
+.PARAMETER WheelTestsScript
+    Test seam: the installed-wheel tests driver, run as a child process.
 #>
 [CmdletBinding()]
 param(
@@ -53,7 +55,8 @@ param(
     [switch]$EnablePySpy,
     [switch]$StopOnError,
     [string]$StaticAnalysisScript = (Join-Path $PSScriptRoot 'Invoke-CiStaticAnalysis.ps1'),
-    [string]$PackagingScript = (Join-Path $PSScriptRoot 'Invoke-CiPackaging.ps1')
+    [string]$PackagingScript = (Join-Path $PSScriptRoot 'Invoke-CiPackaging.ps1'),
+    [string]$WheelTestsScript = (Join-Path $PSScriptRoot 'Invoke-FreeThreadedWheelTests.ps1')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -71,7 +74,7 @@ if (-not $SettingsFile) {
 }
 if ($SettingsFile) {
     $settings = Import-PowerShellDataFile -LiteralPath $SettingsFile
-    $fixed = @('RepoRoot', 'SettingsFile', 'StaticAnalysisScript', 'PackagingScript')
+    $fixed = @('RepoRoot', 'SettingsFile', 'StaticAnalysisScript', 'PackagingScript', 'WheelTestsScript')
     foreach ($key in @($settings.Keys)) {
         if ($key -in $fixed -or -not $MyInvocation.MyCommand.Parameters.ContainsKey($key)) {
             throw "$SettingsFile sets '$key', which is not a setting of $($MyInvocation.MyCommand.Name)"
@@ -155,6 +158,11 @@ try {
                 Invoke-BuildExternal -Context $context -File $python -Parameters @('-I', $fetcher, '--lock', (Join-Path $repoRoot $lock)) | Out-Null
             }
             Invoke-ChildDriver $PackagingScript ([ordered]@{ RepoRoot = $repoRoot; PythonVersion = $PackagingPythonVersion })
+        } | Out-Null
+
+        # pyproject.toml's [tool.antfrastructure.free-threaded-wheel-tests] opts in; without it the step logs a skip.
+        Invoke-BuildStep -Context $context -StepName 'Free-threaded wheel tests' -Critical -Script {
+            Invoke-ChildDriver $WheelTestsScript ([ordered]@{ RepoRoot = $repoRoot; PythonVersion = $PackagingPythonVersion })
         } | Out-Null
 
         Write-BuildLog -Context $context -Message '=== Completed Windows build/test pipeline ==='

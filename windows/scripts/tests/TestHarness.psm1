@@ -217,6 +217,15 @@ function New-TestWheel {
     return $Path
 }
 
+# <Tool>.cmd per -Tool in -Dir: logs "<Tool> %*" to %FAKE_LOG%, then runs fake-<Tool>.ps1; pwsh -File would split --x=a:b at its colon.
+function New-FakeToolShim {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string[]]$Tool)
+    foreach ($name in $Tool) {
+        Set-Content -LiteralPath (Join-Path $Dir "$name.cmd") -Encoding ascii -Value @(
+            '@echo off', ">>`"%FAKE_LOG%`" echo $name %*", "pwsh -NoProfile -File `"%~dp0fake-$name.ps1`" %*")
+    }
+}
+
 function Get-TestResult { return $script:Results }
 
 # Anchored on this module's location, so it does not depend on how the calling suite was loaded.
@@ -335,4 +344,4 @@ function Start-LoopbackListener {
 
 Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
-    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel
+    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim

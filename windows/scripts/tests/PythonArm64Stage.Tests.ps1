@@ -37,6 +37,15 @@ Describe 'New-Arm64PythonTestStage: what windows-11-arm runs (CON113)' {
         Assert-True $text.Contains('Get-NativeWheelCheck -Name $wheel.Name -Leg $leg -Platform (Get-PythonWheelTag)') 'the check comes from the wheel''s own tags'
     }
 
+    It 'stages pyproject.toml''s free-threaded wheel tests on an X.Yt leg''s own interpreter, which must hold their extra (CON122)' {
+        $lines = @(Get-Content -LiteralPath (Join-Path (Get-RepoRoot) $script:stagePath) | ForEach-Object Trim)
+        $want = '$suite = Get-FreeThreadedWheelSuite -Python $gil.Exe -PyprojectPath $pyproject', 'if ($ft -and $binary -and $suite) {',
+            '$manifest.Add((New-FreeThreadedWheelTestStage -Suite $suite -RepoRoot $repo -StageDir $out -Name "wheel-tests-$leg" `',
+            '-Python "python-$leg\$($exe[0].Name)" -Wheel $wheel.Name))'
+        Assert-Equal '' (@($want | Where-Object { $_ -notin $lines }) -join ' || ') 'the X.Yt leg reads the table and stages its run on its own python'
+        Assert-Match '\$suite\.Extra -notin \$legExtras\) \{\s*throw' ([IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:stagePath))) 'a leg without the extra fails the stage'
+    }
+
     It 'builds the wheels in a child, where VS''s cross environment ends, with clang-cl told the target through CL' {
         $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:stagePath))
         foreach ($needle in @('& pwsh -NoProfile -File $PSCommandPath -RepoRoot $repo', '$env:CL = "--target=$((Get-WindowsTargetArchInfo).ClangTriple)"',
