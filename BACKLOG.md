@@ -29,7 +29,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
 ## Open — getting fixes to consumers
 
-- [ ] **CON115 — every hub pipeline runs at the host's parallelism, never one step at a time** [L, ★★★].
+- [ ] **CON126 — every hub pipeline runs at the host's parallelism, never one step at a time** [L, ★★★].
       Owner directive 2026-10-20: "alles innerhalb von ANTfrastructure massiv parallel (soviel wie
       möglich)". Measured on that day's 3-arch `:latest` rebuild: the cross stages already run two
       arches at a time (`--parallel-archs`), but the **runtime lane serialises per arch** — amd64
