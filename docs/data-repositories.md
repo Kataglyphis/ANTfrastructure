@@ -79,13 +79,13 @@ wrote the same three files, `0644`, as the hub's fetcher, and BeschleunigerBalle
 `FetchAssets.cmake` the same 44 scene files and stamps, which the hub's fetcher then read as up
 to date.
 
-| Consumer | Lock | Fetcher today | Onto the hub's |
-| --- | --- | --- | --- |
-| OxidANT | `resources/models/models.lock` | `scripts/linux/fetch-models.sh`; `scripts/windows/Get-Models.ps1`, which keeps no cache | both become a call of `fetch-data-lock.py --lock resources/models/models.lock` |
-| OmniAccelerANT | OxidANT's | OxidANT's two, from `bundle-runtime-closure.sh`, `ci/lane-native-linux.sh`, `observant/package-observant.sh` and `Package-ObservANT.ps1` | no change past OxidANT's |
-| OrchestrANT | `resources/models/models.lock` | `scripts/fetch_models.py`, from `ci_packaging.sh` and both Windows build scripts | the same call; `tests/unit/test_fetch_models.py` goes with it |
-| BeschleunigerBallett | `Resources/assets.lock` | `cmake/FetchAssets.cmake`, at every configure or as `cmake -P` | `kataglyphis_fetch_data(LOCK Resources/assets.lock DEST Resources/Models EXTRACT ONLY crytek-sponza Dinosaurs)` |
-| AccelerANTgine | none | `curl` and `sha256sum` by hand, in `models/README.md` | a lock and the call |
+| Consumer | Lock | Runs the hub's fetcher from |
+| --- | --- | --- |
+| OxidANT | `resources/models/models.lock` | `scripts/linux/fetch-models.sh` and `scripts/windows/Get-Models.ps1`, each one call of `fetch-data-lock.py` (64c9768) |
+| OmniAccelerANT | OxidANT's | OxidANT's two, from `bundle-runtime-closure.sh`, `ci/lane-native-linux.sh`, `observant/package-observant.sh` and `Package-ObservANT.ps1` |
+| OrchestrANT | `resources/models/models.lock` | `ci_packaging.sh`, `Build-WindowsArm64.ps1`, and `Invoke-PythonCiBuild.ps1` through `python-ci.psd1`'s `DataLocks` (10de713, 93eb0d1) |
+| BeschleunigerBallett | `Resources/assets.lock` | `cmake/FetchAssets.cmake`: `kataglyphis_fetch_data(LOCK Resources/assets.lock DEST Resources/Models EXTRACT ONLY crytek-sponza Dinosaurs)`, at every configure or as `cmake -P` (b82a5aa1) |
+| AccelerANTgine | `models/models.lock` | by hand, as `models/README.md` says (fa5ca49) |
 
 **A fetched scene directory holds a stamp with two fields**: the archive's hash and the number
 of files it extracted. A matching hash alone is not enough. On 2026-10-17 a rebase deleted the
@@ -103,8 +103,6 @@ configure fetches before the install rules run.
 - Icons, branding and a README's images, compressed: OxidANT's hero image went from a 7.5 MiB
   GIF to a 2.1 MiB WebP on 2026-10-17.
 - Shaders, which are code, and a website's own content (ANThology's images and fonts).
-
-The consumers move onto the hub's fetcher in BACKLOG CON98.
 
 ## Keeping data out of the code repositories
 

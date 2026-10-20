@@ -6,13 +6,13 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-12**, read from the registry (hub = the image's `revision` label, digest =
+**State 2026-10-20**, read from the registry (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-11, hub 57ba7420, index `b52f8c34…`;
-amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`), `:latest-nvidia` (2026-10-11, hub a6dd6992,
-index `810f36b3…`, amd64 `23e3cc9e…`, with DeepStream 9.1), `:latest-rocm` (2026-10-09, hub 3f259111, index
-`a5d68fbe…`, amd64 `d58be41b…`), `:winamd64` (2026-10-08, hub 900ed949, `e96203a8…`), `:winamd64-nvidia`
-(2026-10-10, hub 6ba8eb23, `75bbe6f6…`), `:winamd64-rocm` (2026-10-09, hub c0969e22, `32c7cc51…`) and
-`:winarm64` (2026-10-10, hub 1ebd88b6, `ba6bfaae…`, without NVIDIA; no `:winarm64-nvidia` tag exists).
+amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`; Python 3.14, ORT 1.30.0), `:latest-nvidia`
+(2026-10-19, hub e9cff670, index `0e9dec34…`, amd64 `be8b9726…`; Python 3.15, ORT 1.31.0), `:latest-rocm`
+(2026-10-09, hub 3f259111, index `a5d68fbe…`, amd64 `d58be41b…`), and on 2026-10-17, all with
+`PYTHON_VERSION=3.15.0` and label `13cf002c`: `:winamd64` (`bec12ad0…`), `:winamd64-nvidia` (`14c1a7e6…`),
+`:winamd64-rocm` (`ca682539…`) and `:winarm64` (`e78fa8c3…`, without NVIDIA; no `:winarm64-nvidia` tag exists).
 Every Linux image gap up to CON41 shipped and was checked in the published children (git history).
 Decisions and gaps checked closed live in [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
 here is a date's measurement.**
@@ -55,22 +55,11 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `:latest` has markdown-it-py 4.2.0 in `/opt/venv`, but only as myst-parser's dependency from
       OrchestrANT's `docs` extra, so no pin holds it at the renderer's version (read 2026-10-19).
       1. Pin it in the image from that one requirements file, and assert the version in the smoke.
-      2. jotrockenmitlocken (`scripts/ci-container-steps.sh`) and ANThology (`docs.yml`) run a
-         bare `dart doc`; they switch to `dartdoc_build_main` and render their `docs/` guides on
-         their docs sites, as OmniAccelerANT's `generate-docs.sh` does.
+      2. Done: jotrockenmitlocken (a591954) and ANThology (c3615ca) run `dartdoc_build_main` with
+         their `docs/` guides; their `build-docs.yml` runs 39382562942 and 39382416312 (2026-10-20)
+         took `/opt/venv`'s markdown-it-py 4.2.0 and uploaded `guide-*.html` (two and one).
 
-      Done when a docs build in `:latest` renders the guides without network and both consumers'
-      sites carry their guides.
-
-- [ ] **CON98 — one hub-owned fetcher for the data locks** [S, ★★]. The hub half is in
-      (2026-10-19): `linux/scripts/lib/fetch-data-lock.py`, stdlib Python, and
-      `cmake/KataglyphisFetchData.cmake`'s `kataglyphis_fetch_data`, with one suite for the
-      cache, the hash checks, the atomic writes and the scene stamp
-      ([data-repositories.md § The hub's fetcher](docs/data-repositories.md#the-hubs-fetcher)).
-      Left: OxidANT's `fetch-models.sh` and `Get-Models.ps1`, OrchestrANT's `fetch_models.py`
-      and BeschleunigerBallett's `cmake/FetchAssets.cmake` become calls of it, and
-      AccelerANTgine's `models/README.md` recipe a lock. Done when the consumers keep only their
-      locks.
+      Done when a docs build in `:latest` renders the guides without network, on the pinned parser.
 
 - [ ] **CON97 — Linux packages that start on Debian 13 and Ubuntu 24.04** [L, ★★★]. Owner OK
       2026-10-16. Step 1 is in (`kataglyphis_install_linux_closure`, the
@@ -95,18 +84,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `Test-Arm64Bundle.ps1` runs it on a device when the bundle carries it. Left:
       1. Done: the `:winarm64` of 2026-10-10 (`ba6bfaae…`) carries the tree, and BeschleunigerBallett run
          38100828628 passed `free-threaded interpreter: GIL off, stdlib extensions import` on `windows-11-arm`.
-      2. **[b] python-ci-windows.yml's arm64 job — owner decision.** It runs on the bare runner,
-         and `Invoke-PythonTestLegs.ps1 -InstallUv` lets uv download a python-build-standalone
-         3.14t. No image runs on `windows-11-arm`, so the tree has to arrive as an artifact:
-         either a `windows-2025` job pulls `:winarm64` and uploads only
-         `C:\runtime\python-freethreaded` (82.5 MB), as `container-ci-windows.yml`'s bundle export
-         does for the whole tree, or the image publish pushes that directory as its own SHA-pinned
-         artifact. Then the arm64 job extracts it, appends it to `PATH`, sets
-         `UV_PYTHON_DOWNLOADS=never` and checks that `uv python find 3.14t` resolves inside it;
-         only then is the download dropped. The job's GIL legs download too (separate decision).
+      2. python-ci-windows.yml's arm64 job: in source as CON113 since 2026-10-20 (403b7a23), so the
+         owner decision is moot. A `windows-2025` job stages both legs from `:winarm64`'s
+         interpreters and the device installs nothing.
+      3. The device smoke half passes on 3.15: hub run 39200278761 (2026-10-19, `:winarm64`
+         `e78fa8c3…`) printed `sys._is_gil_enabled() False | Py_GIL_DISABLED 1`.
 
-      Done when a windows-11-arm `3.14t` leg passes with `UV_PYTHON_DOWNLOADS=never` and the
-      device smoke reports `sys._is_gil_enabled() == False` for the bundle's `python3.14t.exe`.
+      Done when CON113's `windows-arm64.yml` run passes its X.Yt leg without downloading.
 - [ ] **CON79 — the cp314t chain twins reach the published images, and phase 2** [L, ★★]. Linux native
       and Windows amd64 are in source since 2026-10-07 (CHANGELOG). Open:
       1. **Prove in full image builds**: Linux — FT-STORE is green on the published `:latest` amd64
@@ -131,13 +115,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
          `torch-2.14.1a0+git5c48869-cp314-cp314t-linux_riscv64.whl: 1 compiled module(s) of torch loaded on free-threaded
          3.14.8; the GIL stayed disabled` and ends on `apache-tvm-ffi av iree-base-runtime onnxruntime torch`.
          **numpy** keeps its row (`twin:FT_TORCH_TWIN`) without a chain build; torchvision stays `none`.
-      2. **arm64 cross twins (Windows): the device proof.** In source since 2026-10-07 (CHANGELOG), proved
-         statically in `:winarm64`; on the device, BeschleunigerBallett run 38100828628 passed `free-threaded
-         wheels: every cp314t twin loads with the GIL off` (2026-10-11). **The twins' dependencies are in source since
-         2026-10-11:** `Copy-TargetPythonDeps.ps1` stages them as `cp314t` or pure wheels in `wheels-cp314t\deps` and
-         fails when an edge resolves nowhere, and the device installs each twin with them, offline. PyPI carries all
-         six today: numpy 2.5.4 and ml_dtypes 0.6.0 as `cp314t-win_arm64`, and four pure wheels. Left: an arm64 chain
-         (the merge's gate), then the device run on the `:winarm64` it publishes.
+      2. **arm64 cross twins (Windows): done.** Chain bk-20261016-211745 built them on 3.15, `:winarm64`
+         `e78fa8c3…` published them on 2026-10-17, and on `windows-11-arm` hub run 39200278761 loaded every
+         `cp315t` twin (apache_tvm_ffi, av, iree_base_runtime, onnxruntime 1.31.0) with the GIL off.
       3. **The ROCm torch twin** (`Build-TorchRocmFromSource.ps1`; `Dockerfile.torch` already mounts the module,
          and must mount `linux/scripts/03-media/free-threaded-twins.txt` at `C:\bkmnt\free-threaded-twins.txt`
          once it asks `Get-FreeThreadedTwinPlan`). Measured 2026-10-12, what makes it harder than the Linux twin:
@@ -202,6 +182,21 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       ggml-hip against its CPU result. With no bundled runtime a bare Windows host's loader takes Adrenalin's
       System32 `amdhip64_7.dll` before TheRock's (llama.cpp#26929): prove it serves TheRock 10.1's hipBLAS, or
       re-bundle TheRock's three runtime DLLs and the byte-identity check that went with them.
+
+- [ ] **CON115 — DocumANTation's Python runs on a uv download and Ubuntu's `python3`, not the pin** [S, ★★].
+      Owner rule 2026-10-20: only the pinned CPython, once GIL and once free-threaded. `linux-x64.yml` runs one
+      leg on `ubuntu-26.04` through `setup-uv` with `python-version: "3.15"` (a uv download), no `3.15t` leg, and
+      downloads pandoc at run time. The `Dockerfile` builds its `md2pdf` venv on Ubuntu's `python3-full`. Fix:
+      the lane in the family image on the pinned X.Y and X.Yt, and the Dockerfile's venv on the pin.
+- [b] **CON116 — ModelANT's `check.yml` runs on the runner's `python3` and `shellcheck`** [S, ★]. Owner
+      decision pending (2026-10-20). Its two steps (each model has its spec, licence and notice; `bash -n`,
+      `shellcheck -S warning` and `py_compile` over the scripts) run on `ubuntu-latest` on every push, while
+      `release.yml` runs in `:latest` since CON112. Moving them into the image costs a 12.84 GB pull per push.
+- [ ] **CON117 — WebDavClient tracks copies of its README and CHANGELOG in `docs/source/`** [S, ★]. The
+      hub's `ci_build_docs.sh` (lines 24-25) copies the root files over them before every build; WebDavClient's
+      `AGENTS.md` has each commit re-sync them by hand, so `docs/Makefile` builds without that copy. Both have
+      drifted (2026-10-20: the CHANGELOG copy lacks 5dad56c's and 970353a's entries). One source: untrack
+      them and let `docs/Makefile` and `make.bat` copy too, or include the root files from Sphinx.
 
 ## Open — Flet clients for OrchestrANT's UIs
 
@@ -304,11 +299,21 @@ owner carries the breakage that costs.
       for a project that declares free-threading); arm64 and riscv64 build numpy, PyGObject, pycairo and contourpy
       from sdists instead of copying apt's. uv moved to 0.13.0 with it (the first to know 3.15.0). Open:
       1. The default chain from `compiler` (amd64, arm64, riscv64), published, with every per-ABI wheel rebuilt for
-         cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch.
-      2. Then `:latest-nvidia` and `:latest-rocm`, serially.
-      3. The consumers' fallout once `:latest` moves: OrchestrANT and WebDavClient drop their literal `3.14 3.14t`
-         legs, their locks need cp315 wheels (numpy 2.5.4 has them; PyPI onnxruntime has none, the chain's serves
-         the image), and AccelerANTgine's `ci-python-bindings.sh` defaults to the image's X.Y.
+         cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch. The
+         owner's other build host runs it since 2026-10-20.
+         - **The cross children's GIL tree likely lacks its `ar` too.** The published arm64 and riscv64 children
+           run Ubuntu's 3.14.4 as their GIL interpreter (CON66); from source, `install_staged_target_python`
+           copies the cross-built `/opt/python-cross/<arch>/usr/local` instead. `build_python.sh` builds that
+           tree with the same cross configure as the X.Yt one, but `Dockerfile.torch` runs
+           `free-threaded-sysconfig-tools.py fix` on `/opt/python-freethreaded` only (CON110). Check the
+           published children: `/usr/local/bin/python3.15` runs and its sysconfig's `AR` exists; else run the
+           fix on `/usr/local` too.
+      2. Then `:latest-nvidia` and `:latest-rocm`, serially. `:latest-nvidia` is published on 3.15 (2026-10-19,
+         run 20261019-055155, hub e9cff670: `PYTHON_MAJOR_MINOR=3.15`, `ONNXRUNTIME_VERSION=v1.31.0`, uv 0.13.1).
+      3. The consumers' fallout once `:latest` moves. Their edits are in: OrchestrANT (964c24f) and WebDavClient
+         (091da1c, fb5659b) name no version, and AccelerANTgine's `ci-python-bindings.sh` takes the image's X.Y
+         (66b1db2). Left: their first runs on the 3.15 `:latest`, whose locks need cp315 wheels (numpy 2.5.4 has
+         them; PyPI onnxruntime has none, the chain's serves the image).
 
 - [ ] **CON66 — the consumers' `3.14t` legs on the image's free-threaded Python** [S, ★★]. The image
       half is proven: the `:latest` published 2026-10-09 (hub 36e996a7) carries
@@ -398,72 +403,6 @@ owner carries the breakage that costs.
 
 ## Open — Windows `:winamd64`
 
-- [ ] **CON91 — the Windows lanes follow the Python pin** [M, ★★]. The Windows images read the same
-      `PYTHON_VERSION` (3.15.0 since 2026-10-12, CON90), so their next chains build CPython 3.15. Derive every
-      version from it, as Linux does, so the next upgrade is one line here too.
-      **Done (hub, 2026-10-12):** `Get-PinnedPythonVersion`; the drivers' defaults and the arm64 job's legs
-      (`pinned`/`pinnedt`); `Sync-UvProjectDependencies` leaves the lock's ORT to the chain wheels, as on Linux;
-      the arm64 bundle's native pytest wheels are cp315; the rocm venv's PyPI LiteRT extra and its cp314 pin are gone.
-      Also done: the tvm-ffi wheel tags and the remaining literal fallbacks; the twin store is
-      `C:\runtime\wheels-free-threaded` / `PYTHON_WHEELS_FREE_THREADED`, as on Linux.
-      **ai-edge-litert from source: built (2026-10-12).** No release has a cp315 `win_amd64` wheel or sdist (2.3.0 and the
-      2.4.0.dev nightlies stop at cp314), so media-litert's second RUN builds it (`Build-LitertWheelBazel.ps1`).
-      Probe P12 ran the production driver on the 3.15 toolchain image. `ai_edge_litert-2.2.0-cp315-cp315-win_amd64.whl`
-      built from 5619 bazel actions in 272 s (530 s for the whole RUN, a 6.0 GB work tree). All 4522 compile, link and
-      archive actions ran clang-cl, lld-link or llvm-lib.
-      The wheel passed its contract and a CPU smoke through `Interpreter` and `CompiledModel`. The one clang-cl fix it needed:
-      snappy takes `_bzhi_u32` under `_MSC_VER`, so `-mbmi2` for snappy, which the AVX2 floor implies.
-      **Proven by chain bk-20261013-004816 (hub 051a78bc, 2026-10-13):** media-litert built the cp315 wheel again (4522
-      compile/link/archive actions, all LLVM, `LITERT-WHEEL-SMOKE PASS`), the merge staged it in `C:\runtime\wheels`, the
-      torch venv installed it from there, and smoke section 20 found it. All 16 stages ran green in 10347 s; the smoke
-      gate passed 273, failed 0 and skipped 1 (CUDA on the CPU image). **Left:** publishing that `:winamd64`, and the
-      rocm and nvidia chains proving their venvs (rocm's `rocm-1` LiteRT check).
-      **LiteRT v2.3.0 (2026-10-13):** probe `probe-litert-230` built `ai_edge_litert-2.3.0-cp315-cp315-win_amd64.whl`
-      with the production driver. It needed patch `003`, because rules_ml_toolchain passes `base_url` to LiteRT's new
-      rules_python 2.2.0. All 4545 compile, link and archive actions ran on LLVM tools, and the smoke passed. No chain has
-      built v2.3.0 yet.
-      - **Owner decisions 2026-10-12:**
-        - Build the full bazel wheel `//ci/tools/python/wheel:litert_wheel` at `LITERT_VERSION`, with clang-cl.
-          Rejected: a hybrid that rebuilds only `pywrap_litert_common.dll` and takes 77 members from the cp314 wheel,
-          and an interpreter-only CMake wheel, which would pass the rocm WebGPU check without any code ever loading the
-          accelerator.
-        - Only `libLiteRtWebGpuAccelerator.dll` comes from the pinned PyPI wheel.
-        - Bazel's external repos may be fetched in the RUN against upstream's WORKSPACE commit and SHA256 pins. The hub
-          pins what floats: `@litert_prebuilts` (a `latest` zip), the OpenVINO nightly and the bazel binary.
-      - **The clang-cl recipe** (read from Bazel 7.7.0 and TF bcdab1a, proven by probes P4 and P12):
-        - env `BAZEL_LLVM=C:\llvm-patched` plus `BAZEL_VC`;
-        - flags `--extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows-clang-cl` and `--compiler=clang-cl`;
-        - `@org_tensorflow//tensorflow/tools/toolchains/win:x64_windows-clang-cl` as the execution and host platform.
-      - **The hermetic Python:** rules_python takes the image's CPython 3.15 through `HERMETIC_PYTHON_URL/SHA256/PREFIX`
-        and a hub-written 3.15 requirements lock. TF's pin ships locks only up to 3.14. TF's rules_python runs its own pip
-        24.3.1, which dies on 3.15's `typing`. `@pypi__pip` is CPython's own ensurepip wheel.
-      - **No floating fetch:** `OPENVINO_NATIVE_DIR` names an empty dir. Without it, `@intel_openvino` downloads an
-        unhashed 744 MB nightly at load time, although nothing in the wheel's closure uses it (probe P5b).
-      - **Found in the first 3.15 chain (bk-20261012-185459 to -203943):** CPython 3.15 writes its free-threaded build
-        to `PCbuild\freethreaded\amd64t` (fixed ae44b6e2), and `_CL_` landed after CMake's `-- <source>` (fixed
-        ea8b34e6). ONNX Runtime's cp315 and cp315t wheels build and load with the GIL off.
-- [ ] **CON92 — the LiteRT-LM bazel lane compiles with MSVC `cl`, against the clang-cl rule** [S, ★★]. Found
-      2026-10-12 while designing CON91's LiteRT wheel. **Fixed in source (2026-10-13):** the pinned bazel 7.6.1 replaces
-      bazelisk, CON91's clang-cl recipe and an aquery gate build `litert_lm_main`, `OPENVINO_NATIVE_DIR` stops the
-      nightly download, and `--output_user_root=C:\bzl-user` takes bazel's install base out of the profile. Probe LM2
-      ran the production driver: 5244 actions in 539 s, all 3829 compile/link/archive actions on LLVM tools, `--help`
-      OK. It also found `Get-TreeGb` throwing on an empty dir under StrictMode, now fixed. **Proven by chain
-      bk-20261013-004816 (2026-10-13):** 3829 compile/link/archive actions, all clang-cl, lld-link or llvm-lib, and
-      `litert_lm_main.exe --help` OK. **Left:** the rocm variant's DXC/WebGPU payload has not been built with clang-cl yet.
-      - `Build-LitertLmBazel.ps1` sets only `BAZEL_VC` and passes only `--config=windows`. LiteRT-LM v0.18.0's
-        `.bazelrc` picks no compiler, so Bazel takes its default `msvc_x64` toolchain: `cl.exe`, `link.exe` and `lib.exe`.
-        The rocm variant's `bk-181` log probes that toolchain's `cl.exe`.
-      - `docs/windows-builds.md`'s compiler table said "clang-cl, lld-link" for it.
-      - Fix: CON91's clang-cl recipe. LiteRT-LM's TF pin d9a8da7 defines the same `x64_windows-clang-cl` platform.
-        Prove it with an aquery gate: every `CppCompile`/`CppLink` action of the target runs `clang-cl`/`lld-link`.
-      - **Probe LM1 (2026-10-12):** `//runtime/engine:litert_lm_main` analyses under that recipe (601 packages, 19154
-        targets). `somepath` to `@intel_openvino` is empty.
-      - **Two floating fetches to close with it:**
-        - LiteRT-LM's WORKSPACE:579-581 calls `openvino_configure()`, so every media-litert build downloads the
-          unhashed 744 MB OpenVINO nightly. `OPENVINO_NATIVE_DIR=<empty dir>` stops that, as in CON91's wheel.
-        - bazelisk fetches bazel 7.6.1 without our SHA256 check. Pin the binary like the wheel's 7.7.0:
-          `1c7a1609700e085d6a707a444a97e03bad593a99475bb91ff4945868d295dc96`.
-      - LiteRT-LM's hermetic Python is a python-build-standalone 3.13, sha-pinned by its rules_python.
 - [ ] **CON93 — the torch venv's sdists compile with VS's `cl` and cannot link against the in-tree CPython**
       [S, ★★]. Found 2026-10-12 by probe P13 on the 3.15 toolchain image. line-profiler 5.0.2 and pyyaml 6.0.3 have no
       cp315 wheel, so `uv sync` builds them with setuptools.
@@ -476,11 +415,11 @@ owner carries the breakage that costs.
       - **Proven by chain bk-20261013-004816 (2026-10-13):** the toolchain staged `python315.lib` and `python3.lib` in
         `C:\temp\cpython\libs`. The torch stage built antlr4-python3-runtime, line-profiler, orchestrant and pyyaml from
         source under the shim and passed the Rich-header gate. Smoke section 2 passed the libs check.
-      - **Left:** consumer lanes (`Invoke-PythonTestLegs.ps1`, `Invoke-CiPackaging.ps1`)
-        still build third-party sdists with VS's `cl`. OrchestrANT's own `setup.py` switches to clang-cl but links with
+      - **Left:** the x64 consumer lanes (`Invoke-PythonCiBuild.ps1` since 2026-10-19, `Invoke-CiPackaging.ps1`)
+        still build third-party sdists with VS's `cl` (`Invoke-PythonTestLegs.ps1` went with CON113). OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
 - [ ] **CON95 — the chain ORT moves from v1.30.0 to v1.31.0** [M, ★★]. Released 2026-10-09; PyPI's 1.31.0 already reached
-      the consumers' locks (python-ci.md). **In source since 2026-10-13 (CHANGELOG); a chain has to prove it.**
+      the consumers' locks (python-ci.md). **In source since 2026-10-13 (CHANGELOG); published on Windows and in `:latest-nvidia`.**
       What moved with it, read from the two tags' `cmake/deps.txt` and sources:
       - Dawn v20260818.211311 → v20260916.214021: `ORT_WEBGPU_WINDOWS_DAWN_SHA256` is
         `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e` (full download, 2026-10-13), its SHA1 equal
@@ -501,12 +440,14 @@ owner carries the breakage that costs.
         `001-android-gradle-agp8-compat.patch` and the five Windows ORT patches apply to v1.31.0.
       - Every build.py flag and CMake define the native, nvidia, amd, wasm, android, GenAI and Windows builds pass
         still exists. The free-threaded twin row was re-read at v1.31.0.
-      - **Left for a chain:** the Linux CPU, wasm and android media builds, and the nvidia lane's CUDA build
-        without the GCC 16 patch. Every GenAI build with the patch, on both lanes; Windows uses clang-cl and
-        CUDA. The Windows arm64 KleidiAI assembly. The rocm spike on the new Dawn: its WebGPU EP, the wheel
-        gate, and `OrtWebGpu.ps1` with `dxcompiler.dll` alone. `migraphx-ep.dll` built against v1.31.0. ORT
-        configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a different protobuf.
-        After the images publish, OxidANT moves to `ort` 2.0.0-rc.14.
+      - **Proven on Windows** by the chains of 2026-10-16/17, published 2026-10-17: the venvs install `onnxruntime`
+        1.31.0 and GenAI 0.17.0 as cp315 (`onnxruntime-genai-cuda` in the nvidia chain bk-20261017-103208); the rocm
+        chain bk-20261016-184041 passed `OrtWebGpu.ps1` on Dawn v20260916.214021 with DXC v1.9.2609 and loaded
+        `migraphx-ep.dll`; `windows-11-arm` imported ort 1.31.0 from `:winarm64` (hub run 39200278761). **Linux:**
+        `:latest-nvidia` of 2026-10-19 ships v1.31.0 with GenAI v0.17.0 (CUDA, with `002`'s `<cstdint>`).
+      - **Left:** the default `:latest` chain (the CPU, wasm and android media builds; CON90 item 1) and
+        `:latest-rocm`. ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a
+        different protobuf. After the images publish, OxidANT moves to `ort` 2.0.0-rc.14 (pinned `=2.0.0-rc.13`).
 - [ ] **CON96 — the arm64 and riscv64 children without the x86_64 host payload** [S, ★★]. Owner request
       2026-10-13 (CI prologue measures, item 5). **In source since 2026-10-13 (CHANGELOG); the next chain proves it.**
       `prune-host-payload.sh` empties `/opt/android-sdk`, `/opt/android` and the builder's rustup in `artifact-source`
@@ -565,43 +506,15 @@ owner carries the breakage that costs.
         directory of particular images, reproducible on every run, which argues against Defender.
       - Next, admin only: compare that directory's node in the top layers of the default and the nvidia
         `media-tvm` (`ctr -n buildkit`, then its reparse and attribute flags).
-- [ ] **CON88 — Python in the Windows images trusts only the roots the Server Core store ships** [S, ★].
-      Found in the 2026-10-11 `:winamd64` chain: meson's `ogg` wrap failed `CERTIFICATE_VERIFY_FAILED` on
-      `https://downloads.xiph.org/…` and fell back to its GitHub mirror, so the build did not notice. Measured in
-      the published `:winamd64` (`e96203a8…`):
-      - downloads.xiph.org itself verifies. It answers with a 302 to `ftp.osuosl.org`, whose chain ends at
-        `emSign Root CA - G1` (InCommon OVG2C, then emSign Root TLS CA - G1).
-      - Python 3.14.8 (OpenSSL 3.5.9) reads the Windows stores as they are: 18 roots in the container, 43 on the
-        dev host, where Windows had fetched more on demand. emSign is not among the 18. Unsetting `OPENSSL_CONF`
-        and `OPENSSL_MODULES` changes nothing.
-      - With `truststore` 0.10.4 the same URL verifies: CryptoAPI fetches the missing root, and the store then
-        holds 19. The image has no `truststore`, and meson's `wrap.py` uses it whenever it imports.
-      Fix: `truststore` in the image's CPython, pinned and hashed like the other wheels, so meson in the chain and
-      in consumers verifies through CryptoAPI. Prove it in the next chain: no `CERTIFICATE_VERIFY_FAILED` in the
-      merge stage's log. **In source since 2026-10-12:** truststore 0.10.4 (`PY_TRUSTSTORE_VERSION`) installs beside
-      both meson installs (GStreamer, FFmpeg's codecs), media-core's site-packages carry it into the image, and smoke
-      section 2 imports it beside `mesonbuild`.
 - [ ] **CON89 — what rides the next full Windows chain** [M, ★]. Each item re-keys `Dockerfile.base` or the media
-      stages, so landing one alone would cost a rebuild of its own. They go in with the next planned full rebuild, which is
-      CON79 item 2's arm64 chain or CON88:
-      - `WindowsScripts.Shared.psm1`'s `vswhere` selector is `if ($All) { @() } else { @('-latest') }`. Splatted, the unrolled
-        string hands vswhere `- l a t e s t`, so every chain logs `vswhere returned no installation; using filesystem fallback`.
-        The fix is `@(if ...)`. **In source since 2026-10-14**, with PowerShell 7.6.7 and the October `servercore`
-        digest in the same base re-key; `Lint.ScalarSplat.Tests.ps1` no longer allows the site.
-      - Pin every pip install in the chain. `Build-FfmpegCodecs.ps1` installs a floating `meson`, and IREE, OpenCV, GenAI, ORT
-        and TVM each install at least one unpinned package through `Invoke-CpythonPip`. In source since 2026-10-12:
-        `Install-CpythonPipPin` takes every version from a `PY_*_VERSION` pin, and `Build.PipPins.Tests.ps1` fails on a bare
-        package name in any `Invoke-CpythonPip install`.
-      - Silence the vendored-code warning floods. The arm64 VVL vertex alone is 1.36 M warning lines, 97.9 % of the 768 MB
-        merge log (`docs/windows-refactor-backlog.md` #183). VVL and x265 are in source since 2026-10-12.
-      - Pin bazelisk, the LiteRT JDK fallback and git-lfs by version and SHA256 (`docs/windows-refactor-backlog.md` #185).
-        In source since 2026-10-12.
+      stages, so landing one alone would cost a rebuild of its own. They go in with the next planned full rebuild.
+      **Rode the chains of 2026-10-16/17** into the images of 2026-10-17: the `vswhere` splat fix (its base re-key, PowerShell
+      7.6.7, is in `:winamd64`'s history), the pinned pip installs, VVL's and x265's `/w` (arm64 merge log of
+      bk-20261016-211745: 138,210 lines, against 6.2 M for the VVL vertex alone), bazel, the JDK and git-lfs from the
+      pinned tool cache, and the patched LLVM built with the pinned clang-cl (rocm chain bk-20261016-184041). Left:
       - IREE's VM ISA genrule on the GIL interpreter (`IREE_ISA_PYTHON`, CON79 item 1, optional).
       - `UV_WINDOWS_ARM64_SHA256` and its `bump_versions.py` spec: nothing reads them since CON113 deleted
         `Invoke-PythonTestLegs.ps1` (2026-10-20); dropping the key re-keys the Windows base, so it waits for this rebuild.
-      - Already in source, and re-keying the toolchain stage: the patched LLVM builds with the pinned clang-cl, so
-        `clang-cl.exe` relinks reproducibly (`docs/windows-refactor-backlog.md` #180). The chain that carries it rebuilds
-        the media lane once.
 ## Open — the Windows arm64 bundle and unpublished variants
 
 - [ ] **CON111 — a free-threaded leg for OrchestrANT's `windows-11-arm` device tests** [M, ★].
@@ -708,13 +621,38 @@ owner carries the breakage that costs.
       holds the pair at 40 as a pending dedupe. Done when both call one helper in `01-core` and
       the pair's budget drops back.
 
+- [b] **CON118 — cmake-format runs on a patched lexer: a maintained CMake formatter instead** [M, ★]. Owner
+      decision pending (2026-10-20). Every CMake format gate (Linux `lib/code-quality.sh`, Windows
+      `Install-UvRequirements`) installs `cmake-format==0.6.13` (`cmake-format.requirements.txt`), released
+      2020-08-19 and the last. On CPython 3.15 its lexer dies, since `re.Scanner` refuses capturing groups;
+      since edc4dc54 `lib/cmakelang-py315.py` swaps in 3.14's `re.Scanner` after each install, a stopgap.
+      Pick a maintained formatter, convert `.cmake-format.yaml`, reformat each repo's gated files once, and
+      drop the patch.
+- [ ] **CON119 — `verify_doc_links.py` resolves a link from its page; pandoc resolves from the repo root**
+      [S, ★]. DocumANTation's `data/book/chapters/11-template-demo.md` links `data/book/images/figure1.jpg`, and
+      `data/presentation/demo/99-examples.md` links `data/presentation/images/title-background.jpg`. Both files
+      exist, and `md2pdfLib/pandoc_builder.py:83` passes `--resource-path .`, so pandoc finds them; the gate reports
+      both `no such file` (DocumANTation c0f4530, 2026-10-20). Give the consumer gate a resource-path mode (roots
+      a link may also resolve against) or a per-repo allow file.
+- [ ] **CON120 — a push that skipped the hooks leaves `develop` red for every other session** [S, ★★]. On
+      2026-10-20 another host's session pushed fc5386eb (`comment-size`, `code-size`, `code-dupes` and
+      `doc-numbers` red) and b0b83498 (`masked-decls` red); until c0587f93 and 05108e94 every other session's commit
+      hook failed on those files. CI caught both (`Linux x64 · preflight + mutation gate` runs 39341736041 and
+      39379899580), but nothing reports a red develop run: `Windows x64 · script tests` stayed red from run
+      39345711596 (edc4dc54's case needed `uv` on `PATH`) until 50b256d6 (run 39416230326), 11 h later. `make hooks` sets `core.hooksPath` per clone, and
+      `pre-push` runs only the mutation gate. Options: `pre-push` also runs the commit hook's whole-tree slugs;
+      AGENTS.md's push rules say to read develop's last Linux and Windows runs first and fix a red tree before
+      pushing; a red develop run notifies the owner.
+
 - [ ] **CON107 — retire the wxPython plumbing** [S, ★]. OrchestrANT dropped wxPython in d954e86
-      and was its one consumer (check the others first: `rg -il wxpython` over the family). Left
+      and was its one consumer: on 2026-10-20 `rg -il wxpython` over the family's develop tips found only a
+      comment in OrchestrANT's `flet_viewer.py`. Left
       behind: `uv_sync_project --no-wxpython` and its `grep -q wxpython` sniff
       (`linux/scripts/01-core/python_uv.sh`, called from `ci_tests.sh`, `ci_static_analysis.sh`,
       `ci_packaging.sh` and `ci_build_docs.sh`), `Sync-UvProjectDependencies
       -NoBuildIsolationPackageWxPython` (`WindowsUv.Common.psm1`, `Invoke-CiStaticAnalysis.ps1`,
-      `Invoke-CiPackaging.ps1`), `docs/windows-builds.md`'s "wxPython GUI extra excluded", the
+      `Invoke-CiPackaging.ps1`, and since 2026-10-19 `Invoke-PythonCiBuild.ps1` with `PythonCiBuild.Tests.ps1`),
+      `assemble-torch-app.sh`'s comment (CON106), `docs/windows-builds.md`'s "wxPython GUI extra excluded", the
       `docs/scripts/mutations.json` rows and `test-uv-chain-ort.sh`. Harmless meanwhile: uv takes
       `--no-build-isolation-package wxpython` with no wxPython in the lock (checked 2026-10-19).
 - [b] **CON69 — 23 hub files declare Apache-2.0 under the hub's MIT `LICENSE`** [S, ★]. Owner

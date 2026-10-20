@@ -159,7 +159,10 @@ this repo's cp314 pin).
   code (VVL's `$common`, x265 in `Build-FfmpegCodecs.ps1`, ORT's abseil flags), retry VVL
   with the sccache launchers back (cleared after the server hung twice on that unit), build
   it at -j19 rather than -j9, and `$null =` the two `Invoke-GitClone` calls that print a stray
-  `True`. Rides the next full chain with CON89.
+  `True`. Rides the next full chain with CON89. **VVL and x265 are proven by the chains of
+  2026-10-16/17:** the arm64 merge log of bk-20261016-211745 is 138,210 lines, and the rocm chain
+  bk-20261016-184041's ffmpeg log has no `-Wunsafe-buffer-usage` line. Abseil stays: 29,984
+  `-Wdeprecated-attributes` lines in that chain's onnx log.
 - **#185 — chain RUNs fetch live on every rebuild, and three fetches are unpinned (opened
   2026-10-12, #153).** Against the everything-in-the-image rule, a rebuild fetches the PyTorch
   clone and submodules (262 s in bk-20261011-233025), the LiteRT sources (88 s, 244 s), the
@@ -199,8 +202,12 @@ this repo's cp314 pin).
   in `C:\`, `C:\run`, `%TEMP%`, `C:\Windows\Temp` or `C:\ProgramData`. Its value also
   stays out of the cache key, which an ARG's does not. **Never the file form on WCOW:**
   a `target=C:\…` secret mount stays in the snapshot, so the next RUN still reads the
-  file and the layer carries it (an upstream defect to report, owner's call). Left:
-  change all ten compiling stages at one planned re-key. Context:
+  file and the layer carries it (an upstream defect to report, owner's call). Since the S3
+  level (2026-10-17) the history also names its endpoint, bucket and region: the four
+  Windows images of 2026-10-17 carry `SCCACHE_ENDPOINT`, `SCCACHE_BUCKET` and `SCCACHE_REGION`
+  beside `SCCACHE_WEBDAV_ENDPOINT`, 30 mentions of an RFC1918 address in `:winamd64`'s
+  history, no key (read 2026-10-20; `:latest-nvidia`'s has none). Left: change all ten
+  compiling stages at one planned re-key, the S3 args with them. Context:
   [`windows-build-resources.md` § What the published image carries](windows-build-resources.md#what-the-published-image-carries).
 - **#155 — LiteRT QNN: the real flags, and why wiring them now would be a fourth
   silent no-op.** RESEARCHED 2026-08-31. DO NOT integrate before reading this.
