@@ -413,6 +413,21 @@ owner carries the breakage that costs.
       differs would go wrong silently. Candidate: export `PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu=`
       (empty) in `riscv64_cross_env`; prove it on the three riscv64 lanes first, which load the library
       at `@develop`.
+      - **The same leak at run time:** the riscv64 QEMU test processes inherit the amd64 `GST_PLUGIN_PATH`
+        (and registry) and try `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/*.so`, about 300 load
+        warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today, the riscv64 plugins
+        still load. Point the run at the sysroot's riscv64 plugin dir with the build-time fix.
+- [ ] **CON132 — `sccache-launcher.sh` drops environment variables with a hyphen** [S, ★★]. Found
+      2026-10-20 by OxidANT 5daefb8: the launcher runs under `/bin/sh` (dash), which does not pass
+      `CARGO_BIN_EXE_burn-demos` on to rustc, so a crate whose binary name has a hyphen lost its
+      integration-test path under the launcher (arm64 clippy failed; OxidANT renamed the binary
+      `burn_demos`). Run the launcher under bash, or `exec` with the environment untouched, and add a
+      suite case with a hyphenated variable.
+- [ ] **CON133 — the image's login shell exports `ARCH`** [S, ★]. Found 2026-10-20 by OxidANT 134e46e:
+      a `bash -l` in `:latest` sets `ARCH=x86_64`/`aarch64` (uname style), which overrides a lane's own
+      `ARCH` (Debian style `amd64`/`arm64`) for every script that reads it; OxidANT's `package-linux.sh`
+      now accepts both. Find the profile.d line, rename or drop the export, and check the consumers
+      that read `ARCH` (rg the family) before changing it.
 
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
