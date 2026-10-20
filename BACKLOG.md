@@ -201,17 +201,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       downloads pandoc at run time. The `Dockerfile` builds its `md2pdf` venv on Ubuntu's `python3-full`. Fix:
       the lane in the family image on the pinned X.Y and X.Yt, and the Dockerfile's venv on the pin.
 
-- [ ] **CON122 — Windows runs no suite on the installed cp3XYt wheel** [M, ★★]. Linux does, through
-      `test-free-threaded-wheel.sh` ([python-ci.md](docs/python-ci.md#the-suite-on-the-installed-wheel));
-      the hub has no Windows twin. On `:winamd64` the X.Yt leg tests the sources, and packaging only
-      loads the wheel: OrchestrANT release 39347777216 job 118384523138 logged `free-threaded proof: 63
-      compiled module(s) of orchestrant loaded on free-threaded 3.15.0; the GIL stayed disabled`,
-      WebDavClient job 118384513062 the same for its 3 modules. The arm64 device's
-      `Test-FreeThreadedWheel.ps1` is a load proof too. Fix: the twin (a fresh venv of
-      `C:\python-freethreaded`, the lock's set, the wheel `--no-deps`, the `--copy` tests run outside
-      the checkout), called after `Invoke-CiPackaging.ps1`, and both consumers' calls. Done when their
-      Windows x64 logs show `free-threaded wheel tests passed`.
-
 - [ ] **CON124 — three consumer workflows run Python on the runner, not in the image** [S, ★★]. Owner
       rule 2026-10-20: only the pinned CPython, from the family images (ModelANT's check moved in,
       85647c6; DocumANTation is CON115). None of the three repos has a backlog:

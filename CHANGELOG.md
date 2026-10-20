@@ -27,6 +27,12 @@
   the checkout. **Windows arm64:** `New-Arm64PythonTestStage.ps1` stages `wheel-tests-<leg>.cmd` on
   the X.Yt leg; `New-FreeThreadedWheelTestStage` (`WindowsPythonWheel.Suite.psm1`) does it for
   OrchestrANT's own stage. A new module and a new helper, so no image layer re-keys.
+- **Proved** at hub 4b69aaf8, every log ending `free-threaded wheel tests passed: <wheel>` after `the GIL
+  stayed disabled through the tests`: WebDavClient c8a4fdf, Windows x64 run 39503219186 (24 passed,
+  cp315t `win_amd64`), arm64 run 39503223240 (`wheel-tests-3.15t.cmd` 24 passed on `windows-11-arm`),
+  Linux x64 run 39503160353 (24 passed, cp314t); OrchestrANT eec686e, Windows x64 run 39503226958 (8
+  passed, 2 skipped), arm64 run 39503231162 (`wheel-tests-ft.cmd` 8 passed, 2 skipped; `TESTS:
+  passed=3478 failed=0`), Linux x64 run 39503168656 (8 passed, 2 skipped).
 - **Docs.** [`python-ci.md` § The suite on the installed wheel](docs/python-ci.md#the-suite-on-the-installed-wheel).
 
 ## 2026-10-20 — GTK 4 for gtk4-rs in every Linux image, from the next build (CON129)
