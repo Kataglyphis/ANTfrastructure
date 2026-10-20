@@ -201,6 +201,29 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       downloads pandoc at run time. The `Dockerfile` builds its `md2pdf` venv on Ubuntu's `python3-full`. Fix:
       the lane in the family image on the pinned X.Y and X.Yt, and the Dockerfile's venv on the pin.
 
+- [ ] **CON122 — Windows runs no suite on the installed cp3XYt wheel** [M, ★★]. Linux does, through
+      `test-free-threaded-wheel.sh` ([python-ci.md](docs/python-ci.md#the-suite-on-the-installed-wheel));
+      the hub has no Windows twin. On `:winamd64` the X.Yt leg tests the sources, and packaging only
+      loads the wheel: OrchestrANT release 39347777216 job 118384523138 logged `free-threaded proof: 63
+      compiled module(s) of orchestrant loaded on free-threaded 3.15.0; the GIL stayed disabled`,
+      WebDavClient job 118384513062 the same for its 3 modules. The arm64 device's
+      `Test-FreeThreadedWheel.ps1` is a load proof too. Fix: the twin (a fresh venv of
+      `C:\python-freethreaded`, the lock's set, the wheel `--no-deps`, the `--copy` tests run outside
+      the checkout), called after `Invoke-CiPackaging.ps1`, and both consumers' calls. Done when their
+      Windows x64 logs show `free-threaded wheel tests passed`.
+
+- [ ] **CON124 — three consumer workflows run Python on the runner, not in the image** [S, ★★]. Owner
+      rule 2026-10-20: only the pinned CPython, from the family images (ModelANT's check moved in,
+      85647c6; DocumANTation is CON115). None of the three repos has a backlog:
+      1. OrchestrANT `benchmarks.yml`: both jobs use `setup-uv` on `ubuntu-26.04`; the contract job ran
+         pytest on `/usr/bin/python3` 3.14.4 (run 39270082041), the viewer job too. GIL only.
+      2. AssetANT `check.yml:20`: `python3 -I scripts/check.py` on the runner, the shape ModelANT left.
+      3. jotrockenmitlocken `web.yml`: the WebDAV sync (`setup-uv`, `scripts/sync-webdav-content.sh`)
+         runs on the host for its secrets, and uv downloads CPython there (run 39382562942: `uv
+         installed python 3.15`).
+
+      Done when each runs in `:latest` on its interpreter, OrchestrANT's tests on X.Y and X.Yt.
+
 ## Open — Flet clients for OrchestrANT's UIs
 
 Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;
@@ -323,6 +346,16 @@ owner carries the breakage that costs.
          the cp315t wheel.
       4. Left from CON66: PGO on arm64 needs a native arm64 toolchain build (the cross arches get LTO alone), and
          the toolchain stage's CPython time on a 4-core CI runner is an estimate (25–40 min), not a measurement.
+
+- [ ] **CON123 — a relocatable pinned CPython in `:latest`, so Linux app bundles stop downloading one**
+      [M, ★★]. `python-app-bundle.sh:109` runs `uv python install` for python-build-standalone,
+      because "the image's own build is not relocatable": OrchestrANT run 39413508655 job 118596855417
+      logged `Downloading cpython-3.14.4-linux-x86_64-gnu` at packaging time, release job 118397954209
+      the aarch64 one. The owner's 2026-09-30 plan put the image's own CPython in the bundle; Windows
+      does that (`PC\layout`, [python-app-bundles.md](docs/python-app-bundles.md)). Fix: the toolchain
+      stage ships a relocatable tree of `PYTHON_VERSION` (`$ORIGIN` rpath, no build prefix in its
+      sysconfig) that the builder copies. Done when a bundle builds under `--network none` and its
+      moved copy passes the self-test, on amd64 and arm64.
 
 - [b] **CON57 — mold in the image, only once it earns it** [S, ★]. `KATAGLYPHIS_LINKER=mold`
       (2026-10-05, `lib/linker-select.sh`) fetches the pinned mold 3.0.0 on first use. Baking
@@ -617,6 +650,18 @@ owner carries the breakage that costs.
       Same check as BeschleunigerBallett's broken WebGPU demo row. Done when the toggles work on
       every published site, and a check would catch it again (a headless-browser click in the
       docs-site gate).
+
+- [ ] **CON125 — the hub's own workflows run Python on the runner** [S, ★★]. Owner rule 2026-10-20:
+      only the pinned CPython, from the images. Measured 2026-10-20:
+      - `linux-x64.yml`'s preflight and mutation shards: `setup-uv` and `pip install` on
+        `ubuntu-26.04`, the gates on `/usr/bin/python` 3.14.4 (run 39431792286: `Using CPython 3.14.4
+        interpreter at: /usr/bin/python`).
+      - `stale-docs-check.yml`, `consumer-inventory.yml` and `sbom.yml`: `actions/setup-python` at
+        `versions.env`'s X.Y, a download every run.
+      - `llm-stack-serving.yml`: pytest in a venv of the runner's `python3`, x64 and arm64.
+      - Decided: `develop-red.yml` keeps `setup-python` (owner, 2026-10-20; `docs/image-decisions.md`).
+
+      Done when the open ones run in `:latest` on its interpreter.
 
 - [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
       `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb
