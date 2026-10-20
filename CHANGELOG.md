@@ -11,6 +11,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — Dependabot is off family-wide
+
+- **Dependency upgrades go only through Renovate as a local CLI** (owner, 2026-10-20). Every
+  family `.github/dependabot.yml` is deleted, its open PRs closed and its `dependabot/*` branches
+  removed, and each repository's Dependabot security-update PRs are disabled; alerts stay where
+  they are on. [`dependency-updates.md`](docs/dependency-updates.md) says so, and `default.json`'s
+  description no longer says the consumers carry Dependabot configs. No hub gate or template
+  expected the file.
+
 ## 2026-10-20 — The Windows uv venvs and the host probes take the pinned CPython
 
 - **`Initialize-UvVenv` defaults to the pin's X.Y, not 3.12** (owner, 2026-10-20: only the pinned

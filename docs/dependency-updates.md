@@ -9,6 +9,11 @@ SPDX-License-Identifier: MIT
 in the family are driven by **Renovate run as a local CLI**, through
 `linux/scripts/renovate-local.sh`. Not by hand, and not by waiting for a bot.
 
+**Dependabot is off family-wide** (owner, 2026-10-20): no repository carries
+`.github/dependabot.yml`, and its security-update PRs are disabled
+(`gh api -X DELETE repos/Kataglyphis/<repo>/automated-security-fixes`). Dependabot alerts stay
+where they are on: they open no branches.
+
 ```bash
 # what is behind, in this repo, according to THIS repo's renovate.json
 third_party/ANTfrastructure/linux/scripts/renovate-local.sh .

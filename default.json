@@ -4,7 +4,7 @@
     "Kataglyphis shared Renovate preset. Adopt with: { \"extends\": [\"github>Kataglyphis/ANTfrastructure\"] }",
     "It lives at the repository ROOT as default.json because that is the only filename `github>Kataglyphis/ANTfrastructure` resolves to (a preset under .github/ would need the explicit `github>Kataglyphis/ANTfrastructure:<name>` form).",
     "Renovate reads it from ANTfrastructure's DEFAULT BRANCH, including for ANTfrastructure itself, so a change here only reaches any consumer - or the hub - once it is merged.",
-    "The consumers currently carry Dependabot configs that have never opened a PR; this preset is what replaces them, and the reason it exists as a preset rather than four copies is that the git-submodules line below is the part everyone forgets."
+    "This preset replaced the consumers' Dependabot configs (Dependabot is off family-wide, owner 2026-10-20); it is a preset rather than copies because the git-submodules line below is the part everyone forgets."
   ],
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
   "dependencyDashboard": true,
