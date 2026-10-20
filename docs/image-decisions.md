@@ -68,7 +68,11 @@ still guards a host whose own environment names an unreachable one.
 These are recorded so nobody files them as gaps:
 - No GTK4 dev headers.
 - The distro `libgstreamer*-dev` packages are purged.
-- CPython 3.14 only.
+- Only the pinned CPython (`PYTHON_VERSION`), once with the GIL and once free-threaded (owner,
+  2026-10-20).
+- cmake-format stays at 0.6.13, its last release (2020-08-19), with `lib/cmakelang-py315.py`'s
+  lexer patch for CPython 3.15 (owner, 2026-10-20: keep, do not replace). Re-open only when a
+  later Python breaks the patch.
 - The CUDA arch set is `86;87;89;120`, with no PTX.
 - riscv64 is built for the RVA23 baseline.
 - riscv64 uses the distro CMake 4.2.3.

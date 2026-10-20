@@ -634,13 +634,6 @@ owner carries the breakage that costs.
       holds the pair at 40 as a pending dedupe. Done when both call one helper in `01-core` and
       the pair's budget drops back.
 
-- [b] **CON118 — cmake-format runs on a patched lexer: a maintained CMake formatter instead** [M, ★]. Owner
-      decision pending (2026-10-20). Every CMake format gate (Linux `lib/code-quality.sh`, Windows
-      `Install-UvRequirements`) installs `cmake-format==0.6.13` (`cmake-format.requirements.txt`), released
-      2020-08-19 and the last. On CPython 3.15 its lexer dies, since `re.Scanner` refuses capturing groups;
-      since edc4dc54 `lib/cmakelang-py315.py` swaps in 3.14's `re.Scanner` after each install, a stopgap.
-      Pick a maintained formatter, convert `.cmake-format.yaml`, reformat each repo's gated files once, and
-      drop the patch.
 - [ ] **CON119 — `verify_doc_links.py` resolves a link from its page; pandoc resolves from the repo root**
       [S, ★]. DocumANTation's `data/book/chapters/11-template-demo.md` links `data/book/images/figure1.jpg`, and
       `data/presentation/demo/99-examples.md` links `data/presentation/images/title-background.jpg`. Both files
