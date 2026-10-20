@@ -35,6 +35,17 @@ _assert_and_relocate_native_gcc() {
 }
 
 # The relocated GCC's target lib/include dirs are empty; point them at the image's multiarch dirs.
+# The relocated GCC's driver looks programs up unprefixed, and sysconfig reports AR/AS under
+# this prefix: without these links the target build runs the host's x86 tools (2026-10-20).
+_link_target_binutils() {
+  local triplet="$1" gcc_bindir="/opt/gcc-${GCC_VERSION}/bin" tool src
+  for tool in as ar ld nm ranlib strip objcopy; do
+    src="/usr/bin/${triplet}-${tool}"
+    [ -x "${src}" ] || continue
+    [ -e "${gcc_bindir}/${triplet}-${tool}" ] || ln -sf "${src}" "${gcc_bindir}/${triplet}-${tool}"
+  done
+}
+
 _link_multiarch_dirs() {
   local triplet="$1"
   local gcc_target_lib="/opt/gcc-${GCC_VERSION}/${triplet}/lib"
@@ -175,6 +186,7 @@ main() {
   triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH}")"
   if [ -n "${triplet}" ]; then
     _link_multiarch_dirs "${triplet}"
+    _link_target_binutils "${triplet}"
     _write_native_gcc_profile_d "${triplet}"
     _wrap_native_gcc_drivers "${triplet}"
     _assert_native_gcc_multiarch "/opt/gcc-${GCC_VERSION}/bin/gcc" "${triplet}"

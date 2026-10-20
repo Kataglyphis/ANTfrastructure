@@ -526,7 +526,29 @@ _torch_pin_gpu_index() {
   esac
 }
 
+# A relocated native riscv64/aarch64 GCC looks its programs up UNPREFIXED, so the image's x86
+# `as` rejected its -march and pillow died in the wheelhouse (2026-10-20). -B prepends the
+# target prefix; the symlinks cover the paths sysconfig reports (AR, AS).
+ensure_target_binutils() {
+  local triplet bindir tool
+  case "$(uname -m)" in
+    aarch64|arm64) triplet=aarch64-linux-gnu ;;
+    riscv64) triplet=riscv64-linux-gnu ;;
+    *) return 0 ;;
+  esac
+  bindir="$(ls -d /opt/gcc-*/bin 2>/dev/null | head -1 || true)"
+  if [ -n "${bindir}" ]; then
+    for tool in as ar ld nm ranlib strip objcopy; do
+      [ -x "/usr/bin/${triplet}-${tool}" ] || continue
+      [ -e "${bindir}/${triplet}-${tool}" ] || ln -sf "/usr/bin/${triplet}-${tool}" "${bindir}/${triplet}-${tool}" 2>/dev/null || true
+    done
+  fi
+  export CFLAGS="${CFLAGS:+${CFLAGS} }-B/usr/bin/${triplet}-"
+  export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-B/usr/bin/${triplet}-"
+}
+
 install_project_environment() {
+  ensure_target_binutils
   activate_project_environment
   # SC2034 cannot see the helpers' nameref use.
   # shellcheck disable=SC2034
