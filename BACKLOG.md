@@ -37,6 +37,13 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       links the chain ORT. Fix: run `build.sh` in `:latest` on its interpreter, with the chain ORT
       wheel from the image's store instead of the PyPI pin. Done when a `<name>-v<N>` tag builds
       in the image and the release's SHA256SUMS still match the export check.
+      In ModelANT since 2026-10-20 (038ca50): `build.sh` runs only in the image, in a venv that
+      sees `/opt/venv` (torch, torchvision, the chain ORT) behind pip's additions held at the
+      image's versions, and the hub's ORT census must pass first; `release.yml` uses the hub's
+      container actions, and a dispatch builds without publishing. Dispatch run 39392921386 on
+      `:latest` (3.14.4, ORT 1.30.0 dnnl from `/opt/venv`, torch 2.14.1+cpu): census PASS, all five
+      files byte-identical to `deim_dfine_n_coco-v1`. Left: the next tag publishes from it, and
+      the 3.15 `:latest`, where pip's additions resolve from cp315 or abi3 wheels (read 2026-10-20).
 
 - [ ] **CON101 — the dartdoc guide renderer's parser comes from the image** [S, ★★]. Since
       2026-10-19 `dartdoc_build_prepare_python_env` (`linux/scripts/lib/dartdoc-build.sh`) uses

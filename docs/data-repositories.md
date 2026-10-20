@@ -33,7 +33,7 @@ bundle per repository; GitHub serves its old objects until its own garbage colle
   `assets/<name>/asset.json`. It records the upstream source, the license and how the license
   was established. AssetANT says `unknown` where nothing was found rather than guessing.
 - **Scripts that rebuild the release bytes.** ModelANT exports from a pinned upstream commit
-  and checkpoint. AssetANT packs reproducibly: sorted entries, mtime 0, owner 0, `xz -9 -T1`.
+  and checkpoint, in `:latest` on its pinned CPython, torch and chain ONNX Runtime (CON112). AssetANT packs reproducibly: sorted entries, mtime 0, owner 0, `xz -9 -T1`.
   Debian 13 and Ubuntu 26.04 packed three of its assets to the same hashes.
 - **One release per item version**, tag `<name>-v<N>`: the files, the metadata and
   `SHA256SUMS`. A consumer's lock then moves one line when one item changes.

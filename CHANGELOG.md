@@ -11,6 +11,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-20 — ModelANT builds its models in `:latest` (CON112)
+
+- **ModelANT's `build.sh` runs only in the image** (ModelANT 038ca50): a venv on the pinned
+  CPython sees `/opt/venv`'s torch, torchvision and chain ORT behind its own packages, pip adds the
+  rest held at the image's versions, and `ort-venv-census.py --check` must pass before the export.
+  Before, `release.yml` ran `setup-python` 3.14 and pip-installed PyPI `onnxruntime` 1.31.0, which
+  has no cp315 wheel. Its dispatch run 39392921386 rebuilt `deim_dfine_n_coco` byte-identical to
+  the v1 release on ORT 1.30.0 from `/opt/venv`. `data-repositories.md` says where it builds.
+
 ## 2026-10-20 — riscv64's uv cache seed covers the free-threaded leg (CON110)
 
 - **`uv-cache-seed.sh build` syncs the app lock twice through one cache**, on `X.Y+gil` and on
