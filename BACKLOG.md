@@ -437,6 +437,54 @@ owner carries the breakage that costs.
 
 ## Open — Linux image (all arches)
 
+- [ ] **CON151 — riscv64 builds hadolint, wasm-pack and flutter_rust_bridge_codegen from source on every run** [M, ★★★].
+      2026-10-21: the riscv64 wrapper spent about two hours compiling hadolint (Haskell) under QEMU, and the log
+      says `no wasm-pack release binary for riscv64; building it from source` and the same for
+      `flutter_rust_bridge_codegen`. Work: build each once and publish it SHA-pinned like `tool-pins.env`, or
+      keep the tool-build caches out of the trim (CON152); or lint with hadolint on amd64 only, since CI lints
+      anyway. Done when a riscv64 wrapper with a warm tool cache spends under 5 minutes in tool builds.
+
+- [ ] **CON152 — the disk trim evicts tool-build caches along with the regenerable exports** [S, ★★].
+      2026-10-21 at 39 GB the chain reclaimed "regenerable cache exports" in the middle of a stage, and the
+      riscv64 hadolint build that followed compiled from scratch (suspected, not proven from the log). Work: the
+      trim names the stages it protects and the bytes it evicts; tool-build caches (CON151) are protected. Done
+      when the trim log lists what it evicted, and a second run's tool builds hit the cache.
+
+- [ ] **CON153 — upstream downloads outwait a 60 s GitHub outage, and the pinned release assets are mirrored** [S, ★★★].
+      2026-10-21: GitHub answered HTTP 500 for shellcheck's aarch64 asset for about a minute, and curl's three
+      retries 2 s apart failed the arm64 wrapper. Only `install-lint-tools.sh` sets `DOWNLOAD_RETRY_DELAY=20` so
+      far. Work: make the default in `downloads.sh` 20 s (or exponential, up to about 3 min), and mirror the
+      pinned release assets (shellcheck, hadolint, rustup-init) to storage we own, SHA-verified, so a GitHub
+      outage cannot fail an arch.
+
+- [ ] **CON154 — the smoke gate skips WASM engine-compile on riscv64 instead of printing a FAILED line per module** [S, ★].
+      2026-10-21: riscv64's smoke printed 10 `wasm engine-compile FAILED … Wasm SIMD unsupported` lines. They
+      WARN and gate nothing (`smoke-media.sh`), but they read as failures, and the reader (an agent) took them
+      for one at first. Work: probe SIMD once (`WebAssembly.validate` on a SIMD module) and print one `SKIP` with
+      the reason on arches without it; keep FAIL for corrupt modules where SIMD exists.
+
+- [ ] **CON155 — two expected lines print as [ERROR] or WARN on every arch's package stage** [S, ★].
+      `[ERROR] Command failed (line 281): tr '\n' ' '` (the rustup-reinstall probe, harmless) appeared 4 times today;
+      `requested-but-absent packages dropped: clang-23 …` (LLVM 23 from Ubuntu, deliberately absent, the image has
+      its own 23.1.3) appeared 6 times. Work: the probe reports as INFO, and the LLVM 23 names move to an optional
+      list that logs nothing when absent. Done when a clean run prints no `[ERROR]` line that is not a failure.
+
+- [ ] **CON156 — riscv64's base asks for a nodejs version ports does not publish** [S, ★].
+      Every riscv64 base run: `E: Version '22.22.1-1~ubuntu26.04.1' for 'nodejs' was not found` (apt continues, so
+      it is silent in the verdict). Work: pin the nodejs riscv64 actually gets from ports, or install it the way
+      amd64 does, so the line disappears and the pin says what the image ships.
+
+- [ ] **CON157 — long stages print a heartbeat, so the wait is not a guess** [S, ★★].
+      2026-10-21: riscv64's torch and hadolint phases ran 80 to 120 minutes printing only cabal lines, and every
+      ETA I gave was wrong by about a factor of two. Work: a `[heartbeat <arch> <stage>] elapsed <m> min, last step
+      <name>` line every 10 minutes from any stage over 15 minutes, and a per-package time in the cabal output.
+
+- [ ] **CON158 — a restarted run does not re-push a wrapper whose digest is already in the registry** [M, ★★★].
+      2026-10-21: each restart rebuilt amd64 and uploaded it again (23 to 29 minutes each), though its layers and
+      digest were unchanged. Work: before `nerdctl push`, compare the local digest with the registry's manifest
+      for that tag and skip on a match. Done when a restart with an unchanged amd64 logs `already in the registry`
+      and spends no upload time on it. Pairs with CON139, which re-runs only the failed arch.
+
 - [ ] **CON129 — GTK 4 for OxidANT's mandatory GTK GUI: lands with the next image build** [M, ★★★].
       Owner decision 2026-10-20: every Rust feature is mandatory, `gui_unix` (gtk4-rs 0.11, `v4_10`)
       included. In source: the package stage installs the dev surface of the GTK 4 each arch runs,
