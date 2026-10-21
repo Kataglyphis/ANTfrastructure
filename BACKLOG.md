@@ -822,6 +822,14 @@ owner carries the breakage that costs.
 
 ## Open — hub tooling and the dev host
 
+- [ ] **CON146 — TVM's cross sysconfig export lags the wheelhouse's** [S, ★]. Found 2026-10-21 with
+      CON114: `_tvm_target_python_sysconfig_export` (`tvm-python.sh`) still takes its triplet from
+      `cross_target_triplet` and puts the module's own dir on `PYTHONPATH`, the two things ab61b9e0 and
+      fc5386eb took out of the wheelhouse's export (a host-shaped tag; the target stdlib shadowing the
+      pinned interpreter's when the module sits in `lib/python3.X/`, not `lib-dynload/`). Check the
+      tvm-ffi wheels of the next arm64 and riscv64 media chain for a target tag; if one comes out
+      host-tagged or withdrawn, give TVM the wheelhouse's copy-and-synthesise export.
+
 - [ ] **CON144 — headless Chrome on the build host loads no `http://` page, so both docs-site browser
       suites hang** [M, ★★]. Found 2026-10-21 running the preflight. `test-docs-sidebars.sh` passed 47
       of 47 at 10:51 and hung from about 11:20 on; `test-webgpu-canvas-readback.sh` hangs on unmodified
