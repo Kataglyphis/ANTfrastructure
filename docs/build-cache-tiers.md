@@ -1586,7 +1586,10 @@ layer:
   names the bucket, the endpoint and both key halves, and the endpoint takes a TCP connection
   within 2 s. Otherwise it warns, names why, and the stage builds on disk alone. Each stage's
   log says `sccache levels: disk -> s3 <endpoint>`. `KATAGLYPHIS_SCCACHE_S3=off` turns it off
-  for a run, and `KATAGLYPHIS_SCCACHE_S3_FILE` names another file.
+  for a run, and `KATAGLYPHIS_SCCACHE_S3_FILE` names another file. The runtime lane's wrapper
+  build (`_runtime_build_wrapper`, `runtime-build-fns.sh`) calls it too, since 2026-10-21: before,
+  `Dockerfile.torch`'s HailoRT RUN had only its cachemount, which a `buildctl prune` between runs
+  empties, and arm64 recompiled HailoRT under QEMU with 0 hits, about 32 minutes a run.
 - A secret is not part of any cache key, while an ARG in scope re-keys every RUN after it.
   On this lane the T2/T3 caches (§ 1) cross hosts and runs, so an endpoint ARG would split
   them by network. The secret also keeps the endpoint out of the image history.

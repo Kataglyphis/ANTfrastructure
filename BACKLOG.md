@@ -40,6 +40,44 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       rather than by refusing; and keep every push off the critical path of the next build. Done when
       a 3-arch run shows the next arch's `RUN` lines while the previous arch's `nerdctl push` is
       still streaming, and the wall clock drops by roughly the summed upload time.
+      **Measured 2026-10-21** over three runtime runs' resource samples (32 cores): mean CPU 6–10 %,
+      and 87–94 % of the samples under 15 % CPU at a load of 1–3, so one thread works (push, layer
+      export, compression) while 31 cores wait. Also in scope: the wrapper-smoke gate (amd64 821–898 s,
+      arm64 1150–1265 s) runs before the wrapper build although neither reads the other, so the two
+      can overlap and the push wait for both.
+
+- [ ] **CON139 — a failed arch re-runs alone; the arches already built are not rebuilt** [M, ★★★].
+      The runtime lane's completeness gate wants every child of `:latest` stamped with the same run-id
+      (`_chain_runtime_arch_state`: `built-this-run | stale | missing`). On 2026-10-20 only riscv64
+      failed (an Ubuntu Ports skew in its package stage), and amd64 and arm64 were already pushed, yet
+      the 2026-10-21 run rebuilt and re-uploaded both: about 3–4 h of a 5 h run for arches that were
+      done. Nine chain attempts ran between 2026-10-19 and 2026-10-21. Work: key a child by what built
+      it (the hub revision and the inputs the ancestry check already verifies) rather than by the run
+      that pushed it, let `--target-arches riscv64 --from-stage runtime` complete an index whose other
+      children match, and keep the gates (wrapper-content, smoke, manifest-coherence) running over every
+      child, re-read from the registry for the ones not built in this run. Done when a run that only
+      rebuilds riscv64 publishes a 3-child `:latest` that passes every gate.
+
+- [ ] **CON140 — the runtime lane proves each arch's apt set resolves before it builds anything**
+      [S, ★★]. The 2026-10-20 run failed in riscv64's package stage after about 5 h
+      (`xvfb : Depends: xserver-common (>= 2:21.1.22-1ubuntu1.3) but it is not going to be installed`),
+      a skew in `resolute-updates` that `apt-get install --simulate` shows in seconds. Work: before the
+      first arch's base build, run the package stage's apt lists through `apt-get install --simulate` in
+      each arch's parent image (riscv64 and arm64 under QEMU take seconds for a simulate), with the
+      image's own sources (`-updates` and `-security` included), and refuse the lane on a conflict with
+      the line apt printed. A watcher written for that skew polled `dists/resolute/` and never fired,
+      because the fixed package landed only in `resolute-updates`: the check must read what apt reads.
+
+- [ ] **CON141 — the runtime disk gate measured, and an arch's local images dropped after its push**
+      [M, ★★]. `CROSS_RUNTIME_LANE_GB` (default 120 per concurrent wrapper build) refuses below that,
+      but a 3-arch run took 456 → 80 GB on 2026-10-20 (376 GB), and amd64 alone 299 → 134 GB on
+      2026-10-21. Each `cross-android-<arch>` is about 56 GB unpacked and each `latest-<arch>` about
+      50 GB, and `latest-<arch>`, `latest-<arch>-tmp-reduced-platform` and `latest-package-<arch>` stay
+      local after the push. Work: size the gate from the per-arch figures above, and remove an arch's
+      local images once it is pushed when no later gate reads them locally (check
+      `verify-shipped-wrapper` and `runtime-image-smoke` first). Done when a 3-arch run's minimum free
+      space is reported in the resource summary and stays above the disk-watch threshold (40 GB) without
+      its trim firing.
 
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
       `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`
@@ -772,6 +810,44 @@ owner carries the breakage that costs.
       push touching `build-cross-chain.sh` or the suite fails the Git Bash pre-push (2026-10-21; 59d35d6c
       went out from WSL, where all bite). Done when the case passes there or names what it needs
       (`t_needs`).
+
+- [ ] **CON144 — headless Chrome on the build host loads no `http://` page, so both docs-site browser
+      suites hang** [M, ★★]. Found 2026-10-21 running the preflight. `test-docs-sidebars.sh` passed 47
+      of 47 at 10:51 and hung from about 11:20 on; `test-webgpu-canvas-readback.sh` hangs on unmodified
+      HEAD (b515b7ca). `run-tests.sh` has no per-suite timeout, so one hung suite stops the whole
+      preflight (it sat 27 min in `test-docs-sidebars.sh`), and the mutation gate's baselines time out
+      at 300 s and report `vacuous bite`. Reproduced without the hub: `google-chrome` 156.0.8078.47
+      (apt, updated 08:31 that day) `--headless=new --no-sandbox --disable-gpu --dump-dom` loads
+      `data:` and `file:` URLs in 0 s but never returns on `http://127.0.0.1:<port>/`, not even on a
+      refused port 1 (curl refuses in 20 ms). The `--v=1` log shows `NotifyBeforeURLRequest:
+      http://127.0.0.1:1/` in the network service and nothing after it. Not the cause, each tried:
+      `--no-proxy-server`, `--disable-quic`, `--headless=old`, `--disable-background-networking`,
+      `--disable-component-update`, `--disable-extensions`, `--disable-field-trial-config`, and
+      `--disable-features=` `LocalNetworkAccessChecks`, `HttpsUpgrades` and `OptimizationHints`;
+      GNOME's proxy mode is `none`. Two side findings: `check-docs-sidebars.js`'s `close()` throws
+      `ENOTEMPTY` when it removes the profile right after `SIGKILL` (Chrome's children still write
+      it), and a suite killed on timeout leaves its headless Chrome orphaned: 24 of them, about 22 GB
+      RSS, were on the host at 12:00. Work: find what the network service waits for, give
+      `run-tests.sh` a per-suite timeout, and have the launcher reap Chrome's whole tree.
+
+- [ ] **CON142 — the resource monitor names the runtime lane's arch and step** [S, ★]. All 1197
+      samples of the 2026-10-20 runtime run (and every runtime run before it) carry `stage=?`, so the
+      summary's peak load, peak memory and minimum disk point at nothing. `_rm_stage`
+      (`01-core/resource-monitor.sh`) reads the newest per-stage log with a `.run` marker, and the
+      runtime lane writes none: its output goes to the orchestrator runlog, which the monitor skips on
+      purpose. Work: let the lane publish its current `<arch>/<step>` (the `[runtime-timing]` steps:
+      base, package, smoke, wrapper, push) where `_rm_stage` reads it, a marker file or a per-arch log
+      with its `.run` marker. Done when a runtime run's summary names the arch and step of each peak.
+
+- [ ] **CON143 — the hub's tests leave their `mktemp` trees in `/tmp`** [S, ★]. On 2026-10-21 the
+      build host's `/tmp` (a 31 GB tmpfs, so RAM) held 31,668 entries and 2.7 GB: 23,865 `tmp.*`,
+      3,218 `wlt-target.*`, 1,719 `wlt-work.*`, 2,463 `buildkit-*`, plus `ccl-empty*`,
+      `cc-test-bin*`, `cross-oci-test*` and `mutation-gate-*`. Fifteen suites call `mktemp` without a
+      cleanup trap (most: `test-setup-package-image.sh` 10, `test-cuda-runtime-payload.sh` 8,
+      `test-uv-conflict-extras.sh`, `test-runtime-image-gates.sh` and `test-gpu-variant.sh` 7 each),
+      and `06-packaging/web-lane-tools.sh` makes the `wlt-*` trees. Work: one `t_mktemp` in
+      `test-harness.sh` that registers each tree for removal at exit, the suites moved onto it, and a
+      `run-tests.sh` check that counts `/tmp` entries before and after the run and fails on growth.
 
 - [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
       `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb

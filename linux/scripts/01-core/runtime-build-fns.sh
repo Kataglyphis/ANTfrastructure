@@ -3,10 +3,16 @@
 
 # One push attempt, output tee'd so the caller can classify the failure.
 _runtime_push_attempt() {
-  local tag="$1" log_file="${2:-/dev/null}"
+  local tag="$1" log_file="${2:-/dev/null}" started rc
+  local -a quiet=(--quiet)
+  # The progress redraw was 98% of a 3.6M-line chain log (2026-10-21); the error text survives --quiet.
+  [ "${RUNTIME_PUSH_PROGRESS:-0}" = "1" ] && quiet=()
+  started="${SECONDS}"
   # retry policy lives in runtime_push_tag; this only reports the push rc
-  run "${NERDCTL_BIN:-nerdctl}" push "${tag}" 2>&1 | tee "${log_file}"
-  return "${PIPESTATUS[0]}"
+  run "${NERDCTL_BIN:-nerdctl}" push "${tag}" "${quiet[@]}" 2>&1 | tee "${log_file}"
+  rc="${PIPESTATUS[0]}"
+  log "[push] ${tag}: rc=${rc} after $(( SECONDS - started ))s"
+  return "${rc}"
 }
 
 # Transient push failures retry (PUSH_MAX_ATTEMPTS, PUSH_RETRY_BASE_SECS), permanent ones do not. docs/cross-build-verification.md
@@ -432,6 +438,10 @@ _runtime_build_wrapper() {
   fi
 
   append_wrapper_build_args _wrapper_build_args_out "${arch}" "${_wrapper_parent_image_out}" || return 1
+  # Dockerfile.torch's HailoRT RUN mounts sccache_s3; without it a pruned cache mount recompiles under QEMU.
+  if declare -F _cross_build_append_sccache_s3_secret >/dev/null 2>&1; then
+    _cross_build_append_sccache_s3_secret _wrapper_build_args_out
+  fi
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"

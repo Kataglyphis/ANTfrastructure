@@ -883,6 +883,11 @@ in retry noise. The classification comes from the cross lane's
 `_cross_stage_push_error_is_transient` (`01-core/cross-stage-build.sh`); when
 that helper or the temp log is unavailable, every failure is retried as before.
 
+Each attempt runs `nerdctl push <tag> --quiet` and logs `[push] <tag>: rc=<n> after <s>s`.
+The progress redraw was 3.59 of a 3.66 million-line chain log (2026-10-21), and the
+error text the classifier reads survives `--quiet`. `RUNTIME_PUSH_PROGRESS=1` brings the
+progress back.
+
 ### cross-apt: pkg-config libdir resolution
 
 DUP1: was a hand-rolled uname->triplet case here. platform.sh's

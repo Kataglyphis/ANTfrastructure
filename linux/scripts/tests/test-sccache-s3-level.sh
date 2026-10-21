@@ -131,6 +131,11 @@ EOF
 )"
 t_assert_eq "" "${bad}" "RUNs missing the secret mount, the library or the closing drain"
 
+t_case "the runtime lane's wrapper build hands the secret over, since Dockerfile.torch mounts it"
+# Lost 2026-10-21: two runs compiled HailoRT with 0 hits, 32 min a run on arm64 under QEMU.
+wrap="$(t_fn_src "${TESTS_DIR}/../01-core/runtime-build-fns.sh" _runtime_build_wrapper)" || wrap=""
+t_assert_contains "${wrap}" "_cross_build_append_sccache_s3_secret _wrapper_build_args_out"
+
 t_case "the chain hands the host file over as one secret only when it is private, complete and reachable"
 _drv() {
   local fn

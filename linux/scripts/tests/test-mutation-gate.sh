@@ -348,8 +348,8 @@ fi
 t_case "a test that times out is killed as a TREE, its grandchildren with it"
 # Killing only the shell leaves its children running; the timeout must work where os.killpg is absent too.
 _fixture "GUARD=on" "GUARD=off" yes .
-# Spins only once mutated: an always-spinning probe would fail its baseline before the kill runs.
-printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile :; do :; done\n' "${_tmp}" > "${_work}/t.sh"
+# Spins only once mutated (else its baseline fails), and stops at 60 s: an orphaned endless spin held a core for 2.8 days.
+printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile [ "${SECONDS}" -lt 60 ]; do :; done\n' "${_tmp}" > "${_work}/t.sh"
 printf '[{"id":"probe","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe","timeout":2}]\n' > "${_work}/m.json"
 _out="$(_iso_run)"
 t_assert_contains "${_out}" "bites" "the spinning mutant times out, and a timeout counts as a bite"

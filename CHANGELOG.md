@@ -12,6 +12,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The runtime lane's wrapper reaches the sccache S3 level, and its push stops flooding the log
+
+Found by reading the last nine `:latest` chain logs and their resource samples.
+
+- **`_runtime_build_wrapper` passes `--secret id=sccache_s3`** through the cross lane's
+  `_cross_build_append_sccache_s3_secret`. `Dockerfile.torch`'s HailoRT RUN already mounted the
+  secret, but the runtime lane never handed it over, so its only cache was the cachemount, which a
+  `buildctl prune` between runs empties. Two runs in a row compiled HailoRT with 0 hits, about 32
+  minutes a run on arm64 under QEMU (`hailort-build` 857 s against 49 s with hits).
+  `test-sccache-s3-level.sh` pins the call.
+- **`nerdctl push --quiet`** in `_runtime_push_attempt`, plus one `[push] <tag>: rc=<n> after <s>s`
+  line per attempt. The progress redraw was 3.59 of the 3.66 million lines of a chain log
+  (517 MB). `RUNTIME_PUSH_PROGRESS=1` brings it back. New `test-runtime-push.sh`.
+- **`test-mutation-gate.sh`'s spinning fixture ends after 60 s.** Its `while :; do :; done`,
+  orphaned by an interrupted run, held a core of the build host from 2026-10-18 to 2026-10-21.
+
 ## 2026-10-21 — build-docs.yml's rustdoc builder takes the guide list
 
 - **`guides` works with `builder: rustdoc`**, as with `dartdoc` since c91187a9. `docs-site.sh` runs
