@@ -101,6 +101,9 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       image's own sources (`-updates` and `-security` included), and refuse the lane on a conflict with
       the line apt printed. A watcher written for that skew polled `dists/resolute/` and never fired,
       because the fixed package landed only in `resolute-updates`: the check must read what apt reads.
+      The same preflight re-hashes what the pinned installers download (`RUSTUP_INIT_SHA256`,
+      `UV_INSTALL_SH_SHA256`): the 2026-10-21 14:08 rerun lost arm64's package stage after about
+      an hour to rustup-init 1.29.2, released the day before (06440af9 moved the pin).
 
 - [ ] **CON141 — the runtime disk gate measured, and an arch's local images dropped after its push**
       [M, ★★]. `CROSS_RUNTIME_LANE_GB` (default 120 per concurrent wrapper build) refuses below that,
