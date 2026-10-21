@@ -12,6 +12,24 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — preflight, the script tests and shellcheck run side by side (CON126)
+
+- **`lib-ordered-jobs.sh`**: runs recorded commands N at a time, each into its own log, and reports
+  them whole in the order recorded. `run-tests.sh` runs its 227 suites through it
+  (`RUN_TESTS_JOBS`), and `preflight.sh` its slugs (`PREFLIGHT_JOBS`), with `cmake-format` alone
+  first and `mutations` alone last, since one writes into the tree and the other copies it.
+  `lint-shell.sh` runs one shellcheck per file `LINT_SHELL_JOBS` at a time and refuses a run that did
+  not report on every file. Default: one per CPU; `1` restores the serial path.
+- **Measured in `:latest` on 32 cores**: `run-tests.sh` 754 → ~106 s, `PREFLIGHT_SKIP=mutations
+  preflight.sh` 1125 → 123 s, `lint-shell.sh` 77 → 14 s. Every parallel run reported the same red
+  suites as the serial one: the three that fail on the image's Python 3.14 against the 3.15 pin.
+- A background job ignores SIGINT, so `test-renovate-fleet.sh`, which tests its own Ctrl-C
+  handling, failed only side by side. The runner hands each command its SIGINT back, and so do the
+  runtime lane's parallel gates.
+- **Proof.** `test-run-tests.sh`, `test-preflight-parallel.sh` and `test-lint-shell-parallel.sh`
+  compare each parallel run with its serial twin (same report, less time), and 14 new mutations
+  bite. [code-quality-tooling.md § The gates run side by side](docs/code-quality-tooling.md#the-gates-run-side-by-side).
+
 ## 2026-10-21 — One lookup for the target's sysconfigdata (CON114)
 
 - `cross_target_sysconfigdata_dir <triplet> <root>` (`01-core/cross-python.sh`) finds

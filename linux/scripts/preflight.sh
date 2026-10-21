@@ -82,10 +82,48 @@ check_selected() {  # check_selected slug -> 0 if this check should run
   return 0
 }
 
+# shellcheck source=linux/scripts/lib-ordered-jobs.sh
+source linux/scripts/lib-ordered-jobs.sh
+# PREFLIGHT_JOBS: slugs at once, default one per CPU; 1 runs each slug as it is reached, as before.
+PREFLIGHT_JOBS="$(oj_count PREFLIGHT_JOBS)" || exit 2
+# Alone, outside the batch: cmake-format builds a venv in the tree the walkers read, and the mutation gate copies the tree.
+PREFLIGHT_FIRST="cmake-format"
+PREFLIGHT_LAST="mutations"
+PF_SLUGS=()
+PF_NAMES=()
+
+# <i> <rc> <log>: one slug's report, exactly as the serial path prints it; ordered-jobs calls it in registration order.
+_pf_report() {
+  printf "\n${BOLD}== %s ==${NC}\n" "${PF_NAMES[$1]}"
+  cat "$3"
+  if [ "$2" = 0 ]; then
+    printf "${GREEN}✓ %s${NC}\n" "${PF_NAMES[$1]}"
+  else
+    printf "${RED}✗ %s${NC}\n" "${PF_NAMES[$1]}"
+    FAILED+=("${PF_NAMES[$1]}")
+  fi
+}
+
+_pf_run_recorded() {
+  local i first="" last=""
+  [ "${#PF_SLUGS[@]}" -gt 0 ] || return 0
+  for i in "${!PF_SLUGS[@]}"; do
+    if _in_csv "${PF_SLUGS[$i]}" "${PREFLIGHT_FIRST}"; then first+=" ${i}"; fi
+    if _in_csv "${PF_SLUGS[$i]}" "${PREFLIGHT_LAST}"; then last+=" ${i}"; fi
+  done
+  # Side by side, no gate may write bytecode into the tree another gate is walking.
+  export PYTHONDONTWRITEBYTECODE=1
+  oj_run "${PREFLIGHT_JOBS}" _pf_report "${first}" "${last}"
+}
+
 run_check() {
   local slug="$1" name="$2"; shift 2
   check_selected "${slug}" || return 0
   RAN_CHECKS=$((RAN_CHECKS + 1))
+  if [ "${PREFLIGHT_JOBS}" -gt 1 ]; then
+    PF_SLUGS+=("${slug}"); PF_NAMES+=("${name}"); oj_add "$@"
+    return 0
+  fi
   printf "\n${BOLD}== %s ==${NC}\n" "${name}"
   if "$@"; then
     printf "${GREEN}✓ %s${NC}\n" "${name}"
@@ -267,6 +305,8 @@ run_check stage-graph "cross stage graph validation" bash -c '
   source linux/scripts/01-core/tag-naming.sh
   source linux/scripts/01-core/stage-defs.sh
   IMAGE_REPO="${IMAGE_REPO:-preflight-check}" cross_stage_validate_graph'
+
+_pf_run_recorded
 
 # Warn-only: a submodule pin unreachable on its remote breaks every job that clones it.
 _probe_submodule_pushed() {  # dir

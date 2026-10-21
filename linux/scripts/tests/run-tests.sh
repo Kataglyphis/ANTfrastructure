@@ -3,6 +3,8 @@
 set -uo pipefail
 
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=linux/scripts/lib-ordered-jobs.sh
+source "${TESTS_DIR}/../lib-ordered-jobs.sh"
 
 FAILED=()
 SKIPPED=()
@@ -12,23 +14,35 @@ TOTAL_ASSERTS=0
 case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) SKIP_OK=1 ;; *) SKIP_OK=0 ;; esac
 # Windows' python writes its code page, not UTF-8, into a pipe; the suites compare UTF-8 text.
 [ "${SKIP_OK}" -eq 0 ] || export PYTHONUTF8="${PYTHONUTF8:-1}"
+# RUN_TESTS_JOBS: suites at once, default one per CPU; 1 runs them in turn.
+JOBS="$(oj_count RUN_TESTS_JOBS)" || exit 2
+
+SUITE_NAMES=()
 for suite in "${TESTS_DIR}"/test-*.sh; do
   [ -f "${suite}" ] || continue
   [ "$(basename "${suite}")" = "test-harness.sh" ] && continue   # the harness, not a suite
-  printf '== %s ==\n' "$(basename "${suite}")"
+  SUITE_NAMES+=("$(basename "${suite}")")
+  oj_add bash "${suite}"
+done
+
+# <i> <rc> <log>: one suite's block and verdict; ordered-jobs calls it in name order.
+_report() {
+  local name="${SUITE_NAMES[$1]}" _out _n
+  _out="$(cat "$3")"
+  printf '== %s ==\n' "${name}"
   SUITES=$((SUITES + 1))
-  # Captured to sum the harness's "N assertion(s) passed" lines, then streamed.
-  _out="$(bash "${suite}" 2>&1)"; _rc=$?
   printf '%s\n' "${_out}"
-  if [ "${_rc}" -eq 77 ] && [ "${SKIP_OK}" -eq 1 ]; then
-    SKIPPED+=("$(basename "${suite}")")
-  elif [ "${_rc}" -ne 0 ]; then
-    FAILED+=("$(basename "${suite}")")
+  if [ "$2" -eq 77 ] && [ "${SKIP_OK}" -eq 1 ]; then
+    SKIPPED+=("${name}")
+  elif [ "$2" -ne 0 ]; then
+    FAILED+=("${name}")
   else
+    # Summed from the harness's "N assertion(s) passed" lines.
     _n="$(printf '%s\n' "${_out}" | sed -n 's/^  \([0-9][0-9]*\) assertion(s) passed$/\1/p' | tail -1)"
     TOTAL_ASSERTS=$((TOTAL_ASSERTS + ${_n:-0}))
   fi
-done
+}
+oj_run "${JOBS}" _report
 
 # Listed before the verdict, so a red run still says how much it never ran.
 for suite in "${SKIPPED[@]}"; do

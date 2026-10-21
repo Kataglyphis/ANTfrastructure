@@ -187,3 +187,5 @@ mutation-family:stage-repo
 # The runtime lane's background wrapper pusher (lib-runtime-push.sh) and its parallel gates (build-runtime-manifest.sh), which no slug owns; proof: test-runtime-push-queue.sh.
 mutation-family:runtime-push
 mutation-family:runtime-gates
+# The ordered parallel runner run-tests.sh, preflight.sh and lint-shell.sh share (linux/scripts/lib-ordered-jobs.sh), which no slug owns; proof: test-run-tests.sh, test-preflight-parallel.sh.
+mutation-family:ordered-jobs

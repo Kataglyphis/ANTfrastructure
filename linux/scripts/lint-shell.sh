@@ -147,11 +147,28 @@ fi
 shellcheck_ensure
 info "shellcheck: ${SHELLCHECK_BIN} ($("${SHELLCHECK_BIN}" --version | sed -n 's/^version: //p'))"
 
+# shellcheck source=linux/scripts/lib-ordered-jobs.sh
+. "${REPO_ROOT}/linux/scripts/lib-ordered-jobs.sh"
+# LINT_SHELL_JOBS: shellcheck processes at once, default one per CPU; 1 checks the files in turn.
+LINT_JOBS="$(oj_count LINT_SHELL_JOBS)" || exit 2
+
+# <out-array> <shellcheck args...>: the CHECK files those args fail, sorted; one process per file, so any non-zero exit counts.
+sc_failing_files() {
+  local -n _sff_out=$1
+  shift
+  local verdicts n
+  verdicts="$(printf '%s\0' "${CHECK[@]}" \
+    | xargs -0 -r -n 1 -P "${LINT_JOBS}" bash -c \
+        '"$0" "$@" >/dev/null 2>&1 && echo "ok ${@: -1}" || echo "fail ${@: -1}"' "${SHELLCHECK_BIN}" "$@")" || true
+  # One verdict per file, or a runner that died early would read as clean.
+  n="$(printf '%s\n' "${verdicts}" | grep -c -e '^ok ' -e '^fail ' || true)"
+  [ "${n}" -eq "${#CHECK[@]}" ] || err "shellcheck reported on ${n} of ${#CHECK[@]} file(s); refusing to grade an incomplete run"
+  mapfile -t _sff_out < <(printf '%s\n' "${verdicts}" | sed -n 's/^fail //p' | LC_ALL=C sort)
+}
+
 # The gate: -S error must be clean
 error_files=()
-for f in "${CHECK[@]}"; do
-  "${SHELLCHECK_BIN}" -S error "${f}" >/dev/null 2>&1 || error_files+=("${f}")
-done
+sc_failing_files error_files -S error
 
 if [ "${#error_files[@]}" -gt 0 ]; then
   fail "shellcheck -S error found ${#error_files[@]} file(s) with error-level findings:"
@@ -165,9 +182,7 @@ pass "shellcheck -S error clean (${#CHECK[@]} file(s))"
 
 # SC2215 is fatal though a warning: a comment after `cmd \` runs cmd without its flags.
 sc2215_files=()
-for f in "${CHECK[@]}"; do
-  "${SHELLCHECK_BIN}" --include=SC2215 -S warning "${f}" >/dev/null 2>&1 || sc2215_files+=("${f}")
-done
+sc_failing_files sc2215_files --include=SC2215 -S warning
 
 if [ "${#sc2215_files[@]}" -gt 0 ]; then
   fail "SC2215 (flag used as a command name -- bad line break) in ${#sc2215_files[@]} file(s):"
@@ -182,9 +197,7 @@ pass "SC2215 clean (no flags orphaned by a bad line break)"
 # Non-fatal warning report (opt-in)
 if [ "${SHOW_WARNINGS}" -eq 1 ]; then
   warn_files=()
-  for f in "${CHECK[@]}"; do
-    "${SHELLCHECK_BIN}" -S warning "${f}" >/dev/null 2>&1 || warn_files+=("${f}")
-  done
+  sc_failing_files warn_files -S warning
   if [ "${#warn_files[@]}" -gt 0 ]; then
     printf "${YELLOW}!${NC} %s file(s) carry warning-level findings (non-fatal):\n" "${#warn_files[@]}"
     for f in "${warn_files[@]}"; do info "${f#"${SCAN_ROOT}"/}"; done

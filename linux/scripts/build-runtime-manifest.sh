@@ -306,7 +306,8 @@ _manifest_gates_parallel() {
   for arch in "$@"; do
     # Counted by rc files, never a bare wait: the background pusher is a child of this shell too.
     while [ $(( launched - $(find "${dir}" -name '*.rc' | wc -l) )) -ge "${jobs}" ]; do sleep 2; done
-    ( rc=0; _manifest_gate_arch "${label}" "${script}" "${arch}" > "${dir}/${arch}.log" 2>&1 || rc=$?; printf '%s\n' "${rc}" > "${dir}/${arch}.rc" ) &
+    # A background job ignores SIGINT; a gate keeps it, as it had in turn.
+    ( trap - INT QUIT; rc=0; _manifest_gate_arch "${label}" "${script}" "${arch}" > "${dir}/${arch}.log" 2>&1 || rc=$?; printf '%s\n' "${rc}" > "${dir}/${arch}.rc" ) &
     pids+=("$!")
     launched=$(( launched + 1 ))
   done

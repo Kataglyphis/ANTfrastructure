@@ -18,6 +18,7 @@ done
 # _suite <name> <body>: a suite file in the fake tests dir that sources the real harness.
 mkdir -p "${_WORK}/tests"
 cp "${TESTS_DIR}/test-harness.sh" "${TESTS_DIR}/run-tests.sh" "${_WORK}/tests/"
+cp "${TESTS_DIR}/../lib-ordered-jobs.sh" "${_WORK}/"
 _suite() {
   printf '#!/usr/bin/env bash\nsource "$(dirname "$0")/test-harness.sh"\nt_case one\n%s\nt_assert_ok true\nt_summary\n' "$2" \
     > "${_WORK}/tests/$1"

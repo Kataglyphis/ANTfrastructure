@@ -16337,5 +16337,117 @@
   "replace": "  mode=\"$(runtime_push_mode)\" || mode=async",
   "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
   "why": "the runtime lanes learn of a bad RUNTIME_ASYNC_PUSH here, before their first build"
+ },
+ {
+  "id": "ordered-jobs.side-by-side",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "    _oj_start \"${i}\" &",
+  "replace": "    _oj_start \"${i}\"",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "the suites run side by side; one at a time cost 754 s in :latest on 2026-10-21"
+ },
+ {
+  "id": "ordered-jobs.cap-holds",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "    while [ $((launched - $(_oj_ended))) -ge \"${jobs}\" ]; do",
+  "replace": "    while false; do",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a job count of 1 is the serial path a debugging session or a small host asks for"
+ },
+ {
+  "id": "ordered-jobs.default-one-per-cpu",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  [ -n \"${value}\" ] || value=\"$(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)\"",
+  "replace": "  [ -n \"${value}\" ] || value=1",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "the parallel run is the default, not an opt-in"
+ },
+ {
+  "id": "ordered-jobs.zero-refused",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "    ''|*[!0-9]*|0)",
+  "replace": "    ''|*[!0-9]*)",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a job count of 0 never launches anything; it is a typo, refused before the first command"
+ },
+ {
+  "id": "ordered-jobs.in-order",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  while [ \"${OJ_NEXT}\" -lt \"${#OJ_CMDS[@]}\" ] && [ -f \"${OJ_DIR}/${OJ_NEXT}.rc\" ]; do",
+  "replace": "  while [ \"${OJ_NEXT}\" -lt \"${#OJ_CMDS[@]}\" ]; do",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a report waits for its command to end; one read early is a half-written log and a missing verdict"
+ },
+ {
+  "id": "ordered-jobs.waits-for-all",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  while [ \"$(_oj_ended)\" -lt \"${launched}\" ]; do",
+  "replace": "  while false; do",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "the runner returns only when every command has ended and been reported"
+ },
+ {
+  "id": "ordered-jobs.exit-cannot-end-runner",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  ( trap - INT QUIT; eval \"${OJ_CMDS[$1]}\" ) > ",
+  "replace": "  trap - INT QUIT; eval \"${OJ_CMDS[$1]}\" > ",
+  "test": "bash linux/scripts/tests/test-preflight-parallel.sh",
+  "why": "a slug run alone in the runner's shell could exit preflight itself"
+ },
+ {
+  "id": "script-tests.jobs-from-the-knob",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "JOBS=\"$(oj_count RUN_TESTS_JOBS)\" || exit 2",
+  "replace": "JOBS=1",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "run-tests.sh takes RUN_TESTS_JOBS, default one per CPU"
+ },
+ {
+  "id": "cmake-format.runs-first-alone",
+  "target": "linux/scripts/preflight.sh",
+  "find": "PREFLIGHT_FIRST=\"cmake-format\"",
+  "replace": "PREFLIGHT_FIRST=\"\"",
+  "test": "bash linux/scripts/tests/test-preflight-parallel.sh",
+  "why": "cmake-format builds its venv in the tree, so it runs alone, before the walkers start"
+ },
+ {
+  "id": "mutations.runs-last-alone",
+  "target": "linux/scripts/preflight.sh",
+  "find": "PREFLIGHT_LAST=\"mutations\"",
+  "replace": "PREFLIGHT_LAST=\"\"",
+  "test": "bash linux/scripts/tests/test-preflight-parallel.sh",
+  "why": "the mutation gate copies the tree, so it starts only once every other slug has stopped writing"
+ },
+ {
+  "id": "shellcheck.parallel-files",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "    | xargs -0 -r -n 1 -P \"${LINT_JOBS}\" bash -c \\",
+  "replace": "    | xargs -0 -r -n 1 -P 1 bash -c \\",
+  "test": "bash linux/scripts/tests/test-lint-shell-parallel.sh",
+  "why": "the 547 files are checked side by side, one process each"
+ },
+ {
+  "id": "shellcheck.incomplete-run-refused",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "  [ \"${n}\" -eq \"${#CHECK[@]}\" ] || err",
+  "replace": "  true || err",
+  "test": "bash linux/scripts/tests/test-lint-shell-parallel.sh",
+  "why": "a runner that dies early leaves files unchecked, which must not read as clean"
+ },
+ {
+  "id": "shellcheck.failing-files-named",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "  mapfile -t _sff_out < <(printf '%s\\n' \"${verdicts}\" | sed -n 's/^fail //p' | LC_ALL=C sort)",
+  "replace": "  mapfile -t _sff_out < <(printf '%s\\n' \"${verdicts}\" | sed -n 's/^failed //p' | LC_ALL=C sort)",
+  "test": "bash linux/scripts/tests/test-lint-shell-parallel.sh",
+  "why": "the gate fails on exactly the files shellcheck failed"
+ },
+ {
+  "id": "ordered-jobs.sigint-reaches-commands",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  ( trap - INT QUIT; eval \"${OJ_CMDS[$1]}\" ) > ",
+  "replace": "  ( eval \"${OJ_CMDS[$1]}\" ) > ",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a background job ignores SIGINT, so a suite that tests its own Ctrl-C handling (test-renovate-fleet) failed only side by side"
  }
 ]

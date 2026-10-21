@@ -954,7 +954,9 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   copy the check list into a new caller. On a Windows host:
   `PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh`. What each gate
   proves, and its allowlist: [`code-quality-gates.md`](docs/code-quality-gates.md) (generated) and
-  [`code-quality-tooling.md`](docs/code-quality-tooling.md).
+  [`code-quality-tooling.md`](docs/code-quality-tooling.md). Slugs, suites and shellcheck runs go
+  side by side; `PREFLIGHT_JOBS=1`, `RUN_TESTS_JOBS=1` and `LINT_SHELL_JOBS=1` run them in turn
+  ([§ The gates run side by side](docs/code-quality-tooling.md#the-gates-run-side-by-side)).
 
 - **Linux host config is code.** `linux/host-config/` carries the canonical rootless-BuildKit
   `buildkitd.toml` and the systemd drop-in; `apply-host-config.sh` installs and

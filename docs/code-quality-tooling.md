@@ -336,6 +336,28 @@ budgeted in `docs/scripts/code-dupes.allow`. The checks
 mutation actually proves is generated into `docs/code-quality-gates.md`, never
 hand-maintained here.
 
+### The gates run side by side
+
+`preflight.sh` records the selected slugs and runs them `PREFLIGHT_JOBS` at a time (default: one
+per CPU) through `linux/scripts/lib-ordered-jobs.sh`. Two run alone: `cmake-format` first, because
+it builds `.venv-cmake-format` in the tree the other gates walk, and `mutations` last, because it
+copies the tree. Python writes no bytecode meanwhile. Each slug's output prints whole, in
+registration order, so the log reads like a serial run, only sooner. One level down the same runner
+drives `run-tests.sh` (`RUN_TESTS_JOBS`, suites in name order, same totals), and `lint-shell.sh`
+runs one shellcheck per file `LINT_SHELL_JOBS` at a time and refuses a run that did not report on
+every file. Each knob set to `1` restores the serial path.
+
+A background job ignores SIGINT, so the runner hands each command its SIGINT back:
+`test-renovate-fleet.sh` tests its own Ctrl-C handling and failed only side by side until it did.
+
+| run, `:latest`, 32 cores, 2026-10-21 | in turn | side by side |
+| --- | --- | --- |
+| `run-tests.sh` (227 suites) | 754 s | ~106 s |
+| `PREFLIGHT_SKIP=mutations preflight.sh` | 1125 s | 123 s |
+| `lint-shell.sh` (547 files) | 77 s | 14 s |
+
+Other agents' builds shared the host during both columns, so read them as ratios.
+
 ## Python that lives in shell heredocs
 
 775 lines of Python sat inside `linux/scripts/**/*.sh` heredocs as of 2026-09-01
@@ -591,7 +613,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2042 entries** over **179 distinct test commands**; both digits are
+manifest holds **2056 entries** over **182 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -827,7 +849,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 47 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 48 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1831,7 +1853,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 577 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 580 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

@@ -191,10 +191,14 @@ _gates() {
 _each() { _gates "${1:-}"$'\n''_manifest_each_arch "content gate" /bin/gate.sh && echo EACH-RC=0 || echo "EACH-RC=$?"'; }
 _gate_lines() { printf '%s\n' "$1" | grep '^gate-' | tr '\n' ' ' | sed 's/ $//'; }
 
+# Against the same phase in turn, never a constant, so a loaded host cannot fake a verdict.
 t_case "the gates run side by side, and each arch's output prints whole, in arch order"
 _t0="$(date +%s)"
+RUNTIME_GATE_JOBS=1 GATE_SECS=3 _each > /dev/null
+_ser_secs="$(( $(date +%s) - _t0 ))"
+_t0="$(date +%s)"
 _out="$(GATE_SECS=3 _each)"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 8
+t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser_secs - 4 ))"
 t_assert_contains "${_out}" "EACH-RC=0"
 t_assert_eq "gate-amd64 line1 gate-amd64 line2 gate-arm64 line1 gate-arm64 line2 gate-riscv64 line1 gate-riscv64 line2" \
   "$(_gate_lines "${_out}")"
