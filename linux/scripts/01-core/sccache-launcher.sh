@@ -1,5 +1,5 @@
-#!/bin/sh
-# sccache's own failures never kill the build. docs/build-cache-tiers.md#sccache-failure-classes-the-launcher-must-bypass
+#!/usr/bin/env bash
+# sccache's own failures never kill the build; bash, since dash drops hyphenated env names. docs/build-cache-tiers.md#sccache-failure-classes-the-launcher-must-bypass
 _err="$(mktemp /tmp/sccache-launcher.XXXXXX 2>/dev/null)" || _err=""
 
 if [ -z "${_err}" ]; then

@@ -1166,6 +1166,11 @@ A real compiler error must pass through untouched (the compiler is never
 re-run), and a clean compile passes through. `test-sccache-launcher.sh` pins
 every case.
 
+**The launcher is a bash script (2026-10-21).** dash drops every variable whose
+name is not a shell identifier before it runs a child, so under `#!/bin/sh` cargo's
+`CARGO_BIN_EXE_burn-demos` never reached rustc and a hyphenated binary's
+integration tests lost their path (OxidANT 5daefb8).
+
 **A consumer's own CMake gets it too (2026-10-07).** `cmake/Cache.cmake`'s
 `myproject_enable_cache` used to set both compiler launchers to the bare
 `sccache` it found. BeschleunigerBallett run 37509585546 then failed every

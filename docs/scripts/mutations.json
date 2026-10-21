@@ -4936,6 +4936,14 @@
   "why": "the address on the bypass line is what turns the next compile-heavy chain into the experiment: tcp:4226 in a bypass line is this bug still live in that step"
  },
  {
+  "id": "sccache.launcher-keeps-hyphenated-env",
+  "target": "linux/scripts/01-core/sccache-launcher.sh",
+  "find": "#!/usr/bin/env bash\n",
+  "replace": "#!/bin/sh\n",
+  "test": "bash linux/scripts/tests/test-sccache-launcher.sh",
+  "why": "under dash a variable such as CARGO_BIN_EXE_burn-demos never reaches rustc, so a hyphenated binary's integration tests lose their path (CON132)"
+ },
+ {
   "id": "sccache.launcher-env-exports-to-caller",
   "target": "linux/scripts/01-core/common.sh",
   "find": "    ensure_sccache_env >&2 || true\n  fi\n  return 0",

@@ -133,4 +133,21 @@ rm -f "${_SLC_DIR}/flaky.seen" "${_SLC_DIR}/compiler.calls"
 _msg="$(SCCACHE_SERVER_UDS=/tmp/sccache-test.sock _launcher_stderr flaky)"
 t_assert_contains "${_msg}" "retry succeeded (cache kept) [server=/tmp/sccache-test.sock]"
 
+# Only a /bin/sh that drops such names (dash) tells a bash launcher from an sh one.
+_sh_drops_hyphens() {
+  if env 'A-B=1' /bin/sh -c env 2>/dev/null | grep -q '^A-B=1$'; then return 1; fi
+  return 0
+}
+
+t_case "a variable whose name has a hyphen reaches sccache (CARGO_BIN_EXE_burn-demos, CON132)"
+t_needs "a /bin/sh that drops hyphenated names (dash)" _sh_drops_hyphens
+mkdir -p "${_SLC_DIR}/envbin"
+printf '#!/usr/bin/env bash\nenv > "%s/sccache.env"\n' "${_SLC_DIR}" > "${_SLC_DIR}/envbin/sccache"
+chmod +x "${_SLC_DIR}/envbin/sccache"
+# Run through its shebang, as RUSTC_WRAPPER and the CMake launchers do.
+env 'CARGO_BIN_EXE_burn-demos=/t/burn-demos' PATH="${_SLC_DIR}/envbin:${PATH}" \
+  "${LAUNCH}" "${_SLC_DIR}/compiler" -c foo.c >/dev/null 2>&1
+t_assert_contains "$(cat "${_SLC_DIR}/sccache.env" 2>/dev/null)" "CARGO_BIN_EXE_burn-demos=/t/burn-demos" \
+  "an integration test of a hyphenated binary loses its path when the launcher drops the variable"
+
 t_summary

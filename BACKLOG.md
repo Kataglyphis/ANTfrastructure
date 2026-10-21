@@ -531,12 +531,6 @@ owner carries the breakage that costs.
         (and registry) and try `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/*.so`, about 300 load
         warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today, the riscv64 plugins
         still load. Point the run at the sysroot's riscv64 plugin dir with the build-time fix.
-- [ ] **CON132 — `sccache-launcher.sh` drops environment variables with a hyphen** [S, ★★]. Found
-      2026-10-20 by OxidANT 5daefb8: the launcher runs under `/bin/sh` (dash), which does not pass
-      `CARGO_BIN_EXE_burn-demos` on to rustc, so a crate whose binary name has a hyphen lost its
-      integration-test path under the launcher (arm64 clippy failed; OxidANT renamed the binary
-      `burn_demos`). Run the launcher under bash, or `exec` with the environment untouched, and add a
-      suite case with a hyphenated variable.
 - [ ] **CON133 — the image's login shell exports `ARCH`** [S, ★]. Found 2026-10-20 by OxidANT 134e46e:
       a `bash -l` in `:latest` sets `ARCH=x86_64`/`aarch64` (uname style), which overrides a lane's own
       `ARCH` (Debian style `amd64`/`arm64`) for every script that reads it; OxidANT's `package-linux.sh`

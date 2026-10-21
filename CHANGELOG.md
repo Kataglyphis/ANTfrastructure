@@ -12,6 +12,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — `sccache-launcher.sh` keeps hyphenated environment names (CON132)
+
+- **Cause.** The launcher ran under `#!/bin/sh`, dash in every image, and dash drops each variable
+  whose name is not an identifier before it runs a child. Cargo's `CARGO_BIN_EXE_burn-demos` never
+  reached rustc, so OxidANT's arm64 clippy lost the integration-test path (OxidANT 5daefb8).
+- **Fix.** `#!/usr/bin/env bash`; bash passes such names on. A case in
+  `test-sccache-launcher.sh` runs the launcher through its shebang with `CARGO_BIN_EXE_burn-demos`
+  set and finds it in sccache's environment (`sccache.launcher-keeps-hyphenated-env` bites where
+  `/bin/sh` is dash; Git Bash skips the case). [build-cache-tiers.md](docs/build-cache-tiers.md#sccache-failure-classes-the-launcher-must-bypass).
+
 ## 2026-10-21 — The disk sampler's owner is its script, not the script's parent (CON138)
 
 - **Cause.** `_disk_guard_watch_loop` defaulted its owner to `$PPID`. Under the Git Bash mutation
