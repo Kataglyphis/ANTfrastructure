@@ -43,8 +43,8 @@ printf '%s\n' "${url}" >> "${FIX}/requested"
 cp "${FIX}/${url##*/}" "${out}"
 EOF
 chmod +x "${_W}/fakebin/curl"
-# A host without unzip (WSL here) gets a zipfile stand-in that keeps exec bits; images and CI runners have the real one.
-if ! command -v unzip >/dev/null 2>&1; then
+# No unzip where _run's installer looks (/usr/bin:/bin; WSL has none): a zipfile stand-in that keeps exec bits.
+if ! PATH=/usr/bin:/bin command -v unzip >/dev/null 2>&1; then
   cat > "${_W}/fakebin/unzip" <<'EOF'
 #!/usr/bin/env python3
 import os, sys, zipfile
