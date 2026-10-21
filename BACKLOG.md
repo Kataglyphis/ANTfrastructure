@@ -466,6 +466,12 @@ owner carries the breakage that costs.
       Windows (unconfirmed). Reproduce with a planted exact-newline test, fix the restore path,
       then put the exact match back.
 
+- [ ] **CON135 — two Dependabot alerts in the Renovate CLI's lock, with no fixed release** [S, ★].
+      `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, high,
+      via micromatch) and sprintf-js 1.1.3 (GHSA-hp3w-g68c-fv3c, medium, via roarr), both a DoS
+      on attacker-made patterns; Renovate runs only locally against our own repos. Move both the
+      day a fixed version ships (targeted lockfile update, `dependency-updates.md`).
+
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
       the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU (its lock
