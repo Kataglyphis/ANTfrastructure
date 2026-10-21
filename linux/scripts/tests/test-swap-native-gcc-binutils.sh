@@ -39,6 +39,6 @@ t_assert_eq "$(readlink -f "${_work}/bin/riscv64-linux-gnu-ar")" "${_work}/bin/r
 
 t_case "an arch whose binutils are absent changes nothing"
 SWAP_GCC_BINDIR="${_work}/bin" SWAP_BINUTILS_DIR="${_work}/usr/bin" _link_target_binutils aarch64-linux-gnu
-t_assert_eq "0" "$(ls "${_work}/bin" | grep -c aarch64)" "no link without a target tool to point at"
+t_assert_eq "0" "$(compgen -G "${_work}/bin/aarch64*" | wc -l)" "no link without a target tool to point at"
 
 t_summary
