@@ -4,9 +4,22 @@
 set -euo pipefail
 
 BASE_URL="${1:-http://localhost:8080}"
-# No colon: an app without a CSP sets it empty, and that must skip the host check, not restore the default.
-REQUIRED_CSP_HOSTS="${REQUIRED_CSP_HOSTS-www.gstatic.com fonts.gstatic.com}"
+# Hosts the page's CSP must name; none by default, since the family's builds serve their own engine and fonts.
+REQUIRED_CSP_HOSTS="${REQUIRED_CSP_HOSTS:-}"
 CHECK_LOADING_SHELL="${CHECK_LOADING_SHELL:-1}"
+CHECK_LOCAL_ENGINE="${CHECK_LOCAL_ENGINE:-1}"
+
+# expect_wasm <path>: served as application/wasm, or the browser refuses to compile it.
+expect_wasm() {
+  local mime
+  mime=$(curl -s -I "$BASE_URL/$1" | grep -i "content-type:" | tr -d '\r' || true)
+  if printf '%s' "$mime" | grep -q "application/wasm"; then
+    echo "PASS: $1 served as application/wasm"
+  else
+    echo "FAIL: $1 not served as application/wasm: $mime"
+    exit 1
+  fi
+}
 
 echo "=== Integration Smoke Test ==="
 echo "Target: $BASE_URL"
@@ -22,13 +35,7 @@ fi
 echo "PASS: index.html HTTP 200"
 
 echo "--- Testing: main.dart.wasm MIME type ---"
-WASM_MIME=$(curl -s -I "$BASE_URL/main.dart.wasm" | grep -i "content-type:" | tr -d '\r' || true)
-if printf '%s' "$WASM_MIME" | grep -q "application/wasm"; then
-  echo "PASS: WASM MIME type correct"
-else
-  echo "FAIL: WASM MIME type: $WASM_MIME"
-  exit 1
-fi
+expect_wasm main.dart.wasm
 
 echo "--- Testing: main.dart.js exists ---"
 JS_SIZE=$(curl -s -o /dev/null -w "%{size_download}" "$BASE_URL/main.dart.js")
@@ -85,13 +92,20 @@ if [ -n "$REQUIRED_CSP_HOSTS" ]; then
       exit 1
     fi
   done
+fi
 
-  if printf '%s' "$CSP" | grep -q "script-src[^;]*www.gstatic.com"; then
-    echo "PASS: script-src permits www.gstatic.com"
+if [ "$CHECK_LOCAL_ENGINE" = "1" ]; then
+  # flutter build web --no-web-resources-cdn: the engine comes from canvaskit/ here, not from www.gstatic.com.
+  echo "--- Testing: the engine is served from this site ---"
+  if curl -s "$BASE_URL/flutter_bootstrap.js" | grep -q '"useLocalCanvasKit":true'; then
+    echo "PASS: flutter_bootstrap.js loads the engine locally"
   else
-    echo "FAIL: script-src missing www.gstatic.com"
+    echo "FAIL: flutter_bootstrap.js loads the engine from Google's CDN; build with --no-web-resources-cdn"
     exit 1
   fi
+  for engine in canvaskit/canvaskit.wasm canvaskit/skwasm.wasm; do
+    expect_wasm "$engine"
+  done
 fi
 
 if [ "$CHECK_LOADING_SHELL" = "1" ]; then

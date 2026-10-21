@@ -2,10 +2,15 @@
 """Comprehensive E2E test suite for Flutter web apps using Playwright."""
 
 import argparse
-import subprocess
+import collections
+import functools
+import http.server
+import os
 import sys
+import threading
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -17,7 +22,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--build-dir",
         default="build/web",
-        help="Directory to serve with python -m http.server",
+        help="The build to serve, with every extension-less path answered by index.html as nginx and the .htaccess do",
     )
     parser.add_argument(
         "--port",
@@ -40,6 +45,14 @@ def parse_args() -> argparse.Namespace:
         help="a route to open and expect to stay on; repeat it (default: jotrockenmitlocken's five)",
     )
     parser.add_argument(
+        "--forbid-host",
+        action="append",
+        dest="forbidden_hosts",
+        default=[],
+        metavar="SUFFIX",
+        help="fail when the page requests this host or a subdomain of it, e.g. gstatic.com; repeat it",
+    )
+    parser.add_argument(
         "--screenshot-path",
         default="/tmp/flutter_web_screenshot.png",
         help="Where to write the captured screenshot",
@@ -47,9 +60,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+class SpaHandler(http.server.SimpleHTTPRequestHandler):
+    """Serves the build; an extension-less path that is no file gets index.html."""
+
+    def translate_path(self, path):
+        translated = super().translate_path(path)
+        if not os.path.exists(translated) and "." not in os.path.basename(translated):
+            return os.path.join(self.directory, "index.html")
+        return translated
+
+    def log_message(self, format, *args):
+        pass
+
+
 class E2ETestSuite:
-    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str, routes=None):
+    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str, routes=None, forbidden_hosts=None):
         self.routes = routes or []
+        self.forbidden_hosts = forbidden_hosts or []
+        self.third_party = collections.Counter()
+        self.third_party_urls = set()
+        self.http_errors = set()
         self.build_dir = build_dir
         self.port = port
         self.chromium_bin = chromium_bin
@@ -88,6 +118,33 @@ class E2ETestSuite:
             lambda msg: self.console_logs.append({"type": msg.type, "text": msg.text}),
         )
         page.on("pageerror", lambda err: self.page_errors.append(str(err)))
+        page.on("request", self.record_request)
+        page.on("response", lambda response: response.status >= 400 and self.http_errors.add(f"{response.status} {response.url}"))
+
+    def record_request(self, request):
+        parts = urlsplit(request.url)
+        if parts.scheme in ("http", "https") and parts.hostname not in ("localhost", "127.0.0.1"):
+            self.third_party[parts.hostname] += 1
+            self.third_party_urls.add(request.url.split("?")[0])
+
+    def report_network(self):
+        """Every host besides the served build, and the forbidden ones among them; True when one was contacted."""
+        print("\n🌐 Network")
+        for url in sorted(self.http_errors):
+            print(f"  ℹ️  HTTP {url}")
+        if not self.third_party:
+            print("  ✅ No third-party host contacted")
+        for host, count in sorted(self.third_party.items()):
+            print(f"  ℹ️  third-party host {host}: {count} request(s)")
+        for url in sorted(self.third_party_urls):
+            print(f"      {url}")
+        forbidden = [
+            host for host in self.third_party
+            if any(host == suffix or host.endswith("." + suffix) for suffix in self.forbidden_hosts)
+        ]
+        for host in sorted(forbidden):
+            self.log_fail("Forbidden host contacted", host)
+        return bool(forbidden)
 
     def wait_for_flutter(self, page, timeout=30000):
         page.wait_for_function(
@@ -402,13 +459,11 @@ class E2ETestSuite:
         print("Flutter Web App - Comprehensive E2E Test Suite")
         print("=" * 60)
 
-        server = subprocess.Popen(
-            ["python3", "-m", "http.server", str(self.port)],
-            cwd=str(self.build_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+        # An SPA server: a route like /aboutMe must get the app, not http.server's 404 page.
+        server = http.server.ThreadingHTTPServer(
+            ("127.0.0.1", self.port), functools.partial(SpaHandler, directory=str(self.build_dir))
         )
-        time.sleep(2)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
 
         with sync_playwright() as playwright:
             try:
@@ -440,11 +495,12 @@ class E2ETestSuite:
 
                 traceback.print_exc()
             finally:
-                server.terminate()
-                server.wait()
+                server.shutdown()
+                server.server_close()
                 print("\nServer stopped.")
 
         has_console_issues = self.report_console_logs()
+        self.report_network()
 
         print("\n" + "=" * 60)
         print("TEST SUMMARY")
@@ -481,5 +537,6 @@ if __name__ == "__main__":
         chromium_bin=arguments.chromium_bin,
         screenshot_path=arguments.screenshot_path,
         routes=arguments.routes,
+        forbidden_hosts=arguments.forbidden_hosts,
     )
     sys.exit(suite.run_all())

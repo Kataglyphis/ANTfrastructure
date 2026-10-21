@@ -34,6 +34,22 @@
   push, and delete the three old public tags `cross-{toolchain,media,android}-nvidia-amd64`.
   [linux-accelerator-images.md § Stage images](docs/linux-accelerator-images.md#stage-images-a-private-package).
 
+## 2026-10-21 — Flutter web builds that load nothing from Google
+
+- **Owner decision 2026-10-21** ("Selbst ausliefern"): jotrockenmitlocken stops loading CanvasKit
+  from Google's CDN, as OmniAccelerANT already did. `flutter_integration_smoke_test.sh` checks
+  this by default (`CHECK_LOCAL_ENGINE`): `flutter_bootstrap.js` must load the engine locally, and
+  `canvaskit/canvaskit.wasm` and `skwasm.wasm` must be served as `application/wasm`.
+  `REQUIRED_CSP_HOSTS` is empty by default; it asked for gstatic.
+- **`flutter_capture_console_errors.py`.** It used to serve the build through `python -m
+  http.server`, so every deep route got a 404 page and only `/` really loaded the app. Its own
+  server now answers extension-less paths with `index.html`. It also lists every third-party
+  host and HTTP error, and `--forbid-host` fails on a host. Measured on jotrockenmitlocken: before,
+  www.gstatic.com (the engine) and fonts.gstatic.com (Roboto, which the engine fetches unless the
+  app declares a family of that name); after, none.
+- Suite: `test-flutter-smoke-test.sh` (6). Mutations: `web-smoke.no-default-csp-hosts`,
+  `.local-engine` and `.engine-files`; they replace `.empty-csp-hosts`.
+
 ## 2026-10-21 — The Flutter web shell, the coverage floor and the frame timings, shared by both apps
 
 - **`shared/web/`**: the loading screen and cookie notice both Flutter web apps load before Flutter

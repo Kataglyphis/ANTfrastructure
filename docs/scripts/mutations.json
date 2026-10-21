@@ -15963,14 +15963,6 @@
   "why": "too few earlier runs must only warn"
  },
  {
-  "id": "web-smoke.empty-csp-hosts",
-  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
-  "find": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS-www.gstatic.com",
-  "replace": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS:-www.gstatic.com",
-  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
-  "why": "an app without a CSP empties the host list, and that must skip the check"
- },
- {
   "id": "stage-repo.nvidia-private",
   "target": "linux/scripts/01-core/tag-naming.sh",
   "find": "  [ \"${v}\" != \"nvidia\" ] || repo=\"${repo}-stages\"\n",
@@ -16025,5 +16017,29 @@
   "replace": "cross_sdk_tag()               { printf '%s' \"$(cross_stage_repo):",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "the sdk stage is shared with the default chain, which reads it from the public package"
+ },
+ {
+  "id": "web-smoke.no-default-csp-hosts",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS:-}\"",
+  "replace": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS:-www.gstatic.com}\"",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "the family's builds serve their own engine and fonts, so no CDN host is required by default"
+ },
+ {
+  "id": "web-smoke.local-engine",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "  if curl -s \"$BASE_URL/flutter_bootstrap.js\" | grep -q '\"useLocalCanvasKit\":true'; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "a build that loads its engine from Google's CDN must fail"
+ },
+ {
+  "id": "web-smoke.engine-files",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "  for engine in canvaskit/canvaskit.wasm canvaskit/skwasm.wasm; do",
+  "replace": "  for engine in canvaskit/canvaskit.wasm; do",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "a build without its skwasm engine must fail"
  }
 ]
