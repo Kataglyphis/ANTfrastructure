@@ -216,6 +216,12 @@ t_case "watch_loop samples repeatedly, not once"
 _mkwd; _disk_guard_free_gb() { echo 500; }
 _DISK_GUARD_WATCH_MAX_ITERS=3 _disk_guard_watch_loop "${_wd}/bc" 40 1 "" 3 > "${_wd}/o.txt" 2>&1
 t_assert_eq "3" "$(grep -c -e '\[disk-watch\] 500G free' "${_wd}/o.txt")" "the loop must keep sampling for the whole stage"
+
+t_case "watch_loop stops sampling once its owner is gone"
+_dead="$(bash -c 'echo $$')"
+_DISK_GUARD_WATCH_MAX_ITERS=3 _disk_guard_watch_loop "${_wd}/bc" 40 1 "" 3 "${_dead}" > "${_wd}/o.txt" 2>&1
+t_assert_eq "0" "$(grep -c -e '\[disk-watch\]' "${_wd}/o.txt")" \
+  "a sampler whose chain died without its traps must not keep trimming the cache"
 rm -rf "${_wd}"
 
 # Arches build sequentially unless --parallel-archs, so the lane's need scales with concurrency, not arch count.

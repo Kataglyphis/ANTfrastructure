@@ -425,8 +425,8 @@ _disk_guard_watch_once() {
 _disk_guard_watch_loop() {
   local bc_dir="${1:-}" threshold="${2:-}" interval="${3:-120}"
   local protected="${4:-}" keep_n="${5:-3}"
-  # Die with the owner: a parent killed without running its traps would leave this trimming forever.
-  local owner="${6:-$PPID}"
+  # Die with the owner or a chain killed past its traps leaves this trimming; $$ is the script, $PPID its parent (1 under Git Bash).
+  local owner="${6:-$$}"
   case "${interval}" in ''|*[!0-9]*) interval=120 ;; esac
   [ "${interval}" -ge 1 ] || interval=1
   local max="${_DISK_GUARD_WATCH_MAX_ITERS:-0}" i=0

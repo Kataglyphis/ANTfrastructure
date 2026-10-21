@@ -12,6 +12,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The disk sampler's owner is its script, not the script's parent (CON138)
+
+- **Cause.** `_disk_guard_watch_loop` defaulted its owner to `$PPID`. Under the Git Bash mutation
+  gate a suite's parent is `cmd.exe`, which MSYS reports as PID 1, so `kill -0` failed and the
+  loop returned before its first sample: `watch_loop samples repeatedly` counted 0 of 3, and every
+  mutation on `test-disk-guard.sh` read as a vacuous bite. In a backgrounded subshell `$PPID` is the
+  script's parent too, which is why `build-cross-chain.sh` already passed `$$`.
+- **Fix.** The default owner is `$$`. A new case stops the loop once its owner is gone
+  (`disk-guard.watch-dies-with-owner` bites).
+- **Proof.** The suite run the way the gate runs it (`subprocess.Popen(..., shell=True)` from
+  Git Bash) fails 0/3 before and passes after.
+
 ## 2026-10-21 — The mutation gate restores its targets byte for byte (CON134)
 
 - **Cause.** `verify_mutations.py` read each target in text mode and wrote the mutant and its

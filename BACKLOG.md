@@ -833,14 +833,6 @@ owner carries the breakage that costs.
 
 ## Open — hub tooling and the dev host
 
-- [ ] **CON138 — `test-disk-guard.sh`'s watch_loop case fails under the Git Bash mutation gate** [S, ★].
-      Run directly from Git Bash the suite passes; run as `verify_mutations.py` runs it
-      (`subprocess.Popen(cmd, shell=True, start_new_session=True)`), `watch_loop samples repeatedly, not
-      once` gets 0 samples instead of 3, so every mutation on that suite reads as a vacuous bite and a
-      push touching `build-cross-chain.sh` or the suite fails the Git Bash pre-push (2026-10-21; 59d35d6c
-      went out from WSL, where all bite). Done when the case passes there or names what it needs
-      (`t_needs`).
-
 - [ ] **CON144 — headless Chrome on the build host loads no `http://` page, so both docs-site browser
       suites hang** [M, ★★]. Found 2026-10-21 running the preflight. `test-docs-sidebars.sh` passed 47
       of 47 at 10:51 and hung from about 11:20 on; `test-webgpu-canvas-readback.sh` hangs on unmodified
