@@ -8,7 +8,16 @@ param(
     # Also fail on PSScriptAnalyzer Warning or Error findings (default: advisory).
     [switch]$FailOnAnalyzer,
     # Dirs or files to lint; omitted = the hub's own trees. The ruleset stays the hub's, used by reference.
-    [string[]]$Path
+    [string[]]$Path,
+    # Analyzer processes at once (default 4: each pays PSSA's start-up, and 8 or 16 were no faster); 1 analyses in turn.
+    [ValidateRange(1, 256)]
+    [int]$Jobs = [Math]::Min(4, [Environment]::ProcessorCount),
+    # Internal: run as one analyzer batch over -InputFile's paths.
+    [switch]$PssaBatch,
+    # Internal: the paths that batch analyses, one per line.
+    [string]$InputFile,
+    # Internal: where that batch writes its findings for the parent.
+    [string]$ResultFile
 )
 
 Set-StrictMode -Version Latest
@@ -17,6 +26,78 @@ $ErrorActionPreference = 'Stop'
 $scriptsDir = $PSScriptRoot                                         # windows/scripts
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows
 $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
+
+# A file the analyzer never finished: counted apart from findings, as an infrastructure failure.
+function New-CrashVerdict {
+    param([Parameter(Mandatory)][string]$File, [Parameter(Mandatory)][string]$Message, [string]$Note)
+    return [pscustomobject]@{ Findings = @(); Note = $Note; Crash = [pscustomobject]@{ File = (Split-Path -Leaf $File); Message = $Message } }
+}
+
+# One path per call; PSSA crashes intermittently, so retry once, then record an infrastructure failure, never skip.
+function Invoke-AnalyzerOnce {
+    param([Parameter(Mandatory)][string]$File)
+    $params = @{ Path = $File }
+    if (Test-Path $settings) { $params['Settings'] = $settings }
+    $note = $null
+    try {
+        return [pscustomobject]@{ Findings = @(Invoke-ScriptAnalyzer @params); Crash = $null; Note = $null }
+    } catch {
+        $note = "  [retry] PSSA threw on $(Split-Path -Leaf $File): $($_.Exception.Message)"
+    }
+    try {
+        return [pscustomobject]@{ Findings = @(Invoke-ScriptAnalyzer @params); Crash = $null; Note = $note }
+    } catch {
+        return New-CrashVerdict -File $File -Message $_.Exception.Message -Note $note
+    }
+}
+
+# The newest PSScriptAnalyzer installed, or $null; the object, not the name, so the version reported is the one loaded.
+function Get-AnalyzerModule {
+    Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
+}
+
+# <verdict> <severity cast>: findings as plain data, so a verdict crosses a process boundary as JSON.
+function ConvertTo-PlainVerdict {
+    param([Parameter(Mandatory)]$Verdict, [Parameter(Mandatory)][scriptblock]$Severity)
+    $findings = foreach ($x in @($Verdict.Findings)) {
+        [pscustomobject]@{ Severity = (& $Severity $x.Severity); ScriptName = $x.ScriptName; Line = $x.Line; Message = $x.Message; RuleName = $x.RuleName }
+    }
+    return [pscustomobject]@{ Note = $Verdict.Note; Crash = $Verdict.Crash; Findings = @($findings) }
+}
+
+# <files>: one verdict per file, from this process or from -Jobs analyzer batches.
+function Get-AnalyzerVerdict {
+    param([Parameter(Mandatory)][object[]]$Target)
+    $batchCount = [Math]::Min($Target.Count, $Jobs)
+    if ($batchCount -le 1) {
+        foreach ($t in $Target) { Invoke-AnalyzerOnce -File $t.FullName }
+    } else {
+        Import-Module (Join-Path $scriptsDir 'modules\WindowsFanOut.Common.psm1') -Force
+        $lists = @(for ($b = 0; $b -lt $batchCount; $b++) { , @(for ($i = $b; $i -lt $Target.Count; $i += $batchCount) { $Target[$i].FullName }) })
+        $sets = @($lists | ForEach-Object { , @('-PssaBatch') })
+        foreach ($child in @(Invoke-PwshFanOut -Script $PSCommandPath -ArgumentSets $sets -InputSets $lists -Jobs $Jobs)) {
+            if ($null -eq $child.Result) {
+                # A batch that wrote nothing analysed nothing: each of its files is an infrastructure failure.
+                $why = $child.Output | Select-Object -Last 1
+                foreach ($f in $lists[$child.Index]) { New-CrashVerdict -File $f -Message "analyzer batch $($child.Index) wrote no verdict: $why" }
+                continue
+            }
+            foreach ($v in @($child.Result | ConvertFrom-Json)) {
+                ConvertTo-PlainVerdict -Verdict $v -Severity { param($s) [Microsoft.Windows.PowerShell.ScriptAnalyzer.Generic.DiagnosticSeverity]$s }
+            }
+        }
+    }
+}
+
+# A batch child: PSSA keeps process-wide caches that runspaces corrupt, so parallel analysis takes processes.
+if ($PssaBatch) {
+    Import-Module (Get-AnalyzerModule) -Force
+    $out = foreach ($f in @(Get-Content -LiteralPath $InputFile | Where-Object { $_ })) {
+        ConvertTo-PlainVerdict -Verdict (Invoke-AnalyzerOnce -File $f) -Severity { param($s) [int]$s }
+    }
+    ConvertTo-Json -InputObject @($out) -Depth 5 | Set-Content -LiteralPath $ResultFile
+    exit 0
+}
 
 # Default scope: all of windows\, the shared\windows templates consumer repos use, and the scripts composite actions ship.
 $roots = if ($Path) {
@@ -102,24 +183,15 @@ $analyzerFindings = @()
 $analyzerCrashes = @()
 $errs = @()
 $warns = @()
-$analyzerModule = Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
+$analyzerModule = Get-AnalyzerModule
 if ($analyzerModule) {
     # The discovered object, not the name, which could load another install than the version reported.
     Import-Module $analyzerModule -Force
-    # One path per call; PSSA crashes intermittently, so retry once, then record an infrastructure failure, never skip.
-    foreach ($t in $targets) {
-        $params = @{ Path = $t.FullName }
-        if (Test-Path $settings) { $params['Settings'] = $settings }
-        try {
-            $analyzerFindings += @(Invoke-ScriptAnalyzer @params)
-        } catch {
-            Write-Host "  [retry] PSSA threw on $($t.Name): $($_.Exception.Message)" -ForegroundColor DarkYellow
-            try {
-                $analyzerFindings += @(Invoke-ScriptAnalyzer @params)
-            } catch {
-                $analyzerCrashes += [pscustomobject]@{ File = $t.Name; Message = $_.Exception.Message }
-            }
-        }
+    $verdicts = @(Get-AnalyzerVerdict -Target $targets)
+    foreach ($v in @($verdicts)) {
+        if ($v.Note) { Write-Host $v.Note -ForegroundColor DarkYellow }
+        $analyzerFindings += @($v.Findings)
+        if ($v.Crash) { $analyzerCrashes += $v.Crash }
     }
     $errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
     $warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })

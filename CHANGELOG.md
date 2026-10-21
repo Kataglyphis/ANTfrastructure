@@ -12,6 +12,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The Windows test and lint gates run side by side (CON126)
+
+- **`Invoke-Tests.ps1 -Jobs N`** (default: the CPU count) runs each of the 179 test files in its
+  own `pwsh` and adds up the tallies; the floor applies to the sum, and a suite whose process dies
+  is named as unfinished and fails the run. One process per file, not batches: a suite that imports
+  `WindowsPythonWheel.Common.psm1` from a temp copy broke the next suite in its batch. On 32 cores
+  317 → 65 s, 128 s at `-Jobs 4`.
+- **`Invoke-Lint.ps1 -Jobs N`** (default 4) hands the analyzer pass to child processes, because
+  PSScriptAnalyzer corrupts its own caches across runspaces of one process ("An item with the same
+  key has already been added"). 50 → 32 s; 8 or 16 processes measured no faster than 4.
+- Both fan out through `WindowsFanOut.Common.psm1` (`Invoke-PwshFanOut`: one child `pwsh` per
+  piece of work, its output and result file handed back in order). `-Jobs 1` runs either one in
+  turn, as before. **Proof.** `Runner.Parallel.Tests.ps1` compares each parallel run with its
+  serial twin (same tallies, same findings, less time) and checks the dead-suite path; five manual
+  mutations of the runners and the module turn it red. The full suite: 2097 tests green side by
+  side.
+
 ## 2026-10-21 — Security: the Renovate CLI's markdown-it 15.0.2 → 15.0.3
 
 - GHSA-gfr2-rv44-r23c (high) and GHSA-vfgh-jcmw-g37q (low), both quadratic-time parsing.

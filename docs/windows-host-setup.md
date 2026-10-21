@@ -506,6 +506,15 @@ pwsh -File windows/scripts/tests/Invoke-Tests.ps1          # harness + Pester su
 PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
 ```
 
+Both PowerShell gates run side by side since 2026-10-21. `Invoke-Tests.ps1` runs each test file
+in its own `pwsh`, `-Jobs` at a time (default: the CPU count), and adds up the tallies, so the
+797-test floor applies to the sum. A suite whose process dies counts as unfinished, never as green.
+One process per file rather than batches, because a suite that imports a module from a temp copy
+broke the next suite in its batch. `Invoke-Lint.ps1` hands the analyzer pass to `-Jobs` child
+processes (default 4), since PSScriptAnalyzer's caches break across runspaces of one process.
+`-Jobs 1` runs either one in turn. On 32 cores (2026-10-21) the tests took 317 → 65 s (128 s at
+`-Jobs 4`, a CI runner's count), and the lint 50 → 32 s.
+
 Verify: all three exit 0. Preflight's `KNOWN_SLUGS` array is the single
 source of the no-build gate list (don't enumerate it in docs — enumerations
 drift; `tests/test-preflight-slugs.sh` keeps the array honest) — see
