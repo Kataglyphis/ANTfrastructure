@@ -6,7 +6,7 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-20**, read from the registry (hub = the image's `revision` label, digest =
+**State 2026-10-20**, read from the registry, reviewed against the 2026-10-21 commits (hub = the image's `revision` label, digest =
 the per-arch manifest). Published: `:latest` (2026-10-11, hub 57ba7420, index `b52f8c34…`;
 amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`; Python 3.14, ORT 1.30.0), `:latest-nvidia`
 (2026-10-19, hub e9cff670, index `0e9dec34…`, amd64 `be8b9726…`; Python 3.15, ORT 1.31.0), `:latest-rocm`
