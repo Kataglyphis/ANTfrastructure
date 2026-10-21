@@ -36,9 +36,9 @@ _assert_and_relocate_native_gcc() {
 
 # sysconfig reports AR/AS under this prefix; without the links a target build runs the host's x86 tools.
 _link_target_binutils() {
-  local triplet="$1" gcc_bindir="/opt/gcc-${GCC_VERSION}/bin" tool src
+  local triplet="$1" gcc_bindir="${SWAP_GCC_BINDIR:-/opt/gcc-${GCC_VERSION}/bin}" binutils_dir="${SWAP_BINUTILS_DIR:-/usr/bin}" tool src
   for tool in as ar ld nm ranlib strip objcopy; do
-    src="/usr/bin/${triplet}-${tool}"
+    src="${binutils_dir}/${triplet}-${tool}"
     [ -x "${src}" ] || continue
     [ -e "${gcc_bindir}/${triplet}-${tool}" ] || ln -sf "${src}" "${gcc_bindir}/${triplet}-${tool}"
   done
