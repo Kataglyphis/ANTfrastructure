@@ -459,6 +459,13 @@ owner carries the breakage that costs.
       now accepts both. Find the profile.d line, rename or drop the export, and check the consumers
       that read `ARCH` (rg the family) before changing it.
 
+- [ ] **CON134 — the pre-push mutation gate under Git Bash fails an exact-newline match** [S, ★].
+      Found 2026-10-21 with CON131 (14170b1c): a wiring test matching `$'\n    install_pwsh\n'`
+      against `setup-package-image.sh` passed in `:latest` and CI but failed in the Git Bash
+      pre-push mirrors, so it now uses `grep`. Suspected: the gate restores files with CRLF on
+      Windows (unconfirmed). Reproduce with a planted exact-newline test, fix the restore path,
+      then put the exact match back.
+
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
       the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU (its lock
