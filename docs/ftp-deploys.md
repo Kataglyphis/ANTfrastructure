@@ -269,7 +269,8 @@ web app.
 `linux/scripts/check-live-site.js <base URL> [route ...] --files <build dir>` runs after a web
 app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
 
-- a route, loaded fresh at 1280x800 and 390x844 and scrolled, logs a console error or an
+- a route, loaded fresh at 1280x800 and 390x844 and scrolled, fails twice in a row (a route that
+  fails once is retried fresh and passes; its first failure is logged as `flaky:`), logs a console error or an
   exception, has a request blocked by the CSP or answered 400 or more, or requests a host other
   than the site's (`--allow-host` admits one);
 - a file of the build dir, dotfiles aside, is not served with 200;

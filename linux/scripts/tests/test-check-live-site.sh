@@ -36,6 +36,9 @@ for _ in $(seq 1 100); do [ -s "${w}/port" ] && break; sleep 0.1; done
 PORT="$(cat "${w}/port" 2>/dev/null)"
 t_skip_unless "the fixture server on a free port" test -n "${PORT}"
 BASE="http://127.0.0.1:${PORT}"
+# flaky fails on its first load only: the key is per page and the profile is fresh per run; always fails on every load.
+_page flaky '' "const k = 'seen:' + location.pathname; if (!localStorage.getItem(k)) { localStorage.setItem(k, '1'); setTimeout(() => { throw new Error('once'); }); }"
+_page always '' "setTimeout(() => { throw new Error('always'); });"
 _page third '' "fetch('http://localhost:${PORT}/clean/version.json', { mode: 'no-cors' }).catch(() => {});"
 _check() { node "${CHECK}" "$@" --scrolls 0 --settle-ms 300 --ready-ms 3000; }
 
@@ -82,6 +85,16 @@ rm "${w}/build/only-here.png"
 t_assert_contains "$(t_out _check "${BASE}/clean/" --files "${w}/build")" "FAIL version.json: 1.0.0+3, want 1.0.1+3"
 t_assert_contains "$(t_out _check "${BASE}/clean/" --version 2.0.0)" "FAIL version.json: 1.0.0+3, want 2.0.0"
 t_assert_rc 0 _check "${BASE}/clean/" --version 1.0.0+3
+
+t_case "a route that fails once and passes on the retry passes, its first failure logged as flaky"
+t_assert_rc 0 _check "${BASE}/" flaky/
+t_assert_contains "$(t_out _check "${BASE}/" flaky/)" "flaky: flaky/ 800x600: exception: Error: once"
+t_assert_contains "$(t_out _check "${BASE}/" flaky/)" "ok   (after a retry) flaky/ 800x600"
+
+t_case "a route that fails on the retry too fails, with the retry's failure"
+t_assert_rc 1 _check "${BASE}/" always/
+t_assert_contains "$(t_out _check "${BASE}/" always/)" "FAIL always/ 800x600"
+t_assert_contains "$(t_out _check "${BASE}/" always/)" "flaky: always/ 800x600: exception: Error: always"
 
 t_case "a site that does not answer names each file's network error, not a status"
 t_assert_contains "$(t_out node "${CHECK}" http://127.0.0.1:9/ --files "${w}/site/clean" --scrolls 0 --settle-ms 0 --ready-ms 500)" "ECONNREFUSED index.html"

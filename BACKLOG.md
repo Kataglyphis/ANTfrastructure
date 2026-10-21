@@ -342,6 +342,21 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       build/web/fallback-fonts` and the smoke test `CHECK_FALLBACK_FONTS=1`, as jotrockenmitlocken
       does ([`linux/webserver/README.md`](linux/webserver/README.md#fallback-fonts-from-the-site)).
 
+- [ ] **CON150 — the uncaught `postMessage` TypeError on jonasheinle.de's landingPage and error404** [S, ★★].
+      Found 2026-10-21, when jotrockenmitlocken 1.4.1 went to main: the live check saw one
+      `Uncaught TypeError: Cannot read properties of undefined (reading 'postMessage')` on
+      `/#/landingPage` and `/#/error404` at 1280x800, once per run. Phone widths, the reruns and
+      all 128 files were clean. The gate now retries such a route once and logs the first failure
+      as `flaky:` (`check-live-site.js`, `checkRouteTwice`), so the run stays green and the log
+      keeps it. Not found in the sources: jotrockenmitlocken's `lib/`, `web/` and the shared shell
+      (`web/javascript/`), nor ANThology's `lib/`, and the minified `main.dart.js` is the only
+      place left. Next: search the Flutter web packages the app resolves (`url_launcher_web`,
+      any iframe or `window.parent` caller) and the engine's `flutter.js` for a call on a property
+      that is undefined before the page's listeners attach. Both pages render ANThology's
+      navigation and cookie notice, so reproduce by loading `/#/landingPage` 50 times at 1280x800
+      with the console captured. Done when the cause is named and fixed in its own repo, and the
+      retry logs no `flaky:` line on 50 consecutive runs.
+
 ## Open — Flet clients for OrchestrANT's UIs
 
 Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;

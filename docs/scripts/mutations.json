@@ -16802,5 +16802,29 @@
   "replace": "    break\n",
   "test": "bash linux/scripts/tests/test-run-tests.sh",
   "why": "a rendezvous that says met without its peers proves every serial run parallel"
+ },
+ {
+  "id": "live-site.retry-once",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  const second = await checkRoute(browser, events, opts, route, vp);",
+  "replace": "  const second = firstRun;",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a route that fails once must pass on its fresh retry: a retry that reruns nothing turns one flaky console error into a red deploy"
+ },
+ {
+  "id": "live-site.retry-verdict",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  return { label: firstRun.label, problems: second.problems, first: firstRun.problems };",
+  "replace": "  return { label: firstRun.label, problems: [], first: firstRun.problems };",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a failure that repeats on the retry must fail the run: a verdict from the first attempt alone hides every real error"
+ },
+ {
+  "id": "live-site.flaky-logged",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "        for (const p of first) process.stdout.write(`flaky: ${label}: ${p}\n`);",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a first-attempt failure that passes on retry stays visible in the log, or the gate hides a flaky route for good"
  }
 ]

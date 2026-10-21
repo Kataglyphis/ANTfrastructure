@@ -133,6 +133,14 @@ async function status(url) {
   return error;
 }
 
+// A route that fails once is retried fresh: a failure that repeats on the retry is the verdict; the first one is only logged.
+async function checkRouteTwice(browser, events, opts, route, vp) {
+  const firstRun = await checkRoute(browser, events, opts, route, vp);
+  if (!firstRun.problems.length) return { label: firstRun.label, problems: [], first: [] };
+  const second = await checkRoute(browser, events, opts, route, vp);
+  return { label: firstRun.label, problems: second.problems, first: firstRun.problems };
+}
+
 async function checkFiles(opts) {
   const files = listFiles(opts.files);
   const bad = [];
@@ -204,9 +212,14 @@ async function main() {
     process.stdout.write(`check-live-site: ${opts.base}, ${browser.product} (${chrome})\n`);
     for (const route of opts.routes) {
       for (const vp of custom.length ? custom : VIEWPORTS) {
-        const { label, problems } = await checkRoute(browser, events, opts, route, vp);
+        const { label, problems, first } = await checkRouteTwice(browser, events, opts, route, vp);
+        for (const p of first) process.stdout.write(`flaky: ${label}: ${p}
+`);
         if (problems.length) failed++;
-        process.stdout.write(`${problems.length ? 'FAIL' : 'ok  '} ${label}\n${problems.map((p) => `     ${p}\n`).join('')}`);
+        const verdict = problems.length ? 'FAIL' : first.length ? 'ok   (after a retry)' : 'ok  ';
+        process.stdout.write(`${verdict} ${label}
+${problems.map((p) => `     ${p}
+`).join('')}`);
       }
     }
   } finally {

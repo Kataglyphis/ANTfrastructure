@@ -93,6 +93,9 @@ Found on jonasheinle.de 1.4.0: its app icons 404ed, and emoji drew as boxes.
 - **`check-web-artefacts.py`** checks the icons the manifest and `index.html` name are on disk and
   in `--icons-dir` (default `icons`), and with a `web/.htaccess` fails anything under `web/icons/`
   or `/icons/`: Apache's default `Alias /icons/` serves its own directory there.
+- **A route that fails once is retried fresh.** Only a failure that repeats fails the run; the first
+  one is logged as `flaky:`. Proof: three mutations (`live-site.retry-*`, `live-site.flaky-logged`).
+  The cause of the one `postMessage` TypeError that prompted it is CON150.
 - **Proof.** `test-check-live-site.sh`, `test-fetch-fallback-fonts.sh` and the extended
   `test-check-web-artefacts.sh` and `test-flutter-smoke-test.sh` in `:latest`; 21 new mutations
   (`live-site.*`, `fallback-fonts.*`, `web-artefacts.*`, `web-smoke.*`) all bite.
