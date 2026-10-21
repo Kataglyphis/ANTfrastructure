@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# flutter-nginx-integration-test.sh with a stub engine, curl and smoke test: what it mounts, and that it always stops nginx.
+# flutter-nginx-integration-test.sh with a stub engine, curl and smoke test: what it mounts, and that it always removes nginx.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -27,20 +27,20 @@ t_case "a passing smoke test passes, against the chosen port"
 t_assert_rc 0 _run "${work}/build" --port 18080
 t_assert_grep "${work}/calls.log" '^smoke http://localhost:18080$'
 t_case "nginx gets the build and the shared config, read-only"
-t_assert_grep "${work}/calls.log" '^run -d --rm -p 18080:8080 .*target=/usr/share/nginx/html,readonly .*flutter-nginx-local\.conf,target=/etc/nginx/conf\.d/default\.conf,readonly nginx:alpine$'
-t_case "and is stopped afterwards"
-t_assert_grep "${work}/calls.log" '^stop cid-1$'
+t_assert_grep "${work}/calls.log" '^run -d -p 18080:8080 .*target=/usr/share/nginx/html,readonly .*flutter-nginx-local\.conf,target=/etc/nginx/conf\.d/default\.conf,readonly nginx:alpine$'
+t_case "and is removed afterwards"
+t_assert_grep "${work}/calls.log" '^rm -f cid-1$'
 
-t_case "a failing smoke test fails the run and still stops nginx"
+t_case "a failing smoke test fails the run and still removes nginx"
 : > "${work}/calls.log"
 t_assert_rc 3 env SMOKE_RC=3 bash -c "$(declare -f _run); work='${work}'; HARNESS='${HARNESS}'; _run '${work}/build'"
-t_assert_grep "${work}/calls.log" '^stop cid-1$'
+t_assert_grep "${work}/calls.log" '^rm -f cid-1$'
 
-t_case "nginx that never answers fails the run, prints its logs and is stopped"
+t_case "nginx that never answers fails the run, prints its logs and is removed"
 : > "${work}/calls.log"
 t_assert_rc 1 env CURL_RC=7 NGINX_READY_ATTEMPTS=1 bash -c "$(declare -f _run); work='${work}'; HARNESS='${HARNESS}'; _run '${work}/build'"
 t_assert_grep "${work}/calls.log" '^logs cid-1$'
-t_assert_grep "${work}/calls.log" '^stop cid-1$'
+t_assert_grep "${work}/calls.log" '^rm -f cid-1$'
 t_assert_no_grep "${work}/calls.log" '^smoke'
 
 t_case "no build is a usage error, before any container starts"

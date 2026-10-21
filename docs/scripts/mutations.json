@@ -15952,7 +15952,7 @@
   "find": "trap stop_nginx EXIT",
   "replace": ": trap stop_nginx EXIT",
   "test": "bash linux/scripts/tests/test-flutter-nginx-integration.sh",
-  "why": "nginx that never answers must still be stopped"
+  "why": "nginx that never answers must still be removed"
  },
  {
   "id": "perf-report.gate-history",

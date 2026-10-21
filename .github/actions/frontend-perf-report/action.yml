@@ -1,0 +1,57 @@
+name: 'Frontend performance report'
+description: >-
+  Compares a Flutter app's frame timings (integration_test/performance_test.dart under
+  flutter drive --profile) with the median of the default branch's last runs, writes the
+  table into the step summary, fails when a gated time doubles, and keeps a passing
+  default-branch run as history. See docs/code-quality-tooling.md#frontend-frame-timings.
+
+inputs:
+  key:
+    description: >-
+      Cache key prefix of the history, one per app and arch, for example `frontend-perf-x64`.
+    required: true
+  timings:
+    description: 'The run''s timings, as the app''s test_driver wrote them.'
+    required: false
+    default: 'out/perf/frontend.json'
+  keep:
+    description: 'How many default-branch runs the history holds.'
+    required: false
+    default: '20'
+
+runs:
+  using: composite
+  steps:
+    - name: Restore the frontend performance history
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .perf-baseline
+        key: ${{ inputs.key }}-${{ github.sha }}
+        restore-keys: ${{ inputs.key }}-
+
+    - name: Frontend performance report
+      shell: bash
+      env:
+        TIMINGS: ${{ inputs.timings }}
+        REPORT: ${{ github.action_path }}/../../../linux/scripts/05-frameworks/flutter/frontend-perf-report.py
+      run: python3 "${REPORT}" "${TIMINGS}" .perf-baseline >> "${GITHUB_STEP_SUMMARY}"
+
+    # After a passing report only: a failed run must not pull the median towards its own slowdown.
+    - name: Keep this run as history
+      id: keep
+      if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+      shell: bash
+      env:
+        TIMINGS: ${{ inputs.timings }}
+        KEEP: ${{ inputs.keep }}
+      run: |
+        mkdir -p .perf-baseline
+        cp "${TIMINGS}" ".perf-baseline/$(printf '%08d' "${GITHUB_RUN_NUMBER}")-${GITHUB_SHA::7}.json"
+        find .perf-baseline -name '*.json' | sort | head -n "-${KEEP}" | xargs -r rm -f
+
+    - name: Save the frontend performance history
+      if: steps.keep.outcome == 'success'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .perf-baseline
+        key: ${{ inputs.key }}-${{ github.sha }}

@@ -316,7 +316,7 @@ class E2ETestSuite:
                     """
                     () => {
                         const notice = document.getElementById('cookie-notice');
-                        return notice && (notice.style.display === 'none' || notice.classList.contains('hidden'));
+                        return notice && getComputedStyle(notice).display === 'none';
                     }
                     """
                 )

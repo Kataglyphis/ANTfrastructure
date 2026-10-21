@@ -61,7 +61,7 @@ The following shared helpers are intended for Flutter web projects that need loc
 - `linux/webserver/templates/flutter-nginx-local.conf`: minimal nginx config for local SPA + WASM serving on port `8080`
 - `linux/webserver/templates/flutter-web.htaccess`: Apache template with WASM MIME type and basic headers
 - `linux/webserver/scripts/flutter_integration_smoke_test.sh`: HTTP-level smoke test for a built Flutter web app. With `CHECK_LOADING_SHELL=1` (the default) it also fails when `index.html` lacks the shared shell's markup or one of its files is not served ([`shared/web/README.md`](../../shared/web/README.md)); `REQUIRED_CSP_HOSTS=""` skips the CSP host check for an app without a CSP
-- `linux/webserver/scripts/flutter-nginx-integration-test.sh <build-dir> [--port N]`: that smoke test against the build behind `flutter-nginx-local.conf` in `nginx:alpine`. `ENGINE` picks docker or nerdctl; from Git Bash it hands the engine `C:/...` paths
+- `linux/webserver/scripts/flutter-nginx-integration-test.sh <build-dir> [--port N]`: that smoke test against the build behind `flutter-nginx-local.conf` in `nginx:alpine`. `ENGINE` picks docker or nerdctl; from Git Bash it hands the engine `C:/...` paths. It removes the container whatever the result
 - `linux/webserver/scripts/flutter_capture_console_errors.py`: Playwright-based browser smoke test for a built Flutter web app; `--route PATH`, repeated, names the routes to open
 
 Example:

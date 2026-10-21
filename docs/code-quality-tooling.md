@@ -259,7 +259,9 @@ runs in `<history-dir>`. Over +25 % it warns. When the average or 90th-percentil
 doubles, it fails, but only once 3 earlier runs exist.
 `flutter-trace-summary.py <timeline.json>` lists a timeline's slowest frames and the slowest UI
 frame's self time per event, per widget with `debugProfileBuildsEnabled`. Both moved here from
-OmniAccelerANT on 2026-10-21. Test: `tests/test-perf-reports.sh`.
+OmniAccelerANT on 2026-10-21. Test: `tests/test-perf-reports.sh`. In CI the
+`frontend-perf-report` action runs the report and keeps a passing default-branch run in
+`actions/cache` as the next run's history ([`.github/actions/README.md`](../.github/actions/README.md)).
 
 #### `dart format`: the tracked files, in the floor's style
 

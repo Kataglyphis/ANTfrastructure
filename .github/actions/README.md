@@ -34,6 +34,14 @@ which is what `prepare-windows-container-host` runs by default. Under its
 its container run. A job that runs host steps before its first container run, or has
 none, calls this action with `mode: wait` itself.
 
+### `frontend-perf-report`
+Runs after a Flutter app's `flutter drive --profile` performance test. It restores the
+default branch's last frame timings from `actions/cache` (input `key`, one per app and arch),
+writes `frontend-perf-report.py`'s table against their median into the step summary, and
+fails when an average or 90th-percentile build time doubles. A passing push to the default
+branch joins the history, which keeps the last `keep` (20) runs.
+[`code-quality-tooling.md` § Frontend frame timings](../../docs/code-quality-tooling.md#frontend-frame-timings).
+
 ### `install-deps`
 Prepares a Linux runner's toolchain PATH: cargo/rustup (installs a stable
 default toolchain when missing), the Vulkan SDK bin dir (input

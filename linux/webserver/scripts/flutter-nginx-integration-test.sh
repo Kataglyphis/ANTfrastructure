@@ -43,14 +43,15 @@ CONTAINER=""
 stop_nginx() {
   if [ -n "${CONTAINER}" ]; then
     # Not silenced: this message explains a container you later find still running.
-    "${ENGINE}" stop "${CONTAINER}" >/dev/null || printf 'Warning: could not stop container %s\n' "${CONTAINER}" >&2
+    "${ENGINE}" rm -f "${CONTAINER}" >/dev/null || printf 'Warning: could not remove container %s\n' "${CONTAINER}" >&2
     CONTAINER=""
   fi
 }
 trap stop_nginx EXIT
 
 echo "=== Starting nginx (${ENGINE}, port ${PORT}) ==="
-if ! CONTAINER="$(MSYS_NO_PATHCONV=1 "${ENGINE}" run -d --rm -p "${PORT}:8080" \
+# No --rm: nerdctl refuses it beside -d; the trap's rm -f stops and removes the container instead.
+if ! CONTAINER="$(MSYS_NO_PATHCONV=1 "${ENGINE}" run -d -p "${PORT}:8080" \
   --mount "type=bind,source=$(_host_path "${BUILD_DIR}"),target=/usr/share/nginx/html,readonly" \
   --mount "type=bind,source=$(_host_path "${NGINX_CONF}"),target=/etc/nginx/conf.d/default.conf,readonly" \
   "${IMAGE}")"; then
