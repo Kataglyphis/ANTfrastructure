@@ -84,6 +84,10 @@
   [docs-sites.md § The sidebar toggle check](docs/docs-sites.md#the-sidebar-toggle-check).
 - **An open item taller than the viewport** is scrolled to by its first line: BeschleunigerBallett's
   first namespace, centred whole, hid its own text, and run 39511861138 failed `does not go back`.
+- **Chrome's DevTools port is read once it is written.** Chrome creates `DevToolsActivePort`
+  before it writes the port; under load the launcher read it empty, polled `127.0.0.1:` and
+  failed five mutation baselines with `opened no page` (run 39518418220). Six suites at once on
+  two CPUs failed 3 to 5 launches before, none after (twice).
 
 ## 2026-10-20 — The last 23 Apache-2.0 headers are MIT, as `LICENSE` says (CON69)
 

@@ -15419,6 +15419,14 @@
   "why": "BeschleunigerBallett's open first namespace is taller than the viewport: centring the whole item scrolled its text away, and the second click missed"
  },
  {
+  "id": "docs-site.sidebars-waits-for-the-port",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  for (let i = 0; i < 600 && !port; i++) {",
+  "replace": "  for (let i = 0; i < 600 && !fs.existsSync(portFile); i++) {",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "Chrome creates DevToolsActivePort before it writes the port; a loaded runner read it empty and failed 5 mutation baselines with 'opened no page' (run 39518418220)"
+ },
+ {
   "id": "docs-site.sidebars-tree-pages-found",
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])",

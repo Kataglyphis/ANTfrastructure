@@ -147,6 +147,16 @@ t_assert_rc 0 node "${CHECK}" "${_tmp}/plain"
 t_assert_rc 2 node "${CHECK}" "${_tmp}/no-such-site"
 t_assert_rc 2 node "${CHECK}"
 
+t_case "Chrome creates DevToolsActivePort before it writes the port: the check waits for the port"
+cat > "${_tmp}/slow-chrome" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do case "\${a}" in --user-data-dir=*) : > "\${a#--user-data-dir=}/DevToolsActivePort" ;; esac; done
+sleep 1
+exec "${_chrome}" "\$@"
+EOF
+chmod +x "${_tmp}/slow-chrome"
+t_assert_contains "$(CHROME_EXECUTABLE="${_tmp}/slow-chrome" t_out node "${CHECK}" "${_tmp}/works")" "ok   1000x700 primary: open -> closed -> open"
+
 t_case "docs-site.sh check runs the click check; --if-chrome skips only without CHROME_EXECUTABLE"
 t_assert_rc 0 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/works"
 t_assert_rc 1 bash "${SCRIPTS}/docs-site.sh" check "${_tmp}/dead"

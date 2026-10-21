@@ -71,15 +71,20 @@ async function launch(chrome, gpuFlags = ['--disable-gpu']) {
     '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
   { stdio: 'ignore' });
   const portFile = path.join(profile, 'DevToolsActivePort');
-  for (let i = 0; i < 600 && !fs.existsSync(portFile); i++) await sleep(100);
-  if (!fs.existsSync(portFile)) { proc.kill('SIGKILL'); fail(`${chrome} started no DevTools endpoint in 60 s`); }
-  const port = fs.readFileSync(portFile, 'utf8').split('\n')[0];
+  // Chrome creates the file before it writes the port: under load a read in between got '' and polled 127.0.0.1: for nothing.
+  let port = '';
+  for (let i = 0; i < 600 && !port; i++) {
+    try { port = (fs.readFileSync(portFile, 'utf8').match(/^(\d+)\n/) || [])[1] || ''; } catch { port = ''; }
+    if (!port) await sleep(100);
+  }
+  if (!port) { proc.kill('SIGKILL'); fail(`${chrome} started no DevTools endpoint in 60 s`); }
   let targets = [];
-  for (let i = 0; i < 50 && !targets.some((t) => t.type === 'page'); i++) {
-    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { await sleep(100); }
+  for (let i = 0; i < 300 && !targets.some((t) => t.type === 'page'); i++) {
+    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { targets = []; }
+    if (!targets.some((t) => t.type === 'page')) await sleep(100);
   }
   const page = targets.find((t) => t.type === 'page');
-  if (!page) { proc.kill('SIGKILL'); fail(`${chrome} opened no page`); }
+  if (!page) { proc.kill('SIGKILL'); fail(`${chrome} opened no page in 30 s`); }
   const ws = new WebSocket(page.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let id = 0;
