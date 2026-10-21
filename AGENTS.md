@@ -812,8 +812,10 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
   while it runs `nvinfer`:
   [`linux-accelerator-images.md` § DeepStream](docs/linux-accelerator-images.md#deepstream-nvidia-variant).
 - **TensorRT 11 is on in every amd64 nvidia build** (`ENABLE_TENSORRT`, CON31; owner 2026-10-20),
-  at exactly `TENSORRT_VERSION`-1+cuda`TENSORRT_LINUX_CUDA` from NVIDIA's apt repo, and the image
-  ships only its runtime `.so` files: the SLA names nothing else distributable. Never install the
+  at exactly `TENSORRT_VERSION`-1+cuda`TENSORRT_LINUX_CUDA` from NVIDIA's apt repo. Every published
+  image ships only TensorRT's runtime `.so`/`.dll` files, DeepStream's 10.x and the Windows lane's
+  included (owner 2026-10-21): headers, dev links, `trtexec` and bindings serve build stages, and the
+  gates fail an image that carries one. Never install the
   `tensorrt*` metapackages (the 1.9 GB Windows builder resource) and never ask GenAI for
   `--use_trt_rtx` (TensorRT-RTX, not TensorRT):
   [`linux-accelerator-images.md` § TensorRT 11](docs/linux-accelerator-images.md#tensorrt-11).

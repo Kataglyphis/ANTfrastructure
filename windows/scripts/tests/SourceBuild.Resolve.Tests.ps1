@@ -109,6 +109,40 @@ Describe 'Resolve-TensorRtRoot' {
     }
 }
 
+Describe 'Resolve-TensorRtSdkRoot' {
+
+    # The image's TENSORRT_ROOT holds runtime DLLs only (owner 2026-10-21); ORT's EP compiles against the mounted SDK.
+    It 'takes the mounted SDK over the runtime-only image root' {
+        Invoke-InTestDir { param($dir)
+            $sdk = Join-Path $dir 'sdk\current'
+            New-Item -ItemType Directory -Force -Path (Join-Path $sdk 'include'), (Join-Path $dir 'rt\current\bin') | Out-Null
+            Set-Content -Path (Join-Path $sdk 'include\NvInfer.h') -Value ''
+            Invoke-WithEnv @{ TENSORRT_SDK_ROOT = (Join-Path $dir 'sdk'); TENSORRT_ROOT = (Join-Path $dir 'rt') } {
+                Assert-Equal $sdk (Resolve-TensorRtSdkRoot)
+            }
+        }
+    }
+
+    It 'returns $null for a runtime-only root, so ORT builds no EP rather than failing on a missing header' {
+        Invoke-InTestDir { param($dir)
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'rt\current\bin') | Out-Null
+            Invoke-WithEnv @{ TENSORRT_SDK_ROOT = (Join-Path $dir 'empty-mount'); TENSORRT_ROOT = (Join-Path $dir 'rt') } {
+                Assert-Null (Resolve-TensorRtSdkRoot)
+            }
+        }
+    }
+
+    It 'still finds a full tree at TENSORRT_ROOT outside the image build (a host install)' {
+        Invoke-InTestDir { param($dir)
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'TensorRT-11.4.0.106\include') | Out-Null
+            Set-Content -Path (Join-Path $dir 'TensorRT-11.4.0.106\include\NvInfer.h') -Value ''
+            Invoke-WithEnv @{ TENSORRT_SDK_ROOT = ''; TENSORRT_ROOT = $dir } {
+                Assert-Equal (Join-Path $dir 'TensorRT-11.4.0.106') (Resolve-TensorRtSdkRoot)
+            }
+        }
+    }
+}
+
 Describe 'Get-CudnnLibrary' {
 
     # Helper: build <root>\lib\x64 and drop the named empty .lib files into it.

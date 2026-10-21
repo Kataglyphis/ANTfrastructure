@@ -31,10 +31,14 @@ for so in $(ldconfig -p 2>/dev/null | awk '$1 ~ /^libnvinfer\.so\.[0-9]+$/ {prin
 done
 lib="/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null)"
 for f in "${lib}"/libnvinfer_builder_resource*.so.*; do [ -f "${f}" ] && echo "GPUR TRTRES ${f}"; done
-find /usr/include /usr/local/include /usr/local/tensorrt -name 'NvInfer*.h' 2>/dev/null | head -3 | sed 's/^/GPUR TRTHDR /'
-for f in "${lib}"/libnvinfer.so "${lib}"/libnvinfer_plugin.so "${lib}"/libnvonnxparser.so "${lib}"/libtensorrt_shim.so; do
+find /usr/include /usr/local/include /usr/local/tensorrt /opt/nvidia \( -name 'NvInfer*.h' -o -name 'NvOnnxParser*.h' \) 2>/dev/null | head -3 | sed 's/^/GPUR TRTHDR /'
+# DeepStream's TensorRT 10 prefix too: its loader path keys it by soname, so an unversioned .so there is a dev link.
+for f in "${lib}"/libnvinfer.so "${lib}"/libnvinfer_plugin.so "${lib}"/libnvonnxparser.so "${lib}"/libtensorrt_shim.so /opt/nvidia/deepstream/tensorrt-*/lib/*.so; do
   [ -e "${f}" ] && echo "GPUR TRTDEV ${f}"
 done
+for f in $(command -v trtexec 2>/dev/null) /usr/src/tensorrt/bin/trtexec; do [ -e "${f}" ] && echo "GPUR TRTBIN ${f}"; done
+py="$(/opt/venv/bin/python -I -c 'import importlib.util as u; s = u.find_spec("tensorrt"); print(s.origin if s else "")' 2>/dev/null)"
+[ -z "${py}" ] || echo "GPUR TRTPY ${py}"
 for f in $(find /usr/local/lib/onnxruntime-gpu /opt/venv/lib/python3*/site-packages/onnxruntime -name 'libonnxruntime_providers_tensorrt.so' 2>/dev/null); do
   echo "GPUR ORTTRT ${f}"
   ldd "${f}" 2>/dev/null | awk -v f="${f}" '$1 ~ /^lib(nvinfer|nvonnxparser|tensorrt)/ {print "GPUR ORTDEP", f, $1, ($3 == "not" ? "NOTFOUND" : $3)}'
@@ -114,9 +118,6 @@ gpu_tensorrt_verdict() {
   else echo "BAD getInferLibVersion() of libnvinfer.so.${m} is '${got}', TENSORRT_VERSION is ${want}"; fi
   if _gpur "${probe}" TRTRES | grep -qF ".so.${m}."; then echo "OK $(_gpur "${probe}" TRTRES | grep -cF ".so.${m}.") builder resources in the default lib dir"
   else echo "BAD no TensorRT ${m} builder resource in the default lib dir; no engine builds"; fi
-  bad="$(_gpur "${probe}" TRTHDR; _gpur "${probe}" TRTDEV)"
-  if [ -z "${bad//[[:space:]]/}" ]; then echo "OK only TensorRT's runtime .so files ship (no headers, no dev links)"
-  else echo "BAD the SLA lets only the runtime .so files ship, but the image has: $(printf '%s' "${bad}" | tr '\n' ' ')"; fi
   [ "$(_gpur "${probe}" ORTTRT | grep -c .)" -ge 2 ] \
     || echo "BAD the ORT TensorRT EP is not in both the native tree and the venv: $(_gpur "${probe}" ORTTRT | tr '\n' ' ')"
   bad="$(_gpur "${probe}" ORTDEP | awk -v s=".so.${m}" '
@@ -127,11 +128,20 @@ gpu_tensorrt_verdict() {
   _gpur_ep "${probe}" TensorrtExecutionProvider
 }
 
+# <probe>: whatever ENABLE_TENSORRT says, no image ships a TensorRT header, dev link, trtexec or Python binding (owner 2026-10-21).
+gpu_tensorrt_sdk_verdict() {
+  local bad
+  bad="$(_gpur "$1" TRTHDR; _gpur "$1" TRTDEV; _gpur "$1" TRTBIN; _gpur "$1" TRTPY)"
+  if [ -z "${bad//[[:space:]]/}" ]; then echo "OK only TensorRT's runtime .so files ship (no headers, dev links, trtexec or Python binding)"
+  else echo "BAD the SLA lets only the runtime .so files ship, but the image has: $(printf '%s' "${bad}" | tr '\n' ' ')"; fi
+}
+
 # <probe> <TENSORRT_VERSION>: every verdict, or one BAD when the probe never ran (an empty probe would read as "no GPU stack").
 gpu_runtime_verdict() {
   _gpur "$1" ENABLE | grep -q . || { echo "BAD the GPU probe printed nothing; the container did not run it"; return 0; }
   gpu_rocm_verdict "$1"
   gpu_tensorrt_verdict "$1" "$2"
+  gpu_tensorrt_sdk_verdict "$1"
 }
 
 # <image> <arch>: runs the probe in the shipped image and turns each verdict line into pass or fail.

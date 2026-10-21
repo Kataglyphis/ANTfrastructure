@@ -20,7 +20,8 @@ function Get-CudaRoot {
 }
 
 function Resolve-TensorRtRoot {
-    $trtRoot = $env:TENSORRT_ROOT
+    param([string]$Root = $env:TENSORRT_ROOT)
+    $trtRoot = $Root
     if (-not $trtRoot) { return $null }
     if (-not (Test-Path $trtRoot)) { return $null }
     if (-not (Get-ChildItem $trtRoot -ErrorAction SilentlyContinue | Select-Object -First 1)) { return $null }
@@ -30,6 +31,16 @@ function Resolve-TensorRtRoot {
     $trtVerDir = Get-ChildItem "$trtRoot\TensorRT-*" -Directory -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($trtVerDir) { return $trtVerDir.FullName }
     return $trtRoot
+}
+
+function Resolve-TensorRtSdkRoot {
+    # The image's TENSORRT_ROOT holds runtime DLLs only (owner 2026-10-21); the ORT build mounts the full tree at TENSORRT_SDK_ROOT.
+    foreach ($candidate in @($env:TENSORRT_SDK_ROOT, $env:TENSORRT_ROOT)) {
+        if (-not $candidate) { continue }
+        $resolved = Resolve-TensorRtRoot -Root $candidate
+        if ($resolved -and (Test-Path -LiteralPath (Join-Path $resolved 'include\NvInfer.h'))) { return $resolved }
+    }
+    return $null
 }
 
 function Get-GpuEnvironment {
@@ -42,7 +53,7 @@ function Get-GpuEnvironment {
     $gpuType = if ($env:GPU_TYPE) { $env:GPU_TYPE.ToLowerInvariant() } else { 'cpu' }
     $cudaRoot = Get-CudaRoot
     $cudnnRoot = $env:CUDNN_ROOT
-    $trtRoot = Resolve-TensorRtRoot
+    $trtRoot = Resolve-TensorRtSdkRoot
     $cudaBin = if ($cudaRoot) { Join-Path $cudaRoot 'bin' } else { $null }
 
     # Fail closed: GPU_TYPE=nvidia is baked into the image, so a missing CUDA root is mis-plumbing, not a CPU build.
@@ -192,6 +203,7 @@ function Get-NvccCudaCmakeArgs {
 Export-ModuleMember -Function @(
     'Get-CudaRoot',
     'Resolve-TensorRtRoot',
+    'Resolve-TensorRtSdkRoot',
     'Get-GpuEnvironment',
     'Get-CudaArchitectureList',
     'Get-CudaToolkitRootArg',

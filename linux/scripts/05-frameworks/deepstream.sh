@@ -131,44 +131,62 @@ ds_stage_runtime_deb() {
   ds_log "runtime ${asset} -> $(ds_root)"
 }
 
-# "<package> <sha256>" per TensorRT 10 deb: the runtime libraries and the headers the sources compile against.
-ds_trt_debs() {
+# "<package> <sha256>" per TensorRT 10 runtime deb: the libraries the prefix ships.
+ds_trt_runtime_debs() {
   printf '%s %s\n' \
     libnvinfer10 "${DEEPSTREAM_TRT_LIBNVINFER10_SHA256}" \
     libnvinfer-plugin10 "${DEEPSTREAM_TRT_LIBNVINFER_PLUGIN10_SHA256}" \
-    libnvonnxparsers10 "${DEEPSTREAM_TRT_LIBNVONNXPARSERS10_SHA256}" \
+    libnvonnxparsers10 "${DEEPSTREAM_TRT_LIBNVONNXPARSERS10_SHA256}"
+}
+
+# The headers the sources compile against; the SLA lets only the runtime .so files ship, so these stay in the build's tmp.
+ds_trt_dev_debs() {
+  printf '%s %s\n' \
     libnvinfer-headers-dev "${DEEPSTREAM_TRT_LIBNVINFER_HEADERS_DEV_SHA256}" \
     libnvinfer-headers-plugin-dev "${DEEPSTREAM_TRT_LIBNVINFER_HEADERS_PLUGIN_DEV_SHA256}" \
     libnvonnxparsers-dev "${DEEPSTREAM_TRT_LIBNVONNXPARSERS_DEV_SHA256}"
 }
+
+ds_trt_debs() { ds_trt_runtime_debs; ds_trt_dev_debs; }
 
 ds_trt_deb_url() {
   printf '%s/%s/x86_64/%s_%s-1+cuda%s_amd64.deb' "${DS_TRT_REPO_URL}" "${DEEPSTREAM_TENSORRT_REPO}" \
     "$1" "${DEEPSTREAM_TENSORRT_VERSION}" "${DEEPSTREAM_TENSORRT_CUDA}"
 }
 
-ds_stage_tensorrt() {
-  local tmp="$1" prefix pkg sha deb x="${1}/trt"
-  prefix="$(ds_trt_prefix)"
-  mkdir -p "${x}"
+# The headers and dev links the components build against, under ds_build's tmp so no layer keeps them.
+ds_trt_sdk() { printf '%s/trt-sdk' "$1"; }
+
+# ds_trt_extract <dir> <list function>: each deb the function names, verified, unpacked into <dir>.
+ds_trt_extract() {
+  local dir="$1" pkg sha deb
+  mkdir -p "${dir}"
   while read -r pkg sha; do
-    deb="${tmp}/${pkg}.deb"
+    deb="${dir}.${pkg}.deb"
     ds_fetch "$(ds_trt_deb_url "${pkg}")" "${sha}" "${deb}"
-    dpkg-deb -x "${deb}" "${x}"
+    dpkg-deb -x "${deb}" "${dir}"
     rm -f "${deb}"
-  done < <(ds_trt_debs)
-  rm -rf "${prefix}"
-  mkdir -p "${prefix}/lib" "${prefix}/include" "${prefix}/doc"
-  cp -a "${x}/usr/include/x86_64-linux-gnu/." "${prefix}/include/"
-  find "${x}/usr/lib/x86_64-linux-gnu" -maxdepth 1 \( -name '*.so*' \) -exec cp -a {} "${prefix}/lib/" \;
-  cp -a "${x}/usr/share/doc/." "${prefix}/doc/"
-  local lib
+  done < <("$2")
+}
+
+# The prefix gets the runtime .so files and their docs; headers and dev links go to ds_trt_sdk only.
+ds_stage_tensorrt() {
+  local tmp="$1" prefix sdk lib
+  prefix="$(ds_trt_prefix)"
+  sdk="$(ds_trt_sdk "${tmp}")"
+  ds_trt_extract "${tmp}/trt-rt" ds_trt_runtime_debs
+  ds_trt_extract "${tmp}/trt-dev" ds_trt_dev_debs
+  rm -rf "${prefix}" "${sdk}"
+  mkdir -p "${prefix}/lib" "${prefix}/doc" "${sdk}/include" "${sdk}/lib"
+  find "${tmp}/trt-rt/usr/lib/x86_64-linux-gnu" -maxdepth 1 -name '*.so.*' -exec cp -a {} "${prefix}/lib/" \;
+  cp -a "${tmp}/trt-rt/usr/share/doc/." "${prefix}/doc/"
+  cp -a "${tmp}/trt-dev/usr/include/x86_64-linux-gnu/." "${sdk}/include/"
   for lib in libnvinfer libnvinfer_plugin libnvonnxparser; do
     [ -e "${prefix}/lib/${lib}.so.10" ] || ds_die "TensorRT ${DEEPSTREAM_TENSORRT_VERSION}: no ${lib}.so.10 in the debs"
-    ln -sfn "${lib}.so.10" "${prefix}/lib/${lib}.so"
+    ln -sfn "${prefix}/lib/${lib}.so.10" "${sdk}/lib/${lib}.so"
   done
-  rm -rf "${x}"
-  ds_log "TensorRT ${DEEPSTREAM_TENSORRT_VERSION} -> ${prefix}"
+  rm -rf "${tmp}/trt-rt" "${tmp}/trt-dev"
+  ds_log "TensorRT ${DEEPSTREAM_TENSORRT_VERSION}: runtime -> ${prefix}, headers and dev links -> ${sdk} (build only)"
 }
 
 # The tag's tree is ~90 MB at depth 1; sources/includes is the full SDK's layout, which ds3d's lidarsource includes from.
@@ -270,7 +288,7 @@ ds_build_component() {
 }
 
 ds_build_components() {
-  local src="$1" logdir="$2" dir n=0 trt
+  local src="$1" logdir="$2" sdk="$3" dir n=0 trt
   trt="$(ds_trt_prefix)"
   mkdir -p "${logdir}" "$(ds_root)/lib/gst-plugins" "$(ds_root)/bin"
   DS_COMPAT_H="${logdir}/gcc16-compat.h"
@@ -280,8 +298,8 @@ ds_build_components() {
   DS_CACHE_LAUNCHER="$(compiler_cache_launcher)" || DS_CACHE_LAUNCHER=""
   [ -n "${DS_CUDA_VER}" ] || ds_die "cannot read the CUDA version from nvcc"
   [ -e "/usr/local/cuda-${DS_CUDA_VER}" ] || ds_die "the Makefiles expect /usr/local/cuda-${DS_CUDA_VER}"
-  export CPATH="${trt}/include${CPATH:+:${CPATH}}"
-  export LIBRARY_PATH="${trt}/lib:/usr/local/cuda-${DS_CUDA_VER}/lib64:/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}"
+  export CPATH="${sdk}/include${CPATH:+:${CPATH}}"
+  export LIBRARY_PATH="${sdk}/lib:${trt}/lib:/usr/local/cuda-${DS_CUDA_VER}/lib64:/usr/local/cuda-${DS_CUDA_VER}/lib64/stubs${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   export NVCC_PREPEND_FLAGS="${NVCC_PREPEND_FLAGS:-} -include ${logdir}/gcc16-compat.h"
   PKG_CONFIG_PATH="$(ds_gst_pkgconfig_path)"
   export PKG_CONFIG_PATH
@@ -349,7 +367,7 @@ ds_build() {
   ds_stage_tensorrt "${tmp}"
   ds_fetch_sources "${tmp}/src"
   ds_build_rest_server_deps "${tmp}/deps"
-  ds_build_components "${tmp}/src" "${tmp}/logs"
+  ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"
   ds_fix_layout "$(ds_root)"
   rm -rf "${tmp}"
   ds_write_gst_ldconf

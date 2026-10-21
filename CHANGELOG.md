@@ -12,6 +12,36 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The GPU images ship TensorRT's runtime files only (CON136)
+
+- **Owner decision 2026-10-21** ("Rausnehmen"): TensorRT's SLA names only "the runtime files .so and
+  .dll" distributable, so headers, dev links, `trtexec`, Python bindings and SDK trees serve build
+  stages and never ship.
+- **`:latest-nvidia`.** `deepstream.sh` unpacks DeepStream's three TensorRT 10 header debs into its
+  build tmp (`ds_trt_sdk`, with the dev links), which the components compile against and the RUN
+  deletes; the prefix keeps the runtime `.so.10*` files and their docs. The published `0e9dec34…`
+  carried 13 headers (0.88 MB) and three dev links there. A custom `nvinfer` parser needs
+  `libnvinfer-headers-dev` 10.16.1.11 in its own build stage; no family repo builds one.
+- **`:winamd64-nvidia`.** `Copy-TensorrtRuntime.ps1` ships the DLLs ORT's TensorRT EP loads
+  (`nvinfer_<M>`, `nvonnxparser_<M>`, `nvinfer_plugin_<M>`, every builder resource: 11 DLLs, 2.39 GB
+  for 11.4.0.106) and the licence texts instead of the zip's tree. The ORT build mounts the tree
+  from `trt-extract`, which `Build-Buildkit.ps1 -Gpu` tags `bk-windows-tensorrt-sdk-nvidia`. The
+  published Windows images were built zip-less and carry no TensorRT; `:winamd64` is CPU.
+- **Gates.** `check_gpu_runtime` fails every image with a TensorRT header, dev link (DeepStream's
+  prefix included), `trtexec` or `tensorrt` package, whatever `ENABLE_TENSORRT` says;
+  `deepstream-verify.sh` fails a TensorRT 10 prefix with anything but runtime files, ldconfig's links
+  and docs; the Windows smoke fails a `TENSORRT_ROOT` with anything but `current\bin\*.dll` and
+  licence texts, and an EP whose TensorRT DLLs are missing there. Eight mutations, 13 Pester cases.
+- **Proved** without a chain build. In a throwaway container on the published `:latest-nvidia`
+  (`0e9dec34…`): both gates fail as shipped and pass on the new layout, every other DeepStream gate
+  and all nine registrations still pass, every DeepStream link to TensorRT 10 (31) resolves into the prefix,
+  and ORT v1.31.0's TensorRT EP, built there against TensorRT 11, resolves every dependency. In the
+  published `:winamd64` (`--isolation process`) the smoke gate passes as shipped, fails the old
+  tree shape on 13 files and passes the subset; the published `:winamd64-nvidia` passes with its
+  empty `C:\tensorrt`.
+  [linux-accelerator-images.md § Redistribution](docs/linux-accelerator-images.md#redistribution),
+  [windows-builds.md § TensorRT setup](docs/windows-builds.md#tensorrt-setup-gpu-lane-optional).
+
 ## 2026-10-21 — TensorRT 11 and its ORT EP in `:latest-nvidia`; `:latest-rocm` finds its ROCm (CON31)
 
 - **Owner decision 2026-10-20.** Every amd64 nvidia build gets TensorRT 11.4.0.106

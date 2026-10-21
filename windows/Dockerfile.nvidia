@@ -5,7 +5,7 @@
 
 ARG BASE_IMAGE=local/kataglyphis:windows-base
 
-# TensorRT extract: only the tree ships; the build context is windows/ so the zip stays out of every other stage's context.
+# TensorRT extract, the full SDK the ORT build mounts (Build-Buildkit.ps1 tags it); the context is windows/, so the zip stays out of every other stage's.
 FROM ${BASE_IMAGE} AS trt-extract
 
 ARG TENSORRT_VERSION=11.4.0.106
@@ -23,6 +23,10 @@ RUN --mount=type=bind,source=scripts/build/Set-TensorrtTree.ps1,target=C:\Set-Te
     & 'C:\temp\scripts\Install-Tensorrt.ps1' -TensorRtRoot 'C:\tensorrt'; `
     if (-not (Test-Path 'C:\tensorrt')) { New-Item -Path 'C:\tensorrt' -ItemType Directory -Force | Out-Null }; `
     & 'C:\Set-TensorrtTree.ps1' -TensorRtRoot 'C:\tensorrt' -ExpectedVersion $env:TENSORRT_VERSION
+
+# Owner 2026-10-21: the image ships only the runtime DLLs ORT's TensorRT EP loads; headers, .lib, trtexec, samples and wheels stay here.
+RUN --mount=type=bind,source=scripts/build/Copy-TensorrtRuntime.ps1,target=C:\Copy-TensorrtRuntime.ps1 `
+    & 'C:\Copy-TensorrtRuntime.ps1' -SdkRoot 'C:\tensorrt' -Destination 'C:\tensorrt-runtime'
 
 # CUDA, cuDNN, TensorRT
 FROM ${BASE_IMAGE}
@@ -67,7 +71,7 @@ ENV CUDNN_ROOT="C:\Program Files\NVIDIA\CUDNN\v${CUDNN_VERSION}"
 RUN & 'C:\temp\scripts\Install-Cuda.ps1' -TempDir $env:TEMP_DIR
 
 # Empty when no zip was staged; Resolve-TensorRtRoot treats an empty root as not installed.
-COPY --from=trt-extract C:\tensorrt C:\tensorrt
+COPY --from=trt-extract C:\tensorrt-runtime C:\tensorrt
 
 # PATH is a separate ENV because a same-instruction ${} reference would not resolve.
 ARG TENSORRT_VERSION=11.4.0.106
@@ -76,5 +80,5 @@ ENV GPU_TYPE="nvidia" `
     CUDA_PATH="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v${CUDA_VERSION_MAJOR_MINOR}" `
     TENSORRT_ROOT="C:\tensorrt" `
     TENSORRT_VERSION="${TENSORRT_VERSION}"
-# TensorRT via the stable current\ dir, bin\ first (10+ keeps its DLLs there); arm64 dirs after x64 so the host gets x64 cudart.
-ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$TENSORRT_ROOT\current\lib;$CUDA_ROOT\bin\arm64;$CUDNN_ROOT\bin\arm64;$PATH
+# TensorRT via the stable current\ dir, whose bin\ holds the runtime DLLs; arm64 dirs after x64 so the host gets x64 cudart.
+ENV PATH=$CUDA_ROOT\bin;$CUDA_ROOT\bin\x64;$CUDNN_ROOT\bin;$TENSORRT_ROOT\current\bin;$CUDA_ROOT\bin\arm64;$CUDNN_ROOT\bin\arm64;$PATH

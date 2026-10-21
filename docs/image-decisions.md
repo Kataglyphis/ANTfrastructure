@@ -66,6 +66,10 @@ still guards a host whose own environment names an unreachable one.
 ## Deliberate — not gaps
 
 These are recorded so nobody files them as gaps:
+- No TensorRT SDK in any published image: only the runtime `.so`/`.dll` files its SLA names
+  distributable. Headers, dev links, `trtexec`, Python bindings and SDK trees stay in build stages;
+  `check_gpu_runtime`, `deepstream-verify.sh` and the Windows smoke fail an image that carries one
+  (owner, 2026-10-21: "Rausnehmen"; [`linux-accelerator-images.md` § Redistribution](linux-accelerator-images.md#redistribution)).
 - The distro `libgstreamer*-dev` packages are purged.
 - Only the pinned CPython (`PYTHON_VERSION`), once with the GIL and once free-threaded (owner,
   2026-10-20).

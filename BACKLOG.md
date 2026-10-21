@@ -698,6 +698,27 @@ owner carries the breakage that costs.
         § Redistribution.
 
       Sources: `docs/linux-accelerator-images.md` and `docs/windows-rocm.md`.
+- [b] **CON136 — the GPU images ship TensorRT's runtime files only** [M, ★★]. Owner decision
+      2026-10-21 ("Rausnehmen"), in the source since this row's commit; blocked on the next nvidia chains,
+      as CON31. Proved without a chain (`CHANGELOG.md` 2026-10-21, CON136): the published `:latest-nvidia`
+      `0e9dec34…` fails both new gates on DeepStream's 13 TensorRT 10 headers and three dev links and
+      passes them on the new layout, with every DeepStream gate and ORT's TensorRT EP resolving; the
+      Windows gate fails the old tree shape and passes the subset in `:winamd64`. The next chains must show:
+      - Linux media: `deepstream.sh`'s `runtime -> …/tensorrt-10.16.1.11, headers and dev links -> …/trt-sdk
+        (build only)`, the components built, and `deepstream-verify.sh`'s `holds only TensorRT's runtime .so
+        files and their docs`, at the end of the build and again in the package stage;
+      - Linux runtime smoke: the `GPU-RUNTIME` row `only TensorRT's runtime .so files ship` passing on
+        `-nvidia`, `-rocm` and `:latest`, and `/opt/nvidia/deepstream/tensorrt-10.16.1.11/lib` holding its 22
+        runtime files and links (2.5 GB), with no `include/` and no unversioned `.so`;
+      - Windows `-Gpu` with a zip staged in `windows/downloads/`: `Copy-TensorrtRuntime.ps1`'s `ships 11
+        runtime DLLs` line, `bk-windows-tensorrt-sdk-nvidia` tagged, the ORT RUN's `TensorRT detected at
+        C:\tensorrt-sdk\current`, and the smoke's `TensorRT ships only its runtime DLLs` and `ORT TensorRT EP
+        finds every TensorRT DLL it loads` passing with `cuda=1 trt=1`; zip-less, both pass on the empty root.
+      - **Open, for the owner:** the chain pushes its stage images publicly (`cross-toolchain-nvidia-amd64`,
+        `cross-media-nvidia-amd64`, `cross-android-nvidia-amd64`). From the next nvidia chain they inherit
+        the `gpu` stage's TensorRT 11 dev packages (headers, dev links, `/usr/local/tensorrt`), which the ORT
+        and DeepStream builds need. Whether a pushed build stage counts as a published image decides
+        whether they must move behind a private registry or a stage that is never pushed.
 - [b] **CON42 — DeepStream in `:latest-nvidia`: what is left after the publish** [M, ★]. **Done:** DeepStream 9.1
       ships in every amd64 nvidia build (owner 2026-10-07, full TensorRT 10), published 2026-10-11 (`:latest-nvidia`
       index `810f36b3…`, amd64 `23e3cc9e…`). **The GPU run on the published image passed on 2026-10-12** (RTX 2080,

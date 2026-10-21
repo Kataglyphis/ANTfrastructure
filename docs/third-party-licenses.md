@@ -690,12 +690,15 @@ Each patch is in this repository at the path shown, and travels with the corresp
   the image for exact terms.
 - NVIDIA EULAs require acceptance before download/use.  The build fetches
   CUDA/cuDNN from NVIDIA; Windows stages TensorRT by hand, Linux installs it from
-  NVIDIA's CUDA apt repo.  `:latest-nvidia` carries CUDA, cuDNN and DeepStream's
-  TensorRT 10, and from the first build after 2026-10-20 only TensorRT 11's runtime
-  `.so` files, which its SLA names distributable
+  NVIDIA's CUDA apt repo.  `:latest-nvidia` carries CUDA, cuDNN, DeepStream's
+  TensorRT 10 and, from the first build after 2026-10-20, TensorRT 11.
+- TensorRT's `eula-review` is decided (owner, 2026-10-21): every published image carries
+  only the runtime `.so` and `.dll` files its SLA names distributable, never headers, dev
+  links, `trtexec`, Python bindings or SDK trees, and a gate fails one that does
   ([`linux-accelerator-images.md` § Redistribution](linux-accelerator-images.md#redistribution)).
-  `:winamd64` ships the whole TensorRT tree (its config on 2026-09-25: CUDA 13.4,
-  cuDNN 9.26.0.51, TensorRT 11.3.0.99); that is still the `eula-review` question above.
+  From the next chain: DeepStream's TensorRT 10 without its headers and dev links, and
+  `:winamd64-nvidia` with the DLLs ORT's TensorRT EP loads instead of the zip's tree
+  (`:winamd64` is CPU; the 2026-10-17 `:winamd64-nvidia` was built without a zip and carries none).
 - "git master" versions are built from the latest development branch at the
   time the image was built.  For exact commit SHAs, inspect the build logs.
 - Version numbers marked with <!-- generated:... --> are automatically kept

@@ -191,6 +191,52 @@ mkdir -p "${_T}/opt-empty/tensorrt-10.16.1.11/lib"
 t_assert_fails env DS_OPT="${_T}/opt-empty" DS_SYSLIB_DIR="${_SYS}" bash -c 'source "$1"; source "$2"; load_versions_env "$3"; ds_link_trt_builder_resources' _ \
   "${DS}" "${TESTS_DIR}/../01-core/load-versions-env.sh" "${ENVF}"
 
+t_case "the TensorRT prefix ships only the runtime: a header, a dev link, a tool or an archive fails"
+_sdkv() { printf '%b' "$1" | bash -c 'source "$1"; dsv_trt_sdk_verdict' _ "${DSV}"; }
+t_assert_eq "" "$(_sdkv 'doc/libnvinfer10/copyright\nlib/libnvinfer.so.10\nlib/libnvinfer.so.10.16.1\nlib/libnvinfer_builder_resource_sm75.so.10.16.1\nlib/do_not_link_against_nvinfer_builder_resource_sm75\n')" \
+  "the runtime .so files, ldconfig's links and the docs pass"
+t_assert_contains "$(_sdkv 'include/NvInfer.h\n')" "NOT-RUNTIME include/NvInfer.h"
+t_assert_contains "$(_sdkv 'lib/libnvinfer.so\n')" "NOT-RUNTIME lib/libnvinfer.so" "a dev link"
+t_assert_contains "$(_sdkv 'bin/trtexec\n')" "NOT-RUNTIME bin/trtexec"
+t_assert_contains "$(_sdkv 'lib/libnvinfer_static.a\n')" "NOT-RUNTIME lib/libnvinfer_static.a"
+# The published :latest-nvidia of 2026-10-19 (sha256:0e9dec34...): 13 headers and 3 dev links beside the runtime.
+_SHIP="${_T}/shipped/tensorrt-10.16.1.11"; mkdir -p "${_SHIP}/include" "${_SHIP}/lib" "${_SHIP}/doc/libnvinfer10"
+: > "${_SHIP}/lib/libnvinfer.so.10.16.1"; : > "${_SHIP}/doc/libnvinfer10/copyright"
+_vrt() { DS_ROOT="${_T}/none" DS_TRT_PREFIX="$1" bash -c 'source "$1"; dsv_check_trt_runtime_only; echo "fail=${dsv_fail}"' _ "${DSV}"; }
+t_assert_contains "$(_vrt "${_SHIP}")" "fail=0" "the runtime alone passes"
+: > "${_SHIP}/include/NvInfer.h"; : > "${_SHIP}/lib/libnvinfer.so"
+t_assert_contains "$(_vrt "${_SHIP}")" "carries 2 files beyond TensorRT's runtime .so files"
+t_assert_contains "$(_vrt "${_SHIP}")" "fail=1"
+t_assert_contains "$(_vrt "${_T}/no-such-prefix")" "no TensorRT prefix at"
+t_assert_contains "$(t_fn_src "${DSV}" dsv_main)" 'dsv_check_trt_runtime_only' "dsv_main runs it, in the build, the package and the smoke"
+
+t_case "the build stages TensorRT 10's headers and dev links in its tmp only; the prefix gets the runtime"
+t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
+# dpkg-deb -x's stand-in: each deb's layout, one file per kind; the deb is <dir>.<package>.deb.
+_fake_deb() {
+  local pkg="${2##*/}" d="$3/usr/lib/x86_64-linux-gnu" so
+  pkg="${pkg#*.}"; pkg="${pkg%.deb}"
+  mkdir -p "${d}" "$3/usr/include/x86_64-linux-gnu" "$3/usr/share/doc/${pkg}"
+  : > "$3/usr/share/doc/${pkg}/copyright"
+  case "${pkg}" in
+    libnvinfer10) so=libnvinfer; : > "${d}/libnvinfer_builder_resource_sm75.so.10.16.1" ;;
+    libnvinfer-plugin10) so=libnvinfer_plugin ;;
+    libnvonnxparsers10) so=libnvonnxparser ;;
+    *) : > "$3/usr/include/x86_64-linux-gnu/NvInfer-${pkg}.h"; : > "${d}/libnvonnxparser.so"; return 0 ;;
+  esac
+  : > "${d}/${so}.so.10.16.1"; ln -sf "${so}.so.10.16.1" "${d}/${so}.so.10"
+}
+_BT="${_T}/dsbuild"; mkdir -p "${_BT}"
+_ds "$(declare -f _fake_deb); ds_fetch() { : > \"\$3\"; }; dpkg-deb() { _fake_deb \"\$@\"; }; ds_stage_tensorrt '${_BT}'" DS_OPT="${_T}/opt-trt" >/dev/null
+_PFX="${_T}/opt-trt/tensorrt-10.16.1.11"
+t_assert_contains "$(_vrt "${_PFX}")" "fail=0" "the prefix passes the runtime-only gate"
+t_assert_eq "absent" "$([ -e "${_PFX}/include" ] && echo present || echo absent)" "no include/ in the prefix"
+t_assert_eq "libnvinfer-plugin10 libnvinfer10 libnvonnxparsers10" "$(ls "${_PFX}/doc" | LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" "the runtime debs' docs only"
+t_assert_eq "${_PFX}/lib/libnvinfer.so.10" "$(readlink "${_BT}/trt-sdk/lib/libnvinfer.so")" "the dev link lives in the build's tmp"
+t_assert_eq "3" "$(find "${_BT}/trt-sdk/include" -name 'NvInfer-*' | wc -l | tr -d ' ')" "all three header debs' headers"
+t_assert_contains "$(t_fn_src "${DS}" ds_build)" 'ds_build_components "${tmp}/src" "${tmp}/logs" "$(ds_trt_sdk "${tmp}")"' "the components compile against it"
+t_assert_contains "$(t_fn_src "${DS}" ds_build_components)" 'export CPATH="${sdk}/include' "headers from the tmp dir"
+
 t_case "nvv4l2decoder reaches NVDEC only through NVIDIA's plugin in the distro libv4l2's dir"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 _DSR="${_T}/opt/deepstream-9.1"; mkdir -p "${_DSR}/lib/libv4l/plugins"; : > "${_DSR}/lib/libv4l/plugins/libcuvidv4l2_plugin.so"

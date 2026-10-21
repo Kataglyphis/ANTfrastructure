@@ -193,6 +193,32 @@ function Test-TensorRtTreeStaged {
     return @(Get-ChildItem -LiteralPath $Root -Force -ErrorAction SilentlyContinue).Count -gt 0
 }
 
+function Get-TensorRtShipViolation {
+    # Owner 2026-10-21: under the shipped root only runtime DLLs (current\bin) and licence texts; the SDK stays in the build stage.
+    param([string]$Root = $env:TENSORRT_ROOT)
+    if ([string]::IsNullOrWhiteSpace($Root) -or -not (Test-Path -LiteralPath $Root -PathType Container)) { return @() }
+    $base = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\') + '\'
+    return @(Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue |
+            ForEach-Object { $_.FullName.Substring($base.Length) } |
+            Where-Object { $_ -notmatch '^current\\bin\\[^\\]+\.dll$' -and $_ -notmatch '^current\\licenses\\[^\\]+$' })
+}
+
+function Get-TensorRtEpGap {
+    # The TensorRT DLLs ORT's TensorRT EP imports or LoadLibrary()s (nvinfer_plugin, a builder resource) that BinDir lacks.
+    param([string[]]$EpImports = @(), [Parameter(Mandatory)][string]$BinDir)
+    $nvinfer = @($EpImports -match '^nvinfer_\d+\.dll$')
+    if ($nvinfer.Count -eq 0) { return @('nvinfer_<major>.dll (the EP imports no nvinfer)') }
+    $major = $nvinfer[0] -replace '^nvinfer_(\d+)\.dll$', '$1'
+    $present = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($f in @(Get-ChildItem -LiteralPath $BinDir -Filter '*.dll' -File -ErrorAction SilentlyContinue)) { $null = $present.Add($f.Name) }
+    $gap = [System.Collections.Generic.List[string]]::new()
+    foreach ($dll in @($EpImports -match '^nv(infer|onnxparser)') + "nvinfer_plugin_$major.dll") {
+        if (-not $present.Contains($dll) -and -not $gap.Contains($dll)) { $gap.Add($dll) }
+    }
+    if (-not @($present | Where-Object { $_ -like "nvinfer_builder_resource*_$major.dll" })) { $gap.Add("nvinfer_builder_resource*_$major.dll") }
+    return $gap.ToArray()
+}
+
 function Assert-NativeLinkRun {
     # Compile, link and run a tiny TU: existence checks miss dependent DLLs, CRT mismatches and ABI breaks.
     param(
@@ -354,6 +380,8 @@ Export-ModuleMember -Function @(
     'Assert-DirectoryExists'
     'Assert-ArtifactPresent'
     'Test-TensorRtTreeStaged'
+    'Get-TensorRtShipViolation'
+    'Get-TensorRtEpGap'
     'Assert-NativeLinkRun'
     'Assert-DllLoads'
     'Assert-EnvVarSet'

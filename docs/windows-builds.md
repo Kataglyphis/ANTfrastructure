@@ -1046,6 +1046,23 @@ renames the extracted `TensorRT-<version>` tree to a stable **`current`** and th
 no runtime DLLs. Absent zip = supported; half-extracted tree = build failure. `Resolve-TensorRtRoot`
 prefers `current` and falls back to the versioned glob for older images.
 
+**Only the runtime DLLs ship (owner, 2026-10-21).** TensorRT's SLA names "the runtime files .so
+and .dll" distributable ([`linux-accelerator-images.md` § Redistribution](linux-accelerator-images.md#redistribution)).
+`Copy-TensorrtRuntime.ps1` copies the DLLs ORT's TensorRT EP loads into `C:\tensorrt-runtime\current\bin`:
+`nvinfer_<M>.dll` and `nvonnxparser_<M>.dll` (linked, ORT v1.31.0's
+`onnxruntime_providers_tensorrt.cmake`), `nvinfer_plugin_<M>.dll` (`LoadLibrary`), and every
+`nvinfer_builder_resource*_<M>.dll` (`nvinfer` loads them for an engine build), plus the licence
+texts. For 11.4.0.106 that is 11 DLLs, 2.39 GB, the set NVIDIA's own `tensorrt_cu13_libs` win_amd64
+wheel carries. The sdk image COPYs only that; headers, `.lib` import libraries, `trtexec`, the lean,
+dispatch and version-compatibility runtimes, samples, Python wheels and docs stay in `trt-extract`.
+`Build-Buildkit.ps1 -Gpu` tags `trt-extract` as `bk-windows-tensorrt-sdk-nvidia`, and the ORT RUN in
+`Dockerfile.media-builder` bind-mounts its `C:\tensorrt` at `C:\tensorrt-sdk` (`TENSORRT_SDK_ROOT`,
+read by `Resolve-TensorRtSdkRoot`), so no layer the image inherits holds the SDK. Without the tag the
+mount is an empty dir and ORT builds no TensorRT EP, which the smoke then fails on a staged tree. The
+smoke fails every image whose `TENSORRT_ROOT` holds anything but `current\bin\*.dll` and
+`current\licenses\` (`Get-TensorRtShipViolation`), and an EP whose TensorRT DLLs are missing there
+(`Get-TensorRtEpGap` over `Get-PeImportNames`).
+
 **Why `current` exists: two silent defects, both green for their whole life (fixed 2026-08-14,
 backlog #38).** `Dockerfile.nvidia` used to build the runtime PATH as
 `$TENSORRT_ROOT\TensorRT-$TENSORRT_VERSION\lib`, wrong twice over:
@@ -1058,8 +1075,8 @@ backlog #38).** `Dockerfile.nvidia` used to build the runtime PATH as
 
 Neither failed a build: ORT resolves its BUILD-time root with a glob and compiles the EP fine; only
 the RUNTIME lookup broke, and ORT drops an EP with unreachable DLLs **silently**. PATH now carries
-`current\bin` first, `current\lib` after it for the 8.x/9.x layout. **Never derive that PATH from
-the pin again.** A Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
+`current\bin` only, where `Copy-TensorrtRuntime.ps1` puts the DLLs of either layout (2026-10-21).
+**Never derive that PATH from the pin again.** A Machine-PATH write inside a RUN cannot substitute: `Dockerfile.base` sets
 `ENV PATH=` and the image config wins.
 
 ### ROCm layer (`Dockerfile.rocm`)
@@ -1591,7 +1608,7 @@ host, need the stated elevation, and must never run while a build solves.
 Scan the list, then read the entry. Grouped by where the script lives; every entry is individually
 linkable, and a refusal condition or a trap gets its own paragraph, not a table cell.
 
-- **Chain components — `windows/scripts/build/`**: [`Build-OnnxFromSource.ps1`](#build-onnxfromsourceps1) · [`Build-OnnxGenaiFromSource.ps1`](#build-onnxgenaifromsourceps1) · [`Build-OpencvFromSource.ps1`](#build-opencvfromsourceps1) · [`Build-OpencvGstreamerPlugin.ps1`](#build-opencvgstreamerpluginps1) · [`Build-LitertFromSource.ps1`](#build-litertfromsourceps1) · [`Build-LitertLmBazel.ps1`](#build-litertlmbazelps1) · [`Build-LitertLmFromSource.ps1`](#build-litertlmfromsourceps1) · [`Copy-CudaRuntime.ps1`](#copy-cudaruntimeps1) · [`Build-TvmFromSource.ps1`](#build-tvmfromsourceps1) · [`Build-FfmpegFromSource.ps1`](#build-ffmpegfromsourceps1) · [`Build-GstreamerFromSource.ps1`](#build-gstreamerfromsourceps1) · [`Import-Versions.ps1`](#import-versionsps1) · [`Complete-Container.ps1`](#complete-containerps1) · [`Test-Toolchain.ps1`](#test-toolchainps1) · [`Test-Health.ps1`](#test-healthps1) · [`Test-Container.ps1`](#test-containerps1) · [`Set-TensorrtTree.ps1`](#set-tensorrttreeps1)
+- **Chain components — `windows/scripts/build/`**: [`Build-OnnxFromSource.ps1`](#build-onnxfromsourceps1) · [`Build-OnnxGenaiFromSource.ps1`](#build-onnxgenaifromsourceps1) · [`Build-OpencvFromSource.ps1`](#build-opencvfromsourceps1) · [`Build-OpencvGstreamerPlugin.ps1`](#build-opencvgstreamerpluginps1) · [`Build-LitertFromSource.ps1`](#build-litertfromsourceps1) · [`Build-LitertLmBazel.ps1`](#build-litertlmbazelps1) · [`Build-LitertLmFromSource.ps1`](#build-litertlmfromsourceps1) · [`Copy-CudaRuntime.ps1`](#copy-cudaruntimeps1) · [`Build-TvmFromSource.ps1`](#build-tvmfromsourceps1) · [`Build-FfmpegFromSource.ps1`](#build-ffmpegfromsourceps1) · [`Build-GstreamerFromSource.ps1`](#build-gstreamerfromsourceps1) · [`Import-Versions.ps1`](#import-versionsps1) · [`Complete-Container.ps1`](#complete-containerps1) · [`Test-Toolchain.ps1`](#test-toolchainps1) · [`Test-Health.ps1`](#test-healthps1) · [`Test-Container.ps1`](#test-containerps1) · [`Set-TensorrtTree.ps1`](#set-tensorrttreeps1) · [`Copy-TensorrtRuntime.ps1`](#copy-tensorrtruntimeps1)
 - **Host setup and maintenance — `windows/scripts/host/`**: [`Install-Vs.ps1`](#install-vsps1) · [`Install-ScoopTools.ps1`](#install-scooptoolsps1) · [`Install-Vcpkg.ps1`](#install-vcpkgps1) · [`Install-RustToolchain.ps1`](#install-rusttoolchainps1) · [`Install-Cuda.ps1`](#install-cudaps1) · [`Install-Tensorrt.ps1`](#install-tensorrtps1) · [`Publish-ShimPatch.ps1`](#publish-shimpatchps1) · [`Install-NewHost.ps1`](#install-newhostps1) · [`Set-Rdna4Gpu.ps1`](#set-rdna4gpups1) · [`Get-HostDockerState.ps1`](#get-hostdockerstateps1) · [`Reset-ContainerStores.ps1`](#reset-containerstoresps1) · [`Sync-DefenderExclusions.ps1`](#sync-defenderexclusionsps1) · [`Repair-WindowsComponentstore.ps1`](#repair-windowscomponentstoreps1) · [`Test-HostSetup.ps1`](#test-hostsetupps1) · [`Set-ContainerdConfig.ps1`](#set-containerdconfigps1) · [`Optimize-HostVhdx.ps1`](#optimize-hostvhdxps1) · [`Initialize-Pwsh.ps1`](#initialize-pwshps1) · [`Update-HostVhdx.ps1`](#update-hostvhdxps1) · [`Clear-DiskSpace.ps1`](#clear-diskspaceps1)
 - **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`Test-BuildCopy.ps1`](#test-buildcopyps1) · [`Test-Rdna4LayerLock.ps1`](#test-rdna4layerlockps1) · [`Test-CudaCache.ps1`](#test-cudacacheps1) · [`Invoke-SccacheCudaLlmDeadlock.ps1`](#invoke-sccachecudallmdeadlockps1) · [`Test-GeniexNpuDriver.ps1`](#test-geniexnpudriverps1)
 - **Reusable modules — `windows/scripts/modules/`**: [`WindowsSourceBuild.Common.psm1`](#windowssourcebuildcommonpsm1) · [`WindowsSmokeTest.Common.psm1`](#windowssmoketestcommonpsm1) · [`WindowsGstPlugins.Common.psm1`](#windowsgstpluginscommonpsm1)
@@ -1746,6 +1763,13 @@ live here; the assertion harness is in `WindowsSmokeTest.Common.psm1`.
 Bind-mounted into `Dockerfile.nvidia`'s `trt-extract` stage. Renames the extracted tree to
 **`current`** so the runtime PATH never spells the pin, WARNS (never fails) on pin-vs-zip drift,
 and **fails closed** when neither `bin\` nor `lib\` carries runtime DLLs. Why (backlog #38):
+§ TensorRT setup (GPU lane, optional).
+
+#### `Copy-TensorrtRuntime.ps1`
+
+Bind-mounted into `trt-extract` after `Set-TensorrtTree.ps1`. Copies the DLLs ORT's TensorRT EP
+loads, and the licence texts, into `C:\tensorrt-runtime`, which the sdk image COPYs as `C:\tensorrt`;
+throws when one of the four kinds is missing. Zip-less, it leaves the destination empty.
 § TensorRT setup (GPU lane, optional).
 
 ### Host setup and maintenance — `windows/scripts/host/`

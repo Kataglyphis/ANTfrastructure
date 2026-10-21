@@ -37,7 +37,7 @@ if (-not $alreadyStable) {
 }
 
 if (-not $alreadyStable -and -not $versionDir) {
-    # Dockerfile.nvidia's PATH names only current\bin and current\lib, so a flat tree is folded into 'current'.
+    # Copy-TensorrtRuntime.ps1 and the ORT build read only current\, so a flat tree is folded into 'current'.
     $flatLib = Join-Path $TensorRtRoot 'lib'
     $flatBin = Join-Path $TensorRtRoot 'bin'
     if ((Test-Path $flatLib) -or (Test-Path $flatBin)) {

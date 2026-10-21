@@ -15841,5 +15841,69 @@
   "replace": "ENV ROCM_PATH= \\",
   "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
   "why": "without ROCM_PATH the published hipcc could not link a HIP program"
+ },
+ {
+  "id": "deepstream.trt-headers-build-only",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "  cp -a \"${tmp}/trt-dev/usr/include/x86_64-linux-gnu/.\" \"${sdk}/include/\"\n",
+  "replace": "  cp -a \"${tmp}/trt-dev/usr/include/x86_64-linux-gnu/.\" \"${sdk}/include/\"\n  mkdir -p \"${prefix}/include\"; cp -a \"${sdk}/include/.\" \"${prefix}/include/\"\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "TensorRT 10's headers serve the component build only; the SLA names only the runtime .so files distributable (owner 2026-10-21)"
+ },
+ {
+  "id": "deepstream.trt-dev-links-build-only",
+  "target": "linux/scripts/05-frameworks/deepstream.sh",
+  "find": "    ln -sfn \"${prefix}/lib/${lib}.so.10\" \"${sdk}/lib/${lib}.so\"",
+  "replace": "    ln -sfn \"${lib}.so.10\" \"${prefix}/lib/${lib}.so\"",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the published :latest-nvidia shipped three dev links in DeepStream's TensorRT prefix; they belong in the build's tmp"
+ },
+ {
+  "id": "deepstream.verify-trt-runtime-only",
+  "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+  "find": "{next} {print \"NOT-RUNTIME\", $0}'",
+  "replace": "{next} {next}'",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "a header, dev link, tool or archive in the TensorRT prefix must fail the DeepStream gates"
+ },
+ {
+  "id": "deepstream.verify-runs-trt-runtime-only",
+  "target": "linux/scripts/05-frameworks/deepstream-verify.sh",
+  "find": "  dsv_check_trt_origin\n  dsv_check_trt_runtime_only\n",
+  "replace": "  dsv_check_trt_origin\n",
+  "test": "bash linux/scripts/tests/test-deepstream.sh",
+  "why": "the runtime-only check gates the build, the package and the smoke only through dsv_main"
+ },
+ {
+  "id": "gpu-runtime.trt-sdk-every-image",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "  gpu_tensorrt_verdict \"$1\" \"$2\"\n  gpu_tensorrt_sdk_verdict \"$1\"\n",
+  "replace": "  gpu_tensorrt_verdict \"$1\" \"$2\"\n",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "the published :latest-nvidia has no ENABLE_TENSORRT and still shipped DeepStream's TensorRT headers; the SDK rule holds for every image"
+ },
+ {
+  "id": "gpu-runtime.trt-sdk-deepstream-dev-links",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": " /opt/nvidia/deepstream/tensorrt-*/lib/*.so; do",
+  "replace": "; do",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "DeepStream's TensorRT 10 prefix is where the published image carried its dev links"
+ },
+ {
+  "id": "gpu-runtime.trt-sdk-deepstream-headers",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "/usr/local/tensorrt /opt/nvidia \\( -name",
+  "replace": "/usr/local/tensorrt \\( -name",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "DeepStream's TensorRT 10 headers sat under /opt/nvidia, outside the dirs CON31's probe searched"
+ },
+ {
+  "id": "gpu-runtime.trt-sdk-tools-and-bindings",
+  "target": "linux/scripts/06-packaging/check-gpu-runtime.sh",
+  "find": "bad=\"$(_gpur \"$1\" TRTHDR; _gpur \"$1\" TRTDEV; _gpur \"$1\" TRTBIN; _gpur \"$1\" TRTPY)\"",
+  "replace": "bad=\"$(_gpur \"$1\" TRTHDR; _gpur \"$1\" TRTDEV)\"",
+  "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
+  "why": "trtexec and the Python binding are SDK parts the SLA does not name distributable"
  }
 ]

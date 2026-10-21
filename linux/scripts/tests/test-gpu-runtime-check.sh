@@ -66,6 +66,7 @@ GPUR ORTEP CUDAExecutionProvider,CPUExecutionProvider"
 _bad() { printf '%s\n' "$1" | grep -c '^BAD' || true; }
 _rocm() { gpu_rocm_verdict "$1"; }
 _trt() { gpu_tensorrt_verdict "$1" "${2:-11.4.0.106}"; }
+_sdk() { gpu_tensorrt_sdk_verdict "$1"; }
 # <probe> <line to drop or rewrite as sed expression>
 _edit() { printf '%s\n' "$1" | sed "$2"; }
 # <rocm|trt> <probe> <sed expression> <expected> [message]: the edited probe's verdict holds the expected line.
@@ -120,9 +121,6 @@ t_case "every TensorRT runtime fault is its own finding"
 _finds trt "${TRT_GOOD}" 's|^GPUR TRTVER 11 .*|GPUR TRTVER 11 110300|' \
   "BAD getInferLibVersion() of libnvinfer.so.11 is '110300', TENSORRT_VERSION is 11.4.0.106"
 _finds trt "${TRT_GOOD}" '/\.so\.11\.4\.0$/d' "BAD no TensorRT 11 builder resource"
-_finds trt "${TRT_GOOD}" "\$a GPUR TRTHDR ${LIB%/lib/*}/include/x86_64-linux-gnu/NvInfer.h" \
-  "BAD the SLA lets only the runtime .so files ship"
-_finds trt "${TRT_GOOD}" "\$a GPUR TRTDEV ${LIB}/libnvinfer.so" "${LIB}/libnvinfer.so"
 _finds trt "${TRT_GOOD}" "s|^GPUR LDSO libnvonnxparser.so.11 .*|GPUR LDSO libnvonnxparser.so.11 /usr/local/tensorrt/lib/libnvonnxparser.so.11|" \
   "BAD libnvonnxparser.so.11 resolves to '/usr/local/tensorrt/lib/libnvonnxparser.so.11'"
 _finds trt "${TRT_GOOD}" "\\|^GPUR ORTTRT ${ORTV}\$|d; \\|^GPUR ORTDEP ${ORTV} |d" \
@@ -135,6 +133,26 @@ _finds trt "${TRT_GOOD}" "\$a GPUR ORTDEP ${ORTN} libtensorrt_shim.so NOTFOUND" 
   "the dev package's shim must not be a runtime dependency"
 _finds trt "${TRT_GOOD}" 's|^GPUR ORTEP .*|GPUR ORTEP CUDAExecutionProvider,CPUExecutionProvider|' "BAD onnxruntime lacks TensorrtExecutionProvider"
 t_assert_contains "$(gpu_tensorrt_verdict "${TRT_GOOD}" "")" "BAD no TENSORRT_VERSION to check the image against"
+
+t_case "no image ships TensorRT's SDK, whatever ENABLE_TENSORRT says (owner 2026-10-21)"
+t_assert_contains "$(_sdk "${TRT_GOOD}")" "OK only TensorRT's runtime .so files ship"
+t_assert_contains "$(_sdk "${TRT_NONE}")" "OK only TensorRT's runtime .so files ship" "DeepStream's prefix without headers or dev links"
+_finds sdk "${TRT_GOOD}" "\$a GPUR TRTHDR ${LIB%/lib/*}/include/x86_64-linux-gnu/NvInfer.h" \
+  "BAD the SLA lets only the runtime .so files ship"
+_finds sdk "${TRT_GOOD}" "\$a GPUR TRTDEV ${LIB}/libnvinfer.so" "${LIB}/libnvinfer.so"
+_finds sdk "${TRT_GOOD}" "\$a GPUR TRTBIN /usr/src/tensorrt/bin/trtexec" "BAD the SLA lets only the runtime .so files ship" "trtexec"
+_finds sdk "${TRT_GOOD}" "\$a GPUR TRTPY /opt/venv/lib/python3.15/site-packages/tensorrt/__init__.py" "tensorrt/__init__.py" "the Python binding"
+# The published :latest-nvidia (2026-10-19), probed on 2026-10-21: DeepStream's TensorRT 10 headers and dev links.
+TRT_DS_SHIPPED="${TRT_NONE}
+GPUR TRTHDR /opt/nvidia/deepstream/tensorrt-10.16.1.11/include/NvInferRuntimePlugin.h
+GPUR TRTDEV ${DS}/libnvinfer.so
+GPUR TRTDEV ${DS}/libnvinfer_plugin.so
+GPUR TRTDEV ${DS}/libnvonnxparser.so"
+t_assert_contains "$(_sdk "${TRT_DS_SHIPPED}")" "BAD the SLA lets only the runtime .so files ship, but the image has: /opt/nvidia/deepstream/tensorrt-10.16.1.11/include/NvInferRuntimePlugin.h"
+t_assert_eq 1 "$(_bad "$(gpu_runtime_verdict "${TRT_DS_SHIPPED}" 11.4.0.106)")" "an image without ENABLE_TENSORRT is judged too"
+_PROBE="$(gpu_runtime_probe_script)"
+t_assert_contains "${_PROBE}" "/opt/nvidia/deepstream/tensorrt-*/lib/*.so; do" "the probe lists DeepStream's dev links"
+t_assert_contains "${_PROBE}" "/usr/local/tensorrt /opt/nvidia \\( -name 'NvInfer*.h'" "and its headers"
 
 t_case "a probe that never ran fails once, never reads as an image without a GPU stack"
 t_assert_eq "BAD the GPU probe printed nothing; the container did not run it" "$(gpu_runtime_verdict "" 11.4.0.106)"

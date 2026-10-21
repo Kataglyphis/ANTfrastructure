@@ -9,6 +9,8 @@ ARG MEDIA_CORE_ONNX_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-onnx
 ARG MEDIA_CORE_OPENCV_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-opencv
 ARG MEDIA_CORE_FFMPEG_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-ffmpeg
 ARG MEDIA_CORE_HAILO_IMAGE=docker.io/local/kataglyphis:bk-windows-media-core-hailo
+# The nvidia lane's full TensorRT tree (Dockerfile.nvidia's trt-extract); every other lane mounts an empty C:\tensorrt.
+ARG TENSORRT_SDK_IMAGE=${BASE_IMAGE}
 
 # Common base for all three builders
 FROM ${BASE_IMAGE} AS common
@@ -43,6 +45,12 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsPythonWheel.Common.psm1 `
      C:\bkmods\
+
+# Owner 2026-10-21: the ORT build compiles against the TensorRT SDK through a mount, so no layer the image inherits holds it.
+FROM ${TENSORRT_SDK_IMAGE} AS trt-sdk
+ARG WINDOWS_TARGET_ARCH=amd64
+SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop';"]
+RUN if (-not (Test-Path C:\tensorrt)) { $null = New-Item -ItemType Directory -Path C:\tensorrt }
 
 # TVM-private closure, so a TVM edit never re-keys ONNX; mount it from media-tvm-built only (ModuleClosure tests enforce it).
 FROM buildmods AS tvmmods
@@ -140,6 +148,8 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/patches/onnxruntime,target=C:\bkmnt\patches\onnxruntime `
     --mount=type=bind,source=windows/qnn-sdk,target=C:\temp\qnn-sdk `
+    --mount=type=bind,from=trt-sdk,source=/tensorrt,target=C:\tensorrt-sdk `
+    $env:TENSORRT_SDK_ROOT = 'C:\tensorrt-sdk'; `
     & 'C:\bkmnt\Build-MediaCoreAll.ps1' -Until 'ONNX Runtime' -ScriptDir 'C:\bkmnt' -ScrubAfter
 
 # FFmpeg before OpenCV, whose videoio otherwise falls back to its own prebuilt FFmpeg; every RUN passes -ResumeFrom and -Until.

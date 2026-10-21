@@ -325,7 +325,7 @@ Assert-BuildkitdStepLogEnv -Force:($SkipHostChecks -or $SkipStepLogGate)
 Assert-NoActiveRdna4Gpu -Force:($SkipHostChecks -or $SkipRdna4Gate)
 
 # Tags: pre-fork stages stay unsuffixed (a suffix would fork the most expensive layers), final tags spell their arch.
-$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-toolchain', 'winamd64', 'winarm64',
+$script:NoSuffixTags = @('windows-base', 'windows-sdk', 'windows-tensorrt-sdk', 'windows-toolchain', 'winamd64', 'winarm64',
     'winamd64-nvidia', 'winarm64-nvidia', 'winamd64-rocm')
 # A variant owns the sdk slot, so every tag from sdk on gets '-<variant>' and never overwrites the default's.
 $script:BkVariantInfix = if ($Variant) { "-$Variant" } else { '' }
@@ -642,7 +642,7 @@ if ($Stages -contains 'base') {
 if ($Stages -contains 'sdk') {
     if ($isNvidia) {
         # The arch picks Install-Cuda.ps1's arm64 redist payload on the cross lane; the arm64 SHAs are inert on amd64.
-        Invoke-BkStage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Tag (Get-BkTag 'windows-sdk') -BuildArgs @{
+        $sdkArgs = @{
             BASE_IMAGE               = Get-BkTag 'windows-base'
             CUDA_VERSION             = Get-Ver 'CUDA_VERSION'
             CUDA_VERSION_MAJOR_MINOR = $cudaMajorMinor
@@ -674,6 +674,9 @@ if ($Stages -contains 'sdk') {
             CUDA_WINDOWS_ARM64_CUPTI_SHA256      = Get-Ver 'CUDA_WINDOWS_ARM64_CUPTI_SHA256'
             CUDNN_WINDOWS_ARM64_ZIP_SHA256       = Get-Ver 'CUDNN_WINDOWS_ARM64_ZIP_SHA256'
         }
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Tag (Get-BkTag 'windows-sdk') -BuildArgs $sdkArgs
+        # The full TensorRT tree for the ORT build's mount only; windows-sdk ships its runtime DLLs alone (owner 2026-10-21).
+        Invoke-BkStage -Dockerfile 'windows/Dockerfile.nvidia' -Context 'windows' -Target 'trt-extract' -Tag (Get-BkTag 'windows-tensorrt-sdk') -BuildArgs $sdkArgs
     } elseif ($Variant -eq 'rocm') {
         # The AMD layer in the sdk slot, like nvidia: toolchain and media inherit GPU_TYPE=rocm.
         Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm' -Tag (Get-BkTag 'windows-sdk') -BuildArgs @{
@@ -726,8 +729,10 @@ if ($Stages -contains 'media') {
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
         } + $branchArgs[$branch] + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes) -VersionTable $versions)
         if ($branch -eq 'media-core') {
+            # Without it the trt-sdk stage mounts the toolchain's (absent) C:\tensorrt and ORT builds no TensorRT EP.
+            $trtSdkArg = if ($isNvidia) { @{ TENSORRT_SDK_IMAGE = Get-BkTag 'windows-tensorrt-sdk' } } else { @{} }
             # Direct solves rely on the patched runhcs shim (see docs/windows-build-lanes.md § Traps); one solve per library for caching.
-            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs $branchBuildArgs
+            Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-builder' -Target 'media-core-built-onnx' -Tag (Get-BkTag 'windows-media-core-onnx') -BuildArgs ($branchBuildArgs + $trtSdkArg)
             $onnxArg   = @{ MEDIA_CORE_ONNX_IMAGE = Get-BkTag 'windows-media-core-onnx' }
             $opencvArg = @{ MEDIA_CORE_OPENCV_IMAGE = Get-BkTag 'windows-media-core-opencv' }
             $ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = Get-BkTag 'windows-media-core-ffmpeg' }

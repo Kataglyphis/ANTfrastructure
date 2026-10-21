@@ -225,6 +225,7 @@ Describe 'Get-BkTag: lane tags (golden table)' {
     $script:NvidiaGolden = [ordered]@{
         'windows-base'              = @('windows-base', 'windows-base')
         'windows-sdk'               = @('windows-sdk-nvidia', 'windows-sdk-nvidia')
+        'windows-tensorrt-sdk'      = @('windows-tensorrt-sdk-nvidia', 'windows-tensorrt-sdk-nvidia')
         'windows-toolchain'         = @('windows-toolchain-nvidia', 'windows-toolchain-nvidia')
         'windows-media-core-onnx'   = @('windows-media-core-onnx-nvidia', 'windows-media-core-onnx-nvidia-arm64')
         'windows-media-core-ffmpeg' = @('windows-media-core-ffmpeg-nvidia', 'windows-media-core-ffmpeg-nvidia-arm64')

@@ -206,10 +206,20 @@ licence of the same family on 2026-10-01 (§ [Licence](#licence-the-owner-decisi
 ship: no header, dev link, `trtexec` (`libnvinfer-bin`) or Python binding, and the GPU runtime
 gate fails an image that carries a header or a dev link.
 
-Open, for the owner: DeepStream's TensorRT 10 prefix ships headers and dev links
-(`/opt/nvidia/deepstream/tensorrt-10.16.1.11/{include,lib/libnvinfer.so}`), which Supplement § 2
-does not name, and `:winamd64` ships the whole TensorRT zip tree (`docs/third-party-licenses.md`,
-`eula-review`).
+**Decided 2026-10-21: runtime files only, in every published image** (owner: "Rausnehmen").
+Headers, dev links, `trtexec`, Python bindings and whole SDK trees serve a build stage and never
+ship; a gate fails an image that carries one.
+
+- **DeepStream's TensorRT 10.** `ds_stage_tensorrt` puts the three runtime debs' `.so.10*` files
+  and their docs into the prefix, and the three header debs into `ds_build`'s tmp (`ds_trt_sdk`,
+  with the dev links), which the components compile against and the same RUN deletes. The
+  published `0e9dec34…` carried 13 headers (0.88 MB) and three dev links there; `lib/`'s 22
+  runtime files and links (2.5 GB) stay. A custom `nvinfer` parser includes
+  `nvdsinfer_custom_impl.h`, which includes `NvInfer.h`: build one in a stage that installs
+  `libnvinfer-headers-dev` 10.16.1.11. No family repo builds one (searched 2026-10-21).
+- **Windows** (`:winamd64-nvidia`; `:winamd64` is CPU and has no TensorRT): the DLLs ORT's TensorRT
+  EP loads ([`windows-builds.md` § TensorRT setup](windows-builds.md#tensorrt-setup-gpu-lane-optional)).
+  The published images are zip-less and carry none.
 
 ## The GPU runtime gate
 
@@ -222,14 +232,19 @@ on every image, without a GPU:
   ROCm root.
 - **`ENABLE_TENSORRT=true`**: `libnvinfer`, `libnvinfer_plugin` and `libnvonnxparser` of
   `TENSORRT_VERSION`'s major resolve from `/usr/lib/<triplet>`, `getInferLibVersion()` equals the
-  pin, its builder resources are in that dir, no TensorRT header or dev link ships, the ORT
-  TensorRT EP is in the native tree and the venv and resolves that TensorRT, and ORT lists
-  `TensorrtExecutionProvider`. Without it, no TensorRT of that major and no TensorRT EP.
+  pin, its builder resources are in that dir, the ORT TensorRT EP is in the native tree and the
+  venv and resolves that TensorRT, and ORT lists `TensorrtExecutionProvider`. Without it, no
+  TensorRT of that major and no TensorRT EP.
+- **Every image**: no TensorRT header (under `/usr/include`, `/usr/local/include`,
+  `/usr/local/tensorrt` or `/opt/nvidia`), no dev link (in the default lib dir or DeepStream's
+  TensorRT prefix), no `trtexec` and no `tensorrt` Python package ([§ Redistribution](#redistribution)).
 - A probe that printed nothing fails.
 
-`deepstream-verify.sh` adds one gate: no DeepStream library resolves a TensorRT outside its own
-10.x prefix. On 2026-10-21 the published `:latest-rocm` failed six of the rocm rows (no roots, and
-`hipcc` could not link); the published `:latest-nvidia` passed as an image without TensorRT.
+`deepstream-verify.sh` adds two: no DeepStream library resolves a TensorRT outside its own 10.x
+prefix, and that prefix holds only runtime `.so` files, ldconfig's links and docs. On 2026-10-21
+the published `:latest-rocm` failed six of the rocm rows (no roots, and `hipcc` could not link); the
+published `:latest-nvidia` passed as an image without TensorRT, and failed the SDK row and
+`deepstream-verify.sh` on DeepStream's 13 headers and three dev links.
 `test-gpu-runtime-check.sh` keeps both probes.
 
 ## NVIDIA on arm64 (SBSA): one image for servers and Jetson
@@ -368,9 +383,9 @@ CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
 | --- | --- |
 | `/opt/nvidia/deepstream/deepstream-9.1/` | the runtime `.deb`'s tree, plus the components built from `DEEPSTREAM_COMMIT` installed into it, as NVIDIA's `build/build.sh` does |
 | `/opt/nvidia/deepstream/deepstream` | a link to it, which some upstream Makefiles and configs name |
-| `…/deepstream-9.1/sources/includes/` | the SDK headers, for building custom parsers and plugins |
+| `…/deepstream-9.1/sources/includes/` | the SDK headers, for building custom plugins; a custom `nvinfer` parser also needs TensorRT 10's headers, which do not ship ([§ Redistribution](#redistribution)) |
 | `…/deepstream-9.1/LicenseAgreement.pdf` | NVIDIA's licence, as the `.deb` ships it |
-| `/opt/nvidia/deepstream/tensorrt-10.16.1.11/` | DeepStream's own TensorRT 10 (§ TensorRT 10 beside 11) |
+| `/opt/nvidia/deepstream/tensorrt-10.16.1.11/` | DeepStream's own TensorRT 10: its runtime `.so` files and their docs (§ TensorRT 10 beside 11) |
 | `/opt/gstreamer/lib/<triplet>/gstreamer-1.0/deepstream` | a link to `…/lib/gst-plugins`; the registry scan follows it, so no `GST_PLUGIN_PATH` is needed |
 | `/etc/ld.so.conf.d/010-deepstream-tensorrt.conf` | the TensorRT 10 lib dir, the only DeepStream path on the loader path |
 | `/usr/lib/<triplet>/libnvinfer_builder_resource_*.so.10.16.1` | links into the TensorRT 10 prefix, which an engine build `dlopen()`s by file name (§ [TensorRT builder resources, by file name](#tensorrt-builder-resources-by-file-name)) |
@@ -387,7 +402,8 @@ that way with `LD_LIBRARY_PATH` unset.
 The script is `linux/scripts/05-frameworks/deepstream.sh` (`build` in the media stage,
 `stage-runtime` or `assert-absent` in the package stage). Every download is pinned in
 `versions.env` (`DEEPSTREAM_*`) with a SHA256: the release `.deb` (GitHub's asset digest),
-the six TensorRT 10 debs (from the CUDA repo's `Packages` index), and the source commits.
+the six TensorRT 10 debs (from the CUDA repo's `Packages` index; the three header debs serve the
+build only), and the source commits.
 
 ### What needs a GPU host
 
@@ -702,6 +718,8 @@ the package stage (against the wired plugin link) and by the runtime smoke
 - **Only plugins in `gst-plugins/`**, and a registry scan that does not crash. The check
   reads `nm` to the end: a `grep -q` under `pipefail` SIGPIPEs `nm` on a large plugin, and
   the first run moved `libgstnvvideo4linux2.so` out that way.
+- **Runtime only**: the TensorRT 10 prefix holds its `.so.10*` files, ldconfig's
+  `do_not_link_against_*` links and docs, nothing else (owner, 2026-10-21).
 - **The `dlopen()` links**: every TensorRT builder resource resolves by file name from the
   default directory (build and package), and the package's `libv4l2` plugin dir holds the
   NVDEC plugin (`DSV_WIRED=1` only).

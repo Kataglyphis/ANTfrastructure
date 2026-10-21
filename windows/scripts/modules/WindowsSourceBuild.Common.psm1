@@ -2486,6 +2486,7 @@ Export-ModuleMember -Function @(
     'Save-PythonWheel',
     'Get-CudaRoot',
     'Resolve-TensorRtRoot',
+    'Resolve-TensorRtSdkRoot',
     'Enter-VsDevCmdEnvironment',
     'Get-MsvcToolsRoot',
     'Copy-CpythonPyConfigHeader',

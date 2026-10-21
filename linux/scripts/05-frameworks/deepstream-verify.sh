@@ -137,6 +137,25 @@ dsv_check_trt_origin() {
   if [ -n "${verdict}" ]; then printf '    %s\n' "${verdict}"; dsv_bad "DeepStream resolves a TensorRT outside ${DS_TRT_PREFIX}"; else dsv_ok "DeepStream links TensorRT 10 from ${DS_TRT_PREFIX} only"; fi
 }
 
+# stdin: paths under the TensorRT prefix; prints each the SLA does not let ship: only the runtime .so files, ldconfig's links and docs may.
+dsv_trt_sdk_verdict() {
+  awk '/^doc\// {next} /^lib\/lib[^\/]+\.so\.[0-9][^\/]*$/ {next} /^lib\/do_not_link_against_[^\/]+$/ {next} {print "NOT-RUNTIME", $0}'
+}
+
+# Owner 2026-10-21: headers and dev links serve the build only (ds_trt_sdk) and never ship.
+dsv_check_trt_runtime_only() {
+  [ -n "${DS_TRT_PREFIX}" ] || return 0
+  local verdict
+  [ -d "${DS_TRT_PREFIX}" ] || { dsv_bad "no TensorRT prefix at ${DS_TRT_PREFIX}"; return 0; }
+  verdict="$(cd "${DS_TRT_PREFIX}" && find . -mindepth 1 ! -type d | sed 's|^\./||' | LC_ALL=C sort | dsv_trt_sdk_verdict)"
+  if [ -n "${verdict}" ]; then
+    printf '%s\n' "${verdict}" | head -n 10 | while IFS= read -r l; do printf '    %s\n' "${l}"; done
+    dsv_bad "${DS_TRT_PREFIX} carries $(printf '%s\n' "${verdict}" | wc -l) files beyond TensorRT's runtime .so files (headers, dev links, tools)"
+  else
+    dsv_ok "${DS_TRT_PREFIX} holds only TensorRT's runtime .so files and their docs"
+  fi
+}
+
 # dsv_trt_builder_resources <trt prefix>: the files libnvinfer.so.10 dlopen()s by name during an engine build.
 dsv_trt_builder_resources() {
   local f
@@ -231,6 +250,7 @@ dsv_main() {
   dsv_check_v4l2_plugin
   dsv_check_trt_builder_resources
   dsv_check_trt_origin
+  dsv_check_trt_runtime_only
   dsv_check_elements
   [ "${dsv_fail}" = 0 ] || { echo "DeepStream gates FAILED"; return 1; }
   echo "DeepStream gates passed"
