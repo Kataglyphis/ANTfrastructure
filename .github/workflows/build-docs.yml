@@ -23,7 +23,7 @@ on:
         default: ''
       guides:
         description: >-
-          builder dartdoc only: the Markdown guides rendered beside the API pages, one
+          builder dartdoc or rustdoc: the Markdown guides rendered beside the API pages, one
           <source>|<slug>|<nav title> per line, sources relative to the repository root.
         type: string
         default: ''

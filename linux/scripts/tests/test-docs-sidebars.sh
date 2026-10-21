@@ -56,6 +56,20 @@ _dartdoc() {
   _site "$1" static-assets/docs.dart.js     '#sidenav-left-toggle{position:fixed;left:10px;top:5px;width:30px;height:30px} #dartdoc-sidebar-left{position:fixed;left:-400px;top:0;width:300px;height:500px;background:#cfc;z-index:2000} #dartdoc-sidebar-left.active{left:0} #overlay-under-drawer{display:none} #overlay-under-drawer.active{display:block;position:fixed;inset:0;z-index:1999;background:#0006}'     '<span id="sidenav-left-toggle" role="button">=</span><div id="dartdoc-sidebar-left">nav</div><div id="overlay-under-drawer"></div>'     "const sb = document.getElementById('dartdoc-sidebar-left'), ov = document.getElementById('overlay-under-drawer'); document.getElementById('sidenav-left-toggle').addEventListener('click', () => { sb.classList.add('active'); ov.classList.add('active'); }); ${close}"
 }
 
+# _rustdoc <name>: a rustdoc-shaped site (crates.js) whose crate page and guide page slide their sidebar in from the top bar's toggle.
+_rustdoc() {
+  local d="${_tmp}/$1" page
+  mkdir -p "${d}/c"
+  printf 'window.ALL_CRATES = ["c"];\n' > "${d}/crates.js"
+  printf '<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=c/index.html"></head><body></body></html>\n' > "${d}/index.html"
+  for page in index guide-x; do
+    printf '<!DOCTYPE html><html><head><style>body{margin:0} .sidebar-menu-toggle{position:fixed;left:10px;top:5px;width:30px;height:30px} nav.sidebar{position:fixed;left:-1000px;top:45px;width:200px;height:300px;background:#cfc} nav.sidebar.shown{left:0}</style></head><body><button class="sidebar-menu-toggle">=</button><nav class="sidebar">nav</nav><script>%s</script></body></html>\n' \
+      "document.querySelector('.sidebar-menu-toggle').addEventListener('click', () => document.querySelector('nav.sidebar').classList.toggle('shown'));" \
+      > "${d}/c/${page}.html"
+  done
+  printf '%s\n' "${d}"
+}
+
 # _tree <name> <variant>: a Sphinx site whose api/library_root.html holds an Exhale-shaped tree view that folds as <variant> says.
 _tree() {
   local d bind="" call="apply();"
@@ -106,6 +120,17 @@ t_assert_contains "$(t_out node "${CHECK}" "$(_sphinx none no-toggle)")" "FAIL 1
 t_case "dartdoc's drawer opens with its toggle and closes on the overlay"
 t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc drawer closes)")" "ok   1000x700 left: closed -> open -> closed"
 t_assert_contains "$(t_out node "${CHECK}" "$(_dartdoc stuck stays)")" "FAIL 1000x700 left: closed -> open, and it does not go back"
+
+t_case "a rustdoc site checks its crate page and the guides beside it, not the redirect at its root"
+out="$(t_out node "${CHECK}" "$(_rustdoc rust)")"
+t_assert_contains "${out}" "check-docs-sidebars: rustdoc site"
+t_assert_contains "${out}" "  c/index.html"
+t_assert_contains "${out}" "  c/guide-x.html"
+t_assert_contains "${out}" "ok   1000x700 left: closed -> open -> closed"
+t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -cx '  index.html')" "the redirect has no sidebar to click"
+t_assert_rc 0 node "${CHECK}" "${_tmp}/rust"
+rm "${_tmp}/rust/c/guide-x.html"
+t_assert_contains "$(t_out node "${CHECK}" "${_tmp}/rust")" "  c/index.html" "without guides, the first crate of crates.js"
 
 t_case "an uncaught exception or rejection fails the page, even where every toggle works"
 out="$(t_out node "${CHECK}" "$(_sphinx throws throws)")"

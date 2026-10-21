@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render staged Markdown guides into a `dart doc` site. See docs/shared-script-libraries.md#dartdoc-buildsh--theme-and-enrich-a-dart-doc-site"""
+"""Render staged Markdown guides into a `dart doc` or rustdoc site. See docs/shared-script-libraries.md#dartdoc-buildsh--theme-and-enrich-a-dart-doc-site"""
 
 from __future__ import annotations
 
@@ -23,6 +23,14 @@ MAIN_END = "  </div> <!-- /.main-content -->"
 RIGHT_START = '<div id="dartdoc-sidebar-right" class="sidebar sidebar-offcanvas-right">'
 RIGHT_END = "  </div>\n</main>"
 LEFT_START = '<div id="dartdoc-sidebar-left"'
+# rustdoc's shell is a crate's index.html: a guide written beside it keeps its relative paths.
+RUST_MAIN_START = '<section id="main-content" class="content"'
+RUST_MAIN_END = "</section></div></main>"
+RUST_TOC_START = '<section id="rustdoc-toc">'
+RUST_TOC_END = "</section>"
+RUST_SIDEBAR = '<div class="sidebar-elems">'
+RUST_TOPBAR = re.compile(r'(<rustdoc-topbar><h2><a href="#">).*?(</a>)', re.S)
+FLAVORS = ("dartdoc", "rustdoc")
 NAV_MARKER = "kg-md-nav-section"
 FOOTER_MARKER = "kg-doc-footer-links"
 # The family links every repository on develop: docs/repository-family.md#the-readme-rule
@@ -36,16 +44,18 @@ GITHUB_REMOTE = re.compile(
 
 
 def load_config(path):
-    """Parse the tab-separated config: title_suffix, footer_title, project_root, repo_url, guide, footer."""
+    """Parse the tab-separated config: title_suffix, footer_title, project_root, repo_url, flavor, shell, guide, footer."""
     config = {"title_suffix": "", "footer_title": "", "project_root": "", "repo_url": "",
-              "guides": [], "sources": {}, "footer": []}
+              "flavor": "dartdoc", "shell": "index.html", "guides": [], "sources": {}, "footer": []}
     text = pathlib.Path(path).read_text(encoding="utf-8")
     for lineno, raw in enumerate(text.splitlines(), 1):
         if not raw.strip():
             continue
         fields = raw.split("\t")
         key = fields[0]
-        if key in ("title_suffix", "footer_title", "project_root", "repo_url") and len(fields) == 2:
+        if key == "flavor" and len(fields) == 2 and fields[1] not in FLAVORS:
+            raise SystemExit(f"{path}:{lineno}: flavor must be one of {', '.join(FLAVORS)}, got {fields[1]!r}")
+        if key in ("title_suffix", "footer_title", "project_root", "repo_url", "flavor", "shell") and len(fields) == 2:
             config[key] = fields[1]
         elif key == "guide" and len(fields) == 4:
             config["guides"].append((fields[1], fields[2]))
@@ -204,21 +214,36 @@ def build_toc(headings) -> str:
     )
 
 
+def build_rustdoc_toc(nav_title: str, headings) -> str:
+    """rustdoc's sidebar contents: the guide's title, then each ## heading with its ### headings."""
+    sections = []
+    for level, title, anchor in headings:
+        link = f'<a href="#{anchor}" title="{html.escape(title)}">{html.escape(title)}</a>'
+        if level == 2:
+            sections.append((link, []))
+        elif level == 3 and sections:
+            sections[-1][1].append(f"<li>{link}</li>")
+    items = "".join(f"<li>{link}{'<ul>' + ''.join(subs) + '</ul>' if subs else ''}</li>" for link, subs in sections)
+    toc = f'<h2 class="location"><a href="#">{html.escape(nav_title)}</a></h2>'
+    return toc + (f'<h3><a href="#">Sections</a></h3><ul class="block top-toc">{items}</ul>' if items else "")
+
+
 def _splice(page: str, start: str, end: str, replacement: str, where: str) -> str:
-    """Replace the region between two landmarks; a missing one is fatal, as dart doc's HTML is unstable."""
+    """Replace the region between two landmarks; a missing one is fatal, as the generators' HTML is unstable."""
     start_idx = page.find(start)
     end_idx = page.find(end, start_idx) if start_idx != -1 else -1
     if start_idx == -1 or end_idx <= start_idx:
         missing = start if start_idx == -1 else end
         raise SystemExit(
-            f"{where}: dart doc's page shell no longer contains {missing!r}. "
+            f"{where}: the generator's page shell no longer contains {missing!r}. "
             "The renderer's landmarks must be updated to match the generator; "
             "it will not report a rendered page it did not render."
         )
     return page[:start_idx] + replacement + page[end_idx:]
 
 
-def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, slug, source_rel) -> str:
+def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, slug, source_rel,
+                      flavor: str = "dartdoc") -> str:
     headings = extract_headings(md_text)
     body = add_heading_ids(rewrite_md_links(RENDERER.render(md_text), links, source_rel), headings)
     title = f"{nav_title} - {suffix}" if suffix else nav_title
@@ -226,33 +251,44 @@ def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, s
         r"<title>.*?</title>", f"<title>{html.escape(title)}</title>", shell, count=1, flags=re.S
     )
     if n != 1:
-        raise SystemExit(f"guide-{slug}.html: no <title> in the index.html page shell.")
+        raise SystemExit(f"guide-{slug}.html: no <title> in the page shell.")
+    if flavor == "rustdoc":
+        main = f'{RUST_MAIN_START} tabindex="-1">\n<div class="docblock kg-guide-content">\n{body}\n</div>\n'
+        page = _splice(page, RUST_MAIN_START, RUST_MAIN_END, main, f"guide-{slug}.html (main content)")
+        page = _splice(page, RUST_TOC_START, RUST_TOC_END, RUST_TOC_START + build_rustdoc_toc(nav_title, headings),
+                       f"guide-{slug}.html (sidebar contents)")
+        # The mobile top bar names the page; an older rustdoc has none, so it is optional.
+        return RUST_TOPBAR.sub(lambda m: m.group(1) + html.escape(nav_title) + m.group(2), page, count=1)
     main = f'{MAIN_START}\n<section class="desc markdown kg-guide-content">\n{body}\n</section>\n'
     page = _splice(page, MAIN_START, MAIN_END, main, f"guide-{slug}.html (main content)")
     return _splice(page, RIGHT_START, RIGHT_END, f"{RIGHT_START}\n{build_toc(headings)}\n",
                    f"guide-{slug}.html (right sidebar)")
 
 
-def sidebar_nav(root: pathlib.Path, page_path: pathlib.Path, guides) -> str:
-    """The 'Markdown Guides' block, with every href relative to the page holding it."""
-    items = []
+def sidebar_nav(guide_dir: pathlib.Path, page_path: pathlib.Path, guides, flavor: str = "dartdoc") -> str:
+    """The guides block, 'Markdown Guides' or rustdoc's 'Guides', with every href relative to the page holding it."""
+    links = []
     for slug, label in guides:
-        target = root / f"guide-{slug}.html"
-        if not target.exists():
-            continue
-        href = os.path.relpath(target, page_path.parent).replace(os.sep, "/")
-        items.append(
-            f'      <li class="section-subitem kg-md-nav-item"><a href="{href}">{label}</a></li>'
-        )
-    if not items:
+        target = guide_dir / f"guide-{slug}.html"
+        if target.exists():
+            links.append((os.path.relpath(target, page_path.parent).replace(os.sep, "/"), label))
+    if not links:
         return ""
+    if flavor == "rustdoc":
+        items = "".join(f'<li><a href="{href}">{html.escape(label)}</a></li>' for href, label in links)
+        return f'<section class="{NAV_MARKER}"><h3>Guides</h3><ul class="block">{items}</ul></section>'
+    items = [f'      <li class="section-subitem kg-md-nav-item"><a href="{href}">{label}</a></li>'
+             for href, label in links]
     return "\n".join([f'      <li class="section-title {NAV_MARKER}">Markdown Guides</li>', *items])
 
 
-def inject_sidebar_nav(text: str, nav_html: str, where) -> str:
-    """Hang the guide nav off the left sidebar's first `<ol>`; a runtime-filled sidebar is skipped, not fatal."""
+def inject_sidebar_nav(text: str, nav_html: str, where, flavor: str = "dartdoc") -> str:
+    """Hang the guide nav off dartdoc's left sidebar's first `<ol>` or atop rustdoc's sidebar; else skip the page."""
     if NAV_MARKER in text or not nav_html:
         return text
+    if flavor == "rustdoc":
+        at = text.find(RUST_SIDEBAR)
+        return text if at == -1 else text[: at + len(RUST_SIDEBAR)] + nav_html + text[at + len(RUST_SIDEBAR) :]
     sidebar = text.find(LEFT_START)
     ol_start = text.find("<ol>", sidebar) if sidebar != -1 else -1
     if ol_start == -1:
@@ -291,23 +327,29 @@ def build_footer(title: str, links) -> str:
 
 def main(argv) -> int:
     if len(argv) != 3:
-        raise SystemExit(f"usage: {argv[0]} <doc/api dir> <config file>")
+        raise SystemExit(f"usage: {argv[0]} <site dir> <config file>")
     root = pathlib.Path(argv[1])
     config = load_config(argv[2])
     guides = config["guides"]
+    flavor = config["flavor"]
+    # Each guide page is written beside its shell, so the shell's relative links hold on it.
+    shell_path = root / config["shell"]
+    guide_dir = shell_path.parent
     project = config["project_root"] or os.getcwd()
     sources = {slug: repo_path(project, src) for slug, src in config["sources"].items()}
     links = LinkTargets({rel: f"guide-{slug}.html" for slug, rel in sources.items()},
-                        config["repo_url"] or origin_url(project), submodule_urls(project), project, str(root))
-    shell = (root / "index.html").read_text(encoding="utf-8", errors="ignore")
+                        config["repo_url"] or origin_url(project), submodule_urls(project), project, str(guide_dir))
+    if guides and not shell_path.is_file():
+        raise SystemExit(f"No page shell at {shell_path}: the site was not built, or names its pages otherwise.")
+    shell = shell_path.read_text(encoding="utf-8", errors="ignore") if guides else ""
 
     for slug, label in guides:
         source = root / "md" / f"{slug}.md"
         if not source.exists():
             raise SystemExit(f"Staged guide is missing: {source}")
         md_text = source.read_text(encoding="utf-8", errors="ignore")
-        page = render_guide_page(shell, label, config["title_suffix"], md_text, links, slug, sources[slug])
-        (root / f"guide-{slug}.html").write_text(page, encoding="utf-8")
+        page = render_guide_page(shell, label, config["title_suffix"], md_text, links, slug, sources[slug], flavor)
+        (guide_dir / f"guide-{slug}.html").write_text(page, encoding="utf-8")
 
     footer_html = build_footer(config["footer_title"], config["footer"])
     navigated = 0
@@ -317,8 +359,8 @@ def main(argv) -> int:
         pages += 1
         rel = page_path.relative_to(root)
         text = page_path.read_text(encoding="utf-8", errors="ignore")
-        nav_html = sidebar_nav(root, page_path, guides)
-        after = inject_sidebar_nav(text, nav_html, rel)
+        nav_html = sidebar_nav(guide_dir, page_path, guides, flavor)
+        after = inject_sidebar_nav(text, nav_html, rel, flavor)
         # Count the marker, not this run's edits, so a second pass is a no-op.
         navigated += NAV_MARKER in after
         final = inject_footer(after, footer_html, rel)

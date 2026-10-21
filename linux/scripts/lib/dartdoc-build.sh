@@ -15,8 +15,9 @@ _dartdoc_build_doc_root() {
   printf '%s\n' "${DARTDOC_BUILD_DOC_ROOT:-$(_dartdoc_build_root)/doc}"
 }
 
+# DARTDOC_BUILD_API_DIR: another generator's site, such as rustdoc's target/doc, for the guide steps.
 _dartdoc_build_api_dir() {
-  printf '%s\n' "$(_dartdoc_build_doc_root)/api"
+  printf '%s\n' "${DARTDOC_BUILD_API_DIR:-$(_dartdoc_build_doc_root)/api}"
 }
 
 # A missing tree means the generator never ran; a later step would report green over nothing.
@@ -221,6 +222,9 @@ _dartdoc_build_write_render_config() {
   printf 'project_root\t%s\n' "$(_dartdoc_build_root)" >>"${out}"
   # Empty: the renderer asks the checkout's origin.
   printf 'repo_url\t%s\n' "${DARTDOC_BUILD_REPO_URL:-}" >>"${out}"
+  # rustdoc: each guide in rustdoc's layout, written beside DARTDOC_BUILD_SHELL, a crate's index.html.
+  printf 'flavor\t%s\n' "${DARTDOC_BUILD_FLAVOR:-dartdoc}" >>"${out}"
+  printf 'shell\t%s\n' "${DARTDOC_BUILD_SHELL:-index.html}" >>"${out}"
   rows="$(_dartdoc_build_guide_rows)" || exit 1
   printf '%s\n' "${rows}" |
     awk -F'\t' 'NF { printf "guide\t%s\t%s\t%s\n", $2, $3, $1 }' >>"${out}"

@@ -12,6 +12,26 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — build-docs.yml's rustdoc builder takes the guide list
+
+- **`guides` works with `builder: rustdoc`**, as with `dartdoc` since c91187a9. `docs-site.sh` runs
+  `cargo_build_doc.sh`, then dartdoc's own stage and render steps over `target/doc`.
+  `dartdoc-guides.py` gains a rustdoc flavor: a guide is the root package's `<crate>/index.html`
+  with `#main-content` and the sidebar's `#rustdoc-toc` replaced, written beside it so its
+  `../static.files/` paths hold, and every page with a `sidebar-elems` lists the guides at its top.
+  New knobs `DARTDOC_BUILD_API_DIR`, `DARTDOC_BUILD_FLAVOR` and `DARTDOC_BUILD_SHELL`; a dartdoc site
+  is unchanged.
+- **The sidebar check knows rustdoc** (marker `crates.js`; 1400, 700 and 400 px; the top bar's
+  `.sidebar-menu-toggle`). A rustdoc site's `index.html` is a redirect at best, so it opens the
+  crate pages that hold guides and those guides, else the first crate of `crates.js`.
+- **Proof.** OxidANT's site with its eight `docs/` guides in `:latest` (rustc 1.99.0): 8 guides
+  rendered, 478 of 594 pages navigated (source pages have no sidebar), the sidebar check green on
+  `oxidant/index.html` and every guide at all three widths, the link gate 595 documents with its
+  24 frozen findings, in 161 s. `test-docs-site.sh` 60 → 70 assertions, `test-dartdoc-guides.sh`
+  38 → 55, `test-docs-sidebars.sh` gains a rustdoc fixture; seven new mutations, and four moved to
+  the new code. Consumers: only OxidANT calls `builder: rustdoc`; no input changed.
+  [docs-sites.md § Inputs](docs/docs-sites.md#inputs).
+
 ## 2026-10-21 — nvidia's stage images move to a private package (CON136)
 
 - **Owner decision 2026-10-21** ("Auf privat stellen"): from the next nvidia chain the `gpu`, `media`

@@ -42,11 +42,14 @@ done
 t_assert_eq "hub=antfrastructure-tools" "$(_plan DOCS_BUILDER=rustdoc DOCS_HUB=antfrastructure-tools | tail -n 1)"
 t_assert_fails _plan DOCS_BUILDER=rustdoc DOCS_HUB='tools && id'
 
-t_case "plan: guides are the dartdoc builder's, one <source>|<slug>|<nav title> per line"
+t_case "plan: guides are the dartdoc and rustdoc builders', one <source>|<slug>|<nav title> per line"
 t_assert_eq "site-dir=doc/api" "$(_plan DOCS_BUILDER=dartdoc DOCS_GUIDES="$(printf '  guides/a.md|a|A guide\n\nguides/b.md|b-2|B, the second\n')" | head -n 1)"
-t_assert_contains "$(t_out _plan DOCS_COMMAND=x DOCS_SITE_DIR=doc/api DOCS_GUIDES='guides/a.md|a|A')" "guides is the dartdoc builder's guide list"
+t_assert_eq "site-dir=target/doc" "$(_plan DOCS_BUILDER=rustdoc DOCS_GUIDES='guides/a.md|a|A guide' | head -n 1)"
+t_assert_contains "$(t_out _plan DOCS_COMMAND=x DOCS_SITE_DIR=doc/api DOCS_GUIDES='guides/a.md|a|A')" "guides is the dartdoc and rustdoc builders' guide list"
+t_assert_fails _plan DOCS_BUILDER=python DOCS_GUIDES='guides/a.md|a|A'
 for bad in 'guides/a.md|a' 'guides/a.md||A' '../a.md|a|A' '/a.md|a|A' 'guides/a.md|a/b|A' 'guides/a.md|a b|A'; do
   t_assert_fails _plan DOCS_BUILDER=dartdoc DOCS_GUIDES="${bad}"
+  t_assert_fails _plan DOCS_BUILDER=rustdoc DOCS_GUIDES="${bad}"
 done
 
 # A copy of the hub's script beside stub drivers, so a builder's dispatch is visible without cargo, pip or dart.
@@ -57,7 +60,10 @@ printf 'echo rustdoc-driver\n' > "${FAKE}/linux/scripts/02-toolchain/rust/cargo_
 printf 'echo python-driver\n' > "${FAKE}/linux/scripts/02-toolchain/python/ci_build_docs.sh"
 printf 'dartdoc_build_main() { echo "dartdoc theme=${DARTDOC_BUILD_THEME_CSS} before=${DARTDOC_BUILD_CLEAN_CMD[*]} images=${DARTDOC_BUILD_IMAGES_DIR:-} guides=${DARTDOC_BUILD_GUIDES[*]:-}"; }\n' \
   > "${FAKE}/linux/scripts/lib/dartdoc-build.sh"
-mkdir -p "${_tmp}/dart-plain" "${_tmp}/dart-images/images"
+printf 'dartdoc_build_stage_guides() { echo staged; }\ndartdoc_build_prepare_python_env() { :; }\ndartdoc_build_render_guides() { echo "rendered api=${DARTDOC_BUILD_API_DIR} flavor=${DARTDOC_BUILD_FLAVOR} shell=${DARTDOC_BUILD_SHELL} guides=${DARTDOC_BUILD_GUIDES[*]}"; }\n' \
+  >> "${FAKE}/linux/scripts/lib/dartdoc-build.sh"
+mkdir -p "${_tmp}/dart-plain" "${_tmp}/dart-images/images" "${_tmp}/rust-crate"
+printf '[package]\nname = "my-crate"\nversion = "0.1.0"\n' > "${_tmp}/rust-crate/Cargo.toml"
 _build() { env -u DOCS_COMMAND -u DOCS_BUILDER -u DOCS_GUIDES "$@" bash "${FAKE}/linux/scripts/docs-site.sh" build; }
 
 t_case "build: a command runs at the working directory, a builder runs the hub's driver"
@@ -72,6 +78,11 @@ t_assert_contains "$(cd "${_tmp}/dart-images" && _build DOCS_BUILDER=dartdoc)" "
   "the README's images/logo.png is a dead link on the site unless images/ is copied (ANThology, 2026-10-19)"
 t_assert_contains "$(cd "${_tmp}/dart-plain" && _build DOCS_BUILDER=dartdoc DOCS_GUIDES="$(printf 'guides/a.md|a|A guide\nguides/b.md|b|B')")" \
   "guides=${_tmp}/dart-plain/guides/a.md|a|A guide ${_tmp}/dart-plain/guides/b.md|b|B" "each guide, its source from the repository root"
+
+t_case "build: rustdoc's guides go beside the root package's crate page, after the driver"
+t_assert_eq "$(printf 'rustdoc-driver\nstaged\nrendered api=%s/rust-crate/target/doc flavor=rustdoc shell=my_crate/index.html guides=%s/rust-crate/guides/a.md|a|A' "${_tmp}" "${_tmp}")" \
+  "$(cd "${_tmp}/rust-crate" && _build DOCS_BUILDER=rustdoc DOCS_GUIDES='guides/a.md|a|A')" "cargo doc names the directory my_crate"
+t_assert_eq "rustdoc-driver" "$(cd "${_tmp}/rust-crate" && _build DOCS_BUILDER=rustdoc)" "no guides, no renderer"
 mkdir -p "${_tmp}/dart-plain/doc/api/static-assets"
 : > "${_tmp}/dart-plain/doc/api/.htaccess"
 (cd "${_tmp}/dart-plain" && _build DOCS_BUILDER=dartdoc >/dev/null)

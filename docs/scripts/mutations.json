@@ -14357,10 +14357,26 @@
  {
   "id": "docs-site.build-rustdoc-driver",
   "target": "linux/scripts/docs-site.sh",
-  "find": "    rustdoc) bash \"${DOCS_SITE_HUB}/linux/scripts/02-toolchain/rust/cargo_build_doc.sh\" ;;",
-  "replace": "    rustdoc) true ;;",
+  "find": "  bash \"${DOCS_SITE_HUB}/linux/scripts/02-toolchain/rust/cargo_build_doc.sh\"",
+  "replace": "  true",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "the builder input is a promise to run the hub's driver"
+ },
+ {
+  "id": "docs-site.build-rustdoc-guides",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "  DARTDOC_BUILD_GUIDES=(\"${DOCS_SITE_GUIDES[@]}\")",
+  "replace": "  DARTDOC_BUILD_GUIDES=()",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "the guides input must reach the renderer on a rustdoc site too, or its guides stay on GitHub"
+ },
+ {
+  "id": "docs-site.build-rustdoc-crate-dir",
+  "target": "linux/scripts/docs-site.sh",
+  "find": "DARTDOC_BUILD_SHELL=\"${crate//-/_}/index.html\"",
+  "replace": "DARTDOC_BUILD_SHELL=\"${crate}/index.html\"",
+  "test": "bash linux/scripts/tests/test-docs-site.sh",
+  "why": "cargo doc names a crate's directory with underscores, so a hyphenated package's shell would not exist"
  },
  {
   "id": "docs-site.build-dartdoc-theme",
@@ -14749,10 +14765,42 @@
  {
   "id": "lib.dartdoc-guides-render-checks-the-tree",
   "target": "linux/scripts/lib/dartdoc-guides.py",
-  "find": "submodule_urls(project), project, str(root))",
+  "find": "submodule_urls(project), project, str(guide_dir))",
   "replace": "submodule_urls(project))",
   "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
   "why": "without the project root the render cannot tell a file from a folder or a missing file"
+ },
+ {
+  "id": "lib.dartdoc-guides-rustdoc-beside-shell",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "(guide_dir / f\"guide-{slug}.html\").write_text(page, encoding=\"utf-8\")",
+  "replace": "(root / f\"guide-{slug}.html\").write_text(page, encoding=\"utf-8\")",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a rustdoc guide at the site root keeps its crate page's ../static.files paths and loads no stylesheet"
+ },
+ {
+  "id": "lib.dartdoc-guides-rustdoc-sidebar-nav",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        return text if at == -1 else text[: at + len(RUST_SIDEBAR)] + nav_html + text[at + len(RUST_SIDEBAR) :]",
+  "replace": "        return text",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "a guide no page links is a page no reader finds"
+ },
+ {
+  "id": "lib.dartdoc-guides-rustdoc-main-content",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        page = _splice(page, RUST_MAIN_START, RUST_MAIN_END, main, f\"guide-{slug}.html (main content)\")",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "without the splice every guide page shows the crate's own documentation"
+ },
+ {
+  "id": "lib.dartdoc-guides-rustdoc-subsections",
+  "target": "linux/scripts/lib/dartdoc-guides.py",
+  "find": "        elif level == 3 and sections:",
+  "replace": "        elif level == 4 and sections:",
+  "test": "bash linux/scripts/tests/test-dartdoc-guides.sh",
+  "why": "the sidebar contents list each section's subsections, as rustdoc's own do"
  },
  {
   "id": "packaging.elf-closure-relocatable",
@@ -15261,8 +15309,8 @@
  {
   "id": "docs-site.plan-guides-dartdoc-only",
   "target": "linux/scripts/docs-site.sh",
-  "find": "    [ \"${DOCS_BUILDER:-}\" = dartdoc ] || die \"guides without dartdoc\"",
-  "replace": "    true || die \"guides without dartdoc\"",
+  "find": "      *) die \"guides without a guide builder\"",
+  "replace": "      *) true || die \"guides without a guide builder\"",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "guides beside a command or another builder would be silently ignored, and the caller would believe its guides published"
  },
@@ -15437,10 +15485,18 @@
  {
   "id": "docs-site.sidebars-asked-pages",
   "target": "linux/scripts/check-docs-sidebars.js",
-  "find": "['index.html', ...asked, ",
-  "replace": "['index.html', ",
+  "find": "[...start, ...asked, ",
+  "replace": "[...start, ",
   "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
   "why": "a published site has no file list to search: the live check names its API page"
+ },
+ {
+  "id": "docs-site.sidebars-rustdoc-pages",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "const start = kind === 'rustdoc' && !isUrl(site) ? rustdocPages(site) : ['index.html'];",
+  "replace": "const start = ['index.html'];",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a rustdoc site's index.html is a redirect with no sidebar, so the check would click nothing"
  },
  {
   "id": "docs-site.webgpu-readback-copy-src",

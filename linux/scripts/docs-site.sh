@@ -49,7 +49,10 @@ docs_site_plan() {
   [ -z "${DOCS_ARTIFACT:-}" ] || modes=$((modes + 1))
   [ "${modes}" -eq 1 ] || die "one source" "set exactly one of command, builder and artifact; ${modes} are set."
   if [ -n "${DOCS_GUIDES:-}" ]; then
-    [ "${DOCS_BUILDER:-}" = dartdoc ] || die "guides without dartdoc" "guides is the dartdoc builder's guide list; a command sets its own."
+    case "${DOCS_BUILDER:-}" in
+      dartdoc | rustdoc) ;;
+      *) die "guides without a guide builder" "guides is the dartdoc and rustdoc builders' guide list; a command sets its own." ;;
+    esac
     _docs_site_guides
   fi
   if [ -n "${DOCS_ARTIFACT:-}" ]; then
@@ -86,11 +89,30 @@ _docs_site_dartdoc() {
   dartdoc_build_main
 }
 
+# _docs_site_rustdoc: cargo_build_doc.sh, then the DOCS_GUIDES guides beside the root package's crate page, by dartdoc's renderer.
+_docs_site_rustdoc() {
+  local crate
+  bash "${DOCS_SITE_HUB}/linux/scripts/02-toolchain/rust/cargo_build_doc.sh"
+  [ -n "${DOCS_GUIDES:-}" ] || return 0
+  # cargo_build_doc.sh's rule for the root package's doc directory.
+  crate="$(grep -E '^name\s*=' Cargo.toml | head -n 1 | awk -F'"' '{print $2}')"
+  # shellcheck source=lib/dartdoc-build.sh
+  source "${DOCS_SITE_HUB}/linux/scripts/lib/dartdoc-build.sh"
+  _docs_site_guides
+  # shellcheck disable=SC2034 # read by dartdoc_build_stage_guides and dartdoc_build_render_guides
+  DARTDOC_BUILD_GUIDES=("${DOCS_SITE_GUIDES[@]}")
+  # shellcheck disable=SC2034 # read by the same two steps
+  DARTDOC_BUILD_API_DIR="$(pwd)/target/doc" DARTDOC_BUILD_FLAVOR=rustdoc DARTDOC_BUILD_SHELL="${crate//-/_}/index.html"
+  dartdoc_build_stage_guides
+  dartdoc_build_prepare_python_env
+  dartdoc_build_render_guides
+}
+
 # build [<site>]: inside the image, at the repository root; the command or the hub driver the builder names, then check <site>.
 docs_site_build() {
   case "${DOCS_BUILDER:-}" in
     '') bash -lc "${DOCS_COMMAND:?no command and no builder}" ;;
-    rustdoc) bash "${DOCS_SITE_HUB}/linux/scripts/02-toolchain/rust/cargo_build_doc.sh" ;;
+    rustdoc) _docs_site_rustdoc ;;
     python) bash "${DOCS_SITE_HUB}/linux/scripts/02-toolchain/python/ci_build_docs.sh" ;;
     dartdoc) _docs_site_dartdoc ;;
     *) die "unknown builder" "builder must be rustdoc, python or dartdoc, got '${DOCS_BUILDER}'." ;;

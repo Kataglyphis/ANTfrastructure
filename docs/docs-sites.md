@@ -58,7 +58,7 @@ commit changes only docs. The hub's own caller is `.github/workflows/docs.yml`.
 |---|---|---|
 | `command` | `''` | Builds the site: `bash -lc` in the family image at the repository root |
 | `builder` | `''` | A hub driver instead: `rustdoc` (`cargo_build_doc.sh`, site `target/doc`), `python` (`ci_build_docs.sh`, site `docs/build/html`) or `dartdoc` (`doc/api` cleared, then `dartdoc_build_main` with DocumANTation's theme after `flutter pub get`, `images/` copied when the repository has one, site `doc/api`) |
-| `guides` | `''` | `builder: dartdoc` only: the Markdown guides rendered beside the API pages, one `<source>\|<slug>\|<nav title>` per line (a YAML `\|` block), sources relative to the repository root. `docs-site.sh plan` refuses it with any other source, a source outside the checkout, and a slug that is not `[A-Za-z0-9_-]` |
+| `guides` | `''` | `builder: dartdoc` or `rustdoc`: the Markdown guides rendered beside the API pages, one `<source>\|<slug>\|<nav title>` per line (a YAML `\|` block), sources relative to the repository root. dartdoc writes `guide-<slug>.html` at the site root; rustdoc writes it beside the root package's `<crate>/index.html`, whose page it reuses, and lists every guide atop each page's sidebar. `docs-site.sh plan` refuses it with any other source, a source outside the checkout, and a slug that is not `[A-Za-z0-9_-]` |
 | `artifact` | `''` | A site an earlier job of the run uploaded; nothing is built |
 | `site-dir` | `''` | The built site, relative to the repository root; required with `command`, empty with `artifact` |
 | `site-name` | `docs` | Names the uploaded site and the publish group; a second site of the same repository needs its own |
@@ -96,7 +96,7 @@ fixes them.
 |---|---|---|
 | ANTfrastructure | `linux-x64.yml` called `build-docs.yml` under a cancelling group | done: `docs.yml`, `command: bash linux/scripts/build-docs.sh`, `site-dir: docs/_build/html`, `hub-path: .` |
 | OrchestrANT, WebDavClient | `python-ci-linux.yml` published from its x64 build job, on any push | nothing: its new `docs` job calls this workflow with `artifact: python-docs-site` and publishes on `develop` and `main` only; optional `docs-link-allow` |
-| OxidANT | `reusable-linux.yml` built rustdoc and published with `continue-on-error: true` | a `docs.yml` with `builder: rustdoc`; the `docs` input, both docs steps and the three secrets leave `reusable-linux.yml` and `linux-x64.yml`. Its 11-crate site has 20 `missing <module>/dispatcher` keys from `tracing`'s blanket-impl docs, so it needs an allow file |
+| OxidANT | `reusable-linux.yml` built rustdoc and published with `continue-on-error: true` | a `docs.yml` with `builder: rustdoc`; the `docs` input, both docs steps and the three secrets leave `reusable-linux.yml` and `linux-x64.yml`. Its 11-crate site has 20 `missing <module>/dispatcher` keys from `tracing`'s blanket-impl docs, so it needs an allow file. Since 2026-10-21 its eight `docs/` pages ride along as `guides` |
 | OmniAccelerANT | `reusable-linux.yml` published `doc/api` after the whole native lane | a `docs.yml` with `command: bash scripts/linux/generate-docs.sh`, `site-dir: doc/api`; `run-docs` off, the deploy step and its three secrets go |
 | AccelerANTgine | `reusable-linux.yml` published from the clang x64 build, whose docs carry its coverage, on every event but a dispatch, pull requests included | artifact mode: the deploy step becomes an `upload-artifact` of `docs/build/html/` named `accelerantgine-docs-site` (`include-hidden-files: true`, `if-no-files-found: error`), and `linux-x64.yml` gets a `docs` job that `needs: build-ubuntu26_04_clang-x64` with `artifact: accelerantgine-docs-site` |
 | BeschleunigerBallett | `reusable-linux.yml` published on every event but a dispatch, pull requests included, with `continue-on-error: true` | artifact mode as AccelerANTgine: upload `docs/build/html/` as `bb-docs-site` after the wasm budget step; `linux-x64.yml` gets a `docs` job, `needs: build-x64`, `if: ${{ !cancelled() }}` |
@@ -148,9 +148,10 @@ Suite `linux/scripts/tests/test-site-links.sh`; the `site-links.*` mutations pro
 ## The sidebar toggle check
 
 `linux/scripts/check-docs-sidebars.js <site dir | https URL> [page ...]` serves a built Sphinx
-book-theme or dartdoc site on `127.0.0.1` (or opens a published one), and in the image's
+book-theme, dartdoc or rustdoc site on `127.0.0.1` (or opens a published one), and in the image's
 headless Chrome clicks every sidebar toggle a reader can see, at the widths where the
-layout changes: 1400, 1100, 850 and 400 px for Sphinx, 1400, 800 and 400 px for dartdoc.
+layout changes: 1400, 1100, 850 and 400 px for Sphinx, 1400, 800 and 400 px for dartdoc,
+1400, 700 and 400 px for rustdoc.
 A toggle fails when it is off-screen, covered, does nothing, or opens a sidebar that does
 not close again (second click, the overlay, or Escape for a dialog); a hidden sidebar with
 no toggle fails too. Exit 1 on a failure, 2 on a usage error or no Chrome; any other site
@@ -158,7 +159,9 @@ has nothing to toggle and passes.
 
 It opens `index.html`, each `page` named (a path under the site root), and in a built Sphinx
 site every page with an Exhale tree view (`class="collapsibleList"`); a published site has no
-file list, so name its API page (`api/library_root.html`). On each page and width:
+file list, so name its API page (`api/library_root.html`). A built rustdoc site's `index.html`
+is a redirect at best, so there it opens each crate page with guides beside it and those guides,
+else the first crate of `crates.js`. On each page and width:
 
 - **any uncaught exception or rejection fails**, with its message and source line;
 - **an Exhale tree view** gets its first foldable item clicked on its own text, never its

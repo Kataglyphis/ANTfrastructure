@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// check-docs-sidebars.js <site dir | https URL> [page ...]: click every sidebar toggle and Exhale tree view of a built Sphinx-book or dartdoc site in headless Chrome; any uncaught exception fails. See docs/docs-sites.md#the-sidebar-toggle-check
+// check-docs-sidebars.js <site dir | https URL> [page ...]: click every sidebar toggle and Exhale tree view of a built Sphinx-book, dartdoc or rustdoc site in headless Chrome; any uncaught exception fails. See docs/docs-sites.md#the-sidebar-toggle-check
 'use strict';
 
 const fs = require('node:fs');
@@ -23,6 +23,12 @@ const LAYOUTS = {
     marker: 'static-assets/docs.dart.js',
     viewports: [[1400, 900], [800, 900], [400, 800]],
     sidebars: [{ name: 'left', sidebar: '#dartdoc-sidebar-left', toggle: '#sidenav-left-toggle', close: '#overlay-under-drawer' }],
+  },
+  // rustdoc's sidebar slides in from its top bar's toggle at 700 and below.
+  rustdoc: {
+    marker: 'crates.js',
+    viewports: [[1400, 900], [700, 900], [400, 800]],
+    sidebars: [{ name: 'left', sidebar: 'nav.sidebar', toggle: '.sidebar-menu-toggle' }],
   },
 };
 
@@ -240,6 +246,18 @@ function treePages(root) {
   return found.sort();
 }
 
+// A rustdoc site's index.html is a redirect at best: the crate pages that hold guide pages and those guides, else the first crate's.
+function rustdocPages(root) {
+  const pages = [];
+  for (const e of fs.readdirSync(root, { withFileTypes: true }).filter((d) => d.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+    const guides = fs.readdirSync(path.join(root, e.name)).filter((f) => /^guide-[\w-]+\.html$/.test(f)).sort();
+    if (guides.length) pages.push(`${e.name}/index.html`, ...guides.map((f) => `${e.name}/${f}`));
+  }
+  if (pages.length) return pages;
+  const crate = (fs.readFileSync(path.join(root, 'crates.js'), 'utf8').match(/"([^"/]+)"/) || [])[1];
+  return crate && fs.existsSync(path.join(root, crate, 'index.html')) ? [`${crate}/index.html`] : ['index.html'];
+}
+
 // A published site answers its marker file; a built one has it on disk.
 async function detect(site) {
   for (const kind of Object.keys(LAYOUTS)) {
@@ -259,10 +277,11 @@ async function main() {
     if (!isUrl(site) && !fs.existsSync(path.join(site, page))) fail(`${arg} has no ${page}`);
   }
   const kind = await detect(site);
-  if (!kind) { process.stdout.write(`check-docs-sidebars: ${arg} is neither a Sphinx-book nor a dartdoc site; nothing to toggle\n`); return; }
+  if (!kind) { process.stdout.write(`check-docs-sidebars: ${arg} is neither a Sphinx-book, a dartdoc nor a rustdoc site; nothing to toggle\n`); return; }
   const chrome = findChrome();
   if (!chrome) fail('no Chrome (CHROME_EXECUTABLE, chrome, chromium): the family image carries Chrome for Testing');
-  const pages = [...new Set(['index.html', ...asked, ...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])])];
+  const start = kind === 'rustdoc' && !isUrl(site) ? rustdocPages(site) : ['index.html'];
+  const pages = [...new Set([...start, ...asked, ...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])])];
   const server = isUrl(site) ? null : await serve(site);
   const browser = await launch(chrome);
   const base = server ? `http://127.0.0.1:${server.address().port}/` : site;

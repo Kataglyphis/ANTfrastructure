@@ -103,6 +103,44 @@ t_assert_contains "$(cat "${site}/guide-x.html" 2>&1)" "href=\"${REPO}/blob/deve
 printf '<a href="../.github/workflows/gone.yml">w</a>\n' > "${site}/md/x.md"
 t_assert_fails _call 'guides.main(["x", args[0], args[1]])' "${site}" "${_work}/render.tsv"
 
+t_case "rustdoc: a guide is written beside its crate page, in rustdoc's layout, and every page with a sidebar links it"
+t_needs "a POSIX python3 for the config's paths" t_posix_python
+rs="${_work}/rust-site"
+mkdir -p "${rs}/md" "${rs}/crate/inner" "${rs}/src/crate"
+_rust_page() {
+  printf '<title>%s</title><rustdoc-topbar><h2><a href="#">Crate crate</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-elems"><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3></section></div></nav><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><p>crate docs</p></section></div></main>\n' "$2" > "$1"
+}
+_rust_page "${rs}/crate/index.html" crate
+_rust_page "${rs}/crate/inner/index.html" inner
+printf '<title>src</title><nav class="sidebar"></nav><main>code</main>\n' > "${rs}/src/crate/lib.rs.html"
+printf '<p>guide body</p>\n' > "${rs}/md/x.md"
+printf 'project_root\t%s\nrepo_url\t%s\nflavor\trustdoc\nshell\tcrate/index.html\nguide\tx\tX & Y\t%s/pages/x.md\n' "${p}" "${REPO}" "${p}" > "${_work}/rust.tsv"
+t_assert_ok _call 'guides.main(["x", args[0], args[1]])' "${rs}" "${_work}/rust.tsv"
+g="$(cat "${rs}/crate/guide-x.html" 2>&1)"
+t_assert_contains "${g}" '<section id="main-content" class="content" tabindex="-1">'
+t_assert_contains "${g}" '<div class="docblock kg-guide-content">'
+t_assert_contains "${g}" '<p>guide body</p>'
+t_assert_eq 0 "$(grep -c 'crate docs' "${rs}/crate/guide-x.html")" "the crate's own docs are replaced"
+t_assert_contains "${g}" '<section id="rustdoc-toc"><h2 class="location"><a href="#">X &amp; Y</a></h2></section>' "the title in the sidebar, escaped"
+t_assert_contains "${g}" '<rustdoc-topbar><h2><a href="#">X &amp; Y</a></h2>' "the mobile top bar names the guide"
+t_assert_eq 0 "$([ -e "${rs}/guide-x.html" ] && echo 1 || echo 0)" "beside the shell, not at the site root, so ../static.files resolves"
+t_assert_contains "$(cat "${rs}/crate/index.html")" '<div class="sidebar-elems"><section class="kg-md-nav-section"><h3>Guides</h3><ul class="block"><li><a href="guide-x.html">'
+t_assert_contains "$(cat "${rs}/crate/inner/index.html")" '<li><a href="../guide-x.html">' "relative to the page that holds it"
+t_assert_eq 0 "$(grep -c 'kg-md-nav' "${rs}/src/crate/lib.rs.html")" "a source page has no sidebar items to hang it on"
+t_assert_ok _call 'guides.main(["x", args[0], args[1]])' "${rs}" "${_work}/rust.tsv"
+t_assert_eq 1 "$(grep -o 'kg-md-nav-section' "${rs}/crate/index.html" | wc -l)" "a second run adds no second block"
+rm "${rs}/crate/index.html"
+t_assert_contains "$(t_out _call 'guides.main(["x", args[0], args[1]])' "${rs}" "${_work}/rust.tsv")" "No page shell at"
+
+t_case "rustdoc: the sidebar contents are the ## headings, each with its ### headings"
+t_assert_eq '<h2 class="location"><a href="#">T</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#a" title="A">A</a><ul><li><a href="#b" title="B">B</a></li></ul></li><li><a href="#c" title="C">C</a></li></ul>' \
+  "$(_call 'guides.build_rustdoc_toc("T", [(1, "T", "t"), (2, "A", "a"), (3, "B", "b"), (4, "D", "d"), (2, "C", "c")])')"
+t_assert_eq '<h2 class="location"><a href="#">T</a></h2>' "$(_call 'guides.build_rustdoc_toc("T", [(1, "T", "t")])')" "no section, no empty list"
+
+t_case "an unknown flavor is refused"
+printf 'flavor\tsphinx\n' > "${_work}/bad-flavor.tsv"
+t_assert_contains "$(t_out _call 'guides.load_config(args[0])' "${_work}/bad-flavor.tsv")" "flavor must be one of dartdoc, rustdoc"
+
 t_case "the repository URL comes from any GitHub spelling of origin"
 t_assert_eq "${REPO}" "$(_call 'guides.github_url(args[0])' git@github.com:Kataglyphis/OmniAccelerANT.git)"
 t_assert_eq "${REPO}" "$(_call 'guides.github_url(args[0])' https://github.com/Kataglyphis/OmniAccelerANT.git)"

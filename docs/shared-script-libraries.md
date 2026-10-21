@@ -566,6 +566,15 @@ same-page anchor stay as they are:
   fails the render, and so does a link out of the repository or one with no GitHub URL to
   use, since each would be a 404.
 
+**rustdoc sites take the same guides** (2026-10-21). `docs-site.sh`'s rustdoc builder runs
+the stage and render steps over `cargo doc`'s site with `DARTDOC_BUILD_API_DIR=target/doc`,
+`DARTDOC_BUILD_FLAVOR=rustdoc` and `DARTDOC_BUILD_SHELL=<crate>/index.html`, the root
+package's page (`cargo_build_doc.sh`'s rule). A guide is that page with its main content and
+its sidebar's `#rustdoc-toc` replaced, written beside it so its `../static.files/` paths
+hold; every page with a `<div class="sidebar-elems">` gets a *Guides* block at its top, and
+source pages, which have none, are skipped. A shell missing `#main-content` or
+`#rustdoc-toc` fails the render, as dartdoc's landmarks do.
+
 **dartdoc emits TWO page shapes, and a third kind of file.** Some pages carry a
 static left sidebar with a bare `<ol>`; the rest carry
 `<div id="dartdoc-sidebar-left-content"></div>`, filled at runtime from a
@@ -581,6 +590,9 @@ or that configured a footer and footered no page, fails. It prints both numbers
 |---|---|---|
 | `DARTDOC_BUILD_PROJECT_ROOT` | project root | cwd |
 | `DARTDOC_BUILD_DOC_ROOT` | directory `dart doc` writes into | `<root>/doc` |
+| `DARTDOC_BUILD_API_DIR` | the site the guide steps work on | `<doc root>/api` |
+| `DARTDOC_BUILD_FLAVOR` | the site's generator, `dartdoc` or `rustdoc` | `dartdoc` |
+| `DARTDOC_BUILD_SHELL` | the page a guide is cut from and written beside, relative to the site | `index.html` |
 | `DARTDOC_BUILD_CLEAN_CMD` | array run before generation; unset skips | — |
 | `DARTDOC_BUILD_DOC_CMD` | array that generates the site | `dart doc` |
 | `DARTDOC_BUILD_THEME_CSS` | generated brand sheet appended to dartdoc's stylesheet | — (required) |
