@@ -561,6 +561,13 @@ owner carries the breakage that costs.
       on attacker-made patterns; Renovate runs only locally against our own repos. Move both the
       day a fixed version ships (targeted lockfile update, `dependency-updates.md`).
 
+- [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
+      BeschleunigerBallett 7f54642c: every BB configure runs `_myproject_find_or_install_cxxbridge`,
+      an unpinned `cargo install cxxbridge-cmd` at build time, because neither `:latest` nor
+      `:winamd64` carries it (everything-in-the-image rule). Pin `CXXBRIDGE_CMD_VERSION` in
+      `versions.env` to the `cxx` OxidANT's `kataglyphis_cxx_bridge` locks (the two must match),
+      install it in both images, and make BB's helper refuse a missing or mismatched binary in CI.
+
 - [ ] **CON110 — OrchestrANT's riscv64 free-threaded leg needs a seeded cache** [M, ★]. Its
       riscv64 lane (`linux-riscv64.yml`) runs `pinned` alone: run 38562273950 (2026-10-14) took
       the riscv64 job 3 h 52 min for the GIL leg, 137 min of it source builds under QEMU (its lock
