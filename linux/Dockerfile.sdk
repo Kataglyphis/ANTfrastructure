@@ -144,8 +144,7 @@ RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSIO
         test -x /opt/flutter/bin/flutter || { echo "ERROR: /opt/flutter/bin/flutter missing/not executable after install" >&2; exit 1; }; \
     fi
 
-# The fallback fonts of the web engine, read-only beside the SDK (CON147): a web build copies them from here, so
-# it downloads none. The fetcher checks the engine's own list against the lock and fails the image on a Flutter bump.
+# The web engine's fallback fonts, read-only beside the SDK (CON147): no web build downloads them.
 COPY --chmod=755 linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py /opt/scripts/frameworks/flutter/fetch-fallback-fonts.py
 COPY linux/scripts/05-frameworks/flutter/fallback-fonts.lock /opt/scripts/frameworks/flutter/fallback-fonts.lock
 COPY linux/scripts/lib/fetch-data-lock.py /opt/scripts/lib/fetch-data-lock.py

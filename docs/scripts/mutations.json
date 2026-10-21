@@ -16702,8 +16702,8 @@
  {
   "id": "fallback-fonts.engine-layout",
   "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
-  "find": "            target = dest / url[len(GSTATIC):]",
-  "replace": "            target = dest / name",
+  "find": "        target = dest / rel",
+  "replace": "        target = dest / name",
   "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
   "why": "the engine requests <base><family>/<version>/<file>; a flat directory 404s every font"
  },
