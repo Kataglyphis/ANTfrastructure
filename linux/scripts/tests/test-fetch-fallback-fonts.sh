@@ -64,6 +64,21 @@ t_assert_rc 2 "${PY}" -I "${FONTS}" --engine-data "${w}/none.dart" --lock "${w}/
 t_assert_rc 2 fetch --lock "${w}/none.lock" --check
 t_assert_rc 2 fetch --print-lock nosuchfamily
 
+t_case "a store holding every file places them with no download and no cache, even with every download refused"
+mkdir -p "${w}/store/emoji/v1" "${w}/store/sym/v2"
+cp "${w}/e.0.woff2" "${w}/e.1.woff2" "${w}/store/emoji/v1/"
+cp "${w}/s.woff2" "${w}/store/sym/v2/"
+t_assert_ok env HTTPS_PROXY=http://127.0.0.1:9 "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/fonts.lock" --store "${w}/store" --cache "${w}/nocache" --dest "${w}/from-store"
+t_assert_eq "bytes of emoji/v1/e.1.woff2" "$(cat "${w}/from-store/emoji/v1/e.1.woff2" 2>&1)"
+t_assert_eq 3 "$(find "${w}/from-store" -type f | wc -l | tr -d ' ')"
+t_assert_ok test ! -e "${w}/nocache"
+
+t_case "a file the store lacks comes through the cache; KATAGLYPHIS_FONT_STORE names the store"
+mkdir -p "${w}/partial/emoji/v1"
+cp "${w}/e.0.woff2" "${w}/partial/emoji/v1/"
+t_assert_ok env KATAGLYPHIS_FONT_STORE="${w}/partial" "${PY}" -I "${FONTS}" --engine-data "${w}/engine.dart" --lock "${w}/fonts.lock" --cache "${w}/cache" --dest "${w}/mixed"
+t_assert_eq 3 "$(find "${w}/mixed" -type f | wc -l | tr -d ' ')"
+
 # In the family image the hub's own lock is graded against the SDK the lanes build with.
 ENGINE_LIST=/opt/flutter/engine/src/flutter/lib/web_ui/lib/src/engine/font_fallback_data.dart
 if [ -f "${ENGINE_LIST}" ]; then

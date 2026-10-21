@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The family image holds the web engine's fallback fonts (CON147)
+
+- **`linux/Dockerfile.sdk` fills `/opt/flutter-fallback-fonts` once and makes it read-only**, from the
+  lock and the SDK's engine list, and sets `KATAGLYPHIS_FONT_STORE` to it. `fetch-fallback-fonts.py`
+  copies from the store first and takes the cache lock only for a file the store lacks, so a web
+  build with fonts.gstatic.com unreachable places all 18 files. Proof: 21 assertions in
+  `test-fetch-fallback-fonts.sh` under WSL, including a store-only run with every download refused.
+  Not yet proved: a family image build (the next `:latest` run).
+
 ## 2026-10-21 — The parallelism suites prove "at once" by a rendezvous, not by the clock (CON126)
 
 - Thirteen side-by-side `run-tests.sh` runs in `:latest` went red six times: three wall-time

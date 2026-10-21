@@ -586,6 +586,8 @@ owner carries the breakage that costs.
       Flutter, and the fetcher reads it before its writable cache (today `cache_lock` opens
       `<cache>/.lock`, which a read-only layer refuses). Done when a build with fonts.gstatic.com
       unreachable places all 18, and a Flutter bump re-pins the lock in the same change.
+      Status 2026-10-21: implemented (store in `linux/Dockerfile.sdk`, read-first in the fetcher, 21 test
+      assertions under WSL); open until a family image build shows the 18 placed without a download.
 
 ## Open — Linux arm64 and riscv64
 

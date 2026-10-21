@@ -17,6 +17,8 @@ HERE = Path(__file__).resolve().parent
 # The engine's default fontFallbackBaseUrl: every lock URL is this plus the path the engine asks the site for.
 GSTATIC = "https://fonts.gstatic.com/s/"
 ENGINE_DATA = Path("engine/src/flutter/lib/web_ui/lib/src/engine/font_fallback_data.dart")
+# The image's SDK stage fills this directory once, read-only; a build reads it before any download.
+STORE_ENV = "KATAGLYPHIS_FONT_STORE"
 
 
 def _fetcher():
@@ -88,15 +90,28 @@ def default_cache() -> Path:
     return Path(os.getenv("XDG_CACHE_HOME") or Path.home() / ".cache") / "kataglyphis-fonts"
 
 
-def place(lock, rows, dest: Path, cache: Path) -> None:
-    """Every row at <dest>/<family>/<version>/<file>, through the cache; the fetcher's FetchError on a failure."""
+def place(lock, rows, dest: Path, cache: Path, store: Path | None) -> None:
+    """Every row at <dest>/<family>/<version>/<file>: from the read-only store where it holds the file, else through the cache."""
+    pending = []
+    for sha, name, url in rows:
+        rel = url[len(GSTATIC):]
+        target = dest / rel
+        if lock.matches(target, sha):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        held = store / rel if store is not None else None
+        if held is not None and lock.matches(held, sha):
+            lock.place_file(held, target)
+        else:
+            pending.append((sha, name, url, target))
+    # No download and no cache lock when the store holds every file; the cache dir is only made on need.
+    if not pending:
+        return
     cache.mkdir(parents=True, exist_ok=True)
     with lock.cache_lock(cache):
-        for sha, name, url in rows:
-            target = dest / url[len(GSTATIC):]
+        for sha, name, url, target in pending:
             if lock.matches(target, sha):
                 continue
-            target.parent.mkdir(parents=True, exist_ok=True)
             lock.place_file(lock.cached_copy(sha, name, url, cache), target)
 
 
@@ -107,6 +122,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lock", type=Path, default=HERE / "fallback-fonts.lock")
     parser.add_argument("--engine-data", type=Path, help=f"default: <Flutter SDK>/{ENGINE_DATA.as_posix()}")
     parser.add_argument("--cache", type=Path, help="default: $KATAGLYPHIS_FONT_CACHE, else kataglyphis-fonts under ~/.cache")
+    parser.add_argument("--store", type=Path, help=f"read-only copy the image's SDK stage filled; default: ${STORE_ENV}")
     parser.add_argument("--check", action="store_true", help="only compare the lock with the engine's list; fetch nothing")
     parser.add_argument("--print-lock", nargs="+", metavar="FAMILY", help="print lock lines for every chunk of these families and exit")
     args = parser.parse_args(argv)
@@ -130,8 +146,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stderr.write(f"FAIL: {problem}\n")
     if problems or args.check:
         return 1 if problems else 0
+    store = args.store or (Path(os.environ[STORE_ENV]) if os.getenv(STORE_ENV) else None)
     try:
-        place(lock, rows, args.dest, args.cache or default_cache())
+        place(lock, rows, args.dest, args.cache or default_cache(), store)
     except lock.FetchError as exc:
         sys.stderr.write(f"{exc}\n")
         return 1

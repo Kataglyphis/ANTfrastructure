@@ -83,6 +83,9 @@ fetch, and the glyph draws as an empty box.
   `linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py --dest build/web/fallback-fonts`,
   which places each file of `fallback-fonts.lock` at `<family>/<version>/<file>`, checked by
   SHA-256 through `lib/fetch-data-lock.py` and its cache (`KATAGLYPHIS_FONT_CACHE`).
+- **The family image holds them already** (CON147): the SDK stage fills `/opt/flutter-fallback-fonts`
+  once and makes it read-only, and `KATAGLYPHIS_FONT_STORE` names it. The fetcher copies from there
+  first, so a build downloads nothing; the cache serves only a file the store lacks.
 - **The lock holds every chunk of Noto Color Emoji and Noto Sans Symbols 2**, 18 files, 2.3 MiB
   (2026-10-21): the families jonasheinle.de's content asked for. The engine loads a chunk only
   when a glyph needs it. All 144 families are 724 files, 20.7 MiB, most of it CJK.

@@ -144,5 +144,23 @@ RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-sdk-${FLUTTER_VERSIO
         test -x /opt/flutter/bin/flutter || { echo "ERROR: /opt/flutter/bin/flutter missing/not executable after install" >&2; exit 1; }; \
     fi
 
+# The fallback fonts of the web engine, read-only beside the SDK (CON147): a web build copies them from here, so
+# it downloads none. The fetcher checks the engine's own list against the lock and fails the image on a Flutter bump.
+COPY --chmod=755 linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py /opt/scripts/frameworks/flutter/fetch-fallback-fonts.py
+COPY linux/scripts/05-frameworks/flutter/fallback-fonts.lock /opt/scripts/frameworks/flutter/fallback-fonts.lock
+COPY linux/scripts/lib/fetch-data-lock.py /opt/scripts/lib/fetch-data-lock.py
+RUN --mount=type=cache,target=/var/cache/flutter,id=flutter-fallback-fonts \
+    set -euo pipefail; \
+    if [ "${TARGET_ARCH:-amd64}" = "riscv64" ]; then \
+        echo "Skipping the fallback-font store on riscv64 (no Flutter there)"; \
+    else \
+        FLUTTER_ROOT=/opt/flutter python3 -I /opt/scripts/frameworks/flutter/fetch-fallback-fonts.py \
+            --lock /opt/scripts/frameworks/flutter/fallback-fonts.lock \
+            --dest /opt/flutter-fallback-fonts \
+            --cache /var/cache/flutter/fallback-fonts; \
+        chmod -R a-w /opt/flutter-fallback-fonts; \
+    fi
+ENV KATAGLYPHIS_FONT_STORE=/opt/flutter-fallback-fonts
+
 LABEL org.opencontainers.image.title="Kataglyphis SDK" \
       org.opencontainers.image.description="SDK layer with Vulkan on top of compiler toolchain and the amd64-hosted cross artifact lane"
