@@ -12,6 +12,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — riscv64's sccache is the pinned build again, static
+
+- **Superseded the same day:** riscv64 keeps the Ubuntu sccache (0.13.0) only until the static asset
+  existed. Ubuntu's 0.13.0 has no `SCCACHE_MULTILEVEL` chain, so that fallback dropped the S3 level.
+- **The release asset is replaced**: `sccache-v0.18.0-1bd7432-pr2809-riscv64gc-unknown-linux-musl.tar.gz`
+  is built with `+crt-static` (`shared/upstream/sccache/build-sccache.sh` sets it for riscv64 now).
+  No `PT_INTERP`, no `NEEDED`, runs and compiles in the native riscv64 image. SHA256 `306925e5…`
+  in `SHA256SUMS` and `SCCACHE_LINUX_RISCV64_SHA256`. The musl loader failure is gone at the source.
+- `test-sccache-pinned-install.sh` expects the musl asset for riscv64 again.
+
 ## 2026-10-22 — riscv64 keeps the apt sccache; the runtime gate names a musl loader
 
 - **Why the riscv64 wrapper failed in `contourpy`:** `install_sccache_pinned` (`01-core/base-image.sh`)

@@ -42,6 +42,8 @@ if n != 1:
 open(path, "w").write(text)
 EOF
 
+# riscv64's musl target links dynamically by default, and the image has no musl loader: static, like the x86_64 and aarch64 assets (2026-10-22).
+case "${TARGET}" in riscv64gc-unknown-linux-musl) export RUSTFLAGS="${RUSTFLAGS:-} -C target-feature=+crt-static" ;; esac
 cargo build --manifest-path "${SRC}/Cargo.toml" --release --locked --target "${TARGET}"
 
 case "${TARGET}" in *windows*) exe=sccache.exe ext=zip ;; *) exe=sccache ext=tar.gz ;; esac
