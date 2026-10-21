@@ -83,6 +83,9 @@ t_assert_contains "$(t_out _check "${BASE}/clean/" --files "${w}/build")" "FAIL 
 t_assert_contains "$(t_out _check "${BASE}/clean/" --version 2.0.0)" "FAIL version.json: 1.0.0+3, want 2.0.0"
 t_assert_rc 0 _check "${BASE}/clean/" --version 1.0.0+3
 
+t_case "a site that does not answer names each file's network error, not a status"
+t_assert_contains "$(t_out node "${CHECK}" http://127.0.0.1:9/ --files "${w}/site/clean" --scrolls 0 --settle-ms 0 --ready-ms 500)" "ECONNREFUSED index.html"
+
 t_case "no base URL is a usage error"
 t_assert_rc 2 node "${CHECK}"
 t_assert_rc 2 node "${CHECK}" "${BASE}/clean/" --scrolls many

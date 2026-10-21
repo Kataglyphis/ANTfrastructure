@@ -3,6 +3,8 @@
 'use strict';
 
 const fs = require('node:fs');
+const http = require('node:http');
+const https = require('node:https');
 const path = require('node:path');
 const { findChrome, launch, sleep } = require('./check-docs-sidebars.js');
 
@@ -98,14 +100,37 @@ function listFiles(root) {
   return found.sort();
 }
 
+// HTTP/1.1 on purpose: fetch's one HTTP/2 session broke on jonasheinle.de and failed every later request of the sweep.
+const AGENTS = { 'http:': new http.Agent({ keepAlive: true, maxSockets: FILE_JOBS }), 'https:': new https.Agent({ keepAlive: true, maxSockets: FILE_JOBS }) };
+
+function request(url, method) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = (u.protocol === 'https:' ? https : http).request(u, { method, agent: AGENTS[u.protocol], headers: { 'Cache-Control': 'no-cache' }, timeout: 30000 }, (res) => {
+      const body = [];
+      res.on('data', (c) => body.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(body).toString('utf8') }));
+    });
+    req.on('timeout', () => req.destroy(new Error('timed out after 30 s')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// The status, or the network error of the last of three attempts: one dropped connection is no missing file.
 async function status(url) {
-  try {
-    let res = await fetch(url, { method: 'HEAD', redirect: 'manual', cache: 'no-store' });
-    if (res.status === 405 || res.status === 501) res = await fetch(url, { redirect: 'manual', cache: 'no-store' });
-    return res.status;
-  } catch (e) {
-    return `${e.cause?.code || e.message}`;
+  let error = '';
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      let res = await request(url, 'HEAD');
+      if (res.status === 405 || res.status === 501) res = await request(url, 'GET');
+      return res.status;
+    } catch (e) {
+      error = e.code || e.message;
+      await sleep(1000 * attempt);
+    }
   }
+  return error;
 }
 
 async function checkFiles(opts) {
@@ -133,12 +158,12 @@ async function checkVersion(opts) {
   if (!want) return null;
   const url = new URL(`version.json?live-check=${Date.now()}`, opts.base).href;
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const res = await request(url, 'GET');
     if (res.status !== 200) return `version.json: HTTP ${res.status}, want ${want}`;
-    const got = versionOf(await res.json());
+    const got = versionOf(JSON.parse(res.body));
     return got === want ? null : `version.json: ${got}, want ${want}`;
   } catch (e) {
-    return `version.json: ${e.message}, want ${want}`;
+    return `version.json: ${e.code || e.message}, want ${want}`;
   }
 }
 
@@ -193,6 +218,7 @@ async function main() {
     process.stdout.write(`${bad.length ? 'FAIL' : 'ok  '} ${count} files of ${opts.files}, ${bad.length} not served with 200\n${bad.map((b) => `     ${b}\n`).join('')}`);
   }
   const version = await checkVersion(opts);
+  for (const agent of Object.values(AGENTS)) agent.destroy();
   if (version) failed++;
   process.stdout.write(version ? `FAIL ${version}\n` : (opts.version || opts.files ? 'ok   version.json\n' : ''));
   if (failed) fail(`${failed} check(s) failed; see docs/ftp-deploys.md#the-live-site-check`, 1);
