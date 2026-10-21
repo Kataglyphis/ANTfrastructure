@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — Security: the Renovate CLI's markdown-it 15.0.2 → 15.0.3
+
+- GHSA-gfr2-rv44-r23c (high) and GHSA-vfgh-jcmw-g37q (low), both quadratic-time parsing.
+  Renovate 44.157.0 pins markdown-it exactly, so `linux/scripts/renovate-npm/package.json`
+  gains an `overrides` entry; the lock moves that one package. Proof in `:latest`: `npm ci`
+  installs markdown-it 15.0.3, `renovate --version` prints 44.157.0, `test-renovate-bootstrap.sh`
+  passes ([`dependency-updates.md`](docs/dependency-updates.md)).
+
 ## 2026-10-21 — ghost-watch hands its regexes to awk through ENVIRON
 
 - gawk rewrites backslash escapes in `-v` values and warns ``escape sequence `\.' treated as plain `.'``;

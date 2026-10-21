@@ -1290,6 +1290,10 @@ and regenerates the lock there: `npm install --package-lock-only --ignore-script
 pinned Node. `.github/renovate.json` gates that `package.json` the same way; lock maintenance
 (`--apply`) still moves the lock's transitive entries.
 
+`overrides` in that `package.json` holds security pins only: a dependency Renovate pins exactly
+at a vulnerable version (markdown-it 15.0.2 → 15.0.3, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q,
+2026-10-21). Drop an entry once a Renovate bump depends on the fixed version itself.
+
 ## A skipped pin is not up to date
 
 Renovate looks up a dependency only when its current value parses under the

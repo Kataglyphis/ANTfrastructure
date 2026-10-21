@@ -4,5 +4,8 @@
   "description": "The Renovate CLI renovate-local.sh runs, installed with npm ci from package-lock.json.",
   "dependencies": {
     "renovate": "44.157.0"
+  },
+  "overrides": {
+    "markdown-it": "15.0.3"
   }
 }
