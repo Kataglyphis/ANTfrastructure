@@ -462,9 +462,14 @@ owner carries the breakage that costs.
 - [ ] **CON134 — the pre-push mutation gate under Git Bash fails an exact-newline match** [S, ★].
       Found 2026-10-21 with CON131 (14170b1c): a wiring test matching `$'\n    install_pwsh\n'`
       against `setup-package-image.sh` passed in `:latest` and CI but failed in the Git Bash
-      pre-push mirrors, so it now uses `grep`. Suspected: the gate restores files with CRLF on
-      Windows (unconfirmed). Reproduce with a planted exact-newline test, fix the restore path,
-      then put the exact match back.
+      pre-push mirrors, so it now uses `grep`. The cause, read in `verify_mutations.py` on 2026-10-21:
+      `apply_and_run` writes the mutated text and its backup in text mode (`open(target, "w")`,
+      `NamedTemporaryFile("w")`), which Python on Windows writes as CRLF, and `copyfile` restores that
+      backup. From a target's first mutation on, the file is CRLF in its shard root (shard 1's root is
+      the working tree), and a later baseline matching `$'\n…'` against it fails. CON31's first push hit
+      it: 14 vacuous bites on `test-gpu-runtime-check.sh` and `test-cuda-runtime-payload.sh`, all green
+      in a fresh mirror and on Linux. Fix: write both with `newline=''`, keeping the original's line
+      endings, then put the exact match back.
 
 - [ ] **CON135 — two Dependabot alerts in the Renovate CLI's lock, with no fixed release** [S, ★].
       `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, high,
@@ -659,8 +664,8 @@ owner carries the breakage that costs.
 - [b] **CON31 — Variants that are not published** [L, ★]. Blocked on the next nvidia and rocm chains (the owner's
       build host), and for arm64 on an owner decision. The owner chose on 2026-10-20: TensorRT 11 and the ORT TensorRT
       EP in `:latest-nvidia`, and a `:latest-rocm` that finds its ROCm and opens an AMD GPU; not the arm64 nvidia route.
-      Both are in the source since 2026-10-21 (`docs/linux-accelerator-images.md` § TensorRT 11, § Running it on an AMD
-      GPU, § The GPU runtime gate). No image carries them yet.
+      Both are in the source since 2026-10-21, hub f6771ee4 (`docs/linux-accelerator-images.md` § TensorRT 11,
+      § Running it on an AMD GPU, § The GPU runtime gate). No image carries them yet.
       - `:latest-nvidia`, TensorRT 11: `ENABLE_TENSORRT=true` on amd64; exactly `11.4.0.106-1+cuda13.4` from NVIDIA's
         `ubuntu2604` repo; only the runtime `.so` files ship, which the SLA names distributable (§ Redistribution).
         Proved in a throwaway container on the published `0e9dec34…` (no GPU): the hub's `install-tensorrt.sh`
