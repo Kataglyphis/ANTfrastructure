@@ -80,6 +80,36 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
           gate and the dartdoc nav rewrite one page at a time; `run-lint-gates.sh` runs gitleaks per
           top-level entry in turn.
 
+      **Status 2026-10-21** (each knob `1`/`0` restores the serial path):
+      1. Done, 31887ce1: a FIFO background pusher per lane (`RUNTIME_ASYNC_PUSH`); the manifest
+         waits for it. Proved against a throwaway local registry, both paths and a failing push.
+      2. Done, 31887ce1: content gates and smokes run every arch at once (`RUNTIME_GATE_JOBS`),
+         beside the pushes. 93cf530c: the wrapper-smoke gate runs beside the wrapper build
+         (`RUNTIME_SMOKE_OVERLAP`); the push waits for both.
+      3.–5. Done, 84b4870a: `run-tests.sh` 754 → ~106 s, `preflight.sh` without mutations
+         1125 → 123 s, `lint-shell.sh` 77 → 14 s in `:latest` on 32 cores (`RUN_TESTS_JOBS`,
+         `PREFLIGHT_JOBS`, `LINT_SHELL_JOBS`). 2ffd3f2c: the suites prove overlap by a rendezvous
+         (`tests/meet.sh`); wall-time comparisons and a queue race went red in 5 of 13 side-by-side
+         runs, the new ones in none of 5. Once, unexplained: `test-smoke-arch-parity.sh`
+         (`FAILURES=1`, not reproduced in 10 runs or 32 copies at once).
+      6. Done, f73b8335: one work queue, mirrors copied inside the pool, default every CPU capped by
+         temp space; the hook takes it.
+      7. Done, 14867ace: one `pwsh` per test file (317 → 65 s, 2097 tests) and child processes for
+         PSScriptAnalyzer, which is not runspace-safe (50 → 32 s).
+      11. Sidebar check done, b8b4b376 (`CHECK_DOCS_SIDEBARS_JOBS`, 4 Chromes: 66 → 18 s). Open:
+          Sphinx `-j` (risky with `-W` and Exhale), the site link gate, the dartdoc nav rewrite,
+          gitleaks per entry in `run-lint-gates.sh`.
+      Open: 8 (Windows variant pushes off the next variant's path; `-ConcurrentAux` never ran),
+      9 (parallel runtime builds: `BUILD_MEM_DIVISOR` plus a disk gate that sizes, worth it only
+      where builds outlast uploads), 10 (arch-major cross stages, opt-in). A WSL push that
+      touches `test-docs-sidebars.sh` fails there (no node 22, no Chrome); push from Git Bash,
+      which skips it. **The next 3-arch runtime run must show**: `[runtime-push] arch=amd64
+      start` before arm64's `step=base` and `RUN` lines, `[runtime-push] arch=amd64 done` after
+      them, `[runtime-push] queue drained: 3 push(es), waited N s` (the residual upload),
+      `[runtime-gates] … 3 arch(es), 3 at a time`, `[smoke <arch>]` lines among the wrapper
+      build's and `step=smoke-wait`, and a wall clock down by about the summed upload plus
+      min(smoke, wrapper) per arch. Tick 1–2 on that run.
+
 - [ ] **CON139 — a failed arch re-runs alone; the arches already built are not rebuilt** [M, ★★★].
       The runtime lane's completeness gate wants every child of `:latest` stamped with the same run-id
       (`_chain_runtime_arch_state`: `built-this-run | stale | missing`). On 2026-10-20 only riscv64
