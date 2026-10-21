@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/meet.sh"
 SCRIPTS="${TESTS_DIR}/.."
 LIB="${SCRIPTS}/lib-runtime-push.sh"
 RBF="${SCRIPTS}/01-core/runtime-build-fns.sh"
@@ -16,7 +17,7 @@ trap 'rm -rf "${_work}"' EXIT
 # The real EXIT trap stack, so the drain sees the lane's exit code as it does in a lane.
 _TRAP="declare -a _EXIT_TRAP_STACK=()"$'\n'"$(t_fn_src "${SCRIPTS}/01-core/build-helpers.sh" trap_push)" || exit 1
 
-# PUSH_GATE=<arch> holds that arch's push until ${W}/release exists (30 s at most); PUSH_FAIL=<arch> fails it.
+# PUSH_GATE=<arch> holds that arch's push until ${W}/release exists (120 s at most); PUSH_FAIL=<arch> fails it.
 _STUBS='log() { printf "LOG %s\n" "$*"; }
 warn() { printf "WARN %s\n" "$*"; }
 is_dry_run() { [ "${DRY_RUN:-0}" = 1 ]; }
@@ -24,7 +25,7 @@ runtime_pushes_wrapper_images() { [ "${PUSH_IMAGES:-1}" = 1 ]; }
 runtime_push_tag() {
   printf "start %s\n" "$1" >> "${W}/pushes"
   if [ "${1##*-}" = "${PUSH_GATE:-none}" ]; then
-    for _ in $(seq 300); do [ -e "${W}/release" ] && break; sleep 0.1; done
+    for _ in $(seq 1200); do [ -e "${W}/release" ] && break; sleep 0.1; done
   fi
   printf "end %s\n" "$1" >> "${W}/pushes"
   [ "${1##*-}" != "${PUSH_FAIL:-none}" ]
@@ -38,7 +39,7 @@ _run() {
 # The first upload, held open until ${W}/release exists, has started.
 _HELD='runtime_push_queue_start
 runtime_push_wrapper repo:latest-amd64 amd64
-for _ in $(seq 100); do grep -q "start repo:latest-amd64" "${W}/pushes" 2>/dev/null && break; sleep 0.1; done'
+for _ in $(seq 600); do grep -q "start repo:latest-amd64" "${W}/pushes" 2>/dev/null && break; sleep 0.1; done'
 _starts_ends() { printf '%s\n' "$1" | grep -E "^(${2:-start|end}) " | tr '\n' ' ' | sed 's/ $//'; }
 
 t_case "the knob: background by default, 0 is inline, anything else stops the lane"
@@ -79,16 +80,17 @@ t_assert_eq "start repo:latest-amd64 end repo:latest-amd64 start repo:latest-arm
 t_assert_contains "${_out}" "LOG [runtime-push] arch=amd64 start epoch="
 t_assert_contains "${_out}" "LOG [runtime-push] arch=arm64 done epoch="
 
+# Both land while the held push keeps the pusher from looking, so it sees them together.
 t_case "items queued out of order still go oldest first"
-_out="$(_run '
-runtime_push_queue_start
+_out="$(PUSH_GATE=amd64 _run "${_HELD}"'
 printf "repo:latest-riscv64\n" > "${RUNTIME_PUSH_QUEUE_DIR}/.x"
 printf "repo:latest-arm64\n" > "${RUNTIME_PUSH_QUEUE_DIR}/.y"
 mv "${RUNTIME_PUSH_QUEUE_DIR}/.x" "${RUNTIME_PUSH_QUEUE_DIR}/q.2000000000000000000.riscv64"
 mv "${RUNTIME_PUSH_QUEUE_DIR}/.y" "${RUNTIME_PUSH_QUEUE_DIR}/q.1000000000000000000.arm64"
+touch "${W}/release"
 runtime_push_queue_finish
 cat "${W}/pushes"')"
-t_assert_eq "start repo:latest-arm64 start repo:latest-riscv64" "$(_starts_ends "${_out}" start)"
+t_assert_eq "start repo:latest-amd64 start repo:latest-arm64 start repo:latest-riscv64" "$(_starts_ends "${_out}" start)"
 
 t_case "an item that lands between the empty read and the close is still pushed"
 # The first read is forced empty, as if the enqueue came right after it; the pusher must look again once closed.
@@ -138,14 +140,14 @@ if command -v pgrep >/dev/null 2>&1; then
 exit 130' || true)"
   t_assert_contains "${_out}" "interrupted (rc 130): stopping the background pusher"
   t_assert_contains "${_out}" "wrapper push FAILED for: amd64(rc=none)"
-  t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 20
+  t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 60
 fi
 
 t_case "the pusher stops once its owner is gone"
 _out="$(_run '
 _runtime_pusher_loop "${W}" 999999 &
 p=$!
-for _ in $(seq 50); do kill -0 "${p}" 2>/dev/null || break; sleep 0.1; done
+for _ in $(seq 300); do kill -0 "${p}" 2>/dev/null || break; sleep 0.1; done
 kill -0 "${p}" 2>/dev/null && echo ALIVE || echo GONE
 kill "${p}" 2>/dev/null || true')"
 t_assert_contains "${_out}" "GONE"
@@ -175,14 +177,15 @@ t_assert_contains "$(cat "${SCRIPTS}/lib-orchestrator.sh")" 'source "${_LIB_ORCH
 t_assert_eq "" "$(grep -ln 'lib-runtime-push' "${SCRIPTS}"/../Dockerfile* 2>/dev/null || true)" \
   "no image closure holds the lib, so editing it re-keys no stage"
 
-# The gate loops over a stub gate; GATE_FAIL names the arch whose gate fails.
+# The gate loops over a stub gate; GATE_FAIL names the arch whose gate fails, MEET where the gates meet.
 _EACH="$(t_fn_src "${BRM}" _manifest_gate_jobs)"$'\n'"$(t_fn_src "${BRM}" _manifest_each_arch)"$'\n'"$(t_fn_src "${BRM}" _manifest_gates_parallel)" || exit 1
-_GATE_STUBS='set -euo pipefail
+_GATE_STUBS="$(declare -f meet_peers)"'
+set -euo pipefail
 log() { printf "LOG %s\n" "$*"; }
 warn() { printf "WARN %s\n" "$*"; }
 arch_list_to_words() { printf "%s\n" "${1:-}" | tr ", " "\n\n"; }
 TARGET_ARCHES="${ARCHES:-amd64,arm64,riscv64}"
-_manifest_gate_arch() { printf "gate-%s line1\n" "$3"; sleep "${GATE_SECS:-1}"; printf "gate-%s line2\n" "$3"; [ "$3" != "${GATE_FAIL:-none}" ]; }'
+_manifest_gate_arch() { printf "gate-%s line1\n" "$3"; [ -z "${MEET:-}" ] || meet_peers "${MEET}" "$3" 3 20 > "${MEET}/said.$3"; sleep 1; printf "gate-%s line2\n" "$3"; [ "$3" != "${GATE_FAIL:-none}" ]; }'
 _gates() {
   printf '%s\n' "${_GATE_STUBS}" "${_EACH}" "$1" > "${_work}/gates.sh"
   TMPDIR="${_work}" bash "${_work}/gates.sh" 2>&1
@@ -191,14 +194,11 @@ _gates() {
 _each() { _gates "${1:-}"$'\n''_manifest_each_arch "content gate" /bin/gate.sh && echo EACH-RC=0 || echo "EACH-RC=$?"'; }
 _gate_lines() { printf '%s\n' "$1" | grep '^gate-' | tr '\n' ' ' | sed 's/ $//'; }
 
-# Against the same phase in turn, never a constant, so a loaded host cannot fake a verdict.
+# A rendezvous, never a wall-clock comparison: a loaded host slows both runs unevenly.
 t_case "the gates run side by side, and each arch's output prints whole, in arch order"
-_t0="$(date +%s)"
-RUNTIME_GATE_JOBS=1 GATE_SECS=3 _each > /dev/null
-_ser_secs="$(( $(date +%s) - _t0 ))"
-_t0="$(date +%s)"
-_out="$(GATE_SECS=3 _each)"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser_secs - 4 ))"
+mkdir -p "${_work}/meet"
+_out="$(MEET="${_work}/meet" _each)"
+t_assert_eq "met met met" "$(cat "${_work}/meet"/said.* | tr '\n' ' ' | sed 's/ $//')" "all three gates must be running at once"
 t_assert_contains "${_out}" "EACH-RC=0"
 t_assert_eq "gate-amd64 line1 gate-amd64 line2 gate-arm64 line1 gate-arm64 line2 gate-riscv64 line1 gate-riscv64 line2" \
   "$(_gate_lines "${_out}")"
@@ -225,8 +225,8 @@ t_assert_eq "6 EACH-RC=0" "$(printf '%s\n' "${_out}" | grep -c '^gate-') $(print
 
 t_case "a long-running background job (the pusher) does not hold the gates"
 _t0="$(date +%s)"
-_out="$(_each 'sleep 60 > /dev/null & _p=$!; trap "kill ${_p}" EXIT')"
+_out="$(_each 'sleep 120 > /dev/null & _p=$!; trap "kill ${_p}" EXIT')"
 t_assert_contains "${_out}" "EACH-RC=0"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 30
+t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 60
 
 t_summary

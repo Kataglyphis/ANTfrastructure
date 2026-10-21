@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/meet.sh"
 RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
 
 _work="$(mktemp -d)"
@@ -14,18 +15,18 @@ for _fn in runtime_build_chain _runtime_smoke_start _runtime_smoke_wait _runtime
   _FNS+="$(t_fn_src "${RBF}" "${_fn}")"$'\n' || exit 1
 done
 
-# Each step appends "<what> <epoch>" to ${E}; SMOKE_RC/WRAP_RC fail a step, SMOKE_SECS/WRAP_SECS make it last.
+# Each step appends "<what> <epoch>" to ${E}; SMOKE_RC/WRAP_RC fail a step, SMOKE_SECS/WRAP_SECS make it last, MEET makes both meet there.
 _mark_step() { echo "$1 $(date +%s)" >> "${E}"; }
 _say() { echo "$*"; }
-_STUBS="$(declare -f _mark_step _say)"'
+_STUBS="$(declare -f _mark_step _say meet_peers)"'
 log() { _say "$@"; }
 warn() { _say "$@"; }
 is_dry_run() { test "${DRY_RUN:-0}" -eq 1; }
 runtime_pushes_wrapper_images() { :; }
 runtime_build_base_image() { _mark_step base; }
 runtime_build_package_image() { _mark_step package; }
-_runtime_run_package_smoke() { _mark_step smoke-start; _say "smoke says hi"; sleep "${SMOKE_SECS:-0}"; _mark_step smoke-end; return "${SMOKE_RC:-0}"; }
-_runtime_build_wrapper() { local -n _t=$2; _t="repo:latest-$1"; _mark_step wrapper-start; sleep "${WRAP_SECS:-0}"; _mark_step wrapper-end; return "${WRAP_RC:-0}"; }
+_runtime_run_package_smoke() { _mark_step smoke-start; _say "smoke says hi"; [ -z "${MEET:-}" ] || _mark_step "smoke-$(meet_peers "${MEET}" smoke 2 20)"; sleep "${SMOKE_SECS:-0}"; _mark_step smoke-end; return "${SMOKE_RC:-0}"; }
+_runtime_build_wrapper() { local -n _t=$2; _t="repo:latest-$1"; _mark_step wrapper-start; [ -z "${MEET:-}" ] || _mark_step "wrapper-$(meet_peers "${MEET}" wrapper 2 20)"; sleep "${WRAP_SECS:-0}"; _mark_step wrapper-end; return "${WRAP_RC:-0}"; }
 runtime_push_tag() { _mark_step push; }
 export_rootfs_from_image() { _mark_step export; }'
 # _chain [rootfs-dir]: one arch's chain; prints its output and CHAIN-RC, and marks when it returned.
@@ -43,18 +44,17 @@ _at() { sed -n "s/^$1 //p" "${_work}/events"; }
 _has() { grep -q "^$1 " "${_work}/events"; }
 
 t_case "in turn (RUNTIME_SMOKE_OVERLAP=0) the wrapper starts after the gate ends"
-_t0="$(date +%s)"
-out="$(RUNTIME_SMOKE_OVERLAP=0 SMOKE_SECS=3 WRAP_SECS=3 _chain)"
-_ser_secs="$(( $(date +%s) - _t0 ))"
+out="$(RUNTIME_SMOKE_OVERLAP=0 SMOKE_SECS=1 WRAP_SECS=1 _chain)"
 t_assert_contains "${out}" "CHAIN-RC=0"
 t_assert_ok test "$(_at wrapper-start)" -ge "$(_at smoke-end)"
 
+# A rendezvous, never a wall-clock comparison: a loaded host slows both runs unevenly.
 t_case "by default the gate runs beside the wrapper build, and the push waits for both"
-_t0="$(date +%s)"
-out="$(SMOKE_SECS=3 WRAP_SECS=3 _chain)"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser_secs - 2 ))"
+mkdir -p "${_work}/meet"
+out="$(MEET="${_work}/meet" SMOKE_SECS=1 _chain)"
 t_assert_contains "${out}" "CHAIN-RC=0"
-t_assert_ok test "$(_at wrapper-start)" -lt "$(_at smoke-end)"
+t_assert_ok _has smoke-met
+t_assert_ok _has wrapper-met
 t_assert_ok test "$(_at push)" -ge "$(_at smoke-end)"
 t_assert_contains "${out}" "[smoke arm64] smoke says hi"
 t_assert_contains "${out}" "[runtime-timing] arch=arm64 step=smoke-wait"

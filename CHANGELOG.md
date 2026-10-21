@@ -12,13 +12,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The parallelism suites prove "at once" by a rendezvous, not by the clock (CON126)
+
+- Thirteen side-by-side `run-tests.sh` runs in `:latest` went red six times: three wall-time
+  comparisons (`test 7 -le 6`: the parallel run lost its margin to a loaded host), twice the
+  push-queue suite (seen once: two queue items moved in while the pusher could already look), once
+  `test-smoke-arch-parity.sh` (`FAILURES=1`; not reproduced in ten captured runs or 32 copies at
+  once).
+- **`linux/scripts/tests/meet.sh`** (`meet_peers <dir> <name> <count> [secs]`): a job marks itself
+  started and waits for its peers' marks, then says `met` or `alone`. The preflight, `run-tests.sh`,
+  `lint-shell.sh`, runtime-gate, smoke-overlap and mutation-gate suites now assert `met` where they
+  compared seconds; the sidebar suite counts Chrome launches; `Runner.Parallel.Tests.ps1` meets in
+  PowerShell. A serial mutant waits out the bound and says `alone`, so the mutations still bite.
+  The push-queue suite holds the first push while it adds the out-of-order items, and its waits
+  allow 60 s where they allowed 5–30.
+
 ## 2026-10-21 — The sidebar check opens several Chromes (CON126)
 
 - **`CHECK_DOCS_SIDEBARS_JOBS`** (default 4, at most the CPU count): `check-docs-sidebars.js`
   launches that many headless Chromes, each taking the next page and width; the report is
   rebuilt in page order, so it reads as before. 7 pages × 4 widths: 66 → 18 s. `1` checks them in
   turn. **Proof.** `test-docs-sidebars.sh` compares four Chromes with one over seven pages (same
-  report, page order, less time) and refuses `0`; four new mutations bite.
+  report, page order, four launches) and refuses `0`; four new mutations bite.
 
 ## 2026-10-21 — The Windows test and lint gates run side by side (CON126)
 
@@ -33,9 +48,9 @@
 - Both fan out through `WindowsFanOut.Common.psm1` (`Invoke-PwshFanOut`: one child `pwsh` per
   piece of work, its output and result file handed back in order). `-Jobs 1` runs either one in
   turn, as before. **Proof.** `Runner.Parallel.Tests.ps1` compares each parallel run with its
-  serial twin (same tallies, same findings, less time) and checks the dead-suite path; five manual
-  mutations of the runners and the module turn it red. The full suite: 2097 tests green side by
-  side.
+  serial twin (same tallies, same findings, the files meet) and checks the dead-suite path; five
+  manual mutations of the runners and the module turn it red. The full suite: 2097 tests green
+  side by side.
 
 ## 2026-10-21 — Security: the Renovate CLI's markdown-it 15.0.2 → 15.0.3
 

@@ -557,16 +557,17 @@ t_assert_contains "$(t_out _iso --jobs 16)" "bites" "a cap larger than the work 
 t_assert_eq "" "$(find "${_tmp}" -maxdepth 1 -name 'mutation-gate-*' -print)" \
   "and every mirror a parallel run made must be gone afterwards"
 
-# Entries 1 and 3 are slow: dealt round-robin over two mirrors they queue on one, from a shared queue they split.
+# Entries 1 and 3 wait for each other: dealt round-robin over two mirrors they queue on one and meet nobody.
 t_case "a free mirror takes the next entry, so slow entries never queue behind each other"
 _shard_fixture 4 0
-for _slow in 1 3; do printf 'sleep 2\ngrep -q "GUARD=on" "./s%s.sh"\n' "${_slow}" > "${_work}/t${_slow}.sh"; done
-_t0="$(date +%s)"
-t_assert_eq "0" "$(t_rc _iso --jobs 1)"
-_ser="$(( $(date +%s) - _t0 ))"
-_t0="$(date +%s)"
+_meet="$(mktemp -d)"
+for _slow in 1 3; do
+  printf 'source %q\nmeet_peers %q t%s 2 20 >> %q\ngrep -q "GUARD=on" "./s%s.sh"\n' \
+    "${TESTS_DIR}/meet.sh" "${_meet}" "${_slow}" "${_meet}.said" "${_slow}" > "${_work}/t${_slow}.sh"
+done
 t_assert_eq "0" "$(t_rc _iso --jobs 2)"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser - 3 ))"
+t_assert_eq "met" "$(sort -u "${_meet}.said")" "both slow entries must be running at once"
+rm -rf "${_meet}" "${_meet}.said"
 
 t_case "mirrors are capped at a quarter of the temp filesystem's free space, never below one"
 t_assert_eq "4 1 1" "$(cd "${REPO}/docs/scripts" && "${PY}" -c 'import verify_mutations as v; print(v.mirror_cap(100, 1600), v.mirror_cap(100, 100), v.mirror_cap(0, 0))')"

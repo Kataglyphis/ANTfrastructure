@@ -208,17 +208,18 @@ t_assert_rc 1 _docs_build dead
 t_case "ci_build_docs.sh clicks the toggles after make html"
 t_assert_grep "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" '^bash "\$SCRIPT_DIR/\.\./\.\./docs-site\.sh" check "\$WORKSPACE_ROOT/docs/build/html" --if-chrome$'
 
-# Against the same site in one browser, never a constant, so a loaded host cannot fake a verdict.
-t_case "several browsers report what one reports, page by page in order, and sooner"
+# Chromes counted at launch, never a wall-clock comparison: a loaded host slows both runs unevenly.
+t_case "several browsers report what one reports, page by page in order"
 _many="$(_sphinx many works)"
 _pages=()
 for _p in p1 p2 p3 p4 p5 p6; do cp "${_many}/index.html" "${_many}/${_p}.html"; _pages+=("${_p}.html"); done
-_t0="$(date +%s)"
-_one="$(CHECK_DOCS_SIDEBARS_JOBS=1 CHROME_EXECUTABLE="${_chrome}" node "${CHECK}" "${_many}" "${_pages[@]}" 2>&1)"
-_ser="$(( $(date +%s) - _t0 ))"
-_t0="$(date +%s)"
-_four="$(CHECK_DOCS_SIDEBARS_JOBS=4 CHROME_EXECUTABLE="${_chrome}" node "${CHECK}" "${_many}" "${_pages[@]}" 2>&1)"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser - 3 ))"
+printf '#!/bin/sh\necho launched >> %q\nexec %q "$@"\n' "${_tmp}/launches" "${_chrome}" > "${_tmp}/chrome-counted"
+chmod +x "${_tmp}/chrome-counted"
+_one="$(CHECK_DOCS_SIDEBARS_JOBS=1 CHROME_EXECUTABLE="${_tmp}/chrome-counted" node "${CHECK}" "${_many}" "${_pages[@]}" 2>&1)"
+t_assert_eq "1" "$(wc -l < "${_tmp}/launches" | tr -d ' ')"
+: > "${_tmp}/launches"
+_four="$(CHECK_DOCS_SIDEBARS_JOBS=4 CHROME_EXECUTABLE="${_tmp}/chrome-counted" node "${CHECK}" "${_many}" "${_pages[@]}" 2>&1)"
+t_assert_eq "4" "$(wc -l < "${_tmp}/launches" | tr -d ' ')" "four Chromes share the seven pages"
 t_assert_eq "${_one}" "${_four}" "the report does not depend on the browser count"
 t_assert_eq "index.html p1.html p2.html p3.html p4.html p5.html p6.html" \
   "$(printf '%s\n' "${_four}" | sed -n 's/^  \([a-z0-9]*\.html\)$/\1/p' | tr '\n' ' ' | sed 's/ $//')"

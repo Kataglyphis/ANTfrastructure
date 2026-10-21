@@ -356,6 +356,11 @@ every file. Each knob set to `1` restores the serial path.
 A background job ignores SIGINT, so the runner hands each command its SIGINT back:
 `test-renovate-fleet.sh` tests its own Ctrl-C handling and failed only side by side until it did.
 
+A suite proves that jobs ran at once by a rendezvous, never by comparing seconds: with
+`meet_peers` (`linux/scripts/tests/meet.sh`) each job marks itself started and waits for its
+peers, so a loaded host slows the run but cannot turn the verdict. Wall-time comparisons went red
+in three of thirteen side-by-side runs.
+
 | run, `:latest`, 32 cores, 2026-10-21 | in turn | side by side |
 | --- | --- | --- |
 | `run-tests.sh` (227 suites) | 754 s | ~106 s |
@@ -619,7 +624,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2095 entries** over **187 distinct test commands**; both digits are
+manifest holds **2100 entries** over **187 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1864,7 +1869,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 583 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 584 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

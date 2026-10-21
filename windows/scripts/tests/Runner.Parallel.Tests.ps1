@@ -18,22 +18,38 @@ function New-RunnerCopy {
     return $tests
 }
 
-# <tests dir> <jobs>: the runner's output, its exit code and its seconds.
+# <tests dir> <jobs> [meet secs]: the runner's output, its exit code and what each suite said at the rendezvous.
 function Invoke-RunnerCopy {
-    param([Parameter(Mandatory)][string]$Tests, [Parameter(Mandatory)][int]$Jobs)
-    $sw = [Diagnostics.Stopwatch]::StartNew()
-    $out = @(& pwsh -NoProfile -NonInteractive -File (Join-Path $Tests 'Invoke-Tests.ps1') -Jobs $Jobs 2>&1 | ForEach-Object { "$_" })
-    return [pscustomobject]@{ Out = $out; Text = ($out -join "`n"); Exit = $LASTEXITCODE; Seconds = $sw.Elapsed.TotalSeconds }
+    param([Parameter(Mandatory)][string]$Tests, [Parameter(Mandatory)][int]$Jobs, [int]$MeetSecs = 20)
+    $meet = Join-Path (Split-Path $Tests) "meet-$Jobs-$MeetSecs"
+    New-Item -ItemType Directory -Force $meet | Out-Null
+    $env:MEET = $meet; $env:MEET_SECS = "$MeetSecs"
+    try {
+        $out = @(& pwsh -NoProfile -NonInteractive -File (Join-Path $Tests 'Invoke-Tests.ps1') -Jobs $Jobs 2>&1 | ForEach-Object { "$_" })
+        $exit = $LASTEXITCODE
+    } finally { Remove-Item Env:MEET, Env:MEET_SECS -ErrorAction SilentlyContinue }
+    $said = @(Get-ChildItem $meet -Filter 'said.*' | Sort-Object Name | ForEach-Object { (Get-Content $_.FullName -Raw).Trim() }) -join ' '
+    return [pscustomobject]@{ Out = $out; Text = ($out -join "`n"); Exit = $exit; Said = $said }
 }
+
+# A suite's rendezvous: it waits up to MEET_SECS for three marks under MEET, then says met or alone.
+$script:MeetFn = @'
+function Meet([string]$Name) {
+    Set-Content (Join-Path $env:MEET "meet.$Name") ''
+    $deadline = [DateTime]::UtcNow.AddSeconds([int]$env:MEET_SECS)
+    while (@(Get-ChildItem $env:MEET -Filter 'meet.*').Count -lt 3 -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
+    Set-Content (Join-Path $env:MEET "said.$Name") $(if (@(Get-ChildItem $env:MEET -Filter 'meet.*').Count -ge 3) { 'met' } else { 'alone' })
+}
+'@
 
 Describe 'Invoke-Tests.ps1: each file in its own pwsh, the same tallies as in turn' {
     Invoke-InTestDir { param($d)
         $tests = New-RunnerCopy -Dir (Join-Path $d 'green') -Suites @{
-            'A.Tests.ps1' = "Describe 'a' { It 'one' { Start-Sleep 4; Assert-True `$true }; It 'two' { Assert-True `$true } }"
-            'B.Tests.ps1' = "Describe 'b' { It 'red' { Start-Sleep 4; throw 'deliberate' } }"
-            'C.Tests.ps1' = "Describe 'c' { It 'three' { Start-Sleep 4; Assert-True `$true } }"
+            'A.Tests.ps1' = "$script:MeetFn`nDescribe 'a' { It 'one' { Meet a; Assert-True `$true }; It 'two' { Assert-True `$true } }"
+            'B.Tests.ps1' = "$script:MeetFn`nDescribe 'b' { It 'red' { Meet b; throw 'deliberate' } }"
+            'C.Tests.ps1' = "$script:MeetFn`nDescribe 'c' { It 'three' { Meet c; Assert-True `$true } }"
         }
-        $serial = Invoke-RunnerCopy -Tests $tests -Jobs 1
+        $serial = Invoke-RunnerCopy -Tests $tests -Jobs 1 -MeetSecs 0
         $parallel = Invoke-RunnerCopy -Tests $tests -Jobs 3
         $tally = { param($r) @($r.Out | Where-Object { $_ -match '^ \d+ tests \|' }) -join '' }
         $dead = Invoke-RunnerCopy -Jobs 2 -Tests (New-RunnerCopy -Dir (Join-Path $d 'dead') -Suites @{
@@ -48,8 +64,10 @@ Describe 'Invoke-Tests.ps1: each file in its own pwsh, the same tallies as in tu
             Assert-Equal $serial.Exit $parallel.Exit 'the same verdict'
         }
 
+        # A rendezvous, never a wall-clock comparison: a loaded host slows both runs unevenly.
         It 'runs the files at once, and says so' {
-            Assert-True ($parallel.Seconds -le $serial.Seconds - 4) "in turn $($serial.Seconds) s, side by side $($parallel.Seconds) s"
+            Assert-Equal 'alone alone met' $serial.Said 'in turn, each file ends before the next starts'
+            Assert-Equal 'met met met' $parallel.Said 'side by side, all three meet'
             Assert-True ($parallel.Text -match 'Invoke-Tests: 3 files, 3 at a time') $parallel.Text
         }
 

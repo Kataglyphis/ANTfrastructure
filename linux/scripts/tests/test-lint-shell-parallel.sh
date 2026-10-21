@@ -9,11 +9,10 @@ PIN="$(sed -n 's/^SHELLCHECK_VERSION=v\{0,1\}//p' "${TESTS_DIR}/../01-core/tool-
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-# A PATH shellcheck at the pin: a file named bad-* fails, kill-* kills its runner, every check sleeps the secs file's value.
-mkdir -p "${_work}/bin" "${_work}/src"
-printf '#!/usr/bin/env bash\n[ "$1" = --version ] && { echo "version: %s"; exit 0; }\nsleep "$(cat %s)"\ncase "${@: -1}" in *kill-*) kill -9 "$PPID" ;; *bad-*) exit 1 ;; esac\nexit 0\n' \
-  "${PIN}" "${_work}/secs" > "${_work}/bin/shellcheck"
-echo 0 > "${_work}/secs"
+# A PATH shellcheck at the pin: a file named bad-* fails, kill-* kills its runner; with a want file each check waits for that many peers.
+mkdir -p "${_work}/bin" "${_work}/src" "${_work}/meet"
+printf '#!/usr/bin/env bash\n[ "$1" = --version ] && { echo "version: %s"; exit 0; }\nW=%q\nif [ -s "${W}/want" ]; then source %q; meet_peers "${W}/meet" "$(basename "${@: -1}")" "$(cat "${W}/want")" 20 >> "${W}/said"; fi\ncase "${@: -1}" in *kill-*) kill -9 "$PPID" ;; *bad-*) exit 1 ;; esac\nexit 0\n' \
+  "${PIN}" "${_work}" "${TESTS_DIR}/meet.sh" > "${_work}/bin/shellcheck"
 chmod +x "${_work}/bin/shellcheck"
 for f in a b c d bad-1 bad-2; do printf '#!/usr/bin/env bash\ntrue\n' > "${_work}/src/${f}.sh"; done
 
@@ -39,15 +38,13 @@ t_assert_contains "$(printf '%s\n' "${par}" | grep 'bad-' | tr '\n' ' ')" "bad-1
 t_case "clean files pass and the count names every file"
 t_assert_contains "$(_lint LINT_SHELL_JOBS=4 -- "${_work}"/src/[abcd].sh)" "shellcheck -S error clean (4 file(s))"
 
+# A rendezvous, never a wall-clock comparison: a loaded host slows both runs unevenly.
 t_case "the files really are checked side by side"
-_t0="$(date +%s)"
-echo 2 > "${_work}/secs"
+echo 4 > "${_work}/want"
 _lint LINT_SHELL_JOBS=4 -- "${_work}"/src/[abcd].sh >/dev/null
-_par_secs="$(( $(date +%s) - _t0 ))"
-_t0="$(date +%s)"
-_lint LINT_SHELL_JOBS=1 -- "${_work}"/src/[abcd].sh >/dev/null
-t_assert_ok test "${_par_secs}" -le "$(( $(date +%s) - _t0 - 6 ))"
-echo 0 > "${_work}/secs"
+rm -f "${_work}/want"
+t_assert_eq "" "$(grep -v '^met$' "${_work}/said")" "every check met the other three"
+t_assert_ok grep -q '^met$' "${_work}/said"
 
 t_case "a runner that dies early is refused, never graded clean"
 printf '#!/usr/bin/env bash\ntrue\n' > "${_work}/src/kill-me.sh"

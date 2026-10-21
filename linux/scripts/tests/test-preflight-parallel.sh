@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/meet.sh"
 PREFLIGHT="${TESTS_DIR}/../preflight.sh"
 LIB="${TESTS_DIR}/../lib-ordered-jobs.sh"
 
@@ -17,16 +18,18 @@ for _fn in _in_csv check_selected _pf_report _pf_run_recorded run_check; do
   _FNS+="${_src}"$'\n'
 done
 
-# _pf <jobs> <body>: the scheduler with stub slugs; each stub logs "start|end <slug> <epoch>" to ${M}.
+# _pf <jobs> <body>: the scheduler with stub slugs; each stub logs "start|end <slug> <epoch>" to ${M}, a meet slug waits for its peers.
 _pf() {
   printf '%s\n' 'set -uo pipefail
 unset PYTHONDONTWRITEBYTECODE
 GREEN=""; RED=""; BOLD=""; NC=""
 FAILED=(); RAN_CHECKS=0; PREFLIGHT_ONLY=""; PREFLIGHT_SKIP=""; PF_SLUGS=(); PF_NAMES=()
-stub() { echo "start $1 $(date +%s)" >> "${M}"; echo "out of $1"; sleep "$2"; echo "end $1 $(date +%s)" >> "${M}"; return "$3"; }' \
+stub() { echo "start $1 $(date +%s)" >> "${M}"; echo "out of $1"; sleep "$2"; echo "end $1 $(date +%s)" >> "${M}"; return "$3"; }
+meet() { echo "out of $1"; meet_peers "${M}.meet" "$1" "$2" 20; }' "$(declare -f meet_peers)" \
     "source $(printf '%q' "${LIB}")" "${_FNS}" "PREFLIGHT_JOBS=$1" "$2" \
     'printf "FAILED=%s\n" "${FAILED[*]}"; echo "PYC=${PYTHONDONTWRITEBYTECODE:-unset}"' > "${_work}/pf.sh"
   : > "${_work}/marks"
+  rm -rf "${_work}/marks.meet"; mkdir -p "${_work}/marks.meet"
   M="${_work}/marks" bash "${_work}/pf.sh" 2>&1
 }
 _BODY='run_check alpha "alpha check" stub alpha 3 0
@@ -39,19 +42,24 @@ _mark() { sed -n "s/^$1 $2 //p" "${_work}/marks"; }
 _order() { printf '%s\n' "$1" | sed -n 's/^== \(.*\) ==$/\1/p' | tr '\n' ',' | sed 's/,$//'; }
 
 t_case "in turn: each slug runs where it is registered, and a red one is collected"
-_t0="$(date +%s)"
 ser="$(_pf 1 "${_BODY}")"
-_ser_secs="$(( $(date +%s) - _t0 ))"
 t_assert_contains "${ser}" "FAILED=beta check"
 t_assert_eq "alpha check,mutation gate,beta check,cmake-format check,gamma check" "$(_order "${ser}")"
 t_assert_contains "${ser}" "PYC=unset"
 
-t_case "side by side: the same report, in registration order, in less time"
-_t0="$(date +%s)"
+t_case "side by side: the same report, in registration order"
 par="$(_pf 8 "${_BODY}")"
 t_assert_eq "${ser}" "$(printf '%s\n' "${par}" | sed 's/^PYC=1$/PYC=unset/')" "the report must not depend on the job count"
-t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser_secs - 2 ))"
 t_assert_contains "${par}" "PYC=1"
+
+# A rendezvous, never a wall-clock comparison: a loaded host slows both runs unevenly.
+t_case "side by side: the slugs between the first and the last run at once"
+out="$(_pf 8 'run_check alpha "alpha check" meet alpha 3
+run_check beta "beta check" meet beta 3
+run_check gamma "gamma check" meet gamma 3
+_pf_run_recorded')"
+t_assert_contains "${out}" "FAILED="$'\n'
+t_assert_eq "met met met" "$(printf '%s\n' "${out}" | grep -xE 'met|alone' | tr '\n' ' ' | sed 's/ $//')"
 
 t_case "cmake-format ends before any other slug starts, the mutation gate starts after all of them end"
 _pf 8 "${_BODY}" > /dev/null

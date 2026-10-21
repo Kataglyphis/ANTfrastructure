@@ -16794,5 +16794,13 @@
   "replace": "[",
   "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
   "why": "a FAIL line without its page header names no page to fix"
+ },
+ {
+  "id": "ordered-jobs.meet-can-say-alone",
+  "target": "linux/scripts/tests/meet.sh",
+  "find": "    [ \"${i}\" -lt \"${ticks}\" ] || { echo alone; return 1; }\n",
+  "replace": "    break\n",
+  "test": "bash linux/scripts/tests/test-run-tests.sh",
+  "why": "a rendezvous that says met without its peers proves every serial run parallel"
  }
 ]
