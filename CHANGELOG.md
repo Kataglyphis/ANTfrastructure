@@ -12,6 +12,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — riscv64 keeps the apt sccache; the runtime gate names a musl loader
+
+- **Why the riscv64 wrapper failed in `contourpy`:** `install_sccache_pinned` (`01-core/base-image.sh`)
+  installed the hub's riscv64 sccache, `riscv64gc-unknown-linux-musl`, which is dynamically linked
+  against `/lib/ld-musl-riscv64.so.1`. The riscv64 images are glibc, so the first compile through
+  `sccache c++` died with `qemu-riscv64: Could not open '/lib/ld-musl-riscv64.so.1'`. Reproduced in
+  the 2026-10-21 package stage. Since b9e451da ("both lanes install the hub's build") the pin was live.
+- **The fix:** riscv64 keeps the Ubuntu sccache (0.13.0, glibc), which compiles. Verified in the
+  package image: `/usr/bin/sccache c++ -c` succeeds, the pinned binary fails with the message above.
+  amd64 and arm64 keep the static musl assets (no loader, runs anywhere).
+- **`check-target-toolchain.sh`** (new): every compiler, assembler and sccache on the runtime's PATH
+  must be the arch's ELF machine and must not ask for a musl loader. On the 2026-10-21 riscv64 package
+  image it names the musl sccache alone (`1 host tool(s)`); without it, `11 tool(s) … are RISC-V`.
+  Not yet wired into `Dockerfile.package` (CON-next): that re-keys every arch's package stage.
+- `test-sccache-pinned-install.sh` now pins riscv64 to the apt path.
+
 ## 2026-10-21 — The family image holds the web engine's fallback fonts (CON147)
 
 - **`linux/Dockerfile.sdk` fills `/opt/flutter-fallback-fonts` once and makes it read-only**, from the

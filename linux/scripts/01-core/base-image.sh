@@ -493,7 +493,8 @@ install_sccache_pinned() {
   case "${machine}" in
     x86_64)  target="x86_64-unknown-linux-musl";  sha="${SCCACHE_LINUX_X86_64_SHA256:-}" ;;
     aarch64) target="aarch64-unknown-linux-musl"; sha="${SCCACHE_LINUX_AARCH64_SHA256:-}" ;;
-    riscv64) target="riscv64gc-unknown-linux-musl"; sha="${SCCACHE_LINUX_RISCV64_SHA256:-}" ;;
+    # The riscv64 release asset is musl-linked and this glibc image has no musl loader: the apt sccache stays (2026-10-21).
+    riscv64) log "riscv64 keeps the apt sccache: its release asset needs /lib/ld-musl-riscv64.so.1"; return 0 ;;
     *) log "No pinned sccache asset for ${machine} -- keeping the apt sccache"; return 0 ;;
   esac
   if [ -z "${sha}" ]; then
