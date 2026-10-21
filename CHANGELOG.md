@@ -107,6 +107,8 @@ Found on jonasheinle.de 1.4.0: its app icons 404ed, and emoji drew as boxes.
   is rendered from it at 256 px (24 KB). The README template names `images/logo.svg`, which a new
   repository adds to that set; `New-MsixPackage.ps1` and `cargo_build_doc.sh` still take a
   repository's `images/logo.png`.
+- **The docs site shows the hub's own logo**: `docs/conf.py` sets `html_logo` and `html_favicon`
+  to `../images/logo.svg` after `setup_theme()`, in place of the theme's shared wireframe.
 
 ## 2026-10-21 — The mutation gate keeps every shard busy (CON126)
 

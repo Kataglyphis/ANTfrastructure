@@ -14,3 +14,7 @@ setup_theme(
     project_name=PROJECT,
     exclude_patterns=["_build", ".venv", "Thumbs.db", ".DS_Store"],
 )
+
+# The repository's own logo, in place of setup_theme()'s shared default.
+html_logo = "../images/logo.svg"
+html_favicon = html_logo
