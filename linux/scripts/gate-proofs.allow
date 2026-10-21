@@ -180,3 +180,5 @@ mutation-family:web-artefacts
 mutation-family:perf-report
 # The nginx harness for a Flutter web build (linux/webserver/scripts/flutter-nginx-integration-test.sh); proof: test-flutter-nginx-integration.sh.
 mutation-family:nginx-harness
+# The HTTP smoke test for a built Flutter web app (linux/webserver/scripts/flutter_integration_smoke_test.sh); proof: test-flutter-smoke-test.sh.
+mutation-family:web-smoke

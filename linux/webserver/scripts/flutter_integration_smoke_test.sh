@@ -4,7 +4,8 @@
 set -euo pipefail
 
 BASE_URL="${1:-http://localhost:8080}"
-REQUIRED_CSP_HOSTS="${REQUIRED_CSP_HOSTS:-www.gstatic.com fonts.gstatic.com}"
+# No colon: an app without a CSP sets it empty, and that must skip the host check, not restore the default.
+REQUIRED_CSP_HOSTS="${REQUIRED_CSP_HOSTS-www.gstatic.com fonts.gstatic.com}"
 CHECK_LOADING_SHELL="${CHECK_LOADING_SHELL:-1}"
 
 echo "=== Integration Smoke Test ==="

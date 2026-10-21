@@ -15961,5 +15961,13 @@
   "replace": "len(earlier) >= 0",
   "test": "bash linux/scripts/tests/test-perf-reports.sh",
   "why": "too few earlier runs must only warn"
+ },
+ {
+  "id": "web-smoke.empty-csp-hosts",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS-www.gstatic.com",
+  "replace": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS:-www.gstatic.com",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "an app without a CSP empties the host list, and that must skip the check"
  }
 ]
