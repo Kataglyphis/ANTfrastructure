@@ -12,6 +12,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The mutation gate restores its targets byte for byte (CON134)
+
+- **Cause.** `verify_mutations.py` read each target in text mode and wrote the mutant and its
+  backup the same way. On Windows that writes LF as CRLF, so from a target's first mutation on its
+  shard mirror held a CRLF copy, and a later baseline matching an exact newline against it failed:
+  CON31's pre-push read 14 vacuous bites, CON131's wiring test had to fall back to `grep`.
+- **Fix.** Targets are read and written as bytes (`read_exact`, `write_exact`), and the backup is
+  the original's bytes. A CRLF checkout (`core.autocrlf`) of a target gets the manifest's LF find
+  and replace translated to CRLF, so its multi-line entries still apply and keep its line endings.
+  `test-package-image-wiring.sh` matches `$'\n    install_pwsh\n'` exactly again.
+- **Proof.** Two cases in `test-mutation-gate.sh` (an LF and a CRLF target restored byte for byte;
+  a multi-line find on a CRLF target, the mutant keeping CRLF); the old gate fails the first on
+  Git Bash. Three mutations bite (`mutations.restore-is-byte-exact`,
+  `mutations.crlf-target-takes-lf-find`, `packaging.pwsh-wired-into-setup`).
+
 ## 2026-10-21 — The runtime lane uploads each wrapper while the next arch builds (CON126)
 
 - **Owner directive 2026-10-20**: everything in the hub runs as parallel as the host allows. On that

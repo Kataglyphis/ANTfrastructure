@@ -123,6 +123,27 @@ _run >/dev/null 2>&1
 t_assert_eq "GUARD=on" "$(cat "${_work}/subject.sh")" \
   "a tool that edits in place must never leave the tree mutated"
 
+t_case "the restore is byte-exact: an LF and a CRLF target keep their line endings"
+# Text mode restored LF files as CRLF on Windows, so a later baseline's exact-newline match failed (CON134).
+for _eol in '\n' '\r\n'; do
+  _fixture "GUARD=on" "GUARD=off" yes
+  printf 'GUARD=on%bkeep%b' "${_eol}" "${_eol}" > "${_work}/subject.sh"
+  _before="$(md5sum < "${_work}/subject.sh")"
+  t_assert_contains "$(_run)" "bites"
+  t_assert_eq "${_before}" "$(md5sum < "${_work}/subject.sh")" \
+    "the restored target must be the bytes it held, line endings included (${_eol})"
+done
+
+t_case "a multi-line find applies to a CRLF target, and the mutant keeps its CRLF"
+# core.autocrlf checks some targets out as CRLF; the manifest's finds are LF.
+_fixture 'GUARD=on\nkeep' 'GUARD=off\nkeep' yes
+printf 'GUARD=on\r\nkeep\r\n' > "${_work}/subject.sh"
+printf 'cp ./subject.sh "%s/mutant"\ngrep -q "GUARD=on" ./subject.sh\n' "${_tmp}" > "${_work}/t.sh"
+t_assert_contains "$(_run)" "bites" "an LF find must still name its edit in a CRLF checkout"
+t_assert_eq "$(printf 'GUARD=off\r\nkeep\r\n' | md5sum)" "$(md5sum < "${_tmp}/mutant")" \
+  "the mutant must differ from its target by the edit alone, not by its line endings"
+rm -f "${_tmp}/mutant"
+
 # Isolation: preflight and the hook point the gate at the tree buildkit may be reading.
 
 t_case "by default the mutation lands in a COPY, and still bites there"

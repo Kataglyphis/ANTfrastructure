@@ -208,6 +208,17 @@ def say(text):
     print(text, flush=True)
 
 
+def read_exact(path):
+    """A target's text as its bytes hold it: text mode on Windows reads CRLF as LF and writes LF back as CRLF."""
+    with open(path, "rb") as fh:
+        return fh.read().decode("utf-8")
+
+
+def write_exact(path, text):
+    with open(path, "wb") as fh:
+        fh.write(text.encode("utf-8"))
+
+
 def applicable(entry, root):
     """(original, mutated, reason); mutated is None, with the reason, when the edit no longer applies."""
     target = os.path.join(root, entry["target"])
@@ -215,14 +226,17 @@ def applicable(entry, root):
         return None, None, "target is a symlink -- a write through it escapes the copy"
     if not os.path.exists(target):
         return None, None, "target missing"
-    with open(target, encoding="utf-8") as fh:
-        original = fh.read()
-    hits = original.count(entry["find"])
+    original = read_exact(target)
+    find, replace = entry["find"], entry["replace"]
+    if "\r\n" in original:
+        # core.autocrlf checks a target out as CRLF; the manifest's text is LF.
+        find, replace = find.replace("\n", "\r\n"), replace.replace("\n", "\r\n")
+    hits = original.count(find)
     if hits == 0:
         return original, None, "find text not present -- the mutation is stale"
     if hits > 1:
         return original, None, "find text matches %d times -- ambiguous, name one edit" % hits
-    mutated = original.replace(entry["find"], entry["replace"], 1)
+    mutated = original.replace(find, replace, 1)
     if mutated == original:
         return original, None, "replace is a no-op"
     return original, mutated, None
@@ -246,12 +260,11 @@ def apply_and_run(entry, root):
     if mutated is None:
         return False, False, why, 0
 
-    backup = tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8")
-    backup.write(original)
+    backup = tempfile.NamedTemporaryFile("wb", delete=False)
+    backup.write(original.encode("utf-8"))
     backup.close()
     try:
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write(mutated)
+        write_exact(target, mutated)
         rc, timed_out, output = _run_test(entry["test"], root, entry.get("timeout", 300))
         if timed_out:
             return True, True, "test timed out (counts as failing)", 0

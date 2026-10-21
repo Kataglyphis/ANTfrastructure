@@ -543,18 +543,6 @@ owner carries the breakage that costs.
       now accepts both. Find the profile.d line, rename or drop the export, and check the consumers
       that read `ARCH` (rg the family) before changing it.
 
-- [ ] **CON134 — the pre-push mutation gate under Git Bash fails an exact-newline match** [S, ★].
-      Found 2026-10-21 with CON131 (14170b1c): a wiring test matching `$'\n    install_pwsh\n'`
-      against `setup-package-image.sh` passed in `:latest` and CI but failed in the Git Bash
-      pre-push mirrors, so it now uses `grep`. The cause, read in `verify_mutations.py` on 2026-10-21:
-      `apply_and_run` writes the mutated text and its backup in text mode (`open(target, "w")`,
-      `NamedTemporaryFile("w")`), which Python on Windows writes as CRLF, and `copyfile` restores that
-      backup. From a target's first mutation on, the file is CRLF in its shard root (shard 1's root is
-      the working tree), and a later baseline matching `$'\n…'` against it fails. CON31's first push hit
-      it: 14 vacuous bites on `test-gpu-runtime-check.sh` and `test-cuda-runtime-payload.sh`, all green
-      in a fresh mirror and on Linux. Fix: write both with `newline=''`, keeping the original's line
-      endings, then put the exact match back.
-
 - [ ] **CON135 — two Dependabot alerts in the Renovate CLI's lock, with no fixed release** [S, ★].
       `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, high,
       via micromatch) and sprintf-js 1.1.3 (GHSA-hp3w-g68c-fv3c, medium, via roarr), both a DoS

@@ -152,6 +152,22 @@
   "why": "a tool that edits in place must never leave the tree mutated"
  },
  {
+  "id": "mutations.restore-is-byte-exact",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    with open(path, \"rb\") as fh:\n        return fh.read().decode(\"utf-8\")",
+  "replace": "    with open(path, encoding=\"utf-8\") as fh:\n        return fh.read()",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a text-mode read turns CRLF into LF, so the restore and the mutant both change a target's line endings (CON134)"
+ },
+ {
+  "id": "mutations.crlf-target-takes-lf-find",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    if \"\\r\\n\" in original:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a CRLF checkout (core.autocrlf) of a target makes every multi-line LF find stale"
+ },
+ {
   "id": "mutations.vacuous-bite",
   "target": "docs/scripts/verify_mutations.py",
   "find": "        if not base_ok:",
@@ -11617,6 +11633,14 @@
   "replace": "    download_verified_file \"${url}\" \"${sha}\" \"${dir}/asset\"; rm -rf \"${dest}\" && mkdir -p \"${dest}\" || rc=1\n",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
   "why": "an asset that failed its SHA-256 check would still be unpacked and installed (CON131)"
+ },
+ {
+  "id": "packaging.pwsh-wired-into-setup",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    install_cargo_qa_tools\n    install_pwsh\n",
+  "replace": "    install_cargo_qa_tools\n",
+  "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
+  "why": "without the call the package stage ships no pwsh, and the consumers' PowerShell tests skip on every lane (CON131)"
  },
  {
   "id": "packaging.glib-yield-only-when-older",

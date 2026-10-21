@@ -401,6 +401,7 @@ t_case "riscv64, which upstream does not build, is a note and downloads nothing"
 t_assert_contains "$(_pwsh riscv64 ok.env)" "NOTE: PowerShell publishes no riscv64 build"
 t_assert_fails test -e "${_ps}/url"
 t_assert_ok _pwsh riscv64 ok.env
-t_assert_ok grep -qE '^[[:space:]]+install_pwsh[[:space:]]*$' "${TESTS_DIR}/../06-packaging/setup-package-image.sh"
+t_assert_contains "$(cat "${TESTS_DIR}/../06-packaging/setup-package-image.sh")" $'\n    install_pwsh\n' \
+  "the package stage must call install_pwsh"
 
 t_summary
