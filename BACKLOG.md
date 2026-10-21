@@ -716,13 +716,6 @@ owner carries the breakage that costs.
 
 ## Open — hub tooling and the dev host
 
-- [ ] **CON127 — Exhale's API tree does not collapse on the Sphinx sites** [S, ★★]. Found 2026-10-20 with
-      the image's headless Chrome during CON121: AccelerANTgine's and BeschleunigerBallett's API pages log
-      `ReferenceError: $ is not defined` from Exhale's `apply-collapsible-lists.js`, which needs jQuery;
-      Sphinx stopped shipping it in version 6. Fix in DocumANTation's theme (`setup_theme()`: ship jQuery for
-      Exhale, or switch Exhale to a jQuery-free tree view), and let `linux/scripts/check-docs-sidebars.js`
-      fail on any page `ReferenceError`. Done when both sites' tree views collapse and the check is green.
-
 - [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
       `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb
       added the first as a 5-line copy of the second's sysconfigdata lookup; `code-dupes.allow`

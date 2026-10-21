@@ -88,6 +88,9 @@
   before it writes the port; under load the launcher read it empty, polled `127.0.0.1:` and
   failed five mutation baselines with `opened no page` (run 39518418220). Six suites at once on
   two CPUs failed 3 to 5 launches before, none after (twice).
+- **Live, 2026-10-21**: AccelerANTgine (run 39511855642) and BeschleunigerBallett (run 39518514131)
+  republished; the check over each published site and its `api/library_root.html` finds no exception
+  and folds the tree `closed -> open -> closed` at all four widths. CON127 is done.
 
 ## 2026-10-20 — The last 23 Apache-2.0 headers are MIT, as `LICENSE` says (CON69)
 
