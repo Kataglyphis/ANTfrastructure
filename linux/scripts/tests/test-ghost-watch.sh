@@ -50,4 +50,12 @@ t_rc_is() { local want="$1"; shift; "$@" >/dev/null 2>&1; t_assert_eq "${want}" 
 t_rc_is 2 _gw --min-age-min=abc
 t_rc_is 2 _gw --frobnicate
 
+# The runner's awk is gawk, the image's mawk; only gawk rewrote `\.` in a -v value, with a warning on stderr.
+if command -v gawk >/dev/null 2>&1; then
+  t_case "gawk reads the allow regexes without a warning"
+  mkdir -p "${_WORK}/bin" && ln -sf "$(command -v gawk)" "${_WORK}/bin/awk"
+  out="$(PATH="${_WORK}/bin:${PATH}" _gw)"
+  t_assert_eq "" "${out}" "an empty listing prints nothing, under gawk too"
+fi
+
 t_summary

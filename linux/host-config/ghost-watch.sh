@@ -65,8 +65,10 @@ ps_out() {
   fi
 }
 
-ghosts="$(ps_out | awk -v mgr="${manager:-0}" -v min_s="$((MIN_AGE_MIN * 60))" -v allow="${allow}" \
-  -v ghost="${GHOST_PATTERN}" -v cpu="${CPU_PCT}" -v rss="$((RSS_MB * 1024))" '
+# The regexes go through ENVIRON: gawk rewrites backslash escapes in -v values and warns on `\.`.
+ghosts="$(ps_out | GW_ALLOW="${allow}" GW_GHOST="${GHOST_PATTERN}" awk -v mgr="${manager:-0}" \
+  -v min_s="$((MIN_AGE_MIN * 60))" -v cpu="${CPU_PCT}" -v rss="$((RSS_MB * 1024))" '
+  BEGIN { allow = ENVIRON["GW_ALLOW"]; ghost = ENVIRON["GW_GHOST"] }
   {
     cmd = $6; for (i = 7; i <= NF; i++) cmd = cmd " " $i
     if (($2 != 1 && $2 != mgr) || $3 < min_s || cmd ~ allow) next

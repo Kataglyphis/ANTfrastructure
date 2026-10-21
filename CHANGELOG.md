@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — ghost-watch hands its regexes to awk through ENVIRON
+
+- gawk rewrites backslash escapes in `-v` values and warns ``escape sequence `\.' treated as plain `.'``;
+  the runner's awk is gawk, so `test-ghost-watch.sh`'s "nothing to report" case failed on CI and
+  `ghost-watch.exit-status` read as a vacuous bite (run 39597069746, issue #15). The image's mawk
+  never warned. A new case runs the script under gawk; `ghost-watch.allow-through-environ` bites.
+
 ## 2026-10-21 — `RUSTUP_INIT_SHA256` follows rustup-init 1.29.2
 
 - **The 14:08 `:latest` rerun failed in arm64's package stage**: `rustup-init script does not match

@@ -6753,6 +6753,14 @@
   "why": "the timer's unit fails on a ghost, which is what systemctl --user --failed shows"
  },
  {
+  "id": "ghost-watch.allow-through-environ",
+  "target": "linux/host-config/ghost-watch.sh",
+  "find": "allow = ENVIRON[\"GW_ALLOW\"]",
+  "replace": "allow = ENVIRON[\"GW_NOPE\"]",
+  "test": "bash linux/scripts/tests/test-ghost-watch.sh",
+  "why": "the regexes reach awk through ENVIRON because gawk rewrites -v escapes; an unread allow list matches every process and reports none"
+ },
+ {
   "id": "mutations.reap-finished-test",
   "target": "docs/scripts/verify_mutations.py",
   "find": "        if hasattr(os, \"killpg\"):\n            _kill_group(proc.pid)\n        with _LIVE_LOCK:",
