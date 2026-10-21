@@ -464,6 +464,12 @@ The same trick applies to named volumes — see
 `cargo-cache` to the image's uid 1001 once instead of running everything as
 root.
 
+The reverse bites too: a fresh Windows-side clone shows as `0:0` on the 9p
+mount, so the image's uid 1001 cannot `chmod` its files (OmniAccelerANT's
+Android lane died on Cargokit's `chmod +x run_build_tool.sh`, 2026-10-21).
+Chown the clone to `1001:1001` once from a root container of the same image,
+leaving its submodules alone if another lane mounts them.
+
 ## Setting up WSL2 itself
 
 Rancher Desktop supplies its own distro, but a second WSL distro is often
