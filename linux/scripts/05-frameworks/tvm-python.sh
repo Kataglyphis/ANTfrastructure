@@ -33,10 +33,8 @@ _tvm_target_python_sysconfig_export() {
     name="_sysconfigdata__linux_${triplet}"
     stage_root="$(cross_target_python_root 2>/dev/null || true)"
 
-    for search_root in ${stage_root:+"${stage_root}/lib"} "/usr/lib"; do
-      [ -d "${search_root}" ] || continue
-      # -maxdepth 4: the staged interpreter keeps it in lib/python3.X/lib-dynload/.
-      dir="$(find "${search_root}" -maxdepth 4 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
+    for search_root in ${stage_root:+"${stage_root}"} "/usr"; do
+      dir="$(cross_target_sysconfigdata_dir "${triplet}" "${search_root}" || true)"
       [ -n "${dir}" ] && break
     done
 

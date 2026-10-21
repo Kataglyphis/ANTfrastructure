@@ -12,6 +12,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — One lookup for the target's sysconfigdata (CON114)
+
+- `cross_target_sysconfigdata_dir <triplet> <root>` (`01-core/cross-python.sh`) finds
+  `_sysconfigdata__linux_<triplet>.py` under `<root>/lib`, lib-dynload included. The wheelhouse's
+  `resolve_target_python_sysconfig_export` and TVM's `_tvm_target_python_sysconfig_export` both
+  call it instead of their own `find`; what each does with the module is unchanged. The pair's
+  `code-dupes.allow` row was already gone since ab61b9e0 rewrote the wheelhouse export.
+- **Proof.** `test-wheelhouse-sysconfig-env.sh` gains a staged target module that the wheelhouse
+  copies instead of synthesising, and TVM's export for it (its first test). Its synthesis case now
+  names what Git Bash lacks (Windows' sysconfig ignores `_PYTHON_SYSCONFIGDATA_NAME`).
+  `wheels.target-sysconfigdata-in-lib-dynload` and `wheels.staged-sysconfigdata-wins` bite.
+
 ## 2026-10-21 — A caller's `ARCH` survives the Vulkan SDK's `setup-env.sh` (CON133)
 
 - **Cause.** Not the login shell: the image's entrypoint sources LunarG's `setup-env.sh`, whose

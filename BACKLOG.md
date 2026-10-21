@@ -860,12 +860,6 @@ owner carries the breakage that costs.
       `test-harness.sh` that registers each tree for removal at exit, the suites moved onto it, and a
       `run-tests.sh` check that counts `/tmp` entries before and after the run and fails on growth.
 
-- [ ] **CON114 — `resolve_target_python_sysconfig_export` (`build-app-wheelhouse.sh`) duplicates
-      `_tvm_target_python_sysconfig_export` (`tvm-python.sh`): one shared helper** [S, ★]. fc5386eb
-      added the first as a 5-line copy of the second's sysconfigdata lookup; `code-dupes.allow`
-      holds the pair at 40 as a pending dedupe. Done when both call one helper in `01-core` and
-      the pair's budget drops back.
-
 - [b] **CON62 — WSL containers (`wslc`) as the local Linux engine** [M, ★★]. Blocked
       upstream. Evaluated 2026-10-05 against WSL 3.0.1
       (`docs/rancher-desktop-linux-containers.md` § *WSL containers*): faster bind

@@ -92,6 +92,16 @@ cross_target_python_root() {
   return 1
 }
 
+# <triplet> <root>: the dir under <root>/lib holding _sysconfigdata__linux_<triplet>.py, or rc 1.
+cross_target_sysconfigdata_dir() {
+  local triplet="${1:-}" root="${2:-}" dir=""
+  [ -n "${triplet}" ] && [ -n "${root}" ] && [ -d "${root}/lib" ] || return 1
+  # -maxdepth 4: a staged interpreter keeps it in lib/python3.X/ or its lib-dynload/.
+  dir="$(find "${root}/lib" -maxdepth 4 -name "_sysconfigdata__linux_${triplet}.py" -printf '%h\n' -quit 2>/dev/null || true)"
+  [ -n "${dir}" ] || return 1
+  printf '%s' "${dir}"
+}
+
 cross_target_python_major_minor() {
   if [ -n "${TARGET_PYTHON_MAJOR_MINOR:-}" ]; then
     printf '%s' "${TARGET_PYTHON_MAJOR_MINOR}"

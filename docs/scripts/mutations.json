@@ -13627,6 +13627,22 @@
   "why": "a cross build without the table would write a record with no verdicts and pass"
  },
  {
+  "id": "wheels.target-sysconfigdata-in-lib-dynload",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "  dir=\"$(find \"${root}/lib\" -maxdepth 4 -name",
+  "replace": "  dir=\"$(find \"${root}/lib\" -maxdepth 2 -name",
+  "test": "bash linux/scripts/tests/test-wheelhouse-sysconfig-env.sh",
+  "why": "a staged interpreter keeps the target sysconfigdata in lib-dynload; missed, tvm-ffi's Cython core is stamped with the host SOABI (CON114)"
+ },
+ {
+  "id": "wheels.staged-sysconfigdata-wins",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    dir=\"$(cross_target_sysconfigdata_dir \"${target_triplet}\" \"${stage_root}\" || true)\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-wheelhouse-sysconfig-env.sh",
+  "why": "the staged target's own sysconfigdata must win over the one synthesised from the pinned interpreter (CON114)"
+ },
+ {
   "id": "probe.ft-store-table-missing",
   "target": "linux/scripts/06-packaging/check-free-threaded-wheels.sh",
   "find": "  ft_wheel_table >/dev/null 2>&1 || { echo \"BAD the twin table is not at ${_FTS_HERE}/../03-media/free-threaded-twins.txt\"; return 1; }\n",

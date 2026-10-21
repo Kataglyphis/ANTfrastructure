@@ -254,9 +254,7 @@ resolve_target_python_sysconfig_export() {
     name="_sysconfigdata__linux_${target_triplet}"
 
     stage_root="$(cross_target_python_root "${target_arch}" 2>/dev/null || true)"
-    if [ -n "${stage_root}" ] && [ -d "${stage_root}/lib" ]; then
-        dir="$(find "${stage_root}/lib" -maxdepth 2 -name "${name}.py" -printf '%h\n' -quit 2>/dev/null || true)"
-    fi
+    dir="$(cross_target_sysconfigdata_dir "${target_triplet}" "${stage_root}" || true)"
 
     # A dir of its own: the target stdlib beside the module must not shadow the pinned interpreter's (FT_TARGET_SYSCONFIG_DIR's shape).
     sysdir="${APP_WHEELHOUSE_BUILD_ROOT}/sysconfigdata-${target_triplet}"
