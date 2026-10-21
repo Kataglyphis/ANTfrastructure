@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — Security: the Windows arm64 wheel store's Pillow and certifi
+
+- `TORCH_WINDOWS_ARM64_PILLOW` 12.3.0 → 13.0.0 (cp313 win_arm64): GHSA-8g5g-8vmr-9782 (critical),
+  GHSA-58r4-6rv3-gfh8, GHSA-65qm-jvmh-6pqg, GHSA-q45j-58j2-45rg, GHSA-pchr-8j38-3x4p,
+  GHSA-p4wg-p73j-c528, GHSA-c6hw-5grf-ff96, GHSA-vx6w-vv9f-6gvg, GHSA-462x-pgg6-55fp.
+- `PYTEST_WINDOWS_ARM64_CERTIFI` 2026.7.22 → 2026.10.19: GHSA-6q48-6c7w-9gw2 (critical).
+- Same versions as OrchestrANT's lock (46a369a); takes effect with the next `:winarm64` build.
+
 ## 2026-10-20 — pwsh and PSScriptAnalyzer in the Linux image, from the next build (CON131)
 
 - **Why.** CON124 moves consumer Python into `:latest`, and OrchestrANT's `benchmarks.yml` contract
