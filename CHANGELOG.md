@@ -46,6 +46,11 @@ Found by reading the last nine `:latest` chain logs and their resource samples.
   (517 MB). `RUNTIME_PUSH_PROGRESS=1` brings it back. New `test-runtime-push.sh`.
 - **`test-mutation-gate.sh`'s spinning fixture ends after 60 s.** Its `while :; do :; done`,
   orphaned by an interrupted run, held a core of the build host from 2026-10-18 to 2026-10-21.
+- **The package stage's libFuzzer probe accepts either layout.** It looked for
+  `lib/x86_64-unknown-linux-gnu/libclang_rt.fuzzer-x86_64.a`, a name that layout never uses (it holds
+  the unsuffixed `libclang_rt.fuzzer.a`), so every arch of every `:latest` run printed `[WARN] no
+  libclang_rt.fuzzer-x86_64.a staged` while `clang -fsanitize=fuzzer` linked fine (checked in the
+  2026-10-21 amd64 and arm64 children). It re-keys the package stage from that RUN on.
 
 ## 2026-10-21 — build-docs.yml's rustdoc builder takes the guide list
 

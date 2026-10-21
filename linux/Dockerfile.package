@@ -315,11 +315,12 @@ RUN set -euo pipefail; \
     fi; \
     bash /opt/scripts/packaging/setup-vulkan-symlinks.sh "${TARGETARCH:-${TARGET_ARCH:-amd64}}" || true
 
-# A cached LLVM may lack libFuzzer; borrow TheRock's same-ABI copy under both names, the driver wants the unsuffixed one.
+# A cached LLVM may lack libFuzzer (either layout counts); borrow TheRock's same-ABI copy under both names, the driver wants the unsuffixed one.
 RUN set -euo pipefail; \
     _resdir="$(/usr/local/llvm-target/bin/clang -print-resource-dir 2>/dev/null)"; \
     _libdir="${_resdir}/lib/x86_64-unknown-linux-gnu"; \
-    if [ -n "${_resdir}" ] && [ ! -f "${_libdir}/libclang_rt.fuzzer-x86_64.a" ]; then \
+    _has_fuzzer() { for _f in "${_resdir}"/lib/*/libclang_rt.fuzzer*.a; do [ -e "${_f}" ] && return 0; done; return 1; }; \
+    if [ -n "${_resdir}" ] && ! _has_fuzzer; then \
         for _cand in /opt/rocm/core-*/lib/llvm/lib/clang/23/lib/linux; do \
             [ -f "${_cand}/libclang_rt.fuzzer-x86_64.a" ] || continue; \
             mkdir -p "${_libdir}"; \
@@ -329,8 +330,8 @@ RUN set -euo pipefail; \
             echo "[INFO] staged libclang_rt.fuzzer{,_interceptors,_no_main}{,-x86_64}.a from ${_cand}"; \
             break; \
         done; \
-        [ -f "${_libdir}/libclang_rt.fuzzer-x86_64.a" ] || \
-            echo "[WARN] no libclang_rt.fuzzer-x86_64.a staged (no TheRock LLVM under /opt/rocm)"; \
+        _has_fuzzer || \
+            echo "[WARN] ${_resdir} has no libclang_rt.fuzzer and none was staged (no TheRock LLVM under /opt/rocm)"; \
     fi
 
 # The inherited sources still name ports.ubuntu.com; platform.sh must sit beside ubuntu-mirror.sh or this RUN is a silent no-op.
