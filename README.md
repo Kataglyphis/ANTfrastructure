@@ -1,6 +1,6 @@
 <div align="center">
   <a href="https://jonasheinle.de">
-    <img src="images/logo.png" alt="logo" width="200" />
+    <img src="images/logo.svg" alt="ANTfrastructure logo: an ant hauling a shipping container" width="200" />
   </a>
 
   <h1>ANTfrastructure</h1>

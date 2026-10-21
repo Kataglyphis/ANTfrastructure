@@ -12,6 +12,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The README shows the hub's own logo
+
+- **`images/logo.svg`**, an ant hauling a shipping container: the hub's entry in the family set
+  that DocumANTation's `scripts/make_repo_logos.py` draws into `images/logos/`. `images/logo.png`
+  stays: the README template, `New-MsixPackage.ps1` and `cargo_build_doc.sh` still use it.
+
 ## 2026-10-21 — The mutation gate keeps every shard busy (CON126)
 
 - **A shared queue**: `--jobs` shards drain one queue instead of a round-robin deal, so two slow
