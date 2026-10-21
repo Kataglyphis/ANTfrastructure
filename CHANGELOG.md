@@ -12,6 +12,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The runtime lane uploads each wrapper while the next arch builds (CON126)
+
+- **Owner directive 2026-10-20**: everything in the hub runs as parallel as the host allows. On that
+  day's 3-arch `:latest` run each arch's lane ended in its ~20 GB wrapper push (~1.2 h at 5 MiB/s),
+  and the next arch waited for it.
+- **`lib-runtime-push.sh`**: the wrapper build queues its tag and returns, and one background pusher
+  uploads the queue oldest first through `runtime_push_tag`. The index waits for the drain, and a
+  failed push fails the lane there. A lane that fails earlier still uploads what it built; an
+  interrupt stops the pusher. `RUNTIME_ASYNC_PUSH=0` pushes inline as before. The lib sits beside
+  `lib-runtime-wheels.sh`, outside every image closure.
+- **Gates during the upload**: the content gates, then the smokes, run for every arch at once, with
+  each arch's output printed whole in arch order. `RUNTIME_GATE_JOBS=1` gates in turn as before.
+- **Proof.** `test-runtime-push-queue.sh` holds the first upload open and shows the next arch's build
+  running, FIFO order, the close race, failure, interrupt and exit-drain paths, and the gates side
+  by side. Its 21 mutations bite in `:latest`. Real `nerdctl push` runs through the pusher to a
+  throwaway local registry, including a permanent failure that fails the drain. The next chain run
+  must show `[runtime-timing] arch=arm64 step=base` between `[runtime-push] arch=amd64 start` and
+  `done`. [linux-cross-builds.md § The wrapper push runs beside the next build](docs/linux-cross-builds.md#the-wrapper-push-runs-beside-the-next-build).
+
 ## 2026-10-21 — The runtime lane's wrapper reaches the sccache S3 level, and its push stops flooding the log
 
 Found by reading the last nine `:latest` chain logs and their resource samples.

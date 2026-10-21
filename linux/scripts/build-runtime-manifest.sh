@@ -253,39 +253,93 @@ verify_foreign_binfmt() {
   log "QEMU binfmt verified for: ${arches}"
 }
 
+# Pull only when missing: a pull re-points the tag at the published image, the stale one under --no-push.
+_manifest_pull_if_missing() {
+  image_exists "${NERDCTL_BIN:-nerdctl}" "$1" && return 0
+  run "${NERDCTL_BIN:-nerdctl}" pull -q "$1" || true
+}
+
+# <label> <script> <arch>: one gate run on that arch's wrapper.
+_manifest_gate_arch() {
+  local tag
+  tag="$(runtime_wrapper_tag "$3")"
+  log "$1: ${tag} ($3)"
+  _manifest_pull_if_missing "${tag}"
+  run bash "$2" "${tag}" "$3"
+}
+
+# RUNTIME_GATE_JOBS: arches gated at once, default all of them.
+_manifest_gate_jobs() {
+  local n="$1" jobs="${RUNTIME_GATE_JOBS:-$1}"
+  case "${jobs}" in
+    ''|*[!0-9]*|0)
+      printf '[ERROR] RUNTIME_GATE_JOBS=%s: expected a positive integer\n' "${jobs}" >&2
+      return 2
+      ;;
+  esac
+  [ "${jobs}" -le "${n}" ] || jobs="${n}"
+  printf '%s' "${jobs}"
+}
+
+# <label> <script>: that gate for every arch; RUNTIME_GATE_JOBS=1 runs them in turn and stops at the first failure.
+_manifest_each_arch() {
+  local label="$1" script="$2" jobs arch
+  local -a arches=()
+  mapfile -t arches < <(arch_list_to_words "${TARGET_ARCHES}" | sed '/^$/d')
+  jobs="$(_manifest_gate_jobs "${#arches[@]}")" || return 2
+  if [ "${jobs}" -gt 1 ]; then
+    _manifest_gates_parallel "${label}" "${script}" "${jobs}" "${arches[@]}"
+    return
+  fi
+  for arch in "${arches[@]}"; do
+    _manifest_gate_arch "${label}" "${script}" "${arch}" || return 1
+  done
+}
+
+# <label> <script> <jobs> <arch...>: each arch's output is printed whole, in arch order, once all have ended.
+_manifest_gates_parallel() {
+  local label="$1" script="$2" jobs="$3" dir arch rc failed="" launched=0
+  local -a pids=()
+  shift 3
+  dir="$(mktemp -d "${TMPDIR:-/tmp}/runtime-gates.XXXXXX")" || return 1
+  log "[runtime-gates] ${label}: $# arch(es), ${jobs} at a time (RUNTIME_GATE_JOBS=1 runs them in turn)"
+  for arch in "$@"; do
+    # Counted by rc files, never a bare wait: the background pusher is a child of this shell too.
+    while [ $(( launched - $(find "${dir}" -name '*.rc' | wc -l) )) -ge "${jobs}" ]; do sleep 2; done
+    ( rc=0; _manifest_gate_arch "${label}" "${script}" "${arch}" > "${dir}/${arch}.log" 2>&1 || rc=$?; printf '%s\n' "${rc}" > "${dir}/${arch}.rc" ) &
+    pids+=("$!")
+    launched=$(( launched + 1 ))
+  done
+  for rc in "${pids[@]}"; do wait "${rc}" 2>/dev/null || true; done
+  for arch in "$@"; do
+    rc="$(cat "${dir}/${arch}.rc" 2>/dev/null || printf 'none')"
+    log "[runtime-gates] ${label} ${arch}: rc=${rc}"
+    cat "${dir}/${arch}.log" 2>/dev/null || true
+    [ "${rc}" = 0 ] || failed="${failed:+${failed} }${arch}"
+  done
+  rm -rf "${dir}"
+  [ -z "${failed}" ] && return 0
+  warn "[runtime-gates] ${label} FAILED for: ${failed}"
+  return 1
+}
+
 # Build-only half of main(), skipped by --manifest-only/--repair.
 _manifest_build_and_smoke() {
-  local arch
   # Foreign wrappers build under QEMU, so emulators must exist before the build loop.
   ensure_foreign_binfmt "${TARGET_ARCHES}"
 
+  runtime_push_queue_start || return $?
   run_parallel_arch_loop runtime_wheels_arch_chain "$(arch_loop_flag_prefix runtime-arch-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
 
-  # Smoke before the index goes live so a broken image never ships as :latest.
+  # Smoke before the index goes live so a broken image never ships as :latest; queued pushes stream meanwhile.
   if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
     [ "${_BINFMT_ENSURED:-0}" = "1" ] || ensure_foreign_binfmt "${TARGET_ARCHES}"
-    local smoke_script="${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
-    local wrapper_tag
-    # Content gate for every arch before any boot smoke. docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
-    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
-      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
-      log "Wrapper content gate: ${wrapper_tag} (${arch})"
-      # Pull only when missing: a pull re-points the tag at the published image, the stale one under --no-push.
-      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
-        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
-      fi
-      # Byte-gate: a stale wrapper boots green too, so assert shipped content. 0 → advisory.
-      run bash "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" "${wrapper_tag}" "${arch}"
-    done
-    for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
-      wrapper_tag="$(runtime_wrapper_tag "${arch}")"
-      log "Runtime-image smoke: ${wrapper_tag} (${arch})"
-      if ! image_exists "${NERDCTL_BIN:-nerdctl}" "${wrapper_tag}"; then
-        run "${NERDCTL_BIN:-nerdctl}" pull -q "${wrapper_tag}" || true
-      fi
-      run bash "${smoke_script}" "${wrapper_tag}" "${arch}"
-    done
+    # Every arch's content gate before any boot smoke: a stale wrapper boots green too. docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
+    _manifest_each_arch "Wrapper content gate" "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh"
+    _manifest_each_arch "Runtime-image smoke" "${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh"
   fi
+  # The index lists every arch, so it waits for the last upload.
+  runtime_push_queue_finish
 }
 
 main() {

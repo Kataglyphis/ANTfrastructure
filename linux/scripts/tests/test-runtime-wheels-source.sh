@@ -14,7 +14,8 @@ STV="${SCRIPTS}/06-packaging/setup-torch-venv.sh"
 
 # The real wrapper path: argument assembly, the chain, and the context helpers it calls.
 _FNS="$(rw_fns "${RBF}" append_wrapper_build_args runtime_wheels_image_ref _append_wheels_image_args \
-  runtime_gpu_backend_pair _runtime_timed runtime_build_chain _runtime_build_wrapper runtime_build_wrapper_image)" || exit 1
+  runtime_gpu_backend_pair _runtime_timed runtime_build_chain _runtime_build_wrapper runtime_build_wrapper_image \
+  _runtime_push_wrapper_tag)" || exit 1
 _FNS+=$'\n'"$(rw_fns "${CTX}" runtime_pushes_wrapper_images runtime_pushes_intermediate_images \
   runtime_use_local_artifact_context runtime_artifact_context_dir runtime_artifact_context_ref \
   _with_throwaway_container _export_cid_wheels runtime_wheels_context_dir)" || exit 1

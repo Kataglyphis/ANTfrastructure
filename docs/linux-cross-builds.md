@@ -742,6 +742,37 @@ The app wheelhouse (`05-frameworks/torch/build-app-wheelhouse.sh`) is built on t
 - Each local stage context is deleted after the downstream build consumes it.
 - `--manifest-only` (alias `--repair`) creates/pushes the manifest without rebuilding images — the recommended way to repair `:latest` from existing per-arch wrappers.
 
+### The wrapper push runs beside the next build
+
+A wrapper push needs no CPU, and at 5 MiB/s a ~20 GB wrapper takes ~1.2 h (2026-10-20). Until
+2026-10-21 each arch's lane ended in that push, so the next arch started only after it.
+
+- **Background pusher** (`lib-runtime-push.sh`, default `RUNTIME_ASYNC_PUSH=1`). The wrapper build
+  queues its tag and returns, so the next arch's `base` starts at once. One pusher uploads the queue
+  oldest first, one tag at a time, through `runtime_push_tag` and its retries. The index waits for
+  the drain (`runtime_push_queue_finish`), and a failed push fails the lane there. A lane that fails
+  earlier still lets the wrappers it built finish uploading; an interrupt stops the pusher.
+  `RUNTIME_ASYNC_PUSH=0` pushes inline, as before. Intermediate pushes (`--push-all`) stay inline,
+  since the next build pulls them.
+- **Gates beside the upload.** The content gates and then the smokes run for every arch at once
+  while the uploads stream. Each arch's output is printed whole, in arch order, after its gate ends.
+  `RUNTIME_GATE_JOBS=N` caps how many arches run at once; `1` runs them in turn and stops at the
+  first failure, as before. Content gates still all finish before any smoke starts.
+- **What it does not change.** The arches still *build* one after another, so the disk gate still
+  sizes for one wrapper (`CROSS_RUNTIME_LANE_GB`). With the push out of the way, the lane's floor
+  is the first build plus the summed upload. Parallel builds only help where builds outlast the
+  uploads (CON126).
+
+A run proves the overlap in its log:
+
+```bash
+grep -nE '\[runtime-push\]|\[runtime-timing\]|\[runtime-gates\]' "$LOG"
+```
+
+Look for `arch=arm64 step=base` (and arm64's `#N [...] RUN` lines) between
+`[runtime-push] arch=amd64 start` and `[runtime-push] arch=amd64 done`. `queue drained: N push(es),
+waited Ns` gives the upload time that was still on the critical path.
+
 ### Torch pin enforcement on GPU lines
 
 `assemble-torch-app.sh`'s `enforce_torch_version_pins` re-installs the pinned
@@ -1043,6 +1074,8 @@ destroys it, and what replacing it costs is in
 | `NO_CACHE=1` | `--no-cache` across the whole chain. |
 | `RUNTIME_NO_CACHE=1` | `--no-cache` on just the runtime package + wrapper builds (use after a media toggle flip). |
 | `RUNTIME_WHEELS_SOURCE=auto\|image\|export` | Where the wrapper's torch RUN gets `/opt/wheels`: a bind mount of the android image (`image`; `auto`, the default, means `image`), or a sealed directory exported from that same image before each package build (`export`). [Both paths](#the-wrappers-wheelhouse-two-deliveries). |
+| `RUNTIME_ASYNC_PUSH=1\|0` | Each wrapper uploads in a background queue while the next arch builds (`1`, default), or inline as before 2026-10-21 (`0`). [The pusher](#the-wrapper-push-runs-beside-the-next-build). |
+| `RUNTIME_GATE_JOBS=N` | Arches whose content gate and smoke run at once (default: all); `1` gates them in turn. |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
 | `NO_CACHE_EXPORT=1` | Drop everything registry-facing (inline cache export + registry cache reads). The manual recovery for the ghcr `DeadlineExceeded`/`httpReadSeeker` import flake — which the chain now also does by itself after two such failures. |
 | `CROSS_REGISTRY_CACHE=max` | **DESIGN ONLY — setting it is a silent no-op.** The T4 pilot was declined and its implementation reverted; the `--cache-to type=registry` it describes no longer exists, and `verify-critical-fixes.sh` actively forbids the dead `<tag>-buildcache` ref from returning. Kept as a row only so the name resolves to its history — see [`build-cache-tiers.md` § 4](build-cache-tiers.md). |

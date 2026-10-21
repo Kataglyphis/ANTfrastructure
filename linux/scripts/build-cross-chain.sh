@@ -246,6 +246,7 @@ _chain_validate_stages() {
   runtime_wheels_source_mode >/dev/null || exit 2
   hailo_validate_knobs || exit 2
   runtime_host_payload_arches >/dev/null || exit 2
+  runtime_push_mode >/dev/null || exit 2
 
   log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} stage_repo=$(cross_stage_repo) final=${FINAL_IMAGE}"
 

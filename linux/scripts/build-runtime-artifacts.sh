@@ -81,7 +81,9 @@ main() {
 
   log "Building and exporting ${ARTIFACT_BUILD_MODE} runtime artifacts for target arches: ${TARGET_ARCHES}"
 
+  runtime_push_queue_start || exit $?
   run_parallel_arch_loop _build_one_artifact "$(arch_loop_flag_prefix runtime-artifact-loop-flags)" "${MAX_PARALLEL_ARCHS}" $(arch_list_to_words "${TARGET_ARCHES}")
+  runtime_push_queue_finish
 }
 
 main "$@"

@@ -1432,6 +1432,7 @@ did. The two deliveries are in
 | Line | Printed by | Says |
 |---|---|---|
 | `[runtime-timing] arch=<a> step=<s> secs=<n> rc=<rc>` | `_runtime_timed`, host | wall time of `base`, `package`, `smoke`, `wrapper`, and `wheels-export` in export mode |
+| `[runtime-push] arch=<a> start\|done epoch=<t> …` | `lib-runtime-push.sh`, host | the wrapper upload [beside the next build](linux-cross-builds.md#the-wrapper-push-runs-beside-the-next-build); `queue drained` gives the wait left at the end |
 | `[wheels] <a>: files=<n> bytes=<b> sha256=<d> (exported from <ref>)` | `lib-runtime-wheels.sh`, host, export mode | what was staged, and from which image |
 | `[torch-run] start epoch=<t> arch=<a>` | the torch RUN's first statement | when the RUN's process started |
 | `[torch-venv] wheelhouse files=<n> bytes=<b> sha256=<d>` | `setup-torch-venv.sh`, before anything prunes | what the RUN mounted |

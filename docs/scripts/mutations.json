@@ -16097,5 +16097,173 @@
   "replace": "  for engine in canvaskit/canvaskit.wasm; do",
   "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
   "why": "a build without its skwasm engine must fail"
+ },
+ {
+  "id": "runtime-push.async-default",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "  case \"${RUNTIME_ASYNC_PUSH:-1}\" in",
+  "replace": "  case \"${RUNTIME_ASYNC_PUSH:-0}\" in",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the background pusher is the default; RUNTIME_ASYNC_PUSH=0 is the switch back to inline"
+ },
+ {
+  "id": "runtime-push.unknown-value-refuses",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "      printf '[ERROR] RUNTIME_ASYNC_PUSH=%s: expected 1 (background pusher) or 0 (inline push)\\n' \"${RUNTIME_ASYNC_PUSH}\" >&2\n      return 2",
+  "replace": "      printf '%s' async",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a typo in the knob stops the lane at its start instead of silently picking a mode"
+ },
+ {
+  "id": "runtime-push.fifo-oldest-first",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "[[ \"${f}\" < \"${oldest}\" ]]",
+  "replace": "[[ \"${f}\" > \"${oldest}\" ]]",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the first arch built uploads first, so its upload ends earliest"
+ },
+ {
+  "id": "runtime-push.reread-after-closed",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "      [ -n \"$(_runtime_push_next \"${dir}\")\" ] || return 0\n      continue",
+  "replace": "      return 0",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "an item queued between the pusher's empty read and the close would never be pushed"
+ },
+ {
+  "id": "runtime-push.rc-survives-errexit",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "{ rc=0; runtime_push_tag \"${tag}\" 2>&1 || rc=$?;",
+  "replace": "{ rc=0; runtime_push_tag \"${tag}\" 2>&1; rc=$?;",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "under errexit a failed push would end the pusher and strand every arch queued behind it"
+ },
+ {
+  "id": "runtime-push.enqueue-returns",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "  item=\"q.$(date +%s%N).${arch}\"",
+  "replace": "  runtime_push_tag \"${tag}\"\n  item=\"q.$(date +%s%N).${arch}\"",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the whole point: the arch's lane hands its upload off and the next arch builds at once"
+ },
+ {
+  "id": "runtime-push.interrupt-stops",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "    chain_terminate_descendants TERM \"${RUNTIME_PUSHER_PID}\"\n    kill -TERM \"${RUNTIME_PUSHER_PID}\" 2>/dev/null || true",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "an interrupted lane must stop uploading, not wait out an hour-long push"
+ },
+ {
+  "id": "runtime-push.failure-fails-drain",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "    [ \"${rc}\" = 0 ] || failed=\"${failed:+${failed} }${arch}(rc=${rc:-none})\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a wrapper that never reached the registry must fail the lane before the index lists it"
+ },
+ {
+  "id": "runtime-push.exit-drains",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "  trap_push 'runtime_push_queue_finish exit'",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a lane that fails after a build still uploads that wrapper, as the inline push did"
+ },
+ {
+  "id": "runtime-push.owner-gone",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "    kill -0 \"${owner}\" 2>/dev/null || return 0\n    sleep",
+  "replace": "    sleep",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a pusher whose lane was killed hard would poll forever"
+ },
+ {
+  "id": "runtime-push.wrapper-image-hook",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}\n\nruntime_build_wrapper_rootfs() {",
+  "replace": "    runtime_push_tag \"${tag}\" || return 1\n  fi\n}\n\nruntime_build_wrapper_rootfs() {",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a wrapper build that pushes past the queue blocks its arch for the whole upload again"
+ },
+ {
+  "id": "runtime-push.manifest-queues",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_push_queue_start || return $?\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "without the pusher every wrapper push is inline and serial again"
+ },
+ {
+  "id": "runtime-push.manifest-drains",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  # The index lists every arch, so it waits for the last upload.\n  runtime_push_queue_finish\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the index would be created over wrappers still uploading, or never uploaded"
+ },
+ {
+  "id": "runtime-push.chain-checks-knob",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  runtime_push_mode >/dev/null || exit 2\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the chain reaches the runtime lane hours in; a typo must stop it at its start"
+ },
+ {
+  "id": "runtime-gates.no-bare-wait",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  for rc in \"${pids[@]}\"; do wait \"${rc}\" 2>/dev/null || true; done",
+  "replace": "  wait",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a bare wait also waits for the background pusher, so the gates would hang until every upload ends"
+ },
+ {
+  "id": "runtime-gates.side-by-side",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "\"${dir}/${arch}.rc\" ) &",
+  "replace": "\"${dir}/${arch}.rc\" )",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the arches' content gates and smokes run at once, not one after another"
+ },
+ {
+  "id": "runtime-gates.prints-each-arch",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    cat \"${dir}/${arch}.log\" 2>/dev/null || true",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "a parallel gate's output reaches the lane log whole, per arch"
+ },
+ {
+  "id": "runtime-gates.failure-named",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    [ \"${rc}\" = 0 ] || failed=\"${failed:+${failed} }${arch}\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "one red arch fails the phase, so a broken wrapper never reaches the index"
+ },
+ {
+  "id": "runtime-gates.jobs-zero-refused",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    ''|*[!0-9]*|0)",
+  "replace": "    ''|*[!0-9]*)",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "RUNTIME_GATE_JOBS=0 is a typo, not a request to gate in turn"
+ },
+ {
+  "id": "runtime-gates.serial-stops-first",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    _manifest_gate_arch \"${label}\" \"${script}\" \"${arch}\" || return 1",
+  "replace": "    _manifest_gate_arch \"${label}\" \"${script}\" \"${arch}\" || true",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "RUNTIME_GATE_JOBS=1 is the old path, which stopped at the first failing arch"
+ },
+ {
+  "id": "runtime-push.start-refuses-bad-knob",
+  "target": "linux/scripts/lib-runtime-push.sh",
+  "find": "  mode=\"$(runtime_push_mode)\" || return 2",
+  "replace": "  mode=\"$(runtime_push_mode)\" || mode=async",
+  "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
+  "why": "the runtime lanes learn of a bad RUNTIME_ASYNC_PUSH here, before their first build"
  }
 ]

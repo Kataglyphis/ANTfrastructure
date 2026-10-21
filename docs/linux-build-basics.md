@@ -47,6 +47,10 @@ The full `:latest` pipeline:
    - `base` → `compiler` → `sdk` → `media` → `android`
 2. **Runtime lane** (stage 6, target platform via QEMU/binfmt for foreign arches):
    - `base` → `package` → `torch`/`wrapper` → `manifest`
+   - The arches build one after another. Each wrapper uploads in the background while the next
+     arch builds, the content gates and smokes run for every arch at once during the uploads, and
+     `manifest` waits for the last upload
+     ([why](linux-cross-builds.md#the-wrapper-push-runs-beside-the-next-build)).
 
 The stage graph itself — `CROSS_STAGE_ORDER`, the orchestration helpers and the digest-pinning
 API — is owned by

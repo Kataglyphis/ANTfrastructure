@@ -11,6 +11,9 @@ source "${_LIB_ORCHESTRATOR_DIR}/01-core/artifact-common.sh"
 # RUNTIME_WHEELS_SOURCE. Beside, not inside, 01-core: that tree is in the compiler image's closure.
 # shellcheck source=linux/scripts/lib-runtime-wheels.sh
 source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-wheels.sh"
+# RUNTIME_ASYNC_PUSH: the wrapper push beside the next arch's build; host-side for the same reason.
+# shellcheck source=linux/scripts/lib-runtime-push.sh
+source "${_LIB_ORCHESTRATOR_DIR}/lib-runtime-push.sh"
 # HAILO_NESTED_CACHE / HAILO_PYHAILORT_IPO: the orchestrators check them before the first stage.
 # shellcheck source=linux/scripts/03-media/build/hailo/hailo-build-lib.sh
 source "${_LIB_ORCHESTRATOR_DIR}/03-media/build/hailo/hailo-build-lib.sh"

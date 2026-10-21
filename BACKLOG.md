@@ -46,6 +46,40 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       arm64 1150–1265 s) runs before the wrapper build although neither reads the other, so the two
       can overlap and the push wait for both.
 
+      **Survey 2026-10-21** (serial spot → cost → fix, in payoff order; the serial path stays behind
+      a switch in each):
+      1. Runtime lane: each wrapper push blocks its arch (~1.2 h/arch, above) → a FIFO background
+         pusher; the index waits for it (`RUNTIME_ASYNC_PUSH`, 0 = inline).
+      2. Runtime lane: content gates and smokes run one arch at a time, after every push (two 30 GB
+         rootfs exports per content gate, ~100 container runs per smoke, mostly under QEMU;
+         unmeasured) → all arches at once while the pushes stream (`RUNTIME_GATE_JOBS`, 1 = in turn).
+      3. `run-tests.sh`: 227 suites in turn, 25+ min in `:latest` on 32 cores → N at a time,
+         output printed per suite in order (`RUN_TESTS_JOBS`, 1 = in turn). Feeds preflight and CI.
+      4. `lint-shell.sh`: one shellcheck per file, two passes over 545 files (~105 s) → `xargs -P`.
+      5. `preflight.sh`: 39 slugs in turn (secret scan ~170 s alone) → read-only slugs side by side,
+         tree-writing ones (cmake-format's venv) first and alone (`PREFLIGHT_JOBS`, 1 = in turn).
+      6. Mutation gate: mirrors copied one at a time before any shard starts, entries dealt
+         round-robin, pre-push at `--jobs 4` → copies in parallel, a shared work queue, the gate's
+         default in the hook.
+      7. Windows tests: `Invoke-Tests.ps1` runs 179 files in turn (305-404 s in CI);
+         `Invoke-Lint.ps1` analyses 379 files in turn (68-134 s) → process shards with summed
+         results (the 797-test floor holds), `ForEach-Object -Parallel` for the analyzer.
+      8. Windows chain: variants run one after another, each ending in `final-push` (amd64
+         2700-4950 s; four push-only runs on 2026-10-17 took ~2.6 h in turn) → the push leaves the
+         next variant's critical path. `-ConcurrentAux` (litert ‖ tvm, ~960 s/chain) exists but
+         never ran; litert and tvm need nothing from media-core, hailo and genai nothing from
+         ffmpeg/opencv (Dockerfile work, re-keys the media phase).
+      9. Runtime lane builds in turn: after 1 the lane's floor is the first build plus the summed
+         upload, so parallel wrapper builds pay only where builds outlast uploads; they need a
+         `BUILD_MEM_DIVISOR` in the package/torch compile steps (hailo) and a disk gate that sizes
+         the concurrency (120 GB each) instead of refusing.
+      10. Cross stages join every arch between stages, so a fast arch idles until the slowest one
+          has pushed (PAR5: hours at media) → an arch-major pipeline; the between-stage disk guard
+          and the image-store lever assume no build in flight, so opt-in first.
+      11. Docs: Sphinx without `-j`, the sidebar check one page × viewport at a time, the site link
+          gate and the dartdoc nav rewrite one page at a time; `run-lint-gates.sh` runs gitleaks per
+          top-level entry in turn.
+
 - [ ] **CON139 — a failed arch re-runs alone; the arches already built are not rebuilt** [M, ★★★].
       The runtime lane's completeness gate wants every child of `:latest` stamped with the same run-id
       (`_chain_runtime_arch_state`: `built-this-run | stale | missing`). On 2026-10-20 only riscv64
@@ -78,6 +112,7 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       `verify-shipped-wrapper` and `runtime-image-smoke` first). Done when a 3-arch run's minimum free
       space is reported in the resource summary and stays above the disk-watch threshold (40 GB) without
       its trim firing.
+
 
 - [ ] **CON112 — ModelANT's release build runs on the pinned CPython and the chain ORT** [M, ★★].
       `.github/workflows/release.yml` builds on `ubuntu-latest` with `actions/setup-python`

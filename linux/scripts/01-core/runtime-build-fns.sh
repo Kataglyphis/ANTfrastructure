@@ -514,7 +514,7 @@ runtime_build_wrapper_image() {
   fi
 
   if runtime_pushes_wrapper_images; then
-    runtime_push_tag "${tag}" || return 1
+    _runtime_push_wrapper_tag "${tag}" "${arch}" || return 1
   fi
 }
 
@@ -536,8 +536,17 @@ runtime_build_wrapper_rootfs() {
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
 
   if runtime_pushes_wrapper_images; then
-    runtime_push_tag "${tag}" || return 1
+    _runtime_push_wrapper_tag "${tag}" "${arch}" || return 1
   fi
+}
+
+# The orchestrators' background pusher when loaded (lib-runtime-push.sh), else the inline push.
+_runtime_push_wrapper_tag() {
+  if declare -F runtime_push_wrapper >/dev/null 2>&1; then
+    runtime_push_wrapper "$1" "$2"
+    return
+  fi
+  runtime_push_tag "$1"
 }
 
 runtime_build_chain() {
