@@ -143,6 +143,7 @@ _run arm64 arm64 >/dev/null
 t_assert_eq yes "$([ -d "${ROOT}/1.4.357.0/x86_64" ] && echo yes)" "no loader for the target, no drop"
 
 t_case "a builder-arch ELF in the target prefix's bin goes (PyInstaller's vkprofiles); target ELFs and scripts stay"
+t_needs "an ELF /bin/true for the fixtures (Git Bash's binaries are PE)" t_is_elf /bin/true
 _fixture aarch64
 mkdir -p "${ROOT}/1.4.357.0/aarch64/bin"
 cp /bin/true "${ROOT}/1.4.357.0/aarch64/bin/vkprofiles"
