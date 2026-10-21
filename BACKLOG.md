@@ -431,6 +431,17 @@ owner carries the breakage that costs.
         export 128 on aarch64. Four of about twenty OxidANT arm64 runs since 2026-10-05 had
         died on it, one as a SIGSEGV in `forward_ambient` rather than an `LLVM ERROR`.
 
+- [ ] **CON137 — Playwright in `:latest`, so the Flutter web console capture runs in a lane** [S, ★★].
+      Found 2026-10-21, sharing OmniAccelerANT's web side with jotrockenmitlocken.
+      `linux/webserver/scripts/flutter_capture_console_errors.py` needs the Python `playwright`
+      package. `:latest` ships Chrome for Testing (`CHROME_EXECUTABLE`) but not that package, so
+      the capture is hand-run, and neither app's web lane runs it. Proved by hand in a throwaway
+      container of `:latest` `b52f8c34`: playwright pip-installed into `/tmp`, then
+      jotrockenmitlocken's wasm build over 21 routes gave 38 passed, 0 failed, no console errors.
+      Next: the image installs `playwright` into its venv, without its browser download (the
+      script launches `CHROME_EXECUTABLE`). Then jotrockenmitlocken's `web.yml` smoke step and
+      OmniAccelerANT's web lane run the capture after the smoke test, each with its `--route` list.
+
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON130 — riscv64 cross builds read the amd64 image's `PKG_CONFIG_PATH` first** [S, ★★].
