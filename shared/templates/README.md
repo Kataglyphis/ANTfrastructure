@@ -11,6 +11,8 @@ Copy `AGENTS.md.template` to `<your-repo>/AGENTS.md`, then fill in sections 1,
 Copy `README.md.template` to `<your-repo>/README.md` and replace `PROJECT`. The
 README stays an overview that links into `docs/`; what it holds and what leaves
 it is [`repository-family.md` § The README rule](../../docs/repository-family.md#the-readme-rule).
+Its logo is `images/logo.svg`: add the repository to DocumANTation's `scripts/make_repo_logos.py`,
+copy what it draws, and render `images/logo.png` (256 px) from it for the packages.
 
 ## What the layout is for
 

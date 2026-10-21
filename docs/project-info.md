@@ -206,7 +206,7 @@ repository, so nothing here could regenerate it.
 **What is tracked and large today: nothing.** After that removal the biggest
 tracked files are text — `docs/scripts/mutations.json` (~600 KB on 2026-09-25),
 `docs/scripts/code-dupes.allow` (~390 KB), `CHANGELOG.md` and the documentation archives. The
-only tracked binary is `images/logo.png`, at 2 KB. The `.gitignore` rules under
+only tracked binary is `images/logo.png`, at 24 KB. The `.gitignore` rules under
 "Binaries and build output do not belong in git" are what keeps it that way; a
 binary that genuinely belongs here is committed with `git add -f` and named in
 this section.

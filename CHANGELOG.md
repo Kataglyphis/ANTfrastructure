@@ -16,7 +16,9 @@
 
 - **`images/logo.svg`**, an ant hauling a shipping container: the hub's entry in the family set
   that DocumANTation's `scripts/make_repo_logos.py` draws into `images/logos/`. `images/logo.png`
-  stays: the README template, `New-MsixPackage.ps1` and `cargo_build_doc.sh` still use it.
+  is rendered from it at 256 px (24 KB). The README template names `images/logo.svg`, which a new
+  repository adds to that set; `New-MsixPackage.ps1` and `cargo_build_doc.sh` still take a
+  repository's `images/logo.png`.
 
 ## 2026-10-21 — The mutation gate keeps every shard busy (CON126)
 

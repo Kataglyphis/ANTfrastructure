@@ -48,7 +48,8 @@ A data repository (ModelANT, AssetANT) and the profile page carry fewer of these
 **A README is the front page, read in a minute.** It says what the project is and where to
 read on; everything else has a page of its own. In this order:
 
-1. **Header:** the family's ant logo, the name, and the tagline in one line.
+1. **Header:** the repository's own ant logo (`images/logo.svg`, from DocumANTation's
+   `scripts/make_repo_logos.py`), the name, and the tagline in one line.
 2. **Badges:** the CI lanes first; dependency, social and donate badges after them, in the same block.
 3. **One paragraph:** what it does and for whom.
 4. **Highlights:** at most six bullets of one line each.
