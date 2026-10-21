@@ -172,3 +172,11 @@ mutation-family:release
 mutation-family:data-lock
 # The shared-assets registry's rows (shared/config/shared-assets.manifest), a data file no slug owns; proof: test-shared-config-sync.sh.
 mutation-family:shared-assets
+# The Flutter app gates in 05-frameworks/flutter/: the Dart coverage floor (check-dart-coverage.sh); proof: test-check-dart-coverage.sh.
+mutation-family:dart-coverage
+# The Flutter web artefacts gate (check-web-artefacts.py), run by the apps' lanes; proof: test-check-web-artefacts.sh.
+mutation-family:web-artefacts
+# The frame-timing report against earlier runs (frontend-perf-report.py); proof: test-perf-reports.sh.
+mutation-family:perf-report
+# The nginx harness for a Flutter web build (linux/webserver/scripts/flutter-nginx-integration-test.sh); proof: test-flutter-nginx-integration.sh.
+mutation-family:nginx-harness

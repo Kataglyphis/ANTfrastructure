@@ -94,19 +94,25 @@ if [ -n "$REQUIRED_CSP_HOSTS" ]; then
 fi
 
 if [ "$CHECK_LOADING_SHELL" = "1" ]; then
-  echo "--- Testing: loading screen uses MutationObserver ---"
-  if printf '%s' "$HTML" | grep -q "MutationObserver"; then
-    echo "PASS: MutationObserver-based loading screen present"
-  else
-    echo "WARN: MutationObserver not found in loading script"
-  fi
-
-  echo "--- Testing: loading screen has hideLoading ---"
-  if printf '%s' "$HTML" | grep -q "hideLoading"; then
-    echo "PASS: hideLoading function present"
-  else
-    echo "WARN: hideLoading function not found"
-  fi
+  # The shared shell (shared/web/README.md): its markup in index.html, its files beside it.
+  echo "--- Testing: the shared loading shell ---"
+  for needle in 'class="loading"' 'id="background-animation"' 'id="cookie-notice"' 'javascript/init.js' 'css/loading_animation.css'; do
+    if printf '%s' "$HTML" | grep -qF "$needle"; then
+      echo "PASS: index.html has $needle"
+    else
+      echo "FAIL: index.html lacks $needle"
+      exit 1
+    fi
+  done
+  for asset in javascript/utils.js javascript/cookies.js javascript/init.js css/cookie.css css/loading_animation.css; do
+    ASSET_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/$asset" || true)
+    if [ "$ASSET_STATUS" = "200" ]; then
+      echo "PASS: $asset served"
+    else
+      echo "FAIL: $asset returned HTTP $ASSET_STATUS"
+      exit 1
+    fi
+  done
 fi
 
 echo ""

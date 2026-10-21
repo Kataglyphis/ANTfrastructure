@@ -12,6 +12,25 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The Flutter web shell, the coverage floor and the frame timings, shared by both apps
+
+- **`shared/web/`**: the loading screen and cookie notice both Flutter web apps load before Flutter
+  starts, merged from the two copies that had diverged. From OmniAccelerANT: the phone layout,
+  `prefers-reduced-motion`, a button rule scoped to the notice, and `Secure` only on https. From
+  jotrockenmitlocken: the dark variant, the fade-out, a consent cookie that lasts (`Max-Age` 400
+  days, `path=/`; OmniAccelerANT's unparsable `expires` made it a session cookie) and no inline
+  script. Five `exact` rows in `shared-assets.manifest`; `flutter-web-htaccess` is a `body` row
+  for jotrockenmitlocken's `web/.htaccess`.
+- **`05-frameworks/flutter/`**: `check-dart-coverage.sh` (with `--exclude` for an app's generated
+  trees), `frontend-perf-report.py`, `flutter-trace-summary.py` and the new `check-web-artefacts.py`
+  (title vs manifest name, `sqlite3.wasm` vs its pin, 8-bit icons), all from OmniAccelerANT, so
+  jotrockenmitlocken takes them too. Suites: `test-check-dart-coverage.sh`,
+  `test-perf-reports.sh`, `test-check-web-artefacts.sh`.
+- **`linux/webserver/`**: `flutter-nginx-integration-test.sh` is jotrockenmitlocken's nginx harness
+  for any build dir and port, Git Bash paths included (`test-flutter-nginx-integration.sh`). The
+  smoke test's `CHECK_LOADING_SHELL` now checks the shared shell's markup and files; it used to
+  warn about a MutationObserver the shell no longer has. The console capture takes `--route`.
+- Seven mutations, each proved to bite.
 ## 2026-10-21 — The GPU images ship TensorRT's runtime files only (CON136)
 
 - **Owner decision 2026-10-21** ("Rausnehmen"): TensorRT's SLA names only "the runtime files .so and

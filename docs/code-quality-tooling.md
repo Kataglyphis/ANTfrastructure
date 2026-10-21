@@ -226,6 +226,41 @@ reads that file instead of running the suite a second time. OmniAccelerANT's nat
 ran it twice, 70 s and then 55 s for the coverage report. It is refused with
 `--test-platform chrome`, since `flutter test` collects coverage on the VM only.
 
+#### The Dart coverage floor
+
+`05-frameworks/flutter/check-dart-coverage.sh --min <percent> --lcov <file>` fails when the
+app's own `lib/` falls below the floor. It reads the lcov `flutter_checks.sh --coverage` wrote,
+or runs `flutter test --coverage` itself without `--lcov`. `lib/l10n/` never counts; an app adds
+its own generated trees with `--exclude <prefix>` (OmniAccelerANT: `lib/src/rust/`). It prints the
+five least covered files. Set the floor a point or two under what the app measures, and raise
+it as tests land. Moved here from OmniAccelerANT on 2026-10-21, when jotrockenmitlocken took it
+too. Test: `tests/test-check-dart-coverage.sh`.
+
+#### The Flutter web artefacts gate
+
+`05-frameworks/flutter/check-web-artefacts.py --repo-root <app>` checks the committed web files no
+build step checks:
+
+- `web/index.html`'s `<title>` and `web/manifest.json`'s `name` agree;
+- `web/sqlite3.wasm` is the `SQLITE3_WASM_SHA256` build, and `pubspec.lock` resolves sqlite3 at
+  `SQLITE3_WASM_VERSION`;
+- every PNG under `web/` and `android/app/src/main/res/` is 8 bits per channel.
+  `flutter_launcher_icons` writes 16 bits, and a browser fetched a 123 kB `Icon-192.png` instead
+  of 26 kB on every cold load.
+
+It came out of OmniAccelerANT's `pinned_artefacts_test.dart`. Test: `tests/test-check-web-artefacts.sh`.
+
+#### Frontend frame timings
+
+`05-frameworks/flutter/frontend-perf-report.py <frontend.json> <history-dir>` reads an app's
+`integration_test/performance_test.dart` summaries (`flutter drive --profile` with a driver that
+writes `watchPerformance`'s report) and prints a Markdown table against the median of the earlier
+runs in `<history-dir>`. Over +25 % it warns. When the average or 90th-percentile build time
+doubles, it fails, but only once 3 earlier runs exist.
+`flutter-trace-summary.py <timeline.json>` lists a timeline's slowest frames and the slowest UI
+frame's self time per event, per widget with `debugProfileBuildsEnabled`. Both moved here from
+OmniAccelerANT on 2026-10-21. Test: `tests/test-perf-reports.sh`.
+
 #### `dart format`: the tracked files, in the floor's style
 
 **Never `dart format .`, in a lane or by hand.** The recursive walk reaches every

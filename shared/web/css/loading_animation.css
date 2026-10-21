@@ -1,0 +1,101 @@
+/* Until Flutter starts: ANThology's dismissBootOverlay() fades it out and removes it. Below the cookie notice (z-index 11). */
+body {
+	font-family: 'Roboto', 'Noto Sans', system-ui, -apple-system, sans-serif;
+}
+
+.loading {
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	align-items: center;
+	gap: 16px;
+	position: fixed;
+	inset: 0;
+	padding: 0 16px;
+	text-align: center;
+	z-index: 10;
+	pointer-events: none;
+}
+
+.loading.fade-out {
+	opacity: 0;
+	transition: opacity 0.5s ease-out;
+}
+
+#loading-message {
+	color: #000000;
+	font-size: 24px;
+	max-width: 480px;
+}
+
+#background-animation {
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	background: linear-gradient(45deg, #ffffff, var(--kPrimaryColor, #69f0ae));
+	background-size: 400% 400%;
+	animation: gradientAnimation 5s ease infinite;
+	transition: opacity 0.5s ease-out;
+}
+
+#background-animation.fade-out {
+	opacity: 0;
+}
+
+.loader {
+	width: 120px;
+	height: 120px;
+	border: 16px solid #ffffff;
+	border-top-color: var(--kPrimaryColor);
+	border-bottom-color: var(--kPrimaryColor);
+	border-radius: 50%;
+	animation: spin 2s linear infinite;
+}
+
+@media (max-width: 480px) {
+	.loader {
+		width: 88px;
+		height: 88px;
+		border-width: 12px;
+	}
+
+	#loading-message {
+		font-size: 20px;
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	#loading-message {
+		color: #e0e0e0;
+	}
+
+	#background-animation {
+		background: linear-gradient(45deg, #1a1a2e, #16213e);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	#background-animation {
+		animation: none;
+	}
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+@keyframes gradientAnimation {
+	0% {
+		background-position: 0% 50%;
+	}
+
+	50% {
+		background-position: 100% 50%;
+	}
+
+	100% {
+		background-position: 0% 50%;
+	}
+}

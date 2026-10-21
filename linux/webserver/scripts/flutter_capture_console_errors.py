@@ -33,6 +33,13 @@ def parse_args() -> argparse.Namespace:
         help="Path to the Chromium binary used by Playwright",
     )
     parser.add_argument(
+        "--route",
+        action="append",
+        dest="routes",
+        metavar="PATH",
+        help="a route to open and expect to stay on; repeat it (default: jotrockenmitlocken's five)",
+    )
+    parser.add_argument(
         "--screenshot-path",
         default="/tmp/flutter_web_screenshot.png",
         help="Where to write the captured screenshot",
@@ -41,7 +48,8 @@ def parse_args() -> argparse.Namespace:
 
 
 class E2ETestSuite:
-    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str):
+    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str, routes=None):
+        self.routes = routes or []
         self.build_dir = build_dir
         self.port = port
         self.chromium_bin = chromium_bin
@@ -93,7 +101,7 @@ class E2ETestSuite:
 
     def test_navigation(self, page, base_url):
         print("\n📍 Navigation & Routing Tests")
-        routes = [
+        routes = [(route, route) for route in self.routes] if self.routes else [
             ("/", "Landing page"),
             ("/aboutMe", "About Me page"),
             ("/data", "Data page"),
@@ -472,5 +480,6 @@ if __name__ == "__main__":
         port=arguments.port,
         chromium_bin=arguments.chromium_bin,
         screenshot_path=arguments.screenshot_path,
+        routes=arguments.routes,
     )
     sys.exit(suite.run_all())

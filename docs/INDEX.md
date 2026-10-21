@@ -149,6 +149,8 @@ Wiring a new project: [Start here](#start-here).
 | Python CI: the shared lanes, and the three `uv` traps (`--all-extras` vs declared conflicts, `UV_PYTHON` beating the venv, a synced venv's ONNX Runtime reconciled onto the chain wheels), and GIL vs free-threaded legs in one container | [`python-ci.md`](python-ci.md) |
 | Code quality: C++ formatter guidance + this repo's own gates (design notes per slug) | [`code-quality-tooling.md`](code-quality-tooling.md) |
 | **`dart format`**: never `dart format .`; the `environment: sdk:` floor picks the style, for code generators too | [`code-quality-tooling.md`](code-quality-tooling.md#dart-format-the-tracked-files-in-the-floors-style) |
+| **A Flutter app's gates**: the Dart coverage floor, the web artefacts gate (title, sqlite3.wasm, 8-bit icons), frame timings against earlier runs | [`code-quality-tooling.md`](code-quality-tooling.md#the-dart-coverage-floor) |
+| **The Flutter web shell** both apps copy into `web/`: loading screen, cookie notice, and the markup `index.html` must carry | [`../shared/web/README.md`](../shared/web/README.md) |
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | **A consumer page that restates a hub page** — `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`, off until the consumer seeds `doc-dupes-hub.allow` | [`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |

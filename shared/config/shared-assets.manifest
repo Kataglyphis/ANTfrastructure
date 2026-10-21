@@ -21,3 +21,9 @@ antfrastructure-sh      | shared/linux/templates/antfrastructure.sh           | 
 resolve-build-module | shared/windows/templates/Resolve-BuildModule.ps1 | scripts/windows/Resolve-BuildModule.ps1 | body  | $script:RepoRootRelativeToHere
 agentic-loop-sh      | shared/agentic-loop/templates/Run-AgenticLoop.sh     | scripts/agentic-loop/Run-AgenticLoop.sh     | body  | head -
 agentic-loop-ps1     | shared/agentic-loop/templates/Invoke-AgenticLoop.ps1 | scripts/agentic-loop/Invoke-AgenticLoop.ps1 | body  |
+web-cookie-css       | shared/web/css/cookie.css                         | web/css/cookie.css                          | exact |
+web-loading-css      | shared/web/css/loading_animation.css              | web/css/loading_animation.css               | exact |
+web-cookies-js       | shared/web/javascript/cookies.js                  | web/javascript/cookies.js                   | exact |
+web-utils-js         | shared/web/javascript/utils.js                    | web/javascript/utils.js                     | exact |
+web-init-js          | shared/web/javascript/init.js                     | web/javascript/init.js                      | exact |
+flutter-web-htaccess | linux/webserver/templates/flutter-web.htaccess    | web/.htaccess                               | body  |

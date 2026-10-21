@@ -15905,5 +15905,61 @@
   "replace": "bad=\"$(_gpur \"$1\" TRTHDR; _gpur \"$1\" TRTDEV)\"",
   "test": "bash linux/scripts/tests/test-gpu-runtime-check.sh",
   "why": "trtexec and the Python binding are SDK parts the SLA does not name distributable"
+ },
+ {
+  "id": "dart-coverage.floor-compare",
+  "target": "linux/scripts/05-frameworks/flutter/check-dart-coverage.sh",
+  "find": "    if (pct < min) {",
+  "replace": "    if (pct < min - 1) {",
+  "test": "bash linux/scripts/tests/test-check-dart-coverage.sh",
+  "why": "one point under the floor must fail"
+ },
+ {
+  "id": "dart-coverage.exclude-ignored",
+  "target": "linux/scripts/05-frameworks/flutter/check-dart-coverage.sh",
+  "find": "if (skip[i] != \"\" && index(file, skip[i]) == 1) own = 0",
+  "replace": "if (0) own = 0",
+  "test": "bash linux/scripts/tests/test-check-dart-coverage.sh",
+  "why": "generated trees must stay out of the count"
+ },
+ {
+  "id": "web-artefacts.icon-depth",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "header[24] != 8",
+  "replace": "header[24] > 16",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "a 16-bit icon must fail"
+ },
+ {
+  "id": "web-artefacts.title-match",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "    if title.group(1).strip() != name:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "a tab title the manifest does not share must fail"
+ },
+ {
+  "id": "web-artefacts.lock-version",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "if m and m.group(1) != pinned.get(\"SQLITE3_WASM_VERSION\"):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "a lock on another sqlite3 than the wasm's must fail"
+ },
+ {
+  "id": "nginx-harness.always-stops",
+  "target": "linux/webserver/scripts/flutter-nginx-integration-test.sh",
+  "find": "trap stop_nginx EXIT",
+  "replace": ": trap stop_nginx EXIT",
+  "test": "bash linux/scripts/tests/test-flutter-nginx-integration.sh",
+  "why": "nginx that never answers must still be stopped"
+ },
+ {
+  "id": "perf-report.gate-history",
+  "target": "linux/scripts/05-frameworks/flutter/frontend-perf-report.py",
+  "find": "len(earlier) >= MIN_HISTORY_TO_FAIL",
+  "replace": "len(earlier) >= 0",
+  "test": "bash linux/scripts/tests/test-perf-reports.sh",
+  "why": "too few earlier runs must only warn"
  }
 ]

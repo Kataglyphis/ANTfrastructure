@@ -238,6 +238,16 @@ header prose, since a script's comment-based help names its repository; the firs
 is code. `Run-AgenticLoop.sh` prints its own header as `--help` with `head -N "$0" | tail -M`,
 so `head -` is its knob: the range follows the consumer's header length.
 
+## The Flutter web shell
+
+Since 2026-10-21 the shell both Flutter web apps load before Flutter starts is registry rows too,
+all `exact`: `web-cookie-css`, `web-loading-css`, `web-cookies-js`, `web-utils-js` and
+`web-init-js`, from [`shared/web/`](../web/README.md). It had diverged in both directions between
+OmniAccelerANT and jotrockenmitlocken. `index.html` and `manifest.json` stay each app's own: title,
+description, CSP, Open Graph and app-only scripts differ. `flutter-web-htaccess` is a `body` row
+for the Apache template in `linux/webserver/templates/`, which jotrockenmitlocken deploys as
+`web/.htaccess` under its own header.
+
 ## The bash twin
 
 `sync-shared-config.sh` is a full reimplementation, not a wrapper, and it is
