@@ -6,6 +6,17 @@ prefix_gtk4_lib() {
     find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -maxdepth 2 -name libgtk-4.so.1 -print -quit 2>/dev/null || true
 }
 
+# The prefix's own gdk-pixbuf-2.0.pc resolves ahead of the distro's; riscv64 lacked its libtiff-4 (2026-10-21).
+prefix_pixbuf_dev_packages() {
+    local pc
+    pc="$(find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -maxdepth 3 -name gdk-pixbuf-2.0.pc -print -quit 2>/dev/null || true)"
+    [ -n "${pc}" ] || return 0
+    if grep -q -e 'libpng' "${pc}"; then echo libpng-dev; fi
+    if grep -q -e 'libjpeg' "${pc}"; then echo libjpeg-dev; fi
+    if grep -q -e 'libtiff-4' "${pc}"; then echo libtiff-dev; fi
+    return 0
+}
+
 # gtk4-rs builds against the GTK 4 the image runs; the prefix's gtk4.pc lacks only these two Requires (CON129).
 gtk4_dev_packages() {
     if [ -n "$(prefix_gtk4_lib)" ]; then
@@ -13,6 +24,7 @@ gtk4_dev_packages() {
     else
         printf '%s\n' libgtk-4-dev
     fi
+    prefix_pixbuf_dev_packages
 }
 
 # The floor is gtk4-rs 0.11's v4_10 (OxidANT's GTK GUI); --libs resolves every Requires, ldd -r every symbol.

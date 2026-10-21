@@ -224,7 +224,7 @@ t_assert_eq "1" "$(grep -c 'FAIL \[llvm-tool-distro\]' <<< "${_out}")" "clang-ti
 
 # --- the GTK 4 gtk4-rs builds against (CON129) --------------------------------
 _g4fns=""
-for _f in prefix_gtk4_lib gtk4_dev_packages verify_gtk4_dev_surface; do
+for _f in prefix_gtk4_lib prefix_pixbuf_dev_packages gtk4_dev_packages verify_gtk4_dev_surface; do
   _src="$(t_fn_src "${WIRING}" "${_f}")" || exit 1
   _g4fns+="${_src}"$'\n'
 done
@@ -236,6 +236,15 @@ t_case "a prefix with its own GTK 4 gets the two dev packages its gtk4.pc lacks,
 t_assert_eq "libgraphene-1.0-dev libvulkan-dev" "$(_g4pkgs "${_w}/gst-gtk")" \
   "amd64: the distro libgtk-4-dev would bring back the GStreamer runtime CON21 drops"
 t_assert_eq "libgtk-4-dev" "$(_g4pkgs "${_w}/gst-nogtk")" "arm64 and riscv64 run the distro GTK 4"
+
+t_case "a prefix gdk-pixbuf-2.0.pc brings the dev packages of the image libraries it Requires"
+# riscv64's prefix gdk-pixbuf 2.44.6 named libtiff-4, and its package stage had no libtiff-dev (2026-10-21).
+mkdir -p "${_w}/gst-pixbuf/lib/pkgconfig"
+printf 'Version: 2.44.6\nRequires.private: glib-2.0, libpng >=  1.4.0, libjpeg, libtiff-4, shared-mime-info\n' \
+  > "${_w}/gst-pixbuf/lib/pkgconfig/gdk-pixbuf-2.0.pc"
+t_assert_eq "libgtk-4-dev libpng-dev libjpeg-dev libtiff-dev" "$(_g4pkgs "${_w}/gst-pixbuf")"
+printf 'Requires.private: glib-2.0, libpng\n' > "${_w}/gst-pixbuf/lib/pkgconfig/gdk-pixbuf-2.0.pc"
+t_assert_eq "libgtk-4-dev libpng-dev" "$(_g4pkgs "${_w}/gst-pixbuf")" "only what the .pc names"
 
 # _g4 <gtk4 version> <--cflags rc> <ldd output>: the gate over stubbed pkg-config and ldd.
 _g4() {

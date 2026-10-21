@@ -12,6 +12,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — riscv64's package stage installs what the prefix's gdk-pixbuf requires (CON129)
+
+- **The 2026-10-21 `:latest` run failed on riscv64 in `verify_gtk4_dev_surface`**: `Package
+  'libtiff-4', required by 'gdk-pixbuf-2.0', not found`. The GStreamer prefix ships its own
+  gdk-pixbuf 2.44.6, whose `gdk-pixbuf-2.0.pc` names `libpng`, `libjpeg` and `libtiff-4` in
+  `Requires.private` and resolves ahead of Ubuntu's 2.44.5 (which names neither). arm64 had
+  `libtiff-dev` through another package; riscv64 did not.
+- **`prefix_pixbuf_dev_packages`** (`06-packaging/package-image-wiring.sh`) reads that `.pc` and
+  `gtk4_dev_packages` adds `libpng-dev`, `libjpeg-dev` and `libtiff-dev` for what it names.
+  Proved in the `cross-android-riscv64` image: with the three installed, the prefix's
+  `gdk-pixbuf-2.0` resolves. `test-package-image-wiring.sh` covers both a full and a partial `.pc`.
+
 ## 2026-10-21 — No more ghost processes: test runners reap their process groups, agents start units, ghost-watch reports the rest
 
 The build host carried a test fixture spinning at 100 % for 2.8 days and 24 headless Chromes
