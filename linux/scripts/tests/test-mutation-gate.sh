@@ -366,21 +366,43 @@ case "${_out}" in *"vacuous bite"*) t_assert_eq "no vacuous verdict" "vacuous ve
   "disk trouble must not be reported as a test defect" ;; *) t_assert_ok true ;; esac
 fi
 
+# _child_probe <test body> [timeout]: one probe mutation whose test records a child's pid in ${_tmp}/gpid.
+_child_probe() {
+  _fixture "GUARD=on" "GUARD=off" yes .
+  printf '%s\n' "$1" > "${_work}/t.sh"
+  printf '[{"id":"probe","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe","timeout":%s}]\n' \
+    "${2:-300}" > "${_work}/m.json"
+}
+# _child_gone <why>: the recorded child is dead where process groups exist; it is killed and forgotten either way.
+_child_gone() {
+  if _posix_host "process groups (os.killpg)"; then
+    t_assert_eq "dead" "$(t_pid_state "$(cat "${_tmp}/gpid" 2>/dev/null)")" "$1"
+  fi
+  kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null; rm -f "${_tmp}/gpid"
+}
+
 t_case "a test that times out is killed as a TREE, its grandchildren with it"
-# Killing only the shell leaves its children running; the timeout must work where os.killpg is absent too.
-_fixture "GUARD=on" "GUARD=off" yes .
-# Spins only once mutated (else its baseline fails), and stops at 60 s: an orphaned endless spin held a core for 2.8 days.
-printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile [ "${SECONDS}" -lt 60 ]; do :; done\n' "${_tmp}" > "${_work}/t.sh"
-printf '[{"id":"probe","target":"subject.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t.sh","why":"probe","timeout":2}]\n' > "${_work}/m.json"
+# Spins only once mutated (else its baseline fails), and ends at 60 s: an orphaned endless spin held a core for 2.8 days.
+_child_probe "$(printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile [ "${SECONDS}" -lt 60 ]; do :; done' "${_tmp}")" 2
 _out="$(_iso_run)"
 t_assert_contains "${_out}" "bites" "the spinning mutant times out, and a timeout counts as a bite"
 t_assert_fails grep -q -e 'Traceback' <<<"${_out}"
-if _posix_host "process groups (os.killpg)"; then
 sleep 1
-_g="$(cat "${_tmp}/gpid" 2>/dev/null)"
-t_assert_eq "dead" "$( kill -0 "${_g}" 2>/dev/null && echo alive || echo dead )" "the sleeper grandchild must not survive the timeout"
-fi
-kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null; rm -f "${_tmp}/gpid"
+_child_gone "the sleeper grandchild must not survive the timeout"
+
+t_case "a test that ends on its own leaves no child behind either"
+# Off the test's pipes, like an orphaned Chrome: a child holding them would only delay the end, not outlive it.
+_child_probe "$(printf 'sleep 60 >/dev/null 2>&1 &\necho $! > "%s/gpid"\ngrep -q "GUARD=on" ./subject.sh' "${_tmp}")"
+t_assert_contains "$(_iso_run)" "bites"
+_child_gone "a finished test's child must not outlive it"
+
+t_case "a gate killed mid-test takes the running test's session with it"
+_child_probe "$(printf 'sleep 60 >/dev/null 2>&1 &\necho $! > "%s/gpid"\nwait' "${_tmp}")" 120
+TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_work}/m.json" --root "${_work}" >/dev/null 2>&1 &
+_gp=$!
+t_wait_file "${_tmp}/gpid"
+kill -TERM "${_gp}"; wait "${_gp}" 2>/dev/null
+_child_gone "a SIGTERM'd gate left its test's child running"
 
 # --- symlinks: the copy must neither dereference them nor let a write out ------
 

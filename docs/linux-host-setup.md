@@ -653,6 +653,34 @@ and the key is stored unchecked. `--clear` removes the file.
   `sccache levels: disk -> s3 <endpoint>`, and each sccache RUN ends with a `sccache-drain|`
   line.
 
+### B10. Ghost-watch
+
+A build host runs for days, and an orphaned process runs with it. On 2026-10-21 this host
+had a test fixture spinning at 100 % for 2.8 days and 24 headless Chromes holding 22 GB,
+all left behind by interrupted test runs. What stops new ones is in the repo: `run-tests.sh`
+and the mutation gate kill each test's process group when it ends, times out or the run is
+interrupted, and agents start background jobs as systemd units (`AGENTS.md` § *Background
+jobs and test processes*). Ghost-watch is the safety net for what still slips through.
+Non-root:
+
+```bash
+linux/host-config/ghost-watch.sh                 # report now; exit 1 when it found any
+linux/host-config/ghost-watch.sh --install       # hourly user timer, desktop notice on a find
+linux/host-config/ghost-watch.sh --uninstall
+```
+
+- **What counts:** a process of yours whose parent is PID 1 or your `systemd --user`, older
+  than an hour (`--min-age-min=N`), that averages 25 % CPU, holds 1 GB, or looks like a test
+  leftover (headless Chrome, `bash ./t.sh`, a script under `/tmp/tmp.*`). A process with a
+  live parent is someone's build and never counts.
+- **It only reports.** The listing names the pid and the command; `kill <pid>` ends one,
+  `kill -- -<pgid>` its whole group.
+- **Long-lived on purpose:** the desktop, containerd and BuildKit, zellij, `opencode serve`,
+  ollama, RustDesk and a running `build-cross-chain.sh` are allowed. A host adds its own to
+  `~/.config/kataglyphis/ghost-watch.allow`, one extended regex per line.
+- **A find fails the timer's unit**, so `systemctl --user --failed` shows it too, and
+  `journalctl --user -u ghost-watch` holds the listing.
+
 ## Phase C — Performance mode
 
 Build hosts ship in a power-saving governor by default, which costs real

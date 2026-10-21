@@ -6704,6 +6704,71 @@
   "why": "on Linux a stray exit 77 must fail the run; accepting it there lets any suite opt out of CI by exiting 77"
  },
  {
+  "id": "ordered-jobs.reap-job-group",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "    kill -KILL -- \"-${pid}\" 2>/dev/null || true",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
+  "why": "a child a suite leaves behind outlives the run: a spinning fixture held a core for 2.8 days and 24 headless Chromes 22 GB"
+ },
+ {
+  "id": "script-tests.reap-on-interrupt",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "trap 'oj_reap' EXIT",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
+  "why": "a preflight killed at its timeout must not leave the suite it was running behind"
+ },
+ {
+  "id": "script-tests.suite-timeout",
+  "target": "linux/scripts/tests/run-tests.sh",
+  "find": "export OJ_TIMEOUT=\"${RUN_TESTS_SUITE_TIMEOUT:-900}\"",
+  "replace": "export OJ_TIMEOUT=\"\"",
+  "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
+  "timeout": 90,
+  "why": "a hung suite held the whole preflight 27 minutes (test-docs-sidebars.sh, CON144); without a timeout it holds it forever"
+ },
+ {
+  "id": "ghost-watch.orphans-only",
+  "target": "linux/host-config/ghost-watch.sh",
+  "find": "if (($2 != 1 && $2 != mgr) || $3 < min_s || cmd ~ allow) next",
+  "replace": "if ($3 < min_s || cmd ~ allow) next",
+  "test": "bash linux/scripts/tests/test-ghost-watch.sh",
+  "why": "a busy compiler with a live parent is a build, not a ghost; only orphans of PID 1 or the user's systemd count"
+ },
+ {
+  "id": "ghost-watch.leftover-patterns",
+  "target": "linux/host-config/ghost-watch.sh",
+  "find": "if ($4 >= cpu || $5 >= rss || cmd ~ ghost)",
+  "replace": "if ($4 >= cpu || $5 >= rss)",
+  "test": "bash linux/scripts/tests/test-ghost-watch.sh",
+  "why": "an orphaned headless Chrome idles at 3 % CPU and 230 MB, under both thresholds; 24 of them held 22 GB"
+ },
+ {
+  "id": "ghost-watch.exit-status",
+  "target": "linux/host-config/ghost-watch.sh",
+  "find": "fi\nexit 1",
+  "replace": "fi\nexit 0",
+  "test": "bash linux/scripts/tests/test-ghost-watch.sh",
+  "why": "the timer's unit fails on a ghost, which is what systemctl --user --failed shows"
+ },
+ {
+  "id": "mutations.reap-finished-test",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        if hasattr(os, \"killpg\"):\n            _kill_group(proc.pid)\n        with _LIVE_LOCK:",
+  "replace": "        with _LIVE_LOCK:",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a test that exits normally can leave children in its session, and start_new_session hides them from everyone else"
+ },
+ {
+  "id": "mutations.reap-on-signal",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "            signal.signal(getattr(signal, _sig), _exit_on_signal)",
+  "replace": "            pass",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a gate killed at a preflight's timeout left its running tests orphaned; a SIGTERM must take their sessions down"
+ },
+ {
   "id": "cross-build.regcache-drop-after-two",
   "target": "linux/scripts/01-core/cross-stage-build.sh",
   "find": "  [ \"${_cbrc_fails}\" -ge 2 ] || return 0",

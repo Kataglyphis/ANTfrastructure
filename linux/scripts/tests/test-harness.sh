@@ -198,6 +198,10 @@ t_consumer_fixture() {
 t_out() { "$@" 2>&1; }
 # t_rc <command...> — the exit code as text, for t_assert_eq
 t_rc()  { "$@" >/dev/null 2>&1; echo $?; }
+# t_wait_file <file> [tries] — waits 0.1 s a try (default 100) for a non-empty file; rc 1 if it never came
+t_wait_file() { local _i; for _i in $(seq 1 "${2:-100}"); do [ -s "$1" ] && return 0; sleep 0.1; done; return 1; }
+# t_pid_state <pid> — "alive" or "dead", for asserting that a test left no process behind
+t_pid_state() { if kill -0 "${1:-0}" 2>/dev/null; then echo alive; else echo dead; fi; }
 
 # t_assert_eq <expected> <actual> [message]
 t_assert_eq() {

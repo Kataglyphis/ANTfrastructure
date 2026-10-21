@@ -18,6 +18,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
 
 **Rules — never regress these.** [Project priorities](#project-priorities-owner-directive--optimize-for-all-three-always) ·
 [Shell safety](#shell-safety-conventions-five-bug-classes-all-found-live-2026-08-08) ·
+[No ghost processes](#background-jobs-and-test-processes-no-ghosts) ·
 [Caching discipline](#caching-discipline-do-not-regress) ·
 [Stage handoff](#cross-chain-stage-handoff-do-not-regress) ·
 [Five critical fixes](#five-critical-fixes-to-maintain) ·
@@ -615,6 +616,33 @@ a wrong verdict on 2026-08-31, and none announces itself:
 - **Never count warnings by grepping a BuildKit log.** BuildKit echoes each RUN's command text, so
   a warning string written INSIDE a Dockerfile command counts as if it had fired. Match real
   output lines only.
+
+## Background jobs and test processes (no ghosts)
+
+On 2026-10-21 the build host carried a test fixture spinning at 100 % for 2.8 days and 24 headless
+Chromes holding 22 GB, plus a watcher an agent had detached and another agent had to find in its
+transcript. Each was a child that outlived whatever started it. So:
+
+1. **An agent starts a background job as a named user unit**, never `setsid nohup … &`:
+   `systemd-run --user --unit=<name> -p RuntimeMaxSec=<bound> bash <script>`. Then
+   `systemctl --user list-units '<prefix>*'` shows what runs, `systemctl --user stop <name>` ends
+   it with every child, and nothing outlives its bound. A job meant to outlive the session (a
+   chain, a watcher) says so in its handoff, by unit name.
+2. **A test fixture ends on its own.** A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
+   `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
+3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
+   `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
+   `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
+   EXIT trap, when the run is interrupted. The mutation gate ends each test's session after it, and
+   every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
+   runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
+   `test-mutation-gate.sh`).
+4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
+   its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
+
+`linux/host-config/ghost-watch.sh` is the net under all four: an hourly user timer that reports
+orphans heavy on CPU or memory or shaped like test leftovers
+([`linux-host-setup.md` § B10](docs/linux-host-setup.md#b10-ghost-watch)).
 
 ## Caching discipline (do not regress)
 

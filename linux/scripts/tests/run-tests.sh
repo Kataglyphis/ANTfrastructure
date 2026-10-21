@@ -16,6 +16,9 @@ case "$(uname -s)" in MINGW* | MSYS* | CYGWIN*) SKIP_OK=1 ;; *) SKIP_OK=0 ;; esa
 [ "${SKIP_OK}" -eq 0 ] || export PYTHONUTF8="${PYTHONUTF8:-1}"
 # RUN_TESTS_JOBS: suites at once, default one per CPU; 1 runs them in turn.
 JOBS="$(oj_count RUN_TESTS_JOBS)" || exit 2
+# A hung suite is killed with its children after RUN_TESTS_SUITE_TIMEOUT; an interrupted run takes every running suite down.
+export OJ_TIMEOUT="${RUN_TESTS_SUITE_TIMEOUT:-900}"
+trap 'oj_reap' EXIT
 
 SUITE_NAMES=()
 for suite in "${TESTS_DIR}"/test-*.sh; do
@@ -32,6 +35,7 @@ _report() {
   printf '== %s ==\n' "${name}"
   SUITES=$((SUITES + 1))
   printf '%s\n' "${_out}"
+  [ "$2" -ne 124 ] || printf '  TIMEOUT: killed after %ss (RUN_TESTS_SUITE_TIMEOUT)\n' "${OJ_TIMEOUT}"
   if [ "$2" -eq 77 ] && [ "${SKIP_OK}" -eq 1 ]; then
     SKIPPED+=("${name}")
   elif [ "$2" -ne 0 ]; then

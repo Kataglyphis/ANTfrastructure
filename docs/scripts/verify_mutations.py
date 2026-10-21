@@ -5,6 +5,7 @@ Each test command first runs once unmutated, since a bite recorded on a red suit
 See docs/code-quality-tooling.md#the-mutation-gate-mutations
 """
 import argparse
+import atexit
 import concurrent.futures
 import json
 import os
@@ -15,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
@@ -113,25 +115,59 @@ def changed_files(base="origin/main"):
     return touched
 
 
+_LIVE_GROUPS = set()
+_LIVE_LOCK = threading.Lock()
+
+
+def _kill_group(pid, grace=5.0):
+    """End a test's session and its leftovers: SIGTERM lets a runner inside reap its own groups, SIGKILL follows the grace."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+            deadline = time.monotonic() + grace
+            while time.monotonic() < deadline:
+                time.sleep(0.1)
+                os.killpg(pid, 0)
+            os.killpg(pid, signal.SIGKILL)
+        except (ProcessLookupError, PermissionError):
+            pass
+    else:
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
+
+
+def _kill_live_groups(*_):
+    """On exit or SIGTERM/SIGINT/SIGHUP: a test session started with start_new_session never sees the gate die."""
+    with _LIVE_LOCK:
+        groups = list(_LIVE_GROUPS)
+        _LIVE_GROUPS.clear()
+    for pid in groups:
+        _kill_group(pid)
+
+
+def _exit_on_signal(signum, _frame):
+    _kill_live_groups()
+    sys.exit(128 + signum)
+
+
 def _run_test(cmd, root, timeout):
-    """Run one test command, killing its whole process tree on timeout; returns (returncode, timed_out, output)."""
+    """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
+    with _LIVE_LOCK:
+        _LIVE_GROUPS.add(proc.pid)
     try:
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, False, (err or "") + (out or "")
     except subprocess.TimeoutExpired:
-        if hasattr(os, "killpg"):
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
-        else:
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
-                           capture_output=True, check=False)
+        _kill_group(proc.pid)
         proc.kill()
         proc.communicate()
         return None, True, ""
+    finally:
+        if hasattr(os, "killpg"):
+            _kill_group(proc.pid)
+        with _LIVE_LOCK:
+            _LIVE_GROUPS.discard(proc.pid)
 
 
 def passes(cmd, root, timeout):
@@ -439,4 +475,8 @@ def main():
 
 
 if __name__ == "__main__":
+    atexit.register(_kill_live_groups)
+    for _sig in ("SIGTERM", "SIGINT", "SIGHUP"):
+        if hasattr(signal, _sig):
+            signal.signal(getattr(signal, _sig), _exit_on_signal)
     sys.exit(main())

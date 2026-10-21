@@ -846,8 +846,9 @@ owner carries the breakage that costs.
       GNOME's proxy mode is `none`. Two side findings: `check-docs-sidebars.js`'s `close()` throws
       `ENOTEMPTY` when it removes the profile right after `SIGKILL` (Chrome's children still write
       it), and a suite killed on timeout leaves its headless Chrome orphaned: 24 of them, about 22 GB
-      RSS, were on the host at 12:00. Work: find what the network service waits for, give
-      `run-tests.sh` a per-suite timeout, and have the launcher reap Chrome's whole tree.
+      RSS, were on the host at 12:00. Since the no-ghosts change `run-tests.sh` times a suite out
+      (`RUN_TESTS_SUITE_TIMEOUT`) and kills its whole group, so a hang costs 15 minutes and no
+      orphan. Work: find what the network service waits for.
 
 - [ ] **CON142 — the resource monitor names the runtime lane's arch and step** [S, ★]. All 1197
       samples of the 2026-10-20 runtime run (and every runtime run before it) carry `stage=?`, so the

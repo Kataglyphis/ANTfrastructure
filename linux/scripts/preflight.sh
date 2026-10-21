@@ -84,6 +84,8 @@ check_selected() {  # check_selected slug -> 0 if this check should run
 
 # shellcheck source=linux/scripts/lib-ordered-jobs.sh
 source linux/scripts/lib-ordered-jobs.sh
+# An interrupted preflight takes its running gates down with it (lib-ordered-jobs.sh's oj_reap).
+trap 'oj_reap' EXIT
 # PREFLIGHT_JOBS: slugs at once, default one per CPU; 1 runs each slug as it is reached, as before.
 PREFLIGHT_JOBS="$(oj_count PREFLIGHT_JOBS)" || exit 2
 # Alone, outside the batch: cmake-format builds a venv in the tree the walkers read, and the mutation gate copies the tree.

@@ -191,3 +191,5 @@ mutation-family:runtime-gates
 mutation-family:ordered-jobs
 # The runtime lane's wrapper-smoke gate beside the wrapper build (01-core/runtime-build-fns.sh), which no slug owns; proof: test-runtime-smoke-overlap.sh.
 mutation-family:runtime-smoke
+# The host's orphan report (linux/host-config/ghost-watch.sh), which no slug owns; proof: test-ghost-watch.sh.
+mutation-family:ghost-watch

@@ -12,6 +12,34 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — No more ghost processes: test runners reap their process groups, agents start units, ghost-watch reports the rest
+
+The build host carried a test fixture spinning at 100 % for 2.8 days and 24 headless Chromes
+holding 22 GB, each left behind by an interrupted test run, and a watcher an agent had detached.
+
+- **`lib-ordered-jobs.sh` runs each job as its own process group** and kills it whole when the job
+  ends, after `OJ_TIMEOUT`, and from `oj_reap` when the runner exits; `run-tests.sh` and
+  `preflight.sh` call it from their EXIT traps. `run-tests.sh` sets `OJ_TIMEOUT` from
+  `RUN_TESTS_SUITE_TIMEOUT` (default 900 s) and prints `TIMEOUT: killed after …`, so a hung suite
+  no longer stops the whole preflight: one sat 27 minutes in `test-docs-sidebars.sh` (CON144).
+  Git Bash keeps the plain subshell. New `test-run-tests-reaping.sh`, serial and side by side.
+- **`verify_mutations.py` ends each test's session after it, not only on timeout**, and every
+  live test session when the gate itself gets SIGTERM, SIGINT or SIGHUP; its tests ran with
+  `start_new_session`, which hid them from whoever killed the gate. It sends SIGTERM and waits
+  5 s before SIGKILL, so a runner inside reaps the groups it made. Two new cases in
+  `test-mutation-gate.sh`; its fixtures now keep their children off the test's pipes, and the
+  suite runs in 8 s instead of two minutes.
+- **`linux/host-config/ghost-watch.sh`** reports a user's orphans (parent PID 1 or the user's
+  systemd, older than an hour) that average 25 % CPU, hold 1 GB or look like test leftovers;
+  `--install` adds an hourly user timer with a desktop notice. It only reports.
+  `docs/linux-host-setup.md` § B10, `test-ghost-watch.sh`.
+- **`AGENTS.md` § *Background jobs and test processes (no ghosts)***: agents start background jobs
+  as `systemd-run --user --unit=… -p RuntimeMaxSec=…`, fixtures end on their own, runners kill
+  whole groups, wait loops wait on a PID or a file.
+- Eight mutation entries pin it: `ordered-jobs.reap-job-group`, `script-tests.reap-on-interrupt`,
+  `script-tests.suite-timeout`, `mutations.reap-*` and `ghost-watch.*`; `test-harness.sh` gains
+  `t_wait_file` and `t_pid_state`.
+
 ## 2026-10-21 — The wrapper-smoke gate runs beside the wrapper build (CON126)
 
 - The gate took 821–898 s on amd64 and 1150–1265 s on arm64 per run, and the wrapper build, which
