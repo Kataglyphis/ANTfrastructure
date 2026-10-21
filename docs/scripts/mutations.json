@@ -16449,5 +16449,53 @@
   "replace": "  ( eval \"${OJ_CMDS[$1]}\" ) > ",
   "test": "bash linux/scripts/tests/test-run-tests.sh",
   "why": "a background job ignores SIGINT, so a suite that tests its own Ctrl-C handling (test-renovate-fleet) failed only side by side"
+ },
+ {
+  "id": "runtime-smoke.overlap-default",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  if [ \"${RUNTIME_SMOKE_OVERLAP:-1}\" = \"0\" ] || is_dry_run; then",
+  "replace": "  if [ \"${RUNTIME_SMOKE_OVERLAP:-0}\" = \"0\" ] || is_dry_run; then",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
+  "why": "the gate beside the wrapper build is the default; it took 821-1265 s an arch in turn"
+ },
+ {
+  "id": "runtime-smoke.started-in-background",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    exit \"${PIPESTATUS[0]}\" ) &",
+  "replace": "    exit \"${PIPESTATUS[0]}\" )",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
+  "why": "the gate and the wrapper build overlap, or the arch pays both in turn"
+ },
+ {
+  "id": "runtime-smoke.verdict-kept",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    exit \"${PIPESTATUS[0]}\" ) &",
+  "replace": "    exit 0 ) &",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
+  "why": "the background gate's failure must reach the arch, through the prefixing pipe"
+ },
+ {
+  "id": "runtime-smoke.wait-before-push",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  # Nothing ships past a red wrapper-smoke gate.\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
+  "why": "a wrapper whose package failed its smoke would be pushed"
+ },
+ {
+  "id": "runtime-smoke.wait-before-export",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "and push\"\n    return 0\n  fi\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
+  "replace": "and push\"\n    return 0\n  fi\n",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
+  "why": "the rootfs path would export a wrapper whose package failed its smoke"
+ },
+ {
+  "id": "runtime-smoke.reaped-on-wrapper-failure",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
+  "replace": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
+  "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
+  "why": "a failed wrapper build would leave its gate running into the next arch's lane"
  }
 ]

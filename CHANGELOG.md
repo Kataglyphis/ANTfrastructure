@@ -12,6 +12,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The wrapper-smoke gate runs beside the wrapper build (CON126)
+
+- The gate took 821–898 s on amd64 and 1150–1265 s on arm64 per run, and the wrapper build, which
+  reads nothing of it, waited. `runtime_build_chain` now starts it in the background (lines prefixed
+  `[smoke <arch>]`) and builds the wrapper meanwhile. The push, or the rootfs export, waits for its
+  verdict, a red gate fails the arch with nothing shipped, and a failed wrapper build still collects
+  it. `[runtime-timing] ... step=smoke-wait` shows the wait left. `RUNTIME_SMOKE_OVERLAP=0` runs the
+  gate first, as before.
+- **Proof.** `test-runtime-smoke-overlap.sh` times the chain against its serial twin and checks the
+  push and export order and both failure paths; six `runtime-smoke.*` mutations bite. AGENTS.md's
+  wrapper-smoke rule says where the gate now sits.
+  [linux-cross-builds.md § The wrapper-smoke gate runs beside the wrapper build](docs/linux-cross-builds.md#the-wrapper-smoke-gate-runs-beside-the-wrapper-build).
+
 ## 2026-10-21 — preflight, the script tests and shellcheck run side by side (CON126)
 
 - **`lib-ordered-jobs.sh`**: runs recorded commands N at a time, each into its own log, and reports

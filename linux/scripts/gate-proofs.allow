@@ -189,3 +189,5 @@ mutation-family:runtime-push
 mutation-family:runtime-gates
 # The ordered parallel runner run-tests.sh, preflight.sh and lint-shell.sh share (linux/scripts/lib-ordered-jobs.sh), which no slug owns; proof: test-run-tests.sh, test-preflight-parallel.sh.
 mutation-family:ordered-jobs
+# The runtime lane's wrapper-smoke gate beside the wrapper build (01-core/runtime-build-fns.sh), which no slug owns; proof: test-runtime-smoke-overlap.sh.
+mutation-family:runtime-smoke

@@ -506,13 +506,15 @@ runtime_build_wrapper_image() {
   local -a build_args=()
 
   # errexit is off here: without || return 1 a failed build reaches the push, which blames the wrong step.
-  _runtime_build_wrapper "${arch}" tag parent_image build_args || return 1
+  _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
     log "[DRY RUN] would push wrapper image ${tag}"
     return 0
   fi
 
+  # Nothing ships past a red wrapper-smoke gate.
+  _runtime_smoke_wait "${arch}" || return 1
   if runtime_pushes_wrapper_images; then
     _runtime_push_wrapper_tag "${tag}" "${arch}" || return 1
   fi
@@ -525,12 +527,13 @@ runtime_build_wrapper_rootfs() {
   local -a build_args=()
 
   # A failed build must not reach the export/push below, which would ship a stale tag.
-  _runtime_build_wrapper "${arch}" tag parent_image build_args || return 1
+  _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
     log "[DRY RUN] would export rootfs from ${tag} to ${rootfs_dir} and push"
     return 0
   fi
+  _runtime_smoke_wait "${arch}" || return 1
 
   artifact_dir="$(dirname "${rootfs_dir}")"
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
@@ -556,7 +559,7 @@ runtime_build_chain() {
   # Explicit || return 1 on every step: run_parallel_arch_loop's `if !` disables errexit for the whole tree.
   _runtime_timed base "${arch}" runtime_build_base_image "${arch}" || return 1
   _runtime_timed package "${arch}" runtime_build_package_image "${arch}" || return 1
-  _runtime_timed smoke "${arch}" _runtime_run_package_smoke "${arch}" || return 1
+  _runtime_smoke_start "${arch}" || return 1
 
   if [ -n "${rootfs_dir}" ]; then
     _runtime_timed wrapper "${arch}" runtime_build_wrapper_rootfs "${arch}" "${rootfs_dir}" || return 1
@@ -564,6 +567,34 @@ runtime_build_chain() {
   fi
 
   _runtime_timed wrapper "${arch}" runtime_build_wrapper_image "${arch}" || return 1
+}
+
+_RUNTIME_SMOKE_PID=""
+
+# Smoke and wrapper both build FROM package and read nothing of each other. docs/linux-cross-builds.md#the-wrapper-smoke-gate-runs-beside-the-wrapper-build
+_runtime_smoke_start() {
+  local arch="$1"
+  _RUNTIME_SMOKE_PID=""
+  if [ "${RUNTIME_SMOKE_OVERLAP:-1}" = "0" ] || is_dry_run; then
+    _runtime_timed smoke "${arch}" _runtime_run_package_smoke "${arch}"
+    return
+  fi
+  log "[runtime-smoke] arch=${arch}: the wrapper-smoke gate runs beside the wrapper build (RUNTIME_SMOKE_OVERLAP=0 runs it first)"
+  ( trap - INT QUIT
+    _runtime_timed smoke "${arch}" _runtime_run_package_smoke "${arch}" 2>&1 | sed -u "s/^/[smoke ${arch}] /"
+    exit "${PIPESTATUS[0]}" ) &
+  _RUNTIME_SMOKE_PID=$!
+}
+
+# The background gate's verdict, before anything of the arch ships; a no-op once taken.
+_runtime_smoke_wait() {
+  local arch="$1" rc=0 t0
+  [ -n "${_RUNTIME_SMOKE_PID:-}" ] || return 0
+  t0="$(date +%s)"
+  wait "${_RUNTIME_SMOKE_PID}" || rc=$?
+  _RUNTIME_SMOKE_PID=""
+  log "[runtime-timing] arch=${arch} step=smoke-wait secs=$(( $(date +%s) - t0 )) rc=${rc}"
+  return "${rc}"
 }
 
 # <step> <arch> <cmd...>: logs the step's wall time. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv

@@ -1036,8 +1036,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   symlinks point into `/opt/gcc-*/bin` and `/usr/local/llvm-target/bin`.
 
 - **The `wrapper-smoke` target in `Dockerfile.package` is a MANDATORY gate** in
-  `runtime_build_chain()`: it builds between the package and wrapper stages, reusing cached
-  package layers. `WRAPPER_SMOKE_GATE=0` skips it; `test-runtime-smoke-gate.sh` pins that it runs.
+  `runtime_build_chain()`: it builds after the package stage, reusing cached package layers, beside
+  the wrapper build, and nothing of the arch is pushed or exported before it passes
+  (`RUNTIME_SMOKE_OVERLAP=0` runs it first). `WRAPPER_SMOKE_GATE=0` skips it;
+  `test-runtime-smoke-gate.sh` pins that it runs, `test-runtime-smoke-overlap.sh` that it gates.
 
 ## Dependency Updates
 

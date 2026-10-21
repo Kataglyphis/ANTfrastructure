@@ -773,6 +773,17 @@ Look for `arch=arm64 step=base` (and arm64's `#N [...] RUN` lines) between
 `[runtime-push] arch=amd64 start` and `[runtime-push] arch=amd64 done`. `queue drained: N push(es),
 waited Ns` gives the upload time that was still on the critical path.
 
+### The wrapper-smoke gate runs beside the wrapper build
+
+The `wrapper-smoke` target (`Dockerfile.package`) and the wrapper (`Dockerfile.torch`) both build
+from the package image, and neither reads the other. The gate took 821–898 s on amd64 and
+1150–1265 s on arm64 (2026-10-21), and the wrapper build waited for it. Since 2026-10-21
+`runtime_build_chain` starts the gate in the background with its lines prefixed `[smoke <arch>]`,
+then builds the wrapper. Nothing of the arch ships before the gate's verdict: the wrapper's push (or
+the rootfs export) waits for it, and a red gate fails the arch. A failed wrapper build still collects
+the gate before it returns. `[runtime-timing] arch=<a> step=smoke-wait secs=<n>` shows how long the
+wrapper waited for it. `RUNTIME_SMOKE_OVERLAP=0` runs the gate first, as before.
+
 ### Torch pin enforcement on GPU lines
 
 `assemble-torch-app.sh`'s `enforce_torch_version_pins` re-installs the pinned
@@ -1076,6 +1087,7 @@ destroys it, and what replacing it costs is in
 | `RUNTIME_WHEELS_SOURCE=auto\|image\|export` | Where the wrapper's torch RUN gets `/opt/wheels`: a bind mount of the android image (`image`; `auto`, the default, means `image`), or a sealed directory exported from that same image before each package build (`export`). [Both paths](#the-wrappers-wheelhouse-two-deliveries). |
 | `RUNTIME_ASYNC_PUSH=1\|0` | Each wrapper uploads in a background queue while the next arch builds (`1`, default), or inline as before 2026-10-21 (`0`). [The pusher](#the-wrapper-push-runs-beside-the-next-build). |
 | `RUNTIME_GATE_JOBS=N` | Arches whose content gate and smoke run at once (default: all); `1` gates them in turn. |
+| `RUNTIME_SMOKE_OVERLAP=1\|0` | The wrapper-smoke gate runs beside the wrapper build (`1`, default) or before it (`0`). [Why](#the-wrapper-smoke-gate-runs-beside-the-wrapper-build). |
 | `CROSS_NO_LOCAL_CACHE_EXPORT=1` | Write-only cache (skip the local cache export; disk relief on big rebuilds). |
 | `NO_CACHE_EXPORT=1` | Drop everything registry-facing (inline cache export + registry cache reads). The manual recovery for the ghcr `DeadlineExceeded`/`httpReadSeeker` import flake — which the chain now also does by itself after two such failures. |
 | `CROSS_REGISTRY_CACHE=max` | **DESIGN ONLY — setting it is a silent no-op.** The T4 pilot was declined and its implementation reverted; the `--cache-to type=registry` it describes no longer exists, and `verify-critical-fixes.sh` actively forbids the dead `<tag>-buildcache` ref from returning. Kept as a row only so the name resolves to its history — see [`build-cache-tiers.md` § 4](build-cache-tiers.md). |
