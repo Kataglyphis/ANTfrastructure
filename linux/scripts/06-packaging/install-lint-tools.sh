@@ -32,7 +32,8 @@ mkdir -p "${PREFIX}"
 
 sc_sha="${!sc_key:-}"
 [ -n "${sc_sha}" ] || die "${sc_key} is not pinned in tool-pins.env"
-download_verified_install \
+# GitHub's release CDN answered HTTP 500 for shellcheck's aarch64 asset for about a minute (2026-10-21), and the arm64 wrapper died in it.
+DOWNLOAD_RETRY_DELAY="${DOWNLOAD_RETRY_DELAY:-20}" download_verified_install \
   "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.${sc_arch}.tar.xz" \
   "${sc_sha}" "${PREFIX}/shellcheck" "shellcheck-${SHELLCHECK_VERSION}/shellcheck" \
   || die "the verified shellcheck ${SHELLCHECK_VERSION} download failed"

@@ -9,18 +9,20 @@ if ! command -v die >/dev/null 2>&1; then
 fi
 
 # download_file <url> <dest> [retries=3] [connect_timeout] [max_time]; max_time is curl-only (wget has none).
+# DOWNLOAD_RETRY_DELAY spaces the retries; 2 s outwaited none of GitHub's 60 s HTTP 500 of 2026-10-21.
 download_file() {
   local url="$1"
   local dest="$2"
   local retries="${3:-3}"
   local connect_timeout="${4:-}"
   local max_time="${5:-}"
+  local retry_delay="${DOWNLOAD_RETRY_DELAY:-2}"
 
   if command -v curl >/dev/null 2>&1; then
     local -a curl_opts=()
     [ -n "${connect_timeout}" ] && curl_opts+=(--connect-timeout "${connect_timeout}")
     [ -n "${max_time}" ] && curl_opts+=(--max-time "${max_time}")
-    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry "${retries}" --retry-delay 2 ${curl_opts[@]+"${curl_opts[@]}"} -o "$dest" "$url"
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry "${retries}" --retry-delay "${retry_delay}" ${curl_opts[@]+"${curl_opts[@]}"} -o "$dest" "$url"
   elif command -v wget >/dev/null 2>&1; then
     local -a wget_opts=()
     [ -n "${connect_timeout}" ] && wget_opts+=(--timeout="${connect_timeout}")
