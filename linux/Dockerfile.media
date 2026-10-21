@@ -86,7 +86,7 @@ RUN set -euo pipefail; \
         echo "ERROR: ENABLE_NVIDIA=true but no nvcc at ${CUDA_HOME:-/usr/local/cuda}/bin/nvcc." >&2; \
         echo "       This stage's BASE_IMAGE has no CUDA toolkit, so every GPU build below would fail deep." >&2; \
         echo "       Build the NVIDIA layer (linux/Dockerfile.nvidia) and point this stage at it:" >&2; \
-        echo "         CROSS_MEDIA_BASE_IMAGE=<repo>:cross-toolchain-nvidia-<arch> ..." >&2; \
+        echo "         CROSS_MEDIA_BASE_IMAGE=<repo>-stages:cross-toolchain-nvidia-<arch> ..." >&2; \
         exit 1; \
     fi; \
     if [ "${ENABLE_NVIDIA}" = "true" ]; then \

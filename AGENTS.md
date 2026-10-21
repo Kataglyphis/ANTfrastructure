@@ -105,6 +105,10 @@ owns the bare `:latest`: Linux does, and Windows keeps its lane qualifier (owner
 - The per-arch images (`:latest-<arch>`, the stage tags `:latest-base-<arch>` /
   `:latest-package-<arch>`) are the wrappers the manifest is assembled from: implementation
   detail, consumers resolve the manifest.
+- **nvidia's cross stages (`gpu`, `media`, `android`) push to a separate, private package,
+  `<repo>-stages`** (owner decision 2026-10-21): they carry TensorRT's SDK, which may ship only as
+  runtime files, and GHCR sets visibility per package. Everything else stays in `<repo>`
+  ([`linux-accelerator-images.md` § Stage images](docs/linux-accelerator-images.md#stage-images-a-private-package)).
 - **`:latest-cross` is RETIRED** (owner decision 2026-09-22), the old name of `:latest`. Nothing
   composes or pushes it, and `verify_ci_image_refs.py` rejects it under `.github/`. **The registry
   tags outlive the code, deliberately** (owner, 2026-09-22): work stays on `develop`. Since
@@ -453,7 +457,8 @@ CROSS_VARIANT=nvidia|rocm       → (shared sdk) → gpu → media → android �
 **A variant chain is the only way to build a GPU image** (2026-09-22). `CROSS_VARIANT=nvidia` /
 `rocm` (or `ENABLE_NVIDIA=true` / `ENABLE_AMD=true`, which imply it) is an ENVIRONMENT knob,
 because `stage-defs.sh` builds the stage graph when it is sourced. It inserts the `gpu` stage,
-suffixes every tag from there on with `-<variant>` (`tag-naming.sh` `cross_variant_infix`), starts
+suffixes every tag from there on with `-<variant>` (`tag-naming.sh` `cross_variant_infix`), pushes
+nvidia's stages to the private `<repo>-stages` package (`cross_stage_repo`), starts
 at `gpu` and refuses the shared stages, keeps its own `chain-status-<variant>.json` and
 `out/build-logs/<variant>/`, and refuses what it cannot build (`stage-defs.sh`
 `cross_variant_refusal`, shared with `build-cross-stage.sh`): rocm off amd64; any target that is
@@ -677,7 +682,7 @@ grades this repo's own surface against them.
 - **Module loading:** `modules.sh` → `source_modules_framework()`, the bootstrap for sourcing 01-core.
 - **Media bootstrap:** `03-media/core/common.sh` → `media_common_init <script_dir>`: the one entry that sources the 01-core module framework; every media build script sources it instead of copying a preamble block. (The old `media_build_preamble_init` alias is gone: zero callers, no definition.)
 - **CC validation:** `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke).
-- **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, the runtime tag functions. Never construct tags by hand.
+- **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, `cross_stage_repo()` (nvidia's private stage package), the runtime tag functions. Never construct tags by hand.
 - **Stage graph:** `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`.
 - **Chain verification:** `chain-verify.sh` → `verify_cross_chain_staleness()`, `describe_cross_chain()`. Informational: it prints digests and gates nothing.
 - **Stage ancestry (gating):** `ancestry.sh` → `ancestry_output_annotations()`, `ancestry_recorded_parent()`, `ancestry_assert_chain()`. Every pushed cross stage records the parent ref it was built FROM as the OCI manifest annotation `org.kataglyphis.parent-digest`; a run with `--from-stage` after `base` walks that chain and HARD-FAILS when a parent was re-pushed after the child that would be inherited. Read path: `manifest-annotation.py` (annotations live in the base64 `Raw` field of `manifest inspect --verbose`). Absent annotation = warn (predates the mechanism); present + mismatch = fail. Escape hatch: `--no-verify-ancestry` / `CROSS_VERIFY_ANCESTRY=0`.

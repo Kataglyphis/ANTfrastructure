@@ -32,7 +32,7 @@ t_assert_eq "sdk gpu linux/Dockerfile.nvidia GPU_PIN" \
   "$(SNIPPET='echo "$(cross_stage_parent gpu) $(cross_stage_parent media) $(cross_stage_dockerfile gpu) $(cross_stage_pin_varname gpu)"' _graph CROSS_VARIANT=nvidia)"
 
 t_case "every tag from the gpu stage on carries the variant; the shared stages do not"
-t_assert_eq "example.io/repo:cross-sdk-amd64 example.io/repo:cross-toolchain-nvidia-amd64 example.io/repo:cross-media-nvidia-amd64 example.io/repo:cross-android-nvidia-amd64 example.io/repo:latest-nvidia" \
+t_assert_eq "example.io/repo:cross-sdk-amd64 example.io/repo-stages:cross-toolchain-nvidia-amd64 example.io/repo-stages:cross-media-nvidia-amd64 example.io/repo-stages:cross-android-nvidia-amd64 example.io/repo:latest-nvidia" \
   "$(SNIPPET='echo "$(cross_stage_tag sdk amd64) $(cross_stage_tag gpu amd64) $(cross_stage_tag media amd64) $(cross_stage_tag android amd64) $(cross_final_image_tag)"' _graph CROSS_VARIANT=nvidia)"
 t_assert_eq "example.io/repo:cross-toolchain-rocm-amd64 example.io/repo:latest-rocm linux/Dockerfile.amd" \
   "$(SNIPPET='echo "$(cross_stage_tag gpu amd64) $(cross_final_image_tag) $(cross_stage_dockerfile gpu)"' _graph CROSS_VARIANT=rocm)"
@@ -40,8 +40,22 @@ t_assert_eq "example.io/repo:latest-nvidia-hostarm64" \
   "$(SNIPPET='BUILDARCH=arm64; cross_final_image_tag' _graph CROSS_VARIANT=nvidia)" \
   "variant infix first, then the build-host infix"
 
+t_case "nvidia's stages go to the private <repo>-stages package; its final, the shared stages and rocm stay (owner 2026-10-21)"
+# GHCR visibility is per package, and these stages carry TensorRT's headers and dev links.
+t_assert_eq "example.io/repo-stages example.io/repo-stages:cross-android-nvidia-hostarm64 example.io/repo-stages:cross-android-nvidia-hostarm64-arm64" \
+  "$(SNIPPET='BUILDARCH=arm64; echo "$(cross_stage_repo) $(cross_android_tag_prefix) $(cross_stage_tag android arm64)"' _graph CROSS_VARIANT=nvidia)" \
+  "the android artifact the runtime lane copies from is private too"
+t_assert_eq "example.io/repo example.io/repo:cross-media-rocm-amd64 example.io/repo:cross-android-rocm-amd64" \
+  "$(SNIPPET='echo "$(cross_stage_repo) $(cross_stage_tag media amd64) $(cross_stage_tag android amd64)"' _graph CROSS_VARIANT=rocm)" \
+  "rocm carries no NVIDIA file, so its stages stay in the public package"
+t_assert_eq "example.io/repo example.io/repo:cross-media-amd64" \
+  "$(SNIPPET='echo "$(cross_stage_repo) $(cross_stage_tag media amd64)"' _graph)" "the default chain has no private package"
+t_assert_eq "example.io/repo-stages:cross-android-nvidia" \
+  "$(SNIPPET='source "'"${CORE}"'/runtime-flow-common.sh"; init_mirror_defaults() { :; }; init_runtime_flow_defaults; echo "${ARTIFACT_IMAGE_PREFIX}"' _graph CROSS_VARIANT=nvidia)" \
+  "the runtime lane's default artifact prefix follows"
+
 t_case "ENABLE_NVIDIA / ENABLE_AMD alone imply the variant (they used to build GPU bytes under the default tags)"
-t_assert_eq "example.io/repo:cross-media-nvidia-arm64" \
+t_assert_eq "example.io/repo-stages:cross-media-nvidia-arm64" \
   "$(SNIPPET='cross_stage_tag media arm64' _graph ENABLE_NVIDIA=true)"
 t_assert_eq "example.io/repo:latest-rocm" "$(SNIPPET='cross_final_image_tag' _graph ENABLE_AMD=true)"
 t_assert_contains "$(SNIPPET='echo reached' _graph ENABLE_NVIDIA=true ENABLE_AMD=true)" "both true"
@@ -49,10 +63,11 @@ t_assert_contains "$(SNIPPET='echo reached' _graph CROSS_VARIANT=cuda)" "unknown
 
 t_case "the refusals, run through the REAL entry points (read-only modes)"
 CHAIN="${TESTS_DIR}/../build-cross-chain.sh"; STAGE_SH="${TESTS_DIR}/../build-cross-stage.sh"
+_ENV_CLEAN=(env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM -u IMAGE_REPO)
 # Leading VAR=value words are the environment; the rest runs time-boxed.
 _chain() {
   local -a _e=(); while [[ "${1:-}" == *=* ]]; do _e+=("$1"); shift; done
-  env -u CROSS_VARIANT -u ENABLE_NVIDIA -u ENABLE_AMD -u ENABLE_DEEPSTREAM -u ENABLE_TENSORRT -u CROSS_NO_PUSH -u CROSS_BUILD_PLATFORM "${_e[@]}" timeout 60 "$@" 2>&1 \
+  "${_ENV_CLEAN[@]}" "${_e[@]}" timeout 60 "$@" 2>&1 \
     | grep -E '^\[(ERROR|INFO)\] (Cross chain|the |an? )' | head -1
 }
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${CHAIN}" --describe-chain --target-arches amd64)" \
@@ -73,6 +88,27 @@ t_assert_contains "$(_chain bash "${CHAIN}" --describe-chain --target-arches amd
   "the default chain is untouched"
 t_assert_contains "$(_chain CROSS_VARIANT=nvidia bash "${STAGE_SH}" --stage sdk --arch amd64 --dry-run)" \
   "cannot build sdk" "build-cross-stage.sh obeys the same refusals"
+
+t_case "an nvidia stage push names only the private package: tag, push, registry cache, parent pin (real entry points, dry runs)"
+# <stage>: that stage's pushing build command, one argument per line.
+_stage_cmd() {
+  "${_ENV_CLEAN[@]}" CROSS_VARIANT=nvidia RESOURCE_MONITOR=0 timeout 60 bash "${STAGE_SH}" --stage "$1" --arch amd64 --push --dry-run 2>&1 \
+    | grep '^\[DRY RUN\] nerdctl build' | tr ' ' '\n'
+}
+_PUB=ghcr.io/kataglyphis/kataglyphis_beschleuniger
+_media_cmd="$(_stage_cmd media)"
+t_assert_contains "${_media_cmd}" "type=image\\,name=${_PUB}-stages:cross-media-nvidia-amd64\\,push=true" "the push"
+t_assert_contains "${_media_cmd}" "type=registry\\,ref=${_PUB}-stages:cross-media-nvidia-amd64" "the inline cache it imports"
+t_assert_contains "${_media_cmd}" "BASE_IMAGE=${_PUB}-stages:cross-toolchain-nvidia-amd64@sha256:" "the gpu pin it builds FROM"
+t_assert_eq "" "$(printf '%s\n' "${_media_cmd}" | grep -F "${_PUB}:" || true)" "nothing in the command names the public package"
+t_assert_contains "$(_stage_cmd gpu)" "BASE_IMAGE=${_PUB}:cross-sdk-amd64@sha256:" "gpu still builds FROM the public shared sdk"
+_W="$(mktemp -d)"
+_rt="$("${_ENV_CLEAN[@]}" CROSS_VARIANT=nvidia RESOURCE_MONITOR=0 CROSS_CHAIN_STATUS_FILE="${_W}/status.json" CROSS_CHAIN_PIDFILE="${_W}/pid" \
+  timeout 60 bash "${CHAIN}" --only runtime --target-arches amd64 --log-dir "${_W}/logs" --dry-run 2>&1)"
+t_assert_contains "${_rt}" "would pull ${_PUB}-stages:cross-android-nvidia-amd64" "the runtime lane reads its android parent there"
+t_assert_contains "${_rt}" "--artifact-image-prefix ${_PUB}-stages:cross-android-nvidia " "and copies the payload from there"
+t_assert_contains "${_rt}" "--image ${_PUB}:latest-nvidia " "while :latest-nvidia stays public"
+rm -rf "${_W}"
 
 t_case "the variant's build args reach every entry point, not just the chain"
 _args() { SNIPPET='args=(); cross_stage_build_args args '"$1"' amd64; printf "%s " "${args[@]}"' _graph "${@:2}"; }

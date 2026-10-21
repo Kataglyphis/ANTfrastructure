@@ -96,6 +96,30 @@ Describe 'Resolve-BkVariant' {
     }
 }
 
+Describe 'Assert-BkCacheExportRef (no nvidia registry cache in the public package)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' -FunctionName 'Assert-BkCacheExportRef')
+    $script:Pub = 'ghcr.io/kataglyphis/kataglyphis_beschleuniger'
+
+    It 'refuses an nvidia cache export into the public package, by tag or by digest' {
+        foreach ($ref in "${script:Pub}:cache-nvidia", "${script:Pub}@sha256:0123", $script:Pub) {
+            Assert-Throws { Assert-BkCacheExportRef -Variant 'nvidia' -ExportCacheRef $ref -PublicRepo $script:Pub } $ref -MessagePattern 'kataglyphis_beschleuniger-stages, which is private'
+        }
+    }
+
+    It 'lets it go to the private stage package, and leaves the other lanes and an unset ref alone' {
+        Assert-BkCacheExportRef -Variant 'nvidia' -ExportCacheRef "${script:Pub}-stages:cache-nvidia" -PublicRepo $script:Pub
+        Assert-BkCacheExportRef -Variant 'nvidia' -ExportCacheRef 'localhost:5000/k:cache' -PublicRepo $script:Pub
+        Assert-BkCacheExportRef -Variant 'nvidia' -ExportCacheRef '' -PublicRepo $script:Pub
+        foreach ($v in '', 'rocm') { Assert-BkCacheExportRef -Variant $v -ExportCacheRef "${script:Pub}:cache" -PublicRepo $script:Pub }
+    }
+
+    It 'is called with the versions.env package before any stage solves' {
+        $src = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'windows\Build-Buildkit.ps1') -Raw
+        $at = $src.IndexOf("Assert-BkCacheExportRef -Variant `$Variant -ExportCacheRef `$ExportCacheRef -PublicRepo (Get-Ver 'IMAGE_REGISTRY_PREFIX')")
+        Assert-True ($at -gt 0 -and $at -lt $src.IndexOf("Invoke-BkStage -Dockerfile 'windows/Dockerfile.base'")) "called at $at, before the base solve"
+    }
+}
+
 Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' -FunctionName 'Get-BkRocmStageArg')
     # 'KEY=value,...' so a whole result compares in one assertion ('' = no build-arg at all).

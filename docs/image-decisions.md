@@ -70,6 +70,8 @@ These are recorded so nobody files them as gaps:
   distributable. Headers, dev links, `trtexec`, Python bindings and SDK trees stay in build stages;
   `check_gpu_runtime`, `deepstream-verify.sh` and the Windows smoke fail an image that carries one
   (owner, 2026-10-21: "Rausnehmen"; [`linux-accelerator-images.md` § Redistribution](linux-accelerator-images.md#redistribution)).
+- nvidia's cross stages push to the private `kataglyphis_beschleuniger-stages` package, not the public
+  one (owner, 2026-10-21: "Auf privat stellen"; [§ Stage images](linux-accelerator-images.md#stage-images-a-private-package)).
 - The distro `libgstreamer*-dev` packages are purged.
 - Only the pinned CPython (`PYTHON_VERSION`), once with the GIL and once free-threaded (owner,
   2026-10-20).

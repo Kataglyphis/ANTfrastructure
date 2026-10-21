@@ -37,9 +37,16 @@ _cross_shared_tag_suffix() {
 cross_base_tag()              { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:base$(_cross_shared_tag_suffix)"; }
 cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-compiler-$(_cross_build_host_arch)"; }
 cross_sdk_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-sdk-${1}"; }
-cross_media_tag()             { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-media$(cross_variant_infix)-${1}"; }
+# nvidia's stages hold TensorRT's SDK, which its SLA lets ship only as runtime files, and GHCR visibility is per package: a private one (owner 2026-10-21).
+cross_stage_repo() {
+  local repo="${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}" v
+  v="$(cross_variant)" || return 1
+  [ "${v}" != "nvidia" ] || repo="${repo}-stages"
+  printf '%s' "${repo}"
+}
+cross_media_tag()             { printf '%s' "$(cross_stage_repo):cross-media$(cross_variant_infix)-${1}"; }
 # The variant chain's GPU library layer between sdk and media.
-cross_gpu_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-toolchain$(cross_variant_infix)-${1}"; }
+cross_gpu_tag()               { printf '%s' "$(cross_stage_repo):cross-toolchain$(cross_variant_infix)-${1}"; }
 # Android lacks the NDK off amd64, so a non-amd64 host tags -host<arch> rather than overwrite the amd64 artifact.
 cross_build_host_infix() {
   local a; a="$(_cross_build_host_arch)"
@@ -47,7 +54,7 @@ cross_build_host_infix() {
   printf -- '-host%s' "${a}"
 }
 # One function for cross-stage-build.sh's --artifact-image-prefix and cross_android_tag, so they cannot drift.
-cross_android_tag_prefix()    { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-android$(cross_variant_infix)$(cross_build_host_infix)"; }
+cross_android_tag_prefix()    { printf '%s' "$(cross_stage_repo):cross-android$(cross_variant_infix)$(cross_build_host_infix)"; }
 cross_android_tag()           { printf '%s' "$(cross_android_tag_prefix)-${1}"; }
 # Same host infix, as wrappers push before the manifest gate; never the shared suffix, whose :latest-arm64 is taken.
 cross_final_image_tag()       { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:latest$(cross_variant_infix)$(cross_build_host_infix)"; }

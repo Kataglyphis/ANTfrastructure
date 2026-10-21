@@ -1057,7 +1057,9 @@ wheel carries. The sdk image COPYs only that; headers, `.lib` import libraries, 
 dispatch and version-compatibility runtimes, samples, Python wheels and docs stay in `trt-extract`.
 `Build-Buildkit.ps1 -Gpu` tags `trt-extract` as `bk-windows-tensorrt-sdk-nvidia`, and the ORT RUN in
 `Dockerfile.media-builder` bind-mounts its `C:\tensorrt` at `C:\tensorrt-sdk` (`TENSORRT_SDK_ROOT`,
-read by `Resolve-TensorRtSdkRoot`), so no layer the image inherits holds the SDK. Without the tag the
+read by `Resolve-TensorRtSdkRoot`), so no layer the image inherits holds the SDK. The tag stays in the
+local containerd store: only `-PushRef` pushes, and an nvidia `-ExportCacheRef` in the public package
+is refused. Without the tag the
 mount is an empty dir and ORT builds no TensorRT EP, which the smoke then fails on a staged tree. The
 smoke fails every image whose `TENSORRT_ROOT` holds anything but `current\bin\*.dll` and
 `current\licenses\` (`Get-TensorRtShipViolation`), and an EP whose TensorRT DLLs are missing there

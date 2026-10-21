@@ -17,7 +17,9 @@ Describe 'driver preflight contract (Build-Buildkit.ps1)' {
         'Assert-ShimPatch',
         'Assert-BuildkitdStepLogEnv',
         # The history gate on every exported image, in Invoke-BkHistoryGate.
-        'Assert-ImageConfigPublishable'
+        'Assert-ImageConfigPublishable',
+        # No nvidia mode=max cache, which carries the TensorRT SDK, in the public package (CON136).
+        'Assert-BkCacheExportRef'
     )
 
     It 'wires every required preflight' {

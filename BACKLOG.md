@@ -725,11 +725,28 @@ owner carries the breakage that costs.
         runtime DLLs` line, `bk-windows-tensorrt-sdk-nvidia` tagged, the ORT RUN's `TensorRT detected at
         C:\tensorrt-sdk\current`, and the smoke's `TensorRT ships only its runtime DLLs` and `ORT TensorRT EP
         finds every TensorRT DLL it loads` passing with `cuda=1 trt=1`; zip-less, both pass on the empty root.
-      - **Open, for the owner:** the chain pushes its stage images publicly (`cross-toolchain-nvidia-amd64`,
-        `cross-media-nvidia-amd64`, `cross-android-nvidia-amd64`). From the next nvidia chain they inherit
-        the `gpu` stage's TensorRT 11 dev packages (headers, dev links, `/usr/local/tensorrt`), which the ORT
-        and DeepStream builds need. Whether a pushed build stage counts as a published image decides
-        whether they must move behind a private registry or a stage that is never pushed.
+      - **The stage images go private** (owner 2026-10-21, "Auf privat stellen"; in the source since the
+        `cross_stage_repo` commit): nvidia's `gpu`, `media` and `android` stages push to
+        `ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages`; `:latest-nvidia`, the shared stages and rocm
+        stay. The Windows chain pushes no stage (`docs/linux-accelerator-images.md` § Stage images).
+      - **For the owner, after the first nvidia chain's push:** the package page
+        (`github.com/users/Kataglyphis/packages/container/package/kataglyphis_beschleuniger-stages`) says
+        Private (never switch it: a public package cannot be made private again); `curl -s -o /dev/null -w
+        '%{http_code}\n' 'https://ghcr.io/token?scope=repository:kataglyphis/kataglyphis_beschleuniger-stages:pull'`
+        prints `403` (the public package prints `200`); `DOCKER_CONFIG="$(mktemp -d)" nerdctl pull
+        ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages:cross-media-nvidia-amd64` fails `denied`, while
+        a logged-in `nerdctl manifest inspect` of it succeeds.
+      - **For the owner: delete the old public stage tags** (read anonymously 2026-10-21; no other tag shares
+        these digests and no index lists them; a delete is restorable for 30 days):
+        `cross-toolchain-nvidia-amd64` `sha256:af3245773499e0287ccded76d35aefa3560d34c217635e9ae8fedc8d20c7dffd`,
+        `cross-media-nvidia-amd64` `sha256:d2d11dbbb50bc5eb8cb070b7597761428c9123786cd7f42d15ebdfeb02935ce6`,
+        `cross-android-nvidia-amd64` `sha256:e495e70dd62456f68f07f92ae2ef409e3ca1a869f609093295b8fa649c2b0e70`.
+        With a PAT holding `read:packages` and `delete:packages` (`GHCR_TOKEN` or `docker login`): `bash
+        linux/host-config/ghcr-delete-tags.sh cross-toolchain-nvidia-amd64 cross-media-nvidia-amd64
+        cross-android-nvidia-amd64` (dry run), then the same with `GHCR_DELETE_TAGS_CONFIRM=1`. Their untagged
+        predecessors go with the weekly `ghcr-cleanup.yml` prune once 14 days old.
+      - Open: `ghcr-cleanup.yml` prunes only the public package; on `-stages` its `MIN_TAGS=10` guard would
+        refuse three tags, so untagged stage versions stay there (private, storage free today).
 - [b] **CON42 — DeepStream in `:latest-nvidia`: what is left after the publish** [M, ★]. **Done:** DeepStream 9.1
       ships in every amd64 nvidia build (owner 2026-10-07, full TensorRT 10), published 2026-10-11 (`:latest-nvidia`
       index `810f36b3…`, amd64 `23e3cc9e…`). **The GPU run on the published image passed on 2026-10-12** (RTX 2080,

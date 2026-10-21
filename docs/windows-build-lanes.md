@@ -668,7 +668,8 @@ Housekeeping and sharing:
 - **Cross-host / CI cache**: `Build-Buildkit.ps1 -ExportCacheRef <registry-ref>`
   / `-ImportCacheRef <ref>` wire buildkit's registry cache (`mode=max`) once
   registry auth works from buildkitd — a second machine then rebuilds the chain
-  from cache instead of from source.
+  from cache instead of from source. On nvidia it refuses a ref in the public
+  package: `mode=max` carries `trt-extract`'s TensorRT SDK.
 
 ### Restoring the warm/materialize rollback
 

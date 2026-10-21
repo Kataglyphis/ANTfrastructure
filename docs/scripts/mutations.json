@@ -15969,5 +15969,61 @@
   "replace": "REQUIRED_CSP_HOSTS=\"${REQUIRED_CSP_HOSTS:-www.gstatic.com",
   "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
   "why": "an app without a CSP empties the host list, and that must skip the check"
+ },
+ {
+  "id": "stage-repo.nvidia-private",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "  [ \"${v}\" != \"nvidia\" ] || repo=\"${repo}-stages\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "nvidia's stages carry TensorRT's SDK and must push to the private package, never the public one (owner 2026-10-21)"
+ },
+ {
+  "id": "stage-repo.gpu-tag-follows",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "cross_gpu_tag()               { printf '%s' \"$(cross_stage_repo):",
+  "replace": "cross_gpu_tag()               { printf '%s' \"${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "the gpu stage installs TensorRT's headers and dev links; its tag is the first that must go private"
+ },
+ {
+  "id": "stage-repo.media-tag-follows",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "cross_media_tag()             { printf '%s' \"$(cross_stage_repo):",
+  "replace": "cross_media_tag()             { printf '%s' \"${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "media inherits the gpu stage's TensorRT SDK, so its push, registry cache and pins must stay private"
+ },
+ {
+  "id": "stage-repo.android-tag-follows",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "cross_android_tag_prefix()    { printf '%s' \"$(cross_stage_repo):",
+  "replace": "cross_android_tag_prefix()    { printf '%s' \"${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "android inherits it too, and the runtime lane reads its payload through this prefix"
+ },
+ {
+  "id": "stage-repo.rocm-stays-public",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "[ \"${v}\" != \"nvidia\" ] ||",
+  "replace": "[ -z \"${v}\" ] ||",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "rocm's stages carry no NVIDIA file, so only nvidia's move"
+ },
+ {
+  "id": "stage-repo.final-stays-public",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "cross_final_image_tag()       { printf '%s' \"${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:",
+  "replace": "cross_final_image_tag()       { printf '%s' \"$(cross_stage_repo):",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": ":latest-nvidia is runtime-only and must stay in the public package"
+ },
+ {
+  "id": "stage-repo.shared-sdk-stays-public",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "cross_sdk_tag()               { printf '%s' \"${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:",
+  "replace": "cross_sdk_tag()               { printf '%s' \"$(cross_stage_repo):",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "the sdk stage is shared with the default chain, which reads it from the public package"
  }
 ]

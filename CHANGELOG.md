@@ -12,6 +12,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — nvidia's stage images move to a private package (CON136)
+
+- **Owner decision 2026-10-21** ("Auf privat stellen"): from the next nvidia chain the `gpu`, `media`
+  and `android` stages carry TensorRT 11's headers and dev links, which its SLA does not let anyone
+  redistribute, and GHCR sets visibility per package. `tag-naming.sh` `cross_stage_repo` sends them to
+  `<repo>-stages` (`ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages`, private on its first push);
+  the push, its inline registry cache, the digest pins, the ancestry annotations and the runtime
+  lane's artifact prefix follow the tags. `:latest-nvidia`, the shared `base`/`compiler`/`sdk` and every
+  rocm stage stay in the public package. `01-core` is in the compiler closure, so this re-keys the
+  default chain from the compiler stage, like any `01-core` edit.
+- **Windows** pushes no stage (`trt-extract` and the rest stay in containerd; only `-PushRef` pushes).
+  `Build-Buildkit.ps1` now refuses an nvidia `-ExportCacheRef` in the public package, whose `mode=max`
+  cache would carry the SDK.
+- **Proof.** `test-gpu-variant.sh` runs the real entry points dry: every ref a pushing nvidia media
+  build names (tag, push, registry cache, parent pin) is the private package's, the runtime lane reads
+  android from there, `:latest-nvidia` and rocm stay. Seven `stage-repo.*` mutations bite; three manual
+  mutations of the Windows guard fail `Driver.Variant.Tests.ps1`, and the driver's preflight
+  contract lists it.
+- **Left for the owner** (`BACKLOG.md` CON136): check the new package's visibility after the first
+  push, and delete the three old public tags `cross-{toolchain,media,android}-nvidia-amd64`.
+  [linux-accelerator-images.md § Stage images](docs/linux-accelerator-images.md#stage-images-a-private-package).
+
 ## 2026-10-21 — The Flutter web shell, the coverage floor and the frame timings, shared by both apps
 
 - **`shared/web/`**: the loading screen and cookie notice both Flutter web apps load before Flutter

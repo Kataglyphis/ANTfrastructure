@@ -161,6 +161,24 @@ function Resolve-BkVariant {
 
 <#
 .SYNOPSIS
+    Refuses an nvidia -ExportCacheRef in the public package: a mode=max cache carries trt-extract's TensorRT SDK tree.
+#>
+function Assert-BkCacheExportRef {
+    param(
+        [AllowEmptyString()][string]$Variant,
+        [AllowEmptyString()][string]$ExportCacheRef,
+        [Parameter(Mandatory)][string]$PublicRepo
+    )
+    if ($Variant -ne 'nvidia' -or -not $ExportCacheRef) { return }
+    $repo = ($ExportCacheRef -split '@')[0] -replace ':[^:/]*$', ''
+    if ($repo -eq $PublicRepo) {
+        throw ("-ExportCacheRef '$ExportCacheRef' is in the public package, and an nvidia cache (mode=max) carries the " +
+               "TensorRT SDK, which may ship only as runtime DLLs (owner 2026-10-21). Export it to $PublicRepo-stages, which is private.")
+    }
+}
+
+<#
+.SYNOPSIS
     The rocm-only build-args of one stage; @{} on every other lane, so cpu/nvidia solves are unchanged.
 #>
 function Get-BkRocmStageArg {
@@ -270,6 +288,7 @@ function Get-Ver([string]$Key) {
     return Get-VersionTableValue -VersionTable $versions -Key $Key
 }
 $cudaMajorMinor = ((Get-Ver 'CUDA_VERSION') -split '\.')[0..1] -join '.'
+Assert-BkCacheExportRef -Variant $Variant -ExportCacheRef $ExportCacheRef -PublicRepo (Get-Ver 'IMAGE_REGISTRY_PREFIX')
 
 # --- resource budget + sccache gate ---
 $MediaMemoryGb = Get-MediaMemoryBudget -RequestedGb $MediaMemoryGb -HostReserveGb $HostReserveGb

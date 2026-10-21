@@ -182,3 +182,5 @@ mutation-family:perf-report
 mutation-family:nginx-harness
 # The HTTP smoke test for a built Flutter web app (linux/webserver/scripts/flutter_integration_smoke_test.sh); proof: test-flutter-smoke-test.sh.
 mutation-family:web-smoke
+# The nvidia stages' private package in 01-core/tag-naming.sh (cross_stage_repo), which no slug owns; proof: linux/scripts/tests/test-gpu-variant.sh.
+mutation-family:stage-repo

@@ -17,7 +17,7 @@ ubuntu:26.04
     │   └── sdk                         (:cross-sdk-<arch>)
     │       ├── media                   (:cross-media-<arch>)
     │       │   └── android             (:cross-android-<arch>)
-    │       └── gpu (variant chain)     (:cross-toolchain-nvidia-<arch>, :cross-toolchain-rocm-<arch>)
+    │       └── gpu (variant chain)     (-stages:cross-toolchain-nvidia-<arch>, :cross-toolchain-rocm-<arch>)
     │           └── media → android     (:cross-media-<variant>-<arch> → :cross-android-<variant>-<arch>)
     └── runtime-base                    (:latest-base-<arch>)
         └── package                     (:latest-package-<arch>)

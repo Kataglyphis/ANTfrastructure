@@ -13,6 +13,12 @@ default chain's tags. Before 2026-09-22 `ENABLE_NVIDIA=true` changed only the
 build args, and a GPU run pushed its bytes under the default `cross-media-<arch>`
 and `:latest`. The rules: [`AGENTS.md` § Image and tag naming](../AGENTS.md#image-and-tag-naming-published-tags).
 
+The three stage tags live in a separate, private package,
+`ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages` (`<repo>-stages`,
+`tag-naming.sh` `cross_stage_repo`), because they carry TensorRT's SDK
+([§ Stage images](#stage-images-a-private-package)). `:latest-nvidia` and its
+`-<arch>` wrappers stay in the public package.
+
 - `linux/Dockerfile.nvidia`: CUDA <!-- generated:cuda -->13.4<!-- /generated:cuda -->, cuDNN <!-- generated:cudnn -->9.27.0.42<!-- /generated:cudnn -->, TensorRT <!-- generated:tensorrt -->11.4.0.106<!-- /generated:tensorrt --> (amd64, [§ TensorRT 11](#tensorrt-11)), NCCL, cuBLAS/cuSPARSE/cuFFT, NVTX. The chain's `gpu` stage, after `:cross-sdk-<arch>`.
 - `linux/Dockerfile.media`: Builds media stack with NVIDIA codec headers + ORT CUDA/TRT/cuDNN EPs when `ENABLE_NVIDIA=true`.
 - `linux/Dockerfile.android`: Android SDK/NDK on top of the NVIDIA media layer.
@@ -221,6 +227,36 @@ ship; a gate fails an image that carries one.
   EP loads ([`windows-builds.md` § TensorRT setup](windows-builds.md#tensorrt-setup-gpu-lane-optional)).
   The published images are zip-less and carry none.
 
+#### Stage images: a private package
+
+**Decided 2026-10-21** (owner: "Auf privat stellen"): a pushed build stage that carries the SDK is
+not public. The nvidia chain's `gpu`, `media` and `android` stages hold TensorRT 11's headers, dev
+links and `/usr/local/tensorrt` (ORT's TensorRT EP and DeepStream's components compile there), and
+GHCR sets visibility per package, so they push to `<repo>-stages`, never to `<repo>`:
+
+| Stage | Tag |
+| --- | --- |
+| `gpu` | `ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages:cross-toolchain-nvidia-<arch>` |
+| `media` | `…-stages:cross-media-nvidia-<arch>` |
+| `android` | `…-stages:cross-android-nvidia[-host<arch>]-<arch>` |
+
+The push, the inline registry cache it imports, the `GPU_PIN`/`MEDIA_PIN`/`ANDROID_PIN` digests, the
+ancestry annotations and the runtime lane's `--artifact-image-prefix` all derive from these tags.
+Unchanged: `base`, `compiler` and `sdk` (shared), every rocm stage, which hold no NVIDIA SDK file
+(FFmpeg's `nv-codec-headers` are MIT), and `:latest-nvidia`, which ships the runtime files only.
+
+- A new user package is **private** on its first push; linking a repository passes on its access
+  permissions, never its visibility ([GitHub docs](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)).
+  The Linux stages set no `org.opencontainers.image.source` anyway.
+- Pulling takes a login with `read:packages`, which the build hosts have. No workflow pulls a stage tag.
+- The first chain after the move starts at `gpu` (the variant default): the package is empty until
+  then, so a `--from-stage media` resume has no parent.
+- The Windows `-Gpu` chain pushes no stage: `trt-extract` (`bk-windows-tensorrt-sdk-nvidia`) and every
+  other stage stay in the local containerd store, and only `-PushRef` pushes the final image.
+  `-ExportCacheRef` (`mode=max`, every stage) refuses the public package on nvidia.
+- The tags published before the move (`cross-toolchain-nvidia-amd64`, `cross-media-nvidia-amd64`,
+  `cross-android-nvidia-amd64`) stay public until the owner deletes them (`BACKLOG.md` CON136).
+
 ## The GPU runtime gate
 
 `check_gpu_runtime` (`linux/scripts/06-packaging/check-gpu-runtime.sh`) runs in the runtime smoke
@@ -269,30 +305,30 @@ stage local, so each child reads its parent from an OCI layout exported with
 ```bash
 export CROSS_BUILD_PLATFORM=linux/arm64   # build on, and only for, this host
 A=(--target-arches arm64 --cross-targets arm64 --no-push)
-R=ghcr.io/kataglyphis/kataglyphis_beschleuniger
+R=ghcr.io/kataglyphis/kataglyphis_beschleuniger S="$R-stages"   # S: the nvidia stages' package
 
 # 1. base -> compiler -> sdk
 bash linux/scripts/build-cross-chain.sh --to-stage sdk "${A[@]}"
 
 # 2. the GPU layer on the sdk (export the sdk to an OCI layout first)
 nerdctl build --platform linux/arm64 -f linux/Dockerfile.nvidia \
-  -t "$R:cross-toolchain-nvidia-arm64" \
+  -t "$S:cross-toolchain-nvidia-arm64" \
   --build-context "$R:cross-sdk-arm64=oci-layout://$SDK_OCI" \
   --build-arg BASE_IMAGE="$R:cross-sdk-arm64" --build-arg UBUNTU_VERSION=26.04 \
   --build-arg ENABLE_TENSORRT=false --build-arg CUDA_INSTALL_COMPAT=0 .
 
 # 3. media and android, each FROM its parent's layout
 export ENABLE_NVIDIA=true ENABLE_TENSORRT=false TVM_USE_CUDA=1
-CROSS_MEDIA_BASE_IMAGE="$R:cross-toolchain-nvidia-arm64" CROSS_MEDIA_BASE_CONTEXT="$NVIDIA_OCI" \
+CROSS_MEDIA_BASE_IMAGE="$S:cross-toolchain-nvidia-arm64" CROSS_MEDIA_BASE_CONTEXT="$NVIDIA_OCI" \
   bash linux/scripts/build-cross-chain.sh --only media "${A[@]}"
-CROSS_ANDROID_BASE_IMAGE="$R:cross-media-nvidia-arm64" CROSS_ANDROID_BASE_CONTEXT="$MEDIA_OCI" \
+CROSS_ANDROID_BASE_IMAGE="$S:cross-media-nvidia-arm64" CROSS_ANDROID_BASE_CONTEXT="$MEDIA_OCI" \
   bash linux/scripts/build-cross-chain.sh --only android "${A[@]}"
 
 # 4. runtime: call the helper directly, with the android layout as the artifact
 #    (the directory must be named <root>-arm64)
 CROSS_NO_PUSH=1 ARTIFACT_CONTEXT_ROOT="$ANDROID_OCI_ROOT" ARTIFACT_CONTEXT_MODE=oci \
   bash linux/scripts/build-runtime-manifest.sh --image "$R:latest-nvidia-hostarm64" \
-  --target-arches arm64 --artifact-image-prefix "$R:cross-android-nvidia-hostarm64" \
+  --target-arches arm64 --artifact-image-prefix "$S:cross-android-nvidia-hostarm64" \
   --artifact-build-mode cross --skip-manifest
 ```
 

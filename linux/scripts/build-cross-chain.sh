@@ -127,9 +127,9 @@ EOF
   -h, --help               Show this help text
 
 Variant chains (an ENVIRONMENT knob; ENABLE_NVIDIA/ENABLE_AMD=true imply it):
-  CROSS_VARIANT=nvidia|rocm  gpu stage after the shared sdk, every later tag
-                             -<variant>, publishes :latest-<variant>. Starts at gpu;
-                             amd64 only; pushes only from linux/amd64.
+  CROSS_VARIANT=nvidia|rocm  gpu stage after the shared sdk, every later tag -<variant>,
+                             publishes :latest-<variant>; nvidia's stages go to REPO-stages
+                             (private). Starts at gpu; amd64 only; pushes from linux/amd64.
 
 Notes:
   * When resuming mid-chain (e.g. --from-stage media), the required upstream
@@ -247,7 +247,7 @@ _chain_validate_stages() {
   hailo_validate_knobs || exit 2
   runtime_host_payload_arches >/dev/null || exit 2
 
-  log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} final=${FINAL_IMAGE}"
+  log "Cross chain: arches=${TARGET_ARCHES} stages=${FROM_STAGE}..${TO_STAGE} repo=${IMAGE_REPO}${CROSS_GPU_VARIANT:+ variant=${CROSS_GPU_VARIANT}} stage_repo=$(cross_stage_repo) final=${FINAL_IMAGE}"
 
   if [ "${DESCRIBE_CHAIN}" -eq 1 ]; then
     describe_cross_chain "${TARGET_ARCHES}"
