@@ -8,8 +8,7 @@ if ! command -v die >/dev/null 2>&1; then
   die() { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
 fi
 
-# download_file <url> <dest> [retries=3] [connect_timeout] [max_time]; max_time is curl-only (wget has none).
-# DOWNLOAD_RETRY_DELAY spaces the retries; 2 s outwaited none of GitHub's 60 s HTTP 500 of 2026-10-21.
+# download_file <url> <dest> [retries=3] [connect_timeout] [max_time]; max_time is curl-only. DOWNLOAD_RETRY_DELAY: 2 s outwaited none of GitHub's 60 s HTTP 500 (2026-10-21).
 download_file() {
   local url="$1"
   local dest="$2"
