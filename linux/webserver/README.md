@@ -60,7 +60,7 @@ The following shared helpers are intended for Flutter web projects that need loc
 
 - `linux/webserver/templates/flutter-nginx-local.conf`: minimal nginx config for local SPA + WASM serving on port `8080`
 - `linux/webserver/templates/flutter-web.htaccess`: Apache template with WASM MIME type and basic headers
-- `linux/webserver/scripts/flutter_integration_smoke_test.sh`: HTTP-level smoke test for a built Flutter web app. With `CHECK_LOADING_SHELL=1` (the default) it also fails when `index.html` lacks the shared shell's markup or one of its files is not served ([`shared/web/README.md`](../../shared/web/README.md)). With `CHECK_LOCAL_ENGINE=1` (the default) it fails a build that loads its engine from Google's CDN: build with `--no-web-resources-cdn`. `REQUIRED_CSP_HOSTS` names hosts the CSP must carry; none by default
+- `linux/webserver/scripts/flutter_integration_smoke_test.sh`: HTTP-level smoke test for a built Flutter web app. With `CHECK_LOADING_SHELL=1` (the default) it also fails when `index.html` lacks the shared shell's markup or one of its files is not served ([`shared/web/README.md`](../../shared/web/README.md)). With `CHECK_LOCAL_ENGINE=1` (the default) it fails a build that loads its engine from Google's CDN: build with `--no-web-resources-cdn`. With `CHECK_FALLBACK_FONTS=1` it fails a build whose `flutter_bootstrap.js` names no `fontFallbackBaseUrl` on the site, or that does not serve every font of the lock under it ([below](#fallback-fonts-from-the-site)). `REQUIRED_CSP_HOSTS` names hosts the CSP must carry; none by default
 - `linux/webserver/scripts/flutter-nginx-integration-test.sh <build-dir> [--port N]`: that smoke test against the build behind `flutter-nginx-local.conf` in `nginx:alpine`. `ENGINE` picks docker or nerdctl; from Git Bash it hands the engine `C:/...` paths. It removes the container whatever the result
 - `linux/webserver/scripts/flutter_capture_console_errors.py`: Playwright-based browser smoke test for a built Flutter web app. It serves the build with index.html for every extension-less path, as nginx and the `.htaccess` do, so a deep route loads the app instead of a 404 page. `--route PATH`, repeated, names the routes to open. It lists every third-party host the page requested; `--forbid-host SUFFIX`, repeated, fails the run when one matches
 
@@ -70,6 +70,29 @@ Example:
 bash linux/webserver/scripts/flutter_integration_smoke_test.sh http://localhost:8080
 python3 linux/webserver/scripts/flutter_capture_console_errors.py --build-dir /path/to/build/web
 ```
+
+## Fallback fonts from the site
+
+`--no-web-resources-cdn` serves the engine from the site, but not the fonts it falls back to for a
+glyph the app's fonts lack (emoji, symbols, CJK): the engine fetches those from
+`fonts.gstatic.com/s/<family>/<version>/<file>.woff2`, a CSP that names no Google host blocks the
+fetch, and the glyph draws as an empty box.
+
+- **The site serves them instead.** The app's `web/flutter_bootstrap.js` passes
+  `config: {fontFallbackBaseUrl: "fallback-fonts/"}` to `_flutter.loader.load`, and the build gets
+  `linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py --dest build/web/fallback-fonts`,
+  which places each file of `fallback-fonts.lock` at `<family>/<version>/<file>`, checked by
+  SHA-256 through `lib/fetch-data-lock.py` and its cache (`KATAGLYPHIS_FONT_CACHE`).
+- **The lock holds every chunk of Noto Color Emoji and Noto Sans Symbols 2**, 18 files, 2.3 MiB
+  (2026-10-21): the families jonasheinle.de's content asked for. The engine loads a chunk only
+  when a glyph needs it. All 144 families are 724 files, 20.7 MiB, most of it CJK.
+- **A Flutter bump can move the paths.** The fetcher reads the engine's
+  `font_fallback_data.dart` in the image's SDK and fails on a locked file the engine no longer
+  requests, or a chunk of a locked family the lock lacks. Re-pin with
+  `fetch-fallback-fonts.py --print-lock <family>...`.
+- **A family the lock lacks** now 404s on the site instead of being blocked: the live-site check
+  ([`docs/ftp-deploys.md`](../../docs/ftp-deploys.md#the-live-site-check)) names its URL.
+- The fonts are OFL-1.1; the app lists them on its licences page.
 
 ## Prerequisites for the browser smoke test
 

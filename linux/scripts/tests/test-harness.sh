@@ -64,6 +64,17 @@ t_skip_unless() {
   exit 1
 }
 
+# t_skip_unless_chrome: node with a global WebSocket and a Chrome, as the CDP checks need; T_CHROME is that Chrome's path.
+t_skip_unless_chrome() {
+  local c
+  t_skip_unless "node with a global WebSocket (22 and later)" node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'
+  T_CHROME=""
+  for c in "${CHROME_EXECUTABLE:-}" chrome google-chrome chromium chromium-browser; do
+    [ -n "${c}" ] && command -v "${c}" >/dev/null 2>&1 && { T_CHROME="$(command -v "${c}")"; break; }
+  done
+  t_skip_unless "Chrome (CHROME_EXECUTABLE, chrome, google-chrome or chromium)" test -n "${T_CHROME}"
+}
+
 # t_needs <what> <command...>, right after t_case: Git Bash waives that case's failures (SKIP, counted in t_summary); elsewhere it fails.
 t_needs() {
   local rc=0

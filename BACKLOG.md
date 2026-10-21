@@ -294,6 +294,21 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
 
       Done when each runs in `:latest` on its interpreter, OrchestrANT's tests on X.Y and X.Yt.
 
+- [ ] **CON148 — jotrockenmitlocken's live-site check on its two dev domains** [S, ★★]. Found
+      2026-10-21: `web.yml` runs `scripts/check-live-site.py` after main's upload only, because the
+      dev domains are secret and no secret holds their URL (`DEV_USERNAME`, `DEV_WASM_USERNAME` are
+      FTP logins). Owner first: add `DEV_WASM_SITE_URL` and `DEV_SITE_URL`. Then one step after each
+      dev upload, passing the URL by name (`-e DEV_WASM_SITE_URL`); the WASM check must run before
+      the CanvasKit build replaces `build/web`. Done when a develop push shows both checks green.
+
+- [ ] **CON149 — OmniAccelerANT's web build serves the engine's fallback fonts** [S, ★★]. Found
+      2026-10-21: OmniAccelerANT builds with `--no-web-resources-cdn` and sets no CSP, so a glyph
+      outside its fonts (an emoji) makes the engine fetch a Noto chunk from fonts.gstatic.com, a
+      visitor request to Google against the owner's rule. Next: its `web/flutter_bootstrap.js` sets
+      `fontFallbackBaseUrl: "fallback-fonts/"`, its web lane runs `fetch-fallback-fonts.py --dest
+      build/web/fallback-fonts` and the smoke test `CHECK_FALLBACK_FONTS=1`, as jotrockenmitlocken
+      does ([`linux/webserver/README.md`](linux/webserver/README.md#fallback-fonts-from-the-site)).
+
 ## Open — Flet clients for OrchestrANT's UIs
 
 Owner decisions 2026-10-19: OrchestrANT's UIs are Flet (OrchestrANT 2aa1da8, the benchmark viewer;
@@ -514,6 +529,15 @@ owner carries the breakage that costs.
       Next: the image installs `playwright` into its venv, without its browser download (the
       script launches `CHROME_EXECUTABLE`). Then jotrockenmitlocken's `web.yml` smoke step and
       OmniAccelerANT's web lane run the capture after the smoke test, each with its `--route` list.
+
+- [ ] **CON147 — the web engine's fallback fonts in `:latest`, so a web build downloads none** [S, ★].
+      Found 2026-10-21 with jotrockenmitlocken's emoji fix. `fetch-fallback-fonts.py` puts the 18
+      files of `fallback-fonts.lock` (Noto Color Emoji and Noto Sans Symbols 2, 2.3 MiB) into each
+      web build, from fonts.gstatic.com through a cache that dies with the container, so every CI
+      build downloads them. Next: the SDK stage fetches them into a read-only directory beside
+      Flutter, and the fetcher reads it before its writable cache (today `cache_lock` opens
+      `<cache>/.lock`, which a read-only layer refuses). Done when a build with fonts.gstatic.com
+      unreachable places all 18, and a Flutter bump re-pins the lock in the same change.
 
 ## Open — Linux arm64 and riscv64
 

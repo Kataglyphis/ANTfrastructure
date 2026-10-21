@@ -12,6 +12,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — Web apps: the fallback fonts from the site, no icons under `/icons/` on Apache, a live-site check
+
+Found on jonasheinle.de 1.4.0: its app icons 404ed, and emoji drew as boxes.
+
+- **`linux/scripts/check-live-site.js`** checks a deployed web app in `:latest`'s Chrome: every
+  route fresh at a desktop and a phone width, scrolled, with no console error, CSP block, 400+
+  response or third-party host; every file of the build served with 200; `version.json` the
+  build's. It reuses `check-docs-sidebars.js`'s launcher, which takes an event sink now. Against
+  the live 1.4.0 it failed on both bugs ([`ftp-deploys.md`](docs/ftp-deploys.md#the-live-site-check)).
+- **`05-frameworks/flutter/fetch-fallback-fonts.py`** puts `fallback-fonts.lock`'s 18 Noto files
+  (every chunk of Noto Color Emoji and Noto Sans Symbols 2, 2.3 MiB) at
+  `<dest>/<family>/<version>/<file>`, by SHA-256 through `lib/fetch-data-lock.py`, and fails when
+  the image's engine requests other paths. With `fontFallbackBaseUrl` the engine fetches them from
+  the site, which the CSP allows. The smoke test's `CHECK_FALLBACK_FONTS=1` requires both
+  ([`linux/webserver/README.md`](linux/webserver/README.md#fallback-fonts-from-the-site)).
+- **`check-web-artefacts.py`** checks the icons the manifest and `index.html` name are on disk and
+  in `--icons-dir` (default `icons`), and with a `web/.htaccess` fails anything under `web/icons/`
+  or `/icons/`: Apache's default `Alias /icons/` serves its own directory there.
+- **Proof.** `test-check-live-site.sh`, `test-fetch-fallback-fonts.sh` and the extended
+  `test-check-web-artefacts.sh` and `test-flutter-smoke-test.sh` in `:latest`; 21 new mutations
+  (`live-site.*`, `fallback-fonts.*`, `web-artefacts.*`, `web-smoke.*`) all bite.
+
 ## 2026-10-21 — The README shows the hub's own logo
 
 - **`images/logo.svg`**, an ant hauling a shipping container: the hub's entry in the family set

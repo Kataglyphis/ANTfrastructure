@@ -16586,5 +16586,173 @@
   "replace": "--jobs \"${PREPUSH_MUTATION_JOBS:-4}\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "the push gate takes the gate's own default, one per CPU; PREPUSH_MUTATION_JOBS only caps it"
+ },
+ {
+  "id": "live-site.csp-blocked",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "    ...csp.map((c) => `csp-blocked: ${c}`),\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a fallback font the CSP blocks never reaches the network: only the page's securitypolicyviolation names its URL"
+ },
+ {
+  "id": "live-site.csp-probe-installed",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "    await browser.send('Page.addScriptToEvaluateOnNewDocument', { source: `(${cspProbe})()` });\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "the probe must run before the page's scripts, or the violations of the boot are lost"
+ },
+ {
+  "id": "live-site.third-party-hosts",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "const third = [...events.hosts].filter((x) => x !== base && !opts.allow.includes(x));",
+  "replace": "const third = [];",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "the owner's rule: no visitor request leaves the site"
+ },
+ {
+  "id": "live-site.fresh-boot-per-route",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  await send('Page.navigate', { url: 'about:blank' });\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a hash route is a same-document navigation: without about:blank only the first route boots the app"
+ },
+ {
+  "id": "live-site.scrolls",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  for (let i = 0; i < opts.scrolls; i++) {",
+  "replace": "  for (let i = 0; i < 0; i++) {",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "Flutter lays out, and fetches fonts for, only what is on screen: the emoji on /books sat below the fold"
+ },
+ {
+  "id": "live-site.network-events",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "    await browser.send('Network.enable');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "without Network.enable no 404 reaches the check, and /icons/Icon-192.png looked served"
+ },
+ {
+  "id": "live-site.log-events",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "    await browser.send('Log.enable');\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "the browser's own console lines (a failed load, a CSP refusal) come through the Log domain only"
+ },
+ {
+  "id": "live-site.files-served",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "      if (got !== 200) bad.push(",
+  "replace": "      if (false) bad.push(",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "the FTP sync state listed /icons/Icon-192.png as uploaded while Apache answered 404"
+ },
+ {
+  "id": "live-site.dotfiles-skipped",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "      if (e.name.startsWith('.')) continue;\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "Apache never serves .htaccess, so sweeping it would fail every Apache site"
+ },
+ {
+  "id": "live-site.version-matches",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "    return got === want ? null :",
+  "replace": "    return true ? null :",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a deploy that never replaced the site still serves the old version.json"
+ },
+ {
+  "id": "live-site.verdict",
+  "target": "linux/scripts/check-live-site.js",
+  "find": "  if (failed) fail(",
+  "replace": "  if (false) fail(",
+  "test": "bash linux/scripts/tests/test-check-live-site.sh",
+  "why": "a check that prints FAIL and exits 0 leaves the job green over a broken site"
+ },
+ {
+  "id": "fallback-fonts.locked-file-requested",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "        elif rel not in requested:",
+  "replace": "        elif False:",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "after a Flutter bump the engine asks for another version path, and every locked file would 404"
+ },
+ {
+  "id": "fallback-fonts.family-complete",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "    missing = [rel for rel in requested if rel.split(\"/\")[0] in families and rel not in locked]",
+  "replace": "    missing = []",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "new content picks another chunk of a family: one missing chunk is an empty box again"
+ },
+ {
+  "id": "fallback-fonts.engine-layout",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "            target = dest / url[len(GSTATIC):]",
+  "replace": "            target = dest / name",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "the engine requests <base><family>/<version>/<file>; a flat directory 404s every font"
+ },
+ {
+  "id": "fallback-fonts.problems-stop-the-fetch",
+  "target": "linux/scripts/05-frameworks/flutter/fetch-fallback-fonts.py",
+  "find": "    if problems or args.check:",
+  "replace": "    if args.check:",
+  "test": "bash linux/scripts/tests/test-fetch-fallback-fonts.sh",
+  "why": "a lock the engine disagrees with must stop the build, not ship fonts nobody requests"
+ },
+ {
+  "id": "web-artefacts.apache-icons",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "    if (root / \"web/.htaccess\").is_file():",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "Apache's default Alias /icons/ made jonasheinle.de's app icons 404 for two releases"
+ },
+ {
+  "id": "web-artefacts.icon-on-disk",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "        if \"://\" not in value and not value.startswith(\"data:\") and not (root / \"web\" / site.lstrip(\"/\")).is_file():",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "a half-done icon move leaves the manifest naming a file the build lacks"
+ },
+ {
+  "id": "web-artefacts.icons-dir",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "        if where == \"web/manifest.json\" and not site.startswith(f\"/{icons_dir}/\"):",
+  "replace": "        if False:",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "--icons-dir is where the app keeps its icons; a manifest icon elsewhere is a stray copy"
+ },
+ {
+  "id": "web-artefacts.og-image",
+  "target": "linux/scripts/05-frameworks/flutter/check-web-artefacts.py",
+  "find": "for m in re.finditer(r'<meta\\b[^>]*\\bproperty=\"og:image\"",
+  "replace": "for m in re.finditer(r'<nometa\\b[^>]*\\bproperty=\"og:image\"",
+  "test": "bash linux/scripts/tests/test-check-web-artefacts.sh",
+  "why": "the og:image is an absolute URL to /icons/ and 404ed on Apache like the manifest's"
+ },
+ {
+  "id": "web-smoke.fallback-font-base",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "    \"\" | *://* | //*)",
+  "replace": "    \"\")",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "a fontFallbackBaseUrl on fonts.gstatic.com is the CSP block again"
+ },
+ {
+  "id": "web-smoke.fallback-fonts-served",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "    if [ \"$FONT_STATUS\" != \"200\" ]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "a build without its fonts 404s every emoji the engine falls back for"
  }
 ]

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# check-web-artefacts.py on throwaway app trees: each pin it guards, met and broken.
+# check-web-artefacts.py on throwaway app trees: each pin and icon path it guards, met and broken.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
@@ -25,7 +25,7 @@ _app() {
   _png "$1/web/icons/Icon-192.png" 8
 }
 
-_gate() { "${PREFLIGHT_PYTHON:-python3}" "${SCRIPTS}/05-frameworks/flutter/check-web-artefacts.py" --repo-root "$1"; }
+_gate() { local root="$1"; shift; "${PREFLIGHT_PYTHON:-python3}" "${SCRIPTS}/05-frameworks/flutter/check-web-artefacts.py" --repo-root "${root}" "$@"; }
 
 t_case "a tree that keeps every pin passes"
 _app "${work}/ok"
@@ -59,6 +59,42 @@ t_case "no sqlite3.wasm: the sqlite pins do not apply"
 _app "${work}/nowasm"
 printf 'packages:\n  sqlite3:\n    version: "0.0.1"\n' > "${work}/nowasm/pubspec.lock"
 t_assert_rc 0 _gate "${work}/nowasm"
+
+_manifest_icons() { printf '{"name": "Fixture", "icons": [{"src": "%s"}]}\n' "$2" > "$1/web/manifest.json"; }
+
+t_case "a manifest icon web/ does not hold fails, naming it"
+_app "${work}/gone"
+_manifest_icons "${work}/gone" icons/Icon-512.png
+t_assert_rc 1 _gate "${work}/gone"
+t_assert_contains "$(t_out _gate "${work}/gone")" "web/manifest.json names icons/Icon-512.png, which web/ does not hold"
+
+t_case "so does an apple-touch-icon"
+_app "${work}/touch"
+printf '<html><head><title>Fixture</title><link rel="apple-touch-icon" href="icons/Icon-180.png"></head></html>\n' > "${work}/touch/web/index.html"
+t_assert_contains "$(t_out _gate "${work}/touch")" "web/index.html names icons/Icon-180.png, which web/ does not hold"
+
+t_case "the manifest's icons must lie in --icons-dir"
+_app "${work}/dir"
+mkdir -p "${work}/dir/web/app-icons"
+_png "${work}/dir/web/app-icons/Icon-192.png" 8
+_manifest_icons "${work}/dir" app-icons/Icon-192.png
+t_assert_contains "$(t_out _gate "${work}/dir")" "outside the icon directory web/icons/"
+t_assert_rc 0 "${PREFLIGHT_PYTHON:-python3}" "${SCRIPTS}/05-frameworks/flutter/check-web-artefacts.py" --repo-root "${work}/dir" --icons-dir app-icons
+
+t_case "on Apache (a web/.htaccess) a file under web/icons/ fails: Apache aliases /icons/ to its own directory"
+_app "${work}/apache"
+: > "${work}/apache/web/.htaccess"
+t_assert_rc 1 _gate "${work}/apache"
+t_assert_contains "$(t_out _gate "${work}/apache")" "Apache serves /icons/ from its own directory, so these 404 on the site: web/icons/Icon-192.png"
+
+t_case "and so does an absolute og:image under /icons/, with the icons moved"
+_app "${work}/og"
+: > "${work}/og/web/.htaccess"
+mv "${work}/og/web/icons" "${work}/og/web/app-icons"
+printf '<html><head><title>Fixture</title><meta property="og:image" content="https://example.org/icons/Icon-512.png"></head></html>\n' > "${work}/og/web/index.html"
+t_assert_contains "$(t_out _gate "${work}/og" --icons-dir app-icons)" "404 on the site: https://example.org/icons/Icon-512.png"
+printf '<html><head><title>Fixture</title><meta property="og:image" content="https://example.org/app-icons/Icon-192.png"></head></html>\n' > "${work}/og/web/index.html"
+t_assert_rc 0 _gate "${work}/og"
 
 t_case "a directory without pubspec.yaml is a usage error"
 mkdir -p "${work}/empty"

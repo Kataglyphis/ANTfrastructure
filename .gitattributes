@@ -34,6 +34,7 @@ linux/Dockerfile* text eol=lf
 linux/docker-compose.yml text eol=lf
 linux/**/*.txt text eol=lf
 linux/**/*.allow text eol=lf
+linux/**/*.lock text eol=lf
 # The shell suites mutate these gates with `sed '/…$/'`, which never matches a CRLF line.
 .claude/**/*.py text eol=lf
 docs/**/*.py text eol=lf

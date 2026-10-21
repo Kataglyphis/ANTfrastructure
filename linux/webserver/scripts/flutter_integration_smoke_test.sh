@@ -8,6 +8,8 @@ BASE_URL="${1:-http://localhost:8080}"
 REQUIRED_CSP_HOSTS="${REQUIRED_CSP_HOSTS:-}"
 CHECK_LOADING_SHELL="${CHECK_LOADING_SHELL:-1}"
 CHECK_LOCAL_ENGINE="${CHECK_LOCAL_ENGINE:-1}"
+CHECK_FALLBACK_FONTS="${CHECK_FALLBACK_FONTS:-0}"
+FALLBACK_FONTS_LOCK="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/05-frameworks/flutter" && pwd)/fallback-fonts.lock"
 
 # expect_wasm <path>: served as application/wasm, or the browser refuses to compile it.
 expect_wasm() {
@@ -106,6 +108,31 @@ if [ "$CHECK_LOCAL_ENGINE" = "1" ]; then
   for engine in canvaskit/canvaskit.wasm canvaskit/skwasm.wasm; do
     expect_wasm "$engine"
   done
+fi
+
+if [ "$CHECK_FALLBACK_FONTS" = "1" ]; then
+  # The engine fetches emoji and symbol fonts from fontFallbackBaseUrl, fonts.gstatic.com unless flutter_bootstrap.js names another.
+  echo "--- Testing: the fallback fonts are served from this site ---"
+  FONT_BASE=$(curl -s "$BASE_URL/flutter_bootstrap.js" | grep -aoE "fontFallbackBaseUrl\"?[[:space:]]*:[[:space:]]*[\"'][^\"']*" | sed -E "s/.*[\"']//" | head -n 1 || true)
+  case "$FONT_BASE" in
+    "" | *://* | //*)
+      echo "FAIL: flutter_bootstrap.js sets no fontFallbackBaseUrl on this site (got '${FONT_BASE}'); see linux/webserver/README.md#fallback-fonts-from-the-site"
+      exit 1
+      ;;
+  esac
+  FONT_COUNT=0
+  while read -r _sha _file url; do
+    case "$_sha" in "" | \#*) continue ;; esac
+    url="${url%$'\r'}"
+    font="${FONT_BASE%/}/${url#https://fonts.gstatic.com/s/}"
+    FONT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/${font#/}" || true)
+    if [ "$FONT_STATUS" != "200" ]; then
+      echo "FAIL: ${font#/} returned HTTP $FONT_STATUS"
+      exit 1
+    fi
+    FONT_COUNT=$((FONT_COUNT + 1))
+  done < "$FALLBACK_FONTS_LOCK"
+  echo "PASS: all ${FONT_COUNT} locked fallback fonts served under ${FONT_BASE}"
 fi
 
 if [ "$CHECK_LOADING_SHELL" = "1" ]; then

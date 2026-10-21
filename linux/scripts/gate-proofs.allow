@@ -182,6 +182,10 @@ mutation-family:perf-report
 mutation-family:nginx-harness
 # The HTTP smoke test for a built Flutter web app (linux/webserver/scripts/flutter_integration_smoke_test.sh); proof: test-flutter-smoke-test.sh.
 mutation-family:web-smoke
+# The check of a deployed web app after its FTP upload (linux/scripts/check-live-site.js); proof: test-check-live-site.sh.
+mutation-family:live-site
+# The web engine's fallback fonts from the hub's lock (05-frameworks/flutter/fetch-fallback-fonts.py); proof: test-fetch-fallback-fonts.sh.
+mutation-family:fallback-fonts
 # The nvidia stages' private package in 01-core/tag-naming.sh (cross_stage_repo), which no slug owns; proof: linux/scripts/tests/test-gpu-variant.sh.
 mutation-family:stage-repo
 # The runtime lane's background wrapper pusher (lib-runtime-push.sh) and its parallel gates (build-runtime-manifest.sh), which no slug owns; proof: test-runtime-push-queue.sh.

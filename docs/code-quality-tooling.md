@@ -246,7 +246,13 @@ build step checks:
   `SQLITE3_WASM_VERSION`;
 - every PNG under `web/` and `android/app/src/main/res/` is 8 bits per channel.
   `flutter_launcher_icons` writes 16 bits, and a browser fetched a 123 kB `Icon-192.png` instead
-  of 26 kB on every cold load.
+  of 26 kB on every cold load;
+- every icon `web/manifest.json` and `web/index.html` name (icon links, `og:image`) is on disk,
+  and the manifest's lie in `web/<--icons-dir>/` (default `icons`);
+- with a `web/.htaccess`, so Apache serves the site, nothing is under `web/icons/` or named at
+  `/icons/`: Apache's default `Alias /icons/` answers that path from its own directory, and
+  jonasheinle.de's app icons 404ed there until 2026-10-21. jotrockenmitlocken passes
+  `--icons-dir app-icons`.
 
 It came out of OmniAccelerANT's `pinned_artefacts_test.dart`. Test: `tests/test-check-web-artefacts.sh`.
 
@@ -613,7 +619,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2073 entries** over **185 distinct test commands**; both digits are
+manifest holds **2094 entries** over **187 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

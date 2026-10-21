@@ -70,8 +70,8 @@ function serve(root) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
-// launch(chrome, gpuFlags): webgpu-canvas-readback.js passes SwiftShader's WebGPU flags instead of --disable-gpu.
-async function launch(chrome, gpuFlags = ['--disable-gpu']) {
+// launch(chrome, gpuFlags, onEvent): webgpu-canvas-readback.js passes SwiftShader's WebGPU flags, check-live-site.js an event sink.
+async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
   const proc = spawn(chrome, ['--headless=new', '--no-sandbox', ...gpuFlags, '--no-first-run',
     '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
@@ -101,6 +101,7 @@ async function launch(chrome, gpuFlags = ['--disable-gpu']) {
     const m = JSON.parse(ev.data);
     if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else if (m.method === 'Page.loadEventFired') loaded.push(m);
     else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
+    if (m.method && onEvent) onEvent(m);
   };
   const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
   const close = () => { ws.close(); proc.kill('SIGKILL'); fs.rmSync(profile, { recursive: true, force: true }); };

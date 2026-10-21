@@ -9,13 +9,8 @@ _tmp="$(mktemp -d)"
 _server=""
 trap '[ -z "${_server}" ] || kill "${_server}" 2>/dev/null; rm -rf "${_tmp}"' EXIT
 
-t_skip_unless "node with a global WebSocket (22 and later)" node -e 'process.exit(typeof WebSocket === "function" ? 0 : 1)'
-_chrome=""
-for c in "${CHROME_EXECUTABLE:-}" chrome google-chrome chromium chromium-browser; do
-  [ -n "${c}" ] && command -v "${c}" >/dev/null 2>&1 && { _chrome="${c}"; break; }
-done
-t_skip_unless "Chrome (CHROME_EXECUTABLE, chrome, google-chrome or chromium)" test -n "${_chrome}"
-_chrome="$(command -v "${_chrome}")"
+t_skip_unless_chrome
+_chrome="${T_CHROME}"
 export CHECK_DOCS_SIDEBARS_VIEWPORTS="1000x700"
 
 # _site <name> <theme marker> <style> <body> <script>: a one-page site the check takes for that theme; prints its dir.

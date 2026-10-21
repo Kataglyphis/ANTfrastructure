@@ -84,6 +84,8 @@ Two neighbours, so you land on the right page:
 - [`import hailo_platform` fails: `_pyhailort` is a 4 KB module](#import-hailo_platform-fails-_pyhailort-is-a-4-kb-module)
 - [`cmake --list-presets`: `Unrecognized "version" field`](#cmake---list-presets-unrecognized-version-field)
 - [`set: pipefail\r: invalid option name`](#set-pipefailr-invalid-option-name)
+- [A Flutter web app's `/icons/` 404 on Apache](#a-flutter-web-apps-icons-404-on-apache)
+- [Emoji draw as empty boxes on a self-hosted Flutter web app](#emoji-draw-as-empty-boxes-on-a-self-hosted-flutter-web-app)
 
 **Windows: the layer store (hcsshim)**
 
@@ -1415,6 +1417,14 @@ git ls-files -z '*.sh' | xargs -0 rm -f && git checkout -- .
 ```
 
 The hub's `crlf-guard` gate fails a tracked shell script whose working-tree bytes carry CR.
+
+### A Flutter web app's `/icons/` 404 on Apache
+
+**Symptom.** `manifest.json`'s `icons/Icon-192.png` answers 404 on the live site while the deploy lists it as uploaded, and `/icons/apache_pb.png` answers 200. **Cause.** Apache's default `Alias /icons/` serves its own directory, and `.htaccess` cannot undo it. **Fix.** Keep the icons in another directory (`web/app-icons/`); the web artefacts gate fails `web/icons/` on a site with a `web/.htaccess` ([`code-quality-tooling.md`](code-quality-tooling.md#the-flutter-web-artefacts-gate)).
+
+### Emoji draw as empty boxes on a self-hosted Flutter web app
+
+**Symptom.** Emoji and symbols draw as boxes; the console says `Connecting to 'https://fonts.gstatic.com/s/notocoloremoji/...' violates ... "connect-src 'self' blob:"`. **Cause.** `--no-web-resources-cdn` does not cover the engine's fallback fonts, which it fetches from fonts.gstatic.com. **Fix.** Serve them from the site ([`linux/webserver/README.md`](../linux/webserver/README.md#fallback-fonts-from-the-site)).
 
 ## Windows: the layer store (hcsshim)
 

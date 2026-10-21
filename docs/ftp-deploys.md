@@ -264,6 +264,26 @@ publish job that runs on a push to `develop` or `main` only, after the hub's
 A direct call is for a site that is no docs site, such as jotrockenmitlocken's
 web app.
 
+## The live-site check
+
+`linux/scripts/check-live-site.js <base URL> [route ...] --files <build dir>` runs after a web
+app's deploy, in `:latest` (node and Chrome, no Playwright), and fails when:
+
+- a route, loaded fresh at 1280x800 and 390x844 and scrolled, logs a console error or an
+  exception, has a request blocked by the CSP or answered 400 or more, or requests a host other
+  than the site's (`--allow-host` admits one);
+- a file of the build dir, dotfiles aside, is not served with 200;
+- `version.json` is not the build's (or `--version`'s).
+
+**It cannot roll back.** The FTP upload has already replaced the live site, so a red check means
+the site is broken now: fix forward, or redeploy the previous commit. Hash routes are passed as
+`/#/route`; `--scrolls` and `--settle-ms` trade time for coverage, since Flutter lays out, and
+so requests fonts for, only what is on screen. jotrockenmitlocken runs it on its main domain
+through `scripts/check-live-site.py`, which adds the WebDAV posts and reviews to the routes. Its
+first run against the live 1.4.0 (2026-10-21) failed on the two bugs it was built for:
+`/icons/Icon-192.png` 404 on every route, and Noto fonts blocked by the CSP on `/aboutMe`,
+`/quotations`, `/books` and the other data pages.
+
 ## What this change does not do
 
 All eleven sites were adopted on 2026-09-14 — the hub's two workflows

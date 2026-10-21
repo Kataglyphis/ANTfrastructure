@@ -72,5 +72,31 @@ t_case "and each of its files must be served"
 printf '<html>%s</html>\n' "${SHELL_MARKUP}" > "${work}/site/index.html"
 mv "${work}/site/javascript/init.js" "${work}/init.js"
 t_assert_contains "$(t_out _smoke)" "FAIL: javascript/init.js returned HTTP 404"
+mv "${work}/init.js" "${work}/site/javascript/init.js"
+
+LOCK="$(cd "${TESTS_DIR}/.." && pwd)/05-frameworks/flutter/fallback-fonts.lock"
+FIRST_FONT="$(awk '!/^#/ && NF == 3 { sub("https://fonts.gstatic.com/s/", "", $3); print $3; exit }' "${LOCK}")"
+FONT_ROWS="$(awk '!/^#/ && NF == 3' "${LOCK}" | wc -l | tr -d ' ')"
+# _bootstrap <load call>: the local-engine bootstrap, ending in that _flutter.loader.load call.
+_bootstrap() { { printf '_flutter.buildConfig = {"engineRevision":"abc","useLocalCanvasKit":true};\n'; head -c 200 /dev/zero; printf '\n%s\n' "$1"; } > "${work}/site/flutter_bootstrap.js"; }
+
+t_case "CHECK_FALLBACK_FONTS: a bootstrap that names no fontFallbackBaseUrl fails"
+_bootstrap '_flutter.loader.load();'
+t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "FAIL: flutter_bootstrap.js sets no fontFallbackBaseUrl on this site (got '')"
+
+t_case "and so does one that names Google's"
+_bootstrap '_flutter.loader.load({config: {fontFallbackBaseUrl: "https://fonts.gstatic.com/s/"}});'
+t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "(got 'https://fonts.gstatic.com/s/')"
+
+t_case "a font of the lock the site does not serve fails, naming it"
+_bootstrap '_flutter.loader.load({config: {fontFallbackBaseUrl: "fallback-fonts/"}});'
+t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "FAIL: fallback-fonts/${FIRST_FONT} returned HTTP 404"
+
+t_case "every font of the lock under the base passes"
+for font in $(awk '!/^#/ && NF == 3 { sub("https://fonts.gstatic.com/s/", "", $3); print $3 }' "${LOCK}"); do
+  mkdir -p "$(dirname "${work}/site/fallback-fonts/${font}")" && : > "${work}/site/fallback-fonts/${font}"
+done
+t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "PASS: all ${FONT_ROWS} locked fallback fonts served under fallback-fonts/"
+t_assert_rc 0 env CHECK_FALLBACK_FONTS=1 PATH="${work}/bin:${PATH}" SITE="${work}/site" bash "${SMOKE}" http://site
 
 t_summary

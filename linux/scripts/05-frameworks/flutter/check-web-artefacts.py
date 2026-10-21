@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A Flutter web app's committed artefacts against their pins: title and manifest name, sqlite3.wasm, 8-bit icons.
+"""A Flutter web app's committed artefacts against their pins: title and manifest name, sqlite3.wasm, 8-bit icons, icon paths.
 
 docs/code-quality-tooling.md#the-flutter-web-artefacts-gate
 """
@@ -9,6 +9,7 @@ import json
 import pathlib
 import re
 import sys
+import urllib.parse
 
 VERSIONS_ENV = pathlib.Path(__file__).resolve().parents[2] / "01-core" / "versions.env"
 # The generated icons: flutter_launcher_icons writes 16 bits per channel, a browser shows 8.
@@ -76,15 +77,50 @@ def check_icons(root):
     ]
 
 
+def icon_refs(root):
+    """The icons web/manifest.json and web/index.html name: (file, value, path on the site)."""
+    refs = []
+    manifest, index = root / "web/manifest.json", root / "web/index.html"
+    if manifest.is_file():
+        refs += [("web/manifest.json", icon.get("src", "")) for icon in json.loads(manifest.read_text(encoding="utf-8")).get("icons", [])]
+    if index.is_file():
+        html = index.read_text(encoding="utf-8")
+        refs += [("web/index.html", m.group(1)) for m in re.finditer(r'<link\b[^>]*\brel="[^"]*icon[^"]*"[^>]*\bhref="([^"]*)"', html)]
+        refs += [("web/index.html", m.group(1)) for m in re.finditer(r'<meta\b[^>]*\bproperty="og:image"[^>]*\bcontent="([^"]*)"', html)]
+    return [(where, value, urllib.parse.urlsplit(value).path if "://" in value else "/" + value.removeprefix("./")) for where, value in refs]
+
+
+def check_icon_paths(root, icons_dir):
+    """Each relative icon reference on disk, the manifest's under --icons-dir; on Apache, nothing under /icons/."""
+    problems = []
+    for where, value, site in icon_refs(root):
+        if "://" not in value and not value.startswith("data:") and not (root / "web" / site.lstrip("/")).is_file():
+            problems.append(f"{where} names {value}, which web/ does not hold")
+        if where == "web/manifest.json" and not site.startswith(f"/{icons_dir}/"):
+            problems.append(f"{where} names {value}, outside the icon directory web/{icons_dir}/")
+    # A web/.htaccess means Apache serves the site, and its default Alias /icons/ answers that path from its own directory.
+    if (root / "web/.htaccess").is_file():
+        stray = sorted(p.relative_to(root).as_posix() for p in (root / "web/icons").rglob("*") if p.is_file()) if (root / "web/icons").is_dir() else []
+        named = sorted({value for _where, value, site in icon_refs(root) if site.startswith("/icons/")})
+        if stray or named:
+            problems.append(
+                "Apache serves /icons/ from its own directory, so these 404 on the site: "
+                + ", ".join(stray + named)
+                + ". Move them to another directory (e.g. web/app-icons/, --icons-dir app-icons); see docs/failure-modes.md"
+            )
+    return problems
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo-root", default=".", help="the Flutter app's root (default: the current directory)")
+    parser.add_argument("--icons-dir", default="icons", help="the directory under web/ that holds the manifest's icons (default: icons)")
     args = parser.parse_args()
     root = pathlib.Path(args.repo_root).resolve()
     if not (root / "pubspec.yaml").is_file():
         print(f"check-web-artefacts: {root} has no pubspec.yaml", file=sys.stderr)
         return 2
-    problems = check_title(root) + check_sqlite(root, pins()) + check_icons(root)
+    problems = check_title(root) + check_sqlite(root, pins()) + check_icons(root) + check_icon_paths(root, args.icons_dir.strip("/"))
     for problem in problems:
         print(f"FAIL: {problem}")
     if not problems:
