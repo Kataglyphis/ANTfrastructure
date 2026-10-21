@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — `RUSTUP_INIT_SHA256` follows rustup-init 1.29.2
+
+- **The 14:08 `:latest` rerun failed in arm64's package stage**: `rustup-init script does not match
+  pinned RUSTUP_INIT_SHA256 (upstream rotated it, or tampering)`. sh.rustup.rs now serves
+  rustup-init 1.29.2 (`a9cf5709f 2026-10-20`); the morning run had still got 1.29.1. Verified as
+  `versions.env` asks: the served script is byte-identical to `rustup-init.sh` at rust-lang/rustup's
+  tag `1.29.2`, all 930 lines. The pin moves to `9502b514…`.
+
 ## 2026-10-21 — Web apps: the fallback fonts from the site, no icons under `/icons/` on Apache, a live-site check
 
 Found on jonasheinle.de 1.4.0: its app icons 404ed, and emoji drew as boxes.
