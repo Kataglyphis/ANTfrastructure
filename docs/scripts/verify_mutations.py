@@ -9,6 +9,7 @@ import atexit
 import concurrent.futures
 import json
 import os
+import queue
 import re
 import shutil
 import signal
@@ -25,7 +26,8 @@ COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/
                  "linux/llm-stack/ollama-binary.tar.zst")
 _IGNORED_CACHE = {}
 _IGNORED_LOCK = threading.Lock()
-DEFAULT_JOBS = min(8, os.cpu_count() or 1)
+# The CPUs this process may use, so a runner pinned to 4 of a host's 32 gets 4.
+DEFAULT_JOBS = (getattr(os, "process_cpu_count", None) or os.cpu_count)() or 1
 # Git Bash may skip a suite (exit 77) or waive a case it cannot host; Linux, where CI runs, never may.
 HOST_MAY_SKIP = os.name == "nt" or sys.platform.startswith(("cygwin", "msys"))
 _HOST_SKIP = re.compile(r"^ *(?:SKIP \[|\d+ failed assertion\(s\) waived)", re.M)
@@ -356,19 +358,54 @@ def run_shard(args, entries, root, report, baselines, tag=""):
     return run_entries(local, entries, report, baselines)
 
 
+def tree_bytes(root):
+    """Bytes under root, links not followed: what one more mirror of it costs."""
+    total = 0
+    for dirpath, _dirnames, filenames in os.walk(root):
+        for name in filenames:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def mirror_cap(mirror_bytes, free_bytes):
+    """Mirrors that fit a quarter of the temp filesystem's free space; on tmpfs that space is RAM a build may need."""
+    return max(1, free_bytes // 4 // max(mirror_bytes, 1))
+
+
+def _drain(todo):
+    """Entries off the shared queue until it is empty, so a mirror that is free takes the next one."""
+    while True:
+        try:
+            yield todo.get_nowait()
+        except queue.Empty:
+            return
+
+
 def run_shards(args, entries, src, report):
-    """Deal entries round-robin over --jobs mirrors, all copied before the first shard mutates its root in place."""
-    jobs = max(1, min(args.jobs, len(entries)))
-    shards = [entries[n::jobs] for n in range(jobs)]
-    extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in shards[1:]]
+    """--jobs mirrors draining one queue; each extra mirror is copied by its own shard, from src, which no shard mutates."""
+    size = tree_bytes(args.root)
+    cap = mirror_cap(size, shutil.disk_usage(args.root).free)
+    jobs = max(1, min(args.jobs, len(entries), cap))
+    if jobs < min(args.jobs, len(entries)):
+        say("  --jobs %d capped at %d: mirrors of %d MB each fit a quarter of the free space under %s"
+            % (args.jobs, jobs, size // 2**20, os.path.dirname(args.root)))
+    todo = queue.Queue()
+    for e in entries:
+        todo.put(e)
+    extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in range(jobs - 1)]
     baselines = Baselines()
-    try:
-        for root in extra:
+
+    def shard(n, root):
+        if n:
             mirror_tree(src, root)
+        return run_shard(args, _drain(todo), root, report, baselines, "[%d/%d] " % (n + 1, jobs))
+
+    try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
-            done = [pool.submit(run_shard, args, shard, root, report, baselines,
-                                "[%d/%d] " % (n + 1, jobs))
-                    for n, (shard, root) in enumerate(zip(shards, [args.root] + extra))]
+            done = [pool.submit(shard, n, root) for n, root in enumerate([args.root] + extra)]
             return max(f.result() for f in done)
     finally:
         for root in extra:

@@ -48,7 +48,7 @@ ${_PY} docs/scripts/verify_mutations.py --stale-check || {
 
 echo "pre-push: mutation gate over everything since ${_base}…"
 # shellcheck disable=SC2086
-${_PY} docs/scripts/verify_mutations.py --changed --base "${_base}" --jobs "${PREPUSH_MUTATION_JOBS:-4}" || {
+${_PY} docs/scripts/verify_mutations.py --changed --base "${_base}" ${PREPUSH_MUTATION_JOBS:+--jobs "${PREPUSH_MUTATION_JOBS}"} || {
   echo "pre-push: a recorded mutation SURVIVED — a test here cannot fail" >&2
   exit 1
 }

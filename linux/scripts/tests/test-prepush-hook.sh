@@ -9,6 +9,8 @@ REAL_GATE="${TESTS_DIR}/../../../docs/scripts/verify_mutations.py"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
+# The default is under test, so a cap the pushing shell exports must not reach the hook.
+unset PREPUSH_MUTATION_JOBS
 _root="${_work}/root"
 _ARGV="${_work}/argv.txt"
 mkdir -p "${_root}/docs/scripts" "${_work}/bin"
@@ -61,8 +63,8 @@ _out="$(_run_hook 0 1)"
 t_assert_contains "${_out}" "rc=1"
 t_assert_contains "${_out}" "SURVIVED"
 
-t_case "the jobs cap is the documented escape hatch, and defaults to 4"
-t_assert_contains "$(_call 2)" "--jobs 4" "eight mirrors of the tree is a lot to hold during a live build"
+t_case "the gate picks its own job count, one per CPU, and PREPUSH_MUTATION_JOBS caps it"
+t_assert_eq "0" "$(_call 2 | grep -c -e '--jobs' || true)" "a fixed 4 left 28 of 32 cores idle through a 10-minute push"
 rm -f "${_ARGV}"
 PATH="${_work}/bin:${PATH}" HOOK_TEST_ROOT="${_root}" HOOK_TEST_ARGV="${_ARGV}" \
   HOOK_TEST_STALE_RC=0 HOOK_TEST_GATE_RC=0 PREPUSH_MUTATION_JOBS=1 bash "${HOOK}" >/dev/null 2>&1 </dev/null

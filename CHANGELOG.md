@@ -12,6 +12,29 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The mutation gate keeps every shard busy (CON126)
+
+- **A shared queue**: `--jobs` shards drain one queue instead of a round-robin deal, so two slow
+  suites no longer stack on one shard while the others idle, and each extra shard copies its own
+  mirror inside the pool instead of before it.
+- **The default is every CPU the process may use** (`os.process_cpu_count()`, which honours
+  `taskset`), no longer `min(8, …)`, capped at the mirrors a quarter of the temp filesystem's free
+  space holds; the run names the cap when it bites. The pre-push hook takes that default;
+  `PREPUSH_MUTATION_JOBS` only caps it (it was a fixed 4).
+- **Proof.** `test-mutation-gate.sh` times two slow entries against the serial run, checks the
+  budget arithmetic and the default under `PYTHON_CPU_COUNT`; `test-prepush-hook.sh` checks the hook
+  passes no `--jobs` unless asked, and no longer inherits the pushing shell's cap. Five new
+  mutations bite, and two re-pointed ones still do.
+- `mutations.timeout-kills-tree` had survived since the timeout fixture's sleeper became 60 s: a
+  grandchild the gate fails to kill holds the output pipe, so the gate waited it out and the sleeper
+  was dead by the time the case looked. The case now also requires the gate back within 40 s.
+- `ordered-jobs.exit-cannot-end-runner` and `ordered-jobs.sigint-reaches-commands` are gone: since
+  the runner gives every job its own process group (c4fd9ece), each job is a background job under
+  `set -m`, which neither an `exit` nor a lost SIGINT can reach, so their find text matched twice and
+  the whole-manifest staleness pass failed every push.
+- `mutations.verdicts-stream` survived once the gate exited cleanly on SIGTERM (c4fd9ece): a clean
+  exit flushes what an unflushed report had held back. Its case now reads the log before the kill.
+
 ## 2026-10-21 — riscv64's package stage installs what the prefix's gdk-pixbuf requires (CON129)
 
 - **The 2026-10-21 `:latest` run failed on riscv64 in `verify_gtk4_dev_surface`**: `Package

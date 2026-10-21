@@ -2962,8 +2962,8 @@
  {
   "id": "mutations.shards-cover-every-entry",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "    shards = [entries[n::jobs] for n in range(jobs)]",
-  "replace": "    shards = [entries[0::jobs]]",
+  "find": "    for e in entries:\n        todo.put(e)",
+  "replace": "    for e in entries[::2]:\n        todo.put(e)",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
   "why": "parallelism must not thin the run -- entries dealt to a shard that is never submitted are reported as neither biting nor surviving"
  },
@@ -12766,8 +12766,8 @@
  {
   "id": "mutations.push-passes-base",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "--changed --base \"${_base}\" --jobs",
-  "replace": "--changed --jobs",
+  "find": "--changed --base \"${_base}\" ${PREPUSH_MUTATION_JOBS",
+  "replace": "--changed ${PREPUSH_MUTATION_JOBS",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "the base is computed for the gate; dropping the flag falls back to origin/main without a word"
  },
@@ -16452,14 +16452,6 @@
   "why": "the runner returns only when every command has ended and been reported"
  },
  {
-  "id": "ordered-jobs.exit-cannot-end-runner",
-  "target": "linux/scripts/lib-ordered-jobs.sh",
-  "find": "  ( trap - INT QUIT; eval \"${OJ_CMDS[$1]}\" ) > ",
-  "replace": "  trap - INT QUIT; eval \"${OJ_CMDS[$1]}\" > ",
-  "test": "bash linux/scripts/tests/test-preflight-parallel.sh",
-  "why": "a slug run alone in the runner's shell could exit preflight itself"
- },
- {
   "id": "script-tests.jobs-from-the-knob",
   "target": "linux/scripts/tests/run-tests.sh",
   "find": "JOBS=\"$(oj_count RUN_TESTS_JOBS)\" || exit 2",
@@ -16508,14 +16500,6 @@
   "why": "the gate fails on exactly the files shellcheck failed"
  },
  {
-  "id": "ordered-jobs.sigint-reaches-commands",
-  "target": "linux/scripts/lib-ordered-jobs.sh",
-  "find": "  ( trap - INT QUIT; eval \"${OJ_CMDS[$1]}\" ) > ",
-  "replace": "  ( eval \"${OJ_CMDS[$1]}\" ) > ",
-  "test": "bash linux/scripts/tests/test-run-tests.sh",
-  "why": "a background job ignores SIGINT, so a suite that tests its own Ctrl-C handling (test-renovate-fleet) failed only side by side"
- },
- {
   "id": "runtime-smoke.overlap-default",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
   "find": "  if [ \"${RUNTIME_SMOKE_OVERLAP:-1}\" = \"0\" ] || is_dry_run; then",
@@ -16562,5 +16546,45 @@
   "replace": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "a failed wrapper build would leave its gate running into the next arch's lane"
+ },
+ {
+  "id": "mutations.work-queue",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        return run_shard(args, _drain(todo), root, report, baselines, \"[%d/%d] \" % (n + 1, jobs))",
+  "replace": "        return run_shard(args, entries[n::jobs], root, report, baselines, \"[%d/%d] \" % (n + 1, jobs))",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "dealt round-robin, two slow entries can land on one mirror while the others idle"
+ },
+ {
+  "id": "mutations.extra-mirrors-copied",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "        if n:\n            mirror_tree(src, root)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "each extra shard copies its own mirror, now inside the pool rather than before it"
+ },
+ {
+  "id": "mutations.default-jobs-all-cpus",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "DEFAULT_JOBS = (getattr(os, \"process_cpu_count\", None) or os.cpu_count)() or 1",
+  "replace": "DEFAULT_JOBS = min(8, (getattr(os, \"process_cpu_count\", None) or os.cpu_count)() or 1)",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "the default is every CPU the process may use; a fixed 8 left 24 of 32 cores idle"
+ },
+ {
+  "id": "mutations.mirror-budget",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "    return max(1, free_bytes // 4 // max(mirror_bytes, 1))",
+  "replace": "    return max(1, free_bytes // max(mirror_bytes, 1))",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "the mirrors may take a quarter of the temp filesystem, which on tmpfs is RAM a build may need"
+ },
+ {
+  "id": "mutations.prepush-gate-default",
+  "target": "linux/host-config/git-hooks/pre-push",
+  "find": "${PREPUSH_MUTATION_JOBS:+--jobs \"${PREPUSH_MUTATION_JOBS}\"}",
+  "replace": "--jobs \"${PREPUSH_MUTATION_JOBS:-4}\"",
+  "test": "bash linux/scripts/tests/test-prepush-hook.sh",
+  "why": "the push gate takes the gate's own default, one per CPU; PREPUSH_MUTATION_JOBS only caps it"
  }
 ]

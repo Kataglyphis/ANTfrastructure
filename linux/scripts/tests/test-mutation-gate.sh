@@ -384,9 +384,12 @@ _child_gone() {
 t_case "a test that times out is killed as a TREE, its grandchildren with it"
 # Spins only once mutated (else its baseline fails), and ends at 60 s: an orphaned endless spin held a core for 2.8 days.
 _child_probe "$(printf 'grep -q "GUARD=on" ./subject.sh && exit 0\nsleep 60 &\necho $! > "%s/gpid"\nwhile [ "${SECONDS}" -lt 60 ]; do :; done' "${_tmp}")" 2
+_t0="$(date +%s)"
 _out="$(_iso_run)"
 t_assert_contains "${_out}" "bites" "the spinning mutant times out, and a timeout counts as a bite"
 t_assert_fails grep -q -e 'Traceback' <<<"${_out}"
+# A sleeper the gate fails to kill holds the output pipe, so the gate waits out its 60 s and the check below finds it dead.
+if _posix_host "process groups (os.killpg)"; then t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 40; fi
 sleep 1
 _child_gone "the sleeper grandchild must not survive the timeout"
 
@@ -531,10 +534,12 @@ for _ in $(seq 150); do
   sleep 0.1
 done
 t_assert_ok kill -0 "${_gp}"
+# Read before the kill: the gate's SIGTERM handler exits cleanly, and a clean exit flushes what a hard kill loses.
+_live="$(cat "${_tmp}/cut.log")"
 kill "${_gp}" 2>/dev/null; wait "${_gp}" 2>/dev/null
-t_assert_contains "$(cat "${_tmp}/cut.log")" "=== mutation gate: can these tests fail? ===" \
+t_assert_contains "${_live}" "=== mutation gate: can these tests fail? ===" \
   "the header must not wait for the end"
-t_assert_contains "$(cat "${_tmp}/cut.log")" "bites   probe.1" \
+t_assert_contains "${_live}" "bites   probe.1" \
   "the verdict reached before the kill must be in the log while the run is still going"
 kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null
 rm -rf "${_tmp}/gpid" "${_tmp}/cut.log" "${_tmp}"/mutation-gate-*
@@ -551,5 +556,24 @@ _fixture "GUARD=on" "GUARD=off" yes .
 t_assert_contains "$(t_out _iso --jobs 16)" "bites" "a cap larger than the work must not change the verdict"
 t_assert_eq "" "$(find "${_tmp}" -maxdepth 1 -name 'mutation-gate-*' -print)" \
   "and every mirror a parallel run made must be gone afterwards"
+
+# Entries 1 and 3 are slow: dealt round-robin over two mirrors they queue on one, from a shared queue they split.
+t_case "a free mirror takes the next entry, so slow entries never queue behind each other"
+_shard_fixture 4 0
+for _slow in 1 3; do printf 'sleep 2\ngrep -q "GUARD=on" "./s%s.sh"\n' "${_slow}" > "${_work}/t${_slow}.sh"; done
+_t0="$(date +%s)"
+t_assert_eq "0" "$(t_rc _iso --jobs 1)"
+_ser="$(( $(date +%s) - _t0 ))"
+_t0="$(date +%s)"
+t_assert_eq "0" "$(t_rc _iso --jobs 2)"
+t_assert_ok test "$(( $(date +%s) - _t0 ))" -le "$(( _ser - 3 ))"
+
+t_case "mirrors are capped at a quarter of the temp filesystem's free space, never below one"
+t_assert_eq "4 1 1" "$(cd "${REPO}/docs/scripts" && "${PY}" -c 'import verify_mutations as v; print(v.mirror_cap(100, 1600), v.mirror_cap(100, 100), v.mirror_cap(0, 0))')"
+
+t_case "the default job count is the CPUs this process may use"
+t_assert_eq "3" "$(cd "${REPO}/docs/scripts" && PYTHON_CPU_COUNT=3 "${PY}" -c 'import verify_mutations as v; print(v.DEFAULT_JOBS)')"
+t_assert_eq "12" "$(cd "${REPO}/docs/scripts" && PYTHON_CPU_COUNT=12 "${PY}" -c 'import verify_mutations as v; print(v.DEFAULT_JOBS)')" \
+  "no cap below the CPU count: a fixed 8 left 24 of 32 cores idle"
 
 t_summary

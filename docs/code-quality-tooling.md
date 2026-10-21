@@ -613,7 +613,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2070 entries** over **185 distinct test commands**; both digits are
+manifest holds **2073 entries** over **185 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -655,11 +655,13 @@ under 1% of a full run that day.
 2026-09-04 after the integration wave, all **309** entries biting, each run alone
 on an otherwise idle 32-core host: a full serial run costs **12m14s**, one process
 per mutant. None of that can be batched — two mutations proven in one suite run
-prove neither — but they are independent, so the entries are dealt round-robin
-over `--jobs` shards, each with its OWN `mirror_tree` copy, each applying, running
-and restoring inside it. Baselines stay shared across shards (one unmutated run
+prove neither — but they are independent, so `--jobs` shards drain one shared
+queue, each with its OWN `mirror_tree` copy, each applying, running and restoring
+inside it. Since 2026-10-21 a free shard takes the next entry, where round-robin
+dealing once queued two slow suites on one shard, and each extra shard copies its
+own mirror inside the pool instead of waiting for the others' copies. Baselines stay shared across shards (one unmutated run
 per distinct command, whichever shard reaches it first). Same 309 entries, same
-verdicts: **1m59s** at the default `--jobs 8` (6.2x) and **1m24s** at `--jobs 16` (8.7x).
+verdicts: **1m59s** at `--jobs 8`, then the default (6.2x), and **1m24s** at `--jobs 16` (8.7x).
 Since 2026-09-24 every verdict is printed the moment its entry completes, flushed
 and tagged `[j/J]` with the shard that proved it, and a closing `FAILED: n of m
 entr(ies), in manifest order: …` line puts the failures back in manifest order. It
@@ -668,9 +670,11 @@ buffering of a piped stdout turned into NOTHING when CI killed the job — not e
 the header (§ [The mutation gate in CI, sharded](#the-mutation-gate-in-ci-sharded)).
 Measure one run at a time — two of these racing each other on the same host
 report numbers that mean nothing, which is how the first attempt at this
-paragraph was thrown away. The default is `min(8, os.cpu_count())` — each shard is a full ~200 MB copy
-of the tree, so jobs cost memory, not just cores — and it is capped at the number
-of entries, so a one-id run still makes one copy. `--jobs 1` is the old serial
+paragraph was thrown away. The default is every CPU the process may use
+(`os.process_cpu_count()`, so `taskset` counts), capped at the number of entries, so a
+one-id run still makes one copy, and at the mirrors a quarter of the temp
+filesystem's free space holds: each shard is a full copy of the tree, which on tmpfs
+is RAM a build may need. The run says so when that cap bites. `--jobs 1` is the old serial
 behaviour; `--in-place` is always serial.
 
 Symlinks carry TWO properties here, not one. `mirror_tree` copies with
@@ -699,7 +703,7 @@ nothing (the common commit) copies nothing at all.
 | `--changed` | only entries whose target — or a file their `test` command names — is committed since `--base` (default `origin/main`), staged, or edited. The pre-push hook's mode (CI runs every entry, sharded); the commit hook no longer uses it (see the cost budget below — those are push semantics, and a hook re-paid them once per commit). Until 2026-09-03 this took the FIRST non-empty of those three, so a staged file was never selected while unpushed commits existed: the hook let a stale mutation through and the next, unrelated commit tripped on it |
 | `--only <id>` | one entry, while writing it |
 | `--root <dir>` | which tree to copy and check. It is copied too — pointing the gate at a mirror is a second belt, not the isolation mechanism |
-| `--jobs <n>` | how many mutations to prove at once, one mirror each (default `min(8, cpu_count)`, capped at the entry count). Every mutation is still applied, run and restored alone, inside its own shard's copy |
+| `--jobs <n>` | how many mutations to prove at once, one mirror each (default: the CPUs the process may use, capped at the entry count and at a quarter of the temp filesystem's free space). Every mutation is still applied, run and restored alone, inside its own shard's copy |
 | `--shard K/N` | prove only `entries[K::N]` of the selection (`K` from 0), after `--only`/`--changed`. N runs over the same manifest prove every entry exactly once between them; a `K` outside `0..N-1` exits 2. CI's mutations jobs are the one caller, through preflight's `PREFLIGHT_MUTATION_SHARD` |
 | `--in-place` | mutate `--root` itself, no copy. The pre-2026-09-03 behaviour, kept for the gate's OWN fixtures: their test commands name the subject by absolute path, so nothing would bite inside a copy. Never point it at the repo |
 
@@ -750,9 +754,9 @@ run of each distinct test command × (entries + 1) — fell from **11469 s** on
 
 **A CI slice should take about 10-16 of its 30 minutes, the slice holding
 `mutations.timeout-kills-tree` (today `0/4`) up to 4 more.** A lab
-run pinned to 4 CPUs is not a runner: under `taskset`, `os.cpu_count()` still reports
-the host's 32, so `verify_mutations.py` picks `--jobs 8` where the runner's 4 vCPUs
-give it 4. An early lab slice timed that way (6m16s) is no CI figure. Run as the
+run pinned to 4 CPUs was not a runner: under `taskset`, `os.cpu_count()` still reports
+the host's 32, so `verify_mutations.py` picked `--jobs 8` where the runner's 4 vCPUs
+gave it 4. Since 2026-10-21 it reads `os.process_cpu_count()`, which honours `taskset`. An early lab slice timed that way (6m16s) is no CI figure. Run as the
 runner runs it — `taskset -c 0-3` plus `PYTHON_CPU_COUNT=4` — slice `1/4` took
 **12m09s**. For the runner, each slice's serial cost is scaled by the gate's measured
 CI time on `2943b70d` (843 entries: 1333 s on a fast runner, 1693 s on a slow one)
@@ -849,7 +853,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 50 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 55 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -923,9 +927,10 @@ exact false green the gate exists to find.
   deploys live and lags `develop` by hundreds of entries, so every hub push graded a
   backlog it did not add, ran for 25 minutes and more, and ended in `--no-verify`.
 
-`PREPUSH_MUTATION_JOBS` (default **4**, not the gate's 8) is the escape hatch for
-the memory the mirrors hold: one ~200 MB copy of the tree per job, on a host where
-`/tmp` is tmpfs and a cross build may be running. `git push --no-verify` bypasses
+`PREPUSH_MUTATION_JOBS` caps the gate's own default, one job per CPU, which the
+hook uses since 2026-10-21; a fixed 4 left 28 of 32 cores idle through a 10-minute
+push. The gate already holds its mirrors to a quarter of the temp filesystem's free
+space, which matters where `/tmp` is tmpfs and a cross build may be running. `git push --no-verify` bypasses
 the hook; `make hooks` installs both.
 
 `tests/test-prepush-hook.sh` drives the hook end to end twice — once with a stub
