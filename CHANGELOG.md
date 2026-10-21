@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — The sidebar check opens several Chromes (CON126)
+
+- **`CHECK_DOCS_SIDEBARS_JOBS`** (default 4, at most the CPU count): `check-docs-sidebars.js`
+  launches that many headless Chromes, each taking the next page and width; the report is
+  rebuilt in page order, so it reads as before. 7 pages × 4 widths: 66 → 18 s. `1` checks them in
+  turn. **Proof.** `test-docs-sidebars.sh` compares four Chromes with one over seven pages (same
+  report, page order, less time) and refuses `0`; four new mutations bite.
+
 ## 2026-10-21 — The Windows test and lint gates run side by side (CON126)
 
 - **`Invoke-Tests.ps1 -Jobs N`** (default: the CPU count) runs each of the 179 test files in its

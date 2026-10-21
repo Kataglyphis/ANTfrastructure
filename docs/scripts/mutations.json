@@ -16762,5 +16762,37 @@
   "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
   "why": "a build without its fonts 404s every emoji the engine falls back for"
+ },
+ {
+  "id": "docs-site.sidebars-browsers-side-by-side",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "for (let i = 0; i < Math.min(Number(askedJobs), jobs.length); i++)",
+  "replace": "for (let i = 0; i < 1; i++)",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a site's pages and widths in one Chrome are checked in turn, which is what the knob exists to undo"
+ },
+ {
+  "id": "docs-site.sidebars-jobs-checked",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  if (!/^[1-9]\\d*$/.test(askedJobs)) fail(",
+  "replace": "  if (false) fail(",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a count of 0 launches no Chrome and dies on browsers[0] with a stack trace instead of naming the knob"
+ },
+ {
+  "id": "docs-site.sidebars-every-job-reported",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  const lines = found.flat();",
+  "replace": "  const lines = found.slice(0, 1).flat();",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a verdict read from the first page alone passes a site whose other pages fail"
+ },
+ {
+  "id": "docs-site.sidebars-page-headers",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "[...(j % viewports.length ? [] : [`  ${job.page}`]), ",
+  "replace": "[",
+  "test": "bash linux/scripts/tests/test-docs-sidebars.sh",
+  "why": "a FAIL line without its page header names no page to fix"
  }
 ]

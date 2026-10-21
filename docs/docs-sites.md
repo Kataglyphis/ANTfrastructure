@@ -175,6 +175,9 @@ run`'s argv, so a shell `&&` would run on the runner), and for the artifact site
 `02-toolchain/python/ci_build_docs.sh` (OrchestrANT, WebDavClient), with `--if-chrome`,
 which skips only where the image sets no `CHROME_EXECUTABLE` (riscv64).
 
+`CHECK_DOCS_SIDEBARS_JOBS` (default 4, at most the CPU count) is how many Chromes check pages
+and widths at once; the report is the same, in page order. `1` checks them in turn (CON126).
+
 Why (CON121, 2026-10-20): every Sphinx site had dead or unreachable toggles and no gate
 saw it.
 

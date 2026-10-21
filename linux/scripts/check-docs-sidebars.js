@@ -283,27 +283,37 @@ async function main() {
   if (!chrome) fail('no Chrome (CHROME_EXECUTABLE, chrome, chromium): the family image carries Chrome for Testing');
   const start = kind === 'rustdoc' && !isUrl(site) ? rustdocPages(site) : ['index.html'];
   const pages = [...new Set([...start, ...asked, ...(kind === 'sphinx' && !isUrl(site) ? treePages(site) : [])])];
-  const server = isUrl(site) ? null : await serve(site);
-  const browser = await launch(chrome);
-  const base = server ? `http://127.0.0.1:${server.address().port}/` : site;
   // CHECK_DOCS_SIDEBARS_VIEWPORTS="WxH ...": the suite's fixtures need one width, not the theme's four.
   const custom = (process.env.CHECK_DOCS_SIDEBARS_VIEWPORTS || '').split(/\s+/).filter(Boolean).map((v) => v.split('x').map(Number));
-  const lines = [];
-  const report = [];
+  const viewports = custom.length ? custom : LAYOUTS[kind].viewports;
+  const jobs = pages.flatMap((page) => viewports.map((vp) => ({ page, vp })));
+  // CHECK_DOCS_SIDEBARS_JOBS: browsers at once, each taking the next page and width; 1 checks them in turn.
+  const askedJobs = process.env.CHECK_DOCS_SIDEBARS_JOBS || String(Math.min(4, os.cpus().length));
+  if (!/^[1-9]\d*$/.test(askedJobs)) fail(`CHECK_DOCS_SIDEBARS_JOBS=${askedJobs} is not a positive integer`);
+  const server = isUrl(site) ? null : await serve(site);
+  const base = server ? `http://127.0.0.1:${server.address().port}/` : site;
+  const found = new Array(jobs.length);
+  const browsers = [];
+  let product = '';
+  // fail() exits without the finally below, and an orphaned headless Chrome outlives its run.
+  process.on('exit', () => { for (const b of browsers.splice(0)) b.close(); });
   try {
-    for (const page of pages) {
-      report.push(`  ${page}`);
-      for (const vp of custom.length ? custom : LAYOUTS[kind].viewports) {
-        const results = await checkViewport(browser, new URL(page, base).href, LAYOUTS[kind], vp);
-        lines.push(...results);
-        report.push(...results.map((l) => `    ${l}`));
+    for (let i = 0; i < Math.min(Number(askedJobs), jobs.length); i++) browsers.push(await launch(chrome));
+    product = browsers[0].product;
+    let next = 0;
+    await Promise.all(browsers.map(async (browser) => {
+      while (next < jobs.length) {
+        const j = next++;
+        found[j] = await checkViewport(browser, new URL(jobs[j].page, base).href, LAYOUTS[kind], jobs[j].vp);
       }
-    }
+    }));
   } finally {
-    browser.close();
+    for (const b of browsers.splice(0)) b.close();
     if (server) server.close();
   }
-  process.stdout.write(`check-docs-sidebars: ${kind} site ${arg}, ${browser.product} (${chrome})\n${report.join('\n')}\n`);
+  const lines = found.flat();
+  const report = jobs.flatMap((job, j) => [...(j % viewports.length ? [] : [`  ${job.page}`]), ...found[j].map((l) => `    ${l}`)]);
+  process.stdout.write(`check-docs-sidebars: ${kind} site ${arg}, ${product} (${chrome})\n${report.join('\n')}\n`);
   const failed = lines.filter((l) => l.startsWith('FAIL')).length;
   if (failed) fail(`${failed} check(s) failed; see docs/docs-sites.md#the-sidebar-toggle-check`, 1);
 }
