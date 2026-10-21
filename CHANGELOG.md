@@ -12,6 +12,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-21 — A caller's `ARCH` survives the Vulkan SDK's `setup-env.sh` (CON133)
+
+- **Cause.** Not the login shell: the image's entrypoint sources LunarG's `setup-env.sh`, whose
+  first line is `ARCH="$(uname -m)"`. A lane's `-e ARCH=x64` stays exported with the new value, so
+  every command through the entrypoint saw `x86_64` (`aarch64` on arm64); OxidANT's
+  `package-linux.sh` refused both (OxidANT 134e46e). Measured in `:latest`: `--entrypoint bash`
+  keeps `x64`, the default entrypoint prints `x86_64`.
+- **Fix.** `vulkan_env_source_script` and the entrypoint put the caller's `ARCH` back after
+  sourcing, or unset it when there was none. No family consumer read the uname value: only
+  OxidANT exports `ARCH` into the image, and it accepts both since 134e46e. Lands with the next
+  image. [failure-modes.md](docs/failure-modes.md#a-lanes-arch-arrives-as-x86_64).
+- **Proof.** Two cases in `test-vulkan-env-active-link.sh` (the helper, with and without a caller
+  `ARCH`; the entrypoint's own fallback); `vulkan.env-keeps-callers-arch` and
+  `vulkan.entrypoint-keeps-callers-arch` bite.
+
 ## 2026-10-21 — `sccache-launcher.sh` keeps hyphenated environment names (CON132)
 
 - **Cause.** The launcher ran under `#!/bin/sh`, dash in every image, and dash drops each variable

@@ -12,6 +12,7 @@ mkdir -p "${ARCHDIR}/bin" "${ROOT}/1.4.357.0/aarch64"
 ln -s "${ARCHDIR}" "${ROOT}/active"
 # LunarG's shape, with the arch fixed so the case does not depend on the test host.
 cat > "${ROOT}/1.4.357.0/setup-env.sh" <<SETUP
+ARCH="x86_64"
 VULKAN_SDK="${ARCHDIR}"; export VULKAN_SDK
 PATH="\$VULKAN_SDK/bin:\$PATH"; export PATH
 LD_LIBRARY_PATH="\$VULKAN_SDK/lib/VulkanLoader/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}"; export LD_LIBRARY_PATH
@@ -76,5 +77,24 @@ t_case "a prefix match needs a whole path component"
 mkdir -p "${ARCHDIR}-other"
 _out="$(_env 'vulkan_env_source "'"${ROOT}"'" keep-libs 1; PKG_CONFIG_PATH="'"${ARCHDIR}"'-other/lib:$PKG_CONFIG_PATH"; vulkan_env_prefer_active_link "'"${ROOT}"'"')"
 t_assert_contains "${_out}" "PKG_CONFIG_PATH=${ARCHDIR}-other/lib:" "x86_64-other is not under x86_64"
+
+t_case "a caller's ARCH survives setup-env.sh, which sets its own (CON133)"
+_arch() {
+  env -i HOME=/nonexistent PATH="/usr/bin:/bin" "$@" bash -c 'source "$1"; vulkan_env_source_script "$2"
+    printf "shell=%s env=%s\n" "${ARCH-unset}" "$(printenv ARCH || echo unset)"' _ "${ENVMOD}" "${ROOT}/1.4.357.0/setup-env.sh" 2>&1
+}
+t_assert_eq "shell=amd64 env=amd64" "$(_arch ARCH=amd64)" "a lane's Debian-style ARCH must not turn into uname's"
+t_assert_eq "shell=unset env=unset" "$(_arch)" "and a caller without one is left without one"
+
+t_case "the entrypoint hands its command the caller's ARCH (CON133)"
+# The image's helpers repointed at nothing, so its own fallback sources setup-env.sh on every host.
+sed -e "s#/usr/local/bin/#${ROOT}/none/#g" -e "s#/opt/scripts/#${ROOT}/none/#g" \
+  "${TESTS_DIR}/../04-runtime/entrypoint.sh" > "${ROOT}/entrypoint.sh"
+_entry() {
+  env "$@" VULKAN_PREFIX="${ROOT}" VULKAN_VERSION=1.4.357.0 \
+    bash "${ROOT}/entrypoint.sh" bash -c 'printf "ARCH=%s\n" "${ARCH-unset}"' 2>/dev/null | tail -n 1
+}
+t_assert_eq "ARCH=amd64" "$(_entry ARCH=amd64)" "a lane's -e ARCH=amd64 must not reach its command as x86_64"
+t_assert_eq "ARCH=unset" "$(_entry -u ARCH)"
 
 t_summary

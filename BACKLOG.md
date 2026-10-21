@@ -531,11 +531,6 @@ owner carries the breakage that costs.
         (and registry) and try `/opt/gstreamer/lib/x86_64-linux-gnu/gstreamer-1.0/*.so`, about 300 load
         warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today, the riscv64 plugins
         still load. Point the run at the sysroot's riscv64 plugin dir with the build-time fix.
-- [ ] **CON133 — the image's login shell exports `ARCH`** [S, ★]. Found 2026-10-20 by OxidANT 134e46e:
-      a `bash -l` in `:latest` sets `ARCH=x86_64`/`aarch64` (uname style), which overrides a lane's own
-      `ARCH` (Debian style `amd64`/`arm64`) for every script that reads it; OxidANT's `package-linux.sh`
-      now accepts both. Find the profile.d line, rename or drop the export, and check the consumers
-      that read `ARCH` (rg the family) before changing it.
 
 - [ ] **CON135 — two Dependabot alerts in the Renovate CLI's lock, with no fixed release** [S, ★].
       `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, high,

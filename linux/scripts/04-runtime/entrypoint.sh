@@ -16,6 +16,9 @@ _safe_source() {
   return 1
 }
 
+# LunarG's setup-env.sh sets ARCH=$(uname -m); a lane's -e ARCH=amd64 must reach its command unchanged.
+_ep_arch="${ARCH-}"; _ep_arch_set="${ARCH+1}"
+
 # Source standard env scripts (these must be sourced to export variables into this shell)
 _safe_source /usr/local/bin/gstreamer-env.sh || \
   echo "Warning: /usr/local/bin/gstreamer-env.sh not found or not sourced" >&2
@@ -93,6 +96,8 @@ if declare -F vulkan_env_prefer_active_link >/dev/null 2>&1 || _safe_source /opt
   vulkan_env_prefer_active_link "${VULKAN_PREFIX}"
 fi
 fi
+if [ -n "${_ep_arch_set}" ]; then ARCH="${_ep_arch}"; else unset ARCH; fi
+unset _ep_arch _ep_arch_set
 
 # A GPU node passed in keeps the host's group, which uid 1001 lacks: docs/linux-accelerator-images.md#running-it-on-an-amd-gpu
 _gpu_node_hint() {

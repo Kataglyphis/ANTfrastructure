@@ -62,6 +62,7 @@ Two neighbours, so you land on the right page:
 - [Chrome stops with `No usable sandbox!`](#chrome-stops-with-no-usable-sandbox)
 - [An arm64 app dies in `ndk_translation` on an API 30 emulator](#an-arm64-app-dies-in-ndk_translation-on-an-api-30-emulator)
 - [The Vulkan variables name an arch-specific SDK dir](#vulkan-env-names-an-arch-specific-sdk-dir)
+- [A lane's `ARCH` arrives as `x86_64`](#a-lanes-arch-arrives-as-x86_64)
 - [The core registry blacklists `libgstvalidatessim.so`](#the-core-registry-blacklists-libgstvalidatessimso)
 - [DeepStream: `nvstreammux` stops the pipeline with `reason error (-5)` and no message](#deepstream-nvstreammux-stops-the-pipeline-with-reason-error--5-and-no-message)
 - [DeepStream: `Unable to load library: libnvinfer_builder_resource_sm75.so.10.16.1`](#deepstream-unable-to-load-library-libnvinfer_builder_resource_sm75so10161)
@@ -1105,6 +1106,17 @@ component (`vkarch=`), and requires `VK_ADD_LAYER_PATH` (`vkadd=yes`) as its pro
 entrypoint sourced `setup-env.sh`. The `:latest` of 2026-10-03 carries the fix: after its
 entrypoint every Vulkan variable names `/opt/vulkan/active` (checked 2026-10-06), so
 `riscv64_cross_env` no longer sets `VULKAN_SDK` and `VK_ADD_LAYER_PATH` itself.
+
+### A lane's `ARCH` arrives as `x86_64`
+
+**Symptom.** `docker run -e ARCH=x64 … bash -lc '… --arch "${ARCH}"'` hands the script
+`x86_64` (`aarch64` on arm64); OxidANT's `package-linux.sh` refused both (OxidANT 134e46e).
+
+**Cause.** Not the login shell: the entrypoint sources LunarG's `setup-env.sh`, whose first line
+is `ARCH="$(uname -m)"`. An `ARCH` already in the environment stays exported with the new value.
+
+**Fix.** `vulkan_env_source_script` and the entrypoint put the caller's `ARCH` back after
+sourcing, or unset it when the caller had none (CON133, 2026-10-21; lands with the next image).
 
 ### The core registry blacklists `libgstvalidatessim.so`
 

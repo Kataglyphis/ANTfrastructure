@@ -127,7 +127,7 @@ vulkan_env_prefer_active_link() {
 vulkan_env_source_script() {
   local script="$1"
   local root="${2:-}"
-  local _vke_had_u=0
+  local _vke_had_u=0 _vke_arch="${ARCH-}" _vke_arch_set="${ARCH+1}"
   [ -r "${script}" ] || return 1
   [ -n "${root}" ] || root="$(dirname "$(dirname "${script}")")"
   # setup-env.sh may inspect $1/$2, so clear this helper's function args first.
@@ -137,6 +137,8 @@ vulkan_env_source_script() {
   # shellcheck disable=SC1090,SC1091
   . "${script}"
   [ "${_vke_had_u}" = "1" ] && set -u
+  # It also sets ARCH=$(uname -m), which would replace the caller's (a lane's ARCH=amd64, a cross target's).
+  if [ -n "${_vke_arch_set}" ]; then ARCH="${_vke_arch}"; else unset ARCH; fi
   vulkan_env_prefer_active_link "${root}"
 }
 

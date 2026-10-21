@@ -320,6 +320,22 @@
   "why": "the link sits beside <version>/, two levels above setup-env.sh"
  },
  {
+  "id": "vulkan.env-keeps-callers-arch",
+  "target": "linux/scripts/01-core/vulkan-env.sh",
+  "find": "  if [ -n \"${_vke_arch_set}\" ]; then ARCH=\"${_vke_arch}\"; else unset ARCH; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+  "why": "LunarG's setup-env.sh sets ARCH=$(uname -m), so a lane's ARCH=amd64 or a cross target's ARCH reads as the host's uname (CON133)"
+ },
+ {
+  "id": "vulkan.entrypoint-keeps-callers-arch",
+  "target": "linux/scripts/04-runtime/entrypoint.sh",
+  "find": "if [ -n \"${_ep_arch_set}\" ]; then ARCH=\"${_ep_arch}\"; else unset ARCH; fi\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+  "why": "every command through the image's entrypoint got ARCH=x86_64 for a lane's -e ARCH=amd64 (OxidANT 134e46e, CON133)"
+ },
+ {
   "id": "qairt.include-root-not-qnn-dir",
   "target": "linux/scripts/03-media/build/litert/build-litert.sh",
   "find": "    local inc=\"${LITERT_QNN_HOME}/include/QNN\"",
