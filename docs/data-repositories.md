@@ -98,6 +98,13 @@ configure fetches before the install rules run.
 
 ## What stays in a code repository
 
+ModelANT also owns `contracts/inference-v1.json` and the licensed two-cats test fixture.
+Its deterministic contract archive accompanies model releases. AccelerANTgine and
+OxidANT pin a source-only ModelANT submodule for their production preprocessing tests:
+the same RGB/RGBA, stride, offset, resize, letterbox and NCHW cases run in Python, C++
+and Rust. Model weights continue to come from the data lock; the contract pin adds no
+weight download to these small tests. ModelANT's README owns the numerical export checks.
+
 - Test fixtures a suite reads, small and next to it: OxidANT's `two_cats.jpg` (83 KiB) and
   BeschleunigerBallett's `GltfTest`, `ShadowTest` and `VikingRoom`. Tests must run offline.
 - Icons, branding and a README's images, compressed: OxidANT's hero image went from a 7.5 MiB

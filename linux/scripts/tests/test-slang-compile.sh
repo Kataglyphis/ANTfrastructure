@@ -60,6 +60,7 @@ _run() {
     export SLANG_COMPILE_SOURCE_ROOT="${_work}/shaders"
     export SLANG_COMPILE_MANIFEST="${_work}/manifest.json"
     export SLANG_COMPILE_DEST_ROOT="${_work}"
+    SLANG_COMPILE_EXTRA_SOURCE_ROOTS=("${_work}/shared")
     set -e
     # shellcheck source=../lib/slang-compile.sh
     source "${LIB}"
@@ -73,6 +74,7 @@ _run() {
 _reset() {
   rm -rf "${_work}/crate" "${_work}/shaders/build"
   mkdir -p "${_work}/crate"
+  mkdir -p "${_work}/shared/common"
   VER=2026.8 RC=0 PAYLOAD=valid.wgsl
 }
 _dst="${_work}/crate/shader.wgsl"
@@ -137,5 +139,46 @@ _manifest main.slang '[]' 2026.8
 _run
 t_assert_eq "0" "${_rc_v}"
 t_assert_eq "present" "$(_dst_state)"
+
+t_case "a source owned by another pinned root is compiled and emitted"
+_reset
+printf 'void main() {}\n' > "${_work}/shared/owned.slang"
+_manifest owned.slang
+_run
+t_assert_eq "0" "${_rc_v}"
+t_assert_eq "present" "$(_dst_state)"
+
+t_case "an imported WGSL manifest supplies its entries, destination and patches"
+_reset
+_manifest owned.slang
+cp "${_work}/manifest.json" "${_work}/owner.json"
+cat > "${_work}/manifest.json" <<'J'
+{"manifest": [], "wgslManifest": "owner.json", "wgslDestinationPrefix": "owner"}
+J
+_run
+t_assert_eq "0" "${_rc_v}"
+t_assert_ok test -f "${_work}/owner/crate/shader.wgsl"
+
+t_case "a missing imported manifest is a failed prerequisite"
+_reset
+printf '{"manifest": [], "wgslManifest": "missing.json"}\n' > "${_work}/manifest.json"
+_run
+t_assert_eq "2" "${_rc_v}"
+
+t_case "changes in additional roots invalidate compiled shaders"
+_reset
+_manifest main.slang
+printf 'void helper() {}\n' > "${_work}/shared/common/helper.slang"
+touch -d '2030-01-01 UTC' "${_work}/shared/common/helper.slang"
+_stamp="$(
+  # shellcheck source=../lib/slang-compile.sh
+  source "${LIB}"
+  SLANG_COMPILE_SOURCE_ROOT="${_work}/shaders"
+  # shellcheck disable=SC2034 # Read by slang_compile_newest_source_stamp in the sourced library.
+  SLANG_COMPILE_EXTRA_SOURCE_ROOTS=("${_work}/shared")
+  SLANG_COMPILE_MANIFEST="${_work}/manifest.json"
+  slang_compile_newest_source_stamp
+)"
+t_assert_contains "${_stamp}" "1893456000"
 
 t_summary

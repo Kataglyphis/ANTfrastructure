@@ -89,7 +89,28 @@ dartdoc_build_prepare_python_env() {
   export DARTDOC_BUILD_PYTHON
 }
 
-# Generation: the commands are caller arrays, so this file knows neither flutter nor dart.
+# The SDK's dartdoc can lag fixes; keep its pub tool isolated from the caller's app and global tools.
+_dartdoc_build_default_doc() {
+  # shellcheck source=../01-core/load-versions-env.sh
+  source "${_DARTDOC_BUILD_LIB_DIR}/../01-core/load-versions-env.sh"
+  load_versions_env "${_DARTDOC_BUILD_LIB_DIR}/../01-core/tool-pins.env"
+  if [[ ! "${DARTDOC_VERSION:-}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    err "No exact DARTDOC_VERSION in tool-pins.env."
+  fi
+  local cache
+  cache="${DARTDOC_BUILD_TOOL_CACHE:-$(_dartdoc_build_root)/.dart_tool/dartdoc-tool}/${DARTDOC_VERSION}"
+  if ! PUB_CACHE="${cache}" dart pub global list | grep -qxF "dartdoc ${DARTDOC_VERSION}"; then
+    info "Resolving official dartdoc ${DARTDOC_VERSION} in ${cache}"
+    PUB_HOSTED_URL=https://pub.dev PUB_CACHE="${cache}" \
+      dart pub global activate dartdoc "${DARTDOC_VERSION}" --no-executables || return 1
+  fi
+  if ! PUB_CACHE="${cache}" dart pub global list | grep -qxF "dartdoc ${DARTDOC_VERSION}"; then
+    err "The docs tool cache does not contain dartdoc ${DARTDOC_VERSION} after activation."
+  fi
+  PUB_HOSTED_URL=https://pub.dev PUB_CACHE="${cache}" dart pub global run dartdoc:dartdoc
+}
+
+# Generation: explicit caller commands still win over the shared default tool.
 dartdoc_build_generate() {
   local root
   local -a clean_cmd=() doc_cmd=()
@@ -101,7 +122,7 @@ dartdoc_build_generate() {
     doc_cmd=("${DARTDOC_BUILD_DOC_CMD[@]}")
   fi
   if [[ ${#doc_cmd[@]} -eq 0 ]]; then
-    doc_cmd=(dart doc)
+    doc_cmd=(_dartdoc_build_default_doc)
   fi
 
   if [[ ${#clean_cmd[@]} -gt 0 ]]; then
@@ -109,7 +130,7 @@ dartdoc_build_generate() {
     (
       cd "${root}" || exit 1
       "${clean_cmd[@]}"
-    )
+    ) || return 1
   fi
   info "Generating API documentation: ${doc_cmd[*]}"
   (

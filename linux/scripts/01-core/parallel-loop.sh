@@ -39,7 +39,7 @@ _parallel_arch_collect() {
   done
   # Optional caller hook that pulls worker-persisted results back into this shell.
   if declare -F parallel_loop_harvest >/dev/null 2>&1; then
-    parallel_loop_harvest "${flagdir}"
+    parallel_loop_harvest "${flagdir}" || failed=1
   fi
   return "${failed}"
 }

@@ -1,5 +1,317 @@
 [
  {
+  "id": "lib.cmake-build-empty-positional",
+  "target": "linux/scripts/lib/cmake-build.sh",
+  "find": "if [[ -n \"$1\" && -n \"${_value_var[$1]+x}\" ]]; then",
+  "replace": "if [[ -n \"${_value_var[$1]+x}\" ]]; then",
+  "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+  "why": "an empty positional preset must retain its array entry and caller default instead of aborting on an empty associative-array key"
+ },
+ {
+  "id": "docs-site.chrome-close-failed-initialization",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    try { await close(); }",
+  "replace": "    try { /* missing initialization cleanup */ }",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "a failed initial DevTools call rejects before the browser reaches its caller, so launch must terminate its own process group, remove its profile and unregister signal handlers"
+ },
+ {
+  "id": "harvest.failure-is-fatal",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "    parallel_loop_harvest \"${flagdir}\" || failed=1",
+  "replace": "    parallel_loop_harvest \"${flagdir}\" || true",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "successful workers cannot hide a failed parent result harvest"
+ },
+ {
+  "id": "harvest.failed-pin-read-is-fatal",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "      pin_value=\"$(cat \"${flagdir}/pin.${name}\")\" || {\n        warn \"Cannot read parallel worker pin: ${flagdir}/pin.${name}\"\n        return 1\n      }",
+  "replace": "      pin_value=\"$(cat \"${flagdir}/pin.${name}\")\" || true",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "a pin read that emits partial bytes and fails must not publish that pin or the built flag, including under an errexit-disabled caller"
+ },
+ {
+  "id": "harvest.empty-pin-is-fatal",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "      [ -n \"${pin_value}\" ] || { warn \"Empty parallel worker pin: ${flagdir}/pin.${name}\"; return 1; }",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "an empty worker pin must not clear a valid parent pin or advertise a completed build"
+ },
+ {
+  "id": "docs-site.chrome-close-uses-group-callback",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    kill();",
+  "replace": "    proc.kill('SIGKILL');",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "real Chrome launches supply process-group termination while standalone child fixtures retain the direct-kill default; bypassing the callback leaves renderer descendants alive"
+ },
+ {
+  "id": "docs-site.chrome-close-reaps-before-profile",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "await Promise.race([exited, new Promise",
+  "replace": "await Promise.race([Promise.resolve(), new Promise",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "kill returns before the child exits; removing a profile while its writer is still alive reproduced ENOTEMPTY in the real sidebar gate"
+ },
+ {
+  "id": "docs-site.chrome-close-bounded-retries",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "maxRetries: 10, retryDelay: 100",
+  "replace": "maxRetries: 0, retryDelay: 100",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "remaining Chrome profile writers need bounded filesystem retry after the main process exits, rather than treating force as an ENOTEMPTY retry"
+ },
+ {
+  "id": "docs-site.chrome-close-failure-is-fatal",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });",
+  "replace": "  try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "exhausted cleanup retries or unrelated filesystem errors must reject the caller rather than hiding a failed cleanup behind a green page report"
+ },
+ {
+  "id": "docs-site.chrome-close-awaits-every-peer",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "const outcomes = await Promise.allSettled(",
+  "replace": "const outcomes = await Promise.all(",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "one browser's cleanup failure must not report before the other launched browsers finish their own cleanup"
+ },
+ {
+  "id": "python.app-bundle.exclude-provider-before-resolver",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "export_args+=(--no-emit-package \"${provider}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-app-packages.sh",
+  "why": "a PyPI ORT provider in the exported requirements fails resolution on an ABI without a published wheel before the chain provider can replace it"
+ },
+ {
+  "id": "python.app-bundle.chain-provider-in-first-resolver",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "    --requirement \"${work}/requirements.lock.txt\" \"${ort}\" || return 1",
+  "replace": "    --requirement \"${work}/requirements.lock.txt\" || return 1",
+  "test": "bash linux/scripts/tests/test-python-app-packages.sh",
+  "why": "the first dependency transaction must resolve against the explicit chain wheel while retaining the other locked dependencies"
+ },
+ {
+  "id": "mutations.baseline-diagnostic-head",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "lines[:3] + [\"...\"] + lines[-3:]",
+  "replace": "lines[-6:]",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a long assertion report must retain the first failure instead of hiding it behind the final lines of a multiline comparison"
+ },
+ {
+  "id": "mutations.baseline-diagnostic-bounded",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "line[:500] for line in excerpt",
+  "replace": "line for line in excerpt",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a single very long baseline line must not turn every failed entry sharing that baseline into an unbounded repeated CI log"
+ },
+ {
+  "id": "runtime-smoke.gates-only-exit",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  _manifest_exit_after_gates_if_requested\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-manifest-gates-only.sh",
+  "why": "gates-only must exit through the actual helper before any build or publication even with push flags"
+ },
+ {
+  "id": "runtime-smoke.gates-only-not-default",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  [ \"${GATES_ONLY}\" -eq 1 ] || return 0\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-manifest-gates-only.sh",
+  "why": "the extracted early-exit helper must leave ordinary build and publication runs reachable"
+ },
+ {
+  "id": "lib.dartdoc-tool-default",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    doc_cmd=(_dartdoc_build_default_doc)",
+  "replace": "    doc_cmd=(dart doc)",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "the default must use the fixed pinned generator rather than the SDK's crashing bundled dartdoc"
+ },
+ {
+  "id": "lib.dartdoc-tool-cache-isolated",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  cache=\"${DARTDOC_BUILD_TOOL_CACHE:-$(_dartdoc_build_root)/.dart_tool/dartdoc-tool}/${DARTDOC_VERSION}\"",
+  "replace": "  cache=\"${PUB_CACHE}\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "resolving a documentation generator must not alter the app's or caller's global pub tool cache"
+ },
+ {
+  "id": "lib.dartdoc-tool-caller-command",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if [[ ${#doc_cmd[@]} -eq 0 ]]; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "a deliberate caller command must retain its arguments and bypass the default generator resolver"
+ },
+ {
+  "id": "lib.dartdoc-tool-exact-pin",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "      dart pub global activate dartdoc \"${DARTDOC_VERSION}\" --no-executables || return 1",
+  "replace": "      dart pub global activate dartdoc 0.0.0 --no-executables || return 1",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "the official package resolution must request the exact centrally declared version"
+ },
+ {
+  "id": "lib.dartdoc-tool-activation-verified",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if ! PUB_CACHE=\"${cache}\" dart pub global list | grep -qxF \"dartdoc ${DARTDOC_VERSION}\"; then\n    err \"The docs tool cache does not contain dartdoc ${DARTDOC_VERSION} after activation.\"\n  fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "a resolver claiming success with another version must not run a stale generator"
+ },
+ {
+  "id": "lib.dartdoc-tool-generation-failure",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  PUB_HOSTED_URL=https://pub.dev PUB_CACHE=\"${cache}\" dart pub global run dartdoc:dartdoc",
+  "replace": "  PUB_HOSTED_URL=https://pub.dev PUB_CACHE=\"${cache}\" dart pub global run dartdoc:dartdoc || true",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "documentation generation errors must propagate to the lane instead of producing a green incomplete site"
+ },
+ {
+  "id": "lib.dartdoc-tool-clean-failure",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    ) || return 1",
+  "replace": "    )",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "a failed preparation must stop generation even when a gate calls the function with errexit disabled"
+ },
+ {
+  "id": "sbom.documentation-tool-pin",
+  "target": "docs/scripts/deps_table.py",
+  "find": "        paths.append(tool_pins)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+  "why": "the explicit documentation tool's inventory must track its tool-pins version rather than omit it"
+ },
+ {
+  "id": "image-acceptance.flutter-prologue",
+  "target": "shared/config/image-consumers.json",
+  "find": "source \\\"${ANTFRASTRUCTURE_DIR}/linux/scripts/05-frameworks/flutter/lane-prologue.sh\\\"; flutter_lane_prepare_env;",
+  "replace": "source \\\"${ANTFRASTRUCTURE_DIR}/linux/scripts/05-frameworks/flutter/lane-prologue.sh\\\";",
+  "test": "bash linux/scripts/tests/test-image-consumer-bootstrap.sh",
+  "why": "the mounted Flutter checkout must be registered before Git-based strict checks discover its packages"
+ },
+ {
+  "id": "image-acceptance.flutter-plugin-package",
+  "target": "shared/config/image-consumers.json",
+  "find": "run_flutter_common_checks 1",
+  "replace": "run_flutter_common_checks 0",
+  "test": "bash linux/scripts/tests/test-image-consumer-bootstrap.sh",
+  "why": "the native inference package must resolve its own dependencies before its VM checks"
+ },
+ {
+  "id": "image-acceptance.unprivileged-cpp-lane",
+  "target": "shared/config/image-consumers.json",
+  "find": "\"scripts/linux/ci-build-and-test.sh\", \"--compiler\", \"gcc\"",
+  "replace": "\"scripts/linux/ci-build-and-test.sh\"",
+  "test": "bash linux/scripts/tests/test-image-consumer-bootstrap.sh",
+  "why": "acceptance must explicitly select GCC instead of invoking the Clang TSan lane that needs privileged CI"
+ },
+ {
+  "id": "image-acceptance.cleanup-failure",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if \"container_cleanup_error\" in row:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "a timed-out container removal must retain failed evidence even after host ownership is restored"
+ },
+ {
+  "id": "image-acceptance.linux-user",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if sys.platform.startswith(\"linux\"):\n        command +=",
+  "replace": "    if False:\n        command +=",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Linux acceptance must use a user that can write both the SDK and isolated checkout"
+ },
+ {
+  "id": "image-acceptance.ownership-failure",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if \"ownership_error\" in row:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "an inaccessible host workspace must not produce a passed receipt"
+ },
+ {
+  "id": "image-acceptance.failed-receipt",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "receipt.get(\"status\") != \"passed\"",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "a failed receipt must never reach registry publication"
+ },
+ {
+  "id": "image-acceptance.missing-consumer",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "if len(rows) != len(plan[\"consumers\"]):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "a receipt must account for every declared consumer"
+ },
+ {
+  "id": "image-acceptance.manifest-bypass",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    _manifest_accept_and_promote \"${manifest_ref}\"",
+  "replace": "    : acceptance-bypassed",
+  "test": "bash linux/scripts/tests/test-manifest-acceptance.sh",
+  "why": "manifest publication must propagate acceptance failure"
+ },
+ {
+  "id": "image-acceptance.target-errors",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if error.code != 404:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce target-errors"
+ },
+ {
+  "id": "image-acceptance.duplicate-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if name in platforms:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce duplicate-platform"
+ },
+ {
+  "id": "image-acceptance.lost-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if missing:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce lost-platform"
+ },
+ {
+  "id": "image-acceptance.tested-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "if receipt[\"platform\"] not in {\"/\".join(platform.split(\"/\")[:2]) for platform in platforms}:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce tested-platform"
+ },
+ {
+  "id": "image-acceptance.source-freeze",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if changes:\n        row[\"source_changes\"]",
+  "replace": "    if False:\n        row[\"source_changes\"]",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce source-freeze"
+ },
+ {
+  "id": "image-acceptance.crlf-lock",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "\"content\": data.decode(\"utf-8\")",
+  "replace": "\"content\": data.decode(\"utf-8\").replace(\"\\r\\n\", \"\\n\")",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce crlf-lock"
+ },
+ {
   "id": "code-size.new-offender",
   "target": "linux/scripts/quality_allow.py",
   "find": "        if was is None:",
@@ -362,8 +674,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -765,7 +1077,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -2386,7 +2698,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -2986,7 +3298,7 @@
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -3778,8 +4090,8 @@
  {
   "id": "mutations.push-stale-check-aborts",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
-  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
+  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
+  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
  },
@@ -4394,8 +4706,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -4434,8 +4746,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -4653,7 +4965,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -10929,15 +11241,15 @@
   "find": " \\\n  ${PREFLIGHT_MUTATION_SHARD:+--shard \"${PREFLIGHT_MUTATION_SHARD}\"}",
   "replace": "",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-  "why": "without the pass-through every CI mutations job proves the WHOLE manifest, four times over, into the timeout the split exists to avoid"
+  "why": "without the pass-through every CI mutations job proves the WHOLE manifest, eight times over, into the timeout the split exists to avoid"
  },
  {
   "id": "mutations.ci-shards-cover-the-manifest",
   "target": ".github/workflows/linux-x64.yml",
-  "find": "        shard: [0, 1, 2, 3]",
-  "replace": "        shard: [0, 1, 2]",
+  "find": "        shard: [0, 1, 2, 3, 4, 5, 6, 7]",
+  "replace": "        shard: [0, 1, 2, 3, 4, 5, 6]",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-  "why": "a matrix that stops short of N-1 leaves a quarter of the manifest proven by nobody, green"
+  "why": "a matrix that stops short of N-1 leaves an eighth of the manifest proven by nobody, green"
  },
  {
   "id": "mutations.ci-preflight-skips-the-slug",
@@ -14598,8 +14910,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
-  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: 📂 Sync files to domain\n",
+  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },
@@ -16326,8 +16638,8 @@
  {
   "id": "runtime-push.wrapper-image-hook",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}\n\nruntime_build_wrapper_rootfs() {",
-  "replace": "    runtime_push_tag \"${tag}\" || return 1\n  fi\n}\n\nruntime_build_wrapper_rootfs() {",
+  "find": "    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}\n\n# The rootfs variant:",
+  "replace": "    runtime_push_tag \"${tag}\" || return 1\n  fi\n}\n\n# The rootfs variant:",
   "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
   "why": "a wrapper build that pushes past the queue blocks its arch for the whole upload again"
  },
@@ -16542,16 +16854,16 @@
  {
   "id": "runtime-smoke.wait-before-export",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "and push\"\n    return 0\n  fi\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
-  "replace": "and push\"\n    return 0\n  fi\n",
+  "find": "  # Nothing ships past a red wrapper-smoke gate.\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
+  "replace": "  # Nothing ships past a red wrapper-smoke gate.\n  if [ \"${ship}\" != _runtime_ship_rootfs ]; then\n    _runtime_smoke_wait \"${arch}\" || return 1\n  fi\n",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "the rootfs path would export a wrapper whose package failed its smoke"
  },
  {
   "id": "runtime-smoke.reaped-on-wrapper-failure",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
-  "replace": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
+  "find": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n",
+  "replace": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "a failed wrapper build would leave its gate running into the next arch's lane"
  },

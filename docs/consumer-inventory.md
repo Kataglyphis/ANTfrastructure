@@ -20,6 +20,11 @@ walked from a clean clone every time the question is asked.
 
 Two files, one workflow.
 
+The declared family includes ModelANT and AssetANT as well as code consumers: their
+release/check workflows call hub actions, so omitting them would shrink the evidence.
+Path reachability is supplemented by the runtime [image acceptance](image-acceptance.md)
+checks; a file that exists can still reject arguments or produce the wrong result.
+
 | Piece | Path |
 |---|---|
 | The declared list of consumers and of the entry-point classes | `.github/consumers.json` |

@@ -41,4 +41,54 @@ t_case "a red content gate stops before the smoke and fails the run"
 t_assert_eq "1" "${rc}"
 t_assert_eq "Wrapper content gate verify-shipped-wrapper.sh" "$(cat "${_CALLS}")"
 
+# Flag order must never turn a gate-only entry point into a publication path.
+# shellcheck disable=SC2034 # The extracted production main reads these fixture globals.
+_entry() (
+  eval "$(t_fn_src "${SUBJECT}" _manifest_extra_arg)"
+  eval "$(t_fn_src "${SUBJECT}" _manifest_exit_after_gates_if_requested)"
+  eval "$(t_fn_src "${SUBJECT}" main)"
+  GATES_ONLY=0 BUILD_IMAGES=1 CREATE_MANIFEST=1 PUSH_MANIFEST=0 PUSH_IMAGES=0 DRY_RUN=0
+  IMAGE_NAME=ghcr.io/kataglyphis/example:latest REPO_ROOT=/repo ARTIFACT_BUILD_MODE=image
+  TARGET_ARCHES=amd64 CROSS_VCS_REF=fixture CROSS_BUILD_DATE=fixture CROSS_RUN_ID=fixture
+  run_runtime_arg_loop() {
+    shift 2
+    while [ "$#" -gt 0 ]; do
+      _manifest_extra_arg "$@" || return 1
+      shift "${_OARG_SHIFT}"
+    done
+  }
+  runtime_post_parse_setup() { :; }
+  runtime_wheels_setup() { :; }
+  hailo_validate_knobs() { :; }
+  runtime_host_payload_arches() { :; }
+  runtime_resolve_app_ref() { :; }
+  _manifest_gates_only() { echo GATES; return "${FAIL_GATES:-0}"; }
+  _manifest_build_and_smoke() { echo BUILD; }
+  create_manifest() { echo PUBLISH; }
+  _manifest_check_freshness() { :; }
+  log() { :; }
+  err() { printf '%s\n' "$*" >&2; exit 1; }
+  main "$@"
+)
+
+t_case "gates-only exits before build or publication regardless of push flag order"
+for _flag in --push --push-all --push-manifest --manifest-only; do
+  _out="$(_entry --gates-only "${_flag}")"; _rc=$?
+  t_assert_eq 0 "${_rc}"
+  t_assert_eq GATES "${_out}"
+  _out="$(_entry "${_flag}" --gates-only)"; _rc=$?
+  t_assert_eq 0 "${_rc}"
+  t_assert_eq GATES "${_out}"
+done
+
+t_case "a failed gates-only entry point cannot continue to publication"
+_out="$(FAIL_GATES=1 _entry --push --gates-only)"; _rc=$?
+t_assert_eq 1 "${_rc}"
+t_assert_eq GATES "${_out}"
+
+t_case "ordinary runs still reach the build and publication after the gates-only helper"
+_out="$(_entry --push-all)"; _rc=$?
+t_assert_eq 0 "${_rc}"
+t_assert_eq $'BUILD\nPUBLISH' "${_out}"
+
 t_summary

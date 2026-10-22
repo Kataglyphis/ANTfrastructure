@@ -92,7 +92,24 @@ t_assert_contains "${_out}" "this host lacks the frobnicator" "the skip must say
 t_assert_contains "${_out}" "1 skipped here" "the verdict must not claim every mutation was proven"
 t_assert_eq "0" "$(t_rc _gate_as_gitbash)"
 
+t_case "baseline failures keep their first diagnostic and final summary within a bounded excerpt"
+_fixture "GUARD=on" "GUARD=off" broken
+cat > "${_work}/t.sh" <<'EOF'
+printf 'baseline-first-failure: '
+printf '%5000s\n' x
+for n in $(seq 20); do printf 'baseline-middle-omitted-%s\n' "$n"; done
+printf 'baseline-final-summary\n'
+exit 1
+EOF
+_out="$(t_out _run)"
+t_assert_contains "${_out}" "baseline-first-failure: "
+t_assert_contains "${_out}" "baseline-final-summary"
+t_assert_eq "0" "$(printf '%s\n' "${_out}" | grep -c baseline-middle-omitted-10)"
+t_assert_ok test "${#_out}" -lt 4096
+
 t_case "on Linux the same exit 77 is a vacuous bite and fails the gate"
+_fixture "GUARD=on" "GUARD=off" no
+printf 'echo "  SKIP [t.sh] this host lacks the frobnicator"; exit 77\n' > "${_work}/t.sh"
 t_needs "a POSIX python3 (the gate reads a Windows one as a Git Bash host)" t_posix_python
 t_assert_contains "$(_run 2>&1)" "baseline test already fails unmutated"
 t_assert_eq "1" "$(_rc)"
@@ -506,7 +523,7 @@ t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.6 probe.7 probe.8 " "
 
 t_case "--shard K/N slices the selection so N runs prove every entry exactly once"
 _shard_fixture 8 0
-for _n in 1 3 5; do
+for _n in 1 3 5 8; do
   _union=""
   for _k in $(seq 0 $((_n - 1))); do _union+="$(_bitten "$(t_out _iso --jobs 2 --shard "${_k}/${_n}")")"; done
   t_assert_eq "probe.1 probe.2 probe.3 probe.4 probe.5 probe.6 probe.7 probe.8 " \

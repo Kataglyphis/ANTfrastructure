@@ -30,10 +30,13 @@ _whl() { t_zip "$1/$2" "${@:3}"; }
 GIL_SO=.cpython-314-x86_64-linux-gnu.so
 FT_SO=.cpython-314t-x86_64-linux-gnu.so
 # _verify <gil dir> <ft dir> [--free-threaded]: verify-wheels.sh against the two fixture stores.
-_verify() {
-  env PATH="${_work}/bin:${PATH}" WHEELS_DIR="$1" FT_WHEELS_DIR="$2" PYTHON_FT_PREFIX="${FT_PREFIX:-${_work}/ft}" TARGET_ARCH=amd64 \
+_verify() (
+  # The media environment prepends /usr/local/bin, so PATH cannot select the fixture interpreter inside an image.
+  python() { "${TEST_WHEEL_PYTHON}" "$@"; }
+  export -f python
+  env TEST_WHEEL_PYTHON="${_work}/bin/python" WHEELS_DIR="$1" FT_WHEELS_DIR="$2" PYTHON_FT_PREFIX="${FT_PREFIX:-${_work}/ft}" TARGET_ARCH=amd64 \
     bash "${RT}/verify-wheels.sh" "${@:3}"
-}
+)
 
 _g="${_work}/gil"; _f="${_work}/ft-store"
 _whl "${_g}" av-19.0.1-cp314-cp314-linux_x86_64.whl "av/codec/codec${GIL_SO}"

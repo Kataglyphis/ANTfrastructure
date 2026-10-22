@@ -13,6 +13,7 @@
 #             line starting with a declared knob prefix may carry any value.
 
 clang-format         | shared/config/.clang-format                      | .clang-format                           | exact |
+python-wheel-rewrite | shared/python/kataglyphis_wheel.py                | build_support/kataglyphis_wheel.py       | exact |
 clang-tidy           | shared/config/.clang-tidy                        | .clang-tidy                             | exact |
 cmake-format         | shared/config/.cmake-format.yaml                 | .cmake-format.yaml                      | exact |
 gcovr                | shared/config/gcovr.cfg                          | gcovr.cfg                               | exact |

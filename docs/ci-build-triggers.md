@@ -40,7 +40,7 @@ reacts to a commit-message token. Both name columns follow the family's naming c
 
 | Workflow | Shown as | Trigger | What it runs |
 |---|---|---|---|
-| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop` | the shell preflight gate suite and its mutation gate as four sharded jobs |
+| `linux-x64.yml` | Linux x64 · preflight + mutation gate | every push and PR to `main`/`develop` | the shell preflight gate suite and its mutation gate as eight sharded jobs |
 | `docs.yml` | Docs · build + publish | every push and PR to `main`/`develop`, and dispatch | the hub's site through `build-docs.yml`: `build-docs.sh`, the link gate, and on a push the upload |
 | `windows-x64.yml` | Windows x64 · script tests | push/PR that touches `windows/**`, `shared/windows/**`, `versions.env` or the workflow itself | PowerShell lint and the `windows/scripts/tests` suite |
 | `windows-arm64.yml` | Windows arm64 · bundle device gate | daily, dispatch, and a push that touches the gate's files | a `windows-2025` job packs the published `:winarm64` runtime bundle, a `windows-11-arm` job runs `Test-Arm64Bundle.ps1` over it |

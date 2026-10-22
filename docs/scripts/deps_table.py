@@ -13,6 +13,22 @@ def load_deps_metadata() -> dict:
     return json.loads(DEPS_JSON_PATH.read_text(encoding="utf-8"))
 
 
+def read_dependency_versions(versions_path: Path) -> dict[str, str]:
+    """Image and host-tool pins used by the published inventory and SBOM."""
+    paths = [versions_path]
+    tool_pins = versions_path.with_name("tool-pins.env")
+    if tool_pins.exists():
+        paths.append(tool_pins)
+    versions = {}
+    for path in paths:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, _, value = line.partition("=")
+                versions[key.strip()] = value.strip()
+    return versions
+
+
 def resolve_dep_version(entry: dict, versions: dict[str, str]) -> str:
     var = entry.get("var")
     if var:

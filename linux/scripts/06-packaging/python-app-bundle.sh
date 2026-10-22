@@ -94,6 +94,35 @@ select_app_wheel() {
   return 1
 }
 
+# Resolve against chain ORT immediately: the PyPI provider may lack this Python ABI.
+install_python_app_packages() {
+  local python="$1" app="$2" ort="$3" work="$4" provider_names provider extra
+  shift 4
+  local -a export_args=(--locked --no-dev --no-emit-project --format requirements.txt)
+  provider_names="$(python3 - "${SCRIPT_DIR}/../03-media/runtime/ort-venv-census.py" <<'PY'
+import runpy
+import sys
+import tomllib
+
+census = runpy.run_path(sys.argv[1])
+with open("uv.lock", "rb") as stream:
+    lock = tomllib.load(stream)
+for name in sorted({census["norm"](package["name"]) for package in lock["package"]}):
+    if census["ORT_RUNTIME"].fullmatch(name):
+        print(name)
+PY
+  )" || return 1
+  while IFS= read -r provider; do
+    [ -z "${provider}" ] || export_args+=(--no-emit-package "${provider}")
+  done <<< "${provider_names}"
+  for extra in "$@"; do export_args+=(--extra "${extra}"); done
+  # Keep provider dependencies and all other locked packages (also GenAI/Extensions) and hashes.
+  uv export "${export_args[@]}" --output-file "${work}/requirements.lock.txt" || return 1
+  uv pip install --python "${python}" --break-system-packages --compile-bytecode \
+    --requirement "${work}/requirements.lock.txt" "${ort}" || return 1
+  uv pip install --python "${python}" --break-system-packages --compile-bytecode --no-deps "${app}"
+}
+
 dist_key="$(printf '%s' "${DISTRIBUTION}" | tr '[:upper:]-.' '[:lower:]__')"
 
 ort_wheel=""
@@ -118,15 +147,8 @@ abi="$("${PY}" -I -c 'import sys, sysconfig; print("cp%d%d%s" % (*sys.version_in
 app_wheel="$(select_app_wheel "${WHEEL_DIR}" "${dist_key}" "${ARCH}" "${abi}")" || err "${app_wheel}"
 info "app wheel for the ${abi} runtime: $(basename "${app_wheel}")"
 
-info "== packages from uv.lock (${EXTRAS[*]}), the app wheel, then the chain ORT"
-extra_args=()
-for extra in "${EXTRAS[@]}"; do extra_args+=(--extra "${extra}"); done
-uv export --locked --no-dev --no-emit-project --format requirements.txt "${extra_args[@]}" --output-file "${WORK_DIR}/requirements.lock.txt"
-uv pip install --python "${PY}" --break-system-packages --compile-bytecode --requirement "${WORK_DIR}/requirements.lock.txt"
-uv pip install --python "${PY}" --break-system-packages --compile-bytecode --no-deps "${app_wheel}"
-mapfile -t pypi_ort < <(uv pip list --python "${PY}" --format freeze | sed -n 's/^\(onnxruntime[a-z0-9_-]*\)==.*/\1/p' | grep -v genai || true)
-[ "${#pypi_ort[@]}" -eq 0 ] || uv pip uninstall --python "${PY}" --break-system-packages "${pypi_ort[@]}"
-uv pip install --python "${PY}" --break-system-packages --compile-bytecode --no-index --no-deps "${ort_wheel}"
+info "== locked packages (${EXTRAS[*]}) with the chain ORT, then the app wheel"
+install_python_app_packages "${PY}" "${app_wheel}" "${ort_wheel}" "${WORK_DIR}" "${EXTRAS[@]}"
 # python-build-standalone ships its stdlib without bytecode, which the launchers' -B would recompile on every start.
 "${PY}" -m compileall -q -j 0 -x '/(site-packages|test|tests|idlelib)/' "$("${PY}" -I -c 'import sysconfig; print(sysconfig.get_path("stdlib"))')"
 

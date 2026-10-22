@@ -46,6 +46,7 @@ The two halves of one topic often split:
 | **The family's repositories** — what each is and who vendors it, how one is laid out, **the README rule**, contributing, licence and contact | [`repository-family.md`](repository-family.md) |
 | **Models and scenes outside the code** — ModelANT, AssetANT, the SHA-256 lock, the hub's fetcher `fetch-data-lock.py` and `kataglyphis_fetch_data`, what stays tracked | [`data-repositories.md`](data-repositories.md) |
 | What is published, what is in it, the feature matrix | [`overview.md`](overview.md) |
+| **Consumer acceptance and replay for an immutable image** — the candidate, receipt and promotion policy | [`image-acceptance.md`](image-acceptance.md) |
 | Prerequisites, tests, roadmap, contribution, contact | [`project-info.md`](project-info.md) |
 | **Repository size, what is large, and the 2026-10 history rewrite** | [`project-info.md` § Repository size](project-info.md#repository-size-and-large-files) |
 | Licences of bundled software, what each one **obliges this project to do**, and the corresponding source for copyleft components | [`third-party-licenses.md`](third-party-licenses.md) |

@@ -86,6 +86,15 @@ t_assert_eq "0" "$(find "${workdir}" -maxdepth 1 \( -name 'f4.*' -o -name 'f5.*'
   "parallel runs must not leak their flag dirs"
 PARALLEL_ARCHS=0
 
+t_case "a failed harvest cannot turn successful workers green"
+parallel_loop_harvest() { return 9; }
+PARALLEL_ARCHS=1
+t_assert_fails run_parallel_arch_loop worker_ok_par "${workdir}/harvest-fail" 2 amd64 arm64
+t_assert_eq "0" "$(find "${workdir}" -maxdepth 1 -name 'harvest-fail.*' | wc -l | tr -d ' ')" \
+  "harvest failure still cleans the flag directory"
+unset -f parallel_loop_harvest
+PARALLEL_ARCHS=0
+
 # PARALLEL_LOOP_FAIL_FAST=1 stops the sequential loop at the first failure; workers log each arch they ran.
 
 # One sequential loop in which amd64 fails: the environment given decides whether the loop stops there.
@@ -146,5 +155,44 @@ t_case "an empty flag dir harvests nothing and does not trip on the glob"
 _d="$(mktemp -d)"
 t_assert_eq "pin= built=" "$(_harvest_into "${_d}")" "an unmatched glob must not become a filename"
 rm -rf "${_d}"
+
+# Exercise the real callback through the loop's conditional path, where errexit cannot protect a read.
+_failed_pin_read() {
+  PIN_READ_MODE="$1" bash -c '
+    set -euo pipefail
+    source "'"${CORE_DIR}"'/parallel-loop.sh"
+    _bool_truthy() { return 0; }
+    log() { :; }
+    warn() { :; }
+    cross_stage_pin_varname() { printf "%s_PIN" "${1^^}"; }
+    declare -A MEDIA_PIN=([amd64]=sha256:old) MEDIA_BUILT_THIS_RUN=()
+    '"$(t_fn_src "${TESTS_DIR}/../01-core/cross-stage-build.sh" parallel_loop_harvest)"'
+    cat() {
+      case "$1" in
+        */pin.media.amd64)
+          [ "${PIN_READ_MODE}" != partial ] || printf "sha256:partial"
+          [ "${PIN_READ_MODE}" = empty ] && return 0
+          return 73 ;;
+        *) command cat "$@" ;;
+      esac
+    }
+    worker() {
+      printf "sha256:new\n" > "${PARALLEL_LOOP_FLAGDIR}/pin.media.amd64"
+      : > "${PARALLEL_LOOP_FLAGDIR}/built.media.amd64"
+    }
+    PARALLEL_ARCHS=1
+    rc=0
+    run_parallel_arch_loop worker "'"${workdir}"'/read-fail" 1 amd64 || rc=$?
+    printf "rc=%s pin=%s built=%s flagdir=%s\n" "${rc}" "${MEDIA_PIN[amd64]}" "${MEDIA_BUILT_THIS_RUN[amd64]:-}" "${PARALLEL_LOOP_FLAGDIR:-}"
+  ' 2>/dev/null
+}
+
+t_case "a failed or empty worker pin read cannot publish a pin or built flag"
+for _read_mode in failed partial empty; do
+  t_assert_eq "rc=1 pin=sha256:old built= flagdir=" "$(_failed_pin_read "${_read_mode}")" \
+    "${_read_mode}: preserve the old pin, reject the built flag and clean the loop state"
+done
+t_assert_eq "0" "$(find "${workdir}" -maxdepth 1 -name 'read-fail.*' | wc -l | tr -d ' ')" \
+  "failed reads leave no flag directories"
 
 t_summary

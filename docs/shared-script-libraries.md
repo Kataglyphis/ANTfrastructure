@@ -27,6 +27,10 @@ Three have their own pages, because their topic is bigger than the library:
 `agentic-engines.sh` pair, one executable loop in two files
 ([`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md#the-two-bash-files)).
 
+The Slang twins accept additional pinned source roots and import an owner's
+WGSL manifest without a copied definition; their caller parameters and ownership
+rules are in [`slang-shader-compilation.md`](slang-shader-compilation.md#caller-variables).
+
 ## The tree, as AGENTS.md drew it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since
@@ -250,6 +254,10 @@ source, and end up with the *real* logging module rather than the fallbacks.
 | `CMAKE_BUILD_SAFE_DIRECTORY` | path registered as a git `safe.directory`; empty disables | `/workspace` |
 | `CMAKE_BUILD_PREBUILD_LABEL` | label logged around the pre-build hook | — |
 | `CMAKE_BUILD_USAGE_INTRO` | one-line description shown in `--help` | — |
+
+An empty positional preset remains in `CMAKE_BUILD_POSITIONAL` and uses the normal
+caller default. The value-option table is consulted only for a nonempty argument;
+Bash associative arrays reject an empty key.
 
 **Vulkan selection — `_cmake_build_resolve_vulkan`.** Three sources can name a
 Vulkan SDK, and they are resolved in one place: an explicit `--vulkan-version` /
@@ -594,7 +602,8 @@ or that configured a footer and footered no page, fails. It prints both numbers
 | `DARTDOC_BUILD_FLAVOR` | the site's generator, `dartdoc` or `rustdoc` | `dartdoc` |
 | `DARTDOC_BUILD_SHELL` | the page a guide is cut from and written beside, relative to the site | `index.html` |
 | `DARTDOC_BUILD_CLEAN_CMD` | array run before generation; unset skips | — |
-| `DARTDOC_BUILD_DOC_CMD` | array that generates the site | `dart doc` |
+| `DARTDOC_BUILD_DOC_CMD` | explicit array that generates the site; bypasses tool resolution | the pinned dartdoc tool below |
+| `DARTDOC_BUILD_TOOL_CACHE` | isolated generator cache root, keyed by the tool pin | `<root>/.dart_tool/dartdoc-tool` |
 | `DARTDOC_BUILD_THEME_CSS` | generated brand sheet appended to dartdoc's stylesheet | — (required) |
 | `DARTDOC_BUILD_IMAGES_DIR` | directory copied to `doc/api/images`; empty skips | — |
 | `DARTDOC_BUILD_GUIDES` | array of `<source markdown>\|<slug>\|<nav title>` | — |
@@ -612,6 +621,23 @@ of being skipped: a docs site quietly missing its theme and half its pages is
 worse than a build that stops and says so. The same rule governs the CI
 ownership fix — the container writes `doc/` as root over a bind mount, and a
 `chown` that fails leaves a tree the host user cannot rebuild.
+
+### The API generator
+
+The default resolves the exact `DARTDOC_VERSION` from `01-core/tool-pins.env` through official
+pub.dev in `<root>/.dart_tool/dartdoc-tool/<version>`. A matching cached tool is reused; a
+failed activation or generator fails the build. `DARTDOC_BUILD_TOOL_CACHE` moves that cache,
+and an explicit `DARTDOC_BUILD_DOC_CMD` bypasses resolution. The SDK, app dependencies and the
+caller's global tool cache are untouched. This follows the host-tool bootstrap convention;
+the Dart executable still comes from the image.
+
+The image's bundled dartdoc 9.0.6 crashes while stripping dependency `@docImport` comments
+(`RangeError (end)`, offset 80 in a 79-character comment). Upstream
+[9.0.8 fixes the offset drift](https://github.com/dart-lang/dartdoc/blob/main/CHANGELOG.md#908).
+On 2026-10-22, the exact published image reproduced that crash on ANThology; the pinned tool
+completed its full themed site and the link gate found zero issues across 1179 documents.
+`tests/test-dartdoc-tool.sh` checks pin, cache, caller override and error propagation with
+recording executables; it does not substitute for that real documentation build.
 
 ### The renderer's Python
 
@@ -1012,13 +1038,12 @@ at it, so a plain `uv pip install` inside an activated `.venv` still targets
 `/opt/venv` and dies with "Permission denied (os error 13)" as the uid-1001
 build user.
 
-The script it runs is `01-core/download-webdav-files.py`. With no `--extension`
-(or `all`) it hands the whole walk to the client's own
-`download_all_files_iterative`; a 140-line hand-rolled traversal used to live in
-its place, with its own URL joining, sub-path sanitising and streaming download,
-each a second implementation of something the client already did. The
-extension-filtered path stays for the early `.pfx` certificate fetch, which
-genuinely wants one file type out of a shared folder. A one-line shim remains at
+The script it runs is `01-core/download-webdav-files.py`. Filtered and complete
+walks both call the client's `download_all_files_iterative(..., extension=...)`.
+The client owns decoded path validation, local-root containment, response lifetime
+and atomic replacement. A listing, HTTP or streaming failure reaches the CLI as
+exit status 1, including a failure after earlier successful files. The `.pfx`
+certificate fetch uses the same implementation with a filter. A one-line shim remains at
 `windows/scripts/certificates/download_webdav_files.py`, because the PowerShell
 module resolves that path relative to itself.
 

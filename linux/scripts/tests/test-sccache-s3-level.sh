@@ -94,6 +94,9 @@ t_assert_eq "start key=none chain=none" "$(cat "${WORK}/calls")"
 # _drain <json> [timeout]: the drain's stderr against a fake server whose socket exists.
 _drain() {
   _fake_sccache ok "$1"
+  # Python startup crossing a wall-clock second must not change the drain fixture's verdict.
+  printf '#!/usr/bin/env bash\nprintf "0\\n"\n' > "${WORK}/bin/date"
+  chmod +x "${WORK}/bin/date"
   python3 -c 'import socket,sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "${WORK}/s.sock" 2>/dev/null || true
   PATH="${WORK}/bin:${PATH}" SCCACHE_SERVER_UDS="${WORK}/s.sock" bash "${LIB}" drain "${2:-}" 2>&1
 }

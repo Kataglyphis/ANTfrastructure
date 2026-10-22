@@ -67,10 +67,10 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | I want to… | Read |
 | --- | --- |
 | Find the page that owns a topic | [docs/INDEX.md](docs/INDEX.md) |
-| Wire a new project to this repo | [docs/adopting-in-a-new-project.md](docs/adopting-in-a-new-project.md) |
+| Wire a new project or reuse shared helpers | [Adoption](docs/adopting-in-a-new-project.md) · [Shared libraries](docs/shared-script-libraries.md) |
 | Upgrade dependencies, Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published, how the chain is laid out, what is in it | [docs/overview.md](docs/overview.md) |
-| Build the Linux images | [docs/linux-build-basics.md](docs/linux-build-basics.md) · [docs/linux-cross-builds.md](docs/linux-cross-builds.md) · [docs/linux-accelerator-images.md](docs/linux-accelerator-images.md) |
+| Build and accept the Linux images | [Basics](docs/linux-build-basics.md) · [Cross builds](docs/linux-cross-builds.md) · [Accelerators](docs/linux-accelerator-images.md) · [Consumer acceptance](docs/image-acceptance.md) |
 | Build the Windows image, and its arm64 bundle | [docs/windows-builds.md](docs/windows-builds.md) · [docs/windows-build-lanes.md](docs/windows-build-lanes.md) · [docs/windows-cross-builds.md](docs/windows-cross-builds.md) |
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
 | Know which workflow runs when | [docs/ci-build-triggers.md](docs/ci-build-triggers.md) |

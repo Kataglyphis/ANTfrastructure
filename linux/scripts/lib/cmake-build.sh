@@ -71,16 +71,16 @@ cmake_build_parse_args() {
 
   # Value options each set one variable, so they share one table and one arm instead of eleven.
   local -A _value_var=(
-    [k--preset]=preset_arg [k--build-dir]=build_dir_arg [k--clean-build-dir]=clean_arg
-    [k--build-config]=config_arg [k--build-target]=target_arg [k--cargo-cache-dir]=CARGO_CACHE_DIR
-    [k--parallel]=PARALLEL_JOBS [k--mb-per-job]=MB_PER_JOB [k--vulkan-version]=vulkan_version_arg
-    [k--vulkan-setup-script]=vulkan_setup_arg [k--vulkan-sdk]=vulkan_sdk_arg
+    [--preset]=preset_arg [--build-dir]=build_dir_arg [--clean-build-dir]=clean_arg
+    [--build-config]=config_arg [--build-target]=target_arg [--cargo-cache-dir]=CARGO_CACHE_DIR
+    [--parallel]=PARALLEL_JOBS [--mb-per-job]=MB_PER_JOB [--vulkan-version]=vulkan_version_arg
+    [--vulkan-setup-script]=vulkan_setup_arg [--vulkan-sdk]=vulkan_sdk_arg
   )
 
   while [[ $# -gt 0 ]]; do
-    if [[ -n "${_value_var[k$1]+x}" ]]; then
+    if [[ -n "$1" && -n "${_value_var[$1]+x}" ]]; then
       [[ $# -ge 2 ]] || err "$1 expects a value"
-      printf -v "${_value_var[k$1]}" '%s' "$2"
+      printf -v "${_value_var[$1]}" '%s' "$2"
       shift 2
       continue
     fi

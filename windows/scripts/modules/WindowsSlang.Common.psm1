@@ -77,7 +77,8 @@ function Resolve-Slangc {
 function Get-SlangIncludeArgument {
     param(
         [Parameter(Mandatory)][string]$SourceRoot,
-        [Parameter(Mandatory)][string]$SourceDirectory
+        [Parameter(Mandatory)][string]$SourceDirectory,
+        [string[]]$AdditionalSourceRoots = @()
     )
 
     # Order matters, the first <name>.slang wins: sorted, top-level common\ first, build tree out; same as the Linux twin.
@@ -93,7 +94,53 @@ function Get-SlangIncludeArgument {
     foreach ($d in @($subdirs | Where-Object { $_.FullName -ne $commonDir })) {
         $includeArgs += '-I'; $includeArgs += $d.FullName
     }
+    foreach ($root in $AdditionalSourceRoots) {
+        foreach ($argument in (Get-SlangIncludeArgument -SourceRoot $root -SourceDirectory $root)) {
+            $includeArgs += $argument
+        }
+    }
     return , $includeArgs
+}
+
+
+function Read-SlangManifestJson {
+    param([string]$ManifestFile)
+    return ConvertFrom-Json -InputObject ([IO.File]::ReadAllText($ManifestFile))
+}
+
+function Resolve-SlangManifestImport {
+    param([string]$ManifestPath, [pscustomobject]$Manifest)
+    if (-not $Manifest.PSObject.Properties['wgslManifest']) { return $null }
+    if ([IO.Path]::IsPathRooted($Manifest.wgslManifest)) { return $Manifest.wgslManifest }
+    return Join-Path (Split-Path $ManifestPath -Parent) $Manifest.wgslManifest
+}
+
+# Imports the WebGPU owner's entries without copying its manifest into each consumer.
+function Get-SlangShaderManifest {
+    param([Parameter(Mandatory)][string]$Path)
+    $doc = Read-SlangManifestJson -ManifestFile $Path
+    $ownerPath = Resolve-SlangManifestImport -ManifestPath $Path -Manifest $doc
+    if ($null -ne $ownerPath) {
+        $owner = Read-SlangManifestJson -ManifestFile $ownerPath
+        $doc.manifest = @($doc.manifest) + @($owner.manifest)
+        $prefix = if ($doc.PSObject.Properties['wgslDestinationPrefix']) { $doc.wgslDestinationPrefix } else { '' }
+        $rows = @($owner.wgslMap | ForEach-Object {
+            [pscustomobject]@{src = $_.src; out = $_.out; dst = if ($prefix) { Join-Path $prefix $_.dst } else { $_.dst }}
+        })
+        $doc | Add-Member -Force NoteProperty wgslMap $rows
+        $doc | Add-Member -Force NoteProperty depthTexturePatches $owner.depthTexturePatches
+        $doc | Add-Member -Force NoteProperty minSlangcVersionForWgsl $owner.minSlangcVersionForWgsl
+    }
+    return $doc
+}
+
+function Resolve-SlangSourcePath {
+    param([string]$Relative, [string]$SourceRoot, [string[]]$AdditionalSourceRoots = @())
+    foreach ($root in @($SourceRoot) + $AdditionalSourceRoots) {
+        $path = Join-Path $root $Relative
+        if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
+    }
+    return Join-Path $SourceRoot $Relative
 }
 
 # Full pipeline; -DestinationRoot is the consuming repo root that wgslMap "dst" paths resolve against.
@@ -104,7 +151,8 @@ function Invoke-SlangShaderCompile {
         [string]$SpirvOutputRoot,
         [string]$WgslOutputRoot,
         [string]$CombinedOutputDir,
-        [string]$DestinationRoot = (Get-Location).Path
+        [string]$DestinationRoot = (Get-Location).Path,
+        [string[]]$AdditionalSourceRoots = @()
     )
 
     if (-not $SpirvOutputRoot) { $SpirvOutputRoot = Join-Path $SourceRoot 'build\spirv' }
@@ -130,14 +178,23 @@ function Invoke-SlangShaderCompile {
     }
     Write-Host "[INFO] Using slangc: $slangc"
 
-    $manifestData = Get-Content -Path $ManifestPath -Raw | ConvertFrom-Json
+    foreach ($root in $AdditionalSourceRoots) {
+        if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw "Additional shader source root not found: $root" }
+    }
+    $manifestData = Get-SlangShaderManifest -Path $ManifestPath
     # Rows flagged "disabled" are kept in the JSON as documentation only.
     $manifestRows = @($manifestData.manifest | Where-Object {
         -not ($_.PSObject.Properties['disabled'] -and $_.disabled)
     })
 
     # Conservative staleness: any .slang may be imported, and a manifest edit can retarget any output.
-    $allSlangFiles = @(Get-ChildItem -Path $SourceRoot -Recurse -File -Filter '*.slang' -ErrorAction SilentlyContinue)
+    $allSlangFiles = @(foreach ($root in @($SourceRoot) + $AdditionalSourceRoots) {
+        Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.slang' -ErrorAction SilentlyContinue
+    })
+    $ownerPath = Resolve-SlangManifestImport -ManifestPath $ManifestPath -Manifest $manifestData
+    if ($null -ne $ownerPath) {
+        $allSlangFiles += Get-Item -LiteralPath $ownerPath
+    }
     $newestSource = (($allSlangFiles + @(Get-Item $ManifestPath)) |
         Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
 
@@ -145,7 +202,7 @@ function Invoke-SlangShaderCompile {
     $compiled = 0
 
     foreach ($entry in $manifestRows) {
-        $srcPath = Join-Path $SourceRoot $entry.file
+        $srcPath = Resolve-SlangSourcePath -Relative $entry.file -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
         if (-not (Test-Path $srcPath)) {
             # A manifest bug: fail the run rather than quietly compile one shader fewer.
             Write-Warning "Manifest references missing file: $srcPath"
@@ -153,7 +210,7 @@ function Invoke-SlangShaderCompile {
             continue
         }
 
-        $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $srcPath -Parent)
+        $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $srcPath -Parent) -AdditionalSourceRoots $AdditionalSourceRoots
 
         foreach ($target in $entry.targets) {
             $outExt = if ($target -eq 'spirv') { 'spv' } else { 'wgsl' }
@@ -216,10 +273,10 @@ function Invoke-SlangShaderCompile {
     }
 
     foreach ($entry in $(if ($wgslEmitEnabled) { @($manifestData.wgslMap) } else { @() })) {
-        $srcPath = Join-Path $SourceRoot $entry.src
+        $srcPath = Resolve-SlangSourcePath -Relative $entry.src -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
         if (-not (Test-Path $srcPath)) { continue }
 
-        $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $srcPath -Parent)
+        $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $srcPath -Parent) -AdditionalSourceRoots $AdditionalSourceRoots
 
         $tmpOut = Join-Path $CombinedOutputDir "combined_$($entry.out)"
         # No -entry/-stage: Slang emits ALL entry points in one WGSL file.
@@ -277,4 +334,4 @@ function Invoke-SlangShaderCompile {
 }
 
 Export-ModuleMember -Function Test-WgslVaryingsAreLocated, Test-SlangcVersionAtLeast, Resolve-Slangc,
-    Get-SlangIncludeArgument, Invoke-SlangShaderCompile
+    Get-SlangIncludeArgument, Get-SlangShaderManifest, Resolve-SlangSourcePath, Invoke-SlangShaderCompile

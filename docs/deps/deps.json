@@ -608,6 +608,13 @@
           "dockerfile": null,
           "entries": [
             {
+              "name": "dartdoc (on-demand API documentation tool)",
+              "var": "DARTDOC_VERSION",
+              "url": "https://github.com/dart-lang/dartdoc",
+              "license": "BSD 3-Clause",
+              "spdx": "BSD-3-Clause"
+            },
+            {
               "name": "Emscripten / emsdk (ONNX Runtime WASM build)",
               "var": null,
               "version_fixed": "pinned by ONNX Runtime",

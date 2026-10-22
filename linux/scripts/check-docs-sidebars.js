@@ -70,6 +70,52 @@ function serve(root) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
+// Chrome may still write its profile after kill() returns; reaping precedes bounded filesystem retries.
+async function closeChrome(ws, proc, profile, timeoutMs = 5000, kill = () => proc.kill('SIGKILL')) {
+  ws.close();
+  let timer, onExit;
+  const exited = proc.exitCode !== null || proc.signalCode !== null
+    ? Promise.resolve()
+    : new Promise((resolve) => { onExit = resolve; proc.once('exit', onExit); });
+  try {
+    kill();
+    await Promise.race([exited, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Chrome did not exit within ${timeoutMs} ms; profile retained at ${profile}`)), timeoutMs);
+    })]);
+  } finally {
+    clearTimeout(timer);
+    if (onExit) proc.removeListener('exit', onExit);
+  }
+  fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
+// Every launched browser must finish cleanup even when one cleanup fails.
+async function closeBrowsers(browsers) {
+  const outcomes = await Promise.allSettled(browsers.splice(0).map((browser) => browser.close()));
+  const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+
+// Endpoint discovery can fail before a browser reaches its caller, so launch owns its cleanup.
+async function chromePage(chrome, profile) {
+  const portFile = path.join(profile, 'DevToolsActivePort');
+  // Chrome creates the file before it writes the port: under load a read in between got '' and polled 127.0.0.1: for nothing.
+  let port = '';
+  for (let i = 0; i < 600 && !port; i++) {
+    try { port = (fs.readFileSync(portFile, 'utf8').match(/^(\d+)\n/) || [])[1] || ''; } catch { port = ''; }
+    if (!port) await sleep(100);
+  }
+  if (!port) throw new Error(`${chrome} started no DevTools endpoint in 60 s`);
+  let targets = [];
+  for (let i = 0; i < 300 && !targets.some((t) => t.type === 'page'); i++) {
+    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { targets = []; }
+    if (!targets.some((t) => t.type === 'page')) await sleep(100);
+  }
+  const page = targets.find((t) => t.type === 'page');
+  if (!page) throw new Error(`${chrome} opened no page in 30 s`);
+  return page;
+}
+
 // launch(chrome, gpuFlags, onEvent): webgpu-canvas-readback.js passes SwiftShader's WebGPU flags, check-live-site.js an event sink.
 async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
@@ -83,46 +129,44 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const onSignal = () => { try { cleanup(); } catch { /* best effort on the way out */ } process.exit(130); };
   process.once('SIGINT', onSignal);
   process.once('SIGTERM', onSignal);
-  const portFile = path.join(profile, 'DevToolsActivePort');
-  // Chrome creates the file before it writes the port: under load a read in between got '' and polled 127.0.0.1: for nothing.
-  let port = '';
-  for (let i = 0; i < 600 && !port; i++) {
-    try { port = (fs.readFileSync(portFile, 'utf8').match(/^(\d+)\n/) || [])[1] || ''; } catch { port = ''; }
-    if (!port) await sleep(100);
-  }
-  if (!port) { proc.kill('SIGKILL'); fail(`${chrome} started no DevTools endpoint in 60 s`); }
-  let targets = [];
-  for (let i = 0; i < 300 && !targets.some((t) => t.type === 'page'); i++) {
-    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { targets = []; }
-    if (!targets.some((t) => t.type === 'page')) await sleep(100);
-  }
-  const page = targets.find((t) => t.type === 'page');
-  if (!page) { proc.kill('SIGKILL'); fail(`${chrome} opened no page in 30 s`); }
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
-  let id = 0;
-  const pending = new Map();
-  const loaded = [];
-  const thrown = [];
-  ws.onmessage = (ev) => {
-    const m = JSON.parse(ev.data);
-    if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else if (m.method === 'Page.loadEventFired') loaded.push(m);
-    else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
-    if (m.method && onEvent) onEvent(m);
+  let ws;
+  const close = async () => {
+    try { await closeChrome({ close: () => { if (ws) ws.close(); } }, proc, profile, 5000, killGroup); }
+    finally { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); }
   };
-  // A Chrome that stops answering must fail the check, not hang the preflight: bound every call.
-  const send = (method, params = {}) => new Promise((resolve, reject) => {
-    const i = ++id;
-    const timer = setTimeout(() => { pending.delete(i); reject(new Error(`${method} got no answer from Chrome in 30 s`)); }, 30000);
-    pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
-    ws.send(JSON.stringify({ id: i, method, params }));
-  });
-  // Chrome writes its profile until the SIGKILL lands: retry the removal instead of failing on ENOTEMPTY.
-  const close = () => { ws.close(); cleanup(); };
-  await send('Page.enable');
-  await send('Runtime.enable');
-  const product = (await send('Browser.getVersion')).result.product;
-  return { send, loaded, thrown, close, product };
+  const kill = killGroup;
+  try {
+    const page = await chromePage(chrome, profile);
+    ws = new WebSocket(page.webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+    let id = 0;
+    const pending = new Map();
+    const loaded = [];
+    const thrown = [];
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } else if (m.method === 'Page.loadEventFired') loaded.push(m);
+      else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
+      if (m.method && onEvent) onEvent(m);
+    };
+    // A Chrome that stops answering must fail the check, not hang the preflight: bound every call.
+    const send = (method, params = {}) => new Promise((resolve, reject) => {
+      const i = ++id;
+      const timer = setTimeout(() => { pending.delete(i); reject(new Error(`${method} got no answer from Chrome in 30 s`)); }, 30000);
+      pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
+      ws.send(JSON.stringify({ id: i, method, params }));
+    });
+    await send('Page.enable');
+    await send('Runtime.enable');
+    const product = (await send('Browser.getVersion')).result.product;
+    return { send, loaded, thrown, close, kill, product };
+  } catch (error) {
+    try { await close(); }
+    catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], `${error.message}; Chrome cleanup failed: ${cleanupError.message}`);
+    }
+    throw error;
+  }
 }
 
 // Runs in the page: the sidebar's state and the one toggle a user can see.
@@ -310,7 +354,7 @@ async function main() {
   const browsers = [];
   let product = '';
   // fail() exits without the finally below, and an orphaned headless Chrome outlives its run.
-  process.on('exit', () => { for (const b of browsers.splice(0)) b.close(); });
+  process.on('exit', () => { for (const b of browsers.splice(0)) b.kill(); });
   try {
     for (let i = 0; i < Math.min(Number(askedJobs), jobs.length); i++) browsers.push(await launch(chrome));
     product = browsers[0].product;
@@ -322,8 +366,8 @@ async function main() {
       }
     }));
   } finally {
-    for (const b of browsers.splice(0)) b.close();
-    if (server) server.close();
+    try { await closeBrowsers(browsers); }
+    finally { if (server) server.close(); }
   }
   const lines = found.flat();
   const report = jobs.flatMap((job, j) => [...(j % viewports.length ? [] : [`  ${job.page}`]), ...found[j].map((l) => `    ${l}`)]);
@@ -333,4 +377,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => fail(e.stack || String(e)));
-else module.exports = { findChrome, launch, serve, sleep };
+else module.exports = { findChrome, launch, serve, sleep, closeChrome, closeBrowsers };

@@ -891,6 +891,12 @@ still there.
 how the helper is *called*. A guard that only works in the default context is
 not a guard; it is a coincidence.
 
+The same rule applies to parallel result collection: `_parallel_arch_collect` is
+called through `||`, so it must propagate a failed `parallel_loop_harvest` explicitly.
+Worker-pin reads check both `cat` status and a nonempty value before updating parent
+pins or built flags. `test-parallel-loop.sh` covers read errors, partial output with
+failure and empty files through the real conditional call path.
+
 ### A checksum probe that cannot reach the server reads as "nothing to verify"
 
 **Symptom.** The build prints `No sha512.sum found on server; continuing.` and

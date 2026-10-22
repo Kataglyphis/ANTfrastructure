@@ -227,7 +227,7 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
         Invoke-InTestDir { param($d)
             # A build interpreter stand-in: records its arguments and leaves the one twin a build would.
             $twin = New-PeTestWheel -Path "$d\made\m-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'm.cp314t-win_arm64.pyd' = @('python314t.dll') }
-            Set-Content -LiteralPath "$d\py.cmd" -Encoding ascii -Value @('@echo %*> "%~dp0args.txt"', "@copy /y ""$twin"" ""%~dp0dist\"" >nul")
+            Set-Content -LiteralPath "$d\py.cmd" -Encoding ascii -Value @('@echo %*> "%~dp0args.txt"', "@copy /y ""$([IO.Path]::GetFullPath($twin))"" ""%~dp0dist\"" >nul")
             $null = New-Item -ItemType Directory -Force -Path "$d\dist"
             Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64'; PYTHON_VERSION = '3.14.8'; PYTHON_WHEELS_FREE_THREADED = "$d\store" } {
                 $stored = Invoke-PythonWheelBuild -Python @{ Exe = "$d\py.cmd"; FreeThreaded = $true } -WorkingDir $d -Arguments 'setup.py bdist_wheel' `

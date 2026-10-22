@@ -59,6 +59,30 @@ Describe 'WindowsSlang.Common' {
     }
   }
 
+  Context 'Pinned shader owners' {
+    It 'resolves another root and adds its common modules to include paths' {
+      $consumer = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'consumer')).FullName
+      $owner = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'owner')).FullName
+      $common = (New-Item -ItemType Directory -Force -Path (Join-Path $owner 'common')).FullName
+      $shader = Join-Path $owner 'owned.slang'
+      Set-Content -LiteralPath $shader -Value 'void main() {}'
+      (Resolve-SlangSourcePath -Relative 'owned.slang' -SourceRoot $consumer -AdditionalSourceRoots @($owner)) | Should -Be $shader
+      $include = Get-SlangIncludeArgument -SourceRoot $consumer -SourceDirectory $consumer -AdditionalSourceRoots @($owner)
+      $include | Should -Contain $common
+    }
+
+    It 'imports owner entries and prefixes only their destinations' {
+      $owner = Join-Path $script:root 'owner-manifest.json'
+      Set-Content -LiteralPath $owner -Value '{"manifest":[{"file":"owned.slang"}],"wgslMap":[{"src":"owned.slang","out":"shader.wgsl","dst":"crate"}],"depthTexturePatches":{},"minSlangcVersionForWgsl":"2026.8"}'
+      $consumer = Join-Path $script:root 'consumer-manifest.json'
+      Set-Content -LiteralPath $consumer -Value '{"manifest":[],"wgslManifest":"owner-manifest.json","wgslDestinationPrefix":"third_party/owner"}'
+      $doc = Get-SlangShaderManifest -Path $consumer
+      $doc.manifest[0].file | Should -Be 'owned.slang'
+      $doc.wgslMap[0].dst | Should -Be (Join-Path 'third_party/owner' 'crate')
+      $doc.minSlangcVersionForWgsl | Should -Be '2026.8'
+    }
+  }
+
   Context 'Test-SlangcVersionAtLeast' {
     It 'rejects the slangc whose combined WGSL emit drops @location' {
       Test-SlangcVersionAtLeast -Have '2026.1-52-gc8ddf20bb' -Want '2026.8' | Should -Be $false

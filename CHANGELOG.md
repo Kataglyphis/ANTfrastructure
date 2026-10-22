@@ -12,6 +12,68 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — CI proofs and Python app resolution
+
+- CMake argument parsing retains an empty positional preset without indexing the
+  value-option table with an empty key; its regression also checks the positional array.
+- Capacity-test fixtures isolate the disk and memory refusals on small CI runners.
+  Eight mutation shards retain every proof within the existing 30-minute budget;
+  a complete 532-entry shard previously passed its gate at the deadline.
+  Failed baselines retain a bounded first diagnostic and final summary for diagnosis.
+- GPU graph fixtures use a fixed synthetic app identity, so an unrelated moving ref
+  cannot trigger a network lookup during their dry-run; ref resolution keeps its own suite.
+- The Windows cross-wheel fixture normalizes its source path at the CMD `COPY`
+  boundary, so its platform-argument mutation tests the build helper on a real copied wheel.
+- Linux app bundles exclude PyPI ORT providers before exporting locked requirements
+  and resolve the chain wheel in the first install transaction. This avoids the missing
+  CPython 3.15 PyPI wheel failure while retaining other locked dependencies and GenAI.
+- Browser checks await Chrome exit before removing profiles with bounded retries;
+  cleanup failures remain fatal and every peer is reaped. Sidebar, live-site and
+  WebGPU callers use the asynchronous cleanup, avoiding the observed `ENOTEMPTY` race.
+  Upstream process-group termination and signal cleanup remain intact, and every
+  DevTools call retains its 30-second response bound.
+  Failed endpoint, page, WebSocket and DevTools startup also clean their browser; combined
+  startup and cleanup failures retain both diagnostics and cannot return success.
+- Parallel builds reject a failed result harvest even when their workers succeeded.
+  Failed, partial or empty worker-pin reads retain the parent pin and cannot mark
+  that stage built; the regression runs through an `errexit`-disabled caller.
+
+## 2026-10-22 — shared wrapper build and shipping
+
+- Image and rootfs wrappers share one build, smoke-verdict and ship sequence. Regression
+  tests follow the shared helper, including failure reaping and both publication paths.
+- The extracted gates-only exit still stops before build or publication for every push
+  flag order; ordinary runs continue to their build and publication steps.
+
+## 2026-10-22 — consumer bootstrap and the docs generator
+
+- Linux acceptance runs with writable SDK and source mounts, then restores the rootful
+  checkout's host ownership on success, failure and timeout. Container-removal failures
+  still attempt ownership restoration and retain a failed receipt with logs.
+- The consumer plan selects the existing GCC C++ lane and prepares the Flutter lane's
+  Git and package environment before its VM checks, including each app's extra package.
+  Clang fuzzing, TSan and browser/native build coverage remain in their CI lanes.
+- The shared docs generator resolves the exact dartdoc tool pin in an isolated cache.
+  Version 9.0.8 fixes the bundled 9.0.6 dependency-comment offset crash; caller-supplied
+  generator commands still take precedence, and failed resolution fails the docs build.
+
+## 2026-10-22 — consumer contracts and image acceptance
+
+- Runtime publication creates an immutable candidate and requires all declared consumer
+  checks before promoting the same index to the public tag. Receipts record source/pin,
+  data/dependency locks, logs and timings; replay restores the recorded SHAs and locks.
+  CRLF lock bytes survive replay; changed versioned sources fail acceptance. Manual
+  promotion verifies the tested platform and preserves the target's runtime platforms.
+- ModelANT and AssetANT join the real consumer inventory. Shared inference references
+  are owned by ModelANT and consumed by C++ and Rust tests.
+- Filtered WebDAV downloads now use the client's single safe, atomic implementation;
+  `WEBDAVCLIENT_REF` selects the fix. Listing/HTTP/stream failures return nonzero.
+- Corrosion's CC/CXX/CRT setup is shared by the two C++ consumers. WebDavClient and
+  OrchestrANT take the same narrow wheel helper via the existing exact-sync registry.
+- Slang's Bash and PowerShell drivers compose an owner's WGSL manifest and additional
+  pinned source roots, so OxidANT owns and regenerates its shaders independently while
+  BeschleunigerBallett consumes that same definition.
+
 ## 2026-10-22 — review refactors: one push retry policy, a status-only chain log, the logging helper
 
 - **Push retries:** `push_retry_delay` (cross-stage-build.sh) decides both push paths. The backoff is linear

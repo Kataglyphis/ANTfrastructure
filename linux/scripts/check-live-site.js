@@ -223,7 +223,7 @@ ${problems.map((p) => `     ${p}
       }
     }
   } finally {
-    browser.close();
+    await browser.close();
   }
   if (opts.files) {
     const { count, bad } = await checkFiles(opts);

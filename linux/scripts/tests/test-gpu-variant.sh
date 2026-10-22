@@ -4,6 +4,8 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
+# Graph dry-runs need an immutable app identity; test-app-ref.sh owns ref resolution.
+export APP_REF=0123456789abcdef0123456789abcdef01234567
 
 # Run <snippet> with the real modules sourced under the given environment.
 _graph() {

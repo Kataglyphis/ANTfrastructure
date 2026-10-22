@@ -16,6 +16,8 @@ import argparse
 import sys
 from pathlib import Path
 
+from deps_table import read_dependency_versions
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPS_JSON = REPO_ROOT / "docs/deps/deps.json"
 VERSIONS_ENV = REPO_ROOT / "linux/scripts/01-core/versions.env"
@@ -67,14 +69,7 @@ Die vollständigen Lizenztexte sind in der Anwendung unter
 
 
 def parse_versions_env() -> dict[str, str]:
-    result: dict[str, str] = {}
-    for line in VERSIONS_ENV.read_text(encoding="utf-8").splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        key, _, value = stripped.partition("=")
-        result[key.strip()] = value.strip()
-    return result
+    return read_dependency_versions(VERSIONS_ENV)
 
 
 def render_table(versions: dict[str, str]) -> str:

@@ -58,6 +58,14 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    change updates AGENTS.md (rules, quick reference), README.md (user-facing pointers), the owning
    `docs/` page and `CHANGELOG.md` before it is done. A mechanism only git history knows does not
    exist for the next session.
+   Image publication also requires the digest-specific consumer receipt before a public tag
+   moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
+   Successful consumers must preserve versioned sources. Manual promotion also preserves
+   the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
+   `--gates-only` exits before builds, candidate creation and promotion, including when
+   combined with push flags; it provides no consumer acceptance receipt.
+   Linux acceptance restores disposable rootful checkout ownership on every exit;
+   failed container cleanup or ownership restoration cannot produce a passed receipt.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
    tree and a distro package export the same soname, ours wins the `ld.so` lookup: write
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,
@@ -580,6 +588,9 @@ was calling it. The rule and the mechanism: § Contributing Reusable Work Here a
 
 ## Shell safety conventions (five bug classes, all found live 2026-08-08)
 
+Guard empty arguments before associative-array lookups; an empty positional CMake
+preset retains the caller-default behavior and its positional-array entry.
+
 Each of these killed or falsified a real build before it was fixed. The full stories:
 [`changelog-archive-2026-08-13.md`](docs/changelog-archive-2026-08-13.md) (2026-08-08);
 `tests/test-ifs-safety.sh` lint-gates class 3. When writing or reviewing bash here:
@@ -603,8 +614,15 @@ Each of these killed or falsified a real build before it was fixed. The full sto
    function's return value 1, and under `set -e` the HEALTHY path kills the caller. End with
    `|| true`, `; return 0`, or an `if`.
 
+Parallel result collection must explicitly propagate a failed harvest, including when
+workers succeeded. Publish worker pins only after a successful, nonempty read;
+conditional callers disable `errexit` throughout the helper's body.
+
 **Host tool traps when you MEASURE a run.** These falsify your AUDIT, not the build; each produced
 a wrong verdict on 2026-08-31, and none announces itself:
+
+CMD fixture `COPY` calls take native Windows paths at that boundary, even when the
+shared test helper emits forward slashes. Prove the copy before trusting its build result.
 
 - **`grep` on this host is ugrep.** A pattern beginning `--` parses as an OPTION and silently
   matches nothing, so a fault-injection arm that never fires looks like a clean run. Always
@@ -630,6 +648,8 @@ transcript. Each was a child that outlived whatever started it. So:
    chain, a watcher) says so in its handoff, by unit name.
 2. **A test fixture ends on its own.** A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
    `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
+   Fixtures unrelated to ref resolution use a synthetic immutable app identity;
+   moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run.
 3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
    `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
    `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
@@ -639,6 +659,13 @@ transcript. Each was a child that outlived whatever started it. So:
    `test-mutation-gate.sh`).
 4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
    its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
+
+Shared Chrome cleanup is asynchronous: callers await child exit and profile cleanup;
+an immediate process-exit hook only kills. Cleanup failures remain fatal, and every
+browser finishes cleanup before one peer's failure is reported
+([docs-sites.md](docs/docs-sites.md#the-sidebar-toggle-check)).
+The launcher owns cleanup until it returns: endpoint/page discovery, WebSocket
+connection and initial DevTools failures must release the group, profile and hooks.
 
 `linux/host-config/ghost-watch.sh` is the net under all four: an hourly user timer that reports
 orphans heavy on CPU or memory or shaped like test leftovers
@@ -874,6 +901,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     map a `libonnxruntime*` soname to a distro package.
   - The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`); a missing chain
     wheel fails the torch stage, with no PyPI fallback.
+  - Linux app bundles exclude PyPI ORT providers before exporting the lock and pass the chain
+    wheel to the first requirements install; a later replacement cannot rescue a failed resolver.
   - The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path, never the bare
     `onnxruntime/core/` directory: consumers name that directory as data (OxidANT's loader,
     FFmpeg's configure line) and must stay importers. A file that DEFINES `OrtGetApiBase` (ELF
@@ -930,9 +959,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   tag with the arches this run carries and stops. The older coherence gate only asks whether the
   arches AGREE on a generation, so a single-arch run assembled a coherent ONE-arch index and
   published it: that is how `:latest` (then `:latest-cross`) was found reduced to riscv64 alone.
-  Recover by re-running the runtime lane for the missing arches; `--force` /
-  `RUNTIME_MANIFEST_COMPLETENESS=0` are for a deliberate shrink only. A partial-arch run should
-  carry `--skip-manifest` and never reach here.
+  Recover by re-running the runtime lane for the missing arches. `--force` and
+  `RUNTIME_MANIFEST_COMPLETENESS=0` only bypass the early shell check: final promotion
+  still preserves the published runtime platforms. A partial-arch run should carry
+  `--skip-manifest`; a different platform set gets its own tag.
 - **A published image's environment names nothing outside the container** (2026-09-23, both
   lanes). A build-host setting (the sccache endpoint, a LAN mirror, a proxy) reaches a RUN as an
   ARG and never lands in an ENV: `:winamd64` shipped the owner's LAN WebDAV and broke every
@@ -954,7 +984,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 20 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | every `git push` | `linux/host-config/git-hooks/pre-push` — the mutation gate's `--stale-check` over the whole manifest, then `--changed` for real ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | the staleness pass: 0.06 s over 378 entries (measured 2026-09-05); `--changed` depends on the push |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as four `PREFLIGHT_MUTATION_SHARD=K/4` jobs that together prove every entry | CI |
+  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry | CI |
 
   Install the hooks once with **`make hooks`**: it sets `core.hooksPath` rather than copying into
   `.git/hooks`, so both hooks are version-controlled and arrive with a clone.
@@ -965,7 +995,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   prints how many of how many it ran. Why it is capped, and what it measured before:
   [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
 
-  CI never samples: its four `mutations` jobs split the manifest with `--shard` and together prove
+  CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
   every entry. When the gate gets slow, fix the suite that got slow; never raise a timeout or
   sample in CI. The 2026-09-23 timeout and the layout:
   [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).
@@ -1106,11 +1136,15 @@ mount).
   repository.** A literal anywhere else is a second source that will disagree; the ARG-consistency
   and advertised-key gates exist because it did.
 - **Host-tool pins go in `01-core/tool-pins.env` instead** (CON59, 2026-10-05): shellcheck,
-  gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate. `Dockerfile.base`
+  gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate, dartdoc. `Dockerfile.base`
   bind-mounts `versions.env`, so any edit to it rebuilds the compiler image, even for a lint tool.
   A pin no early stage (base through android) reads goes in `tool-pins.env`; one such a stage
   reads stays in `versions.env`. The torch stage reads shellcheck's and hadolint's from
   `tool-pins.env` (CON83). Renovate, `bump_versions.py` and `sync_versions.py` read both files.
+- **Dart API docs use the separately pinned generator.** The shared builder resolves it into
+  the project's isolated `.dart_tool/dartdoc-tool` cache; keep redundant `dart doc` overrides
+  out of consumers. Explicit custom commands still win. The SDK-bundled tool can lag fixes;
+  see [the generator contract](docs/shared-script-libraries.md#the-api-generator).
 - **Never hand-edit a derived file.** `python docs/scripts/sync_versions.py --write` propagates a
   pin into the docs, the deps table, the Dockerfile ARGs and the PowerShell defaults; `--check` is
   a preflight gate, so a hand edit is caught rather than shipped.

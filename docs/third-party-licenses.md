@@ -19,6 +19,7 @@ the end marker are hand-written. The sources are:
 |---|---|
 | [`deps/deps.json`](deps/deps.json) | every component: name, licence, URL, and which image it is in |
 | [`../linux/scripts/01-core/versions.env`](../linux/scripts/01-core/versions.env) | the version, so the list can never disagree with the build |
+| [`../linux/scripts/01-core/tool-pins.env`](../linux/scripts/01-core/tool-pins.env) | separately resolved documentation and host-tool versions |
 
 Regenerate after any change:
 
@@ -240,6 +241,7 @@ halves fit together and why neither is sufficient alone.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
+| dartdoc (on-demand API documentation tool) | 9.0.8 | [github.com/dart-lang/dartdoc](https://github.com/dart-lang/dartdoc) | BSD 3-Clause |
 | Emscripten / emsdk (ONNX Runtime WASM build) | pinned by ONNX Runtime | [emscripten.org](https://emscripten.org/) | MIT / NCSA |
 | ccache | Ubuntu apt | [ccache.dev](https://ccache.dev/) | GPLv3+ |
 | sccache | Ubuntu apt | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |

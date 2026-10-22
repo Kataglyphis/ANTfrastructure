@@ -17,7 +17,7 @@ _tree() {
   cp "${REPO}/docs/scripts/generate_sbom.py" "${REPO}/docs/scripts/deps_table.py" \
      "${REPO}/docs/scripts/license_obligations.py" "${d}/docs/scripts/"
   cp "${REPO}/docs/deps/deps.json" "${d}/docs/deps/"
-  cp "${REPO}/linux/scripts/01-core/versions.env" "${d}/linux/scripts/01-core/"
+  cp "${REPO}/linux/scripts/01-core/versions.env" "${REPO}/linux/scripts/01-core/tool-pins.env" "${d}/linux/scripts/01-core/"
   printf '%s' "${d}"
 }
 
@@ -57,6 +57,11 @@ sed -i 's/^FFMPEG_VERSION=.*/FFMPEG_VERSION=0.0.0-fixture/' "${fix}/linux/script
 t_assert_eq "1" "$(t_rc _sbom "${fix}" --check)" \
   "a published corresponding-source record that drifts from the versions it names is worse than none"
 t_assert_contains "$(_sbom "${fix}" --stdout)" "0.0.0-fixture" "and the new value is what the document would carry"
+
+t_case "a tool-pins.env bump moves the documentation tool's SBOM entry"
+sed -i 's/^DARTDOC_VERSION=.*/DARTDOC_VERSION=0.0.0-doc-fixture/' "${fix}/linux/scripts/01-core/tool-pins.env"
+t_assert_contains "$(_sbom "${fix}" --stdout)" "0.0.0-doc-fixture"
+t_assert_eq "1" "$(t_rc _sbom "${fix}" --check)"
 
 t_case "--stdout writes nothing, so it cannot be mistaken for --write"
 fix="$(_tree)"

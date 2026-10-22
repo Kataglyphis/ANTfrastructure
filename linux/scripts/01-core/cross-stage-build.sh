@@ -561,7 +561,7 @@ cross_stage_run() {
 
 # Reads worker pins and built flags back into the parent's arrays; both kinds, since --no-push writes only built.*.
 parallel_loop_harvest() {
-  local flagdir="$1" f name stage arch pin_varname built_varname
+  local flagdir="$1" f name stage arch pin_varname built_varname pin_value
   local -A _hv_seen=()
   for f in "${flagdir}"/pin.*.* "${flagdir}"/built.*.*; do
     [ -f "${f}" ] || continue
@@ -577,7 +577,12 @@ parallel_loop_harvest() {
     if [ -n "${pin_varname}" ] && [ -f "${flagdir}/pin.${name}" ] \
        && declare -p "${pin_varname}" &>/dev/null; then
       local -n _hv_pin_map="${pin_varname}"
-      _hv_pin_map["${arch}"]="$(cat "${flagdir}/pin.${name}")"
+      pin_value="$(cat "${flagdir}/pin.${name}")" || {
+        warn "Cannot read parallel worker pin: ${flagdir}/pin.${name}"
+        return 1
+      }
+      [ -n "${pin_value}" ] || { warn "Empty parallel worker pin: ${flagdir}/pin.${name}"; return 1; }
+      _hv_pin_map["${arch}"]="${pin_value}"
       log "[stage ${stage}-${arch}] pin harvested from parallel worker"
     fi
 

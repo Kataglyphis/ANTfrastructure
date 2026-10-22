@@ -2,4 +2,3 @@
 # The declaration masks the command's exit status, so `set -e` never sees it
 # fail and x silently holds "". Fix one by splitting it, then DELETE its line.
 # Format: <file>\t<variable>.  docs/failure-modes.md
-

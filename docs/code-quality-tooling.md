@@ -624,7 +624,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2103 entries** over **187 distinct test commands**; both digits are
+manifest holds **2142 entries** over **194 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -739,9 +739,9 @@ the timeout was not raised and CI does not sample.
 | job | runs | timeout |
 | --- | --- | --- |
 | `preflight` | `PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh` — every other slug | 45 min |
-| `mutations` × 4 (`shard: [0, 1, 2, 3]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/4 bash linux/scripts/preflight.sh`, which passes `--shard K/4` to `verify_mutations.py` | 30 min each |
+| `mutations` × 8 (`shard: [0, 1, 2, 3, 4, 5, 6, 7]`, `fail-fast: false`) | `PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD=K/8 bash linux/scripts/preflight.sh`, which passes `--shard K/8` to `verify_mutations.py` | 30 min each |
 
-`--shard K/N` proves `entries[K::N]`, so the four jobs prove every entry exactly
+`--shard K/N` proves `entries[K::N]`, so the eight jobs prove every entry exactly
 once; a suite pins that the slices partition the manifest and that the matrix
 lists `0..N-1` for the `N` its jobs pass. Every `mutations` job repeats the
 preflight job's setup (uv, pytest, PyYAML): without them the baselines fail
@@ -749,6 +749,17 @@ unmutated, as on 2026-09-07. Each job still shards its slice over `--jobs`
 mirrors, and each job runs the baseline of every distinct command it holds, so a
 command whose entries span all four slices pays its baseline four times — the
 price of the round-robin split, bounded by one run of each suite per job.
+
+The 30-minute budget includes job setup and cleanup. On 2026-10-22,
+[shard 0](https://github.com/Kataglyphis/ANTfrastructure/actions/runs/39793092934/job/119873728596)
+proved all 532 selected entries, printed a passed preflight summary, and was then
+canceled at the job boundary. Eight shards halve that 532-entry slice without
+sampling or raising the timeout; baseline failures still fail.
+
+A failed baseline reports its first three and last three nonempty lines, capped
+at 500 characters per line. This retains the first diagnostic and final summary
+when a multiline browser report would otherwise hide the failure. It changes
+the diagnostic only; a failed or timed-out baseline never counts as a bite.
 
 **Locally nothing changes**: `make preflight` and `bash linux/scripts/preflight.sh`
 without the variables run every entry. To reproduce one CI job, set the same two
@@ -864,7 +875,7 @@ green.
 
 
 Adding a fix without a mutation entry is allowed; adding a *gate* without one is
-how the next inert check gets in. The gate guards itself: 55 entries (`mutations.*`)
+how the next inert check gets in. The gate guards itself: 57 entries (`mutations.*`)
 neuter its survivor-reporting, its file restore, its baseline pass, its use of the
 copy, the opt-in-ness of `--in-place`, the cleanup of the copy, both production
 call sites, the exclude list, the single-match rule, `copy2`, both halves of
@@ -1880,7 +1891,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **142** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **143** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -2641,6 +2652,8 @@ Two rules shaped every one of them.
 
 **A gate has to be able to be GREEN.** Each suite opens with a healthy fixture.
 Without it a red case proves only that the fixture is broken.
+GPU graph dry-runs set a synthetic immutable `APP_REF`: a moving default otherwise
+contacts GitHub before a graph assertion. `test-app-ref.sh` retains ref-resolution coverage.
 
 **Advisory is a contract, not an omission.** Four of these gates deliberately
 report findings without failing — the extraction is heuristic, or the divergence

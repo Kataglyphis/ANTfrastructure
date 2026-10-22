@@ -590,6 +590,7 @@ runtime_build_chain() {
   local arch="$1"
   local rootfs_dir="${2:-}"
   # This arch's BuildKit output goes to its own log; the chain log keeps the status lines.
+  # shellcheck disable=SC2034 # build-helpers.sh reads this per-arch path in run_nerdctl_build.
   RUN_NERDCTL_LOG="$(cross_stage_log_redirect "runtime-${arch}")"
   export RUN_NERDCTL_LOG
 

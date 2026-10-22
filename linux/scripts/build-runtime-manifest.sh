@@ -177,16 +177,32 @@ create_manifest() {
     _manifest_completeness_gate || err "manifest completeness gate refused ${IMAGE_NAME} (see above)"
   fi
 
-  if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
-    "${NERDCTL_BIN:-nerdctl}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
+  local manifest_ref="${IMAGE_NAME}"
+  if [ "${PUSH_MANIFEST}" -eq 1 ]; then
+    manifest_ref="${IMAGE_NAME%:*}:candidate-${CROSS_RUN_ID}"
   fi
-  run "${NERDCTL_BIN:-nerdctl}" manifest create "${IMAGE_NAME}" "${refs[@]}"
+  if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${manifest_ref}" >/dev/null 2>&1; then
+    "${NERDCTL_BIN:-nerdctl}" manifest rm "${manifest_ref}" >/dev/null 2>&1 || true
+  fi
+  run "${NERDCTL_BIN:-nerdctl}" manifest create "${manifest_ref}" "${refs[@]}"
 
   if [ "${PUSH_MANIFEST}" -eq 1 ]; then
     # Same transient registry/network class runtime_push_tag guards against.
-    retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
-      run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
+    retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${manifest_ref}" \
+      run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${manifest_ref}"
+    _manifest_accept_and_promote "${manifest_ref}"
   fi
+}
+
+# Test a frozen candidate before changing the consumer-facing tag.
+_manifest_accept_and_promote() {
+  local candidate receipt work
+  candidate="$(python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" resolve "$1")" || return 1
+  work="${REPO_ROOT}/out/image-acceptance/${CROSS_RUN_ID}"
+  receipt="${work}/receipt.json"
+  python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" check --image "${candidate}" \
+    --workspace "${work}/consumers" --receipt "${receipt}" --engine "${NERDCTL_BIN:-nerdctl}" || return 1
+  python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" promote --receipt "${receipt}" --target "${IMAGE_NAME}"
 }
 
 _manifest_extra_arg() {
@@ -356,6 +372,23 @@ _manifest_gates_only() {
   fi
 }
 
+_manifest_check_freshness() {
+  # Advisory, since it runs after the push; MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
+  if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
+     && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
+    # --tag: the default :latest is never touched by a host-infixed run.
+    if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
+       bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
+      log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
+    elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
+      err "[manifest] freshness check FAILED and MANIFEST_FRESHNESS_STRICT=1"
+    else
+      warn "[manifest] freshness check FAILED — the published index does not match this run (advisory; set MANIFEST_FRESHNESS_STRICT=1 to make this fatal)"
+    fi
+  fi
+  return 0
+}
+
 # --gates-only ends the run here: the gates on the pushed images, then exit (no build, push or manifest).
 _manifest_exit_after_gates_if_requested() {
   [ "${GATES_ONLY}" -eq 1 ] || return 0
@@ -407,19 +440,7 @@ main() {
   # Publish the multi-arch manifest only after every per-arch image passed its smoke.
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
-    # Advisory, since it runs after the push; MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
-    if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
-       && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
-      # --tag: the default :latest is never touched by a host-infixed run.
-      if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
-         bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
-        log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
-      elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
-        err "[manifest] freshness check FAILED and MANIFEST_FRESHNESS_STRICT=1"
-      else
-        warn "[manifest] freshness check FAILED — the published index does not match this run (advisory; set MANIFEST_FRESHNESS_STRICT=1 to make this fatal)"
-      fi
-    fi
+    _manifest_check_freshness
   fi
 }
 
