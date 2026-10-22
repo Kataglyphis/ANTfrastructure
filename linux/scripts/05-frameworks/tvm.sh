@@ -348,19 +348,24 @@ patch_tvm_findllvm_dylib_fallback() {
 # No LLVM 23 patch here: versions.env's TVM_COMMIT pins v0.27.0, which carries the guards.
 
 main() {
+  # Operator knobs from the header: their defaults live here, next to the readers.
+  : "${TVM_WORKDIR:=$(pick_default_workdir)}"
+  : "${TVM_PREFIX:=}"
+  : "${TVM_JOBS:=}"
+  : "${TVM_MB_PER_JOB:=2000}"
   # Option locals (populated by parse_tvm_args).
-  local workdir; workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
+  local workdir; workdir="${TVM_WORKDIR}"
   local ref="${TVM_REF:-main}"
   local build_type="${TVM_BUILD_TYPE:-Release}"
   local llvm_config="${TVM_LLVM_CONFIG:-}"
   local llvm_dir="${TVM_LLVM_DIR:-}"
   local llvm_ignore_paths=""
-  local prefix="${TVM_PREFIX:-}"
+  local prefix="${TVM_PREFIX}"
   local use_vulkan="${TVM_USE_VULKAN:-1}"
   local use_cuda="${TVM_USE_CUDA:-0}"
   local use_opencl="${TVM_USE_OPENCL:-0}"
-  local requested_jobs="${TVM_JOBS:-}"
-  local mb_per_job="${TVM_MB_PER_JOB:-2000}"
+  local requested_jobs="${TVM_JOBS}"
+  local mb_per_job="${TVM_MB_PER_JOB}"
   local llvm_cmake_value="OFF"
   local do_clean=0
   local do_apt=1

@@ -156,12 +156,8 @@ SLANG_COMPILE_SOURCE_ROOT
 STRIP_JOBS
 TARGET_PYTHON_MAJOR_MINOR
 TF_CXX_FLAGS
-TVM_JOBS
 TVM_LLVM_CONFIG
 TVM_LLVM_DIR
-TVM_MB_PER_JOB
-TVM_PREFIX
-TVM_WORKDIR
 UBUNTU_SOURCES_ROOT
 UV_CACHE_DIR  # uv's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
 UV_PROJECT_ENVIRONMENT  # uv's own: where an unpinned uv sync installs, so uv_sync_project reconciles chain ORT there
