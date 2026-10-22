@@ -109,33 +109,38 @@ _disk_guard_trim_cache_export() {
   [ "${budget_bytes}" -gt 0 ] || return 0
 
   _disk_guard_log "[disk-trim] ${free_gb}G free < ${target_gb}G needed — reclaiming up to $(_disk_guard_fmt_gib "${budget_bytes}") GiB of regenerable cache exports in ${bc_dir} (oldest first; protected: ${protected:-none})"
-  local victim sz
-  local remaining
   while [ "${_DISK_GUARD_TRIM_FREED_BYTES}" -lt "${budget_bytes}" ]; do
-    remaining="$(find "${bc_dir}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
-    if [ "${remaining}" -le "${keep_n}" ]; then
-      _disk_guard_log "[disk-trim]   keeping the newest ${keep_n} slug(s); stopping"
-      break
-    fi
-    victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
-    [ -n "${victim}" ] || break
-    sz="$(_disk_guard_dir_bytes "${bc_dir}/${victim}")"
-    [ -n "${sz}" ] || sz=0
-    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-    # Undeletable victim would be re-picked forever: report and stop.
-    if [ -e "${bc_dir}/${victim}" ]; then
-      _disk_guard_log "[disk-trim]   SKIP ${victim} — could not remove; stopping"
-      break
-    fi
-    _DISK_GUARD_TRIM_FREED_BYTES=$(( _DISK_GUARD_TRIM_FREED_BYTES + sz ))
-    _DISK_GUARD_TRIM_REMOVED=$(( _DISK_GUARD_TRIM_REMOVED + 1 ))
-    _disk_guard_log "[disk-trim]   removed ${victim} ($(_disk_guard_fmt_gib "${sz}") GiB)"
+    _disk_guard_trim_one "${bc_dir}" "${protected}" "${keep_n}" || break
     free_gb="$(_disk_guard_free_gb "${bc_dir}")"
     if [ -z "${free_gb}" ] || [ "${free_gb}" -ge "${target_gb}" ]; then break; fi
   done
   free_gb="$(_disk_guard_free_gb "${bc_dir}")"
   _disk_guard_log "[disk-trim] removed ${_DISK_GUARD_TRIM_REMOVED} slug(s), freed $(_disk_guard_fmt_gib "${_DISK_GUARD_TRIM_FREED_BYTES}") GiB; ${free_gb:-?}G free now"
   return 0
+}
+
+# 1 = stop trimming: keep floor reached, no victim, or a victim that cannot be removed.
+_disk_guard_trim_one() {
+  local bc_dir="$1" protected="$2" keep_n="$3"
+  local remaining victim sz
+  remaining="$(find "${bc_dir}" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l)"
+  if [ "${remaining}" -le "${keep_n}" ]; then
+    _disk_guard_log "[disk-trim]   keeping the newest ${keep_n} slug(s); stopping"
+    return 1
+  fi
+  victim="$(_disk_guard_pick_victim "${bc_dir}" "${protected}")"
+  [ -n "${victim}" ] || return 1
+  sz="$(_disk_guard_dir_bytes "${bc_dir}/${victim}")"
+  [ -n "${sz}" ] || sz=0
+  rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
+  # Undeletable victim would be re-picked forever: report and stop.
+  if [ -e "${bc_dir}/${victim}" ]; then
+    _disk_guard_log "[disk-trim]   SKIP ${victim} — could not remove; stopping"
+    return 1
+  fi
+  _DISK_GUARD_TRIM_FREED_BYTES=$(( _DISK_GUARD_TRIM_FREED_BYTES + sz ))
+  _DISK_GUARD_TRIM_REMOVED=$(( _DISK_GUARD_TRIM_REMOVED + 1 ))
+  _disk_guard_log "[disk-trim]   removed ${victim} ($(_disk_guard_fmt_gib "${sz}") GiB)"
 }
 
 # In-stage sampling and reclaim records. See docs/build-cache-tiers.md#32-in-stage-disk-watchdog-and-the-runtime-lane-gate-b2
