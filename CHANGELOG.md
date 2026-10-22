@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — riscv64's torch venv ships setuptools
+
+- The riscv64 runtime lane skips `uv sync` (the lock would build torch under QEMU), so torch's
+  `setuptools>=77.0.3` edge never reached the venv. `smoke-runtime-image.sh`'s VENV-SET gate
+  failed on it and held the `:latest` manifest. `_backfill_torch_runtime_deps` now installs
+  `setuptools==${PY_SETUPTOOLS_VERSION:-84.0.0}` when it is missing; amd64 and arm64 already carry
+  it from the sync, so they are unchanged.
+
 ## 2026-10-22 — riscv64's sccache is the pinned build again, static
 
 - **Superseded the same day:** riscv64 keeps the Ubuntu sccache (0.13.0) only until the static asset
