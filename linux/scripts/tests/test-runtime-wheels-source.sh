@@ -14,7 +14,7 @@ STV="${SCRIPTS}/06-packaging/setup-torch-venv.sh"
 
 # The real wrapper path: argument assembly, the chain, and the context helpers it calls.
 _FNS="$(rw_fns "${RBF}" append_wrapper_build_args runtime_wheels_image_ref _append_wheels_image_args \
-  runtime_gpu_backend_pair _runtime_timed runtime_build_chain _runtime_build_wrapper runtime_build_wrapper_image \
+  runtime_gpu_backend_pair _runtime_timed runtime_build_chain _runtime_build_wrapper runtime_build_wrapper_image _runtime_wrapper_then_ship _runtime_ship_image _runtime_ship_rootfs \
   _runtime_push_wrapper_tag _runtime_smoke_start _runtime_smoke_wait)" || exit 1
 # These cases pin the steps' order; test-runtime-smoke-overlap.sh owns the overlapped smoke.
 export RUNTIME_SMOKE_OVERLAP=0

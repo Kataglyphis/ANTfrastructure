@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — shared wrapper build and shipping
+
+- Image and rootfs wrappers share one build, smoke-verdict and ship sequence. Regression
+  tests follow the shared helper, including failure reaping and both publication paths.
+- The extracted gates-only exit still stops before build or publication for every push
+  flag order; ordinary runs continue to their build and publication steps.
+
 ## 2026-10-22 — consumer bootstrap and the docs generator
 
 - Linux acceptance runs with writable SDK and source mounts, then restores the rootful

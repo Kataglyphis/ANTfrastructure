@@ -153,8 +153,8 @@ kill "${p}" 2>/dev/null || true')"
 t_assert_contains "${_out}" "GONE"
 
 # The wiring: the wrapper builds hand their push to the queue, and the index waits for it.
-t_case "both wrapper builds push through the queue hook, which falls back inline"
-for _fn in runtime_build_wrapper_image runtime_build_wrapper_rootfs; do
+t_case "both wrapper ship steps push through the queue hook, which falls back inline"
+for _fn in _runtime_ship_image _runtime_ship_rootfs; do
   _src="$(t_fn_src "${RBF}" "${_fn}")" || exit 1
   t_assert_contains "${_src}" '_runtime_push_wrapper_tag "${tag}" "${arch}" || return 1'
   t_assert_eq "0" "$(printf '%s\n' "${_src}" | grep -c 'runtime_push_tag' || true)" "${_fn} must not push past the queue"

@@ -1,5 +1,21 @@
 [
  {
+  "id": "runtime-smoke.gates-only-exit",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  _manifest_exit_after_gates_if_requested\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-manifest-gates-only.sh",
+  "why": "gates-only must exit through the actual helper before any build or publication even with push flags"
+ },
+ {
+  "id": "runtime-smoke.gates-only-not-default",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  [ \"${GATES_ONLY}\" -eq 1 ] || return 0\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-manifest-gates-only.sh",
+  "why": "the extracted early-exit helper must leave ordinary build and publication runs reachable"
+ },
+ {
   "id": "lib.dartdoc-tool-default",
   "target": "linux/scripts/lib/dartdoc-build.sh",
   "find": "    doc_cmd=(_dartdoc_build_default_doc)",
@@ -16510,8 +16526,8 @@
  {
   "id": "runtime-push.wrapper-image-hook",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}\n\nruntime_build_wrapper_rootfs() {",
-  "replace": "    runtime_push_tag \"${tag}\" || return 1\n  fi\n}\n\nruntime_build_wrapper_rootfs() {",
+  "find": "    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}\n\n# The rootfs variant:",
+  "replace": "    runtime_push_tag \"${tag}\" || return 1\n  fi\n}\n\n# The rootfs variant:",
   "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
   "why": "a wrapper build that pushes past the queue blocks its arch for the whole upload again"
  },
@@ -16726,16 +16742,16 @@
  {
   "id": "runtime-smoke.wait-before-export",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "and push\"\n    return 0\n  fi\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
-  "replace": "and push\"\n    return 0\n  fi\n",
+  "find": "  # Nothing ships past a red wrapper-smoke gate.\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
+  "replace": "  # Nothing ships past a red wrapper-smoke gate.\n  if [ \"${ship}\" != _runtime_ship_rootfs ]; then\n    _runtime_smoke_wait \"${arch}\" || return 1\n  fi\n",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "the rootfs path would export a wrapper whose package failed its smoke"
  },
  {
   "id": "runtime-smoke.reaped-on-wrapper-failure",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
-  "replace": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
+  "find": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n",
+  "replace": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "a failed wrapper build would leave its gate running into the next arch's lane"
  },

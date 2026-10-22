@@ -389,6 +389,14 @@ _manifest_check_freshness() {
   return 0
 }
 
+# --gates-only ends the run here: the gates on the pushed images, then exit (no build, push or manifest).
+_manifest_exit_after_gates_if_requested() {
+  [ "${GATES_ONLY}" -eq 1 ] || return 0
+  _manifest_gates_only || exit 1
+  log "[gates-only] every gate passed on the existing per-arch images; nothing built, pushed or indexed"
+  exit 0
+}
+
 main() {
   run_runtime_arg_loop usage _manifest_extra_arg "$@"
 
@@ -413,11 +421,7 @@ main() {
   # The app too: every arch of one index builds the same OrchestrANT commit.
   runtime_resolve_app_ref
 
-  if [ "${GATES_ONLY}" -eq 1 ]; then
-    _manifest_gates_only || exit 1
-    log "[gates-only] every gate passed on the existing per-arch images; nothing built, pushed or indexed"
-    exit 0
-  fi
+  _manifest_exit_after_gates_if_requested
 
   # Nothing pushed means manifest create has no descriptors and dies "no such manifest".
   if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ "${CREATE_MANIFEST}" -eq 1 ]; then

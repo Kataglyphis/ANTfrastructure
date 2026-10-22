@@ -784,6 +784,11 @@ the rootfs export) waits for it, and a red gate fails the arch. A failed wrapper
 the gate before it returns. `[runtime-timing] arch=<a> step=smoke-wait secs=<n>` shows how long the
 wrapper waited for it. `RUNTIME_SMOKE_OVERLAP=0` runs the gate first, as before.
 
+Both wrapper entry points delegate to `_runtime_wrapper_then_ship`, which owns the build,
+failure reaping and smoke verdict before invoking either ship callback. The image callback
+queues the push; the rootfs callback exports first and then queues it. Keeping this sequence
+in one helper prevents the two publication paths from drifting apart.
+
 ### Torch pin enforcement on GPU lines
 
 `assemble-torch-app.sh`'s `enforce_torch_version_pins` re-installs the pinned

@@ -13,7 +13,8 @@ trap 'rm -f "${_CALLS}"' EXIT
 _gates() {
   (
     set +e
-    TARGET_ARCHES=amd64,arm64 REPO_ROOT=/repo RUNTIME_IMAGE_SMOKE="${RUNTIME_IMAGE_SMOKE:-1}"
+    export TARGET_ARCHES=amd64,arm64 REPO_ROOT=/repo
+    RUNTIME_IMAGE_SMOKE="${RUNTIME_IMAGE_SMOKE:-1}"
     eval "${_fn}"
     ensure_foreign_binfmt() { :; }
     _manifest_each_arch() {
@@ -44,9 +45,10 @@ t_assert_eq "Wrapper content gate verify-shipped-wrapper.sh" "$(cat "${_CALLS}")
 # shellcheck disable=SC2034 # The extracted production main reads these fixture globals.
 _entry() (
   eval "$(t_fn_src "${SUBJECT}" _manifest_extra_arg)"
+  eval "$(t_fn_src "${SUBJECT}" _manifest_exit_after_gates_if_requested)"
   eval "$(t_fn_src "${SUBJECT}" main)"
   GATES_ONLY=0 BUILD_IMAGES=1 CREATE_MANIFEST=1 PUSH_MANIFEST=0 PUSH_IMAGES=0 DRY_RUN=0
-  IMAGE_NAME=ghcr.io/kataglyphis/example:latest REPO_ROOT=/repo
+  IMAGE_NAME=ghcr.io/kataglyphis/example:latest REPO_ROOT=/repo ARTIFACT_BUILD_MODE=image
   TARGET_ARCHES=amd64 CROSS_VCS_REF=fixture CROSS_BUILD_DATE=fixture CROSS_RUN_ID=fixture
   run_runtime_arg_loop() {
     shift 2
@@ -63,6 +65,7 @@ _entry() (
   _manifest_gates_only() { echo GATES; return "${FAIL_GATES:-0}"; }
   _manifest_build_and_smoke() { echo BUILD; }
   create_manifest() { echo PUBLISH; }
+  _manifest_check_freshness() { :; }
   log() { :; }
   err() { printf '%s\n' "$*" >&2; exit 1; }
   main "$@"
@@ -82,5 +85,10 @@ t_case "a failed gates-only entry point cannot continue to publication"
 _out="$(FAIL_GATES=1 _entry --push --gates-only)"; _rc=$?
 t_assert_eq 1 "${_rc}"
 t_assert_eq GATES "${_out}"
+
+t_case "ordinary runs still reach the build and publication after the gates-only helper"
+_out="$(_entry --push-all)"; _rc=$?
+t_assert_eq 0 "${_rc}"
+t_assert_eq $'BUILD\nPUBLISH' "${_out}"
 
 t_summary
