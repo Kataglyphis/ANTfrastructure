@@ -523,6 +523,40 @@ def _apply_root(arg) -> None:
         ALLOW_FILE = root / "code-dupes.allow"
 
 
+def _collapse_to_files(shared, threshold):
+    # Collapse unit pairs to file pairs, as the allowlist and the reader think in files.
+    measured: dict[frozenset[str], tuple[int, tuple, tuple]] = {}
+    for (a, b), n in shared.items():
+        key = frozenset((a[0], b[0]))   # 1 element when the twin is same-file
+        if key not in measured or n > measured[key][0]:
+            measured[key] = (n, a, b)
+    per_file = {k: v for k, v in measured.items() if v[0] > threshold}
+    return measured, per_file
+
+
+def _classify_pairs(per_file, allow):
+    findings, allowed, shrunk = [], [], []
+    for key, (n, a, b) in per_file.items():
+        budget = allow.get(key)
+        if budget and n <= budget[0]:
+            allowed.append((n, a, b, budget[1]))
+            if n < budget[0]:
+                shrunk.append((key, n, budget))
+            continue
+        findings.append((n, a, b, budget))
+    return findings, allowed, shrunk
+
+
+def _rank_pairs(findings, allowed, unit_lines):
+    # Rank by the longest contiguous identical run, which is extractable where scattered overlap is not.
+    runs = {}
+    for _n, a, b, _x in list(findings) + list(allowed):
+        runs[(a, b)] = longest_common_run(unit_lines.get(a, []), unit_lines.get(b, []))
+    findings.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
+    allowed.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
+    return runs
+
+
 def main() -> int:
     args = _build_parser().parse_args()
     _apply_root(args.root)
@@ -536,14 +570,7 @@ def main() -> int:
     owners, heads, texts, unit_lines, kind_of = _index_units(files)
 
     shared, spread, families, suppressed = _collect_shared(owners, heads, kind_of)
-
-    # Collapse unit pairs to file pairs, as the allowlist and the reader think in files.
-    measured: dict[frozenset[str], tuple[int, tuple, tuple]] = {}
-    for (a, b), n in shared.items():
-        key = frozenset((a[0], b[0]))   # 1 element when the twin is same-file
-        if key not in measured or n > measured[key][0]:
-            measured[key] = (n, a, b)
-    per_file = {k: v for k, v in measured.items() if v[0] > args.threshold}
+    measured, per_file = _collapse_to_files(shared, args.threshold)
 
     allow = {k: v for k, v in load_allow().items()
              if all(_file_kind(Path(f).name) in kinds for f in k)}
@@ -552,22 +579,8 @@ def main() -> int:
     if dispatched is not None:
         return dispatched
 
-    findings, allowed, shrunk = [], [], []
-    for key, (n, a, b) in per_file.items():
-        budget = allow.get(key)
-        if budget and n <= budget[0]:
-            allowed.append((n, a, b, budget[1]))
-            if n < budget[0]:
-                shrunk.append((key, n, budget))
-            continue
-        findings.append((n, a, b, budget))
-
-    # Rank by the longest contiguous identical run, which is extractable where scattered overlap is not.
-    runs = {}
-    for _n, a, b, _x in list(findings) + list(allowed):
-        runs[(a, b)] = longest_common_run(unit_lines.get(a, []), unit_lines.get(b, []))
-    findings.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
-    allowed.sort(reverse=True, key=lambda f: (runs.get((f[1], f[2]), 0), f[0]))
+    findings, allowed, shrunk = _classify_pairs(per_file, allow)
+    runs = _rank_pairs(findings, allowed, unit_lines)
 
     ranked = sorted(((cnt, held, sh, anchor)
                      for held, (cnt, sh, anchor) in families.items()
@@ -593,7 +606,6 @@ def main() -> int:
           f"({len(allow)} allowlisted pair(s); {suppressed} shingle(s) suppressed "
           f"as idiom at >{MAX_OWNERS} owners).")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())
