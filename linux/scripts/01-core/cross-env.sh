@@ -104,6 +104,21 @@ cross_effective_targets_raw() {
   cross_targets_effective_raw "$@"
 }
 
+# Whether TARGET takes part in the loop: a supported arch, and not the build host unless INCLUDE_AMD64 is 1.
+_fect_wanted() {
+  local target="$1" host_arch="$2" include_amd64="$3"
+  case "${target}" in
+    amd64|arm64|riscv64) ;;
+    *)
+      printf 'for_each_cross_target: skipping unsupported target %s\n' "${target}" >&2
+      return 1
+      ;;
+  esac
+  if [ "${target}" = "${host_arch}" ] && [ "${include_amd64}" -ne 1 ]; then
+    return 1
+  fi
+}
+
 # for_each_cross_target <callback> [--include-amd64] [targets]: 2 without a callback, 1 for no valid target, else the callbacks' rc.
 for_each_cross_target() {
   local callback=""
@@ -145,16 +160,7 @@ for_each_cross_target() {
   local host_arch
   host_arch="$(build_arch_oci 2>/dev/null || echo amd64)"
   for target in "${_fect_targets[@]}"; do
-    case "${target}" in
-      amd64|arm64|riscv64) ;;
-      *)
-        printf 'for_each_cross_target: skipping unsupported target %s\n' "${target}" >&2
-        continue
-        ;;
-    esac
-    if [ "${target}" = "${host_arch}" ] && [ "${include_amd64}" -ne 1 ]; then
-      continue
-    fi
+    _fect_wanted "${target}" "${host_arch}" "${include_amd64}" || continue
     "${callback}" "${target}" || rc=$?
   done
   return "${rc}"
