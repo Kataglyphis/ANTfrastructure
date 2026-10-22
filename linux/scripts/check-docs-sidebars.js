@@ -75,7 +75,14 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
   const proc = spawn(chrome, ['--headless=new', '--no-sandbox', ...gpuFlags, '--no-first-run',
     '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
-  { stdio: 'ignore' });
+  { stdio: 'ignore', detached: true });
+  // Chrome's children share its process group: one group kill leaves no renderer behind.
+  const killGroup = () => { try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* the group is gone already */ } };
+  const cleanup = () => { killGroup(); process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); fs.rmSync(profile, { recursive: true, force: true, maxRetries: 50, retryDelay: 100 }); };
+  // Ctrl-C must not leave a detached browser or its profile behind.
+  const onSignal = () => { try { cleanup(); } catch { /* best effort on the way out */ } process.exit(130); };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
   const portFile = path.join(profile, 'DevToolsActivePort');
   // Chrome creates the file before it writes the port: under load a read in between got '' and polled 127.0.0.1: for nothing.
   let port = '';
@@ -111,7 +118,7 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
     ws.send(JSON.stringify({ id: i, method, params }));
   });
   // Chrome writes its profile until the SIGKILL lands: retry the removal instead of failing on ENOTEMPTY.
-  const close = () => { ws.close(); proc.kill('SIGKILL'); fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); };
+  const close = () => { ws.close(); cleanup(); };
   await send('Page.enable');
   await send('Runtime.enable');
   const product = (await send('Browser.getVersion')).result.product;
