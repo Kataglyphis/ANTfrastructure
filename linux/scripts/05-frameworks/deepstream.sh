@@ -39,7 +39,8 @@ ds_die() { printf '[deepstream] ERROR: %s\n' "$*" >&2; exit 1; }
 
 ds_core_dir() {
   local d
-  for d in "${DS_CORE_DIR:-}" "${DS_SCRIPT_DIR}/../01-core" /opt/scripts/core; do
+  : "${DS_CORE_DIR:=}"
+  for d in "${DS_CORE_DIR}" "${DS_SCRIPT_DIR}/../01-core" /opt/scripts/core; do
     if [ -n "${d}" ] && [ -f "${d}/versions.env" ] && [ -f "${d}/downloads.sh" ]; then
       printf '%s' "${d}"; return 0
     fi
@@ -111,7 +112,8 @@ ds_cuda_ver() {
 
 # ds_fetch <url> <sha256> <dest>: a verified download, reusing a verified copy from DS_DOWNLOAD_CACHE.
 ds_fetch() {
-  download_verified_cached "$1" "$2" "$3" "${DS_DOWNLOAD_CACHE:-}"
+  : "${DS_DOWNLOAD_CACHE:=}"
+  download_verified_cached "$1" "$2" "$3" "${DS_DOWNLOAD_CACHE}"
 }
 
 ds_stage_runtime_deb() {

@@ -134,7 +134,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 # GCC_VERSION_ENV is a legacy fallback when neither --version nor GCC_VERSION is set.
-GCC_VERSION="${GCC_VERSION:-${GCC_VERSION_ENV:-}}"
+: "${GCC_VERSION_ENV:=}"
+GCC_VERSION="${GCC_VERSION:-${GCC_VERSION_ENV}}"
 if [ -z "${GCC_VERSION}" ]; then
   die "GCC version is required. Use --version <X.Y.Z> or set GCC_VERSION environment variable."
 fi
@@ -181,8 +182,9 @@ if [[ -n "${JOBS+x}" ]]; then
 fi
 
 # CPU quota + optional RAM cap (if core helper exists).
+: "${GCC_BUILD_MB_PER_JOB:=2500}"
 if command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-  JOBS="$(compute_jobs_with_mem_cap "${JOBS_REQUESTED}" "${GCC_BUILD_MB_PER_JOB:-2500}")"
+  JOBS="$(compute_jobs_with_mem_cap "${JOBS_REQUESTED}" "${GCC_BUILD_MB_PER_JOB}")"
 else
   JOBS="${JOBS_REQUESTED:-$(nproc || echo 1)}"
 fi
@@ -306,7 +308,8 @@ _gcc_gpg_require_or_warn() {
 verify_gcc_gpg_signature() {
   # Fingerprints from https://gcc.gnu.org/mirrors.html ("release keys").
   local default_keys="D3A93CAD751C2AF4F8C7AD516C35B99309B5FA62 7F74F97C103468EE5D750B583AB00996FC26A641 33C235A34C46AA3FFB293709A328C3A2C3C45C06 13975A70E63C361C73AE69EF6EEB81F8981C74C7"
-  local keys="${GCC_GPG_KEYS:-${default_keys}}"
+  : "${GCC_GPG_KEYS:=${default_keys}}"
+  local keys="${GCC_GPG_KEYS}"
 
   if ! _gcc_probe_url "${SIG_URL}"; then
     # Absent and unreachable look alike here, so obey GCC_REQUIRE_GPG.
