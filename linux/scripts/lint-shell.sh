@@ -50,6 +50,7 @@ shellcheck_asset_and_sha() {
 }
 
 shellcheck_ensure() {
+  : "${SHELLCHECK_CACHE_DIR:=${TMPDIR:-/tmp}}"
   # shellcheck source=01-core/load-versions-env.sh
   source "${CORE_DIR}/load-versions-env.sh"
   load_versions_env "${CORE_DIR}/tool-pins.env"
@@ -67,7 +68,7 @@ shellcheck_ensure() {
     || err "Unsupported platform for shellcheck bootstrap ($(uname -s)/$(uname -m)); install shellcheck on PATH instead."
   [ -n "${expected_sha}" ] || err "No pinned shellcheck SHA256 for ${asset}; add one to tool-pins.env."
 
-  cache_root="${SHELLCHECK_CACHE_DIR:-${TMPDIR:-/tmp}}/shellcheck-${SHELLCHECK_VERSION}"
+  cache_root="${SHELLCHECK_CACHE_DIR}/shellcheck-${SHELLCHECK_VERSION}"
   bin_name="shellcheck"; case "${asset}" in *.zip) bin_name="shellcheck.exe" ;; esac
   SHELLCHECK_BIN="${cache_root}/${bin_name}"
 

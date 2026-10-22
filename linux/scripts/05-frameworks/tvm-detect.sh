@@ -245,7 +245,8 @@ validate_detected_llvm_cmake_package() {
 
 # Canonical arch to its /opt/vulkan/<ver>/<dir> name, or "" when unknown.
 vulkan_sdk_arch_dir() {
-  case "${CROSS_TARGET_ARCH:-${TARGET_ARCH:-${TARGETARCH:-}}}" in
+  : "${CROSS_TARGET_ARCH:=${TARGET_ARCH:-${TARGETARCH:-}}}"
+  case "${CROSS_TARGET_ARCH}" in
     amd64|x86_64)  printf '%s' "x86_64" ;;
     arm64|aarch64) printf '%s' "aarch64" ;;
     riscv64)       printf '%s' "riscv64" ;;

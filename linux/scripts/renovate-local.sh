@@ -293,6 +293,7 @@ RUN_LOG=""
 REPO_CFG=""
 
 run_renovate() {
+  : "${RENOVATE_LOG_LEVEL:=warn}"
   if [ -n "${INJECTED_REPORT}" ]; then
     REPORT_JSON="${INJECTED_REPORT}"
     [ -s "${REPORT_JSON}" ] || err "RENOVATE_LOCAL_REPORT names no readable report: ${REPORT_JSON}"
@@ -311,7 +312,7 @@ run_renovate() {
   # No token needed: git-refs is anonymous `git ls-remote`; other datasources say so themselves.
   ( cd "${TARGET}" \
     && RENOVATE_BASE_DIR="${CACHE_ROOT}/base" \
-       LOG_LEVEL="${RENOVATE_LOG_LEVEL:-warn}" \
+       LOG_LEVEL="${RENOVATE_LOG_LEVEL}" \
        RENOVATE_CONFIG_FILE="${GLOBAL_CFG}" \
        RENOVATE_LOG_FILE="${RUN_LOG}" \
        RENOVATE_LOG_FILE_LEVEL=info \

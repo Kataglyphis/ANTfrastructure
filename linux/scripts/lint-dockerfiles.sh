@@ -129,6 +129,7 @@ hadolint_asset_and_sha() {
 }
 
 hadolint_ensure() {
+  : "${HADOLINT_CACHE_DIR:=${TMPDIR:-/tmp}}"
   if command -v hadolint >/dev/null 2>&1; then
     HADOLINT_BIN="$(command -v hadolint)"
     return 0
@@ -142,7 +143,7 @@ hadolint_ensure() {
     || err "Unsupported platform for hadolint bootstrap ($(uname -s)/$(uname -m)); install hadolint on PATH instead."
   [ -n "${expected_sha}" ] || err "No pinned hadolint SHA256 for ${asset}; add one to tool-pins.env."
 
-  cache_root="${HADOLINT_CACHE_DIR:-${TMPDIR:-/tmp}}/hadolint-${HADOLINT_VERSION}"
+  cache_root="${HADOLINT_CACHE_DIR}/hadolint-${HADOLINT_VERSION}"
   bin_name="hadolint"; case "${asset}" in *.exe) bin_name="hadolint.exe" ;; esac
   HADOLINT_BIN="${cache_root}/${bin_name}"
 

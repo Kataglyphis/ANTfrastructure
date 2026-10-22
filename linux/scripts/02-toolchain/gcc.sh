@@ -84,7 +84,8 @@ bridge_cross_lib_sysroot() {
 
 # Build scratch under $HOME, never a small shared /tmp tmpfs.
 gcc_cross_scratch_root() {
-  printf '%s' "${GCC_CROSS_SCRATCH_ROOT:-${HOME}/tmp2}"
+  : "${GCC_CROSS_SCRATCH_ROOT:=${HOME}/tmp2}"
+  printf '%s' "${GCC_CROSS_SCRATCH_ROOT}"
 }
 
 # The ELF machine type, unlike gcc -dumpmachine, tells a target-native compiler from a host-arch cross one.

@@ -167,7 +167,8 @@ for_each_cross_target() {
 }
 
 cross_bin_dir() {
-  printf '%s' "${CROSS_BIN_DIR:-/opt/cross-bin}"
+  : "${CROSS_BIN_DIR:=/opt/cross-bin}"
+  printf '%s' "${CROSS_BIN_DIR}"
 }
 
 # Bare-named cross tools, never on PATH (they shadowed host tools); consumers opt in per scope. 1 when absent.
