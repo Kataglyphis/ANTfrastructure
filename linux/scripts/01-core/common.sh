@@ -284,7 +284,7 @@ retag_directory_wheels() {
 
 # A failed parallel build retries -j1 --verbose, for a readable error.
 run_cmake_build_with_fallback() {
-  local build_dir="$1" jobs="${2:-$(nproc)}"
+  local build_dir jobs; build_dir="$1"; jobs="${2:-$(nproc)}"
   cmake --build "${build_dir}" -j"${jobs}" || {
     warn "Parallel build failed, trying single-threaded..."
     cmake --build "${build_dir}" -j1 --verbose
@@ -320,10 +320,10 @@ ensure_sccache_env() {
     _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
     _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
     if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
-      export SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
+      export SCCACHE_SERVER_UDS; SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
     else
       _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
-      export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+      export SCCACHE_SERVER_PORT; SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
     fi
   fi
   # Direct mode re-reads inputs that CMake TryCompile already deleted: docs/build-cache-tiers.md#the-rules-as-agentsmd-carried-them-with-their-reasons

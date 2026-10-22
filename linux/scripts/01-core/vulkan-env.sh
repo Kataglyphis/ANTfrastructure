@@ -46,7 +46,7 @@ _vulkan_env_collect_roots() {
 }
 
 vulkan_env_find_setup_script() {
-  local prefix="${1:-$(_vulkan_env_default_prefix)}"
+  local prefix; prefix="${1:-$(_vulkan_env_default_prefix)}"
   local include_default_roots="${2:-1}"
   local root candidate
 
@@ -143,7 +143,7 @@ vulkan_env_source_script() {
 }
 
 vulkan_env_source() {
-  local prefix="${1:-$(_vulkan_env_default_prefix)}"
+  local prefix; prefix="${1:-$(_vulkan_env_default_prefix)}"
   local sanitize_mode="${2:-keep-libs}"
   local strict="${3:-${VULKAN_ENV_STRICT:-0}}"
   local setup_path=""

@@ -440,7 +440,7 @@ echo "--- libcamera ---"
 _lc_prefix="${LIBCAMERA_PREFIX:-/opt/libcamera}"
 # Native meson installs under lib/<triplet>/pkgconfig, cross under plain lib.
 _lc_pc="$(find "${_lc_prefix}/lib" "${_lc_prefix}/lib64" -name libcamera.pc -type f -print -quit 2>/dev/null || true)"
-export PKG_CONFIG_PATH="${_lc_pc:+$(dirname "${_lc_pc}"):}${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
+export PKG_CONFIG_PATH; PKG_CONFIG_PATH="${_lc_pc:+$(dirname "${_lc_pc}"):}${_lc_prefix}/lib/pkgconfig:${_lc_prefix}/lib64/pkgconfig:${PKG_CONFIG_PATH:-}"
 if command -v pkg-config >/dev/null 2>&1; then
   if pkg-config --exists libcamera 2>/dev/null; then
     lc_ver="$(pkg-config --modversion libcamera 2>/dev/null || echo '?')"

@@ -398,7 +398,7 @@ build_source_cross_gcc_targets() {
   targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || die "Unsupported GCC cross target list: ${targets_raw}"
 
   # One tarball download for every per-target build; build-gcc.sh still verifies each use.
-  export GCC_TARBALL_CACHE_DIR="${GCC_TARBALL_CACHE_DIR:-$(gcc_cross_scratch_root)/gcc-tarball-cache}"
+  export GCC_TARBALL_CACHE_DIR; GCC_TARBALL_CACHE_DIR="${GCC_TARBALL_CACHE_DIR:-$(gcc_cross_scratch_root)/gcc-tarball-cache}"
 
   build_host_gcc "${full_version}" "${prefix}"
 
@@ -419,7 +419,7 @@ build_source_cross_gcc_targets() {
 install_gcc() {
   log "Installing GCC ${GCC_WANTED}"
 
-  local gcc_major="$(version_major "${GCC_WANTED}")"
+  local gcc_major; gcc_major="$(version_major "${GCC_WANTED}" || true)"
   local default_full_version
   case "${gcc_major}" in
     16) default_full_version="16.2.0" ;;

@@ -618,6 +618,9 @@ conditional callers disable `errexit` throughout the helper's body.
 **Host tool traps when you MEASURE a run.** These falsify your AUDIT, not the build; each produced
 a wrong verdict on 2026-08-31, and none announces itself:
 
+CMD fixture `COPY` calls take native Windows paths at that boundary, even when the
+shared test helper emits forward slashes. Prove the copy before trusting its build result.
+
 - **`grep` on this host is ugrep.** A pattern beginning `--` parses as an OPTION and silently
   matches nothing, so a fault-injection arm that never fires looks like a clean run. Always
   `grep -e "$pat"`. Symptom entry:

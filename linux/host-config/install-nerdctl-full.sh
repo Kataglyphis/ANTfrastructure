@@ -41,7 +41,7 @@ BACKUP_DIR="${NERDCTL_BACKUP_DIR:-${HOME}/.cache/nerdctl-full-backup}"
 CONFIRM="${NERDCTL_INSTALL_CONFIRM:-0}"
 REPO="containerd/nerdctl"
 # Without the rootless socket the cache census reads 0 and can never fail.
-export BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"
+export BUILDKIT_HOST; BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"
 
 log()  { printf '[nerdctl-full] %s\n' "$*"; }
 warn() { printf '[nerdctl-full] WARNING: %s\n' "$*" >&2; }
@@ -231,7 +231,7 @@ fi
 # Poll, not sleep: a not-yet-listening buildkitd reads as "0 cache mounts" and "not active".
 _wait_ready() {
   local _label="$1" _timeout="$2"; shift 2
-  local _end=$(( SECONDS + _timeout ))
+  local _end; _end=$(( SECONDS + _timeout ))
   while [ "${SECONDS}" -lt "${_end}" ]; do
     if "$@" >/dev/null 2>&1; then return 0; fi
     sleep 2

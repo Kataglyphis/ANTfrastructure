@@ -59,7 +59,7 @@ sccache_export_server_address() {
     export SCCACHE_SERVER_UDS
   else
     _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
-    export SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
+    export SCCACHE_SERVER_PORT; SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
   fi
 }
 

@@ -73,7 +73,7 @@ add_prefix_python_paths_to_venv() {
 # The source-built target Python the cross build stages at /opt/python-cross, if present.
 install_staged_target_python() {
     local python_mm="$1" report
-    local target_arch="${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
+    local target_arch; target_arch="${TARGET_ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
     local staged_python_root="${PYTHON_CROSS_STAGE_ROOT:-/opt/python-cross}/${target_arch}"
 
     case "$(arch_normalize "${target_arch}")" in

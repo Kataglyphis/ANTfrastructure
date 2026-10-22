@@ -82,7 +82,7 @@ ubuntu_arch_uses_ports() {
 }
 
 ubuntu_effective_ports_mirror_url() {
-  local archive_url="${1:-$(ubuntu_default_archive_mirror_url)}"
+  local archive_url; archive_url="${1:-$(ubuntu_default_archive_mirror_url)}"
   local explicit_ports_url="${2:-}"
 
   if [ -n "${explicit_ports_url}" ]; then

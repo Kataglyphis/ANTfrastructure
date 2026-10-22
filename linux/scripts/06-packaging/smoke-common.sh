@@ -57,7 +57,7 @@ smoke_uname_name() {
 
 # OCI arch name for a machine name (default: uname -m); unknown names pass through.
 smoke_host_arch() {
-  local raw="${1:-$(uname -m)}"
+  local raw; raw="${1:-$(uname -m)}"
   if command -v arch_normalize >/dev/null 2>&1; then
     arch_normalize "${raw}"
   else

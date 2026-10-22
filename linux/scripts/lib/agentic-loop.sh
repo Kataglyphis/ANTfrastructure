@@ -9,7 +9,7 @@ LOOP_NAME=""
 AGENTIC_START_TIME=0
 
 init_agentic_loop() {
-    local name="$1" repo_root="${2:-$(pwd)}"
+    local name repo_root; name="$1"; repo_root="${2:-$(pwd)}"
     LOOP_NAME="$name"
     AGENTIC_START_TIME=$(date +%s)
     local log_dir="${repo_root}/logs/agentic-loop"
@@ -22,7 +22,7 @@ init_agentic_loop() {
 # Twin of Complete-AgenticLoop; call from the EXIT trap, which owns the exit.
 complete_agentic_loop() {
     local exit_code="${1:-0}"
-    local elapsed=$(( $(date +%s) - AGENTIC_START_TIME ))
+    local elapsed; elapsed=$(( $(date +%s) - AGENTIC_START_TIME ))
     section "Agentic Loop Finished"
     log "Exit code: $exit_code"
     log "Elapsed time: $(( elapsed / 60 ))min"
@@ -40,13 +40,13 @@ complete_agentic_loop() {
 
 log() {
     local level="${2:-INFO}"
-    local line="[$(date '+%H:%M:%S')] [$level] $1"
+    local line; line="[$(date '+%H:%M:%S')] [$level] $1"
     echo "$line" >> "$LOG_FILE"
     echo "$line"
 }
 
 section() {
-    local bar="$(printf '=%.0s' {1..60})"
+    local bar; bar="$(printf '=%.0s' {1..60})"
     log ""; log "$bar"; log "$1"; log "$bar"
 }
 
@@ -225,7 +225,7 @@ default_executor_prompt() { _default_prompt executor; }
 
 # Git auto-commit, twin of Invoke-GitAutoCommit; a commit error never fails the loop.
 invoke_git_auto_commit() {
-    local message="$1" repo_root="${2:-$(pwd)}" enabled="${3:-true}"
+    local message repo_root enabled; message="$1"; repo_root="${2:-$(pwd)}"; enabled="${3:-true}"
     [[ "$enabled" != "true" || "${DRY_RUN:-false}" == "true" ]] && return 0
     git -C "$repo_root" add -A 2>/dev/null || true
     git -C "$repo_root" commit -m "$message" 2>/dev/null || true
@@ -401,7 +401,7 @@ _agentic_planner_phase() {
 
 run_agentic_loop() {
     local config_json="$1"
-    local repo_root="${2:-$(pwd)}"
+    local repo_root; repo_root="${2:-$(pwd)}"
     local platform="${3:-linux}"
 
     load_engine_config "$config_json" "$repo_root" || return 1

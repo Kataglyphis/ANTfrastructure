@@ -20,6 +20,8 @@
   Failed baselines retain a bounded first diagnostic and final summary for diagnosis.
 - GPU graph fixtures use a fixed synthetic app identity, so an unrelated moving ref
   cannot trigger a network lookup during their dry-run; ref resolution keeps its own suite.
+- The Windows cross-wheel fixture normalizes its source path at the CMD `COPY`
+  boundary, so its platform-argument mutation tests the build helper on a real copied wheel.
 - Linux app bundles exclude PyPI ORT providers before exporting locked requirements
   and resolve the chain wheel in the first install transaction. This avoids the missing
   CPython 3.15 PyPI wheel failure while retaining other locked dependencies and GenAI.

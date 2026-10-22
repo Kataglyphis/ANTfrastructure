@@ -5,7 +5,7 @@ set -euo pipefail
 
 # The container's /opt/scripts/core first, else an upward walk for the repo's 01-core.
 _media_find_core_dir() {
-  local d="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+  local d; d="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
   if [ -f "/opt/scripts/core/modules.sh" ]; then
     printf '%s' "/opt/scripts/core"
@@ -54,7 +54,7 @@ media_load_arch_flags() {
 
 # The single entry point replacing the old media_build_preamble_init().
 media_common_init() {
-  local script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
+  local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
   local core_dir
   core_dir="$(_media_find_core_dir "${script_dir}")" || {
     echo "ERROR: could not locate 01-core module framework from ${script_dir}" >&2
@@ -128,7 +128,7 @@ _media_setup_sccache_if_enabled() {
 
 # install-deps.sh bootstrap. Usage: source this file, then media_install_deps_init "${SCRIPT_DIR}".
 media_install_deps_init() {
-  local script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
+  local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
   local _dep_env
   for _dep_env in \
       "/opt/scripts/core/install-deps-preamble.sh" \

@@ -434,7 +434,7 @@ _opencv_cmake_python_opts() {
         setup_host_python_environment
         uv pip install numpy wheel
 
-        local PY_EXEC="${HOST_PYTHON:-$(host_python_bin)}"
+        local PY_EXEC; PY_EXEC="${HOST_PYTHON:-$(host_python_bin || true)}"
         _ocmpo_out+=("-DPYTHON3_EXECUTABLE=${PY_EXEC}")
         # Explicitly set library and include paths since FindPython3 might not find free-threaded (t) libraries
         if cross_build_is_active; then

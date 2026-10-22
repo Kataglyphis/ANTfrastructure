@@ -415,6 +415,12 @@ MSVC syntax is `/Fo<path>`. In each case the control is what exposed it — a
 should exist. **A probe with no control cannot distinguish "broken product"
 from "broken probe".**
 
+The cross-wheel fixture exposed another boundary on 2026-10-22: its wheel helper
+returned forward slashes that PowerShell accepted, but CMD `COPY` rejected the
+existing source. Normalize with `[IO.Path]::GetFullPath` at that command boundary;
+the original copy fails and the normalized control succeeds. The affected suite
+still checks the real cross-build platform argument, including its mutation.
+
 ### Reproducing the ENVIRONMENT is not reproducing the FAILURE
 
 **A probe that reproduces the ENVIRONMENT does not necessarily reproduce the

@@ -119,7 +119,7 @@ resolve_build_gcc_tool() {
 
 resolve_cross_gcc_tool() {
   local tool="$1"
-  local triplet="${2:-$(cross_target_triplet)}"
+  local triplet; triplet="${2:-$(cross_target_triplet || true)}"
   local bindir candidate
 
   [ -n "${triplet}" ] || return 1
@@ -142,7 +142,7 @@ resolve_cross_gcc_tool() {
 
 require_cross_gcc_tool() {
   local tool="$1"
-  local triplet="${2:-$(cross_target_triplet)}"
+  local triplet; triplet="${2:-$(cross_target_triplet || true)}"
   local kind="${3:-cross tool}"
   local resolved=""
 

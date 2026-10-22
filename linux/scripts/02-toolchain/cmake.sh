@@ -4,7 +4,7 @@ set -euo pipefail
 
 install_cmake() {
   local version="${CMAKE_VERSION:-4.4.2}"
-  local arch="${ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
+  local arch; arch="${ARCH:-$(dpkg --print-architecture 2>/dev/null || uname -m)}"
   local asset=""
   local sha256=""
   local url=""

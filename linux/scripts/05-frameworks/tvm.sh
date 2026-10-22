@@ -344,7 +344,7 @@ patch_tvm_findllvm_dylib_fallback() {
 
 main() {
   # Option locals (populated by parse_tvm_args).
-  local workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
+  local workdir; workdir="${TVM_WORKDIR:-$(pick_default_workdir)}"
   local ref="${TVM_REF:-main}"
   local build_type="${TVM_BUILD_TYPE:-Release}"
   local llvm_config="${TVM_LLVM_CONFIG:-}"
