@@ -126,6 +126,7 @@ wheel_family() {
 }
 
 collect_locked_local_skip_packages() {
+  # shellcheck disable=SC2034 # nameref to the caller array; append_unique_arg appends to it by name
   local -n out_packages_ref=$1
   local wheel_path wheel_basename
 
@@ -429,6 +430,7 @@ reconcile_local_wheels() {
     "${have_torch_family}" "${have_litert_family}"
 
   # IREE and TVM install apart: their deps may lack riscv64 wheels, which must not abort venv assembly.
+  # shellcheck disable=SC2034 # passed by name to _partition_wheels_by_install_group and _install_wheel_groups, which read them through namerefs
   local -a iree_wheels=() tvm_wheels=() other_wheels=()
   _partition_wheels_by_install_group iree_wheels tvm_wheels other_wheels "${local_wheels[@]}"
 

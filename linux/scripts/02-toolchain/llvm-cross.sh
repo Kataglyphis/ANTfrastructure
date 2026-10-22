@@ -375,6 +375,7 @@ _llvm_cross_setup_and_build() {
     build_cc="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-gcc" "${build_cc_real}" "${host_path}")"
     build_cxx="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-g++" "${build_cxx_real}" "${host_path}")"
 
+    # shellcheck disable=SC2034 # filled by name; passed on to the cmake argument builders, which read it through a nameref
     local -a linker_flag_args=()
     _llvm_cross_linker_flag_args linker_flag_args "${target_label}"
 
@@ -383,12 +384,14 @@ _llvm_cross_setup_and_build() {
     export PATH="${wrapper_dir}:${PATH}"
 
     # sccache first, ccache only as fallback. See docs/build-cache-tiers.md
+    # shellcheck disable=SC2034 # filled by name; passed on to the cmake argument builders, which read it through a nameref
     local -a extra_cmake_args=()
     local _xc_launcher
     compiler_cache_launcher_env 2>/dev/null || true
     _xc_launcher="$(compiler_cache_launcher || true)"
     _llvm_cross_launcher_cmake_args extra_cmake_args "${_xc_launcher}"
 
+    # shellcheck disable=SC2034 # filled by name; read through a nameref in the cmake argument builder
     local -a superset_args=()
     _llvm_cross_superset_cmake_args superset_args \
       "${build_cc}" "${build_cxx}" "${_xc_launcher}" "${native_tool_dir}"
