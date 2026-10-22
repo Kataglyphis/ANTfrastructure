@@ -74,6 +74,14 @@ reserved for "this gate or its input is broken" so it never reads as drift.
 
 ## Changing a config
 
+`python-wheel-rewrite` also uses this exact-copy mechanism: its canonical source is
+`shared/python/kataglyphis_wheel.py`, copied to `build_support/kataglyphis_wheel.py` in
+WebDavClient and OrchestrANT. A standalone sdist cannot import a hub submodule. Both
+packages include the helper in their sdist; their project-specific Cython selection
+and metadata stay local. The helper rewrites wheels atomically, deflates retained
+entries, preserves ZIP metadata and rebuilds quoted CSV RECORD hashes. Its actual ZIP
+and failure-preservation checks are `linux/scripts/tests/test-wheel-rewrite.sh`.
+
 Edit it **here**, then run `-Write` in each consumer and commit both. Editing a
 consumer's copy directly is what the check exists to catch.
 

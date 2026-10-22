@@ -200,6 +200,7 @@ Common development targets:
    build-resource-monitoring
    build-secrets
    cross-build-verification
+   image-acceptance
    code-quality-tooling
    code-quality-gates
    consumer-inventory

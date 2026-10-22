@@ -43,7 +43,12 @@ t_assert_contains "${OUT}" "cmakelang-py315: " "the bootstrap runs the Python 3.
 # --force patches below 3.15 too, so every case after this one grades with the 3.15 lexer.
 t_case "cmakelang-py315.py patches cmake-format's lexer once, and the verdicts stay those of re.Scanner"
 _vpy="${TREE}/.venv-cmake-format/bin/python"; [ -x "${_vpy}" ] || _vpy="${TREE}/.venv-cmake-format/Scripts/python.exe"
-t_assert_contains "$("${_vpy}" -I "${TREE}/linux/scripts/lib/cmakelang-py315.py" --force 2>&1)" "cmakelang-py315: patched "
+_first_force="cmakelang-py315: patched "
+if "${_vpy}" -I -c 'import sys; sys.exit(sys.version_info < (3, 15))'; then
+  t_assert_contains "${OUT}" "cmakelang-py315: patched " "Python 3.15 bootstrap already applied the fix"
+  _first_force="already patched"
+fi
+t_assert_contains "$("${_vpy}" -I "${TREE}/linux/scripts/lib/cmakelang-py315.py" --force 2>&1)" "${_first_force}"
 t_assert_contains "$("${_vpy}" -I "${TREE}/linux/scripts/lib/cmakelang-py315.py" --force 2>&1)" "already patched"
 _lex="$("${_vpy}" -I -c 'import cmakelang.lex as m; print(m.__file__)' | tr -d '\r')"
 t_assert_eq "0" "$(grep -c 're\.Scanner(' "${_lex}")" "no call left that 3.15 refuses"

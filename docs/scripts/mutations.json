@@ -1,5 +1,77 @@
 [
  {
+  "id": "image-acceptance.failed-receipt",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "receipt.get(\"status\") != \"passed\"",
+  "replace": "False",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "a failed receipt must never reach registry publication"
+ },
+ {
+  "id": "image-acceptance.missing-consumer",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "if len(rows) != len(plan[\"consumers\"]):",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "a receipt must account for every declared consumer"
+ },
+ {
+  "id": "image-acceptance.manifest-bypass",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    _manifest_accept_and_promote \"${manifest_ref}\"",
+  "replace": "    : acceptance-bypassed",
+  "test": "bash linux/scripts/tests/test-manifest-acceptance.sh",
+  "why": "manifest publication must propagate acceptance failure"
+ },
+ {
+  "id": "image-acceptance.target-errors",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if error.code != 404:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce target-errors"
+ },
+ {
+  "id": "image-acceptance.duplicate-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if name in platforms:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce duplicate-platform"
+ },
+ {
+  "id": "image-acceptance.lost-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "        if missing:\n",
+  "replace": "        if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce lost-platform"
+ },
+ {
+  "id": "image-acceptance.tested-platform",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "if receipt[\"platform\"] not in {\"/\".join(platform.split(\"/\")[:2]) for platform in platforms}:",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce tested-platform"
+ },
+ {
+  "id": "image-acceptance.source-freeze",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if changes:\n        row[\"source_changes\"]",
+  "replace": "    if False:\n        row[\"source_changes\"]",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce source-freeze"
+ },
+ {
+  "id": "image-acceptance.crlf-lock",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "\"content\": data.decode(\"utf-8\")",
+  "replace": "\"content\": data.decode(\"utf-8\").replace(\"\\r\\n\", \"\\n\")",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "receipt replay and promotion must enforce crlf-lock"
+ },
+ {
   "id": "code-size.new-offender",
   "target": "linux/scripts/quality_allow.py",
   "find": "        if was is None:",
@@ -362,8 +434,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -765,7 +837,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -2386,7 +2458,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -2986,7 +3058,7 @@
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -3778,8 +3850,8 @@
  {
   "id": "mutations.push-stale-check-aborts",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
-  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
+  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
+  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
  },
@@ -4394,8 +4466,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -4434,8 +4506,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -4653,7 +4725,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -14598,8 +14670,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
-  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: 📂 Sync files to domain\n",
+  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },

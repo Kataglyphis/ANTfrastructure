@@ -38,6 +38,21 @@ it cannot change the caller's shell options; wrappers run under
 | `SLANG_COMPILE_WGSL_OUTPUT_ROOT` | where `wgsl` targets are written | `<source root>/build/wgsl` |
 | `SLANG_COMPILE_COMBINED_OUTPUT_DIR` | staging dir for the combined WGSL emit, before validation and copy | `<source root>/build` |
 | `SLANG_COMPILE_DEST_ROOT` | root the manifest's `wgslMap` `dst` paths resolve against, i.e. the consuming repo root | `$PWD` |
+| `SLANG_COMPILE_EXTRA_SOURCE_ROOTS` | Bash array of additional pinned source trees, searched after the primary root | empty array |
+
+The PowerShell twin accepts `-AdditionalSourceRoots [string[]]`. Both drivers
+resolve each logical source against the roots in order, add their subdirectories
+to the import search path and include all source trees in staleness checks.
+An explicitly configured root that is missing fails the run.
+
+### PowerShell caller
+
+`Invoke-SlangShaderCompile` takes `-ManifestPath`, `-SourceRoot`,
+`-AdditionalSourceRoots`, `-SpirvOutputRoot`, `-WgslOutputRoot`,
+`-CombinedOutputDir` and `-DestinationRoot`. Output defaults match the Bash
+table. Pass the roots as a string array within the same PowerShell process.
+`Get-SlangShaderManifest` exposes the composed manifest, and
+`Resolve-SlangSourcePath` resolves one logical file against the ordered roots.
 
 ## Manifest schema
 
@@ -49,6 +64,14 @@ Keys starting with `_` are documentation and ignored.
 | `wgslMap[]` | `{ src, out, dst }` | the combined (whole-module) WGSL emit |
 | `depthTexturePatches` | `{ "<out>": [ { pattern, replacement } ] }` | post-emit regex patches applied to that combined emit |
 | `minSlangcVersionForWgsl` | `"MAJOR.MINOR"` | toolchain floor for the combined emit |
+| `wgslManifest` | relative or absolute path | imports a separate owner's WebGPU entries, copy map, patches and compiler floor |
+| `wgslDestinationPrefix` | path prefix | prepended to imported `wgslMap` destinations; defaults to empty |
+
+`wgslManifest` resolves relative to the consuming manifest. It appends the
+owner's entries to the consumer's `manifest`, and takes the map, patches and
+compiler floor from that owner. The owner's source tree is supplied separately
+through the additional source roots. This lets a renderer compile independently
+while a consumer composes its Vulkan entries with the same WebGPU definition.
 
 ## Return codes from `slang_compile_main`
 
@@ -95,5 +118,5 @@ seeing but is not itself proof the emit is wrong.
 ## Staleness
 
 An output is reused only when it is newer than its source **and** every `.slang`
-file under the source tree **and** the manifest file itself. That is
+file under every source tree **and** both manifest files. That is
 conservative on purpose — an import or a manifest edit rebuilds every dependent.

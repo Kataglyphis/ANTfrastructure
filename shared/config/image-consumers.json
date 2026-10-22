@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "platform": "linux/amd64",
+  "timeout_seconds": 2700,
+  "consumers": [
+    {"name": "AccelerANTgine", "repository": "Kataglyphis/AccelerANTgine", "ref": "develop", "command": ["bash", "scripts/linux/ci-build-and-test.sh"]},
+    {"name": "OxidANT", "repository": "Kataglyphis/OxidANT", "ref": "develop", "command": ["bash", "scripts/linux/ci-container-steps.sh", "test"]},
+    {"name": "ANThology", "repository": "Kataglyphis/ANThology", "ref": "develop", "command": ["bash", "scripts/run-dart-checks.sh"]},
+    {"name": "OmniAccelerANT", "repository": "Kataglyphis/OmniAccelerANT", "ref": "develop", "command": ["bash", "third_party/ANTfrastructure/linux/scripts/05-frameworks/flutter/flutter_checks.sh", "--strict", "true"]},
+    {"name": "jotrockenmitlocken", "repository": "Kataglyphis/jotrockenmitlocken", "ref": "develop", "command": ["bash", "scripts/run-dart-checks.sh"]},
+    {"name": "WebDavClient", "repository": "Kataglyphis/WebDavClient", "ref": "develop", "command": ["bash", "scripts/linux/ci_tests.sh", "kataglyphis_webdavclient"]}
+  ]
+}

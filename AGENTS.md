@@ -58,6 +58,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    change updates AGENTS.md (rules, quick reference), README.md (user-facing pointers), the owning
    `docs/` page and `CHANGELOG.md` before it is done. A mechanism only git history knows does not
    exist for the next session.
+   Image publication also requires the digest-specific consumer receipt before a public tag
+   moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
+   Successful consumers must preserve versioned sources. Manual promotion also preserves
+   the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
    tree and a distro package export the same soname, ours wins the `ld.so` lookup: write
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,
@@ -930,9 +934,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   tag with the arches this run carries and stops. The older coherence gate only asks whether the
   arches AGREE on a generation, so a single-arch run assembled a coherent ONE-arch index and
   published it: that is how `:latest` (then `:latest-cross`) was found reduced to riscv64 alone.
-  Recover by re-running the runtime lane for the missing arches; `--force` /
-  `RUNTIME_MANIFEST_COMPLETENESS=0` are for a deliberate shrink only. A partial-arch run should
-  carry `--skip-manifest` and never reach here.
+  Recover by re-running the runtime lane for the missing arches. `--force` and
+  `RUNTIME_MANIFEST_COMPLETENESS=0` only bypass the early shell check: final promotion
+  still preserves the published runtime platforms. A partial-arch run should carry
+  `--skip-manifest`; a different platform set gets its own tag.
 - **A published image's environment names nothing outside the container** (2026-09-23, both
   lanes). A build-host setting (the sccache endpoint, a LAN mirror, a proxy) reaches a RUN as an
   ARG and never lands in an ENV: `:winamd64` shipped the owner's LAN WebDAV and broke every

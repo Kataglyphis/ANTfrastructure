@@ -75,8 +75,7 @@
       "self": false,
       "confirmed": true,
       "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: docs.yml (dart.yml until 2026-09-24) checks the tooling out in CI and uses the composite actions at @develop. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
-    }
-,
+    },
     {
       "name": "WebDavClient",
       "clone_url": "https://github.com/Kataglyphis/WebDavClient.git",
@@ -92,6 +91,22 @@
       "self": false,
       "confirmed": true,
       "note": "The Sphinx brand theme and md2pdf, vendored BY the hub at third_party/DocumANTation. It has no ANTfrastructure submodule and calls no hub action; its pins are written by the hub's docs/scripts/sync_versions.py. Declared on 2026-10-07 because verify_workflow_conventions.py refuses a repository consumers.json does not name, so the family lint could not grade its two workflows."
+    },
+    {
+      "name": "ModelANT",
+      "clone_url": "https://github.com/Kataglyphis/ModelANT.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "Data release repository using the shared container preparation and execution actions."
+    },
+    {
+      "name": "AssetANT",
+      "clone_url": "https://github.com/Kataglyphis/AssetANT.git",
+      "ref": "develop",
+      "self": false,
+      "confirmed": true,
+      "note": "Data release repository using the shared container preparation and execution actions."
     }
   ],
   "unconfirmed": [],

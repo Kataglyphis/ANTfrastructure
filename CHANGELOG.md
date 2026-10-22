@@ -12,6 +12,23 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — consumer contracts and image acceptance
+
+- Runtime publication creates an immutable candidate and requires all declared consumer
+  checks before promoting the same index to the public tag. Receipts record source/pin,
+  data/dependency locks, logs and timings; replay restores the recorded SHAs and locks.
+  CRLF lock bytes survive replay; changed versioned sources fail acceptance. Manual
+  promotion verifies the tested platform and preserves the target's runtime platforms.
+- ModelANT and AssetANT join the real consumer inventory. Shared inference references
+  are owned by ModelANT and consumed by C++ and Rust tests.
+- Filtered WebDAV downloads now use the client's single safe, atomic implementation;
+  `WEBDAVCLIENT_REF` selects the fix. Listing/HTTP/stream failures return nonzero.
+- Corrosion's CC/CXX/CRT setup is shared by the two C++ consumers. WebDavClient and
+  OrchestrANT take the same narrow wheel helper via the existing exact-sync registry.
+- Slang's Bash and PowerShell drivers compose an owner's WGSL manifest and additional
+  pinned source roots, so OxidANT owns and regenerates its shaders independently while
+  BeschleunigerBallett consumes that same definition.
+
 ## 2026-10-22 — riscv64's torch venv ships setuptools
 
 - The riscv64 runtime lane skips `uv sync` (the lock would build torch under QEMU), so torch's

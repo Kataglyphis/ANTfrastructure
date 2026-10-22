@@ -12,6 +12,7 @@ _slang_compile_error() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; }
 # Fills in the derived path defaults. Idempotent.
 _slang_compile_apply_defaults() {
   local source_root="${SLANG_COMPILE_SOURCE_ROOT:-}"
+  if ! declare -p SLANG_COMPILE_EXTRA_SOURCE_ROOTS &>/dev/null; then SLANG_COMPILE_EXTRA_SOURCE_ROOTS=(); fi
   SLANG_COMPILE_SPIRV_OUTPUT_ROOT="${SLANG_COMPILE_SPIRV_OUTPUT_ROOT:-${source_root}/build/spirv}"
   SLANG_COMPILE_WGSL_OUTPUT_ROOT="${SLANG_COMPILE_WGSL_OUTPUT_ROOT:-${source_root}/build/wgsl}"
   SLANG_COMPILE_COMBINED_OUTPUT_DIR="${SLANG_COMPILE_COMBINED_OUTPUT_DIR:-${source_root}/build}"
@@ -31,11 +32,21 @@ _slang_compile_output_root() {
 slang_compile_manifest_query() {
   python3 - "${SLANG_COMPILE_MANIFEST}" "$@" <<'PY'
 import json, sys
+from pathlib import Path
 
 manifest_path, query = sys.argv[1], sys.argv[2]
 args = sys.argv[3:]
 with open(manifest_path, encoding="utf-8") as handle:
     doc = json.load(handle)
+if "wgslManifest" in doc:
+    owner_path = Path(manifest_path).parent / doc["wgslManifest"]
+    with owner_path.open(encoding="utf-8") as handle:
+        owner = json.load(handle)
+    doc["manifest"] += owner["manifest"]
+    prefix = doc.get("wgslDestinationPrefix", "")
+    doc["wgslMap"] = [{**row, "dst": str(Path(prefix) / row["dst"])} for row in owner["wgslMap"]]
+    doc["depthTexturePatches"] = owner["depthTexturePatches"]
+    doc["minSlangcVersionForWgsl"] = owner["minSlangcVersionForWgsl"]
 
 if query == "rows":
     for row in doc["manifest"]:
@@ -121,39 +132,51 @@ slang_compile_resolve_slangc() {
 
 # Conservative: any .slang may be imported, and a manifest edit can retarget any output.
 slang_compile_newest_source_stamp() {
-  { find "${SLANG_COMPILE_SOURCE_ROOT}" -type f -name '*.slang' -printf '%T@\n'
+  { find "${SLANG_COMPILE_SOURCE_ROOT}" "${SLANG_COMPILE_EXTRA_SOURCE_ROOTS[@]}" -type f -name '*.slang' -printf '%T@\n'
+    python3 - "${SLANG_COMPILE_MANIFEST}" <<'PY_MANIFEST'
+import json, sys
+from pathlib import Path
+path = Path(sys.argv[1])
+owner = json.loads(path.read_text()).get("wgslManifest")
+if owner:
+    print((path.parent / owner).stat().st_mtime)
+PY_MANIFEST
     find "${SLANG_COMPILE_MANIFEST}" -printf '%T@\n'; } | sort -g | tail -n 1
 }
 
 # See docs/cross-build-verification.md#slang-compile-shader-compilation-contract
 _slang_compile_collect_subdirs() {
   local -a common_dirs=() other_dirs=()
-  local dir rel
-  while IFS= read -r -d '' dir; do
-    rel="${dir#"${SLANG_COMPILE_SOURCE_ROOT}/"}"
-    case "${rel}" in
-      build|build/*) continue ;;
-    esac
-    if [ "${rel}" = "common" ]; then
-      common_dirs+=("${dir}")
-    else
-      other_dirs+=("${dir}")
-    fi
-  done < <(find "${SLANG_COMPILE_SOURCE_ROOT}" -mindepth 1 -type d -print0 | LC_ALL=C sort -z)
-  SLANG_COMPILE_SUBDIRS=(
-    ${common_dirs[@]+"${common_dirs[@]}"}
-    ${other_dirs[@]+"${other_dirs[@]}"}
-  )
+  local root dir rel
+  for root in "${SLANG_COMPILE_SOURCE_ROOT}" "${SLANG_COMPILE_EXTRA_SOURCE_ROOTS[@]}"; do
+    while IFS= read -r -d '' dir; do
+      rel="${dir#"${root}/"}"
+      case "${rel}" in build|build/*) continue ;; esac
+      if [[ "$rel" == common ]]; then common_dirs+=("$dir"); else other_dirs+=("$dir"); fi
+    done < <(find "$root" -mindepth 1 -type d -print0 | LC_ALL=C sort -z)
+  done
+  SLANG_COMPILE_SUBDIRS=("${common_dirs[@]}" "${other_dirs[@]}")
 }
 
 # slangc resolves `import <name>` on -I paths only, so add every subdirectory.
 slang_compile_include_args() {
   local src_parent="$1"
   SLANG_COMPILE_INCLUDE_ARGS=("-I" "${SLANG_COMPILE_SOURCE_ROOT}" "-I" "$src_parent")
+  local root
+  for root in "${SLANG_COMPILE_EXTRA_SOURCE_ROOTS[@]}"; do SLANG_COMPILE_INCLUDE_ARGS+=("-I" "$root"); done
   local d
   for d in "${SLANG_COMPILE_SUBDIRS[@]}"; do
     SLANG_COMPILE_INCLUDE_ARGS+=("-I" "$d")
   done
+}
+
+# A logical source path can belong to another pinned source tree.
+_slang_compile_source_path() {
+  local relative="$1" root
+  for root in "${SLANG_COMPILE_SOURCE_ROOT}" "${SLANG_COMPILE_EXTRA_SOURCE_ROOTS[@]}"; do
+    if [[ -f "${root}/${relative}" ]]; then printf '%s\n' "${root}/${relative}"; return; fi
+  done
+  printf '%s\n' "${SLANG_COMPILE_SOURCE_ROOT}/${relative}"
 }
 
 # Per-entry-point compilation. Returns 0 to keep set -e in force; a missing source counts as a failure.
@@ -164,7 +187,8 @@ slang_compile_targets() {
 
   local file entry_name stage targets
   while IFS='|' read -r file entry_name stage targets; do
-    local src_path="${SLANG_COMPILE_SOURCE_ROOT}/${file}"
+    local src_path
+    src_path="$(_slang_compile_source_path "$file")"
     if [[ ! -f "$src_path" ]]; then
       warn "Manifest references missing file: $src_path"
       failed_entries+=("$src_path")
@@ -221,7 +245,7 @@ _slang_emit_one_wgsl() {
   local src_path tmp_out dst_dir offenders
   local patch_count i pattern replacement sed_repl before_sum after_sum
 
-  src_path="${SLANG_COMPILE_SOURCE_ROOT}/${src_file}"
+  src_path="$(_slang_compile_source_path "$src_file")"
   if [[ ! -f "$src_path" ]]; then return 3; fi
 
   slang_compile_include_args "$(dirname "$src_path")"
@@ -329,6 +353,12 @@ slang_compile_main() {
     _slang_compile_error "Shader manifest not found: ${SLANG_COMPILE_MANIFEST}"
     return 2
   fi
+
+  local root
+  for root in "${SLANG_COMPILE_EXTRA_SOURCE_ROOTS[@]}"; do
+    [[ -d "$root" ]] || { _slang_compile_error "Additional shader source root not found: $root"; return 2; }
+  done
+  slang_compile_manifest_query rows >/dev/null || return 2
 
   local slangc
   if ! slangc="$(slang_compile_resolve_slangc)"; then

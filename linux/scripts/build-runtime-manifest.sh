@@ -174,16 +174,32 @@ create_manifest() {
     _manifest_completeness_gate || err "manifest completeness gate refused ${IMAGE_NAME} (see above)"
   fi
 
-  if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${IMAGE_NAME}" >/dev/null 2>&1; then
-    "${NERDCTL_BIN:-nerdctl}" manifest rm "${IMAGE_NAME}" >/dev/null 2>&1 || true
+  local manifest_ref="${IMAGE_NAME}"
+  if [ "${PUSH_MANIFEST}" -eq 1 ]; then
+    manifest_ref="${IMAGE_NAME%:*}:candidate-${CROSS_RUN_ID}"
   fi
-  run "${NERDCTL_BIN:-nerdctl}" manifest create "${IMAGE_NAME}" "${refs[@]}"
+  if "${NERDCTL_BIN:-nerdctl}" manifest inspect "${manifest_ref}" >/dev/null 2>&1; then
+    "${NERDCTL_BIN:-nerdctl}" manifest rm "${manifest_ref}" >/dev/null 2>&1 || true
+  fi
+  run "${NERDCTL_BIN:-nerdctl}" manifest create "${manifest_ref}" "${refs[@]}"
 
   if [ "${PUSH_MANIFEST}" -eq 1 ]; then
     # Same transient registry/network class runtime_push_tag guards against.
-    retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${IMAGE_NAME}" \
-      run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${IMAGE_NAME}"
+    retry "${PUSH_MAX_ATTEMPTS:-4}" "${PUSH_RETRY_BASE_SECS:-15}" "manifest push ${manifest_ref}" \
+      run "${NERDCTL_BIN:-nerdctl}" manifest push --purge "${manifest_ref}"
+    _manifest_accept_and_promote "${manifest_ref}"
   fi
+}
+
+# Test a frozen candidate before changing the consumer-facing tag.
+_manifest_accept_and_promote() {
+  local candidate receipt work
+  candidate="$(python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" resolve "$1")" || return 1
+  work="${REPO_ROOT}/out/image-acceptance/${CROSS_RUN_ID}"
+  receipt="${work}/receipt.json"
+  python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" check --image "${candidate}" \
+    --workspace "${work}/consumers" --receipt "${receipt}" --engine "${NERDCTL_BIN:-nerdctl}" || return 1
+  python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" promote --receipt "${receipt}" --target "${IMAGE_NAME}"
 }
 
 _manifest_extra_arg() {

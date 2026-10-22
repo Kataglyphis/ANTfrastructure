@@ -27,6 +27,10 @@ Three have their own pages, because their topic is bigger than the library:
 `agentic-engines.sh` pair, one executable loop in two files
 ([`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md#the-two-bash-files)).
 
+The Slang twins accept additional pinned source roots and import an owner's
+WGSL manifest without a copied definition; their caller parameters and ownership
+rules are in [`slang-shader-compilation.md`](slang-shader-compilation.md#caller-variables).
+
 ## The tree, as AGENTS.md drew it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since
@@ -1012,13 +1016,12 @@ at it, so a plain `uv pip install` inside an activated `.venv` still targets
 `/opt/venv` and dies with "Permission denied (os error 13)" as the uid-1001
 build user.
 
-The script it runs is `01-core/download-webdav-files.py`. With no `--extension`
-(or `all`) it hands the whole walk to the client's own
-`download_all_files_iterative`; a 140-line hand-rolled traversal used to live in
-its place, with its own URL joining, sub-path sanitising and streaming download,
-each a second implementation of something the client already did. The
-extension-filtered path stays for the early `.pfx` certificate fetch, which
-genuinely wants one file type out of a shared folder. A one-line shim remains at
+The script it runs is `01-core/download-webdav-files.py`. Filtered and complete
+walks both call the client's `download_all_files_iterative(..., extension=...)`.
+The client owns decoded path validation, local-root containment, response lifetime
+and atomic replacement. A listing, HTTP or streaming failure reaches the CLI as
+exit status 1, including a failure after earlier successful files. The `.pfx`
+certificate fetch uses the same implementation with a filter. A one-line shim remains at
 `windows/scripts/certificates/download_webdav_files.py`, because the PowerShell
 module resolves that path relative to itself.
 
