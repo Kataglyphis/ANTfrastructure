@@ -267,7 +267,7 @@ _vulkan_setup_cross_pkgconfig() {
     # _vulkan_run_vulkansdk builds HOST tools and must search ONLY this half.
     export VULKAN_HOST_PKG_CONFIG_LIBDIR="${host_pkgconfig}"
     if command -v cross_pkg_config_libdir >/dev/null 2>&1; then
-      export PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}"):${host_pkgconfig}"
+      export PKG_CONFIG_LIBDIR; PKG_CONFIG_LIBDIR="$(cross_pkg_config_libdir "${target_triplet}"):${host_pkgconfig}"
     else
       export PKG_CONFIG_LIBDIR="/usr/${target_triplet}/lib/pkgconfig:/usr/lib/${target_triplet}/pkgconfig:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
     fi
@@ -834,9 +834,9 @@ install_vulkan_sdk() {
   log "Installing Vulkan SDK ${version} via tarball"
   install_vulkan_prereqs
 
-  local normalized_arch="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}")"
-  local arch_suffix="$(arch_uname_name_for "${normalized_arch}")"
-  local target_triplet="$(arch_deb_multiarch_triplet_for "${normalized_arch}")"
+  local normalized_arch; normalized_arch="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}")"
+  local arch_suffix; arch_suffix="$(arch_uname_name_for "${normalized_arch}")"
+  local target_triplet; target_triplet="$(arch_deb_multiarch_triplet_for "${normalized_arch}")"
   [ -n "${arch_suffix}" ] || die "Unknown or unsupported architecture: ${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}"
   [ -n "${target_triplet}" ] || die "Unknown or unsupported architecture: ${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}"
 

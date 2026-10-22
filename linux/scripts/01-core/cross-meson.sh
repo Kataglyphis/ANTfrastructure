@@ -83,7 +83,7 @@ append_cmake_cross_args() {
 }
 
 ensure_meson_cross_file() {
-  local path="${1:-${TMPDIR:-/tmp}/meson-cross-$(cross_target_arch).ini}"
+  local path; path="${1:-${TMPDIR:-/tmp}/meson-cross-$(cross_target_arch).ini}"
   local triplet pkg_config_libdir exe_wrapper exe_wrapper_line wrapper_candidate
   local rust_target rustc_bin rust_binary_line rust_wrapper rust_wrapper_dir
 
@@ -166,7 +166,7 @@ EOF
 }
 
 ensure_meson_native_file() {
-  local path="${1:-${TMPDIR:-/tmp}/meson-native-$(cross_build_arch).ini}"
+  local path; path="${1:-${TMPDIR:-/tmp}/meson-native-$(cross_build_arch).ini}"
   local host_path build_triplet native_cc native_cxx native_ar native_strip native_pkg_config native_cmake native_pkg_config_libdir
   local native_wrapper_dir native_cc_wrapper native_cxx_wrapper
 

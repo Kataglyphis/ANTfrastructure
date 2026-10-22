@@ -212,7 +212,7 @@ install_riscv64_runtime_libs() {
 
 torch_wheel_missing_fallback() {
   # No torch wheel: the assemble path would resolve upstream torch and die under QEMU, so ship OpenCV only.
-  local arch="${1:-$(uname -m)}"
+  local arch; arch="${1:-$(uname -m)}"
   local opencv_wheel
   opencv_wheel="$(ls /opt/wheels/opencv_contrib_python-*.whl 2>/dev/null | head -1 || true)"
   if [ -n "${opencv_wheel}" ]; then

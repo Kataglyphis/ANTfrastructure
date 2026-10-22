@@ -122,7 +122,7 @@ extract_emulators() {
 
 # After= orders unit start, not the namespace unshare, so poll for it. See AGENTS.md § Prerequisites
 wait_for_namespace() {
-  local pidfile="/run/user/$(id -u)/containerd-rootless/child_pid"
+  local pidfile; pidfile="/run/user/$(id -u)/containerd-rootless/child_pid"
   local waited=0
   while [ ! -s "${pidfile}" ]; do
     if [ "${waited}" -ge "${BINFMT_NS_WAIT_SECS}" ]; then

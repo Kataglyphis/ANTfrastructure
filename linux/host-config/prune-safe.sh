@@ -2,7 +2,7 @@
 # Prunes layer cache only, never cachemounts ([PRUNE_KEEP_GB=N] [DRY_RUN=1] [PRUNE_DUP_CACHEMOUNTS=1]): docs/linux-host-setup.md#b7-reclaiming-disk-without-losing-the-compile-caches
 set -euo pipefail
 
-export BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"
+export BUILDKIT_HOST; BUILDKIT_HOST="${BUILDKIT_HOST:-unix:///run/user/$(id -u)/buildkit/buildkitd.sock}"
 PRUNE_KEEP_GB="${PRUNE_KEEP_GB:-0}"
 case "${PRUNE_KEEP_GB}" in ''|*[!0-9]*) echo "FATAL: PRUNE_KEEP_GB must be a whole number of GB, got '${PRUNE_KEEP_GB}'" >&2; exit 2 ;; esac
 

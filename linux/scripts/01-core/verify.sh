@@ -75,8 +75,8 @@ verify_cross_target_versions() {
   target_arch="$(default_target_arch)"
   local triplet=""
   local clang_target=""
-  local requested_major="$(version_major "${GCC_WANTED}")"
-  local requested_llvm_major="$(version_major "${LLVM_WANTED:-${CLANG_WANTED:-}}" 2>/dev/null || true)"
+  local requested_major; requested_major="$(version_major "${GCC_WANTED}" || true)"
+  local requested_llvm_major; requested_llvm_major="$(version_major "${LLVM_WANTED:-${CLANG_WANTED:-}}" 2>/dev/null || true)"
 
   target_arch="$(arch_normalize "${target_arch}")"
   case "${target_arch}" in
@@ -152,8 +152,8 @@ verify_all_cross_target_versions() {
 }
 
 verify_host_toolchain_versions() {
-  local requested_gcc_major="$(version_major "${GCC_WANTED}" 2>/dev/null || true)"
-  local requested_llvm_major="$(version_major "${LLVM_WANTED:-${CLANG_WANTED:-}}" 2>/dev/null || true)"
+  local requested_gcc_major; requested_gcc_major="$(version_major "${GCC_WANTED}" 2>/dev/null || true)"
+  local requested_llvm_major; requested_llvm_major="$(version_major "${LLVM_WANTED:-${CLANG_WANTED:-}}" 2>/dev/null || true)"
 
   verify_required_tool gcc
   verify_required_tool g++

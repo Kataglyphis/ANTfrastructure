@@ -380,7 +380,7 @@ build_tflite_c_api() {
 install_litert() {
     info Installing LiteRT to ${LITERT_PREFIX}...
 
-    local build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
+    local build_dir; build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
 
     cd "${LITERT_SRC}/litert"
 
@@ -749,7 +749,7 @@ _install_manual_pkgconfig() {
 }
 
 install_manual() {
-    local build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
+    local build_dir; build_dir="${LITERT_SRC}/litert/$(litert_build_subdir)"
 
     local lib_dir="${LITERT_PREFIX}/lib"
     local include_dir="${LITERT_PREFIX}/include"

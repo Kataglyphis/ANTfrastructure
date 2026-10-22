@@ -50,7 +50,7 @@ source_toolchain_build_helpers_or_fallback() {
   done
 
   strip_elf_tree() {
-    local dir="$1" jobs="${2:-$(nproc)}" strip_bin="${3:-strip}"
+    local dir jobs strip_bin; dir="$1"; jobs="${2:-$(nproc)}"; strip_bin="${3:-strip}"
     [ -n "${dir}" ] || return 0
     [ -d "${dir}" ] || return 0
     ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \

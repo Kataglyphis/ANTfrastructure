@@ -476,7 +476,7 @@ is_cross_riscv64() {
 }
 
 cross_pkg_config_libdir() {
-  local triplet="${1:-$(cross_target_triplet)}"
+  local triplet; triplet="${1:-$(cross_target_triplet || true)}"
   local dir path=""
   local old_ifs
   local -a candidates extra_dirs

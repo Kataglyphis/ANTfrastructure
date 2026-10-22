@@ -149,7 +149,7 @@ _agentic_compose_role_prompts() {
 
 # Precedence: env override > .engines.<engine>.* > legacy .models.*
 load_engine_config() {
-    local config_json="$1" repo_root="${2:-$(pwd)}"
+    local config_json repo_root; config_json="$1"; repo_root="${2:-$(pwd)}"
     if ! command -v jq &>/dev/null; then log "jq required" "FATAL"; return 1; fi
 
     # A jq failure yields "" for every field; assignment order keeps the early return from touching CLAUDE_*/AGENT_*.
@@ -475,7 +475,7 @@ invoke_agent() {
             log "Agent failed after $attempt attempt(s) (role=$role, exit=$rc)" "ERROR"
             return $rc
         fi
-        local sleep_s=$((delay * attempt))
+        local sleep_s; sleep_s=$((delay * attempt))
         log "Agent failed (exit=$rc). Retry $attempt/$retries in ${sleep_s}s..." "WARN"
         if [[ "${DRY_RUN:-false}" != "true" ]]; then sleep "$sleep_s"; fi
     done

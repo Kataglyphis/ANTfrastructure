@@ -229,7 +229,7 @@ export_cargo_target_linker() {
 install_cross_bin_symlinks() {
   local target_arch
   target_arch="$(default_target_arch "${1:-}")"
-  local bin_dir="${2:-$(cross_bin_dir)}"
+  local bin_dir; bin_dir="${2:-$(cross_bin_dir)}"
 
   target_arch="$(cross_require_single_target_arch "${target_arch}" "cross tool symlink setup")" || return 1
   local triplet
