@@ -142,6 +142,7 @@ its own license terms.
 
 | Software | Version | Repository | License |
 | --- | --- | --- | --- |
+| dartdoc (on-demand API documentation tool) | 9.0.8 | [github.com/dart-lang/dartdoc](https://github.com/dart-lang/dartdoc) | BSD 3-Clause |
 | Emscripten / emsdk (ONNX Runtime WASM build) | pinned by ONNX Runtime | [emscripten.org](https://emscripten.org/) | MIT / NCSA |
 | ccache | Ubuntu apt | [ccache.dev](https://ccache.dev/) | GPLv3+ |
 | sccache | Ubuntu apt | [github.com/mozilla/sccache](https://github.com/mozilla/sccache) | Apache 2.0 |

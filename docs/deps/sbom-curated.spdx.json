@@ -819,6 +819,19 @@
       "licenseComments": "Obligations: keep-notice, include-text"
     },
     {
+      "SPDXID": "SPDXRef-Package-Linux-Images-dartdoc-on-demand-API-documentation-tool-453237c0",
+      "name": "dartdoc (on-demand API documentation tool)",
+      "versionInfo": "9.0.8",
+      "downloadLocation": "https://github.com/dart-lang/dartdoc",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "BSD-3-Clause",
+      "licenseConcluded": "BSD-3-Clause",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Linux Images / Build Tooling (build-time only, not in runtime images)",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
       "SPDXID": "SPDXRef-Package-Linux-Images-Emscripten-emsdk-ONNX-Runtime-WASM-build-8213a7f5",
       "name": "Emscripten / emsdk (ONNX Runtime WASM build)",
       "versionInfo": "pinned by ONNX Runtime",
@@ -2268,6 +2281,11 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Linux-Images-Ollama-229f7e80"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Linux-Images-dartdoc-on-demand-API-documentation-tool-453237c0"
     },
     {
       "spdxElementId": "SPDXRef-DOCUMENT",

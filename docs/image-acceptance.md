@@ -19,9 +19,19 @@ The plan is [`shared/config/image-consumers.json`](../shared/config/image-consum
 It declares the Linux test platform, timeout, repository branch and argument array for
 each check: C++/GStreamer inference, Rust tests, ANThology, both Flutter apps and WebDAV.
 Consumers run serially, in disposable containers, against the same immutable digest.
+The C++ check uses the existing GCC lane; Clang fuzzing and TSan stay in its normal CI,
+whose TSan runtime needs privileged container settings. Rust's test step fetches its
+model and starts Xvfb for the required GPU/GTK checks. Flutter checks prepare the existing
+lane environment first, register the mounted Git checkout, and resolve package dependencies.
+The app checks use their own helpers to include ANThology or the native plugin package.
+These Flutter checks use the VM; browser, native build and packaging lanes stay in CI.
 Their own recorded submodules supply their tools; ANThology uses the receipt's hub
-checkout because that library has no hub submodule. Linux rootless engines use the
-documented uid/tar policy in [linux-build-basics.md](linux-build-basics.md#a-lane-under-a-rootless-engine-on-a-linux-host-runs-as-root).
+checkout because that library has no hub submodule. Linux containers run as UID 0 so
+the SDK and mounted checkout are writable; rootful runs restore the host's checkout
+ownership during cleanup. Rootless runs follow the documented uid/tar policy in
+[linux-build-basics.md](linux-build-basics.md#a-lane-under-a-rootless-engine-on-a-linux-host-runs-as-root).
+Ownership restoration still runs if removing the consumer container times out.
+A container-removal or ownership-restoration error keeps the receipt failed.
 
 The receipt lands at `out/image-acceptance/<run-id>/receipt.json`, beside consumer logs.
 It records the image digest, platform, clean hub SHA, exact plan hash, consumer SHAs,
@@ -93,3 +103,6 @@ artifact, not a signed attestation or proof of physical camera/GPU behavior.
 timeouts, exact index promotion and replay lock validation. Its registry calls are
 doubles; the suite performs no publication. `tests/test-manifest-acceptance.sh` checks
 the actual manifest path refuses promotion after a failed consumer gate.
+`tests/test-image-consumer-bootstrap.sh` executes the plan's Flutter commands against
+the existing prologue/check drivers, checking Git registration and every package's
+dependency preparation without downloading an SDK or starting browser/native builds.

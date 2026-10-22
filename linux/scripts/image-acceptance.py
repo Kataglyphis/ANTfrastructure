@@ -211,6 +211,29 @@ def validate_receipt(receipt, image, plan_path):
     return receipt
 
 
+def restore_ownership(args, platform, checkout, owner, name, log):
+    command = [args.engine, "run", "--rm", "--pull", "never", "--name", name,
+               "--platform", platform, "--user", "0:0", "-v", f"{checkout}:/workspace",
+               "--entrypoint", "chown", args.image, "-hR", "--", owner, "/workspace"]
+    try:
+        with log.open("ab") as stream:
+            subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=120, check=True)
+    finally:
+        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
+
+
+def cleanup_consumer(args, platform, checkout, owner, name, log, row):
+    try:
+        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
+    except (OSError, subprocess.SubprocessError) as error:
+        row["container_cleanup_error"] = str(error)
+    if owner is not None:
+        try:
+            restore_ownership(args, platform, checkout, owner, name + "-owner", log)
+        except (OSError, subprocess.SubprocessError) as error:
+            row["ownership_error"] = str(error)
+
+
 def run_consumer(args, plan, work, index, spec, row, expected, rootless):
     checkout = work / spec["name"]
     row.update(source_snapshot(checkout, spec, expected))
@@ -218,11 +241,15 @@ def run_consumer(args, plan, work, index, spec, row, expected, rootless):
         restore_locks(checkout, expected["resolved_locks"])
     log = work / (spec["name"] + ".log")
     name = f"image-acceptance-{os.getpid()}-{index}"
-    command = [args.engine, "run", "--rm", "--pull", "never", "--name", name,
+    owner = None
+    command = [args.engine, "run", "--rm", "--init", "--pull", "never", "--name", name,
                "--platform", plan["platform"], "-v", f"{checkout}:/workspace", "-w", "/workspace",
                "-v", f"{ROOT}:/opt/antfrastructure:ro"]
-    if rootless:
+    if sys.platform.startswith("linux"):
         command += ["--user", "0:0", "-e", "TAR_OPTIONS=--no-same-owner"]
+        if not rootless:
+            metadata = checkout.stat()
+            owner = f"{metadata.st_uid}:{metadata.st_gid}"
     if spec["name"] == "ANThology":
         command += ["-e", "ANTFRASTRUCTURE_DIR=/opt/antfrastructure"]
     command += [args.image, *spec["command"]]
@@ -235,11 +262,15 @@ def run_consumer(args, plan, work, index, spec, row, expected, rootless):
         row["exit_code"] = 124
         raise
     finally:
-        subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
+        cleanup_consumer(args, plan["platform"], checkout, owner, name, log, row)
         row["seconds"] = round(time.monotonic() - started, 3)
         row["log_sha256"] = fingerprint(log)
         row["log"] = str(log)
         row["resolved_locks"] = collect_locks(checkout)
+    if "container_cleanup_error" in row:
+        raise ValueError(f"{spec['name']}: removing acceptance container failed")
+    if "ownership_error" in row:
+        raise ValueError(f"{spec['name']}: restoring acceptance workspace ownership failed")
     if expected and row["resolved_locks"] != expected["resolved_locks"]:
         raise ValueError(f"{spec['name']}: dependency resolution changed during replay")
     if row["exit_code"] != 0:

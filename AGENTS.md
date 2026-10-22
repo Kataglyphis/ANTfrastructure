@@ -64,6 +64,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
    `--gates-only` exits before builds, candidate creation and promotion, including when
    combined with push flags; it provides no consumer acceptance receipt.
+   Linux acceptance restores disposable rootful checkout ownership on every exit;
+   failed container cleanup or ownership restoration cannot produce a passed receipt.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
    tree and a distro package export the same soname, ours wins the `ld.so` lookup: write
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,
@@ -1113,11 +1115,15 @@ mount).
   repository.** A literal anywhere else is a second source that will disagree; the ARG-consistency
   and advertised-key gates exist because it did.
 - **Host-tool pins go in `01-core/tool-pins.env` instead** (CON59, 2026-10-05): shellcheck,
-  gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate. `Dockerfile.base`
+  gitleaks, hadolint, actionlint, mold, binaryen, ruff, syft, Renovate, dartdoc. `Dockerfile.base`
   bind-mounts `versions.env`, so any edit to it rebuilds the compiler image, even for a lint tool.
   A pin no early stage (base through android) reads goes in `tool-pins.env`; one such a stage
   reads stays in `versions.env`. The torch stage reads shellcheck's and hadolint's from
   `tool-pins.env` (CON83). Renovate, `bump_versions.py` and `sync_versions.py` read both files.
+- **Dart API docs use the separately pinned generator.** The shared builder resolves it into
+  the project's isolated `.dart_tool/dartdoc-tool` cache; keep redundant `dart doc` overrides
+  out of consumers. Explicit custom commands still win. The SDK-bundled tool can lag fixes;
+  see [the generator contract](docs/shared-script-libraries.md#the-api-generator).
 - **Never hand-edit a derived file.** `python docs/scripts/sync_versions.py --write` propagates a
   pin into the docs, the deps table, the Dockerfile ARGs and the PowerShell defaults; `--check` is
   a preflight gate, so a hand edit is caught rather than shipped.

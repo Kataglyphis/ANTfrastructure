@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deps_table import load_deps_metadata, resolve_dep_version  # noqa: E402
+from deps_table import load_deps_metadata, read_dependency_versions, resolve_dep_version  # noqa: E402
 import license_obligations as lo  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -42,14 +42,7 @@ EXTRACTED = {
 
 
 def parse_versions_env() -> dict[str, str]:
-    out: dict[str, str] = {}
-    for line in VERSIONS_ENV.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#") or "=" not in s:
-            continue
-        k, _, v = s.partition("=")
-        out[k.strip()] = v.strip()
-    return out
+    return read_dependency_versions(VERSIONS_ENV)
 
 
 def spdx_id(*parts: str) -> str:

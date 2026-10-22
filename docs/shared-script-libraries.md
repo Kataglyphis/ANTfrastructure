@@ -598,7 +598,8 @@ or that configured a footer and footered no page, fails. It prints both numbers
 | `DARTDOC_BUILD_FLAVOR` | the site's generator, `dartdoc` or `rustdoc` | `dartdoc` |
 | `DARTDOC_BUILD_SHELL` | the page a guide is cut from and written beside, relative to the site | `index.html` |
 | `DARTDOC_BUILD_CLEAN_CMD` | array run before generation; unset skips | — |
-| `DARTDOC_BUILD_DOC_CMD` | array that generates the site | `dart doc` |
+| `DARTDOC_BUILD_DOC_CMD` | explicit array that generates the site; bypasses tool resolution | the pinned dartdoc tool below |
+| `DARTDOC_BUILD_TOOL_CACHE` | isolated generator cache root, keyed by the tool pin | `<root>/.dart_tool/dartdoc-tool` |
 | `DARTDOC_BUILD_THEME_CSS` | generated brand sheet appended to dartdoc's stylesheet | — (required) |
 | `DARTDOC_BUILD_IMAGES_DIR` | directory copied to `doc/api/images`; empty skips | — |
 | `DARTDOC_BUILD_GUIDES` | array of `<source markdown>\|<slug>\|<nav title>` | — |
@@ -616,6 +617,23 @@ of being skipped: a docs site quietly missing its theme and half its pages is
 worse than a build that stops and says so. The same rule governs the CI
 ownership fix — the container writes `doc/` as root over a bind mount, and a
 `chown` that fails leaves a tree the host user cannot rebuild.
+
+### The API generator
+
+The default resolves the exact `DARTDOC_VERSION` from `01-core/tool-pins.env` through official
+pub.dev in `<root>/.dart_tool/dartdoc-tool/<version>`. A matching cached tool is reused; a
+failed activation or generator fails the build. `DARTDOC_BUILD_TOOL_CACHE` moves that cache,
+and an explicit `DARTDOC_BUILD_DOC_CMD` bypasses resolution. The SDK, app dependencies and the
+caller's global tool cache are untouched. This follows the host-tool bootstrap convention;
+the Dart executable still comes from the image.
+
+The image's bundled dartdoc 9.0.6 crashes while stripping dependency `@docImport` comments
+(`RangeError (end)`, offset 80 in a 79-character comment). Upstream
+[9.0.8 fixes the offset drift](https://github.com/dart-lang/dartdoc/blob/main/CHANGELOG.md#908).
+On 2026-10-22, the exact published image reproduced that crash on ANThology; the pinned tool
+completed its full themed site and the link gate found zero issues across 1179 documents.
+`tests/test-dartdoc-tool.sh` checks pin, cache, caller override and error propagation with
+recording executables; it does not substitute for that real documentation build.
 
 ### The renderer's Python
 

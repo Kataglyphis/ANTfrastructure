@@ -175,18 +175,24 @@ class ReceiptTests(unittest.TestCase):
         module.restore_locks(restored, locks)
         self.assertEqual((restored / "Cargo.lock").read_bytes(), data)
 
-    def run_check(self, exit_code=0, timeout=False, dirty_after=False):
+    def run_check(self, exit_code=0, timeout=False, dirty_after=False, cleanup_error=False):
         root = Path(self.directory.name)
         args = types.SimpleNamespace(image=IMAGE, plan=self.plan, workspace=root / "sources",
                                      receipt=root / "result.json", engine="engine", replay=None)
         snapshot = {"repository": "owner/first", "revision": "c" * 40, "submodules": "", "data_locks": {}}
+        cleanup_failed = False
         def fake_run(command, **kwargs):
+            nonlocal cleanup_failed
             if command[1] == "run":
                 if timeout:
                     raise subprocess.TimeoutExpired(command, 30)
                 return subprocess.CompletedProcess(command, exit_code)
+            if command[1] == "rm" and cleanup_error and not cleanup_failed:
+                cleanup_failed = True
+                raise subprocess.TimeoutExpired(command, 60)
             return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
         def fake_snapshot(checkout, spec, expected):
+            checkout.mkdir(parents=True, exist_ok=True)
             return dict(snapshot, repository=spec["repository"])
         def fake_git(checkout, *command):
             if command[0] == "status":
@@ -196,7 +202,7 @@ class ReceiptTests(unittest.TestCase):
              patch.object(module, "source_snapshot", side_effect=fake_snapshot), \
              patch.object(module, "collect_locks", return_value={}), \
              patch.object(module.subprocess, "run", side_effect=fake_run) as run:
-            if exit_code or timeout or dirty_after:
+            if exit_code or timeout or dirty_after or cleanup_error:
                 with self.assertRaises(ValueError):
                     module.check(args)
             else:
@@ -250,9 +256,42 @@ class ReceiptTests(unittest.TestCase):
     def test_check_runs_every_consumer_with_the_immutable_digest(self):
         receipt, calls = self.run_check()
         module.validate_receipt(receipt, IMAGE, self.plan)
-        runs = [call.args[0] for call in calls if call.args[0][1] == "run"]
+        runs = [call.args[0] for call in calls if call.args[0][1] == "run" and "chown" not in call.args[0]]
         self.assertEqual(len(runs), 2)
         self.assertTrue(all(IMAGE in command and "never" in command for command in runs))
+
+    def test_linux_bind_owner_is_restored_after_success_failure_and_timeout(self):
+        for code, timeout in ((0, False), (1, False), (0, True)):
+            with self.subTest(code=code, timeout=timeout), patch.object(module.sys, "platform", "linux"):
+                receipt, calls = self.run_check(code, timeout)
+                commands = [call.args[0] for call in calls]
+                runs = [command for command in commands if command[1] == "run" and "chown" not in command]
+                cleanup = [command for command in commands if command[1] == "run" and "chown" in command]
+                self.assertEqual(len(runs), len(cleanup))
+                for command in runs:
+                    self.assertIn("--init", command)
+                    self.assertEqual(command[command.index("--user") + 1], "0:0")
+                for command in cleanup:
+                    self.assertEqual(command[-4:-2], ["-hR", "--"])
+                    self.assertEqual(command[-1], "/workspace")
+                    self.assertLess(commands.index(runs[0]), commands.index(command))
+                self.assertEqual(receipt["status"], "failed" if code or timeout else "passed")
+
+    def test_ownership_cleanup_failure_refuses_a_passing_receipt(self):
+        with patch.object(module.sys, "platform", "linux"), \
+             patch.object(module, "restore_ownership", side_effect=OSError("cleanup failed")), \
+             self.assertRaisesRegex(ValueError, "ownership"):
+            self.run_check()
+
+    def test_container_removal_timeout_still_restores_owner_and_keeps_evidence(self):
+        with patch.object(module.sys, "platform", "linux"):
+            receipt, calls = self.run_check(cleanup_error=True)
+        self.assertEqual(receipt["status"], "failed")
+        self.assertEqual(receipt["consumers"][0]["exit_code"], 0)
+        self.assertIn("container_cleanup_error", receipt["consumers"][0])
+        self.assertIn("log_sha256", receipt["consumers"][0])
+        self.assertIn("removing acceptance container failed", receipt["error"])
+        self.assertTrue(any("chown" in call.args[0] for call in calls))
 
     def test_failure_and_timeout_keep_failed_receipts_and_stop_the_gate(self):
         for code, timeout in ((1, False), (0, True)):

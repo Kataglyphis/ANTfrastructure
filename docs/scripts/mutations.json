@@ -1,5 +1,117 @@
 [
  {
+  "id": "lib.dartdoc-tool-default",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    doc_cmd=(_dartdoc_build_default_doc)",
+  "replace": "    doc_cmd=(dart doc)",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "the default must use the fixed pinned generator rather than the SDK's crashing bundled dartdoc"
+ },
+ {
+  "id": "lib.dartdoc-tool-cache-isolated",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  cache=\"${DARTDOC_BUILD_TOOL_CACHE:-$(_dartdoc_build_root)/.dart_tool/dartdoc-tool}/${DARTDOC_VERSION}\"",
+  "replace": "  cache=\"${PUB_CACHE}\"",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "resolving a documentation generator must not alter the app's or caller's global pub tool cache"
+ },
+ {
+  "id": "lib.dartdoc-tool-caller-command",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if [[ ${#doc_cmd[@]} -eq 0 ]]; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "a deliberate caller command must retain its arguments and bypass the default generator resolver"
+ },
+ {
+  "id": "lib.dartdoc-tool-exact-pin",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "      dart pub global activate dartdoc \"${DARTDOC_VERSION}\" --no-executables || return 1",
+  "replace": "      dart pub global activate dartdoc 0.0.0 --no-executables || return 1",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "the official package resolution must request the exact centrally declared version"
+ },
+ {
+  "id": "lib.dartdoc-tool-activation-verified",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if ! PUB_CACHE=\"${cache}\" dart pub global list | grep -qxF \"dartdoc ${DARTDOC_VERSION}\"; then\n    err \"The docs tool cache does not contain dartdoc ${DARTDOC_VERSION} after activation.\"\n  fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "a resolver claiming success with another version must not run a stale generator"
+ },
+ {
+  "id": "lib.dartdoc-tool-generation-failure",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  PUB_HOSTED_URL=https://pub.dev PUB_CACHE=\"${cache}\" dart pub global run dartdoc:dartdoc",
+  "replace": "  PUB_HOSTED_URL=https://pub.dev PUB_CACHE=\"${cache}\" dart pub global run dartdoc:dartdoc || true",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "documentation generation errors must propagate to the lane instead of producing a green incomplete site"
+ },
+ {
+  "id": "lib.dartdoc-tool-clean-failure",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    ) || return 1",
+  "replace": "    )",
+  "test": "bash linux/scripts/tests/test-dartdoc-tool.sh",
+  "why": "a failed preparation must stop generation even when a gate calls the function with errexit disabled"
+ },
+ {
+  "id": "sbom.documentation-tool-pin",
+  "target": "docs/scripts/deps_table.py",
+  "find": "        paths.append(tool_pins)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-curated-sbom.sh",
+  "why": "the explicit documentation tool's inventory must track its tool-pins version rather than omit it"
+ },
+ {
+  "id": "image-acceptance.flutter-prologue",
+  "target": "shared/config/image-consumers.json",
+  "find": "source \\\"${ANTFRASTRUCTURE_DIR}/linux/scripts/05-frameworks/flutter/lane-prologue.sh\\\"; flutter_lane_prepare_env;",
+  "replace": "source \\\"${ANTFRASTRUCTURE_DIR}/linux/scripts/05-frameworks/flutter/lane-prologue.sh\\\";",
+  "test": "bash linux/scripts/tests/test-image-consumer-bootstrap.sh",
+  "why": "the mounted Flutter checkout must be registered before Git-based strict checks discover its packages"
+ },
+ {
+  "id": "image-acceptance.flutter-plugin-package",
+  "target": "shared/config/image-consumers.json",
+  "find": "run_flutter_common_checks 1",
+  "replace": "run_flutter_common_checks 0",
+  "test": "bash linux/scripts/tests/test-image-consumer-bootstrap.sh",
+  "why": "the native inference package must resolve its own dependencies before its VM checks"
+ },
+ {
+  "id": "image-acceptance.unprivileged-cpp-lane",
+  "target": "shared/config/image-consumers.json",
+  "find": "\"scripts/linux/ci-build-and-test.sh\", \"--compiler\", \"gcc\"",
+  "replace": "\"scripts/linux/ci-build-and-test.sh\"",
+  "test": "bash linux/scripts/tests/test-image-consumer-bootstrap.sh",
+  "why": "acceptance must explicitly select GCC instead of invoking the Clang TSan lane that needs privileged CI"
+ },
+ {
+  "id": "image-acceptance.cleanup-failure",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if \"container_cleanup_error\" in row:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "a timed-out container removal must retain failed evidence even after host ownership is restored"
+ },
+ {
+  "id": "image-acceptance.linux-user",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if sys.platform.startswith(\"linux\"):\n        command +=",
+  "replace": "    if False:\n        command +=",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "Linux acceptance must use a user that can write both the SDK and isolated checkout"
+ },
+ {
+  "id": "image-acceptance.ownership-failure",
+  "target": "linux/scripts/image-acceptance.py",
+  "find": "    if \"ownership_error\" in row:\n",
+  "replace": "    if False:\n",
+  "test": "bash linux/scripts/tests/test-image-acceptance.sh",
+  "why": "an inaccessible host workspace must not produce a passed receipt"
+ },
+ {
   "id": "image-acceptance.failed-receipt",
   "target": "linux/scripts/image-acceptance.py",
   "find": "receipt.get(\"status\") != \"passed\"",
