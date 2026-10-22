@@ -82,6 +82,38 @@ def infer_section(path: Path, explicit: str | None) -> str:
     return ""
 
 
+def _ecosystems(s_pkgs: list) -> Counter:
+    ecos: Counter = Counter()
+    for p in s_pkgs:
+        purls = [r for r in p.get("externalRefs", []) if r.get("referenceType") == "purl"]
+        ecos[purls[0]["referenceLocator"].split(":")[1].split("/")[0] if purls else "no-purl"] += 1
+    return ecos
+
+
+def _relevant(curated: dict, section: str | None) -> tuple[list, int]:
+    relevant, other_image = [], 0
+    for pkg in curated["packages"]:
+        m = SECTION_RE.search(pkg.get("comment", ""))
+        sec = m.group(1) if m else ""
+        if section and not sec.startswith(section):
+            other_image += 1
+            continue
+        relevant.append(pkg)
+    return relevant, other_image
+
+
+def _print_copyleft(unseen: list) -> None:
+    copyleft = [p for p in unseen if "offer-source" in p.get("licenseComments", "")]
+    print(f"      of those, source-obligated: {len(copyleft)}")
+    if copyleft:
+        print()
+        print("  Copyleft components the scanner cannot see — why both halves exist:")
+        for p in copyleft:
+            print(f"    - {p['name']}  [{p.get('licenseDeclared','')}]")
+    if unseen and not copyleft:
+        print("    (none carry a source obligation)")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Compare a scanner SBOM with the curated one.")
     ap.add_argument("scanned", type=Path, help="SPDX JSON produced by syft")
@@ -99,20 +131,8 @@ def main() -> int:
     section = infer_section(args.scanned, args.section)
     s_pkgs = scanned.get("packages", [])
     s_names = {p["name"].lower() for p in s_pkgs}
-
-    ecos: Counter = Counter()
-    for p in s_pkgs:
-        purls = [r for r in p.get("externalRefs", []) if r.get("referenceType") == "purl"]
-        ecos[purls[0]["referenceLocator"].split(":")[1].split("/")[0] if purls else "no-purl"] += 1
-
-    relevant, other_image = [], 0
-    for pkg in curated["packages"]:
-        m = SECTION_RE.search(pkg.get("comment", ""))
-        sec = m.group(1) if m else ""
-        if section and not sec.startswith(section):
-            other_image += 1
-            continue
-        relevant.append(pkg)
+    ecos = _ecosystems(s_pkgs)
+    relevant, other_image = _relevant(curated, section)
 
     seen, unseen = [], []
     for pkg in relevant:
@@ -128,15 +148,7 @@ def main() -> int:
     print(f"    also visible to the scanner : {len(seen)}")
     print(f"    NOT visible to the scanner  : {len(unseen)}")
 
-    copyleft = [p for p in unseen if "offer-source" in p.get("licenseComments", "")]
-    print(f"      of those, source-obligated: {len(copyleft)}")
-    if copyleft:
-        print()
-        print("  Copyleft components the scanner cannot see — why both halves exist:")
-        for p in copyleft:
-            print(f"    - {p['name']}  [{p.get('licenseDeclared','')}]")
-    if unseen and not copyleft:
-        print("    (none carry a source obligation)")
+    _print_copyleft(unseen)
     print()
     print(f"  combined coverage: {len(s_names)} scanned + {len(unseen)} curated-only "
           f"= {len(s_names) + len(unseen)} distinct components")
