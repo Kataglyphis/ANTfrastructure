@@ -42,7 +42,8 @@ resolve_qnn_sdk() {
         warn "QNN: QNN_SDK_LINUX_ZIP_SHA256 empty — extracting UNVERIFIED (pin in versions.env)"
     fi
 
-    local extract_dir="${QNN_SDK_EXTRACT_DIR:-/tmp/qnn-sdk-extract}"
+    : "${QNN_SDK_EXTRACT_DIR:=/tmp/qnn-sdk-extract}"
+    local extract_dir="${QNN_SDK_EXTRACT_DIR}"
     rm -rf "$extract_dir"
     mkdir -p "$extract_dir"
     unzip -q -o "$zip" -d "$extract_dir"

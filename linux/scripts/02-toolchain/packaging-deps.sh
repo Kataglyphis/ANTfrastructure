@@ -87,7 +87,8 @@ install_apt_deps() {
     local -a pkgs=()
     local install_status=0
 
-    case "${PACKAGING_DEPS_SKIP_APT_INSTALL:-false}" in
+    : "${PACKAGING_DEPS_SKIP_APT_INSTALL:=false}"
+    case "${PACKAGING_DEPS_SKIP_APT_INSTALL}" in
         1|true|TRUE|yes|YES)
         info "Skipping apt packaging prerequisites because PACKAGING_DEPS_SKIP_APT_INSTALL=${PACKAGING_DEPS_SKIP_APT_INSTALL}"
         return 0

@@ -13,7 +13,8 @@ generate_pkgconfig() {
 
   pc_version="$(pc_numeric_version_from_ort_version "${ORT_VERSION}")"
 
-  pc_dir="${ORT_PKGCONFIG_DIR:-${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig}"
+  : "${ORT_PKGCONFIG_DIR:=${NATIVE_CPU_OUTPUT_DIR}/runtime/lib/pkgconfig}"
+  pc_dir="${ORT_PKGCONFIG_DIR}"
   pc_path="${pc_dir}/libonnxruntime.pc"
 
   mkdir -p "${pc_dir}"

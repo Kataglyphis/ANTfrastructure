@@ -84,15 +84,12 @@ DOCS_BUILD_UV_INSTALL_REQUIREMENTS_SCRIPT
 DOCS_BUILD_UV_VENV_CREATE_SCRIPT
 DOCS_BUILD_VENV_DIR
 EXECUTOR_ONLY
-FFMPEG_HOST_TOOLCHAIN_DIR
 GITHUB_ENV
 GITHUB_OUTPUT
-GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR
 IREE_ROOT_ANDROID
 LITERT_ANDROID_CONFIGURE_RETRIES
 LITERT_ROOT_ANDROID
 LLVM_BUILD_ROOT
-LLVM_CROSS_ROOT
 LLVM_CROSS_SOURCE_ROOT
 MAX_ITERATIONS_OVERRIDE
 MESON_ARGS
@@ -104,7 +101,6 @@ NUGET_PACKAGES  # NuGet's own: its package folder, a fetch cache G2 (03-media/or
 NVIDIA_VISIBLE_DEVICES
 ONNXRUNTIME_ROOT_ANDROID
 OPENCV_ROOT_ANDROID
-ORT_PKGCONFIG_DIR
 PIP_CACHE_DIR  # pip's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
 PLANNER_ONLY
 PLATFORM
@@ -112,7 +108,6 @@ PUSH_MAX_ATTEMPTS
 PUSH_RETRY_BASE_SECS
 PYTHON_IMPORT_PYTHON
 REF_NAME
-RUNTIME_USE_LOCAL_CONTEXT_CHAIN
 RUN_NUMBER
 RUST_MB_PER_JOB
 SALVAGE_TARGET_TIMEOUT
@@ -194,7 +189,6 @@ NO_CACHE_EXPORT
 # Override the QNN SDK extraction directory (resolve_qnn_sdk in the ORT build
 # lib, backlog QNN-LINUX). Default /tmp/qnn-sdk-extract; useful for testing
 # with a persistent extract dir.
-QNN_SDK_EXTRACT_DIR
 
 # D4 preflight cache-export trim (build-cross-chain.sh / disk-guard.sh).
 # CROSS_PREFLIGHT_TRIM=0 restores the pre-2026-08-31 behaviour (hint + abort).
@@ -312,7 +306,6 @@ OPENCV_ALLOW_NO_PNG
 ORT_WEB_REQUIRED
 # true skips the apt packaging prerequisites
 # (02-toolchain/packaging-deps.sh, default false).
-PACKAGING_DEPS_SKIP_APT_INSTALL
 # 1 makes probe-sccache.sh exit non-zero when any compiler probe failed
 # (02-toolchain/probe-sccache.sh, default 0 = report only).
 PROBE_STRICT

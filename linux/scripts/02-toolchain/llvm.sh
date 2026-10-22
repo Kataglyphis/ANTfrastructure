@@ -114,7 +114,8 @@ llvm_cross_backend() {
 }
 
 llvm_cross_root() {
-  printf '%s' "${LLVM_CROSS_ROOT:-/opt/llvm-cross}"
+  : "${LLVM_CROSS_ROOT:=/opt/llvm-cross}"
+  printf '%s' "${LLVM_CROSS_ROOT}"
 }
 
 llvm_cross_install_prefix() {

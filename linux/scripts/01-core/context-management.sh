@@ -85,9 +85,10 @@ runtime_pushes_intermediate_images() {
 }
 
 runtime_use_local_context_chain() {
-  case "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN:-auto}" in
+  : "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN:=auto}"
+  case "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN}" in
     auto|"") ! runtime_pushes_intermediate_images ;;
-    *) _bool_truthy "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN:-false}" ;;
+    *) _bool_truthy "${RUNTIME_USE_LOCAL_CONTEXT_CHAIN}" ;;
   esac
 }
 

@@ -95,7 +95,8 @@ prepare_cargo_target_compiler_wrapper() {
   local wrapper_name="$2"
   # gcc -B looks up bare tool names (as, ld), which live only in bare/, not in /opt/cross-bin itself.
   local cross_bindir="${3:-/opt/cross-bin/bare}"
-  local wrapper_dir="${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-target-toolchain}"
+  : "${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-target-toolchain}"
+  local wrapper_dir="${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR}"
 
   [ -n "${compiler}" ] || return 1
   [ -n "${wrapper_name}" ] || return 1
