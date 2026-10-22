@@ -12,7 +12,6 @@
 # or without them. Reviewed 2026-09-04 and KEPT: for most of them the in-repo assignment
 # is a TEST FIXTURE setting the knob for one case, which documents nothing about the
 # operator switch and vanishes with the fixture.
-ACTIONLINT_CACHE_DIR
 AGENTIC_EXECUTOR_MODEL
 AGENTIC_PLANNER_MODEL
 ANDROID_GSTREAMER_PER_JOB_MB
@@ -110,7 +109,6 @@ NVIDIA_VISIBLE_DEVICES
 ONNXRUNTIME_ROOT_ANDROID
 OPENCV_ROOT_ANDROID
 ORT_PKGCONFIG_DIR
-PACKAGE_DOCKERFILE_TARGET
 PIP_CACHE_DIR  # pip's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
 PLANNER_ONLY
 PLATFORM
@@ -249,7 +247,6 @@ ALLOW_IREE_BUILD_FAIL
 ALLOW_TORCHLESS_RUNTIME
 # 0 downgrades the parent-digest ancestry refusal to a warning
 # (01-core/runtime-build-fns.sh, default 1).
-ANCESTRY_STAMP_ENFORCE
 # Not ours: ccache's own variable, inherited from the image environment.
 # lib/cmake-build.sh only sanity-checks it for a URL and unsets it otherwise.
 CCACHE_SECONDARY_STORAGE

@@ -25,6 +25,7 @@ actionlint_asset_and_sha() {
 }
 
 actionlint_ensure() {
+  : "${ACTIONLINT_CACHE_DIR:=${TMPDIR:-/tmp}}"
   if command -v actionlint >/dev/null 2>&1; then
     ACTIONLINT_BIN="$(command -v actionlint)"
     return 0
@@ -40,7 +41,7 @@ actionlint_ensure() {
     || err "Unsupported platform for actionlint bootstrap ($(uname -s)/$(uname -m)); install actionlint on PATH instead."
   [ -n "${expected_sha}" ] || err "No pinned actionlint SHA256 for ${asset}; add one to tool-pins.env."
 
-  cache_root="${ACTIONLINT_CACHE_DIR:-${TMPDIR:-/tmp}}/actionlint-${ACTIONLINT_VERSION}"
+  cache_root="${ACTIONLINT_CACHE_DIR}/actionlint-${ACTIONLINT_VERSION}"
   bin_name="actionlint"; case "${asset}" in *windows*) bin_name="actionlint.exe" ;; esac
   ACTIONLINT_BIN="${cache_root}/${bin_name}"
 

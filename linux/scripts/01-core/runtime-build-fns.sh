@@ -330,6 +330,7 @@ runtime_resolve_app_ref() {
 }
 
 runtime_build_package_image() {
+  : "${PACKAGE_DOCKERFILE_TARGET:=package}"
   local arch="$1"
   local tag parent_image parent_context_dir
   local artifact_image artifact_context_ref artifact_context_mode package_base_stage
@@ -377,7 +378,7 @@ runtime_build_package_image() {
     "${_rb_pull}" \
     ${RUNTIME_NO_CACHE:+--no-cache} \
     --platform "linux/${arch}" \
-    --target "${PACKAGE_DOCKERFILE_TARGET:-package}" \
+    --target "${PACKAGE_DOCKERFILE_TARGET}" \
     "${_pkg_out[@]}" \
     -f "${PACKAGE_DOCKERFILE_PATH}" \
     "${build_args[@]}" \
@@ -493,6 +494,7 @@ _runtime_build_wrapper() {
 
 # Reads the stamp back: fails only on a missing or foreign run-id, warns if unreadable; ANCESTRY_STAMP_ENFORCE=0 overrides.
 runtime_assert_provenance_stamped() {
+  : "${ANCESTRY_STAMP_ENFORCE:=1}"
   local tag="$1" rc=0 value="" why=""
 
   is_dry_run && return 0
@@ -514,7 +516,7 @@ runtime_assert_provenance_stamped() {
       ;;
   esac
 
-  if [ "${ANCESTRY_STAMP_ENFORCE:-1}" = "0" ]; then
+  if [ "${ANCESTRY_STAMP_ENFORCE}" = "0" ]; then
     warn "[ancestry] ${tag} ${why} (ANCESTRY_STAMP_ENFORCE=0, continuing)"
     return 0
   fi
