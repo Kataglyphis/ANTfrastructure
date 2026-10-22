@@ -191,6 +191,9 @@ cleanup. The browser/CDP behavior remains covered by the fixture sites below.
 Real Chrome launches terminate their detached process group before reaping the main
 child; standalone child fixtures keep direct termination as their default. Signal
 handlers retain best-effort emergency cleanup, and DevTools calls fail after 30 seconds.
+If endpoint/page discovery, the WebSocket or initial DevTools calls fail before return, the launcher
+cleans its group, profile and signal hooks itself. Cleanup failures retain the startup
+error as well and remain fatal; fake-CDP cases cover this otherwise unowned launch path.
 
 Why (CON121, 2026-10-20): every Sphinx site had dead or unreachable toggles and no gate
 saw it.

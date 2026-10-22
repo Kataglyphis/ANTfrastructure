@@ -1,6 +1,14 @@
 [
  {
-  "id": "parallel.harvest-failure-is-fatal",
+  "id": "docs-site.chrome-close-failed-initialization",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    try { await close(); }",
+  "replace": "    try { /* missing initialization cleanup */ }",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "a failed initial DevTools call rejects before the browser reaches its caller, so launch must terminate its own process group, remove its profile and unregister signal handlers"
+ },
+ {
+  "id": "harvest.failure-is-fatal",
   "target": "linux/scripts/01-core/parallel-loop.sh",
   "find": "    parallel_loop_harvest \"${flagdir}\" || failed=1",
   "replace": "    parallel_loop_harvest \"${flagdir}\" || true",

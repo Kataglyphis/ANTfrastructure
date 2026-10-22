@@ -79,8 +79,8 @@ t_assert_ok test -n "$(_pin HADOLINT_HACKAGE_INDEX_STATE)"
 t_case "lint-shell.sh bootstraps the same riscv64 asset on a riscv64 host"
 t_assert_contains "$(cat "${SCRIPTS}/lint-shell.sh")" 'shellcheck-%s.linux.riscv64.tar.xz %s\n'"' \"\${SHELLCHECK_VERSION}\" \"\${SHELLCHECK_LINUX_RISCV64_SHA256:-}\""
 
-t_case "bump_versions.py refreshes every new pin with its version"
-_bv="$(cat "${ROOT}/docs/scripts/bump_versions.py")"
+t_case "the bump modules refresh every new pin with its version"
+_bv="$(cat "${ROOT}"/docs/scripts/bump_*.py)"
 t_assert_contains "${_bv}" '("SHELLCHECK_LINUX_RISCV64_SHA256", f"shellcheck-{v}.linux.riscv64.tar.xz")'
 t_assert_contains "${_bv}" 'extras["HADOLINT_SOURCE_SHA256"]'
 t_assert_contains "${_bv}" 'extras["HADOLINT_HACKAGE_INDEX_STATE"]'

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real Node child exits and injected exhausted cleanup failures; no browser/CDP coverage.
+# Real Node child exits and fake-CDP startup failures; no real browser/protocol coverage.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

@@ -658,6 +658,8 @@ Shared Chrome cleanup is asynchronous: callers await child exit and profile clea
 an immediate process-exit hook only kills. Cleanup failures remain fatal, and every
 browser finishes cleanup before one peer's failure is reported
 ([docs-sites.md](docs/docs-sites.md#the-sidebar-toggle-check)).
+The launcher owns cleanup until it returns: endpoint/page discovery, WebSocket
+connection and initial DevTools failures must release the group, profile and hooks.
 
 `linux/host-config/ghost-watch.sh` is the net under all four: an hourly user timer that reports
 orphans heavy on CPU or memory or shaped like test leftovers

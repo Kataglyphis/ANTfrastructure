@@ -6,6 +6,7 @@ const { EventEmitter, once } = require('node:events');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const vm = require('node:vm');
 const { test } = require('node:test');
 const { closeChrome, closeBrowsers } = require('../check-docs-sidebars.js');
 
@@ -122,3 +123,55 @@ test('all browsers finish cleanup before a peer failure is reported', async () =
   assert.ok(finished);
   assert.deepEqual(browsers, []);
 });
+
+for (const phase of ['send', 'websocket', 'endpoint', 'page', 'cleanup']) {
+  test(`failed browser initialization cleans its unreturned browser: ${phase}`, async () => {
+    const cleanupFails = phase === 'cleanup';
+    const proc = Object.assign(new EventEmitter(), { pid: 424242, exitCode: null, signalCode: null });
+    const initial = new Error('initial DevTools transport failed');
+    const cleanup = new Error('profile removal failed');
+    let kills = 0, removals = 0;
+    const fakeProcess = Object.assign(new EventEmitter(), {
+      kill(pid) {
+        assert.equal(pid, -proc.pid);
+        kills++;
+        proc.signalCode = 'SIGKILL';
+        queueMicrotask(() => proc.emit('exit'));
+      },
+    });
+    const fakeFs = {
+      mkdtempSync: () => '/tmp/fake-chrome', readFileSync: () => phase === 'endpoint' ? '' : '12345\n',
+      rmSync() { removals++; if (cleanupFails) throw cleanup; },
+    };
+    class FakeSocket {
+      constructor() { queueMicrotask(() => phase === 'websocket' ? this.onerror(initial) : this.onopen()); }
+      send() { throw initial; }
+      close() {}
+    }
+    const filename = path.resolve(__dirname, '../check-docs-sidebars.js');
+    const context = {
+      module: { exports: {} },
+      require: (name) => name === 'node:fs' ? fakeFs : name === 'node:child_process' ? { spawn: () => proc } : require(name),
+      process: fakeProcess, WebSocket: FakeSocket, clearTimeout,
+      setTimeout: (fn, ms) => {
+        if (ms === 100) { queueMicrotask(fn); return; }
+        assert.ok(ms === 30000 || ms === 5000);
+        return setTimeout(fn, 10);
+      },
+      fetch: async () => ({ json: async () => phase === 'page' ? [] : [{ type: 'page', webSocketDebuggerUrl: 'ws://fake' }] }),
+    };
+    vm.runInNewContext(fs.readFileSync(filename, 'utf8'), context, { filename });
+    await assert.rejects(context.module.exports.launch('fake-chrome'), (error) => {
+      if (phase === 'endpoint') return /started no DevTools endpoint in 60 s/.test(error.message);
+      if (phase === 'page') return /opened no page in 30 s/.test(error.message);
+      if (!cleanupFails) return error === initial;
+      assert.deepEqual(Array.from(error.errors), [initial, cleanup]);
+      assert.match(error.message, /initial DevTools transport failed.*profile removal failed/);
+      return true;
+    });
+    assert.equal(kills, 1);
+    assert.equal(removals, 1);
+    assert.equal(fakeProcess.listenerCount('SIGINT'), 0);
+    assert.equal(fakeProcess.listenerCount('SIGTERM'), 0);
+  });
+}

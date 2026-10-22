@@ -28,6 +28,8 @@
   WebGPU callers use the asynchronous cleanup, avoiding the observed `ENOTEMPTY` race.
   Upstream process-group termination and signal cleanup remain intact, and every
   DevTools call retains its 30-second response bound.
+  Failed endpoint, page, WebSocket and DevTools startup also clean their browser; combined
+  startup and cleanup failures retain both diagnostics and cannot return success.
 - Parallel builds reject a failed result harvest even when their workers succeeded.
   Failed, partial or empty worker-pin reads retain the parent pin and cannot mark
   that stage built; the regression runs through an `errexit`-disabled caller.
