@@ -58,6 +58,18 @@ append_available_packages() {
   fi
 }
 
+# Optional names: absence is expected (an LLVM major Ubuntu does not ship), so nothing is logged.
+append_optional_available_packages() {
+  local array_name="$1"
+  shift
+
+  local pkg
+  for pkg in "$@"; do
+    apt_package_exists "${pkg}" && append_unique_packages "${array_name}" "${pkg}"
+  done
+  return 0
+}
+
 packaging_prerequisite_packages() {
   local array_name="$1"
 

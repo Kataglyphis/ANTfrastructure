@@ -597,12 +597,27 @@ _runtime_smoke_wait() {
   return "${rc}"
 }
 
+# A long step prints its elapsed minutes every 10 min after the first 15, so a wait reads as progress (CON157).
+_runtime_heartbeat() {
+  local step="$1" arch="$2" t0="$3" s
+  trap 'kill "${s:-}" 2>/dev/null; exit 0' TERM INT
+  sleep "${RUNTIME_HEARTBEAT_FIRST_SECS:-900}" & s=$!; wait "${s}" || exit 0
+  while :; do
+    log "[heartbeat ${arch} ${step}] elapsed $(( ($(date +%s) - t0) / 60 )) min"
+    sleep "${RUNTIME_HEARTBEAT_EVERY_SECS:-600}" & s=$!; wait "${s}" || exit 0
+  done
+}
+
 # <step> <arch> <cmd...>: logs the step's wall time. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
 _runtime_timed() {
-  local step="$1" arch="$2" t0 rc=0
+  local step="$1" arch="$2" t0 rc=0 hb
   shift 2
   t0="$(date +%s)"
+  _runtime_heartbeat "${step}" "${arch}" "${t0}" &
+  hb=$!
   "$@" || rc=$?
+  kill "${hb}" 2>/dev/null || true
+  wait "${hb}" 2>/dev/null || true
   log "[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}"
   return "${rc}"
 }

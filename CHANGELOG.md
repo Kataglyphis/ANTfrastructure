@@ -12,6 +12,22 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — Linux container backlog: four items closed (CON153 default, CON154–157)
+
+- **CON153** `download_file` retries after 20 s by default (was 2 s), so one retry outwaits a short GitHub
+  outage. The asset mirror stays open.
+- **CON154** the riscv64 smoke probes WASM SIMD once. Without it: one `SKIP` line, no `FAILED` per module;
+  a corrupt module where SIMD exists still fails. `test-smoke-wasm-simd-skip.sh`.
+- **CON155** the rustup probe's pipeline failure no longer logs as `[ERROR]`; the LLVM majors Ubuntu lacks
+  (`clang-23`, …) are optional and silent when absent. `test-package-lists-optional.sh`.
+- **CON156** riscv64 asks apt for `nodejs` and checks the version against the pin, instead of an exact
+  `-1~ubuntu26.04.1` revision ports never publishes.
+- **CON157** `_runtime_timed` prints `[heartbeat <arch> <step>] elapsed <m> min` every 10 min after the first
+  15, and stops when the step ends. `test-runtime-heartbeat.sh`.
+
+Verified by the new tests only; the next chain run confirms the `[ERROR]`, `E: Version` and `FAILED` lines are
+gone and the heartbeat appears on a long riscv64 stage.
+
 ## 2026-10-22 — riscv64's torch venv ships setuptools
 
 - The riscv64 runtime lane skips `uv sync` (the lock would build torch under QEMU), so torch's
