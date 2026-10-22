@@ -137,7 +137,8 @@ smoke_resolve_bin() {
 
 # ELF magic test; a missing or unreadable file is a clean "no", not a set -e death.
 smoke_is_elf() {
-  [ "$(head -c4 "$1" 2>/dev/null | tail -c3 || true)" = "ELF" ]
+  if [ "$(head -c4 "$1" 2>/dev/null | tail -c3 || true)" = "ELF" ]; then return 0; fi
+  return 1
 }
 
 # Present but not runnable here is normal in the build sandbox (INFO, never PASS); a non-ELF file fails.

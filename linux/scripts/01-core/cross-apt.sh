@@ -303,7 +303,8 @@ cross_package_has_install_candidate() {
 
   # Not `apt-cache show`: it returns metadata for packages apt cannot install here.
   candidate="$(apt-cache policy "${pkg}" 2>/dev/null | awk '/^[[:space:]]*Candidate:/ { print $2; exit }')"
-  [ -n "${candidate}" ] && [ "${candidate}" != "(none)" ]
+  if [ -n "${candidate}" ] && [ "${candidate}" != "(none)" ]; then return 0; fi
+  return 1
 }
 
 cross_resolve_target_package() {

@@ -559,7 +559,8 @@ smoke_test_ffmpeg() {
 
     echo "=== FFmpeg smoke test complete (${failures} failure(s)) ==="
     echo ""
-    [ "${failures}" -eq 0 ]
+    if [ "${failures}" -eq 0 ]; then return 0; fi
+    return 1
 }
 
 # Main

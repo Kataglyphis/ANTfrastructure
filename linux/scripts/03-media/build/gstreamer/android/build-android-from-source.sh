@@ -348,7 +348,8 @@ cerbero_state_is_mounted() {
     local dev_state dev_parent
     dev_state="$(stat -c %d "${CERBERO_HOME}" 2>/dev/null)" || return 1
     dev_parent="$(stat -c %d "$(dirname "${CERBERO_HOME}")" 2>/dev/null)" || return 1
-    [ -n "${dev_state}" ] && [ "${dev_state}" != "${dev_parent}" ]
+    if [ -n "${dev_state}" ] && [ "${dev_state}" != "${dev_parent}" ]; then return 0; fi
+    return 1
 }
 
 # Contents only: rm -rf on the mountpoint itself fails EBUSY after emptying it and kills the run.

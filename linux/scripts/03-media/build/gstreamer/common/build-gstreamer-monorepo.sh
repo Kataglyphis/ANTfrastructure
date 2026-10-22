@@ -506,7 +506,8 @@ patch_csound_sys_char_signedness() {
       }
     fi
   done < <(find "${cargo_home}/registry/src" -path '*csound-sys-*/src/*.rs' 2>/dev/null || true)
-  [ "${patched}" = "1" ]
+  if [ "${patched}" = "1" ]; then return 0; fi
+  return 1
 }
 
 _gst_monorepo_compile() {

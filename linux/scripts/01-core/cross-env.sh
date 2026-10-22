@@ -25,11 +25,13 @@ cross_foreign_arch_ports_mirror_url() {
 }
 
 cross_mode_requested() {
-  [ "${BUILD_MODE:-native}" = "cross" ]
+  if [ "${BUILD_MODE:-native}" = "cross" ]; then return 0; fi
+  return 1
 }
 
 cross_target_is_foreign() {
-  [ "$(build_arch_oci)" != "$(arch_oci)" ]
+  if [ "$(build_arch_oci)" != "$(arch_oci)" ]; then return 0; fi
+  return 1
 }
 
 # The canonical cross-build guard; is_cross and cross_build_enabled are aliases for existing callers only.
