@@ -178,6 +178,17 @@ which skips only where the image sets no `CHROME_EXECUTABLE` (riscv64).
 `CHECK_DOCS_SIDEBARS_JOBS` (default 4, at most the CPU count) is how many Chromes check pages
 and widths at once; the report is the same, in page order. `1` checks them in turn (CON126).
 
+The shared Chrome launcher waits up to five seconds for child exit after sending
+`SIGKILL`, then removes its profile with bounded filesystem retries. A still-running
+profile writer previously caused `ENOTEMPTY` after a successful page check. Sidebar,
+live-site and WebGPU callers await cleanup; exhausted retries, permission failures
+or a child that does not exit remain fatal. All browsers finish cleanup before a
+peer's failure is reported. The immediate process-exit handler only sends the kill.
+
+`test-chrome-close.sh` uses real Node child processes and injected cleanup failures
+to prove exit-before-removal, bounded retry policy, timeout, fatal errors and peer
+cleanup. The browser/CDP behavior remains covered by the fixture sites below.
+
 Why (CON121, 2026-10-20): every Sphinx site had dead or unreachable toggles and no gate
 saw it.
 

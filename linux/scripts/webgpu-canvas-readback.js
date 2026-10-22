@@ -124,8 +124,8 @@ async function main() {
     frame = answer.result.result.value || { error: 'the read-back returned nothing' };
     if (screenshot) fs.writeFileSync(screenshot, Buffer.from((await browser.send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
   } finally {
-    browser.close();
-    if (server) server.close();
+    try { await browser.close(); }
+    finally { if (server) server.close(); }
   }
   const why = verdict(frame, minColours);
   const shape = frame.error ? '' : ` ${frame.width}x${frame.height} ${frame.format}, ${frame.colours} colours (${frame.top.join(', ')})`;

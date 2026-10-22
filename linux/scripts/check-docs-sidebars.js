@@ -70,6 +70,32 @@ function serve(root) {
   return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
+// Chrome may still write its profile after kill() returns; reaping precedes bounded filesystem retries.
+async function closeChrome(ws, proc, profile, timeoutMs = 5000) {
+  ws.close();
+  let timer, onExit;
+  const exited = proc.exitCode !== null || proc.signalCode !== null
+    ? Promise.resolve()
+    : new Promise((resolve) => { onExit = resolve; proc.once('exit', onExit); });
+  try {
+    proc.kill('SIGKILL');
+    await Promise.race([exited, new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Chrome did not exit within ${timeoutMs} ms; profile retained at ${profile}`)), timeoutMs);
+    })]);
+  } finally {
+    clearTimeout(timer);
+    if (onExit) proc.removeListener('exit', onExit);
+  }
+  fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+}
+
+// Every launched browser must finish cleanup even when one cleanup fails.
+async function closeBrowsers(browsers) {
+  const outcomes = await Promise.allSettled(browsers.splice(0).map((browser) => browser.close()));
+  const failed = outcomes.find((outcome) => outcome.status === 'rejected');
+  if (failed) throw failed.reason;
+}
+
 // launch(chrome, gpuFlags, onEvent): webgpu-canvas-readback.js passes SwiftShader's WebGPU flags, check-live-site.js an event sink.
 async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
@@ -104,11 +130,12 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
     if (m.method && onEvent) onEvent(m);
   };
   const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-  const close = () => { ws.close(); proc.kill('SIGKILL'); fs.rmSync(profile, { recursive: true, force: true }); };
+  const close = () => closeChrome(ws, proc, profile);
+  const kill = () => proc.kill('SIGKILL');
   await send('Page.enable');
   await send('Runtime.enable');
   const product = (await send('Browser.getVersion')).result.product;
-  return { send, loaded, thrown, close, product };
+  return { send, loaded, thrown, close, kill, product };
 }
 
 // Runs in the page: the sidebar's state and the one toggle a user can see.
@@ -296,7 +323,7 @@ async function main() {
   const browsers = [];
   let product = '';
   // fail() exits without the finally below, and an orphaned headless Chrome outlives its run.
-  process.on('exit', () => { for (const b of browsers.splice(0)) b.close(); });
+  process.on('exit', () => { for (const b of browsers.splice(0)) b.kill(); });
   try {
     for (let i = 0; i < Math.min(Number(askedJobs), jobs.length); i++) browsers.push(await launch(chrome));
     product = browsers[0].product;
@@ -308,8 +335,8 @@ async function main() {
       }
     }));
   } finally {
-    for (const b of browsers.splice(0)) b.close();
-    if (server) server.close();
+    try { await closeBrowsers(browsers); }
+    finally { if (server) server.close(); }
   }
   const lines = found.flat();
   const report = jobs.flatMap((job, j) => [...(j % viewports.length ? [] : [`  ${job.page}`]), ...found[j].map((l) => `    ${l}`)]);
@@ -319,4 +346,4 @@ async function main() {
 }
 
 if (require.main === module) main().catch((e) => fail(e.stack || String(e)));
-else module.exports = { findChrome, launch, serve, sleep };
+else module.exports = { findChrome, launch, serve, sleep, closeChrome, closeBrowsers };

@@ -1,5 +1,37 @@
 [
  {
+  "id": "docs-site.chrome-close-reaps-before-profile",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "await Promise.race([exited, new Promise",
+  "replace": "await Promise.race([Promise.resolve(), new Promise",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "kill returns before the child exits; removing a profile while its writer is still alive reproduced ENOTEMPTY in the real sidebar gate"
+ },
+ {
+  "id": "docs-site.chrome-close-bounded-retries",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "maxRetries: 10, retryDelay: 100",
+  "replace": "maxRetries: 0, retryDelay: 100",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "remaining Chrome profile writers need bounded filesystem retry after the main process exits, rather than treating force as an ENOTEMPTY retry"
+ },
+ {
+  "id": "docs-site.chrome-close-failure-is-fatal",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "  fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });",
+  "replace": "  try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "exhausted cleanup retries or unrelated filesystem errors must reject the caller rather than hiding a failed cleanup behind a green page report"
+ },
+ {
+  "id": "docs-site.chrome-close-awaits-every-peer",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "const outcomes = await Promise.allSettled(",
+  "replace": "const outcomes = await Promise.all(",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "one browser's cleanup failure must not report before the other launched browsers finish their own cleanup"
+ },
+ {
   "id": "python.app-bundle.exclude-provider-before-resolver",
   "target": "linux/scripts/06-packaging/python-app-bundle.sh",
   "find": "export_args+=(--no-emit-package \"${provider}\")",

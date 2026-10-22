@@ -638,6 +638,8 @@ transcript. Each was a child that outlived whatever started it. So:
    chain, a watcher) says so in its handoff, by unit name.
 2. **A test fixture ends on its own.** A spin or a sleep has a bound (`while [ "${SECONDS}" -lt 60 ]`,
    `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
+   Fixtures unrelated to ref resolution use a synthetic immutable app identity;
+   moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run.
 3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
    `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
    `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
@@ -647,6 +649,11 @@ transcript. Each was a child that outlived whatever started it. So:
    `test-mutation-gate.sh`).
 4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
    its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
+
+Shared Chrome cleanup is asynchronous: callers await child exit and profile cleanup;
+an immediate process-exit hook only kills. Cleanup failures remain fatal, and every
+browser finishes cleanup before one peer's failure is reported
+([docs-sites.md](docs/docs-sites.md#the-sidebar-toggle-check)).
 
 `linux/host-config/ghost-watch.sh` is the net under all four: an hourly user timer that reports
 orphans heavy on CPU or memory or shaped like test leftovers

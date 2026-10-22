@@ -95,7 +95,7 @@ t_assert_eq 3 "$(find calls -name '*.txt' | wc -l | tr -d ' ')" "no later index 
 t_assert_contains "$(cat "${SUBJECT}")" 'install_python_app_packages "${PY}" "${app_wheel}" "${ort_wheel}" "${WORK_DIR}" "${EXTRAS[@]}"' "the real bundle invokes the helper"
 
 t_case "an export failure never reaches the resolver"
-FAIL_AT=export
+FAIL_AT="export"
 t_assert_eq 1 "$(_run)" "export failure propagated"
 t_assert_eq 1 "$(find calls -name '*.txt' | wc -l | tr -d ' ')" "no install after export failure"
 
