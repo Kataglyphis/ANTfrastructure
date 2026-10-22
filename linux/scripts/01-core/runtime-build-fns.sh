@@ -38,7 +38,7 @@ _runtime_registry_digest() {
 runtime_push_tag() {
   local tag="$1"
   local max_attempts="${PUSH_MAX_ATTEMPTS:-4}" base_secs="${PUSH_RETRY_BASE_SECS:-15}"
-  local attempt=1 rc=0 log_file="" local_digest remote_digest
+  local attempt=1 rc=0 log_file="" local_digest remote_digest delay
   # A restart re-pushes what the registry already holds: same manifest digest, nothing to upload (CON158).
   local_digest="$(_runtime_local_digest "${tag}")"
   remote_digest="$(_runtime_registry_digest "${tag}")"
@@ -52,18 +52,16 @@ runtime_push_tag() {
     rc=0
     _runtime_push_attempt "${tag}" "${log_file:-/dev/null}" || rc=$?
     [ "${rc}" -eq 0 ] && break
-    if [ -n "${log_file}" ] \
-       && declare -F _cross_stage_push_error_is_transient >/dev/null 2>&1 \
-       && ! _cross_stage_push_error_is_transient "${log_file}"; then
-      warn "[push] ${tag} failed with a PERMANENT error (not a registry/network flake) — not retrying"
+    if ! delay="$(push_retry_delay "${attempt}" "${max_attempts}" "${base_secs}" "${log_file}")"; then
+      if [ "${attempt}" -lt "${max_attempts}" ]; then
+        warn "[push] ${tag} failed with a PERMANENT error (not a registry/network flake) — not retrying"
+      else
+        warn "[push] ${tag} failed after ${attempt} attempts"
+      fi
       break
     fi
-    if [ "${attempt}" -ge "${max_attempts}" ]; then
-      warn "[push] ${tag} failed after ${attempt} attempts"
-      break
-    fi
-    warn "[push] ${tag} attempt ${attempt}/${max_attempts} hit a transient registry/network error; retrying in ${base_secs}s"
-    sleep "${base_secs}"
+    warn "[push] ${tag} attempt ${attempt}/${max_attempts} hit a transient registry/network error; retrying in ${delay}s"
+    sleep "${delay}"
     attempt=$(( attempt + 1 ))
   done
 
@@ -581,6 +579,8 @@ _runtime_push_wrapper_tag() {
 runtime_build_chain() {
   local arch="$1"
   local rootfs_dir="${2:-}"
+  # This arch's BuildKit output goes to its own log; the chain log keeps the status lines.
+  RUN_NERDCTL_LOG="$(cross_stage_log_redirect "runtime-${arch}")"
 
   # Explicit || return 1 on every step: run_parallel_arch_loop's `if !` disables errexit for the whole tree.
   _runtime_timed base "${arch}" runtime_build_base_image "${arch}" || return 1

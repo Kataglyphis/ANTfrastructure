@@ -40,6 +40,17 @@ _cross_stage_push_error_is_transient() {
     'use of closed network connection|failed to do request|failed to copy|error reading from server|unexpected EOF|i/o timeout|TLS handshake timeout|connection reset by peer|connection refused|temporarily unavailable|(500|502|503|504) (Internal Server Error|Bad Gateway|Service Unavailable|Gateway Time-?out)|too many requests|toomanyrequests|(status|code):? ?429([^0-9]|$)|could not resolve host|temporary failure in name resolution|name or service not known|network is unreachable'
 }
 
+# push_retry_delay <attempt> <max> <base> <log>: the linear backoff, or 1 when no retry may follow (both push paths).
+push_retry_delay() {
+  local attempt="$1" max="$2" base="$3" log_file="${4:-}"
+  [ "${attempt}" -lt "${max}" ] || return 1
+  if declare -F _cross_stage_push_error_is_transient >/dev/null 2>&1 \
+     && ! _cross_stage_push_error_is_transient "${log_file}"; then
+    return 1
+  fi
+  printf '%s' "$(( attempt * base ))"
+}
+
 # Salvage writes GBs for stages that rebuild anyway: skip below SALVAGE_MIN_FREE_GB (0 = always salvage).
 _cross_salvage_disk_ok() {
   local cache_dir="${1:-}" free_gb
@@ -298,22 +309,22 @@ _cross_stage_build_impl() {
   local _attempt=1 _rc=0 _delay _regcache_fails=0
   while :; do
     if [ -n "${log_file}" ]; then
-      # A real pipe, so the shell waits for tee and a fast failure's tail still reaches the log.
-      run "${build_cmd[@]}" 2>&1 | tee -a "${log_file}"
-      _rc="${PIPESTATUS[0]}"
+      # BuildKit's output stays in the stage log; the chain log gets the status and the tail of a failure.
+      run "${build_cmd[@]}" >> "${log_file}" 2>&1
+      _rc=$?
+      log "[build] ${label}: rc=${_rc} (output in ${log_file})"
+      [ "${_rc}" -eq 0 ] || tail -n 30 "${log_file}" | sed 's/^/  | /'
     else
       run "${build_cmd[@]}"
       _rc=$?
     fi
     [ "${_rc}" -eq 0 ] && return 0
-    if [ "${_attempt}" -ge "${_max_attempts}" ] \
-       || ! _cross_stage_push_error_is_transient "${log_file}"; then
+    if ! _delay="$(push_retry_delay "${_attempt}" "${_max_attempts}" "${PUSH_RETRY_BASE_SECS:-15}" "${log_file}")"; then
       _cross_build_salvage_exports "${dockerfile}" "${_cache_dir}" "${_cache_slug}" \
         extra common_args
       return "${_rc}"
     fi
     _cross_build_drop_registry_cache_after_flake build_cmd _regcache_fails "${log_file}"
-    _delay="$(( _attempt * ${PUSH_RETRY_BASE_SECS:-15} ))"
     warn "Push attempt ${_attempt}/${_max_attempts} for ${tag} hit a transient registry/network error; retrying in ${_delay}s (built layers are cached, only the push repeats)"
     sleep "${_delay}"
     _attempt="$(( _attempt + 1 ))"

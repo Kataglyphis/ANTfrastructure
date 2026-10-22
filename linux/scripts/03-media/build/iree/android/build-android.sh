@@ -6,7 +6,8 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(dirname "${BASH_SOURCE[0]}")/../../android-build-preamble.sh"
 
-warn() { printf 'WARNING: %s\n' "$*" >&2; }
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/logging.sh"
 
 android_build_preamble_init "Android IREE build" "${ANDROID_API_LEVEL:-34}"
 

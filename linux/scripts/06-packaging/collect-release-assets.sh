@@ -25,10 +25,8 @@ USAGE
   exit 2
 }
 
-die() {
-  printf '%s\n' "$*" >&2
-  exit 1
-}
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/../01-core/logging.sh"
 
 VERSION="" STRICT=0 GAVE=0 OUT="" SCRATCH=""
 # build-docs.yml uploads the site in the same run as the release.

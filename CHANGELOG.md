@@ -12,6 +12,19 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — review refactors: one push retry policy, a status-only chain log, the logging helper
+
+- **Push retries:** `push_retry_delay` (cross-stage-build.sh) decides both push paths. The backoff is linear
+  (attempt x base) on the runtime path too; it was a constant 15 s there. Permanent errors and exhausted
+  attempts stop as before. `test-push-retry-delay.sh`.
+- **Build output:** a cross stage writes BuildKit's output to `build-logs/<stage>.log`, and the runtime arch
+  to `build-logs/runtime-<arch>.log`. The chain log keeps the `[build]` status line per attempt and the last
+  30 lines of a failure. `test-build-output-routing.sh`.
+- **`--max-parallel-archs`:** the usage said "default: 4"; the code takes nproc. Fixed in both usage texts.
+- **Logging:** `riscv64-sysroot.sh`, `build-android.sh` and `collect-release-assets.sh` source `logging.sh`.
+  The other standalone helpers keep their output contracts; see `docs/refactoring-backlog.md` RV3.
+- **Gates:** the headers of `chain-latest.sh` and `layer-audit.py` are one line each.
+
 ## 2026-10-22 — the chain starts from one profile; gates alone; the wrapper timer; a layer audit
 
 - `chain-latest.sh` and `chain-latest.env` start `:latest` as a systemd user unit bounded by `RuntimeMaxSec`.
