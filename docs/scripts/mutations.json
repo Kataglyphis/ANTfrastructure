@@ -2058,8 +2058,8 @@
  {
   "id": "python-lint.heredoc-python-decision",
   "target": "linux/scripts/extract_embedded_python.py",
-  "find": "            except SyntaxError:\n                continue",
-  "replace": "            except SyntaxError:\n                pass",
+  "find": "        except SyntaxError:\n            continue",
+  "replace": "        except SyntaxError:\n            pass",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "the parse check is what keeps non-Python out: without it a cat'ed TPL_PY_* config template is emitted as Python and reddens the gate on a file that was never Python"
  },
