@@ -7,7 +7,7 @@ arch_loop_flag_prefix() {
   printf '%s/%s' "${TMPDIR:-/tmp}" "$1"
 }
 
-# Parallel mode: one background worker per arch, at most <max> at once; the waits are in _parallel_arch_collect's caller.
+# Parallel mode: one background worker per arch, at most <max> at once; returns after every worker has exited.
 _parallel_arch_loop() {
   local fn_name="$1" max_parallel="$2" flagdir="$3"
   shift 3
