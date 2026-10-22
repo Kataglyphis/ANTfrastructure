@@ -101,8 +101,7 @@ runtime_prepare_local_context_chain() {
   RUNTIME_CONTEXT_WORKDIR="$(mktemp -d "${RUNTIME_CONTEXT_ROOT}/runtime-flow.XXXXXX")"
 }
 
-# _context_sweep_orphaned <root> <glob> <keep_hours> <live> <label>: a hard-killed run leaks its whole workdir, so
-# reclaim the trees older than the cutoff (age-based: a concurrent chain's young workdir survives; <live> is ours).
+# A hard-killed run leaks its workdir; age-based, so a concurrent chain's young workdir survives.
 _context_sweep_orphaned() {
   local root="$1" glob="$2" keep_hours="$3" live="$4" label="$5"
   local d freed=0
@@ -117,7 +116,6 @@ _context_sweep_orphaned() {
   [ "${freed}" -eq 0 ] || log "[context] reclaimed ${freed} orphaned ${label} tree(s)"
 }
 
-# _context_cleanup_workdir <var>: removes the workdir a run recorded in <var>, then clears it.
 _context_cleanup_workdir() {
   local -n _workdir="$1"
   if [ -n "${_workdir:-}" ] && [ -d "${_workdir}" ]; then

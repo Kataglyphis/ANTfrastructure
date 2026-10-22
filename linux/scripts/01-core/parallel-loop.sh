@@ -7,7 +7,6 @@ arch_loop_flag_prefix() {
   printf '%s/%s' "${TMPDIR:-/tmp}" "$1"
 }
 
-# Parallel mode: one background worker per arch, at most <max> at once; returns after every worker has exited.
 _parallel_arch_loop() {
   local fn_name="$1" max_parallel="$2" flagdir="$3"
   shift 3
@@ -30,7 +29,6 @@ _parallel_arch_loop() {
   done
 }
 
-# Parallel mode, after the waits: name the arches whose workers left a failure flag, then run the caller's harvest.
 _parallel_arch_collect() {
   local flagdir="$1" f failed=0
   for f in "${flagdir}"/failed-*; do
@@ -46,7 +44,6 @@ _parallel_arch_collect() {
   return "${failed}"
 }
 
-# Sequential mode: arches run one after another; a failure is named at once, and fail-fast stops the loop there.
 _serial_arch_loop() {
   local fn_name="$1" arch failed=0
   shift
