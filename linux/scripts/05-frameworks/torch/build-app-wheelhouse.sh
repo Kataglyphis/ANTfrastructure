@@ -459,34 +459,43 @@ _torch_detect_system_sleef() {
 }
 
 # pip wheel, not setup.py bdist_wheel: PyTorch 2.14 moved to scikit-build-core and removed that path.
-_torch_run_setup_py() {
+_wheelhouse_run_setup_py() {
+    local label="$1" env_fn="$2"
     (
         cd "${src_dir}" && \
         export CMAKE_GENERATOR=Ninja && \
         export CMAKE_ARGS="${cmake_args_string}" && \
         { cross_toolchain_file="$(write_cross_cmake_toolchain_file || true)"; \
-          [ -n "${cross_toolchain_file}" ] || { warn "no cross toolchain file for torch; cmake would configure a NATIVE build with the cross compiler"; return 1; }; \
+          [ -n "${cross_toolchain_file}" ] || { warn "no cross toolchain file for ${label}; cmake would configure a NATIVE build with the cross compiler"; return 1; }; \
           export CMAKE_TOOLCHAIN_FILE="${cross_toolchain_file}"; } && \
         export _PYTHON_HOST_PLATFORM="${wheel_platform}" && \
         if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
-        export PYTHON_EXECUTABLE="${BUILD_PYTHON}" Python_EXECUTABLE="${BUILD_PYTHON}" Python3_EXECUTABLE="${BUILD_PYTHON}" && \
-        export MAX_JOBS="${MAX_JOBS}" && \
-        export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}" CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-64G}" CCACHE_COMPRESS=1 && \
-        export BLAS=OpenBLAS USE_NUMPY=1 && \
-        export USE_CUDA=0 USE_CUDNN=0 USE_CUSPARSELT=0 USE_CUDSS=0 USE_CUFILE=0 USE_ROCM=0 USE_XPU=0 && \
-        export USE_DISTRIBUTED=0 USE_GLOO=0 USE_MPI=0 USE_TENSORPIPE=0 USE_NCCL=0 && \
-        export BUILD_TEST=0 BUILD_BINARY=0 USE_KINETO=0 && \
-        export USE_FBGEMM=0 USE_MKLDNN=0 USE_NNPACK=0 USE_QNNPACK=0 USE_PYTORCH_QNNPACK=0 USE_XNNPACK=0 && \
-        export USE_SYSTEM_SLEEF="${use_system_sleef}" && \
-        # No OpenMP: the riscv64 cross GCC's libgomp is not reliably coinstallable in the sysroot.
-        export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0 && \
-        export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include" && \
-        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include" && \
+        "${env_fn}" && \
         "${BUILD_PYTHON}" -m pip install --quiet --disable-pip-version-check \
             "scikit-build-core>=1.0" "setuptools>=77.0.0,<82" numpy "packaging>=24.2" pyyaml && \
         "${BUILD_PYTHON}" -m pip wheel --no-build-isolation --no-deps \
             --wheel-dir "${dist_dir}" .
     )
+}
+
+# No OpenMP: the riscv64 cross GCC's libgomp is not reliably coinstallable in the sysroot.
+_torch_build_env() {
+    export PYTHON_EXECUTABLE="${BUILD_PYTHON}" Python_EXECUTABLE="${BUILD_PYTHON}" Python3_EXECUTABLE="${BUILD_PYTHON}"
+    export MAX_JOBS="${MAX_JOBS}"
+    export CCACHE_DIR="${CCACHE_DIR:-/var/cache/ccache}" CCACHE_MAXSIZE="${CCACHE_MAXSIZE:-64G}" CCACHE_COMPRESS=1
+    export BLAS=OpenBLAS USE_NUMPY=1
+    export USE_CUDA=0 USE_CUDNN=0 USE_CUSPARSELT=0 USE_CUDSS=0 USE_CUFILE=0 USE_ROCM=0 USE_XPU=0
+    export USE_DISTRIBUTED=0 USE_GLOO=0 USE_MPI=0 USE_TENSORPIPE=0 USE_NCCL=0
+    export BUILD_TEST=0 BUILD_BINARY=0 USE_KINETO=0
+    export USE_FBGEMM=0 USE_MKLDNN=0 USE_NNPACK=0 USE_QNNPACK=0 USE_PYTORCH_QNNPACK=0 USE_XNNPACK=0
+    export USE_SYSTEM_SLEEF="${use_system_sleef}"
+    export USE_FLASH_ATTENTION=0 USE_MEM_EFF_ATTENTION=0 USE_OPENMP=0
+    export CFLAGS="${CFLAGS:+${CFLAGS} }-idirafter /usr/include"
+    export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-idirafter /usr/include"
+}
+
+_torch_run_setup_py() {
+    _wheelhouse_run_setup_py torch _torch_build_env
 }
 
 # Sets the TARGET_TORCH_WHEEL/TARGET_TORCH_VERSION globals and extracts the wheel.
@@ -621,29 +630,20 @@ patch_torchvision_setup() {
 # shellcheck disable=SC2154
 
 # -O3 -DNDEBUG explicitly: a set $CFLAGS replaces sysconfig's, which left every extension at -O0.
+_torchvision_build_env() {
+    export FORCE_CUDA=0 FORCE_MPS=0 DEBUG=0
+    export PYTORCH_VERSION="${TARGET_TORCH_VERSION}"
+    export TORCHVISION_TORCH_STAGING="${TORCH_STAGING_DIR}"
+    export TORCHVISION_INCLUDE="${target_torch_include}:${target_torch_csrc}"
+    export TORCHVISION_LIBRARY="${target_torch_lib}"
+    local _vis_multiarch
+    _vis_multiarch="$(cross_target_triplet 2>/dev/null || true)"
+    export CFLAGS="${CFLAGS:+${CFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include"
+    export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include"
+}
+
 _torchvision_run_setup_py() {
-    (
-        cd "${src_dir}" && \
-        export CMAKE_GENERATOR=Ninja && \
-        export CMAKE_ARGS="${cmake_args_string}" && \
-        { cross_toolchain_file="$(write_cross_cmake_toolchain_file || true)"; \
-          [ -n "${cross_toolchain_file}" ] || { warn "no cross toolchain file for torchvision; cmake would configure a NATIVE build with the cross compiler"; return 1; }; \
-          export CMAKE_TOOLCHAIN_FILE="${cross_toolchain_file}"; } && \
-        export _PYTHON_HOST_PLATFORM="${wheel_platform}" && \
-        if [ -n "${python_sysconfig_export}" ]; then eval "${python_sysconfig_export}"; fi && \
-        export FORCE_CUDA=0 FORCE_MPS=0 DEBUG=0 && \
-        export PYTORCH_VERSION="${TARGET_TORCH_VERSION}" && \
-        export TORCHVISION_TORCH_STAGING="${TORCH_STAGING_DIR}" && \
-        export TORCHVISION_INCLUDE="${target_torch_include}:${target_torch_csrc}" && \
-        export TORCHVISION_LIBRARY="${target_torch_lib}" && \
-        _vis_multiarch="$(cross_target_triplet 2>/dev/null || true)" && \
-        export CFLAGS="${CFLAGS:+${CFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
-        export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }-O3 -DNDEBUG ${_vis_multiarch:+-idirafter /usr/include/${_vis_multiarch} }-idirafter /usr/include" && \
-        "${BUILD_PYTHON}" -m pip install --quiet --disable-pip-version-check \
-            "scikit-build-core>=1.0" "setuptools>=77.0.0,<82" numpy "packaging>=24.2" pyyaml && \
-        "${BUILD_PYTHON}" -m pip wheel --no-build-isolation --no-deps \
-            --wheel-dir "${dist_dir}" .
-    )
+    _wheelhouse_run_setup_py torchvision _torchvision_build_env
 }
 
 # cpp_extension swallows ninja's output; rerun ninja to surface the real compiler error.
