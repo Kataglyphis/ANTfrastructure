@@ -377,10 +377,45 @@ cross_package_status_present() {
   return 1
 }
 
+_cross_install_target_batch() {
+  (
+    set -o pipefail
+    apt-get install -y --no-install-recommends "$@" 2>&1 \
+      | cross_filter_known_foreign_postinst_noise
+  )
+}
+
+_cross_retry_target_packages() {
+  local apt_rc="$1" pkg
+  shift
+  local -a pkgs=("$@") missing=()
+  # Postinst noise or one renamed package that sank the whole transaction: retry per package.
+  echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
+  local _pkg_rc
+  for pkg in "${pkgs[@]}"; do
+    _pkg_rc=0
+    _cross_install_target_batch "${pkg}" || _pkg_rc=$?
+    # Often benign postinst noise; the status sweep below decides, this only attributes it.
+    [ "${_pkg_rc}" -ne 0 ] && \
+      echo "install_target_packages: '${pkg}' apt-get exited ${_pkg_rc} (per-package retry; status sweep decides)" >&2
+  done
+
+  # Absent packages otherwise surface much later as baffling feature skips.
+  for pkg in "${pkgs[@]}"; do
+    cross_package_status_present "${pkg}" || missing+=("${pkg}")
+  done
+  if [ "${#missing[@]}" -eq 0 ]; then
+    echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
+    return 0
+  fi
+  echo "install_target_packages: FAILED (caller decides if fatal) — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
+  return 1
+}
+
 install_target_packages() {
   local pkg resolved
   local apt_rc=0
-  local -a pkgs=() missing=()
+  local -a pkgs=()
 
   [ "$#" -gt 0 ] || return 0
   if cross_build_enabled; then
@@ -400,40 +435,12 @@ install_target_packages() {
   [ "${#pkgs[@]}" -gt 0 ] || return 0
 
   if cross_build_enabled; then
-    # A subshell keeps pipefail off the caller's options.
-    (
-      set -o pipefail
-      apt-get install -y --no-install-recommends "${pkgs[@]}" 2>&1 \
-        | cross_filter_known_foreign_postinst_noise
-    ) || apt_rc=$?
+    _cross_install_target_batch "${pkgs[@]}" || apt_rc=$?
 
     [ "${apt_rc}" -eq 0 ] && return 0
 
-    # Postinst noise or one renamed package that sank the whole transaction: retry per package.
-    echo "install_target_packages: batch apt-get exited ${apt_rc}; retrying per-package to isolate unavailable names" >&2
-    local _pkg_rc
-    for pkg in "${pkgs[@]}"; do
-      _pkg_rc=0
-      (
-        set -o pipefail
-        apt-get install -y --no-install-recommends "${pkg}" 2>&1 \
-          | cross_filter_known_foreign_postinst_noise
-      ) || _pkg_rc=$?
-      # Often benign postinst noise; the status sweep below decides, this only attributes it.
-      [ "${_pkg_rc}" -ne 0 ] && \
-        echo "install_target_packages: '${pkg}' apt-get exited ${_pkg_rc} (per-package retry; status sweep decides)" >&2
-    done
-
-    # Absent packages otherwise surface much later as baffling feature skips.
-    for pkg in "${pkgs[@]}"; do
-      cross_package_status_present "${pkg}" || missing+=("${pkg}")
-    done
-    if [ "${#missing[@]}" -eq 0 ]; then
-      echo "install_target_packages: apt-get exited ${apt_rc} but all requested packages are present (postinst noise or resolved via per-package retry); continuing." >&2
-      return 0
-    fi
-    echo "install_target_packages: FAILED (caller decides if fatal) — missing after apt-get (rc=${apt_rc}): ${missing[*]}" >&2
-    return 1
+    _cross_retry_target_packages "${apt_rc}" "${pkgs[@]}"
+    return $?
   fi
 
   apt-get install -y --no-install-recommends "${pkgs[@]}"
@@ -477,7 +484,7 @@ is_cross_riscv64() {
 }
 
 cross_pkg_config_libdir() {
-  local triplet; triplet="${1:-$(cross_target_triplet || true)}"
+  local triplet; triplet="${1:-$(cross_target_triplet)}"
   local dir path=""
   local old_ifs
   local -a candidates extra_dirs

@@ -48,19 +48,11 @@ _flag_disabled() {
 
 # Run in the compiling shell, never in $( ): docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
 sccache_export_server_address() {
-  if [ -n "${SCCACHE_SERVER_UDS:-}" ] || [ -n "${SCCACHE_SERVER_PORT:-}" ]; then
-    return 0
+  if ! declare -F sccache_configure_server_address >/dev/null; then
+    # shellcheck source=linux/scripts/01-core/sccache-server-address.sh
+    source "${_CC_SH_DIR}/sccache-server-address.sh" || return 1
   fi
-  local _scv _scv_maj _scv_rest _scv_min _scp_off
-  _scv="$(sccache --version 2>/dev/null | awk '{print $2}')"
-  _scv_maj="${_scv%%.*}"; _scv_rest="${_scv#*.}"; _scv_min="${_scv_rest%%.*}"
-  if [ "${_scv_maj:-0}" -ge 1 ] 2>/dev/null || [ "${_scv_min:-0}" -ge 14 ] 2>/dev/null; then
-    SCCACHE_SERVER_UDS="/tmp/sccache-$(id -u).sock"
-    export SCCACHE_SERVER_UDS
-  else
-    _scp_off="$(printf '%s' "${HOSTNAME:-$$}" | cksum | awk '{print $1 % 20000}')"
-    export SCCACHE_SERVER_PORT; SCCACHE_SERVER_PORT="$(( 20000 + _scp_off ))"
-  fi
+  sccache_configure_server_address
 }
 
 # Defers to common.sh's compiler_cache_launcher; the inline copy serves the standalone android preamble, and a test keeps them equal.
@@ -70,7 +62,7 @@ _resolve_compiler_cache_launcher() {
     return 0
   fi
   if command -v sccache >/dev/null 2>&1; then
-    sccache_export_server_address
+    sccache_export_server_address || return 1
     sccache_start_server || sccache --start-server >/dev/null 2>&1 || true
     if sccache --show-stats >/dev/null 2>&1; then
       # The guarded launcher survives sccache's own fatal errors, which abort a bare sccache build.
@@ -114,7 +106,7 @@ setup_ccache() {
   _cc_launcher="ccache"
   if ! _flag_disabled "${USE_SCCACHE}"; then
     if _sccache_available; then
-      sccache_export_server_address
+      sccache_export_server_address || return 1
     fi
     _cc_launcher="$(_resolve_compiler_cache_launcher)"
     case "${_cc_launcher}" in
@@ -157,7 +149,7 @@ setup_sccache() {
   export SCCACHE_CACHE_SIZE
 
   mkdir -p "${SCCACHE_DIR}" 2>/dev/null || true
-  sccache_export_server_address
+  sccache_export_server_address || return 1
 
   # This RUSTC_WRAPPER wins over build-gstreamer-monorepo.sh's; Rust has no ccache fallback, so non-sccache verdicts keep sccache.
   _sc_launcher="sccache"

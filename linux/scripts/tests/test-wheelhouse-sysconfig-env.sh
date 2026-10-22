@@ -70,4 +70,38 @@ t_assert_eq "export _PYTHON_SYSCONFIGDATA_NAME=${_tgt}; export PYTHONPATH=${_sys
     "$(_tvm_target_python_sysconfig_export 2>&1)" "tvm-ffi's Cython core must take the target's SOABI"
 rm -f "${_sysroot}/lib/python3.14/lib-dynload/${_tgt}.py"
 
+for _fn in _wheelhouse_prepare_cross_env _wheelhouse_build_pip_wheel _torch_run_setup_py _torchvision_run_setup_py; do
+  eval "$(t_fn_src "${WHEELHOUSE_SH}" "${_fn}")"
+done
+export src_dir="${_work}" dist_dir="${_work}/dist with spaces"
+export cmake_args_string='-DFIXTURE=value with spaces' wheel_platform=linux_riscv64
+export python_sysconfig_export='export _PYTHON_HOST_PLATFORM=target_sysconfig'
+export use_system_sleef=1 MAX_JOBS=2 CFLAGS='' CXXFLAGS=''
+export TARGET_TORCH_VERSION=fixture TORCH_STAGING_DIR=/fixture/torch
+export target_torch_include=/fixture/include target_torch_csrc=/fixture/csrc target_torch_lib=/fixture/lib
+write_cross_cmake_toolchain_file() { printf '/fixture/toolchain with spaces.cmake'; }
+_record_wheel_python() {
+  if [[ "$*" = *' pip install '* ]] && [ "${FAIL_BUILD_BACKEND:-0}" = 1 ]; then
+    return 9
+  fi
+  printf 'ARGS:%s\nTOOLCHAIN:%s\nPLATFORM:%s\nCUDA:%s\nVISION:%s\n' \
+    "$*" "${CMAKE_TOOLCHAIN_FILE}" "${_PYTHON_HOST_PLATFORM}" "${USE_CUDA:-unset}" "${TORCHVISION_INCLUDE:-unset}"
+}
+BUILD_PYTHON=_record_wheel_python
+t_case "torch cross-wheel setup preserves toolchain, target sysconfig and CPU-only settings"
+_out="$(t_out _torch_run_setup_py)"
+t_assert_contains "${_out}" 'TOOLCHAIN:/fixture/toolchain with spaces.cmake'
+t_assert_contains "${_out}" PLATFORM:target_sysconfig
+t_assert_contains "${_out}" CUDA:0
+t_assert_contains "${_out}" "--wheel-dir ${dist_dir} ."
+t_case "torchvision keeps its target torch staging paths"
+t_assert_contains "$(t_out _torchvision_run_setup_py)" VISION:/fixture/include:/fixture/csrc
+t_case "a failed backend installation propagates and cannot run wheel packaging"
+t_assert_eq 9 "$(FAIL_BUILD_BACKEND=1 t_rc _torch_run_setup_py)"
+t_assert_eq '' "$(FAIL_BUILD_BACKEND=1 t_out _torchvision_run_setup_py)"
+write_cross_cmake_toolchain_file() { return 1; }
+t_case "an absent cross toolchain cannot fall through to a native wheel build"
+t_assert_eq 1 "$(t_rc _torch_run_setup_py)"
+t_assert_contains "$(t_out _torchvision_run_setup_py)" 'no cross toolchain file for torchvision'
+
 t_summary

@@ -85,6 +85,27 @@ done
 echo "build-opencv: version=${OPENCV_VERSION} prefix=${OPENCV_PREFIX} buildtype=${BUILD_TYPE}"
 
 # GNU ld, not lld, accepts OpenCV's vendored duplicate symbols with --allow-multiple-definition; GCC is pinned over clang on PATH.
+_opencv_gstreamer_libdir() {
+    local _gst_prefix="$1" _gst_triplet _gst_cand _gst_lib=""
+    _gst_triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH:-${TARGETARCH:-amd64}}" 2>/dev/null || true)"
+    for _gst_cand in \
+        "$(pkg-config --variable=libdir gstreamer-1.0 2>/dev/null || true)" \
+        "${_gst_prefix}/lib/${_gst_triplet}" \
+        "${_gst_prefix}/lib"; do
+        [ -n "${_gst_cand}" ] || continue
+        if compgen -G "${_gst_cand}/libgstreamer-1.0.so*" >/dev/null 2>&1; then
+            _gst_lib="${_gst_cand}"
+            break
+        fi
+    done
+    if [ -z "${_gst_lib}" ]; then
+        # Prune share/gdb: meson's gdb pretty-printer mirror holds no .so but sorts first in readdir order.
+        _gst_lib="$(dirname "$(find "${_gst_prefix}" -path '*/share/gdb' -prune -o -name 'libgstreamer-1.0.so*' -not -type d -print 2>/dev/null | head -1)" 2>/dev/null || true)"
+        [ "${_gst_lib}" = "." ] && _gst_lib=""
+    fi
+    printf '%s' "${_gst_lib}"
+}
+
 configure_opencv_build_env() {
     rm -rf "${OPENCV_PREFIX}"
 
@@ -110,23 +131,8 @@ configure_opencv_build_env() {
     fi
     # App links need the gst libdir on -rpath-link; a candidate counts only if it holds the .so, as the cross triplet dir can be empty.
     local _gst_prefix="${GSTREAMER_PREFIX:-/opt/gstreamer}"
-    local _gst_triplet _gst_cand _gst_lib=""
-    _gst_triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH:-${TARGETARCH:-amd64}}" 2>/dev/null || true)"
-    for _gst_cand in \
-        "$(pkg-config --variable=libdir gstreamer-1.0 2>/dev/null || true)" \
-        "${_gst_prefix}/lib/${_gst_triplet}" \
-        "${_gst_prefix}/lib"; do
-        [ -n "${_gst_cand}" ] || continue
-        if compgen -G "${_gst_cand}/libgstreamer-1.0.so*" >/dev/null 2>&1; then
-            _gst_lib="${_gst_cand}"
-            break
-        fi
-    done
-    if [ -z "${_gst_lib}" ]; then
-        # Prune share/gdb: meson's gdb pretty-printer mirror holds no .so but sorts first in readdir order.
-        _gst_lib="$(dirname "$(find "${_gst_prefix}" -path '*/share/gdb' -prune -o -name 'libgstreamer-1.0.so*' -not -type d -print 2>/dev/null | head -1)" 2>/dev/null || true)"
-        [ "${_gst_lib}" = "." ] && _gst_lib=""
-    fi
+    local _gst_lib
+    _gst_lib="$(_opencv_gstreamer_libdir "${_gst_prefix}")"
     if [ -n "${_gst_lib}" ]; then
         echo "OpenCV: gstreamer libdir resolved to ${_gst_lib} (-L + -rpath-link)"
         export LDFLAGS="${LDFLAGS} -L${_gst_lib} -Wl,-rpath-link,${_gst_lib}"
@@ -373,28 +379,28 @@ _opencv_cmake_core_opts() {
 }
 
 _opencv_cmake_cross_opts() {
-    local -n _ocmco_out="$1"
+    local -n _opencv_cmake_cross_opts_result="$1"
     local target_zlib_include="$2" target_zlib_library="$3" target_shared_include_fallback="$4"
 
     if command -v append_cmake_cross_args >/dev/null 2>&1; then
-        append_cmake_cross_args _ocmco_out
+        append_cmake_cross_args _opencv_cmake_cross_opts_result
     fi
 
     if cross_build_is_active; then
         # BOTH: the target sysroot lives under /usr, while generated artifacts stay in the build tree.
-        _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
-        _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
-        _ocmco_out+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
-        _ocmco_out+=("-DCMAKE_AR=$(resolve_cross_archive_tool ar)")
-        _ocmco_out+=("-DCMAKE_RANLIB=$(resolve_cross_archive_tool ranlib)")
-        _ocmco_out+=("-DCMAKE_C_COMPILER_AR=$(resolve_cross_archive_tool ar)")
-        _ocmco_out+=("-DCMAKE_CXX_COMPILER_AR=$(resolve_cross_archive_tool ar)")
-        _ocmco_out+=("-DCMAKE_C_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
-        _ocmco_out+=("-DCMAKE_CXX_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
-        _ocmco_out+=("-DZLIB_INCLUDE_DIR=${target_zlib_include}")
-        _ocmco_out+=("-DZLIB_LIBRARY=${target_zlib_library}")
-        _ocmco_out+=("-DCMAKE_C_FLAGS=${target_shared_include_fallback}")
-        _ocmco_out+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_AR=$(resolve_cross_archive_tool ar)")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_C_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_CXX_COMPILER_AR=$(resolve_cross_archive_tool ar)")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_C_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_CXX_COMPILER_RANLIB=$(resolve_cross_archive_tool ranlib)")
+        _opencv_cmake_cross_opts_result+=("-DZLIB_INCLUDE_DIR=${target_zlib_include}")
+        _opencv_cmake_cross_opts_result+=("-DZLIB_LIBRARY=${target_zlib_library}")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_C_FLAGS=${target_shared_include_fallback}")
+        _opencv_cmake_cross_opts_result+=("-DCMAKE_CXX_FLAGS=${target_shared_include_fallback}")
     fi
 }
 
@@ -418,10 +424,10 @@ _opencv_vulkan_setup() {
 
 # Append contrib modules path when WITH_CONTRIB=true.
 _opencv_cmake_contrib_opts() {
-    local -n _ocmco_out="$1"
+    local -n _opencv_cmake_contrib_opts_result="$1"
     if [ "${WITH_CONTRIB}" = "true" ]; then
-        _ocmco_out+=("-DOPENCV_EXTRA_MODULES_PATH=${OPENCV_SRC}/opencv_contrib/modules")
-        _ocmco_out+=("-DBUILD_opencv_python3=${WITH_PYTHON}")
+        _opencv_cmake_contrib_opts_result+=("-DOPENCV_EXTRA_MODULES_PATH=${OPENCV_SRC}/opencv_contrib/modules")
+        _opencv_cmake_contrib_opts_result+=("-DBUILD_opencv_python3=${WITH_PYTHON}")
     fi
 }
 

@@ -2,8 +2,8 @@
  {
   "id": "lib.cmake-build-empty-positional",
   "target": "linux/scripts/lib/cmake-build.sh",
-  "find": "if [[ -n \"$1\" && -n \"${_value_var[$1]+x}\" ]]; then",
-  "replace": "if [[ -n \"${_value_var[$1]+x}\" ]]; then",
+  "find": "CMAKE_BUILD_POSITIONAL=(\"$@\")",
+  "replace": "CMAKE_BUILD_POSITIONAL=(\"${@:2}\")",
   "test": "bash linux/scripts/tests/test-lib-smoke.sh",
   "why": "an empty positional preset must retain its array entry and caller default instead of aborting on an empty associative-array key"
  },
@@ -1726,14 +1726,6 @@
   "replace": "    override = None",
   "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
   "why": "SHELLCHECK_BIN must stay the first-choice override, so a caller can pin the binary the counts were frozen with"
- },
- {
-  "id": "shellcheck.pin-only-path-bin",
-  "target": "linux/scripts/lint-shell.sh",
-  "find": "[ \"$(\"${path_bin}\" --version 2>/dev/null | sed -n 's/^version: //p')\" = \"${SHELLCHECK_VERSION#v}\" ]",
-  "replace": "[ -n \"${path_bin}\" ]",
-  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-shellcheck-warnings.sh",
-  "why": "a PATH shellcheck at any other version counts different warnings than the frozen baseline (CI's apt 0.9.0)"
  },
  {
   "id": "shellcheck.list-files-first",
@@ -3993,7 +3985,7 @@
  },
  {
   "id": "disk-guard.stage-guard-unwired",
-  "target": "linux/scripts/build-cross-chain.sh",
+  "target": "linux/scripts/01-core/chain-storage.sh",
   "find": "        _disk_guard_buildkit_fallback \"${bc_dir}\" \"${threshold}\"\n        free_gb=\"$(_disk_guard_free_gb \"${bc_dir}\")\"\n",
   "replace": "        :\n",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
@@ -4001,7 +3993,7 @@
  },
  {
   "id": "disk-guard.stage-guard-recheck",
-  "target": "linux/scripts/build-cross-chain.sh",
+  "target": "linux/scripts/01-core/chain-storage.sh",
   "find": "      if [ -z \"${free_gb}\" ] || [ \"${free_gb}\" -lt \"${threshold}\" ]; then\n        log \"[disk-guard] still",
   "replace": "      if [ \"${free_gb}\" -lt \"${threshold}\" ] || true; then\n        log \"[disk-guard] still",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
@@ -4326,22 +4318,6 @@
   "replace": ":",
   "test": "bash linux/scripts/tests/test-workflow-lint.sh",
   "why": "actionlint discovers workflows from its cwd, so resolving the root and then not entering it lints the wrong tree just as silently"
- },
- {
-  "id": "workflow-lint.version-pin-required",
-  "target": "linux/scripts/lint-workflows.sh",
-  "find": "  [ -n \"${ACTIONLINT_VERSION:-}\" ] || err \"ACTIONLINT_VERSION is not set (tool-pins.env not found?).\"",
-  "replace": "  :",
-  "test": "bash linux/scripts/tests/test-workflow-lint.sh",
-  "why": "without the pin the bootstrap builds a URL for version '', and a lint verdict nobody can reproduce is not a gate"
- },
- {
-  "id": "workflow-lint.sha-pin-required",
-  "target": "linux/scripts/lint-workflows.sh",
-  "find": "  [ -n \"${expected_sha}\" ] || err \"No pinned actionlint SHA256 for ${asset}; add one to tool-pins.env.\"",
-  "replace": "  :",
-  "test": "bash linux/scripts/tests/test-workflow-lint.sh",
-  "why": "downloading a release nobody checksummed is how a lint gate starts running a binary the repo never chose"
  },
  {
   "id": "secret-scan.leak-fails",
@@ -5234,7 +5210,7 @@
  {
   "id": "sccache.server-address-hoisted-setup-ccache",
   "target": "linux/scripts/01-core/compiler-cache.sh",
-  "find": "    if _sccache_available; then\n      sccache_export_server_address\n    fi\n    _cc_launcher=\"$(_resolve_compiler_cache_launcher)\"",
+  "find": "    if _sccache_available; then\n      sccache_export_server_address || return 1\n    fi\n    _cc_launcher=\"$(_resolve_compiler_cache_launcher)\"",
   "replace": "    _cc_launcher=\"$(_resolve_compiler_cache_launcher)\"",
   "test": "bash linux/scripts/tests/test-compiler-cache.sh",
   "why": "YB root cause: with the address set only inside the $( ) resolver it never reaches ninja, every client falls back to TCP 4226 and concurrent BuildKit steps are served by each other's sccache server"
@@ -5249,7 +5225,7 @@
  },
  {
   "id": "sccache.server-address-respects-the-caller",
-  "target": "linux/scripts/01-core/compiler-cache.sh",
+  "target": "linux/scripts/01-core/sccache-server-address.sh",
   "find": "  if [ -n \"${SCCACHE_SERVER_UDS:-}\" ] || [ -n \"${SCCACHE_SERVER_PORT:-}\" ]; then\n    return 0\n  fi",
   "replace": "  if false; then\n    return 0\n  fi",
   "test": "bash linux/scripts/tests/test-compiler-cache.sh",
@@ -5450,7 +5426,7 @@
  {
   "id": "llvm-target.repair-materialises-a-header-tree",
   "target": "linux/scripts/02-toolchain/materialize-llvm-target.sh",
-  "find": "if [ -n \"${real}\" ] && [ -d \"${real}\" ]; then",
+  "find": "if [ -d \"${real}\" ]; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-llvm-target-prefix.sh",
   "why": "dropping the include/llvm link instead of filling it leaves find_package(LLVM) succeeding and the compile failing"
@@ -6865,7 +6841,7 @@
  },
  {
   "id": "chain-status.image-lever-wired-between-stages",
-  "target": "linux/scripts/build-cross-chain.sh",
+  "target": "linux/scripts/01-core/chain-storage.sh",
   "find": "        _disk_guard_image_store_fallback \"${bc_dir}\" \"${threshold}\" \\\n          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
@@ -6873,7 +6849,7 @@
  },
  {
   "id": "chain-status.image-lever-protects-the-completed-stage",
-  "target": "linux/scripts/build-cross-chain.sh",
+  "target": "linux/scripts/01-core/chain-storage.sh",
   "find": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 1)\" 0",
   "replace": "          \"$(_disk_guard_stage_tags \"${completed_stage}\" 0)\" 0",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
@@ -12742,8 +12718,8 @@
  {
   "id": "chrome-emulator.smoke-emulator-image",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  elif [ \"${got}\" != \"${img}\" ]; then",
-  "replace": "  elif false; then",
+  "find": "  _consumer_version_matches \"${row}\" \"${got}\" \"${img}\" 'system image' none || return 0",
+  "replace": "  :",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "a system image off the pin must fail the row, not pass it"
  },
@@ -13917,7 +13893,7 @@
  },
  {
   "id": "wheels.iree-ft-pass-called",
-  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
   "find": "    _iree_package_wheels || return 1\n    _iree_package_free_threaded_wheels\n",
   "replace": "    _iree_package_wheels || return 1\n",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
@@ -13925,7 +13901,7 @@
  },
  {
   "id": "wheels.iree-ft-proof-fails-build",
-  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
   "find": "        ft_twin_store_built \"${ft_dist}/${_proj}\" \"${APP_WHEELHOUSE_FT_DIR}\" || return 1\n",
   "replace": "        ft_twin_store_built \"${ft_dist}/${_proj}\" \"${APP_WHEELHOUSE_FT_DIR}\" || true\n",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
@@ -13933,7 +13909,7 @@
  },
  {
   "id": "wheels.iree-configure-settled",
-  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
   "find": "    cmake \"$@\" > \"${log}\" 2>&1 || return 1\n    cmake \"$@\" >> \"${log}\" 2>&1\n",
   "replace": "    cmake \"$@\" > \"${log}\" 2>&1\n",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
@@ -13941,17 +13917,17 @@
  },
  {
   "id": "wheels.iree-native-configure-settled",
-  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
-  "find": "    if ! _iree_configure_settled \"${target_build}.cfg.log\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            \"${ccache_cmake_args[@]}\" \\\n",
-  "replace": "    if ! cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            \"${ccache_cmake_args[@]}\" \\\n",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    _iree_target_configure \"IREE native\" \"IREE native configure failed\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\"",
+  "replace": "    cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\"",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
   "why": "the native GIL wheels would come from an unsettled tree, which the twin's reconfigure then changes on 1187 non-Python compile lines"
  },
  {
   "id": "wheels.iree-cross-configure-settled",
-  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
-  "find": "    if ! _iree_configure_settled \"${target_build}.cfg.log\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            -DCMAKE_TOOLCHAIN_FILE=",
-  "replace": "    if ! cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\" \\\n            -DCMAKE_TOOLCHAIN_FILE=",
+  "target": "linux/scripts/05-frameworks/torch/iree-wheelhouse.sh",
+  "find": "    _iree_target_configure \"IREE target\" \"IREE riscv64 runtime configure failed (best-effort); continuing without it\" -G Ninja -S \"${src_dir}\" -B \"${target_build}\"",
+  "replace": "    cmake -G Ninja -S \"${src_dir}\" -B \"${target_build}\"",
   "test": "bash linux/scripts/tests/test-iree-wheelhouse-stages.sh",
   "why": "the arm64 and riscv64 target trees would build unsettled, so a later reconfigure would recompile most of their runtime objects"
  },
@@ -15660,14 +15636,6 @@
   "why": "the runners were copied into two consumers and watched by nothing"
  },
  {
-  "id": "shared-assets.help-range-is-a-knob",
-  "target": "shared/config/shared-assets.manifest",
-  "find": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  | head -\n",
-  "replace": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  |\n",
-  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
-  "why": "--help prints the consumer's own header, whose length the head/tail range follows"
- },
- {
   "id": "windows-lane.build-script-prefers-the-repo-script",
   "target": ".github/workflows/python-ci-windows.yml",
   "find": "if (-not $file -and (Test-Path -LiteralPath 'scripts/windows/Build-Windows.ps1' -PathType Leaf)) {",
@@ -16638,8 +16606,8 @@
  {
   "id": "runtime-push.wrapper-image-hook",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}\n\n# The rootfs variant:",
-  "replace": "    runtime_push_tag \"${tag}\" || return 1\n  fi\n}\n\n# The rootfs variant:",
+  "find": "_runtime_ship_image() {\n  local mode=\"$1\" tag=\"$2\" arch=\"$3\"\n  if [ \"${mode}\" = dry ]; then\n    log \"[DRY RUN] would push wrapper image ${tag}\"\n    return 0\n  fi\n  if runtime_pushes_wrapper_images; then\n    _runtime_push_wrapper_tag \"${tag}\" \"${arch}\" || return 1\n  fi\n}",
+  "replace": "_runtime_ship_image() {\n  local mode=\"$1\" tag=\"$2\" arch=\"$3\"\n  if [ \"${mode}\" = dry ]; then\n    log \"[DRY RUN] would push wrapper image ${tag}\"\n    return 0\n  fi\n  if runtime_pushes_wrapper_images; then\n    runtime_push_tag \"${tag}\" || return 1\n  fi\n}",
   "test": "bash linux/scripts/tests/test-runtime-push-queue.sh",
   "why": "a wrapper build that pushes past the queue blocks its arch for the whole upload again"
  },
@@ -16854,16 +16822,16 @@
  {
   "id": "runtime-smoke.wait-before-export",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  # Nothing ships past a red wrapper-smoke gate.\n  _runtime_smoke_wait \"${arch}\" || return 1\n",
-  "replace": "  # Nothing ships past a red wrapper-smoke gate.\n  if [ \"${ship}\" != _runtime_ship_rootfs ]; then\n    _runtime_smoke_wait \"${arch}\" || return 1\n  fi\n",
+  "find": "  _runtime_smoke_wait \"${arch}\" || return 1\n  \"${ship}\" ship \"${tag}\" \"${arch}\" \"$@\"",
+  "replace": "  \"${ship}\" ship \"${tag}\" \"${arch}\" \"$@\"",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "the rootfs path would export a wrapper whose package failed its smoke"
  },
  {
   "id": "runtime-smoke.reaped-on-wrapper-failure",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n",
-  "replace": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n",
+  "find": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }",
+  "replace": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "a failed wrapper build would leave its gate running into the next arch's lane"
  },
@@ -17138,5 +17106,245 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-check-live-site.sh",
   "why": "a first-attempt failure that passes on retry stays visible in the log, or the gate hides a flaky route for good"
+ },
+ {
+  "id": "lint-tools.bootstrap-path-pin",
+  "target": "linux/scripts/01-core/lint-tool-release.sh",
+  "find": "[ \"$(\"${path_bin}\" --version 2>/dev/null | sed -n 's/^version: //p')\" = \"${!pin_name#v}\" ]",
+  "replace": "[ -n \"${path_bin}\" ]",
+  "test": "bash linux/scripts/tests/test-lint-tool-release.sh",
+  "why": "a PATH shellcheck at any other version counts different warnings than the frozen baseline (CI's apt 0.9.0)"
+ },
+ {
+  "id": "lint-tools.bootstrap-version-required",
+  "target": "linux/scripts/01-core/lint-tool-release.sh",
+  "find": "  [ -n \"${version}\" ] || err \"${pin_name} is not set (tool-pins.env not found?).\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-lint-tool-release.sh",
+  "why": "without the pin the bootstrap builds a URL for version '', and a lint verdict nobody can reproduce is not a gate"
+ },
+ {
+  "id": "lint-tools.bootstrap-checksum-required",
+  "target": "linux/scripts/01-core/lint-tool-release.sh",
+  "find": "  [ -n \"${expected_sha}\" ] || err \"No pinned ${tool} SHA256 for ${asset}; add one to tool-pins.env.\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-lint-tool-release.sh",
+  "why": "downloading a release nobody checksummed is how a lint gate starts running a binary the repo never chose"
+ },
+ {
+  "id": "shared-assets.help-body-is-canonical",
+  "target": "shared/config/shared-assets.manifest",
+  "find": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  |\n",
+  "replace": "| scripts/agentic-loop/Run-AgenticLoop.sh     | body  | #\n",
+  "test": "bash linux/scripts/tests/test-shared-config-sync.sh",
+  "why": "the explicit help body is shared code; masking its prose as a consumer knob must be caught"
+ },
+ {
+  "id": "probe.venv-build-pin-wins",
+  "target": "linux/scripts/06-packaging/venv-version-probe.py",
+  "find": "allowed = pin_set(build_pin) if build_pin else set(from_lock)",
+  "replace": "allowed = pin_set(build_pin) | set(from_lock)",
+  "test": "bash linux/scripts/tests/test-python-probes.sh",
+  "why": "a lock-matching installed version must still fail when the chain build pin differs"
+ },
+ {
+  "id": "probe.venv-media-runs",
+  "target": "linux/scripts/06-packaging/venv-version-probe.py",
+  "find": "if os.environ.get(\"STV_MEDIA_FUNCTIONAL\", \"1\") == \"1\":",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-python-probes.sh",
+  "why": "advertised backends must deliver frames and open their writer rather than passing on build strings alone"
+ },
+ {
+  "id": "probe.gst-python-headers-required",
+  "target": "linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py",
+  "find": "if not include_dir.is_dir():",
+  "replace": "if False:",
+  "test": "bash linux/scripts/tests/test-python-probes.sh",
+  "why": "cross-Python metadata must refuse an include directory that does not exist"
+ },
+ {
+  "id": "ort-chain.tf-metadata-failure-not-stamped",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+  "find": "        '-L${libdir} -ltensorflow' || return 1",
+  "replace": "        '-L${libdir} -ltensorflow'",
+  "test": "bash linux/scripts/tests/test-ffmpeg-dnn-contract.sh",
+  "why": "a failed pkg-config write must not leave a completion stamp that makes later builds trust an unusable TensorFlow SDK"
+ },
+ {
+  "id": "disk-guard.force-bypass-before-trim",
+  "target": "linux/scripts/01-core/chain-storage.sh",
+  "find": "if [ \"${FORCE_LOW_DISK:-0}\" = \"1\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-storage-sdk-refactors.sh",
+  "why": "forced admission must return before removing cache exports"
+ },
+ {
+  "id": "vulkan.failed-verification-rejects-stale-archive",
+  "target": "linux/scripts/02-toolchain/vulkan-install.sh",
+  "find": "download_verified_file \"$url\" \"${VULKAN_SDK_SHA256}\" \"$tarball\" || die \"Failed to download/verify Vulkan SDK\"",
+  "replace": "download_verified_file \"$url\" \"${VULKAN_SDK_SHA256}\" \"$tarball\"",
+  "test": "bash linux/scripts/tests/test-storage-sdk-refactors.sh",
+  "why": "a failed verification must not install an older archive left at the download path"
+ },
+ {
+  "id": "probe.native-nonok-zero-fails",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "\"${tag} OK:\"*) pass",
+  "replace": "\"${tag} \"*) pass",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "a zero process status cannot turn FAIL, SKIP or ABSENT into a successful native probe"
+ },
+ {
+  "id": "probe.native-absence-policy",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "genai) echo \"  SKIP: onnxruntime_genai",
+  "replace": "genai) fail \"  SKIP: onnxruntime_genai",
+  "test": "bash linux/scripts/tests/test-runtime-probe-verdicts.sh",
+  "why": "GenAI absence remains owned by architecture parity rather than the functional probe"
+ },
+ {
+  "id": "probe.shared-python-payload-guard",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "if [ -z \"${%s:-}\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "an empty environment crossing must exit with the ABSENT sentinel before Python runs"
+ },
+ {
+  "id": "tvm-llvm.sdk-target-priority",
+  "target": "linux/scripts/05-frameworks/tvm-detect.sh",
+  "find": "  [ -z \"${arch}\" ] || _tvm_append_sdk_libraries candidates \"${root}\" \"${arch}\" \"${libraries[@]}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-tvm-sdk-lookup.sh",
+  "why": "a target shared library outranks a generic host static library"
+ },
+ {
+  "id": "tvm-llvm.shared-wheel-module-flag",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "    --python-module \"$2\"",
+  "replace": "    --python-module OFF",
+  "test": "bash linux/scripts/tests/test-tvm-cmake-args.sh",
+  "why": "the common option builder must still enable the Python module for wheel builds"
+ },
+ {
+  "id": "runtime-smoke.package-artifact-pin",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    [ -z \"${android_pin}\" ] || _runtime_artifact_result=\"${android_pin}\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-duplicate-build-helpers.sh",
+  "why": "registry artifacts must prefer their immutable android pin over a mutable tag"
+ },
+ {
+  "id": "gpu-runtime.ort-cache-rejects-ccache",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    *sccache*)\n      info \"sccache: wrapping ${compiler",
+  "replace": "    *cache*)\n      info \"sccache: wrapping ${compiler",
+  "test": "bash linux/scripts/tests/test-duplicate-build-helpers.sh",
+  "why": "CUDA and HIP cannot use ccache as their compiler launcher"
+ },
+ {
+  "id": "gpu-runtime.ort-install-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "\"${apt[@]}\" install \"${install[@]}\" libgcc-s1 || return \"$?\"",
+  "replace": "\"${apt[@]}\" install \"${install[@]}\" libgcc-s1",
+  "test": "bash linux/scripts/tests/test-duplicate-build-helpers.sh",
+  "why": "dependency installation failures retain their nonzero status even inside a conditional caller"
+ },
+ {
+  "id": "python.bundle-package-option-boundary",
+  "target": "linux/scripts/06-packaging/python-app-cli.sh",
+  "find": "[ \"${mode}\" = package ] || { usage >&2; exit 2; }",
+  "replace": "true || { usage >&2; exit 2; }",
+  "test": "bash linux/scripts/tests/test-python-app-cli.sh",
+  "why": "the bundle driver must reject the package-only no-test switch"
+ },
+ {
+  "id": "probe.compiler-signature-sample-bound",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "depth=1; cap=5; pattern=",
+  "replace": "depth=1; cap=50; pattern=",
+  "test": "bash linux/scripts/tests/test-compiler-signatures.sh",
+  "why": "GCC signature sampling must retain its per-directory five-file bound"
+ },
+ {
+  "id": "gpu-runtime.ort-cache-parent-environment",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  compiler_cache_launcher_env 2>/dev/null || true",
+  "replace": "  ( compiler_cache_launcher_env 2>/dev/null || true )",
+  "test": "bash linux/scripts/tests/test-duplicate-build-helpers.sh",
+  "why": "launcher resolution must retain cache setup exports in the caller and keep diagnostics out of the path"
+ },
+ {
+  "id": "android-env.sdk-install-exit-status",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "out=\"$(\"${sdkmanager_bin}\" --sdk_root=\"${ANDROID_HOME}\" \"$@\" 2>&1)\" || status=$?",
+  "replace": "out=\"$(\"${sdkmanager_bin}\" --sdk_root=\"${ANDROID_HOME}\" \"$@\" 2>&1)\" || true",
+  "test": "bash linux/scripts/tests/test-android-sdk-retry.sh",
+  "why": "a per-package Done message must never mask a failed installation"
+ },
+ {
+  "id": "android-env.sdk-license-confirmation",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "grep -q \"All SDK package licenses accepted\"",
+  "replace": "grep -q \"Done.\"",
+  "test": "bash linux/scripts/tests/test-android-sdk-retry.sh",
+  "why": "a successful exit without license confirmation must exhaust the license retries"
+ },
+ {
+  "id": "android-env.sdk-install-retry-bound",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "max_attempts=4; sleep_sec=5",
+  "replace": "max_attempts=1; sleep_sec=5",
+  "test": "bash linux/scripts/tests/test-android-sdk-retry.sh",
+  "why": "transient install failures retain four attempts and five-second waits"
+ },
+ {
+  "id": "probe.gstreamer-shared-helper-required",
+  "target": "linux/scripts/04-runtime/gstreamer-env.sh",
+  "find": "source \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/../01-core/path-helpers.sh\" || return $?",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-gstreamer-env.sh",
+  "why": "a missing companion module must not claim successful environment initialization"
+ },
+ {
+  "id": "lint-tools.release-archive-member",
+  "target": "linux/scripts/01-core/lint-tool-release.sh",
+  "find": "member=\"shellcheck-${version}/${binary}\"",
+  "replace": "member=\"${binary}\"",
+  "test": "bash linux/scripts/tests/test-lint-tool-release.sh",
+  "why": "ShellCheck tar archives nest the executable under their version directory"
+ },
+ {
+  "id": "probe.ffmpeg-compile-only",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh",
+  "find": "cmd+=(\"${cflags[@]}\" -c \"${source_file}\" -o \"${output_file}\")",
+  "replace": "cmd+=(\"${cflags[@]}\" \"${source_file}\" -o \"${output_file}\")",
+  "test": "bash linux/scripts/tests/test-ffmpeg-probes.sh",
+  "why": "a preprocessor probe must compile without requiring a main or linker dependencies"
+ },
+ {
+  "id": "probe.ffmpeg-compiler-verdict",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh",
+  "find": "\"${cmd[@]}\" >/dev/null 2>&1 || status=1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-ffmpeg-probes.sh",
+  "why": "a failed compiler must return a failed feature probe after cleanup"
+ },
+ {
+  "id": "probe.ffmpeg-cross-search",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh",
+  "find": "ffmpeg_append_cross_search_flags cmd",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-ffmpeg-probes.sh",
+  "why": "cross feature probes must carry the target include and library search paths"
+ },
+ {
+  "id": "probe.vulkan-sdk-path-order",
+  "target": "linux/scripts/06-packaging/smoke-vulkan.sh",
+  "find": "for root in \"${ACTIVE_LINK}\" \"${VULKAN_SDK_ROOT}/x86_64\" \"${VULKAN_SDK_ROOT}/aarch64\" \"${VULKAN_SDK_ROOT}/riscv64\"; do",
+  "replace": "for root in \"${VULKAN_SDK_ROOT}/x86_64\" \"${VULKAN_SDK_ROOT}/aarch64\" \"${VULKAN_SDK_ROOT}/riscv64\"; do",
+  "test": "bash linux/scripts/tests/test-vulkan-sdk-smoke-paths.sh",
+  "why": "the selected active SDK must take precedence over architecture fallback directories"
  }
 ]

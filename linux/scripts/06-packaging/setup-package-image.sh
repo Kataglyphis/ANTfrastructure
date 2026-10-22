@@ -81,7 +81,7 @@ install_staged_target_python() {
             if [ -x "${staged_python_root}/usr/local/bin/python${python_mm}" ]; then
                 echo "Installing source-built target Python ${python_mm} from ${staged_python_root}/usr/local"
                 cp -a "${staged_python_root}/usr/local/bin"/* /usr/local/bin/
-                cp -a "${staged_python_root}/usr/local/lib"/python"${python_mm}" /usr/local/lib/
+                cp -a "${staged_python_root}/usr/local/lib/python${python_mm}" /usr/local/lib/
                 cp -a "${staged_python_root}/usr/local/lib"/libpython*.so* /usr/local/lib/
                 # The fat-LTO static libpython links nothing in the image and weighs 155-435 MB per arch.
                 rm -f /usr/local/lib/python"${python_mm}"/config-"${python_mm}"*/libpython*.a

@@ -110,14 +110,7 @@ fi
 info "cuDNN header: ${CUDNN_H}"
 
 # Build dependencies
-if [ "${SKIP_DEP_INSTALL:-false}" != "true" ]; then
-    # The media stage runs as root in images that may not ship sudo.
-    if command -v sudo >/dev/null 2>&1; then
-        sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
-    else
-        apt-get update -qq && apt-get install -y --no-install-recommends libgcc-s1
-    fi
-fi
+install_onnx_native_dependencies gpu
 
 info "Using existing Python virtual environment (expected at /opt/python/.venv)"
 setup_host_python_environment
@@ -163,19 +156,7 @@ BUILD_ARGS+=(--no_telemetry)
 append_onnx_optional_lto_webgpu_args BUILD_ARGS
 
 # ccache cannot wrap nvcc, so CUDA takes only an sccache-class launcher.
-if [ "${ENABLE_SCCACHE_CUDA:-0}" = "1" ]; then
-  compiler_cache_launcher_env 2>/dev/null || true
-  _gpu_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
-  case "${_gpu_launcher}" in
-    *sccache*)
-      info "sccache: wrapping nvcc via CMAKE_CUDA_COMPILER_LAUNCHER (${_gpu_launcher})"
-      BUILD_ARGS+=(--cmake_extra_defines "CMAKE_CUDA_COMPILER_LAUNCHER=${_gpu_launcher}")
-      ;;
-    *)
-      warn "sccache unavailable for CUDA caching — building uncached"
-      ;;
-  esac
-fi
+append_onnx_gpu_cache_args BUILD_ARGS CUDA
 
 append_onnx_lld_build_args BUILD_ARGS
 append_onnx_ccache_build_args BUILD_ARGS

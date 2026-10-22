@@ -5,7 +5,11 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SUBJECT="${TESTS_DIR}/../build-runtime-manifest.sh"
 
-_fn="$(t_fn_src "${SUBJECT}" _manifest_wrapper_gate)" || exit 1
+_fn=""
+for fn in _manifest_collect_wrapper_runs _manifest_warn_generation_mismatch _manifest_wrapper_gate; do
+  definition="$(t_fn_src "${SUBJECT}" "${fn}")" || exit 1
+  _fn+="${definition}"$'\n'
+done
 
 # _gate: env RIDS (one run-id per arch, empty = unstamped) and COHERENT/ANDROID_STALE/TAG_FAILS as 0|1.
 _gate() {

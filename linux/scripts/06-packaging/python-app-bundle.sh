@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../01-core/logging.sh
 source "${SCRIPT_DIR}/../01-core/logging.sh"
 
+source "${SCRIPT_DIR}/python-app-cli.sh"
+
 REPO_ROOT="${PWD}"
 CONFIG="packaging/app.json"
 WHEEL_DIR="dist"
@@ -25,19 +27,7 @@ usage() {
   printf 'usage: %s [--repo-root DIR] [--config FILE] [--wheel-dir DIR] [--out-dir DIR] [--python-version X.Y.Z] [--ort-wheel-dir DIR] [--work-dir DIR]\n' "$0"
 }
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --repo-root) REPO_ROOT="${2:?}"; shift 2 ;;
-    --config) CONFIG="${2:?}"; shift 2 ;;
-    --wheel-dir) WHEEL_DIR="${2:?}"; shift 2 ;;
-    --out-dir) OUT_DIR="${2:?}"; shift 2 ;;
-    --python-version) PYTHON_VERSION="${2:?}"; shift 2 ;;
-    --ort-wheel-dir) ORT_WHEEL_DIR="${2:?}"; shift 2 ;;
-    --work-dir) WORK_DIR="${2:?}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) usage >&2; exit 2 ;;
-  esac
-done
+parse_python_app_args bundle "$@"
 
 cd "${REPO_ROOT}"
 case "$(uname -m)" in

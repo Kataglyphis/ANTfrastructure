@@ -34,6 +34,64 @@ ensure_host_apt_architectures() {
   apt_sources_set_architectures "/etc/apt/sources.list.d/ubuntu.sources" "amd64 i386"
 }
 
+sdkmanager_retry() {
+  local mode="$1"; shift
+  local attempt=0 max_attempts sleep_sec out status
+  local retry_message failure success
+  case "${mode}" in
+    licenses)
+      max_attempts=6; sleep_sec=3
+      retry_message='License acceptance not complete'
+      failure='Failed to accept all licenses'
+      success='Licenses accepted'
+      ;;
+    install)
+      max_attempts=4; sleep_sec=5
+      retry_message='sdkmanager install failed'
+      failure='sdkmanager install failed'
+      success='sdkmanager install succeeded'
+      ;;
+    *) return 2 ;;
+  esac
+  while :; do
+    attempt=$((attempt + 1))
+    if [ "${mode}" = licenses ]; then
+      printf 'Attempt %s/%s: accepting Android SDK licenses\n' "${attempt}" "${max_attempts}"
+    else
+      printf 'sdkmanager install attempt %s/%s: %s\n' "${attempt}" "${max_attempts}" "$*"
+    fi
+    status=0
+    if [ "${mode}" = licenses ]; then
+      out="$(printf 'y\n%.0s' {1..200} | "${sdkmanager_bin}" --sdk_root="${ANDROID_HOME}" --licenses 2>&1 || true)"
+      # License acceptance is reported in text even when sdkmanager exits nonzero.
+      echo "${out}" | grep -q "All SDK package licenses accepted" || status=1
+    else
+      # A per-package Done message does not prove the entire install succeeded.
+      out="$("${sdkmanager_bin}" --sdk_root="${ANDROID_HOME}" "$@" 2>&1)" || status=$?
+    fi
+    echo "${out}"
+    if [ "${status}" -eq 0 ]; then
+      echo "${success}"
+      return 0
+    fi
+    if [ "${attempt}" -ge "${max_attempts}" ]; then
+      echo "${failure} after ${attempt} attempts" >&2
+      return 1
+    fi
+    echo "${retry_message}; retrying in ${sleep_sec}s..."
+    sleep "${sleep_sec}"
+  done
+}
+
+accept_licenses() {
+  mkdir -p "${ANDROID_HOME}/licenses"
+  sdkmanager_retry licenses
+}
+
+sdkmanager_install() {
+  sdkmanager_retry install "$@"
+}
+
 # Record why the payload is absent, so smoke-android.sh reads the decision instead of re-deriving it.
 if ! android_require_amd64_build_host "Android SDK/NDK installation"; then
   mkdir -p /opt/android
@@ -177,57 +235,6 @@ if [ "${sdk_restored}" -eq 0 ]; then
   mv cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"
 
   sdkmanager_bin="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-
-  # Helper: try to accept all licenses in a loop until sdkmanager reports success
-  accept_licenses() {
-    local attempt=0 max_attempts=6 sleep_sec=3 out
-    mkdir -p "${ANDROID_HOME}/licenses"
-    while :; do
-      attempt=$((attempt + 1))
-      echo "Attempt ${attempt}/${max_attempts}: accepting Android SDK licenses"
-      # Feed many 'y' responses in case multiple licenses are prompted. Capture output for debugging.
-      out="$(printf 'y\n%.0s' {1..200} | "${sdkmanager_bin}" --sdk_root="${ANDROID_HOME}" --licenses 2>&1 || true)"
-      echo "$out"
-      if echo "$out" | grep -q "All SDK package licenses accepted"; then
-        echo "Licenses accepted"
-        return 0
-      fi
-      if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "Failed to accept all licenses after ${attempt} attempts" >&2
-        return 1
-      fi
-      echo "License acceptance not complete; retrying in ${sleep_sec}s..."
-      sleep "$sleep_sec"
-    done
-  }
-
-  # Helper: run sdkmanager install with retries to handle transient network failures
-  sdkmanager_install() {
-    local attempt=0 max_attempts=4 sleep_sec=5 args=("$@") out
-    local status=0
-    while :; do
-      attempt=$((attempt + 1))
-      echo "sdkmanager install attempt ${attempt}/${max_attempts}: ${args[*]}"
-      status=0
-      if out="$("${sdkmanager_bin}" --sdk_root="${ANDROID_HOME}" "${args[@]}" 2>&1)"; then
-        status=0
-      else
-        status=$?
-      fi
-      echo "$out"
-      # Trust the exit code only: sdkmanager prints "Done." per package even when others fail.
-      if [ "${status}" -eq 0 ]; then
-        echo "sdkmanager install succeeded"
-        return 0
-      fi
-      if [ "$attempt" -ge "$max_attempts" ]; then
-        echo "sdkmanager install failed after ${attempt} attempts" >&2
-        return 1
-      fi
-      echo "sdkmanager install failed; retrying in ${sleep_sec}s..."
-      sleep "$sleep_sec"
-    done
-  }
 
   # Fatal: an unaccepted license surfaces later as an opaque sdkmanager or gradle failure.
   accept_licenses

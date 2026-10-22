@@ -56,10 +56,13 @@ _rm_active_log() {
   local explicit="$1" dir="$2" f
   if [ -n "${explicit}" ]; then printf '%s' "${explicit}"; return 0; fi
   [ -n "${dir}" ] && [ -d "${dir}" ] || { printf '%s' ""; return 0; }
-  for f in $(ls -t "${dir}"/*.log 2>/dev/null); do
+  local newest=""
+  while IFS= read -r -d '' f; do
+    [ -n "${newest}" ] || newest="${f}"
     [ -f "${f}.run" ] && { printf '%s' "${f}"; return 0; }
-  done
-  ls -t "${dir}"/*.log 2>/dev/null | head -n 1
+  done < <(find "${dir}" -mindepth 1 -maxdepth 1 ! -type d -name '*.log' -printf '%T@ %p\0' 2>/dev/null \
+    | LC_ALL=C sort -z -k1,1nr -k2 | cut -z -d ' ' -f2-)
+  printf '%s' "${newest}"
 }
 
 _rm_sample_loop() {
@@ -167,6 +170,14 @@ rm_summarize() {
 }
 
 # Entrypoint
+_rm_on_exit() {
+  local status="$?"
+  if [ -n "${RM_CSV:-}" ]; then
+    rm_summarize "${RM_CSV}" >/dev/null 2>&1 || true
+  fi
+  exit "${status}"
+}
+
 main() {
   if [ "${1:-}" = "summarize" ]; then
     shift; rm_summarize "${1:?usage: resource-monitor.sh summarize <csv>}"; return $?
@@ -192,7 +203,7 @@ main() {
   [ -d "${disk_path}" ] || disk_path="/"
 
   RM_CSV=""
-  trap 'ec=$?; [ -n "${RM_CSV}" ] && rm_summarize "${RM_CSV}" >/dev/null 2>&1 || true; exit ${ec}' INT TERM EXIT
+  trap _rm_on_exit INT TERM EXIT
   _rm_sample_loop "${out_dir}" "${run_id}" "${interval}" "${disk_path}" "${stage_log}" "${label}" "${stage_log_dir}" "${watch_pid}"
 }
 

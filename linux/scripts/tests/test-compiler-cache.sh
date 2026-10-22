@@ -263,6 +263,8 @@ _addr_out="$(
   source "${TESTS_DIR}/../01-core/logging.sh"
   sccache() { case "$1" in --version) echo "sccache 0.17.0" ;; *) return 0 ;; esac; }
   export SCCACHE_DIR=/tmp SCCACHE_CACHE_SIZE=10G
+  # shellcheck source=linux/scripts/01-core/sccache-server-address.sh
+  source "${TESTS_DIR}/../01-core/sccache-server-address.sh"
   eval "$(sed -n '/^ensure_sccache_env() {/,/^}/p' "${TESTS_DIR}/../01-core/common.sh")"
   ensure_sccache_env 2>&1
 )"
@@ -311,5 +313,27 @@ _out="$(_dump 0)"
 t_assert_contains "${_out}" "WARN sccache: 559 compile requests, 0 cache hits" \
   "a DEAD cache still warns, with the requests count read off the right line"
 rm -rf "${_SC_BIN}"
+
+_address_case() {
+  local version="$1" preset="${2:-}"
+  (
+    unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
+    sccache() { printf 'sccache %s\n' "${version}"; }
+    # shellcheck source=linux/scripts/01-core/sccache-server-address.sh
+    source "${TESTS_DIR}/../01-core/sccache-server-address.sh"
+    if [ -n "${preset}" ]; then export SCCACHE_SERVER_PORT="${preset}"; fi
+    sccache_configure_server_address
+    bash -c 'printf "%s|%s" "${SCCACHE_SERVER_UDS:-}" "${SCCACHE_SERVER_PORT:-}"'
+  )
+}
+
+t_case "the shared address selector exports UDS for modern and TCP for legacy sccache"
+for version in 0.14.0 1.0.0; do
+  t_assert_contains "$(_address_case "${version}")" /tmp/sccache-
+done
+_legacy="$(_address_case 0.13.0)"
+t_assert_contains "${_legacy}" '|'
+t_assert_eq "tcp" "$(case "${_legacy}" in '|'[0-9]*) printf tcp ;; *) printf invalid ;; esac)"
+t_assert_eq '|9876' "$(_address_case 1.0.0 9876)" "an explicit address must survive unchanged"
 
 t_summary

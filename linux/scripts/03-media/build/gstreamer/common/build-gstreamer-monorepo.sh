@@ -142,10 +142,9 @@ _gst_monorepo_python_config() {
   local target_python_pkgconfig_dir=""
 
   prepare_cross_python_build_config
+  [ "${python_feature}" = "enabled" ] && cross_build_is_active || return 0
 
-  if [ "${python_feature}" = "enabled" ] && \
-     cross_build_is_active && \
-     command -v cross_target_python_libdir >/dev/null 2>&1; then
+  if command -v cross_target_python_libdir >/dev/null 2>&1; then
     target_python_libdir="$(cross_target_python_libdir 2>/dev/null || true)"
     # /usr/local/lib is the host Python's libdir, not the staged cross one.
     if [ "${target_python_libdir}" = "/usr/local/lib" ] && \
@@ -161,9 +160,7 @@ _gst_monorepo_python_config() {
     fi
   fi
 
-  if [ "${python_feature}" = "enabled" ] && \
-     cross_build_is_active && \
-     command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
+  if command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
     target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
     if [ -n "${target_python_pkgconfig_dir}" ]; then
       case ":${PKG_CONFIG_PATH:-}:" in
@@ -211,40 +208,44 @@ _gst_monorepo_meson_base_flags() {
   fi
 }
 
+_gst_monorepo_riscv_flags() {
+  echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
+  if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
+    echo "GST_RS_BUILD_ALL=true: attempting Rust plugins on riscv64 (-Drs=enabled) — cross-compiling Rust to riscv64 is experimental and may fail"
+    MESON_FLAGS+=("-Drs=enabled")
+  else
+    MESON_FLAGS+=("-Drs=disabled")
+  fi
+  # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
+  append_meson_arg "-Dgstreamer:ptp-helper=disabled"
+  # Introspection stays on: disabling it drops the glib .pc libcamera/opencv consume and leaves graphene's .gir deps dangling.
+  append_meson_arg "-Dgraphene:introspection=enabled"
+  # glib's tests need dbus/dbus.h, which the riscv64 sysroot lacks.
+  append_meson_arg "-Dglib:tests=false"
+  # Under force_fallback_for GTK looks for pango in its own subprojects/, not the top-level wrap.
+  local gtk_subproj="${BUILD_DIR}/gstreamer/subprojects/gtk-4.14.5/subprojects"
+  if [ -d "${gtk_subproj}" ] && [ ! -e "${gtk_subproj}/pango" ]; then
+    ln -snf "$(realpath "${BUILD_DIR}/gstreamer/subprojects/pango" 2>/dev/null || echo "${BUILD_DIR}/gstreamer/subprojects/pango")" "${gtk_subproj}/pango" 2>/dev/null || true
+  fi
+  append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,harfbuzz,gdk-pixbuf-2.0,gobject-introspection-1.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
+  append_meson_arg "-Dgobject-introspection:gi_cross_use_prebuilt_gi=true"
+  if [ -x /usr/local/bin/g-ir-scanner-riscv64-binary-wrapper ]; then
+    append_meson_arg "-Dgobject-introspection:gi_cross_binary_wrapper=/usr/local/bin/g-ir-scanner-riscv64-binary-wrapper"
+  fi
+  if [ -x /usr/local/bin/g-ir-scanner-ldd-riscv64-cross ]; then
+    append_meson_arg "-Dgobject-introspection:gi_cross_ldd_wrapper=/usr/local/bin/g-ir-scanner-ldd-riscv64-cross"
+  fi
+  append_meson_arg "-Dpango:introspection=disabled"
+  append_meson_arg "-Dharfbuzz:introspection=disabled"
+  append_meson_arg "-Dgdk-pixbuf:glycin=disabled"
+  append_meson_arg "-Dgdk-pixbuf:man=false"
+  [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || { append_meson_arg "-Dgst-plugins-rs:whisper=disabled"; echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"; }
+}
+
 _gst_monorepo_arch_flags() {
   case "${TARGET_MACHINE_ARCH}" in
     riscv*|*riscv*)
-      echo "Target arch '${TARGET_MACHINE_ARCH}' detected: python disabled (no target Python dev for riscv64)"
-      if [ "${GST_RS_BUILD_ALL:-true}" = "true" ]; then
-        echo "GST_RS_BUILD_ALL=true: attempting Rust plugins on riscv64 (-Drs=enabled) — cross-compiling Rust to riscv64 is experimental and may fail"
-        MESON_FLAGS+=("-Drs=enabled")
-      else
-        MESON_FLAGS+=("-Drs=disabled")
-      fi
-      # PTP helper fails to link on riscv64 (collect2 error with gcc cross linker).
-      append_meson_arg "-Dgstreamer:ptp-helper=disabled"
-      # Introspection stays on: disabling it drops the glib .pc libcamera/opencv consume and leaves graphene's .gir deps dangling.
-      append_meson_arg "-Dgraphene:introspection=enabled"
-      # glib's tests need dbus/dbus.h, which the riscv64 sysroot lacks.
-      append_meson_arg "-Dglib:tests=false"
-      # Under force_fallback_for GTK looks for pango in its own subprojects/, not the top-level wrap.
-      local gtk_subproj="${BUILD_DIR}/gstreamer/subprojects/gtk-4.14.5/subprojects"
-      if [ -d "${gtk_subproj}" ] && [ ! -e "${gtk_subproj}/pango" ]; then
-        ln -snf "$(realpath "${BUILD_DIR}/gstreamer/subprojects/pango" 2>/dev/null || echo "${BUILD_DIR}/gstreamer/subprojects/pango")" "${gtk_subproj}/pango" 2>/dev/null || true
-      fi
-      append_meson_arg "--force-fallback-for=glib-2.0,gobject-2.0,gio-2.0,gio-unix-2.0,gmodule-2.0,gmodule-no-export-2.0,gmodule-export-2.0,gthread-2.0,cairo,cairo-gobject,pango,pangoft2,pangocairo,pangoxft,harfbuzz,gdk-pixbuf-2.0,gobject-introspection-1.0,pygobject-3.0,graphene-1.0,graphene-gobject-1.0,gtk4,gtk4-x11,gtk4-wayland"
-      append_meson_arg "-Dgobject-introspection:gi_cross_use_prebuilt_gi=true"
-      if [ -x /usr/local/bin/g-ir-scanner-riscv64-binary-wrapper ]; then
-        append_meson_arg "-Dgobject-introspection:gi_cross_binary_wrapper=/usr/local/bin/g-ir-scanner-riscv64-binary-wrapper"
-      fi
-      if [ -x /usr/local/bin/g-ir-scanner-ldd-riscv64-cross ]; then
-        append_meson_arg "-Dgobject-introspection:gi_cross_ldd_wrapper=/usr/local/bin/g-ir-scanner-ldd-riscv64-cross"
-      fi
-      append_meson_arg "-Dpango:introspection=disabled"
-      append_meson_arg "-Dharfbuzz:introspection=disabled"
-      append_meson_arg "-Dgdk-pixbuf:glycin=disabled"
-      append_meson_arg "-Dgdk-pixbuf:man=false"
-      [ "${GST_RS_BUILD_ALL:-true}" = "true" ] || { append_meson_arg "-Dgst-plugins-rs:whisper=disabled"; echo "Disabling gst-plugins-rs whisper plugin for RISC-V host arch"; }
+      _gst_monorepo_riscv_flags
       ;;
     aarch64*|arm*)
       echo "Target arch '${TARGET_MACHINE_ARCH}' detected: enabling -Drs (Rust bindings)"
@@ -292,6 +293,19 @@ _gst_monorepo_arch_flags() {
   fi
 }
 
+_gst_monorepo_wrap_flags() {
+  MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
+  case " ${EXTRA_MESON_ARGS} " in
+    *" --wrap-mode="*) ;;
+    *) EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE}" ;;
+  esac
+  case " ${EXTRA_MESON_ARGS} " in
+    *" --force-fallback-for="*) ;;
+    *) EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --force-fallback-for=pygobject-3.0" ;;
+  esac
+  append_meson_arg "-Dpygobject:tests=false"
+}
+
 _gst_monorepo_cross_flags() {
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
@@ -318,16 +332,7 @@ _gst_monorepo_cross_flags() {
     append_meson_native_flags MESON_FLAGS
   fi
 
-  MESON_WRAP_MODE="${MESON_WRAP_MODE:-nofallback}"
-  case " ${EXTRA_MESON_ARGS} " in
-    *" --wrap-mode="*) ;;
-    *) EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --wrap-mode=${MESON_WRAP_MODE}" ;;
-  esac
-  case " ${EXTRA_MESON_ARGS} " in
-    *" --force-fallback-for="*) ;;
-    *) EXTRA_MESON_ARGS="${EXTRA_MESON_ARGS} --force-fallback-for=pygobject-3.0" ;;
-  esac
-  append_meson_arg "-Dpygobject:tests=false"
+  _gst_monorepo_wrap_flags
 
   dump_debug_info > /tmp/gstreamer-debug-info.log 2>&1 || true
 }
@@ -610,12 +615,9 @@ build_gstreamer_monorepo() {
 
   # The guarded launcher turns a sccache hiccup into a cache miss, not a failed build; RUSTC_WRAPPER="" opts out.
   if [ -z "${RUSTC_WRAPPER+x}" ]; then
-    for _rw in /opt/scripts/core/sccache-launcher.sh; do
-      if [ -x "${_rw}" ]; then
-        export RUSTC_WRAPPER="${_rw}"
-        break
-      fi
-    done
+    if [ -x /opt/scripts/core/sccache-launcher.sh ]; then
+      export RUSTC_WRAPPER=/opt/scripts/core/sccache-launcher.sh
+    fi
     # Rust caching is always on, so stages without 01-core get bare sccache as common.sh does, despite its own aborts.
     export RUSTC_WRAPPER="${RUSTC_WRAPPER:-sccache}"
   fi

@@ -7,6 +7,11 @@ the system was doing throughout a build so you can answer, after the fact:
 
 > **When, and during which build activity, did RAM / disk / CPU headroom run out?**
 
+Active-log discovery keeps file paths intact while ordering by modification time. It prefers
+a stage log with a `.run` marker, then falls back to the newest log. Spaces in either the
+log directory or filename are supported. The exit handler preserves the original status
+even when writing the final resource summary fails.
+
 ## What it captures
 
 A CSV time-series (`resources-<run-id>.csv`), one row per tick (default every

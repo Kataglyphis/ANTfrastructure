@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Launcher core: the wrapper sets APP_RUNNER_DEFAULT_{EXE_NAME,BUILD_DIR,BUILD_TYPE}, then calls app_runner_main "$@".
-# Optional: APP_RUNNER_{LABEL,USAGE_INTRO,ENABLE_SHADER_CLEAN,SHADER_CLEAN_DIR,SHADER_COMPILE_SCRIPT},
-# hooks app_runner_post_vulkan_hook / app_runner_env_hook; the wrapper provides get_project_root and source_vulkan_env.
+# Consumer launcher configuration is documented in shared/linux/templates/README.md.
 [ -n "${_APP_RUNNER_LIB_LOADED:-}" ] && return 0
 _APP_RUNNER_LIB_LOADED=1
 # shellcheck source=./log-bootstrap.sh

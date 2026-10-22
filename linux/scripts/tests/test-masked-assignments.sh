@@ -29,4 +29,10 @@ t_case "--root grades the named tree, and reads its freeze file"
 _root_subject=$'f() {\n  local b="${B:-$(date)}"\n  echo "${b}"\n}'
 gate_root_arm "${PY}" "${GATE}" "${_root_subject}" masked-assignments.allow $'zz-sentinel.sh\tZZ_SENTINEL' ZZ_SENTINEL
 
+t_case "a failed target-triplet lookup stops the real pkg-config resolver under errexit"
+_src="$(t_fn_src "${TESTS_DIR}/../01-core/cross-apt.sh" cross_pkg_config_libdir)" || exit 1
+_body="${_src}"$'\ncross_target_triplet() { return 37; }\ncross_pkg_config_libdir\nexit 0\n'
+t_assert_eq "37" "$(t_rc bash -e -c "${_body}")" \
+  "a declaration must not turn the failed lookup into an apparently successful search"
+
 t_summary

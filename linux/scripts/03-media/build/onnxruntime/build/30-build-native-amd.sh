@@ -26,14 +26,7 @@ if command -v setup_linux_cross_env >/dev/null 2>&1; then
   setup_linux_cross_env
 fi
 
-if [ "${SKIP_DEP_INSTALL:-false}" != "true" ]; then
-    # The media stage runs as root in images that may not ship sudo.
-    if command -v sudo >/dev/null 2>&1; then
-        sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends libgcc-s1
-    else
-        apt-get update -qq && apt-get install -y --no-install-recommends libgcc-s1
-    fi
-fi
+install_onnx_native_dependencies gpu
 
 : "${ORT_PYTHON_VERSION:=$(host_python_major_minor)}"
 setup_host_python_environment
@@ -73,19 +66,7 @@ else
   warn "No hip-config.cmake under ${MIGRAPHX_HOME}; letting CMake search its defaults"
 fi
 # ccache cannot wrap hipcc, so HIP takes only an sccache-class launcher, under its own switch (docs/build-cache-tiers.md § 5.4).
-if [ "${ENABLE_SCCACHE_HIP:-0}" = "1" ]; then
-  compiler_cache_launcher_env 2>/dev/null || true
-  _gpu_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
-  case "${_gpu_launcher}" in
-    *sccache*)
-      info "sccache: wrapping HIP via CMAKE_HIP_COMPILER_LAUNCHER (${_gpu_launcher})"
-      BUILD_ARGS+=(--cmake_extra_defines "CMAKE_HIP_COMPILER_LAUNCHER=${_gpu_launcher}")
-      ;;
-    *)
-      warn "sccache unavailable for HIP caching — building uncached"
-      ;;
-  esac
-fi
+append_onnx_gpu_cache_args BUILD_ARGS HIP
 
 BUILD_ARGS+=(
   --use_migraphx

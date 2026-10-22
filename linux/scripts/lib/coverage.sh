@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Sourced coverage core (no shell options): gcovr for GCC --coverage, llvm-cov for clang profiles.
-# Optional: COVERAGE_GCOVR_{EXCLUDES,OUTPUT,EXTRA_ARGS}, COVERAGE_LLVM_{IGNORE_REGEX,RUN_ENV} (arrays but OUTPUT).
+# Compiler coverage formats differ; see shared/linux/templates/README.md.
 
 [ -n "${_COVERAGE_SH_LOADED:-}" ] && return 0
 _COVERAGE_SH_LOADED=1

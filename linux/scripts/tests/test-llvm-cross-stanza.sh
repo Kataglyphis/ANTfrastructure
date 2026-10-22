@@ -127,7 +127,7 @@ declare -A _cfg_state=(
   [llvm_prefix]=/opt/llvm-cross/aarch64-linux-gnu
 )
 _cfg_launcher=(-DCMAKE_C_COMPILER_LAUNCHER=sccache)
-_cfg_linker=(-DCMAKE_EXE_LINKER_FLAGS_INIT=-Wl,-rpath-link,/lib)
+_cfg_linker=('-DCMAKE_EXE_LINKER_FLAGS_INIT=-Wl,-rpath-link,/lib')
 _cfg_superset=(-DLLVM_ENABLE_PROJECTS=clang)
 _llvm_cross_cmake_configure _cfg_state aarch64-unknown-linux-gnu \
   _cfg_launcher _cfg_linker _cfg_superset
@@ -198,8 +198,7 @@ _stanza_scenario() {
     _TT="$1"; _BT="$2"
     source linux/scripts/02-toolchain/llvm-cross.sh 2>/dev/null
     _CMAKE_ARGV=""; cmake() { _CMAKE_ARGV="$*"; }
-    # llvm-cross.sh is sourced standalone here, without common.sh: supply the
-    # one helper the resolver needs so its refusal is observable, not a 127.
+    # Supply the standalone resolver helper so refusal is observable rather than command-not-found.
     die() { printf "%s\n" "$*" >&2; exit 1; }
     require_cross_gcc_tool()          { return 1; }
     resolve_build_gcc_tool()          { printf "/usr/bin/%s" "$1"; }

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # ORT census (G1, G6): every ORT binary under a root is chain bytes. See docs/cross-build-verification.md § E. ORT single source
 
-# Usage: check-ort-provenance.sh [--reference DIR]... [--manifest FILE]... [--exempt ARCH:PATH:WHY]... <dir> | --image
-# Defaults to the chain ORT of the image it runs in. Exit 0 = clean, 1 = findings, 2 = usage.
+# See docs/onnxruntime-single-source.md#the-guards for reference roots, manifest inputs and exemptions.
 
 _ORT_CENSUS_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

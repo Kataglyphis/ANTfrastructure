@@ -1,21 +1,13 @@
 #!/usr/bin/env python3
 # Copyright (c) 2025 Kataglyphis. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-#
-# Linux port of the PreToolUse delete guard. Rationale, incident history and
-# the pattern-design rules (quote-stripping, proximity, why there are NO
-# verb-only rules) live in guard-destructive-deletes.ps1 next door and
-# docs/failure-modes.md — this file only carries the Linux rule table.
-# Contract: PreToolUse JSON on stdin, decision on stdout, ALWAYS exit 0.
-# Tested by linux/scripts/tests/test-delete-guard.sh.
+# See docs/failure-modes.md § The delete guard denies its own legitimate work.
 
 import json
 import re
 import sys
 
-# The negative lookbehind for "-" keeps container flags out of the verb match:
-# the PowerShell original documents that exact false positive firing six times
-# on 2026-08-25, and this port reproduced it on its first real container run.
+# Exclude container flags from delete verbs.
 VERB = re.compile(
     r"(?<!git )(?<!-)\brm\b|\brmdir\b|\bunlink\b|\bshred\b|\bdd\b"
     r"|\bfind\b[^\n]*-delete\b|\bmkfs(\.|\s)|\btruncate\b"
@@ -28,8 +20,7 @@ PKG_REMOVE = re.compile(
     r"|\bsnap\s+remove\b|\bflatpak\s+uninstall\b"
 )
 
-# Blanked out (INCLUDING a trailing /*) before the protected checks: the
-# genuinely reclaimable set. A bare /* left behind read as the filesystem root.
+# Remove the complete scratch glob so its slash cannot look like a root deletion.
 RECLAIMABLE = (
     "<home>/.cache/kata-buildcache",
     "/var/tmp",
@@ -116,8 +107,7 @@ def _delete_segments(norm: str):
 def verdict(text: str) -> str | None:
     if not text or not text.strip():
         return None
-    # Verbs match with quoted spans removed (prose about a delete is not one);
-    # paths match on the full text, where a real delete's path usually lives.
+    # Strip quotes for verbs only; real paths usually remain quoted.
     bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", text).lower()
     if PKG_REMOVE.search(bare):
         return "command removes software from this host"
@@ -127,12 +117,7 @@ def verdict(text: str) -> str | None:
     norm = re.sub(r"\$\{?home\}?|(?<![\w.])~(?=/|\s|$)", "<home>", norm)
     for ok in RECLAIMABLE:
         norm = re.sub(re.escape(ok) + r"(/\*)?", " <reclaimable> ", norm)
-    # Verb and path were matched across the WHOLE command, so a delete of a
-    # scratch path was denied whenever the command merely MENTIONED /opt — that
-    # blocked real work five times on 2026-09-02. Scope the path check to the
-    # segments that actually delete. The bare-root pattern additionally matches
-    # on quote-stripped text: on the full text it fires on ordinary shell such
-    # as `sed 's/^/  /'`. docs/failure-modes.md#delete-guard-scope
+    # Check only deleting segments so unrelated protected paths cannot trigger a denial.
     for seg in _delete_segments(norm):
         seg_bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", seg)
         for rx, what in PROTECTED:

@@ -17,6 +17,11 @@ see below), but inside an arm64 image every one of them is an
 x86-64 ELF: `vulkaninfo` there exits 127. It is build scaffolding. Only the
 own-arch prefix is usable at runtime, and `VULKAN_SDK` points at it.
 
+The driver sources `vulkan-install.sh` for prerequisites, verified download and archive placement.
+The SDK Dockerfile copies both siblings. Download failure aborts before using even an existing
+archive at the same path; single-root and flat archives retain their original layouts. The
+offline `test-storage-sdk-refactors.sh` covers these paths without apt or network access.
+
 ## What the target build produces, and why it used to produce almost nothing
 
 `_build_vulkan_targets` in `linux/scripts/02-toolchain/vulkan.sh` cross-builds:

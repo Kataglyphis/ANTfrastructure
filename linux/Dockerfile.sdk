@@ -48,6 +48,7 @@ RUN set -euo pipefail; \
 COPY --chmod=755 \
     linux/scripts/01-core/modules.sh \
     linux/scripts/01-core/common.sh \
+    linux/scripts/01-core/sccache-server-address.sh \
     linux/scripts/01-core/load-versions-env.sh \
     linux/scripts/01-core/logging.sh \
     linux/scripts/01-core/arch-mapping.sh \
@@ -73,6 +74,7 @@ COPY --chmod=755 \
     linux/scripts/02-toolchain/llvm-validate.sh \
     linux/scripts/02-toolchain/gcc.sh \
     linux/scripts/02-toolchain/vulkan.sh \
+    linux/scripts/02-toolchain/vulkan-install.sh \
     /opt/scripts/toolchain/
 # Patches for the pinned SDK source, none since 1.4.363.0: docs/vulkan-foreign-arch-sdk.md#upstream-patches-recheck-on-every-sdk-bump
 COPY --chmod=755 linux/scripts/01-core/apply-patch.sh /opt/scripts/core/apply-patch.sh

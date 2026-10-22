@@ -68,7 +68,51 @@ fix="$(_tree)"
 _sbom "${fix}" --stdout >/dev/null
 t_assert_fails test -e "$(_out_file "${fix}")"
 
+t_case "package extraction preserves the complete committed SPDX document"
+actual="${_work}/actual.json"
+"${PY}" "${GATE}" --stdout > "${actual}"
+t_assert_eq "0" "$(t_rc cmp "${REPO}/docs/deps/sbom-curated.spdx.json" "${actual}")" \
+  "all package fields, source obligations and relationships must retain their bytes"
+
 t_case "the committed SBOM in the REAL tree is current today"
 t_assert_eq "0" "$(t_rc "${PY}" "${GATE}" --check)"
+
+t_case "scanner comparison keeps package counts, image scope and source obligations distinct"
+comparison="$("${PY}" - "${REPO}" "${_work}" <<'PY_COMPARE'
+import json
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(sys.argv[1]) / "docs/scripts"))
+import compare_sbom as comparison
+work = Path(sys.argv[2])
+scanned = work / "scanned-linux.spdx.json"
+scanned.write_text(json.dumps({"packages": [
+    {"name": "gstreamer1.0", "externalRefs": [{"referenceType": "purl", "referenceLocator": "pkg:deb/gstreamer"}]},
+    {"name": "torch"}, {"name": "torch"},
+]}))
+curated = work / "comparison-curated.json"
+curated_rows = [
+    ("GStreamer", "Linux", ""),
+    ("PyTorch", "Linux", ""),
+    ("FFmpeg", "Linux", "offer-source"),
+    ("TeX Live", "Windows", ""),
+]
+curated.write_text(json.dumps({"packages": [
+    {"name": name, "comment": f"Image section: {image} / fixture",
+     "licenseComments": obligation, "licenseDeclared": "GPL" if obligation else ""}
+    for name, image, obligation in curated_rows
+]}))
+comparison.CURATED = curated
+sys.argv = ["compare_sbom.py", str(scanned)]
+raise SystemExit(comparison.main())
+PY_COMPARE
+)"
+t_assert_contains "${comparison}" '3 (2 distinct names)'
+t_assert_contains "${comparison}" 'deb 1'
+t_assert_contains "${comparison}" 'no-purl 2'
+t_assert_contains "${comparison}" '3   [1 belong to other images, excluded]'
+t_assert_contains "${comparison}" 'NOT visible to the scanner  : 1'
+t_assert_contains "${comparison}" 'source-obligated: 1'
+t_assert_contains "${comparison}" 'FFmpeg  [GPL]'
 
 t_summary

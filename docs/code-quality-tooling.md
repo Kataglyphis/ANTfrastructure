@@ -548,6 +548,48 @@ Dockerfiles.
 
 ## The allowlist contract
 
+Quality fixes must reduce exceptions. Refactor the underlying code before changing an
+allowlist. Adding an entry, increasing a frozen budget, raising a threshold or narrowing
+scan coverage requires explicit owner authorization. Existing rationales explain the
+current debt; they do not authorize more. Remove an entry when its finding is fixed.
+A duplication report may identify shared syntax rather than shared behavior; inspect
+`--explain` before extracting a helper, and keep any remaining exception narrowly scoped.
+
+The cleanup separates SBOM construction and comparison, Python extraction, package-index
+fetching, dependency dispatch, option parsing and smoke probes from their drivers. Shared
+owners now handle compiler lookup, cache addresses, FFmpeg feature tables and SDK dependency
+queues. Interpreter priority, archive fallbacks, codec argument order, compiler swaps and NDK object checks
+have regression coverage in `test-code-quality-refactors.sh`.
+
+The comment-size, function-size, complexity and masked-declaration lists are empty. No function
+exceeds the branch or nesting limit. File-size, ShellCheck and duplication lists still record
+remaining debt; their files and the gates are the authority for current counts.
+
+Runtime verdict aggregation is separate from row selection, version checks and tree failures.
+Consumer symptoms live in a lookup library. The runtime test driver sources boot, consumer
+and SDK cases in its original shell and order; all cases still run from the same suite.
+Host storage admission and retention live in `01-core/chain-storage.sh`; the orchestrator
+retains stage order and the between-stage call. Vulkan provisioning lives in a sibling
+`vulkan-install.sh`, copied beside the driver in the SDK image. Their offline regression
+suite covers admission ordering, archive layouts, verification failures and source wiring.
+
+The duplication cleanup shares native Python probe transport and result checks while retaining
+ONNX's required presence and GenAI's separate parity policy. TVM shares resolved CMake options
+and SDK lookup order. ONNX Runtime shares dependency setup and GPU cache selection; package
+and smoke builds share artifact-context resolution. Compiler signatures share one bounded scan,
+and Python bundle/package drivers share a mode-aware argument parser. Host tools use one
+unknown-option diagnostic. Their regression suites and mutations pin the distinct policies.
+
+Distinct nameref names avoid ShellCheck confusing separate functions' local output arrays.
+Literal associative-array keys are quoted, and indirect exports include both name and value.
+These changes remove findings without adding suppressions or weakening scan coverage.
+LiteRT wheel helpers live in a passive sibling library, and longer embedded Python checks
+live in standalone probes. GStreamer flag and cargo suites preserve target metadata,
+host/target compiler separation and conservative plugin exclusions. IREE's stage helpers
+live beside the wheelhouse driver on the existing directory mount.
+Existing build-image inputs still require a rebuild to validate shipped behavior.
+
+
 Every gate that freezes a baseline uses one of two rules, both owned by
 `linux/scripts/quality_allow.py` so a new gate cannot invent a third:
 
@@ -624,7 +666,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2142 entries** over **194 distinct test commands**; both digits are
+manifest holds **2168 entries** over **207 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1880,7 +1922,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 603 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 748 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1891,7 +1933,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **143** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **284** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -3139,3 +3181,21 @@ required to keep a Sphinx index (that check is hub-only, because inventing the
 obligation would fail every consumer on a question nobody asked), and
 `doc-links` is the one of the three wired into the `--ratchets` step, because it
 is the only one with no budget to seed.
+
+### Shared lint release bootstrap
+
+`01-core/lint-tool-release.sh` owns host asset selection, checksum refusal, versioned
+cache paths and verified installation for ShellCheck, actionlint and hadolint.
+ShellCheck accepts a PATH binary only at its pin. The other two keep their existing
+PATH preference. Archive members and release tag prefixes remain tool-specific.
+`test-lint-tool-release.sh` exercises the platform table, cache reuse, PATH policies,
+missing checksum refusal and failed downloads with stubs. It does not download or
+validate upstream artifacts. The workflow and lint-tool suites still exercise the
+real entry scripts and image installation contract.
+
+FFmpeg's compile and link probes share command setup and temporary-tree cleanup in
+`ffmpeg-probe-framework.sh`. The compile probe still compiles to an object and
+optionally captures a separate debug invocation; the link probe retains library
+ordering and its lld switch. `test-ffmpeg-probes.sh` checks these contracts with a
+stub compiler and tiny native C programs. The same assertions pass against the
+previous implementation. This does not establish cross-toolchain or codec support.

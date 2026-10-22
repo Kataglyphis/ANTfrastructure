@@ -36,26 +36,26 @@ trap_push() {
 }
 
 append_buildkit_host_arg() {
-  local -n out_args_ref=$1
+  local -n _append_buildkit_host_arg_result=$1
   if [ -n "${BUILDKIT_HOST:-}" ]; then
-    out_args_ref+=(--buildkit-host "${BUILDKIT_HOST}")
+    _append_buildkit_host_arg_result+=(--buildkit-host "${BUILDKIT_HOST}")
   fi
 }
 
 append_mirror_build_args() {
-  local -n out_args_ref=$1
+  local -n _append_mirror_build_args_result=$1
   local use_fast_mirror="${2:-${USE_FAST_UBUNTU_MIRROR:-false}}"
   local archive_url
   archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-$(ubuntu_default_archive_mirror_url)}}}"
   local ports_url="${4:-${FAST_UBUNTU_PORTS_MIRROR_URL:-}}"
 
-  out_args_ref+=(
+  _append_mirror_build_args_result+=(
     --build-arg "USE_FAST_UBUNTU_MIRROR=${use_fast_mirror}"
     --build-arg "FAST_UBUNTU_MIRROR_URL=${archive_url}"
   )
 
   if [ -n "${ports_url}" ]; then
-    out_args_ref+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${ports_url}")
+    _append_mirror_build_args_result+=(--build-arg "FAST_UBUNTU_PORTS_MIRROR_URL=${ports_url}")
   fi
 }
 
@@ -68,11 +68,11 @@ append_mirror_build_args_from_env() {
 }
 
 append_optional_build_arg() {
-  local -n out_args_ref=$1
+  local -n _append_optional_build_arg_result=$1
   local arg_name="$2"
   local arg_value="${3:-}"
   if [ -n "${arg_value}" ]; then
-    out_args_ref+=(--build-arg "${arg_name}=${arg_value}")
+    _append_optional_build_arg_result+=(--build-arg "${arg_name}=${arg_value}")
   fi
 }
 
@@ -130,7 +130,6 @@ run_nerdctl_build() {
 strip_elf_tree() {
   local dir="$1" jobs strip_bin="${3:-strip}"
   jobs="${2:-$(nproc)}"
-  [ -n "${dir}" ] || return 0
   [ -d "${dir}" ] || return 0
   ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \
     | awk -F': *' '/ELF/{print $1}' \

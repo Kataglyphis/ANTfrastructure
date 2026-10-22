@@ -28,6 +28,12 @@ its own docs; nothing here proposes work there.
 
 ---
 
+The host chain sources `01-core/chain-storage.sh` for preflight admission, pressure recovery
+and archive retention. Forced admission and dry runs return before trimming. The between-stage
+caller retains its protected-slug and next-runtime threshold logic. The lifecycle suite and
+`test-storage-sdk-refactors.sh` exercise refusals and fallback ordering without pruning a real
+build cache.
+
 ## 1. The tiers
 
 | # | Tier | Wired at | Covers | Stored in | Destroyed by |
@@ -1232,6 +1238,15 @@ property inside one server cannot produce that segregation; a per-CONTAINER one
 does, which is what the next section shows it was.
 
 ### The server address must be exported where the compiles run
+
+`01-core/sccache-server-address.sh` now owns address selection. Both `ensure_sccache_env`
+and `sccache_export_server_address` call it in the compiling shell, so its exports reach
+compiler processes. An explicit socket or port wins; modern sccache defaults to a per-user
+socket, and older versions keep the hashed TCP port. Toolchain RUNs mount this helper beside
+the cache modules. The sdk copies it into `/opt/scripts/core`, so media inherits it without
+adding another mount to its Arm NN RUN. A missing helper is a failure, not permission to use
+a shared default server. The cache unit suite checks both version branches and explicit overrides.
+
 
 **This is the root cause of both classes above, and it is a regression of a bug
 this document already carried as fixed (§ 5.4).** `SCCACHE_SERVER_UDS` makes the

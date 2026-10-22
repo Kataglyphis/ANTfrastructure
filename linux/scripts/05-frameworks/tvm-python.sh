@@ -75,22 +75,7 @@ _tvm_wheel_setup() {
     rm -f "${TVM_WHEEL_DIR}"/*.whl
 
     local -a wheel_cmake_args=()
-    append_tvm_cmake_args \
-      --out wheel_cmake_args \
-      --python-module ON \
-      --build-type "$build_type" \
-      --cc "$desired_cc" \
-      --cxx "$desired_cxx" \
-      --llvm-cmake-value "$llvm_cmake_value" \
-      --llvm-dir "$llvm_dir" \
-      --llvm-ignore-paths "$llvm_ignore_paths" \
-      --use-vulkan "$use_vulkan" \
-      --use-cuda "$use_cuda" \
-      --use-opencl "$use_opencl" \
-      --spirv-tools-lib "$spirv_tools_lib" \
-      --cross-link-flags "$cross_link_flags" \
-      --vulkan-library "$vulkan_library" \
-      --vulkan-include "$vulkan_include"
+    append_tvm_resolved_cmake_args wheel_cmake_args ON
     wheel_cmake_args_string="$(shell_quote_args "${wheel_cmake_args[@]}")"
 
     # Empty on native and when the target sysconfigdata is missing.

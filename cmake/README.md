@@ -123,3 +123,70 @@ disables exceptions", no.
 It is a fork-once project template, not a consumed library — so drift there is
 expected and is not reconciled from here. When a fix applies to both, land it
 here first; this copy is the one real builds consume.
+
+## Script API reference
+
+`cmake/ProjectOptionsCommon.cmake`:
+
+```text
+Declares the core options; the four defaults the consumers disagree on are required, so none silently becomes OFF.
+  myproject_define_core_options(ASAN_DEFAULT <ON|OFF> UBSAN_DEFAULT <ON|OFF> TSAN_DEFAULT <ON|OFF> CPPCHECK_DEFAULT <ON|OFF>)
+```
+
+`cmake/KataglyphisAppImage.cmake`:
+
+```text
+Resolves the pinned appimagetool release for a host arch (the tool runs on the build host, not the target).
+  kataglyphis_appimagetool_pin(<out_version> <out_asset> <out_sha256> [ARCH <uname -m>] [VERSIONS_ENV <file>])
+```
+
+`cmake/KataglyphisAppImage.cmake`:
+
+```text
+Returns a verified appimagetool: -DKATAGLYPHIS_APPIMAGETOOL, else PATH (unless NO_SYSTEM_SEARCH), else the pinned download.
+  kataglyphis_provision_appimagetool(<out_var> [DESTINATION <dir>] [VERSIONS_ENV <file>] [NO_SYSTEM_SEARCH])
+```
+
+`cmake/GTestDiscovery.cmake`:
+
+```text
+Registers a GoogleTest executable with CTest; KATAGLYPHIS_ENABLE_GTEST_DISCOVERY=OFF forces the add_test fallback.
+  kataglyphis_register_gtest_target(<target> [WORKING_DIRECTORY <absolute dir>] [DISCOVERY_TIMEOUT <seconds, default 300>])
+```
+
+`cmake/CompilerBuildFlags.cmake`:
+
+```text
+Applies Debug/Release/RelWithDebInfo flags (the *-Profile presets resolve to RelWithDebInfo).
+  myproject_apply_compiler_build_flags(${myproject_ENABLE_SANITIZER_ADDRESS})  # ASan tells clang-cl to strip /MDd
+```
+
+`cmake/CPackCommon.cmake`:
+
+```text
+Configures the shared CPack variables; sets KATAGLYPHIS_CPACK_ARCH, the normalised arch in the package name.
+  kataglyphis_cpack_common(
+    VENDOR                 <string>          # required: vendor + DEB maintainer
+    WIX_UPGRADE_GUID       <guid>            # required, no default: products sharing one uninstall each other
+    [EXECUTABLE            <name>]           # default ${PROJECT_NAME}
+    [LICENSE_FILE          <path>]           # default ${PROJECT_SOURCE_DIR}/LICENSE
+    [README_FILE           <path>]           # default ${PROJECT_SOURCE_DIR}/README.md
+    [WELCOME_FILE          <path>]           # default ${PROJECT_SOURCE_DIR}/docs/packaging/WelcomeFile.txt
+    [PACKAGE_ICON          <path>]           # installer icon; left unset if omitted
+    [NSIS_WELCOME_TITLE    <string>]
+    [NSIS_FINISH_TITLE     <string>]
+    [NSIS_HEADER_IMAGE     <path.bmp>]
+    [NSIS_MUI_ICON         <path.ico>]
+    [WIX_PRODUCT_ICON      <path.ico>]
+    [WIX_LICENSE_RTF       <path.rtf>]       # default ${PROJECT_SOURCE_DIR}/LICENSE.rtf, synthesised if absent
+    [WIX_DEFAULT           ON|OFF]           # default OFF: initial ENABLE_WIX_PACKAGING
+    [APPIMAGE_DEFAULT      ON|OFF]           # default ON:  initial CPACK_ENABLE_APPIMAGE
+    [APPIMAGE_DESKTOP_FILE <name.desktop>]   # required once AppImage packaging can run
+    [APPIMAGE_ICON_NAME    <name>]           # installed icon name, NOT a path
+    [DEBIAN_DEPENDS        <string>]         # default "libc6 (>= 2.31)"
+    [DEBIAN_SECTION        <string>]         # default "devel"
+    [DEBIAN_PRIORITY       <string>]         # default "optional"
+    [UNIX_INSTALL_PREFIX   <path>]           # CPACK_PACKAGING_INSTALL_PREFIX; unset if omitted
+    [SHORT_WINDOWS_FILE_NAME])               # Windows: <project>-<version>-<config>-<arch>, within NSIS's MAX_PATH
+A Linux package that bundles libraries calls kataglyphis_install_linux_closure (below) as well.
+```

@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# Read docs/dependency-updates.md#before-you-change-the-script before changing this driver.
+
+# Callers branch on exit status; see docs/dependency-updates.md#what-a-caller-branches-on.
+set -uo pipefail
+
+_renovate_usage() {
+  cat <<'HELP'
 # renovate-local.sh - Renovate as a local CLI: Renovate detects what is behind,
 # this script applies it, for every ecosystem the repo has.
 # Before changing it, read docs/dependency-updates.md#before-you-change-the-script
@@ -18,7 +25,9 @@
 #   130/143/129/141  SIGINT / SIGTERM / SIGHUP / SIGPIPE, undone first (on_signal)
 # What each code promises about the tree:
 # docs/dependency-updates.md#what-a-caller-branches-on
-set -uo pipefail
+HELP
+}
+
 
 # Only report_refusals() raises EXIT_CODE to 2; err() exits 1 directly.
 EXIT_REFUSED=2
@@ -61,7 +70,7 @@ while [ $# -gt 0 ]; do
     --print-bin) MODE=print-bin ;;
     --managers)  shift; [ $# -gt 0 ] || err "--managers needs a value"; MANAGERS="$1" ;;
     --managers=*) MANAGERS="${1#*=}" ;;
-    -h|--help)   sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help)   _renovate_usage; exit 0 ;;
     -*)          err "unknown option: $1" ;;
     *)           [ -z "${TARGET}" ] || err "more than one repo root given"; TARGET="$1" ;;
   esac

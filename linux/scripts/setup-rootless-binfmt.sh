@@ -1,11 +1,19 @@
 #!/usr/bin/env bash
-# Register QEMU user-mode emulators for rootless containerd + BuildKit — NO sudo.
-# `tonistiigi/binfmt --install` fails here: it registers in a throwaway namespace --rm destroys.
-# Registering in containerd's rootlesskit namespace, which buildkitd shares, fixes run and build.
-# Flags POCF: P keeps argv[0]; F opens the interpreter at registration so nested namespaces inherit it.
-# Registration dies with the namespace (reboot/containerd restart) — re-run or use --install-service.
+# Register in containerd’s persistent rootless namespace; see docs/linux-host-setup.md#the-prerequisites-list-agentsmd-carried.
 set -euo pipefail
 IFS=$'\n\t'
+
+_binfmt_usage() {
+  cat <<'HELP'
+Usage: setup-rootless-binfmt.sh [--arches CSV] [--force] [--install-service] [--verify]
+Register QEMU in containerd's persistent rootless namespace, without sudo.
+  --arches CSV        Target architectures; defaults to the non-host architectures.
+  --force             Replace existing registrations.
+  --install-service   Install the user service to restore registrations after reboot.
+  --verify            Check registrations without changing them.
+  --help              Show this help.
+HELP
+}
 
 # Default arches exclude the host's own: binfmt_misc is consulted for native ELF too. See docs/linux-cross-builds.md#non-amd64-build-hosts
 _binfmt_host_arch() {
@@ -42,7 +50,7 @@ while [ $# -gt 0 ]; do
     --install-service) INSTALL_SERVICE=1; shift ;;
     --verify) VERIFY_ONLY=1; shift ;;
     -h|--help)
-      sed -n '2,40p' "$0"; exit 0 ;;
+      _binfmt_usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done

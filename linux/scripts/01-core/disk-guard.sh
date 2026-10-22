@@ -89,6 +89,14 @@ _disk_guard_fmt_gib() {
 # Always returns 0 and sets _DISK_GUARD_TRIM_FREED_BYTES/_REMOVED, so call it directly, not in $(...).
 _DISK_GUARD_TRIM_FREED_BYTES=0
 _DISK_GUARD_TRIM_REMOVED=0
+_disk_guard_trim_budget() {
+  local target_gb="$1" free_gb="$2" budget_bytes="$3"
+  [ -n "${budget_bytes}" ] || budget_bytes=$(( (target_gb - free_gb) * 1073741824 ))
+  case "${budget_bytes}" in ''|*[!0-9]*) return 1 ;; esac
+  [ "${budget_bytes}" -gt 0 ] || return 1
+  printf '%s' "${budget_bytes}"
+}
+
 _disk_guard_trim_cache_export() {
   local bc_dir="${1:-}" target_gb="${2:-}" protected="${3:-}" budget_bytes="${4:-}"
   # Keep the newest N: when the deficit exceeds the whole dir, the budget alone would wipe it.
@@ -96,7 +104,7 @@ _disk_guard_trim_cache_export() {
   case "${keep_n}" in ''|*[!0-9]*) keep_n=3 ;; esac
   _DISK_GUARD_TRIM_FREED_BYTES=0
   _DISK_GUARD_TRIM_REMOVED=0
-  [ -n "${bc_dir}" ] && [ -d "${bc_dir}" ] || return 0
+  [ -d "${bc_dir}" ] || return 0
   case "${target_gb}" in ''|*[!0-9]*) return 0 ;; esac
 
   local free_gb
@@ -104,9 +112,7 @@ _disk_guard_trim_cache_export() {
   [ -n "${free_gb}" ] || return 0                    # unknown -> do nothing
   [ "${free_gb}" -lt "${target_gb}" ] || return 0    # ample -> no-op
 
-  [ -n "${budget_bytes}" ] || budget_bytes=$(( (target_gb - free_gb) * 1073741824 ))
-  case "${budget_bytes}" in ''|*[!0-9]*) return 0 ;; esac
-  [ "${budget_bytes}" -gt 0 ] || return 0
+  budget_bytes="$(_disk_guard_trim_budget "${target_gb}" "${free_gb}" "${budget_bytes}")" || return 0
 
   _disk_guard_log "[disk-trim] ${free_gb}G free < ${target_gb}G needed — reclaiming up to $(_disk_guard_fmt_gib "${budget_bytes}") GiB of regenerable cache exports in ${bc_dir} (oldest first; protected: ${protected:-none})"
   while [ "${_DISK_GUARD_TRIM_FREED_BYTES}" -lt "${budget_bytes}" ]; do

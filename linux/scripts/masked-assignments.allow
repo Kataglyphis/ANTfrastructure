@@ -1,4 +1,1 @@
-# Frozen 2026-09-01: `local x="$(cmd)"` sites that predate the gate.
-# The declaration masks the command's exit status, so `set -e` never sees it
-# fail and x silently holds "". Fix one by splitting it, then DELETE its line.
-# Format: <file>\t<variable>.  docs/failure-modes.md
+# No declaration masks a command substitution; see docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status.

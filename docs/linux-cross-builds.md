@@ -972,6 +972,11 @@ falls back to disabled. Current toggles:
 | `ORT_ENABLE_LTO` | `--enable_lto` for every ONNX Runtime build that goes through the shared helper (CPU, AMD, NVIDIA) | **Default OFF** (AP6, 2026-08-24), on all arches at once. A measuring knob, not probe-gated. |
 | `GENAI_ALLOW_RISCV64` | riscv64 self-builds `onnxruntime-genai` (GEN1) | **Default ON**; anything but `true` backs GEN1 out. Not probe-gated. [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md) |
 
+The TensorFlow C SDK cache is complete only after extraction, layout verification and
+pkg-config generation succeed. A failed metadata write leaves no completion stamp.
+A retry replaces the unstamped `lib/` and `include/` trees before moving the new archive's
+contents, so an interrupted attempt cannot create nested `lib/lib` directories.
+
 **QNN EP (Qualcomm QAIRT SDK, backlog QNN-LINUX):** opt-in for the **arm64**
 lane, targeting Snapdragon NPU. No environment toggle — staging a zip in
 `linux/qnn-sdk/` is the switch. When a Linux AArch64 SDK zip is present,
@@ -1540,6 +1545,18 @@ reproduce here — [`gen1-riscv64-genai.md`](gen1-riscv64-genai.md).
 
 ## Runtime lane helper commands
 
+Package builds and their smoke target resolve the android artifact through the same helper.
+A local context wins when enabled; otherwise an immutable android pin wins over the mutable
+artifact tag. Wrapper build, smoke wait and ship order are unchanged.
+
+Native ORT setup shares apt invocation and GPU launcher selection. CPU apt flags remain
+distinct from GPU flags, and installation failures propagate. The existing failed-update
+continuation is preserved. CUDA and HIP still accept only an sccache-class launcher. Cache setup runs in the caller;
+launcher resolution writes an output variable so setup exports survive and diagnostics stay
+out of the path. TVM's
+native and wheel configures share resolved options, with their separate Python-module flag;
+SDK lookup keeps target-first and library-before-version order.
+
 Building and publishing the per-arch wrappers and the multi-arch manifest, plus manifest repair. The canonical chain commands are in [§ The command reference AGENTS.md used to carry](#the-command-reference-agentsmd-used-to-carry); these are the runtime-lane half.
 
 ```bash
@@ -1730,3 +1747,13 @@ To build the emulator ABI instead:
 ```bash
 ANDROID_TARGET_ABI=x86_64 bash linux/scripts/build-cross-chain.sh --only android
 ```
+
+### Android SDK retry policy
+
+`android-sdk.sh` uses one retry loop for license acceptance and package installs.
+License acceptance allows six attempts with three seconds between failures and
+requires the `All SDK package licenses accepted` message, regardless of exit status.
+Installation allows four attempts with five seconds between failures and requires
+exit zero; a per-package `Done.` message is insufficient. The fixture suite
+`test-android-sdk-retry.sh` checks both policies with a stubbed sdkmanager and
+records waits without sleeping. It does not install an SDK or exercise the network.

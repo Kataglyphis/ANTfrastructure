@@ -155,3 +155,10 @@ retry() {
     sleep "${sleep_sec}"
   done
 }
+
+# A rejected option must print the caller's usage before terminating its script.
+reject_unknown_option() {
+  warn "Unknown option: $1"
+  "${2:-usage}" >&2
+  exit "${3:-1}"
+}

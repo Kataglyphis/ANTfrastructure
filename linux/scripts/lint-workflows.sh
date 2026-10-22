@@ -12,47 +12,11 @@ CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-actionlint_asset_and_sha() {
-  case "$(uname -s)/$(uname -m)" in
-    Linux/x86_64|Linux/amd64)
-      printf 'actionlint_%s_linux_amd64.tar.gz %s\n' "${ACTIONLINT_VERSION}" "${ACTIONLINT_LINUX_AMD64_SHA256:-}" ;;
-    Linux/aarch64|Linux/arm64)
-      printf 'actionlint_%s_linux_arm64.tar.gz %s\n' "${ACTIONLINT_VERSION}" "${ACTIONLINT_LINUX_ARM64_SHA256:-}" ;;
-    MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
-      printf 'actionlint_%s_windows_amd64.zip %s\n' "${ACTIONLINT_VERSION}" "${ACTIONLINT_WINDOWS_AMD64_SHA256:-}" ;;
-    *) return 1 ;;
-  esac
-}
+# shellcheck source=01-core/lint-tool-release.sh
+source "${CORE_DIR}/lint-tool-release.sh"
 
 actionlint_ensure() {
-  : "${ACTIONLINT_CACHE_DIR:=${TMPDIR:-/tmp}}"
-  if command -v actionlint >/dev/null 2>&1; then
-    ACTIONLINT_BIN="$(command -v actionlint)"
-    return 0
-  fi
-
-  # shellcheck source=01-core/load-versions-env.sh
-  source "${CORE_DIR}/load-versions-env.sh"
-  load_versions_env "${CORE_DIR}/tool-pins.env"
-  [ -n "${ACTIONLINT_VERSION:-}" ] || err "ACTIONLINT_VERSION is not set (tool-pins.env not found?)."
-
-  local asset expected_sha cache_root bin_name
-  read -r asset expected_sha < <(actionlint_asset_and_sha) \
-    || err "Unsupported platform for actionlint bootstrap ($(uname -s)/$(uname -m)); install actionlint on PATH instead."
-  [ -n "${expected_sha}" ] || err "No pinned actionlint SHA256 for ${asset}; add one to tool-pins.env."
-
-  cache_root="${ACTIONLINT_CACHE_DIR}/actionlint-${ACTIONLINT_VERSION}"
-  bin_name="actionlint"; case "${asset}" in *windows*) bin_name="actionlint.exe" ;; esac
-  ACTIONLINT_BIN="${cache_root}/${bin_name}"
-
-  if [ ! -x "${ACTIONLINT_BIN}" ]; then
-    # shellcheck source=01-core/downloads.sh
-    source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified actionlint fetch"
-    download_verified_install \
-      "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${asset}" \
-      "${expected_sha}" "${ACTIONLINT_BIN}" "${bin_name}" \
-      || err "Verified install of ${asset} failed (checksum mismatch, network or extraction error)."
-  fi
+  lint_tool_ensure actionlint ACTIONLINT_BIN
 }
 
 # actionlint's shell half: without shellcheck on PATH it silently disables the rule.

@@ -23,6 +23,17 @@ check that fails in seconds, not after a 30–60 min emulated build.**
 > only the payload-execution sections NOT APPLICABLE (since 2026-08-24 — before that the whole
 > gate was reported NOT APPLICABLE).
 
+The native ONNX and GenAI probes share guarded Python transport and sentinel verdict handling.
+An empty payload exits before Python starts. Exit zero requires an OK sentinel; ONNX's
+missing-package status fails, while GenAI retains its parity-owned absence policy. The
+`test-runtime-probe-verdicts.sh` matrix covers statuses and sentinel combinations, and the
+payload suite executes the actual generated wrapper rather than a copied implementation.
+
+Compiler signature sampling shares a scanner but retains GCC's depth-one, five-library bound
+and Clang's depth-two, ten-library bound, file types and advisory messages. Paths with spaces
+remain intact through the scanner. Its fixture suite simulates readelf output rather than
+claiming a real compiler or ELF test.
+
 ## Failure classes (from build history)
 
 | # | Class | Representative bug(s) | Fix commit(s) | Caught early by |
@@ -1715,7 +1726,7 @@ would create a cycle or a load-order landmine that only detonates inside a
 Dockerfile stage — the worst place to find one. `tests/test-layer-order.sh`
 freezes the table: L0 true leaves that source no other `01-core` file
 (`logging.sh`, `load-versions-env.sh`, `path-helpers.sh`, `platform.sh`,
-`guard-helpers.sh`), L1 above them (`arch-mapping.sh`, `ubuntu-mirror.sh`,
+`guard-helpers.sh`, `sccache-s3-level.sh`, `sccache-server-address.sh`), L1 above them (`arch-mapping.sh`, `ubuntu-mirror.sh`,
 `downloads.sh`, `parallelism.sh`), L2 (`common.sh`), and L3 (`cross-env.sh` and
 its four `cross-*` siblings, with `cross-env.sh` additionally the aggregator).
 Each module may only reach DOWN.
@@ -1764,12 +1775,15 @@ so a regression here reads as a plugin-count failure three stages later.
 The triplet has three sources in a fixed order: `deb_multiarch_triplet` from
 `/opt/scripts/core/platform.sh` when that file is present, then
 `dpkg-architecture -q DEB_HOST_MULTIARCH`, then the literal `lib/multiarch`
-fallback. The script also carries an inline copy of `_path_contains` /
-`_path_prepend_unique` for the case where `/opt/scripts/core/path-helpers.sh` is
-absent — a copy that has to stay idempotent, since the entrypoint may source the
-script twice. `tests/test-gstreamer-env.sh` drives all of it on the host by
-copying the script and repointing its `/opt/scripts/core` lookups at a fixture,
-so the triplet branch, the fallback and the inline helpers each really run.
+fallback. GStreamer loads `01-core/path-helpers.sh` from `/opt/scripts/core`
+in an image, or from the adjacent repository directory for a host run. A copied
+script needs that companion module; a missing module returns failure even when
+sourced inside a conditional. Both media build mounts include the core directory,
+and the final torch stage copies it into the image. Libcamera appends paths with
+its own host-first policy and no longer defines unused prepend helpers.
+`tests/test-gstreamer-env.sh` checks both layouts, repeat sourcing, missing helpers
+and libcamera host precedence. These fixtures do not prove image contents; the
+runtime image smoke remains responsible for the shipped environment.
 
 ### TFLite for the GStreamer monorepo: three workarounds
 
@@ -1889,3 +1903,54 @@ answer to the question, not ffmpeg's, and a later consumer may not run the
 init. `tests/test-compiler-cache-launcher.sh` covers both steps plus the
 totality contract: no launcher and no ccache prints nothing and returns 0, so a
 cacheless host degrades instead of aborting a stage.
+
+### Standalone Python probes
+
+`smoke-torch-venv.sh` runs the sibling `venv-version-probe.py` for installed-version and
+OpenCV media assertions. The Python file separates package version authority, wheel variants,
+TVM availability, backend configuration, and actual GStreamer/FFmpeg frame delivery. The shell
+still owns pin forwarding and the final smoke verdict. The package Dockerfile copies both files;
+a sandbox that copies the smoke must also copy its probe. A missing probe fails the smoke.
+
+GStreamer's `setup-gstreamer.sh` runs its sibling `gst-python-build-config.py` with the host
+Python to generate Meson's target metadata. The GStreamer directory mount supplies both files.
+Its JSON remains byte-identical, including the optional dynamic-libpython field and target ABI.
+The existing shell failure path still removes incomplete output before continuing without it.
+
+`test-python-probes.sh` covers build-pin authority, architecture-specific tolerance matching,
+required TVM, actual media failures, and target metadata. `test-smoke-arch-parity.sh` exercises
+the shell-to-probe handoff and refuses a missing drift table. These tests use stub packages;
+they do not replace the image smoke against shipped libraries.
+
+The host and GStreamer Rust compiler wrappers both use `make_compiler_wrapper` in
+`01-core/cross-gcc.sh`. It owns executable creation, shell quoting and the `-B` prefix.
+The host wrapper supplies its fixed host PATH; the cargo target wrapper inherits PATH.
+`test-compiler-resolution.sh` checks arguments containing spaces, both search paths and
+empty required arguments. Meson's Rust-specific template keeps its separate target handling.
+
+### LiteRT wheel build helpers
+
+`build-litert.sh` owns the build entry point and native-library installation. Its sibling
+`litert-wheel.sh` contains the wheel environment, arguments, execution and extension-name repair.
+The library sets no shell options. Its helpers run inside `_litert_build_wheel`, whose locals
+hold the per-build state; `_litert_wheel_cross_paths` resolves the host tools, platform tag and
+complete target-header pair before argument emission.
+
+Both files ride the existing LiteRT directory mount, and the normal `01-core` mount supplies
+their shared helpers. Wheel payload repair uses `first_match` instead of `find | head`, avoiding
+SIGPIPE while preserving the first result. `test-litert-wheel-args.sh` pins the complete cross
+argument strings, incomplete-header behavior and refusal when tools or the platform are missing.
+The same assertions pass against the pre-split implementation. The QAIRT test reads both source
+files so moving the wheel call site cannot make its coverage assertion vacuous.
+
+One existing 11-shingle wheel-edit freeze follows its moved function into `litert-wheel.sh`;
+its budget is unchanged. The driver's self-duplication freeze is gone. Moving code alone does
+not count as fixing the remaining overlap with the wheel-repair workflow.
+
+### Vulkan SDK smoke lookup
+
+`smoke-vulkan.sh` shares its ordered SDK directory list between header and loader
+checks: active SDK, x86_64, aarch64, then riscv64. The two checks retain their own
+file predicates and failure messages. `test-vulkan-sdk-smoke-paths.sh` checks each
+fallback and missing payloads, including paths containing spaces. It does not
+load Vulkan or exercise a GPU.

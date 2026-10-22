@@ -38,36 +38,6 @@ if [ ! -d "${LIBCAMERA_PREFIX}" ]; then
   echo "libcamera-env: warning: prefix '${LIBCAMERA_PREFIX}' does not exist" >&2
 fi
 
-# Shared path helpers when shipped, else local fallbacks.
-if [ -f /opt/scripts/core/path-helpers.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/path-helpers.sh
-else
-  _path_contains() {
-    local var="$1" cand="$2"
-    [ -n "$var" ] || return 1
-    case ":$var:" in
-      *":${cand}:"*) return 0 ;;
-      *) return 1 ;;
-    esac
-  }
-
-  _path_prepend_unique() {
-    local __varname="$1" __value="$2" __cur
-    __cur="${!__varname:-}"
-    if [ -z "$__cur" ]; then
-      printf -v "${__varname}" '%s' "${__value}"
-      export "${__varname}"
-    else
-      if _path_contains "$__cur" "$__value"; then
-        return 0
-      fi
-      printf -v "${__varname}" '%s:%s' "${__value}" "${__cur}"
-      export "${__varname}"
-    fi
-  }
-fi
-
 # Append, never prepend: a Raspberry Pi run bind-mounts the host's libcamera and names it here first.
 _libcamera_path_append() {
   local __varname="$1" __value="$2" __cur

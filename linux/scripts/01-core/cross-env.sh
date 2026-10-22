@@ -104,19 +104,29 @@ cross_effective_targets_raw() {
   cross_targets_effective_raw "$@"
 }
 
-# Whether TARGET takes part in the loop: a supported arch, and not the build host unless INCLUDE_AMD64 is 1.
-_fect_wanted() {
-  local target="$1" host_arch="$2" include_amd64="$3"
-  case "${target}" in
-    amd64|arm64|riscv64) ;;
-    *)
-      printf 'for_each_cross_target: skipping unsupported target %s\n' "${target}" >&2
-      return 1
-      ;;
-  esac
-  if [ "${target}" = "${host_arch}" ] && [ "${include_amd64}" -ne 1 ]; then
-    return 1
-  fi
+_cross_run_targets() {
+  local callback="$1" include_amd64="$2" normalized="$3"
+  local target rc=0
+  # IFS=',' read: callers run under IFS=$'\n\t', where a space-joined list does not split.
+  local -a _fect_targets=()
+  IFS=',' read -r -a _fect_targets <<< "${normalized}"
+  # Skips the build host's own arch, not literal amd64; --include-amd64 means "include the host arch".
+  local host_arch
+  host_arch="$(build_arch_oci 2>/dev/null || echo amd64)"
+  for target in "${_fect_targets[@]}"; do
+    case "${target}" in
+      amd64|arm64|riscv64) ;;
+      *)
+        printf 'for_each_cross_target: skipping unsupported target %s\n' "${target}" >&2
+        continue
+        ;;
+    esac
+    if [ "${target}" = "${host_arch}" ] && [ "${include_amd64}" -ne 1 ]; then
+      continue
+    fi
+    "${callback}" "${target}" || rc=$?
+  done
+  return "${rc}"
 }
 
 # for_each_cross_target <callback> [--include-amd64] [targets]: 2 without a callback, 1 for no valid target, else the callbacks' rc.
@@ -152,18 +162,7 @@ for_each_cross_target() {
     return 1
   }
 
-  local target rc=0
-  # IFS=',' read: callers run under IFS=$'\n\t', where a space-joined list does not split.
-  local -a _fect_targets=()
-  IFS=',' read -r -a _fect_targets <<< "${normalized}"
-  # Skips the build host's own arch, not literal amd64; --include-amd64 means "include the host arch".
-  local host_arch
-  host_arch="$(build_arch_oci 2>/dev/null || echo amd64)"
-  for target in "${_fect_targets[@]}"; do
-    _fect_wanted "${target}" "${host_arch}" "${include_amd64}" || continue
-    "${callback}" "${target}" || rc=$?
-  done
-  return "${rc}"
+  _cross_run_targets "${callback}" "${include_amd64}" "${normalized}"
 }
 
 cross_bin_dir() {
@@ -337,19 +336,19 @@ source "${_CROSS_ENV_DIR}/cross-meson.sh"
 _cross_env_resolve_identifiers() {
   local -n _eri_out=$1
 
-  _eri_out[target_arch]="$(cross_target_arch)"
-  _eri_out[build_arch]="$(cross_build_arch)"
-  _eri_out[triplet]="$(cross_target_triplet)"
-  _eri_out[processor]="$(cmake_system_processor)"
-  _eri_out[rust_target]="$(cross_target_rust_triple)"
-  _eri_out[rust_env]="$(cross_target_upper_rust)"
-  _eri_out[rust_env_lower]="$(cross_target_lower_rust)"
-  _eri_out[build_rust_lower]="$(cross_build_lower_rust 2>/dev/null || true)"
-  _eri_out[gcc_prefix]="$(gcc_toolchain_prefix)"
+  _eri_out["target_arch"]="$(cross_target_arch)"
+  _eri_out["build_arch"]="$(cross_build_arch)"
+  _eri_out["triplet"]="$(cross_target_triplet)"
+  _eri_out["processor"]="$(cmake_system_processor)"
+  _eri_out["rust_target"]="$(cross_target_rust_triple)"
+  _eri_out["rust_env"]="$(cross_target_upper_rust)"
+  _eri_out["rust_env_lower"]="$(cross_target_lower_rust)"
+  _eri_out["build_rust_lower"]="$(cross_build_lower_rust 2>/dev/null || true)"
+  _eri_out["gcc_prefix"]="$(gcc_toolchain_prefix)"
   # The version default lives once, in cross-gcc.sh's gcc_toolchain_version.
-  _eri_out[gcc_major]="${GCC_WANTED:-$(gcc_toolchain_version)}"
-  _eri_out[gcc_major]="$(version_major "${_eri_out[gcc_major]}")"
-  _eri_out[runtime_libdir]="${_eri_out[gcc_prefix]}/lib/gcc/${_eri_out[triplet]}/${_eri_out[gcc_major]}"
+  _eri_out["gcc_major"]="${GCC_WANTED:-$(gcc_toolchain_version)}"
+  _eri_out["gcc_major"]="$(version_major "${_eri_out["gcc_major"]}")"
+  _eri_out["runtime_libdir"]="${_eri_out["gcc_prefix"]}/lib/gcc/${_eri_out["triplet"]}/${_eri_out["gcc_major"]}"
 }
 
 # <triplet> <array>: fills the cross and build tool paths; 1 when a required one is missing.
@@ -372,10 +371,10 @@ _cross_env_resolve_tools() {
   for _bt in ar as ld nm ranlib strip objcopy; do
     _ert_out[$_bt]="$(require_cross_gcc_tool "$_bt" "${triplet}" 'cross binutils tool')" || return 1
   done
-  _ert_out[build_cc]="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
-  _ert_out[build_cxx]="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
-  _ert_out[build_ar]="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
-  _ert_out[build_ranlib]="$(resolve_build_gcc_tool ranlib 2>/dev/null || true)"
+  _ert_out["build_cc"]="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
+  _ert_out["build_cxx"]="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
+  _ert_out["build_ar"]="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
+  _ert_out["build_ranlib"]="$(resolve_build_gcc_tool ranlib 2>/dev/null || true)"
 }
 
 _cross_env_setup_python_staging() {
@@ -425,10 +424,10 @@ _export_toolchain_vars() {
   export "AR_${_etv[rust_env_lower]}=${AR}"
   export "RANLIB_${_etv[rust_env_lower]}=${RANLIB}"
   if [ -n "${_etv[build_rust_lower]}" ]; then
-    [ -n "${_etv[build_cc]}" ] && export "CC_${_etv[build_rust_lower]}=${_etv[build_cc]}"
-    [ -n "${_etv[build_cxx]}" ] && export "CXX_${_etv[build_rust_lower]}=${_etv[build_cxx]}"
-    [ -n "${_etv[build_ar]}" ] && export "AR_${_etv[build_rust_lower]}=${_etv[build_ar]}"
-    [ -n "${_etv[build_ranlib]}" ] && export "RANLIB_${_etv[build_rust_lower]}=${_etv[build_ranlib]}"
+    [ -n "${_etv["build_cc"]}" ] && export "CC_${_etv[build_rust_lower]}=${_etv["build_cc"]}"
+    [ -n "${_etv["build_cxx"]}" ] && export "CXX_${_etv[build_rust_lower]}=${_etv["build_cxx"]}"
+    [ -n "${_etv["build_ar"]}" ] && export "AR_${_etv[build_rust_lower]}=${_etv["build_ar"]}"
+    [ -n "${_etv["build_ranlib"]}" ] && export "RANLIB_${_etv[build_rust_lower]}=${_etv["build_ranlib"]}"
   fi
 
   if command -v "clang-${_etv[target_arch]}" >/dev/null 2>&1; then
@@ -528,23 +527,8 @@ setup_linux_cross_env() {
 }
 
 # cross_compile_cmake_lib_from_source <name> <url[|mirror...]> <prefix> <sentinel> [cmake args]: best-effort.
-cross_compile_cmake_lib_from_source() {
-  local name="$1" url="$2" prefix="$3" sentinel="$4"
-  shift 4
-
-  local triplet arch src
-  triplet="$(cross_target_triplet 2>/dev/null || true)"
-  arch="$(cross_target_arch 2>/dev/null || true)"
-  if [ -z "${triplet}" ]; then
-    echo "[WARN] ${name}: no cross triplet resolved; skipping source build"
-    return 0
-  fi
-  if [ -f "${sentinel}" ]; then
-    return 0
-  fi
-
-  echo "[INFO] Cross-compiling ${name} from source for ${arch:-target} (${url})..."
-  src="$(mktemp -d "${TMPDIR:-/tmp}/${name}-src-XXXXXX")" || return 0
+_cross_fetch_cmake_source() {
+  local name="$1" url="$2" src="$3"
   # `git+<repo>#<ref>` mirrors exist because RUN networks reach github via git but not always via curl; a local array keeps "$@".
   local _dl_ok="" _u _repo _ref
   local -a _mirrors=()
@@ -567,6 +551,29 @@ cross_compile_cmake_lib_from_source() {
         ;;
     esac
   done
+  [ -n "${_dl_ok}" ] || return 1
+  return 0
+}
+
+cross_compile_cmake_lib_from_source() {
+  local name="$1" url="$2" prefix="$3" sentinel="$4"
+  shift 4
+
+  local triplet arch src
+  triplet="$(cross_target_triplet 2>/dev/null || true)"
+  arch="$(cross_target_arch 2>/dev/null || true)"
+  if [ -z "${triplet}" ]; then
+    echo "[WARN] ${name}: no cross triplet resolved; skipping source build"
+    return 0
+  fi
+  if [ -f "${sentinel}" ]; then
+    return 0
+  fi
+
+  echo "[INFO] Cross-compiling ${name} from source for ${arch:-target} (${url})..."
+  src="$(mktemp -d "${TMPDIR:-/tmp}/${name}-src-XXXXXX")" || return 0
+  local _dl_ok=""
+  _cross_fetch_cmake_source "${name}" "${url}" "${src}" && _dl_ok=1
   if [ -z "${_dl_ok}" ]; then
     echo "[WARN] ${name}: source download failed (all mirrors); skipping"
     rm -rf "${src}"

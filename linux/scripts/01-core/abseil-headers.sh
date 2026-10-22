@@ -16,6 +16,30 @@ if ! command -v download_file >/dev/null 2>&1; then
   source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/downloads.sh"
 fi
 
+_abseil_extract_headers() {
+  local absl_tar="$1" dest_dir="$2"
+  # GNU tar wildcards, else a manifest extract, else a manual find/copy.
+  if ! tar -xzf "${absl_tar}" -C "${dest_dir}" --strip-components=1 \
+        --wildcards '*/absl/*.h' '*/absl/**/*.h' 2>/dev/null; then
+    if ! tar -xzf "${absl_tar}" -C "${dest_dir}" --strip-components=1 --no-wildcards \
+          --files-from <(tar -tzf "${absl_tar}" | grep '/absl/.*\.h$' 2>/dev/null) 2>/dev/null; then
+      # Last-resort fallback: extract everything, then copy headers manually.
+      local absl_tmp="/tmp/abseil-extract-$$"
+      mkdir -p "${absl_tmp}"
+      tar -xzf "${absl_tar}" -C "${absl_tmp}" 2>/dev/null || true
+      local absl_src
+      absl_src="$(find "${absl_tmp}" -maxdepth 2 -type d -name "abseil-cpp*" -print -quit 2>/dev/null || true)"
+      if [ -n "${absl_src}" ] && [ -d "${absl_src}/absl" ]; then
+        info "Falling back to manual copy from ${absl_src}/absl ..."
+        find "${absl_src}/absl" -type f \( -name "*.h" -o -name "*.inc" \) \
+          -exec cp --parents "{}" "${dest_dir}/" \; 2>/dev/null || true
+      fi
+      rm -rf "${absl_tmp}"
+    fi
+  fi
+
+}
+
 # install_abseil_headers <dest_include_dir> [tag]: absl headers for tflite consumers; returns 1 on failure, caller decides.
 install_abseil_headers() {
   local dest_dir="${1:-/usr/local/include}"
@@ -58,25 +82,7 @@ install_abseil_headers() {
 
   mkdir -p "${dest_dir}/absl"
 
-  # GNU tar wildcards, else a manifest extract, else a manual find/copy.
-  if ! tar -xzf "${absl_tar}" -C "${dest_dir}" --strip-components=1 \
-        --wildcards '*/absl/*.h' '*/absl/**/*.h' 2>/dev/null; then
-    if ! tar -xzf "${absl_tar}" -C "${dest_dir}" --strip-components=1 --no-wildcards \
-          --files-from <(tar -tzf "${absl_tar}" | grep '/absl/.*\.h$' 2>/dev/null) 2>/dev/null; then
-      # Last-resort fallback: extract everything, then copy headers manually.
-      local absl_tmp="/tmp/abseil-extract-$$"
-      mkdir -p "${absl_tmp}"
-      tar -xzf "${absl_tar}" -C "${absl_tmp}" 2>/dev/null || true
-      local absl_src
-      absl_src="$(find "${absl_tmp}" -maxdepth 2 -type d -name "abseil-cpp*" -print -quit 2>/dev/null || true)"
-      if [ -n "${absl_src}" ] && [ -d "${absl_src}/absl" ]; then
-        info "Falling back to manual copy from ${absl_src}/absl ..."
-        find "${absl_src}/absl" -type f \( -name "*.h" -o -name "*.inc" \) \
-          -exec cp --parents "{}" "${dest_dir}/" \; 2>/dev/null || true
-      fi
-      rm -rf "${absl_tmp}"
-    fi
-  fi
+  _abseil_extract_headers "${absl_tar}" "${dest_dir}"
 
   rm -f "${absl_tar}"
 

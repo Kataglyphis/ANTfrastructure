@@ -337,19 +337,8 @@ invoke_opencode() {
     return $exit_code
 }
 
-# Claude Code invocation: planner sandboxed by --allowed-tools; executor defaults to bypassPermissions (trusted repos only).
-invoke_claude() {
-    local role="$1" model="$2" message="$3"
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log "[DRY RUN] claude -p --model $model (role=$role)"
-        return 0
-    fi
-    if ! command -v claude &>/dev/null; then
-        log "claude not found on PATH. Install: npm install -g @anthropic-ai/claude-code" "FATAL"
-        return 1
-    fi
-
-    local args=(-p --model "$model")
+_claude_build_args() {
+    local role="$1"
     if [[ "${CLAUDE_STREAM_OUTPUT:-true}" == "true" ]]; then
         # stream-json shows live progress instead of silence until done.
         args+=(--output-format stream-json --verbose)
@@ -388,6 +377,23 @@ invoke_claude() {
         # shellcheck disable=SC2206
         args+=(${CLAUDE_EXTRA_ARGS})
     fi
+
+}
+
+# Claude Code invocation: planner sandboxed by --allowed-tools; executor defaults to bypassPermissions (trusted repos only).
+invoke_claude() {
+    local role="$1" model="$2" message="$3"
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log "[DRY RUN] claude -p --model $model (role=$role)"
+        return 0
+    fi
+    if ! command -v claude &>/dev/null; then
+        log "claude not found on PATH. Install: npm install -g @anthropic-ai/claude-code" "FATAL"
+        return 1
+    fi
+
+    local args=(-p --model "$model")
+    _claude_build_args "$role"
 
     local timeout_s
     timeout_s=$(agent_timeout_for_role "$role")
@@ -435,6 +441,17 @@ usage_limit_wait_seconds() {
     echo $(( target - now + 120 ))
 }
 
+_agentic_wait_for_limit() {
+    local role="$1" limit_waits="$2" limit_wait
+    [[ "${WAIT_FOR_USAGE_LIMIT_RESET:-true}" == "true" \
+       && "${DRY_RUN:-false}" != "true" && "$limit_waits" -lt 10 ]] || return 1
+    limit_wait=$(usage_limit_wait_seconds)
+    (( limit_wait > 0 )) || return 1
+    log "Usage limit hit (role=$role). Waiting $(( limit_wait / 60 )) min until reset (wait $((limit_waits + 1))/10) — not counted against retries." "WARN"
+    sleep "$limit_wait"
+    return 0
+}
+
 # Engine dispatcher; the fixer role maps to the executor model/agent.
 invoke_agent() {
     local role="$1" message="$2"
@@ -459,16 +476,9 @@ invoke_agent() {
                 return 1 ;;
         esac
         [[ $rc -eq 0 ]] && return 0
-        # A usage limit is not an error: wait for the reset without burning a retry, capped against a stuck limit.
-        if [[ "${WAIT_FOR_USAGE_LIMIT_RESET:-true}" == "true" && "${DRY_RUN:-false}" != "true" && "$limit_waits" -lt 10 ]]; then
-            local limit_wait
-            limit_wait=$(usage_limit_wait_seconds)
-            if (( limit_wait > 0 )); then
-                limit_waits=$((limit_waits + 1))
-                log "Usage limit hit (role=$role). Waiting $(( limit_wait / 60 )) min until reset (wait $limit_waits/10) — not counted against retries." "WARN"
-                sleep "$limit_wait"
-                continue
-            fi
+        if _agentic_wait_for_limit "$role" "$limit_waits"; then
+            limit_waits=$((limit_waits + 1))
+            continue
         fi
         attempt=$((attempt + 1))
         if (( attempt > retries )); then

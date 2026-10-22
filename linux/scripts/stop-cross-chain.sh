@@ -64,64 +64,46 @@ _stop_pid_tree() {
   chain_terminate_descendants KILL "${pid}"
 }
 
-# Sets GRACE_SECS from --timeout; usage and unknown options exit here.
-_stop_parse_args() {
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --timeout) GRACE_SECS="${2:-15}"; shift 2 ;;
-      -h|--help) usage; exit 0 ;;
-      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
-    esac
-  done
-}
-
-# The pidfile names the chain while its pid lives; a dead one is removed. <var> gets the pid, or stays empty.
-_stop_pidfile_target() {
+# The selected PID stays in main's local target; logs must not become a command-substitution result.
+_stop_resolve_target() {
   local pidfile="$1"
-  local -n _found="$2"
-  [ -f "${pidfile}" ] || return 0
-  local pid
-  pid="$(cat "${pidfile}" 2>/dev/null || true)"
-  if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
-    _found="${pid}"
-    return 0
+  if [ -f "${pidfile}" ]; then
+    local pid; pid="$(cat "${pidfile}" 2>/dev/null || true)"
+    if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+      target="${pid}"
+    else
+      warn "stale pidfile ${pidfile} (pid '${pid:-}' not running) — removing it"
+      rm -f "${pidfile}" 2>/dev/null || true
+    fi
   fi
-  warn "stale pidfile ${pidfile} (pid '${pid:-}' not running) — removing it"
-  rm -f "${pidfile}" 2>/dev/null || true
-  return 0
-}
 
-# No live pidfile: pgrep for the chain, skipping this script and its ancestors, whose argv may name it too.
-_stop_pgrep_target() {
-  local -n _found="$1"
-  local exclude cand
-  # Bracket trick: 'build-cross-chain[.]sh' avoids self-match.
-  exclude=" $(_stop_self_and_ancestors | tr '\n' ' ') "
-  for cand in $(pgrep -f 'build-cross-chain[.]sh' 2>/dev/null || true); do
-    case "${exclude}" in *" ${cand} "*) continue ;; esac
-    _found="${cand}"
-    break
-  done
-  if [ -n "${_found}" ]; then log "no live pidfile — found chain via pgrep: pid ${_found}"; fi
-  return 0
-}
-
-# Drops the pidfile when it still names the pid just stopped.
-_stop_remove_pidfile_if() {
-  local pidfile="$1" target="$2"
-  if [ -f "${pidfile}" ] && [ "$(cat "${pidfile}" 2>/dev/null || true)" = "${target}" ]; then
-    rm -f "${pidfile}" 2>/dev/null || true
+  if [ -z "${target}" ]; then
+    # Bracket trick: 'build-cross-chain[.]sh' avoids self-match; ancestors excluded above.
+    local exclude cand
+    exclude=" $(_stop_self_and_ancestors | tr '\n' ' ') "
+    for cand in $(pgrep -f 'build-cross-chain[.]sh' 2>/dev/null || true); do
+      case "${exclude}" in *" ${cand} "*) continue ;; esac
+      target="${cand}"; break
+    done
+    [ -n "${target}" ] && log "no live pidfile — found chain via pgrep: pid ${target}"
   fi
+
   return 0
 }
 
 main() {
-  _stop_parse_args "$@"
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timeout) GRACE_SECS="${2:-15}"; shift 2 ;;
+      -h|--help) usage; exit 0 ;;
+      *) reject_unknown_option "$1" ;;
+    esac
+  done
 
   local pidfile target=""
   pidfile="$(cross_chain_pidfile_path)"
-  _stop_pidfile_target "${pidfile}" target
-  [ -n "${target}" ] || _stop_pgrep_target target
+
+  _stop_resolve_target "${pidfile}"
 
   if [ -z "${target}" ]; then
     log "no running cross chain found (nothing to stop)"

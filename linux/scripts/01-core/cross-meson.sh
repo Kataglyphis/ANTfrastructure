@@ -14,9 +14,9 @@ make_meson_cross_rust_wrapper() {
   local rustc_bin="$2"
   local rust_target="$3"
 
-  [ -n "${wrapper_path}" ] || return 1
-  [ -n "${rustc_bin}" ] || return 1
-  [ -n "${rust_target}" ] || return 1
+  if [ -z "${wrapper_path}" ] || [ -z "${rustc_bin}" ] || [ -z "${rust_target}" ]; then
+    return 1
+  fi
 
   mkdir -p "$(dirname "${wrapper_path}")"
 
@@ -82,49 +82,8 @@ append_cmake_cross_args() {
   )
 }
 
-# Target-side helpers during setup need a runner: MESON_EXE_WRAPPER, else the pre-setup qemu wrapper.
-_meson_cross_exe_wrapper() {
-  local candidate; candidate="/usr/local/bin/meson-$(cross_target_arch)-exe-wrapper"
-  if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
-    printf '%s' "${MESON_EXE_WRAPPER}"
-  elif [ -x "${candidate}" ]; then
-    printf '%s' "${candidate}"
-  fi
-}
-
-# Both toolchain wrapper dirs default under TMPDIR; declared once here, for the two functions that read them.
-_meson_toolchain_dirs() {
-  : "${MESON_NATIVE_TOOLCHAIN_DIR:=${TMPDIR:-/tmp}/meson-native-toolchain}"
-  : "${MESON_RUST_TOOLCHAIN_DIR:=${TMPDIR:-/tmp}/meson-rust-toolchain}"
-}
-
-ensure_meson_cross_file() {
-  _meson_toolchain_dirs
-  local path; path="${1:-${TMPDIR:-/tmp}/meson-cross-$(cross_target_arch).ini}"
-  local triplet pkg_config_libdir exe_wrapper exe_wrapper_line
-  local rust_target rustc_bin rust_binary_line rust_wrapper rust_wrapper_dir
-
-  cross_build_enabled || return 0
-  setup_linux_cross_env
-
-  triplet="$(cross_target_triplet)"
-  pkg_config_libdir="$(cross_pkg_config_libdir "${triplet}")"
-  rust_target="$(cross_target_rust_triple)"
-  rustc_bin="$(command -v rustc 2>/dev/null || true)"
-  [ -n "${rustc_bin}" ] || rustc_bin="rustc"
-  exe_wrapper="$(_meson_cross_exe_wrapper)"
-  exe_wrapper_line=""
-  [ -z "${exe_wrapper}" ] || exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
-
-  # Meson's Rust sanity check cannot infer the target, so the wrapper adds --target when absent.
-  if [ -n "${rust_target}" ]; then
-    rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR}"
-    rust_wrapper="$(make_meson_cross_rust_wrapper "${rust_wrapper_dir}/rustc-$(cross_target_arch)" "${rustc_bin}" "${rust_target}")"
-    rust_binary_line="rust = '${rust_wrapper}'"
-  else
-    rust_binary_line="rust = '${rustc_bin}'"
-  fi
-
+_write_meson_cross_file() {
+  local path="$1" triplet="$2" pkg_config_libdir="$3" rust_binary_line="$4" exe_wrapper_line="$5"
   # CMake subprojects get their toolchain from [cmake] below, not from the exported CMAKE_* env.
   local target_libdir="/usr/lib/${triplet}"
 
@@ -167,12 +126,64 @@ cpu_family = '$(cross_target_cpu_family)'
 cpu = '$(cross_target_cpu)'
 endian = 'little'
 EOF
+}
+
+ensure_meson_cross_file() {
+  local path; path="${1:-${TMPDIR:-/tmp}/meson-cross-$(cross_target_arch).ini}"
+  local triplet pkg_config_libdir exe_wrapper exe_wrapper_line wrapper_candidate
+  local rust_target rustc_bin rust_binary_line rust_wrapper rust_wrapper_dir
+
+  cross_build_enabled || return 0
+  setup_linux_cross_env
+
+  triplet="$(cross_target_triplet)"
+  pkg_config_libdir="$(cross_pkg_config_libdir "${triplet}")"
+  rust_target="$(cross_target_rust_triple)"
+  rustc_bin="$(command -v rustc 2>/dev/null || true)"
+  [ -n "${rustc_bin}" ] || rustc_bin="rustc"
+  exe_wrapper=""
+  # Target-side helpers during setup need a runner: MESON_EXE_WRAPPER, else the pre-setup qemu wrapper.
+  if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
+    exe_wrapper="${MESON_EXE_WRAPPER}"
+  else
+    wrapper_candidate="/usr/local/bin/meson-$(cross_target_arch)-exe-wrapper"
+    if [ -x "${wrapper_candidate}" ]; then
+      exe_wrapper="${wrapper_candidate}"
+    fi
+  fi
+  exe_wrapper_line=""
+  if [ -n "${exe_wrapper}" ]; then
+    exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
+  fi
+
+  # Meson's Rust sanity check cannot infer the target, so the wrapper adds --target when absent.
+  if [ -n "${rust_target}" ]; then
+    rust_wrapper_dir="${MESON_RUST_TOOLCHAIN_DIR:-${TMPDIR:-/tmp}/meson-rust-toolchain}"
+    rust_wrapper="$(make_meson_cross_rust_wrapper "${rust_wrapper_dir}/rustc-$(cross_target_arch)" "${rustc_bin}" "${rust_target}")"
+    rust_binary_line="rust = '${rust_wrapper}'"
+  else
+    rust_binary_line="rust = '${rustc_bin}'"
+  fi
+
+  _write_meson_cross_file "${path}" "${triplet}" "${pkg_config_libdir}" "${rust_binary_line}" "${exe_wrapper_line}"
 
   export MESON_CROSS_FILE="${path}"
 }
 
+_meson_native_tool() {
+  local host_path="$1" tool
+  shift
+  for tool in "$@"; do
+    if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
+      resolve_build_gcc_tool "${tool}" 2>/dev/null && return 0
+    else
+      PATH="${host_path}" command -v "${tool}" && return 0
+    fi
+  done
+  return 0
+}
+
 ensure_meson_native_file() {
-  _meson_toolchain_dirs
   local path; path="${1:-${TMPDIR:-/tmp}/meson-native-$(cross_build_arch).ini}"
   local host_path build_triplet native_cc native_cxx native_ar native_strip native_pkg_config native_cmake native_pkg_config_libdir
   local native_wrapper_dir native_cc_wrapper native_cxx_wrapper
@@ -181,17 +192,10 @@ ensure_meson_native_file() {
 
   host_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   build_triplet="$(build_deb_multiarch_triplet)"
-  if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-    native_cc="$(resolve_build_gcc_tool gcc 2>/dev/null || resolve_build_gcc_tool cc 2>/dev/null || true)"
-    native_cxx="$(resolve_build_gcc_tool g++ 2>/dev/null || resolve_build_gcc_tool c++ 2>/dev/null || true)"
-    native_ar="$(resolve_build_gcc_tool ar 2>/dev/null || true)"
-    native_strip="$(resolve_build_gcc_tool strip 2>/dev/null || true)"
-  else
-    native_cc="$(PATH="${host_path}" command -v gcc || PATH="${host_path}" command -v cc || true)"
-    native_cxx="$(PATH="${host_path}" command -v g++ || PATH="${host_path}" command -v c++ || true)"
-    native_ar="$(PATH="${host_path}" command -v ar || true)"
-    native_strip="$(PATH="${host_path}" command -v strip || true)"
-  fi
+  native_cc="$(_meson_native_tool "${host_path}" gcc cc)"
+  native_cxx="$(_meson_native_tool "${host_path}" g++ c++)"
+  native_ar="$(_meson_native_tool "${host_path}" ar)"
+  native_strip="$(_meson_native_tool "${host_path}" strip)"
   native_pkg_config="$(PATH="${host_path}" command -v pkg-config || true)"
   native_cmake="$(PATH="${host_path}" command -v cmake || true)"
   if [ -n "${build_triplet}" ]; then
@@ -200,7 +204,7 @@ ensure_meson_native_file() {
     native_pkg_config_libdir="/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/usr/share/pkgconfig"
   fi
 
-  native_wrapper_dir="${MESON_NATIVE_TOOLCHAIN_DIR}"
+  native_wrapper_dir="${MESON_NATIVE_TOOLCHAIN_DIR:-${TMPDIR:-/tmp}/meson-native-toolchain}"
   mkdir -p "${native_wrapper_dir}"
 
   if [ -n "${native_cc}" ]; then

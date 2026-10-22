@@ -73,6 +73,13 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    it on the SHIPPED bytes. Same rule for `PATH`, `PKG_CONFIG_PATH` and `PYTHONPATH`.
 6. **One-line comments, only the why**, in every repo of the family: § Comments: one line, only
    the why.
+7. **Quality exceptions must shrink.** Refactor the code to satisfy duplication, complexity and size
+   gates. Do not add an allowlist entry, increase a frozen budget, raise a threshold or narrow scan
+   coverage to make a change pass unless the owner explicitly authorizes that exception. Existing
+   entries are debt; remove them when the underlying finding is fixed. The function-size, complexity, comment-size
+   and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
+   variables, reformat copies or add suppressions to evade a duplication finding.
+   Copied runtime environment scripts carry their shared core modules; do not restore private fallbacks.
 
 ## Container Architecture
 

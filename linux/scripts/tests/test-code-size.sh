@@ -21,34 +21,33 @@ _tree() {
 _fixture() {
   local shape="$1" n="$2" allow="${3-}" d
   d="$(_tree)"
+  local freeze=function-size.allow
   # Redirect inside each arm: a trailing `esac > "${subject}"` expands before any arm runs.
   case "${shape}" in
     function)
       { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"; } \
         > "${d}/linux/scripts/subject.sh"
-      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
       ;;
     twice)
       # Long first, then short: "last wins" would hide the offender behind its redefinition.
       { echo "big() {"; for _ in $(seq 1 $((n - 2))); do echo "  :"; done; echo "}"
         echo "big() {"; echo "  :"; echo "}"; } \
         > "${d}/linux/scripts/subject.sh"
-      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
       ;;
     pyfunc)
       { echo "def big():"; for _ in $(seq 1 $((n - 1))); do echo "    pass"; done; } \
         > "${d}/linux/scripts/subject.py"
-      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/function-size.allow"
       ;;
     dockerfile)
+      freeze=file-size.allow
       for _ in $(seq 1 "${n}"); do echo "# ."; done > "${d}/linux/Dockerfile.subject"
-      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/file-size.allow"
       ;;
     *)
+      freeze=file-size.allow
       for _ in $(seq 1 "${n}"); do echo ":"; done > "${d}/linux/scripts/subject.sh"
-      [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/file-size.allow"
       ;;
   esac
+  [ -n "${allow}" ] && printf '%s\n' "${allow}" > "${d}/linux/scripts/${freeze}"
   printf '%s' "${d}"
 }
 

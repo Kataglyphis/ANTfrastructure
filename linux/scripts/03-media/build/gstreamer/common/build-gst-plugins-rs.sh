@@ -91,8 +91,7 @@ _gst_rs_exclude_family() {
 }
 
 prepare_cargo_target_compiler_wrapper() {
-  local compiler="$1"
-  local wrapper_name="$2"
+  local compiler="$1" wrapper_name="$2"
   # gcc -B looks up bare tool names (as, ld), which live only in bare/, not in /opt/cross-bin itself.
   local cross_bindir="${3:-/opt/cross-bin/bare}"
   : "${GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-target-toolchain}"
@@ -100,14 +99,7 @@ prepare_cargo_target_compiler_wrapper() {
 
   [ -n "${compiler}" ] || return 1
   [ -n "${wrapper_name}" ] || return 1
-
-  mkdir -p "${wrapper_dir}"
-  cat > "${wrapper_dir}/${wrapper_name}" <<EOF
-#!/usr/bin/env bash
-exec "${compiler}" -B"${cross_bindir%/}/" "\$@"
-EOF
-  chmod +x "${wrapper_dir}/${wrapper_name}"
-  printf '%s' "${wrapper_dir}/${wrapper_name}"
+  make_compiler_wrapper "${wrapper_dir}/${wrapper_name}" "${compiler}" "${cross_bindir}"
 }
 
 _gst_rs_resolve_env() {
@@ -127,6 +119,62 @@ _gst_rs_clone() {
     git clone --depth 1 --branch "gstreamer-${GSTREAMER_VERSION}" https://github.com/GStreamer/gst-plugins-rs.git "${plugin_rs_dir}"
     cd "${plugin_rs_dir}"
     ${SUDO_WRAP} chown "$(id -u):$(id -g)" "${plugin_rs_dir}" 2>/dev/null || true
+  fi
+}
+
+_gst_rs_host_cargo_config() {
+  if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
+    prepare_host_cargo_toolchain_env
+  elif cross_build_is_active; then
+    cargo_host_cc="$(resolve_host_gcc_for_cargo)"
+    if [ -n "${cargo_host_cc}" ]; then
+      cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
+      export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${cargo_host_linker}"
+      export CC_x86_64_unknown_linux_gnu="${cargo_host_linker}"
+    fi
+
+    cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
+    if [ -n "${cargo_host_cxx}" ]; then
+      cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
+      export CXX_x86_64_unknown_linux_gnu="${cargo_host_cxx_wrapper}"
+    fi
+  fi
+
+}
+
+_gst_rs_riscv_cargo_config() {
+  # bare/ stays off PATH so host build scripts keep native cc; target cc-rs builds reach it through -B.
+  cargo_target_cross_bindir="$(cross_bare_bin_path 2>/dev/null || printf '%s' '/opt/cross-bin/bare')"
+  if command -v cross_target_upper_rust >/dev/null 2>&1; then
+    cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
+  fi
+  if command -v cross_target_lower_rust >/dev/null 2>&1; then
+    cargo_target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
+  fi
+  [ -n "${cargo_target_rust_env}" ] || cargo_target_rust_env="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:lower:]-' '[:upper:]_')"
+  [ -n "${cargo_target_rust_lower}" ] || cargo_target_rust_lower="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:upper:]-' '[:lower:]_')"
+
+  if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CC:-}" ]; then
+    cargo_target_cc_wrapper="$(prepare_cargo_target_compiler_wrapper "${CC}" "target-gcc-riscv64" "${cargo_target_cross_bindir}")"
+    export "CARGO_TARGET_${cargo_target_rust_env}_LINKER=${cargo_target_cc_wrapper}"
+    export "CC_${cargo_target_rust_lower}=${cargo_target_cc_wrapper}"
+  fi
+
+  if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CXX:-}" ]; then
+    cargo_target_cxx_wrapper="$(prepare_cargo_target_compiler_wrapper "${CXX}" "target-g++-riscv64" "${cargo_target_cross_bindir}")"
+    export "CXX_${cargo_target_rust_lower}=${cargo_target_cxx_wrapper}"
+  fi
+
+  # pkg-config would drop target system libdirs from link-search flags, which Rust needs for Vulkan and vvdec.
+  export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
+
+  # install-vvdec.sh puts libvvdec in /usr/local/lib, outside the distro dirs system-deps searches.
+  if [ -d /usr/local/lib ]; then
+    export SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE="${SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE:-/usr/local/lib}"
+  fi
+
+  if [ -n "${cargo_target_cc_wrapper}" ]; then
+    echo "RISC-V standalone gst-plugins-rs build detected: using target compiler wrappers with -B${cargo_target_cross_bindir%/}/"
   fi
 }
 
@@ -152,59 +200,12 @@ _gst_rs_cargo_config() {
   cd "${plugin_rs_dir}"
   standalone_cargo_toml="${plugin_rs_dir}/Cargo.toml"
 
-  if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
-    prepare_host_cargo_toolchain_env
-  elif cross_build_is_active; then
-    cargo_host_cc="$(resolve_host_gcc_for_cargo)"
-    if [ -n "${cargo_host_cc}" ]; then
-      cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
-      export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${cargo_host_linker}"
-      export CC_x86_64_unknown_linux_gnu="${cargo_host_linker}"
-    fi
-
-    cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
-    if [ -n "${cargo_host_cxx}" ]; then
-      cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
-      export CXX_x86_64_unknown_linux_gnu="${cargo_host_cxx_wrapper}"
-    fi
-  fi
+  _gst_rs_host_cargo_config
 
   if cross_build_is_active &&
      command -v cross_target_arch >/dev/null 2>&1 &&
      [ "$(cross_target_arch)" = "riscv64" ]; then
-    # bare/ stays off PATH so host build scripts keep native cc; target cc-rs builds reach it through -B.
-    cargo_target_cross_bindir="$(cross_bare_bin_path 2>/dev/null || printf '%s' '/opt/cross-bin/bare')"
-    if command -v cross_target_upper_rust >/dev/null 2>&1; then
-      cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
-    fi
-    if command -v cross_target_lower_rust >/dev/null 2>&1; then
-      cargo_target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
-    fi
-    [ -n "${cargo_target_rust_env}" ] || cargo_target_rust_env="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:lower:]-' '[:upper:]_')"
-    [ -n "${cargo_target_rust_lower}" ] || cargo_target_rust_lower="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:upper:]-' '[:lower:]_')"
-
-    if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CC:-}" ]; then
-      cargo_target_cc_wrapper="$(prepare_cargo_target_compiler_wrapper "${CC}" "target-gcc-riscv64" "${cargo_target_cross_bindir}")"
-      export "CARGO_TARGET_${cargo_target_rust_env}_LINKER=${cargo_target_cc_wrapper}"
-      export "CC_${cargo_target_rust_lower}=${cargo_target_cc_wrapper}"
-    fi
-
-    if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CXX:-}" ]; then
-      cargo_target_cxx_wrapper="$(prepare_cargo_target_compiler_wrapper "${CXX}" "target-g++-riscv64" "${cargo_target_cross_bindir}")"
-      export "CXX_${cargo_target_rust_lower}=${cargo_target_cxx_wrapper}"
-    fi
-
-    # pkg-config would drop target system libdirs from link-search flags, which Rust needs for Vulkan and vvdec.
-    export PKG_CONFIG_ALLOW_SYSTEM_LIBS=1
-
-    # install-vvdec.sh puts libvvdec in /usr/local/lib, outside the distro dirs system-deps searches.
-    if [ -d /usr/local/lib ]; then
-      export SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE="${SYSTEM_DEPS_LIBVVDEC_SEARCH_NATIVE:-/usr/local/lib}"
-    fi
-
-    if [ -n "${cargo_target_cc_wrapper}" ]; then
-      echo "RISC-V standalone gst-plugins-rs build detected: using target compiler wrappers with -B${cargo_target_cross_bindir%/}/"
-    fi
+    _gst_rs_riscv_cargo_config
   fi
 }
 
@@ -217,6 +218,37 @@ _gst_rs_exclude() {
     prune_gst_plugins_rs_workspace_member "${standalone_cargo_toml}" "${member}"
   fi
   _gst_rs_exclude_family "${family}" "$@"
+}
+
+_gst_rs_apply_exclusions() {
+  local arch_probes="$1"
+  [ "${build_all_rs}" != "true" ] || return 0
+  if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
+    _gst_rs_exclude "Host arch detected in (${arch_probes}): excluding csound-related workspace crates from cargo build" \
+      "" csound gst-plugin-csound csound csound-sys
+  fi
+
+  if echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
+    _gst_rs_exclude "skia disabled via Meson args: excluding skia-related workspace crates from cargo build" \
+      video/skia skia gst-plugin-skia gst-plugin-skia-sys
+  fi
+
+  if [ "${BUILD_TYPE_LOWER}" = "release" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
+    _gst_rs_exclude "Release build on ARM/RISC-V detected in (${arch_probes}): excluding whisper-related workspace crates from cargo build" \
+      audio/whisper whisper gst-plugin-whisper
+  fi
+
+  if { cross_build_is_active || echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; }; then
+    echo "Cross/RISC-V build detected: devtools is disabled, gstreamer-validate-1.0.pc not available"
+    _gst_rs_exclude "Excluding validate cargo plugin that requires gstreamer-validate pkg-config dep" \
+      utils/validate validate gst-plugin-validate
+  fi
+
+  if echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
+    _gst_rs_exclude "RISC-V detected in (${arch_probes}): excluding dav1d cargo plugin" \
+      video/dav1d dav1d gst-plugin-dav1d
+  fi
+
 }
 
 _gst_rs_build_plugins() {
@@ -244,31 +276,7 @@ _gst_rs_build_plugins() {
   fi
 
   arch_probes="${TARGET_MACHINE_ARCH} ${TARGETARCH:-} ${TARGET_ARCH:-} $(dpkg-architecture -q DEB_HOST_ARCH 2>/dev/null || true) $(dpkg-architecture -q DEB_HOST_MULTIARCH 2>/dev/null || true)"
-  if [ "${build_all_rs}" != "true" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm'; then
-    _gst_rs_exclude "Host arch detected in (${arch_probes}): excluding csound-related workspace crates from cargo build" \
-      "" csound gst-plugin-csound csound csound-sys
-  fi
-
-  if [ "${build_all_rs}" != "true" ] && echo " ${EXTRA_MESON_ARGS} ${MESON_ARGS:-} " | grep -q -E 'skia=disabled'; then
-    _gst_rs_exclude "skia disabled via Meson args: excluding skia-related workspace crates from cargo build" \
-      video/skia skia gst-plugin-skia gst-plugin-skia-sys
-  fi
-
-  if [ "${build_all_rs}" != "true" ] && [ "${BUILD_TYPE_LOWER}" = "release" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64|aarch64|arm64|arm|armv7l'; then
-    _gst_rs_exclude "Release build on ARM/RISC-V detected in (${arch_probes}): excluding whisper-related workspace crates from cargo build" \
-      audio/whisper whisper gst-plugin-whisper
-  fi
-
-  if [ "${build_all_rs}" != "true" ] && { cross_build_is_active || echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; }; then
-    echo "Cross/RISC-V build detected: devtools is disabled, gstreamer-validate-1.0.pc not available"
-    _gst_rs_exclude "Excluding validate cargo plugin that requires gstreamer-validate pkg-config dep" \
-      utils/validate validate gst-plugin-validate
-  fi
-
-  if [ "${build_all_rs}" != "true" ] && echo "${arch_probes}" | grep -qi -E 'riscv|riscv64'; then
-    _gst_rs_exclude "RISC-V detected in (${arch_probes}): excluding dav1d cargo plugin" \
-      video/dav1d dav1d gst-plugin-dav1d
-  fi
+  _gst_rs_apply_exclusions "${arch_probes}"
 
   if ! "${build_cmd[@]}"; then
     if [ "${build_all_rs}" = "true" ]; then

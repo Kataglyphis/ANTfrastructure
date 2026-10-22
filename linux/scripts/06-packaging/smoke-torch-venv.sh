@@ -77,320 +77,7 @@ assert_pinned_versions() {
       EXP_OPENCV_MAJOR="${opencv_major}" \
       UVLOCK="${uvlock}" \
       PYTORCH_EXTRA="${PYTORCH_EXTRA:-}" \
-      "${PY}" - <<'PYEOF'
-import os, re, sys, importlib, platform
-
-# riscv64 has no upstream torch/vision/numpy/pillow wheels: torch/torchvision are
-# LOCAL cross-built wheels (+gitXXXX / +hashXXXX variants, never +cpu) and the
-# lock-only packages (numpy/pillow/contourpy) are re-resolved+source-built to newer
-# versions than the amd64/arm64 uv.lock pins. Both are expected and correct on
-# riscv64, so the variant check is not asserted and lock-only version drift is
-# accepted there (riscv64 is its own version authority). Packages carrying an
-# explicit build-pin (torch/vision base, onnx, litert) are still enforced.
-_MACHINE_TO_ARCH = {"x86_64": "amd64", "amd64": "amd64",
-                    "aarch64": "arm64", "arm64": "arm64", "riscv64": "riscv64"}
-_raw_arch = os.environ.get("STV_ARCH") or platform.machine()
-# Repo arch name (amd64/arm64/riscv64). An UNRECOGNISED machine deliberately
-# keeps its raw name: it then matches no KNOWN_DRIFT arch below, so an unknown
-# host gets the strict assert rather than someone else's tolerance.
-ARCH = _MACHINE_TO_ARCH.get(_raw_arch, _raw_arch)
-is_riscv64 = ARCH == "riscv64"
-
-def base(v):
-    return v.split("+", 1)[0].strip() if v else v
-
-def localseg(v):
-    return v.split("+", 1)[1] if v and "+" in v else ""
-
-# PEP440 pre-release/dev marker on the END of a base version (2.13.0a0 -> 2.13.0).
-_DEV_MARKER = re.compile(r"(a|b|rc|\.dev)\d*$")
-
-lock_bases = {}
-lock_loaded = False
-lock_path = os.environ.get("UVLOCK", "")
-if lock_path and os.path.exists(lock_path):
-    try:
-        import tomllib
-        with open(lock_path, "rb") as f:
-            data = tomllib.load(f)
-        for p in data.get("package", []):
-            lock_bases.setdefault(p.get("name", ""), set()).add(base(p.get("version", "")))
-        lock_loaded = True
-    except Exception as e:
-        print("  ??  could not parse uv.lock (%s); lock-sourced pins skipped" % e)
-
-def pin_set(val):
-    return {base(val)} if val else set()
-
-# ── KNOWN_DRIFT: dated, per-case tolerances ─────────────────────────────────
-# The tightened authority rule below is CORRECT and the drift it exposes is
-# REAL — but the producer-side half of that drift is not fixed yet, and this
-# assert is a HARD gate (build-runtime-manifest.sh runs the runtime smoke
-# before the manifest push), so shipping the strict rule alone would have
-# blocked every release on a defect we already know about. Each entry here is
-# ONE line: an exact (dist, arch, installed-base, expected) quadruple, so it
-# tolerates precisely the deviation that was reviewed and NOTHING else — a new
-# version on either side re-arms the assert by itself. Tolerated ≠ silent: the
-# drift is printed as a `!!` line and counted in the summary on every run.
-# Fix the producer, DELETE the one line, gate is armed again.
-#
-# (dist_name, arch, installed_base, expected, why)
-KNOWN_DRIFT = [
-]
-
-def tolerated_drift(dist_name, arch, installed_base, expected):
-    for _d, _a, _i, _e, _why in KNOWN_DRIFT:
-        if (_d, _a, _i, _e) == (dist_name, arch, installed_base, expected):
-            return _why
-    return None
-
-tolerated = []
-
-# import_name, lock/dist name, build-pin env value, torch-like (variant-checked)
-SPECS = [
-    ("torch",          "torch",          os.environ.get("EXP_PYTORCH", ""),     True),
-    ("torchvision",    "torchvision",    os.environ.get("EXP_TORCHVISION", ""), True),
-    ("onnxruntime",    "onnxruntime",    os.environ.get("EXP_ONNX", ""),        False),
-    ("numpy",          "numpy",          "",                                    False),
-    ("PIL",            "pillow",         "",                                    False),
-    ("contourpy",      "contourpy",      "",                                    False),
-    ("ai_edge_litert", "ai-edge-litert", os.environ.get("EXP_LITERT", ""),      False),
-    # genai was the coverage hole the 2026-08-08 forensic audit found: the
-    # chain built 0.15.2, the app lock shipped PyPI 0.14.0, and NOTHING here
-    # noticed — genai was absent from this list, so the pin assertion passed.
-    ("onnxruntime_genai", "onnxruntime-genai", os.environ.get("EXP_GENAI", ""), False),
-]
-
-
-extra = os.environ.get("PYTORCH_EXTRA", "")
-want_variant = {"pytorch-cpu": "cpu", "pytorch-cu130": "cu130",
-                "pytorch-rocm10": os.environ.get("PYTORCH_ROCM_INDEX", "rocm7.14")}.get(extra, "")
-
-def installed_version(import_name, dist_name):
-    try:
-        mod = importlib.import_module(import_name)
-        v = getattr(mod, "__version__", None)
-        if v:
-            return str(v)
-    except Exception:
-        pass
-    try:
-        import importlib.metadata as M
-        return M.version(dist_name)
-    except Exception:
-        return None
-
-# GEN1 inverts the old riscv64 genai carve-out: riscv64 self-builds the wheel now,
-# so absence is a DEFECT unless the lane was turned off. docs/gen1-riscv64-genai.md
-expected_absent = set()
-if is_riscv64 and os.environ.get("GENAI_ALLOW_RISCV64", "true").strip().lower() != "true":
-    expected_absent.add("onnxruntime-genai")
-
-fails = []
-for import_name, dist_name, build_pin, torchlike in SPECS:
-    inst = installed_version(import_name, dist_name)
-    if inst is None:
-        if dist_name in expected_absent:
-            print("  ~~  %-16s not installed (riscv64 GenAI lane off via GENAI_ALLOW_RISCV64; policy, not drift)" % dist_name)
-            continue
-        fails.append("%s NOT INSTALLED" % dist_name)
-        print("  XX  %-16s NOT INSTALLED" % dist_name)
-        continue
-    ib = base(inst)
-    from_lock = lock_bases.get(dist_name, set())
-    # GENAI-DRIFT (2026-08-23): a versions.env BUILD pin is AUTHORITATIVE for
-    # every arch that builds the package -- the lock gets no vote. The old
-    # union (lock u pin) printed "OK onnxruntime-genai 0.14.0 (matches
-    # uv.lock)" on arm64 while versions.env pinned v0.15.2, so the per-arch
-    # split (amd64 0.15.2 local wheel / arm64 0.14.0 straight from PyPI /
-    # riscv64 absent by policy) shipped green and nothing could catch it.
-    allowed = pin_set(build_pin) if build_pin else set(from_lock)
-    if not allowed:
-        print("  ??  %-16s %s: no pin available -- not asserted" % (dist_name, inst))
-        continue
-    # A locally cross-built wheel carries the build METHOD in its version:
-    # torch stamps a checkout of the PINNED v2.13.0 tag as 2.13.0a0+gitcf30153
-    # on riscv64. An a0/rc/dev marker on a wheel that also has a local segment
-    # is the build method, not a different version -- strip it before comparing
-    # against the pin. A genuinely different base (2.14.0a0+git...) still fails.
-    ib_cmp = _DEV_MARKER.sub("", ib) if (build_pin and localseg(inst)) else ib
-    if ib in allowed or ib_cmp in allowed:
-        src = "versions.env" if build_pin else "uv.lock"
-        note = ""
-        if build_pin and from_lock and not ({ib, ib_cmp} & from_lock):
-            # Expected for the packages we build (source-built onnxruntime vs
-            # the locked wheel); printed so the split stays visible, not silent.
-            note = " [uv.lock says %s; build pin wins]" % ",".join(sorted(from_lock))
-        print("  OK  %-16s %-16s (matches %s)%s" % (dist_name, inst, src, note))
-    elif is_riscv64 and not build_pin:
-        # lock-only package (numpy/pillow/contourpy) re-resolved+source-built newer on
-        # riscv64; accept (no upstream riscv64 wheel to pin against).
-        print("  ~~  %-16s installed %s (riscv64 re-resolved; accepted, lock pin %s)"
-              % (dist_name, inst, sorted(allowed)))
-    else:
-        why = "versions.env build pin" if build_pin else "uv.lock"
-        expected = ",".join(sorted(allowed))
-        lock_note = ("; lock has " + ",".join(sorted(from_lock))) if (build_pin and from_lock) else ""
-        excuse = tolerated_drift(dist_name, ARCH, ib, expected)
-        if excuse:
-            # LOUD but non-blocking: a reviewed, dated, single-line tolerance.
-            tolerated.append("%s %s != %s on %s" % (dist_name, inst, expected, ARCH))
-            print("  !!  %-16s installed %s != expected %s on %s (%s is authoritative%s)"
-                  % (dist_name, inst, expected, ARCH, why, lock_note))
-            print("  !!  %-16s TOLERATED DRIFT -- %s" % ("", excuse))
-        else:
-            fails.append("%s installed %s not in %s (%s)" % (dist_name, inst, sorted(allowed), why))
-            print("  XX  %-16s installed %s NOT in expected %s (%s is authoritative%s)"
-                  % (dist_name, inst, sorted(allowed), why, lock_note))
-    if torchlike and want_variant:
-        lv = localseg(inst)
-        if is_riscv64:
-            # torch/torchvision are riscv64 LOCAL cross wheels (+gitXXXX / +hashXXXX),
-            # never the +cpu upstream variant; the variant is not asserted here.
-            print("  ~~  %-16s build variant +%s (riscv64 local wheel; not asserted)"
-                  % (dist_name, lv or "?"))
-        elif lv and lv != want_variant:
-            fails.append("%s variant +%s != +%s" % (dist_name, lv, want_variant))
-            print("  XX  %-16s build variant +%s != expected +%s (PYTORCH_EXTRA=%s)"
-                  % (dist_name, lv, want_variant, extra))
-        elif lv == want_variant:
-            print("  OK  %-16s build variant +%s (matches %s)" % (dist_name, lv, extra))
-
-
-# TVM is now a HARD assert (EXP_TVM set from versions.env TVM_REF). The build
-# ships it on all three arches; before this was armed, an absent TVM was
-# silently best-effort with no visibility. The wheel version is a dev tag
-# (0.26.dev1) that doesn't match the git tag (0.26.0) exactly, so compare
-# major.minor only.
-try:
-    import tvm as _tvm
-    _tvm_v = getattr(_tvm, "__version__", "?")
-    print("  ok  %-16s %s" % ("tvm", _tvm_v))
-    _exp_tvm = os.environ.get("EXP_TVM", "")
-    if _exp_tvm:
-        _exp_mm = ".".join(_exp_tvm.lstrip("v").split(".")[:2])
-        _tvm_mm = ".".join(str(_tvm_v).split(".")[:2])
-        if _tvm_mm != _exp_mm:
-            fails.append("tvm %s major.minor != %s (from TVM_REF=%s)" % (_tvm_v, _exp_mm, _exp_tvm))
-except Exception as _e:
-    if os.environ.get("EXP_TVM", ""):
-        fails.append("tvm NOT IMPORTABLE but EXP_TVM set: %s" % _e)
-    else:
-        print("  --  %-16s not importable (best-effort; media build shipped without it)" % "tvm")
-
-cv_major = os.environ.get("EXP_OPENCV_MAJOR", "")
-cv_required = os.environ.get("STV_CV2_REQUIRED", "1") == "1"
-try:
-    import cv2
-    cvv = cv2.__version__
-    if cv_major and cvv.split(".")[0] != cv_major:
-        fails.append("opencv/cv2 %s major != %s" % (cvv, cv_major))
-        print("  XX  %-16s %s: major != %s" % ("opencv/cv2", cvv, cv_major))
-    else:
-        print("  OK  %-16s %-16s (major %s)" % ("opencv/cv2", cvv, cv_major or "?"))
-    # SMK1 (2026-08-17): the opencv TWO-PASS functional gate. Pass-2 rebuilds
-    # OpenCV against the source-built GStreamer; if that regresses (e.g. the
-    # .pc probe in the opencv-gst stage), cv2 silently loses its gstreamer
-    # videoio backend while everything else stays green — this is the assert
-    # the original two-pass design called for.
-    # Both were once relaxed (riscv64 exempt, FFMPEG advisory); measured
-    # 2026-09-01 all three arches report GStreamer 1.29.2 and FFMPEG YES.
-    import re as _re
-    _binfo = cv2.getBuildInformation()
-    def _backend(name):
-        m = _re.search(name + r":\s*(\S+)", _binfo)
-        return m.group(1) if m else "?"
-    _gst = _backend("GStreamer")
-    _ff  = _backend("FFMPEG")
-    # SMK1-3ARCH (2026-08-23): both backends are now HARD asserts on ALL three
-    # arches. The old riscv64 exemption printed "gstreamer OFF by design" on the
-    # very line where the probe said GStreamer=YES — wave-5 ships GStreamer:YES
-    # AND FFMPEG:YES on amd64/arm64/riscv64 (verified on shipped bytes, and by
-    # running real gst/ffmpeg pipelines in the images), so the premise is gone
-    # and FFMPEG no longer stays advisory (that was OCV-FF1's on-green rider).
-    _gst_ok = _gst.upper().startswith("YES")
-    _ff_ok = _ff.upper().startswith("YES")
-    if _gst_ok and _ff_ok:
-        print("  OK  cv2 videoio      GStreamer=%s; FFMPEG=%s" % (_gst, _ff))
-    else:
-        if not _gst_ok:
-            fails.append("cv2 GStreamer backend=%s (two-pass regressed; expected YES)" % _gst)
-        if not _ff_ok:
-            fails.append("cv2 FFMPEG backend=%s (OCV-FF1 regressed; expected YES)" % _ff)
-        print("  XX  cv2 videoio      GStreamer=%s FFMPEG=%s — REGRESSED (both expected YES)" % (_gst, _ff))
-    # SMOKE-DEPTH(a) 2026-08-23: everything above is getBuildInformation()
-    # STRINGS -- compile-time linkage, which says nothing about whether a frame
-    # can actually move through the backend at runtime (cv2 can report
-    # GStreamer:YES and still have no working plugin path, and an FFMPEG:YES
-    # muxer set is worthless if the encoder cannot open a file). The strings
-    # stay as the cheap pre-filter; THESE are the assert. Both pipelines were
-    # run by hand on all three shipped wave-5 images before being promoted
-    # here. Cheap enough for qemu: ~1 s native, ~5 s emulated.
-    # STV_MEDIA_FUNCTIONAL=0 falls back to the strings alone.
-    if os.environ.get("STV_MEDIA_FUNCTIONAL", "1") == "1":
-        import shutil as _sh, tempfile as _tf
-        _d = _tf.mkdtemp()
-        try:
-            import numpy as _np
-            if _gst_ok:
-                _cap = cv2.VideoCapture(
-                    "videotestsrc num-buffers=1 ! videoconvert !"
-                    " video/x-raw,format=BGR ! appsink drop=false sync=false",
-                    cv2.CAP_GSTREAMER)
-                _got, _frame = _cap.read()
-                _cap.release()
-                if _got and _frame is not None and _frame.ndim == 3:
-                    print("  OK  cv2 gst pipeline videotestsrc->appsink delivered a %s frame"
-                          % (_frame.shape,))
-                else:
-                    fails.append("cv2 GStreamer pipeline delivered NO frame (backend reports YES)")
-                    print("  XX  cv2 gst pipeline videotestsrc->appsink delivered NO frame")
-            if _ff_ok:
-                # MJPG/AVI on purpose: it is the encoder every ffmpeg build we
-                # ship carries, so a failure means the FFMPEG backend is broken,
-                # not that a codec is missing.
-                _p = os.path.join(_d, "roundtrip.avi")
-                _fourcc = getattr(cv2, "VideoWriter_fourcc", None) or cv2.VideoWriter.fourcc
-                _w = cv2.VideoWriter(_p, cv2.CAP_FFMPEG, _fourcc(*"MJPG"), 10.0, (64, 48))
-                if not _w.isOpened():
-                    fails.append("cv2 FFMPEG VideoWriter would not open (backend reports YES)")
-                    print("  XX  cv2 ffmpeg roundtrip: VideoWriter did not open")
-                else:
-                    for _ in range(5):
-                        _w.write(_np.full((48, 64, 3), 128, _np.uint8))
-                    _w.release()
-                    _rc = cv2.VideoCapture(_p, cv2.CAP_FFMPEG)
-                    _got, _back = _rc.read()
-                    _rc.release()
-                    if _got and _back is not None and _back.shape == (48, 64, 3):
-                        print("  OK  cv2 ffmpeg roundtrip encode->decode %d bytes, frame %s"
-                              % (os.path.getsize(_p), _back.shape))
-                    else:
-                        fails.append("cv2 FFMPEG roundtrip wrote a file it cannot read back")
-                        print("  XX  cv2 ffmpeg roundtrip: encoded clip did not decode")
-        except Exception as _me:
-            fails.append("cv2 media pipeline raised %s" % _me)
-            print("  XX  cv2 media pipeline raised: %s" % _me)
-        finally:
-            _sh.rmtree(_d, ignore_errors=True)
-except Exception as e:
-    if cv_required:
-        fails.append("cv2 %s" % e)
-        print("  XX  cv2 import/version failed: %s" % e)
-    else:
-        print("  ..  cv2 not importable (optional here): %s" % e)
-
-if not lock_loaded:
-    print("  note: uv.lock not loaded -- only build-pinned packages asserted")
-if tolerated:
-    print("VERSION-ASSERT: %d TOLERATED DRIFT(s): %s -- each is one dated line in "
-          "KNOWN_DRIFT; fix the producer and delete the line to re-arm the assert"
-          % (len(tolerated), "; ".join(tolerated)))
-if fails:
-    print("VERSION-ASSERT: FAIL (%d mismatch(es))" % len(fails))
-    sys.exit(1)
-print("VERSION-ASSERT: PASS")
-PYEOF
+      "${PY}" "${_SCRIPT_DIR}/venv-version-probe.py"
   )"; then rc=0; else rc=$?; fi
   printf '%s\n' "${out}" | sed 's/^/  /'
   local tolerated
@@ -408,29 +95,18 @@ PYEOF
 }
 
 # riscv64 never runs uv sync, so each absence there needs an EXEMPT line with a reason. docs/riscv64-venv-parity.md
-assert_app_venv_parity() {
-  echo "--- app venv parity (uv sync extras) ---"
-  # The app package marks that assemble-torch-app.sh ran; without it there are no extras to assert.
-  if ! "${PY}" -c 'import orchestrant' >/dev/null 2>&1; then
-    printf '  SKIP app package not installed in this venv -- extras parity not applicable\n'
-    return 0
-  fi
-
-  local out rc
-  if out="$("${PY}" - <<'PYEOF'
+_stv_probe_app_venv_parity() {
+  "${PY}" - <<'PYEOF'
 import os, platform, sys
 import importlib.metadata as M
 
 _MACHINE_TO_ARCH = {"x86_64": "amd64", "amd64": "amd64",
                     "aarch64": "arm64", "arm64": "arm64", "riscv64": "riscv64"}
 _raw_arch = os.environ.get("STV_ARCH") or platform.machine()
-# An UNRECOGNISED machine keeps its raw name, so it matches no EXEMPT key and
-# gets the strict assert rather than someone else's tolerance.
+# Unknown machines must not inherit another architecture’s exemption.
 ARCH = _MACHINE_TO_ARCH.get(_raw_arch, _raw_arch)
 
-# (dist, the uv sync extra that must deliver it). captum is deliberately absent:
-# it comes from the pytorch-* extra and PYTORCH_EXTRA=none is a supported
-# operator override, so requiring it would misfire on a valid configuration.
+# captum is optional because PYTORCH_EXTRA=none is supported.
 REQUIRED = [
     ("pandas",             "ml-ai"),
     ("scipy",              "ml-ai"),
@@ -445,8 +121,7 @@ REQUIRED = [
     ("myst-parser",        "docs"),
 ]
 
-# (dist, arch) -> why the absence is a DECISION, not an accident. One line each,
-# reviewed; anything not listed here still FAILS. docs/riscv64-venv-parity.md
+# Only reviewed per-architecture absences are tolerated; see docs/riscv64-venv-parity.md.
 EXEMPT = {
     ("pandas", "riscv64"):
         "no riscv64 wheel; ml-ai is uninstallable here (its riscv64 opencv-python is a git source pin)",
@@ -491,6 +166,18 @@ if fails:
     sys.exit(1)
 print("APP-PARITY: PASS")
 PYEOF
+}
+
+assert_app_venv_parity() {
+  echo "--- app venv parity (uv sync extras) ---"
+  # The app package marks that assemble-torch-app.sh ran; without it there are no extras to assert.
+  if ! "${PY}" -c 'import orchestrant' >/dev/null 2>&1; then
+    printf '  SKIP app package not installed in this venv -- extras parity not applicable\n'
+    return 0
+  fi
+
+  local out rc
+  if out="$(_stv_probe_app_venv_parity
   )"; then rc=0; else rc=$?; fi
   printf '%s\n' "${out}" | sed 's/^/  /'
   if [ "${rc}" -eq 0 ]; then
@@ -534,44 +221,7 @@ PYEOF
   esac
 }
 
-main() {
-  echo "=== smoke: torch venv integrity (${VENV}) ==="
-  if [ ! -x "${PY}" ]; then
-    # Stages that must ship a venv set STV_REQUIRE_VENV=1, or a missing venv would skip to green.
-    if [ "${STV_REQUIRE_VENV:-0}" = "1" ]; then
-      echo "  FAIL venv interpreter missing at ${PY} but STV_REQUIRE_VENV=1 (venv is mandatory in this image)" >&2
-      exit 1
-    fi
-    echo "  SKIP no venv interpreter at ${PY} (nothing to check in this image)"
-    exit 0
-  fi
-  pass "venv python present: $("${PY}" --version 2>&1)"
-
-  # The runtime-image gate does its own imports and delegates only the version asserts here.
-  if [ "${STV_ASSERT_ONLY:-0}" = "1" ]; then
-    assert_pinned_versions
-    assert_app_venv_parity
-    smoke_summary
-    return 0
-  fi
-
-  # Callers whose cv2 is optional on some arches set STV_CV2_REQUIRED=0.
-  local cv2_required="${STV_CV2_REQUIRED:-1}"
-
-  local spec
-  for spec in "${REQUIRED_MODULES[@]}"; do
-    IFS='|' read -r mod pretty ver <<<"${spec}"
-    if [ "${mod}" = "cv2" ] && [ "${cv2_required}" != "1" ]; then
-      try_import "${mod}" "${pretty}" "${ver}" 0 || true
-    else
-      try_import "${mod}" "${pretty}" "${ver}" 1 || true
-    fi
-  done
-  for spec in "${OPTIONAL_MODULES[@]}"; do
-    IFS='|' read -r mod pretty ver <<<"${spec}"
-    try_import "${mod}" "${pretty}" "${ver}" 0 || true
-  done
-
+_stv_compute_battery() {
   # numpy<->torch ABI sanity: torch must be able to bridge a numpy array.
   if "${PY}" -c "import torch,numpy; torch.from_numpy(numpy.zeros(1))" 2>/dev/null; then
     pass "torch<->numpy ABI bridge OK"
@@ -620,6 +270,47 @@ STV_PY
     fi
     assert_tvm_codegen
   fi
+}
+
+main() {
+  echo "=== smoke: torch venv integrity (${VENV}) ==="
+  if [ ! -x "${PY}" ]; then
+    # Stages that must ship a venv set STV_REQUIRE_VENV=1, or a missing venv would skip to green.
+    if [ "${STV_REQUIRE_VENV:-0}" = "1" ]; then
+      echo "  FAIL venv interpreter missing at ${PY} but STV_REQUIRE_VENV=1 (venv is mandatory in this image)" >&2
+      exit 1
+    fi
+    echo "  SKIP no venv interpreter at ${PY} (nothing to check in this image)"
+    exit 0
+  fi
+  pass "venv python present: $("${PY}" --version 2>&1)"
+
+  # The runtime-image gate does its own imports and delegates only the version asserts here.
+  if [ "${STV_ASSERT_ONLY:-0}" = "1" ]; then
+    assert_pinned_versions
+    assert_app_venv_parity
+    smoke_summary
+    return 0
+  fi
+
+  # Callers whose cv2 is optional on some arches set STV_CV2_REQUIRED=0.
+  local cv2_required="${STV_CV2_REQUIRED:-1}"
+
+  local spec
+  for spec in "${REQUIRED_MODULES[@]}"; do
+    IFS='|' read -r mod pretty ver <<<"${spec}"
+    if [ "${mod}" = "cv2" ] && [ "${cv2_required}" != "1" ]; then
+      try_import "${mod}" "${pretty}" "${ver}" 0 || true
+    else
+      try_import "${mod}" "${pretty}" "${ver}" 1 || true
+    fi
+  done
+  for spec in "${OPTIONAL_MODULES[@]}"; do
+    IFS='|' read -r mod pretty ver <<<"${spec}"
+    try_import "${mod}" "${pretty}" "${ver}" 0 || true
+  done
+
+  _stv_compute_battery
 
   # Pins: uv.lock for resolved packages, versions.env for the ones we build or force-reinstall.
   assert_pinned_versions

@@ -4,6 +4,22 @@
 stages. Both carry hard-won configuration whose reasons are recorded here rather
 than inline, so the code stays readable.
 
+## Wheelhouse build libraries
+
+`build-app-wheelhouse.sh` owns shared Python and staging state, torch and torchvision, and
+the final build sequence. It sources the passive sibling `iree-wheelhouse.sh` for IREE's
+host stage, target stages and wheel packaging. The media RUN already mounts their directory,
+so the split adds no mount or broader source closure.
+
+IREE's native and host configurations share compiler/Python arguments. Target configurations
+share binding flags; their argument values stay the same. Failure logs retain their stage
+labels and bounded tails. Torch and torchvision share cross-environment preparation and the
+pip backend invocation, while keeping their package-specific settings. A backend installation
+failure stops wheel packaging and preserves its exit code.
+
+The stage, free-threaded and wheelhouse-sysconfig suites exercise the library functions and
+failure paths. A build-image rebuild is still needed to validate the resulting wheels.
+
 ## Stage 1 — the native amd64 host tools
 
 Stage 1 — NATIVE amd64 host build that populates IREE_HOST_BIN_DIR.

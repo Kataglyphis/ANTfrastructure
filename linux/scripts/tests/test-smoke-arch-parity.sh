@@ -362,6 +362,7 @@ _STV="${_RT_SANDBOX}/stv"
 mkdir -p "${_STV}/stubs/PIL" "${_STV}/stubs/ai_edge_litert" "${_STV}/venv/bin"
 sed '$d' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh" > "${_STV}/stv.sh"
 cp "${TESTS_DIR}/../06-packaging/smoke-common.sh" "${_STV}/"
+cp "${TESTS_DIR}/../06-packaging/venv-version-probe.py" "${_STV}/"
 for _m in torch torchvision onnxruntime numpy contourpy onnxruntime_genai; do
   printf 'import os\n__version__ = os.environ["STUB_%s"]\n' "$(printf '%s' "${_m}" | tr '[:lower:]' '[:upper:]')" \
     > "${_STV}/stubs/${_m}.py"
@@ -453,9 +454,10 @@ t_assert_eq "1" "$(printf '%s' "${_stv_out}" | grep -c 'FAILURES=[1-9]')"
 
 t_case "KNOWN_DRIFT: every entry is reviewed, dated and backlog-linked"
 # Asserts the shape, not a count: an empty KNOWN_DRIFT is the desired steady state.
-_kd_block="$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/smoke-torch-venv.sh")"
+_kd_block="$(sed -n '/^KNOWN_DRIFT = \[/,/^\]/p' "${TESTS_DIR}/../06-packaging/venv-version-probe.py")"
 _kd="$(printf '%s\n' "${_kd_block}" | grep -c '^    ("' || true)"
 t_assert_ok test "${_kd}" -le 2
+t_assert_contains "${_kd_block}" "KNOWN_DRIFT = [" "a missing table must not silently satisfy the shape check"
 _kd_bad="$(printf '%s\n' "${_kd_block}" | grep '^    ("' \
             | grep -cv '20[0-9][0-9]-[01][0-9]-[0-3][0-9]' || true)"
 t_assert_eq "0" "${_kd_bad}" "a KNOWN_DRIFT arm without a review date"

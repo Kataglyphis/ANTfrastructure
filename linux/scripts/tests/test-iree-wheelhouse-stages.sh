@@ -4,7 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
-WHEELHOUSE_SH="${TESTS_DIR}/../05-frameworks/torch/build-app-wheelhouse.sh"
+WHEELHOUSE_SH="${TESTS_DIR}/../05-frameworks/torch/iree-wheelhouse.sh"
 
 # ── extract the IREE helper block + build_iree_wheels ────────────────────────
 _iree_block="$(awk '
@@ -17,6 +17,7 @@ t_case "helper block extraction"
 t_assert_contains "${_iree_block}" "build_iree_wheels() {" "build_iree_wheels not in extracted block"
 t_assert_contains "${_iree_block}" "_iree_package_wheels() {" "_iree_package_wheels not in extracted block"
 eval "${_iree_block}"
+eval "$(t_fn_src "${TESTS_DIR}/../05-frameworks/torch/build-app-wheelhouse.sh" _wheelhouse_start_twin)"
 
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT

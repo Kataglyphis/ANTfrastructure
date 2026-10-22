@@ -125,10 +125,10 @@ strip_cross_wheels() {
        && find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) -print -quit 2>/dev/null | grep -q .; then
       find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) \
         -exec "${strip_bin}" --strip-all {} + 2>/dev/null || true
-      unpacked="$(find "${tmp}/u" -mindepth 1 -maxdepth 1 -type d | head -1)"
+      unpacked="$(first_match "${tmp}/u" -mindepth 1 -maxdepth 1 -type d)"
       mkdir -p "${tmp}/p"   # `wheel pack -d` does NOT create its dest dir
       if [ -n "${unpacked}" ] && uv run python -m wheel pack "${unpacked}" -d "${tmp}/p" >/dev/null 2>&1; then
-        packed="$(find "${tmp}/p" -maxdepth 1 -name '*.whl' | head -1)"
+        packed="$(first_match "${tmp}/p" -maxdepth 1 -name '*.whl')"
         if [ -n "${packed}" ]; then
           rm -f "${whl}"
           mv -f "${packed}" "${WHEELS_DIR}/$(basename "${packed}")"

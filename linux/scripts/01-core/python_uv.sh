@@ -285,31 +285,32 @@ _uv_extras_to_exclude() {
   echo "$drop" | tr -s ' ' | sed 's/^ //;s/ $//'
 }
 
-# Extras to sync, appended to the named array: UV_SYNC_EXTRAS wins, else all of them minus the conflicting ones.
 _uv_sync_extra_args() {
-  local -n _extra_args="$1"
-  local _e _excl
+  local -n sync_extra_args="$1"
   if [ -n "${UV_SYNC_EXTRAS:-}" ]; then
     # Explicit wins: the project knows which combination it wants.
     info "UV_SYNC_EXTRAS set — syncing extras: ${UV_SYNC_EXTRAS}"
     local -a _extras=()
     IFS=',' read -r -a _extras <<<"${UV_SYNC_EXTRAS}"
+    local _e
     for _e in "${_extras[@]}"; do
       [ -n "${_e}" ] || continue
-      _extra_args+=(--extra "$_e")
+      sync_extra_args+=(--extra "$_e")
     done
-    return 0
+  else
+    sync_extra_args+=(--all-extras)
+    local _excl
+    _excl="$(_uv_extras_to_exclude pyproject.toml)"
+    if [ -n "$_excl" ]; then
+      info "Project declares conflicting extras; --all-extras alone would fail."
+      info "Excluding (keeping the first-declared of each family): ${_excl}"
+      info "Set UV_SYNC_EXTRAS to choose a different combination."
+      for _e in $_excl; do
+        sync_extra_args+=(--no-extra "$_e")
+      done
+    fi
   fi
-  _extra_args+=(--all-extras)
-  _excl="$(_uv_extras_to_exclude pyproject.toml)"
-  if [ -n "$_excl" ]; then
-    info "Project declares conflicting extras; --all-extras alone would fail."
-    info "Excluding (keeping the first-declared of each family): ${_excl}"
-    info "Set UV_SYNC_EXTRAS to choose a different combination."
-    for _e in $_excl; do
-      _extra_args+=(--no-extra "$_e")
-    done
-  fi
+
 }
 
 uv_sync_project() {

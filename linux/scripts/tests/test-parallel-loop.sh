@@ -26,8 +26,7 @@ _run_caller_scenario() {
     _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
     warn() { :; }
     worker() { return 0; }
-    # run_parallel_arch_loop is called from INSIDE a function, exactly as
-    # build-cross-chain.sh calls it from _chain_run_build_loop.
+    # Match the orchestrator enclosing function scope.
     caller_fn() {
       run_parallel_arch_loop worker "'"${workdir}"'/flags" 4 amd64 || return 1
       return 0

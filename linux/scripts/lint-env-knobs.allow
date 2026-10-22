@@ -367,7 +367,6 @@ STUB_DIR
 RT_CONTRACT_SH
 RT_PROBE_SH
 RT_TREE_PY
-SMOKE_ONNX_PY
 # Not an operator switch: set on the in-container command line by
 # smoke-runtime-image.sh (bash -lc 'STV_ASSERT_ONLY=1 ...') to run only the
 # version-pin assertion of smoke-torch-venv.sh.

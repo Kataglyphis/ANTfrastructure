@@ -60,7 +60,7 @@ run_orchestrator_arg_loop() {
       shift "${_OARG_SHIFT}"
       continue
     fi
-    warn "Unknown option: $1"; "${_usage_fn}" >&2; exit 1
+    reject_unknown_option "$1" "${_usage_fn}"
   done
 }
 
@@ -92,7 +92,7 @@ run_runtime_arg_loop() {
       shift "${_OARG_SHIFT}"
       continue
     fi
-    warn "Unknown option: $1"; "${_usage_fn}" >&2; exit 1
+    reject_unknown_option "$1" "${_usage_fn}"
   done
 }
 

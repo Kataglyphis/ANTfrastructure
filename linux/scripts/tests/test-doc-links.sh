@@ -166,11 +166,7 @@ for name in g.CODE_SCAN:
                 g.CODE_SKIP_PARTS & set(f.parts)):
             cand.append(f)
 rel = [f.relative_to(g.REPO_ROOT) for f in cand]
-# A SYNTHETIC list for the floor, so this proves the same thing in a full
-# checkout and in the gate's mirror. The mirror now prunes git-ignored paths,
-# so measuring the floor against what is on disk found nothing there and this
-# test failed for the very reason it exists to guard -- two correct changes,
-# broken together, the second time in one day.
+# Synthetic paths keep the floor test meaningful in pruned mutation mirrors.
 probe = [pathlib.Path(e) / "probe.bin" if not e.endswith((".zst", ".env", ".cjs"))
          else pathlib.Path(e) for e in g.UNTRACKED_OUTPUT]
 keep = [pathlib.Path("linux/llm-stack/README.md"),
@@ -192,10 +188,7 @@ if without_git != floor:
     problems.append("no-git path returned %d, not the floor" % len(without_git))
 if without_git_probe != floor_probe:
     problems.append("no-git path ignored the floor on the probe list")
-# A HAPPY git that reports nothing. check-ignore never names a TRACKED file, and
-# .gitignore re-admits dated run dirs, so a committed benchmark run answers "not
-# ignored" for all 66 of them -- how 28280c43 put model output back in the scan.
-# The mutation mirror has no .git, so only a stub can reach the union line.
+# A stub reaches the tracked-file arm that a git-free mutation mirror cannot.
 class _Proc:
     returncode, stdout = 1, ""
 _real = g.subprocess.run
@@ -208,12 +201,7 @@ finally:
 if tracked != floor:
     problems.append("git answering NOTHING returned %d, not the floor %d"
                     % (len(tracked), len(floor)))
-# On the SYNTHETIC list too, and that is the half with teeth: inside the
-# mutation mirror `rel` holds no output path at all, so `floor` is empty there
-# and every comparison against it is set() == set(). The union under a happy
-# git could be deleted and nothing above would notice -- which is exactly what
-# doc-links.tracked-output-floor SURVIVED reported, run after run, while the
-# git-free arm beside it bit because it had already been moved to the probe.
+# The synthetic tracked-output floor must remain nonempty for its mutation to prove anything.
 if tracked_probe != floor_probe:
     problems.append("git answering NOTHING ignored the floor on the probe list: "
                     "%d, not %d" % (len(tracked_probe), len(floor_probe)))

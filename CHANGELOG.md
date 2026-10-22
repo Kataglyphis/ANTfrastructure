@@ -12,6 +12,110 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — preserve failure paths while reducing quality freezes
+
+- Share Vulkan header/loader SDK search order, including paths with spaces.
+- Share FFmpeg compile/link probe setup and cleanup; retain compile-only, debug and cross flags.
+- Remove runtime path-helper copies, share Android SDK retries, lint release bootstrap
+  and ancestry annotation validation. Preserve host library precedence, retry verdicts,
+  per-tool PATH policies and checksum refusal; add stubbed regression coverage.
+
+- Share ONNX/GenAI transport and verdict handling, consumer version comparisons and pin reads.
+  The GenAI payload suite now executes the production wrapper.
+- Preserve cache setup exports and separate diagnostics from the resolved launcher path.
+- Share TVM CMake forwarding and Vulkan/SPIRV lookup, ORT dependency and GPU cache setup,
+  and package/smoke artifact-context selection. Preserve their distinct flags and priorities.
+- Share bounded compiler-signature scans, Python bundle/package CLI parsing and host-tool
+  unknown-option diagnostics. Remove stale duplication freezes and lower remaining budgets.
+- Add regression suites for these boundaries and mutation proofs for refusal and ordering paths.
+
+- Remove the last complexity exceptions; every function meets branch and nesting limits.
+- Split host storage policies and Vulkan provisioning from their drivers, and split runtime
+  test cases without changing their execution order. Remove three file-size exceptions.
+- Replace runtime symptom dispatch with a lookup and separate row and architecture verdicts.
+  Preserve all 341 runtime assertions; add offline storage and SDK archive regression cases.
+- Exclude GCC pretty-printer files before runtime library selection; quote fixture arguments
+  and preserve stderr capture while removing five more ShellCheck exceptions.
+
+- Resource monitoring preserves spaces in log paths, keeps marked-stage priority and retains
+  the original exit status when summary generation fails; remove both ShellCheck freezes.
+
+- Separate GStreamer Python flags, architecture flags, Rust configuration and plugin exclusions.
+  Golden behavior checks pass against both the original and refactored functions.
+- Preserve OpenCV's GStreamer library lookup order, ORT argument aliases and missing-value
+  diagnostics, and native/cross Arm NN OpenMP links and ACL installation verification.
+- Separate stage handoff bookkeeping, stop-command PID selection and manifest generation
+  diagnostics. Lifecycle and provenance refusal suites retain their failure assertions.
+- A failed TensorFlow pkg-config write now returns failure before writing the SDK completion
+  stamp. A retry replaces partial SDK trees without nesting them. Complete, corrupt, partial,
+  metadata-failure and retry archives have regression coverage.
+
+## 2026-10-22 — split the app wheelhouse build
+
+- Move IREE stages and packaging into a passive sibling library on the existing media mount;
+  remove the wheelhouse driver's file-size freeze.
+- Share IREE compiler/Python arguments, binding flags, compiler selection and bounded failure
+  logs. Keep stage refusals, host-tool checks and settled configurations covered by mutations.
+- Share torch/torchvision cross-environment preparation and pip backend invocation. Preserve
+  package-specific flags and backend failure exit codes; add failure-path assertions.
+- Remove the wheelhouse complexity freezes and another duplication row, and reduce two
+  existing duplication budgets. No thresholds, scan settings or budgets increase.
+
+## 2026-10-22 — reduce complexity and ShellCheck exceptions
+
+- Separate interpreter selection, archive extraction, package-install retries, SBOM reporting,
+  Python extraction and scanner-index loading into focused helpers. Preserve fallback behavior.
+- Share FFmpeg feature tables and SDK dependency queuing; preserve flag order and deduplicate
+  each unresolved soname before walking its dependencies.
+- Extract NDK compiler verification. No function now exceeds the nesting limit.
+- Give namerefs distinct local names, quote associative-array keys and make indirect exports
+  explicit. Remove the corresponding ShellCheck freezes without adding suppressions.
+- Add behavioral tests for resolution priority, archive fallbacks, compiler prefixes, codec
+  flags, dependency queues and incorrect NDK object architectures.
+
+## 2026-10-22 — split LiteRT wheel orchestration
+
+- Move the wheel helpers into a passive sibling library on the existing directory mount. The
+  driver is below the file-size limit; splitting path resolution from flag emission removes
+  its cross-wheel complexity freeze. Golden cross arguments and QAIRT coverage stay intact.
+- Use the existing first-match helper for unpacked wheel roots. Remove the driver's self-copy
+  freeze; the existing wheel-edit overlap follows its function with the same budget.
+- Quote LiteRT diagnostics and check wheel-directory push/pop failures; remove its ShellCheck
+  warning freeze. Refresh the torch backfill fixture so its complete-dependency case includes setuptools.
+- Align shared-template synchronization with explicit shell help, retain consumer header
+  freedom, and mutation-test that changes inside the canonical help body still report drift.
+
+## 2026-10-22 — remove the remaining function-size and masked-declaration exceptions
+
+- Extract the venv version/media probe and GStreamer's cross-Python JSON serializer into
+  standalone Python files. No function now exceeds the size limit; the last two freezes are gone.
+- Share cache-server address selection between the common and media cache entry points. Keep
+  explicit addresses and legacy TCP behavior; the five remaining masked-declaration rows are gone.
+- The sdk ships the shared cache helper; early toolchain and isolated later RUNs mount it.
+  The package image ships the version probe beside its shell driver.
+- Ten differential version scenarios preserve stdout and exit status, and both libpython layouts
+  preserve GStreamer's JSON bytes. Ten new Python regression tests cover policy and failure paths;
+  the shell smoke suite also verifies that the moved drift table exists.
+- The host and GStreamer cargo compiler wrappers share one executable writer, preserving host
+  PATH isolation and the target tool prefix while quoting arguments safely.
+- Remove one more duplication row and lower two more budgets. Remaining size debt is at file
+  scope; complexity and duplication debt still need further refactors.
+
+## 2026-10-22 — reduce quality exceptions
+
+- Quality fixes must refactor the code; new exceptions, larger budgets and weaker scan settings
+  require explicit owner authorization. Existing exceptions remain debt.
+- Remove seven function-size rows, seven complexity rows, 41 masked-declaration keys,
+  32 comment-size keys, seven ShellCheck warning rows and two duplication pairs. Lower two
+  duplication budgets after measured reductions; thresholds and scan coverage stay unchanged.
+- Separate SBOM package construction, UV extras, dependency command dispatch, Meson emission
+  and tool lookup, TVM option parsing, and venv smoke probes from their drivers. Share the C/C++
+  compiler lookup through a language table. The SBOM bytes and TVM golden arguments stay identical.
+- Preserve header-based CLI help with explicit help functions and regression tests; binfmt help
+  now lists supported flags instead of printing script source.
+- Move longer CMake and template API descriptions into their READMEs. Remaining exceptions
+  still need work; in particular, standalone fallbacks must keep working when their modules are absent.
+
 ## 2026-10-22 — CI proofs and Python app resolution
 
 - CMake argument parsing retains an empty positional preset without indexing the

@@ -289,16 +289,12 @@ cross_stage_validate_graph() {
     local test_tag
     if cross_stage_is_per_arch "${stage}"; then
       test_tag="$(cross_stage_tag "${stage}" "testarch" 2>/dev/null || true)"
-      if [ -z "${test_tag}" ]; then
-        printf '[ERROR] Stage "%s" tag function returns empty string\n' "${stage}" >&2
-        ok=1
-      fi
     else
       test_tag="$(cross_stage_tag "${stage}" 2>/dev/null || true)"
-      if [ -z "${test_tag}" ]; then
-        printf '[ERROR] Stage "%s" tag function returns empty string\n' "${stage}" >&2
-        ok=1
-      fi
+    fi
+    if [ -z "${test_tag}" ]; then
+      printf '[ERROR] Stage "%s" tag function returns empty string\n' "${stage}" >&2
+      ok=1
     fi
   done
 

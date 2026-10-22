@@ -60,8 +60,7 @@ function(
       PARENT_SCOPE)
 endfunction()
 
-# Resolves the pinned appimagetool release for a host arch (the tool runs on the build host, not the target).
-#   kataglyphis_appimagetool_pin(<out_version> <out_asset> <out_sha256> [ARCH <uname -m>] [VERSIONS_ENV <file>])
+# Resolve the tool for the build host; see cmake/README.md.
 function(
   kataglyphis_appimagetool_pin
   out_version
@@ -135,8 +134,7 @@ function(
       PARENT_SCOPE)
 endfunction()
 
-# Returns a verified appimagetool: -DKATAGLYPHIS_APPIMAGETOOL, else PATH (unless NO_SYSTEM_SEARCH), else the pinned download.
-#   kataglyphis_provision_appimagetool(<out_var> [DESTINATION <dir>] [VERSIONS_ENV <file>] [NO_SYSTEM_SEARCH])
+# Explicit appimagetool paths take precedence over discovery; see cmake/README.md.
 function(kataglyphis_provision_appimagetool out_var)
   cmake_parse_arguments(
     KATAGLYPHIS_APPIMAGE

@@ -33,55 +33,11 @@ for arg in "$@"; do
 done
 
 # Bootstrapping shellcheck: PATH copy only at the pin, else a pinned, SHA-verified download
-shellcheck_asset_and_sha() {
-  case "$(uname -s)/$(uname -m)" in
-    Linux/x86_64|Linux/amd64)
-      printf 'shellcheck-%s.linux.x86_64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_X86_64_SHA256:-}" ;;
-    Linux/aarch64|Linux/arm64)
-      # Without this arm no lint gate could run on a native ARM build host.
-      printf 'shellcheck-%s.linux.aarch64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_AARCH64_SHA256:-}" ;;
-    Linux/riscv64)
-      printf 'shellcheck-%s.linux.riscv64.tar.xz %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_LINUX_RISCV64_SHA256:-}" ;;
-    MINGW*/x86_64|MSYS*/x86_64|CYGWIN*/x86_64)
-      # The plain .zip release asset is the Windows binary (shellcheck.exe).
-      printf 'shellcheck-%s.zip %s\n' "${SHELLCHECK_VERSION}" "${SHELLCHECK_WINDOWS_SHA256:-}" ;;
-    *) return 1 ;;
-  esac
-}
+# shellcheck source=01-core/lint-tool-release.sh
+source "${CORE_DIR}/lint-tool-release.sh"
 
 shellcheck_ensure() {
-  : "${SHELLCHECK_CACHE_DIR:=${TMPDIR:-/tmp}}"
-  # shellcheck source=01-core/load-versions-env.sh
-  source "${CORE_DIR}/load-versions-env.sh"
-  load_versions_env "${CORE_DIR}/tool-pins.env"
-  [ -n "${SHELLCHECK_VERSION:-}" ] || err "SHELLCHECK_VERSION is not set (tool-pins.env not found?)."
-
-  local asset expected_sha cache_root member bin_name path_bin
-  path_bin="$(command -v shellcheck || true)"
-  if [ -n "${path_bin}" ] \
-     && [ "$("${path_bin}" --version 2>/dev/null | sed -n 's/^version: //p')" = "${SHELLCHECK_VERSION#v}" ]; then
-    SHELLCHECK_BIN="${path_bin}"
-    return 0
-  fi
-
-  read -r asset expected_sha < <(shellcheck_asset_and_sha) \
-    || err "Unsupported platform for shellcheck bootstrap ($(uname -s)/$(uname -m)); install shellcheck on PATH instead."
-  [ -n "${expected_sha}" ] || err "No pinned shellcheck SHA256 for ${asset}; add one to tool-pins.env."
-
-  cache_root="${SHELLCHECK_CACHE_DIR}/shellcheck-${SHELLCHECK_VERSION}"
-  bin_name="shellcheck"; case "${asset}" in *.zip) bin_name="shellcheck.exe" ;; esac
-  SHELLCHECK_BIN="${cache_root}/${bin_name}"
-
-  if [ ! -x "${SHELLCHECK_BIN}" ]; then
-    # shellcheck source=01-core/downloads.sh
-    source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified shellcheck fetch"
-    member="${bin_name}"
-    case "${asset}" in *.tar.xz) member="shellcheck-${SHELLCHECK_VERSION}/${bin_name}" ;; esac
-    download_verified_install \
-      "https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/${asset}" \
-      "${expected_sha}" "${SHELLCHECK_BIN}" "${member}" \
-      || err "Verified install of ${asset} failed (checksum mismatch, network or extraction error)."
-  fi
+  lint_tool_ensure shellcheck SHELLCHECK_BIN
 }
 
 if [ "${PRINT_BIN}" -eq 1 ]; then

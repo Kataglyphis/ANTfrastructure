@@ -72,3 +72,37 @@ foreground-build discipline.
   foreground, because anything backgrounded is orphaned when the session ends.
 
 Full wiring checklist: [`../../../docs/adopting-in-a-new-project.md`](../../../docs/adopting-in-a-new-project.md).
+
+## Script API reference
+
+`shared/agentic-loop/templates/Run-AgenticLoop.sh`:
+
+```text
+─────────────────────────────────────────────────────────────────────────
+TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Run-AgenticLoop.sh.
+
+Agentic loop (Linux). Thin wrapper: sources the reusable library from the
+ANTfrastructure submodule, parses flags into the env vars the library reads,
+and calls run_agentic_loop. Task prompts default to ANTfrastructure's
+shared/agentic-loop/prompts/*.md - do not hard-code prompt text here.
+
+Engines (config .engine, or --engine / AGENTIC_ENGINE):
+  claude   — Claude Code CLI; models come from the config
+  opencode — OpenCode v2 CLI (v1 is refused); models come from the config
+
+Usage:
+  ./scripts/agentic-loop/Run-AgenticLoop.sh [options]
+
+Options:
+  --config PATH        Config JSON path (default: AgenticLoop.config.json)
+  --engine NAME        Engine override: claude | opencode
+  --dry-run            Print actions without invoking agents or builds
+  --max-iterations N   Override max iterations (0 = unlimited)
+  --skip-build         Skip the build phase
+  --skip-tests         Skip the test phase
+  --skip-quality       Skip clang-tidy / cmake-format
+  --planner-only       Run the planner once and exit
+  --executor-only      Drain the current queue and exit
+  --help               Show this help
+─────────────────────────────────────────────────────────────────────────
+```

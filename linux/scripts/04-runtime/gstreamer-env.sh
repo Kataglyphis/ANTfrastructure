@@ -22,32 +22,13 @@ fi
 
 export PATH="${GSTREAMER_PREFIX}/bin:${PATH}"
 
+# Installed builds and repository runs use the same path operations.
 if [ -f /opt/scripts/core/path-helpers.sh ]; then
   # shellcheck disable=SC1091
-  source /opt/scripts/core/path-helpers.sh
+  source /opt/scripts/core/path-helpers.sh || return $?
 else
-  _path_contains() {
-    local var="$1" cand="$2"
-    [ -n "$var" ] || return 1
-    case ":$var:" in
-      *":${cand}:"*) return 0 ;;
-      *) return 1 ;;
-    esac
-  }
-  _path_prepend_unique() {
-    local __varname="$1" __value="$2" __cur
-    __cur="${!__varname:-}"
-    if [ -z "$__cur" ]; then
-      printf -v "${__varname}" '%s' "${__value}"
-      export "${__varname}"
-    else
-      if _path_contains "$__cur" "$__value"; then
-        return 0
-      fi
-      printf -v "${__varname}" '%s:%s' "${__value}" "${__cur}"
-      export "${__varname}"
-    fi
-  }
+  # shellcheck source=../01-core/path-helpers.sh
+  source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/path-helpers.sh" || return $?
 fi
 
 for d in \

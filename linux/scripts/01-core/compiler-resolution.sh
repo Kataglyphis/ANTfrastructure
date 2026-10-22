@@ -15,54 +15,31 @@ _COMPILER_RESOLUTION_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # resolve_host_compiler_for_lang <c|cxx>: prints the path.
 resolve_host_compiler_for_lang() {
-  local lang="$1"
-  local triplet=""
-  local resolved=""
+  local lang="$1" compiler alternate clang_compiler candidate
+  local triplet="" resolved=""
+  case "${lang}" in
+    c) compiler=gcc; alternate=cc; clang_compiler=clang ;;
+    cxx) compiler=g++; alternate=c++; clang_compiler=clang++ ;;
+    *) printf 'ERROR: unknown compiler language "%s"\n' "${lang}" >&2; return 1 ;;
+  esac
 
   if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-    case "${lang}" in
-      c)
-        resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
-        [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
-        ;;
-      cxx)
-        resolved="$(resolve_build_gcc_tool g++ 2>/dev/null || true)"
-        [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool c++ 2>/dev/null || true)"
-        ;;
-    esac
+    resolved="$(resolve_build_gcc_tool "${compiler}" 2>/dev/null || true)"
+    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool "${alternate}" 2>/dev/null || true)"
     [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
   fi
 
   if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
     triplet="$(build_deb_multiarch_triplet)"
   fi
-
-  case "${lang}" in
-    c)
-      for candidate in \
-        "/usr/bin/${triplet}-gcc" \
-        /usr/bin/clang \
-        /usr/bin/gcc \
-        /usr/bin/cc; do
-        [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-      done
-      command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
-      ;;
-    cxx)
-      for candidate in \
-        "/usr/bin/${triplet}-g++" \
-        /usr/bin/clang++ \
-        /usr/bin/g++ \
-        /usr/bin/c++; do
-        [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-      done
-      command -v g++ 2>/dev/null || command -v c++ 2>/dev/null || true
-      ;;
-    *)
-      printf 'ERROR: unknown compiler language "%s"\n' "${lang}" >&2
-      return 1
-      ;;
-  esac
+  for candidate in \
+    "/usr/bin/${triplet}-${compiler}" \
+    "/usr/bin/${clang_compiler}" \
+    "/usr/bin/${compiler}" \
+    "/usr/bin/${alternate}"; do
+    [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
+  done
+  command -v "${compiler}" 2>/dev/null || command -v "${alternate}" 2>/dev/null || true
 }
 
 # prepare_host_compiler_wrapper <compiler> [name] [dir]: prints the wrapper path.
@@ -144,6 +121,16 @@ fix_libstdcxx_symlink() {
   ln -sf "${gcc_lib}" "${sys_lib}"
 }
 
+# The pretty-printer sorts after its library, so exclude it before version ordering.
+_target_gcc_libstdcxx() {
+  local triplet="$1" root="${2:-/opt}" candidate
+  for candidate in "${root}"/gcc-*/"${triplet}"/{lib64,lib}/libstdc++.so.6.*; do
+    case "${candidate}" in *.py) continue ;; esac
+    [ -e "${candidate}" ] || continue
+    printf '%s\n' "${candidate}"
+  done | sort -V | tail -1
+}
+
 # Pins libstdc++.so and .so.6 to GCC's superset: the multiarch copy is often wrong-arch or lacks newer GLIBCXX; always rc 0.
 pin_target_libstdcxx() {
   local arch
@@ -162,11 +149,8 @@ pin_target_libstdcxx() {
   [ -n "${triplet}" ] || return 0
   [ -d "/usr/lib/${triplet}" ] || return 0
 
-  # The -gdb.py pretty-printer sorts after the library, and `|| true` survives a partial glob under pipefail.
   local gcc_lsx
-  gcc_lsx="$(ls -1 /opt/gcc-*/"${triplet}"/lib64/libstdc++.so.6.* \
-                    /opt/gcc-*/"${triplet}"/lib/libstdc++.so.6.* 2>/dev/null \
-             | grep -vE '\.py$' | sort -V | tail -1 || true)"
+  gcc_lsx="$(_target_gcc_libstdcxx "${triplet}")"
   if [ -n "${gcc_lsx}" ]; then
     ln -sf "${gcc_lsx}" "/usr/lib/${triplet}/libstdc++.so.6"
     ln -sf "${gcc_lsx}" "/usr/lib/${triplet}/libstdc++.so"

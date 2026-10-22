@@ -123,9 +123,8 @@ parse_tvm_args() {
       continue
     fi
     case "$1" in
-      --use-vulkan)  use_vulkan=1; shift ;;
-      --use-cuda)   use_cuda=1; shift ;;
-      --use-opencl) use_opencl=1; shift ;;
+      --use-vulkan|--use-cuda|--use-opencl)
+        printf -v "use_${1#--use-}" '%s' 1; shift ;;
       --clean)       do_clean=1; shift ;;
       --no-apt)      do_apt=0; shift ;;
       --no-python)   do_python=0; shift ;;
@@ -286,6 +285,26 @@ resolve_tvm_spirv_tools() {
   fi
 }
 
+# Both native and wheel configures consume this driver's resolved SDK and compiler state.
+append_tvm_resolved_cmake_args() {
+  append_tvm_cmake_args \
+    --out "$1" \
+    --python-module "$2" \
+    --build-type "$build_type" \
+    --cc "$desired_cc" \
+    --cxx "$desired_cxx" \
+    --llvm-cmake-value "$llvm_cmake_value" \
+    --llvm-dir "$llvm_dir" \
+    --llvm-ignore-paths "$llvm_ignore_paths" \
+    --use-vulkan "$use_vulkan" \
+    --use-cuda "$use_cuda" \
+    --use-opencl "$use_opencl" \
+    --spirv-tools-lib "$spirv_tools_lib" \
+    --cross-link-flags "$cross_link_flags" \
+    --vulkan-library "$vulkan_library" \
+    --vulkan-include "$vulkan_include"
+}
+
 # Assemble the CMake args (incl. cross link flags + SPIRV-Tools) and configure.
 configure_tvm_cmake() {
   log "Configuring CMake (type=$build_type)"
@@ -302,22 +321,7 @@ configure_tvm_cmake() {
   resolve_tvm_vulkan
   resolve_tvm_spirv_tools
 
-  append_tvm_cmake_args \
-    --out cmake_args \
-    --python-module OFF \
-    --build-type "$build_type" \
-    --cc "$desired_cc" \
-    --cxx "$desired_cxx" \
-    --llvm-cmake-value "$llvm_cmake_value" \
-    --llvm-dir "$llvm_dir" \
-    --llvm-ignore-paths "$llvm_ignore_paths" \
-    --use-vulkan "$use_vulkan" \
-    --use-cuda "$use_cuda" \
-    --use-opencl "$use_opencl" \
-    --spirv-tools-lib "$spirv_tools_lib" \
-    --cross-link-flags "$cross_link_flags" \
-    --vulkan-library "$vulkan_library" \
-    --vulkan-include "$vulkan_include"
+  append_tvm_resolved_cmake_args cmake_args OFF
 
   # pipefail keeps a failed configure fatal; the log holds TVM_LLVM_VERSION, the proof of the LLVM found.
   local configure_log="${build_dir}/cmake-configure.log"

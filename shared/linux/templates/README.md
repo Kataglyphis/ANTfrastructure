@@ -81,3 +81,20 @@ Do not add project-specific behaviour here. A wrapper that needs an extra step
 (WebDavClient installs `patchelf` before packaging) does that in the wrapper,
 around the `antfrastructure_exec` call — not inside this file, which every repo
 holds a copy of.
+
+## Script API reference
+
+`linux/scripts/lib/coverage.sh`:
+
+```text
+Sourced coverage core (no shell options): gcovr for GCC --coverage, llvm-cov for clang profiles.
+Optional: COVERAGE_GCOVR_{EXCLUDES,OUTPUT,EXTRA_ARGS}, COVERAGE_LLVM_{IGNORE_REGEX,RUN_ENV} (arrays but OUTPUT).
+```
+
+`linux/scripts/lib/app-runner.sh`:
+
+```text
+Launcher core: the wrapper sets APP_RUNNER_DEFAULT_{EXE_NAME,BUILD_DIR,BUILD_TYPE}, then calls app_runner_main "$@".
+Optional: APP_RUNNER_{LABEL,USAGE_INTRO,ENABLE_SHADER_CLEAN,SHADER_CLEAN_DIR,SHADER_COMPILE_SCRIPT},
+hooks app_runner_post_vulkan_hook / app_runner_env_hook; the wrapper provides get_project_root and source_vulkan_env.
+```

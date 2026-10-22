@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# TEMPLATE: a wrapper over ANTfrastructure's renovate-local.sh (docs/dependency-updates.md); replace this with what --apply moves here.
-# Usage: bash scripts/linux/renovate-local.sh [--apply [--dry-run]]
+# Keep behavior in the hub driver; see docs/dependency-updates.md.
 set -euo pipefail
 
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

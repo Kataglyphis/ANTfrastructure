@@ -71,6 +71,7 @@ _out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock")"
 _bf="$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl')"
 t_assert_contains "${_bf}" "fsspec" "fsspec does not import, so it must be backfilled"
 t_assert_contains "${_bf}" "typing-extensions" "the PACKAGE name is installed, not the module name"
+t_assert_contains "${_bf}" "setuptools==" "a missing torch runtime dependency must be backfilled at its pin"
 
 t_case "nothing is backfilled when every torch dep already imports"
 _out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions setuptools")"

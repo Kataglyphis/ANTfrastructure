@@ -57,6 +57,35 @@ _cmake_build_resolve_vulkan() {
   fi
 }
 
+_cmake_build_assign_option() {
+  case "$1" in
+    --preset) preset_arg="${2:-}" ;;
+    --build-dir) build_dir_arg="${2:-}" ;;
+    --clean-build-dir) clean_arg="${2:-}" ;;
+    --build-config) config_arg="${2:-}" ;;
+    --build-target) target_arg="${2:-}" ;;
+    --cargo-cache-dir) CARGO_CACHE_DIR="${2:-}" ;;
+    --parallel) PARALLEL_JOBS="${2:-}" ;;
+    --mb-per-job) MB_PER_JOB="${2:-}" ;;
+    --vulkan-version) vulkan_version_arg="${2:-}" ;;
+    --vulkan-setup-script) vulkan_setup_arg="${2:-}" ;;
+    --vulkan-sdk) vulkan_sdk_arg="${2:-}" ;;
+  esac
+}
+
+_cmake_build_resolve_paths() {
+  PRESET="${preset_arg:-${PRESET:-${CMAKE_BUILD_POSITIONAL[0]:-${CMAKE_BUILD_DEFAULT_PRESET:-}}}}"
+  BUILD_DIR="${build_dir_arg:-${BUILD_DIR:-${CMAKE_BUILD_DEFAULT_BUILD_DIR:-build}}}"
+  CLEAN_BUILD_DIR="${clean_arg:-${CLEAN_BUILD_DIR:-${CMAKE_BUILD_DEFAULT_CLEAN_BUILD_DIR:-false}}}"
+  SKIP_CONFIGURE="${skip_arg:-${SKIP_CONFIGURE:-${CMAKE_BUILD_DEFAULT_SKIP_CONFIGURE:-false}}}"
+  CMAKE_BUILD_CONFIG="${config_arg:-${CMAKE_BUILD_CONFIG:-}}"
+  CMAKE_BUILD_TARGET="${target_arg:-${CMAKE_BUILD_TARGET:-}}"
+
+  if [[ "${SKIP_CONFIGURE}" != "true" && -z "${PRESET}" ]]; then
+    PRESET="${CMAKE_BUILD_DEFAULT_PRESET:-}"
+  fi
+}
+
 # Precedence: CLI flag > environment > caller default; a trailing positional is the preset.
 cmake_build_parse_args() {
   local preset_arg="" build_dir_arg="" clean_arg="" skip_arg=""
@@ -71,22 +100,11 @@ cmake_build_parse_args() {
   # An array, never an env string (splitting breaks -D values with spaces); reset so a re-parse inherits nothing.
   CMAKE_BUILD_CONFIGURE_ARGS=( ${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]+"${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]}"} )
 
-  # Value options each set one variable, so they share one table and one arm instead of eleven.
-  local -A _value_var=(
-    [--preset]=preset_arg [--build-dir]=build_dir_arg [--clean-build-dir]=clean_arg
-    [--build-config]=config_arg [--build-target]=target_arg [--cargo-cache-dir]=CARGO_CACHE_DIR
-    [--parallel]=PARALLEL_JOBS [--mb-per-job]=MB_PER_JOB [--vulkan-version]=vulkan_version_arg
-    [--vulkan-setup-script]=vulkan_setup_arg [--vulkan-sdk]=vulkan_sdk_arg
-  )
-
   while [[ $# -gt 0 ]]; do
-    if [[ -n "$1" && -n "${_value_var[$1]+x}" ]]; then
-      [[ $# -ge 2 ]] || err "$1 expects a value"
-      printf -v "${_value_var[$1]}" '%s' "$2"
-      shift 2
-      continue
-    fi
     case "$1" in
+      --preset|--build-dir|--clean-build-dir|--build-config|--build-target|--cargo-cache-dir|--parallel|--mb-per-job|--vulkan-version|--vulkan-setup-script|--vulkan-sdk)
+        [[ $# -ge 2 ]] || err "$1 expects a value"
+        _cmake_build_assign_option "$1" "$2"; shift 2 ;;
       # Repeatable; an empty value is fatal because `cmake ""` fails far from the caller.
       --configure-arg)
         [[ -n "${2:-}" ]] || err "--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)"
@@ -117,16 +135,7 @@ cmake_build_parse_args() {
   _cmake_build_resolve_vulkan \
     "${vulkan_version_arg}" "${vulkan_setup_arg}" "${vulkan_sdk_arg}"
 
-  PRESET="${preset_arg:-${PRESET:-${CMAKE_BUILD_POSITIONAL[0]:-${CMAKE_BUILD_DEFAULT_PRESET:-}}}}"
-  BUILD_DIR="${build_dir_arg:-${BUILD_DIR:-${CMAKE_BUILD_DEFAULT_BUILD_DIR:-build}}}"
-  CLEAN_BUILD_DIR="${clean_arg:-${CLEAN_BUILD_DIR:-${CMAKE_BUILD_DEFAULT_CLEAN_BUILD_DIR:-false}}}"
-  SKIP_CONFIGURE="${skip_arg:-${SKIP_CONFIGURE:-${CMAKE_BUILD_DEFAULT_SKIP_CONFIGURE:-false}}}"
-  CMAKE_BUILD_CONFIG="${config_arg:-${CMAKE_BUILD_CONFIG:-}}"
-  CMAKE_BUILD_TARGET="${target_arg:-${CMAKE_BUILD_TARGET:-}}"
-
-  if [[ "${SKIP_CONFIGURE}" != "true" && -z "${PRESET}" ]]; then
-    PRESET="${CMAKE_BUILD_DEFAULT_PRESET:-}"
-  fi
+  _cmake_build_resolve_paths
 }
 
 # Environment preparation for an unprivileged build; safe to call more than once.

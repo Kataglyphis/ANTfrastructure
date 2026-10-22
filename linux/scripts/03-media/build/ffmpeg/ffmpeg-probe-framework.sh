@@ -118,104 +118,71 @@ EOF
     printf '%s' "${wrapper_path}"
 }
 
-ffmpeg_try_cpp_condition() {
-    local headers="$1"
-    local condition="$2"
-    local cflags_string="${3:-}"
-    local compiler_string probe_dir source_file output_file
-    local -a compiler_cmd=()
-    local -a cflags=()
-    local -a cmd=()
-
-    compiler_string="$(ffmpeg_probe_compiler)"
-    split_shell_words compiler_cmd "${compiler_string}"
-    split_shell_words cflags "${cflags_string}"
-
-    probe_dir="$(mktemp -d)"
-    source_file="${probe_dir}/probe.c"
-    output_file="${probe_dir}/probe.o"
-
-    {
-        ffmpeg_write_includes "${headers}"
-        printf '#if !(%s)\n' "${condition}"
-        printf '#error condition failed\n'
-        printf '#endif\n'
-        printf 'int ffmpeg_probe_condition = 0;\n'
-    } > "${source_file}"
-
-    cmd=("${compiler_cmd[@]}")
-    if cross_build_is_active; then
-        cmd+=("--sysroot=/")
-        ffmpeg_append_cross_search_flags cmd
-    fi
-    cmd+=("${cflags[@]}" "-c" "${source_file}" "-o" "${output_file}")
-
-    if [ "${FFMPEG_PROBE_DEBUG:-0}" = "1" ]; then
-        # `|| true`: this compile is expected to fail, and set -e would abort the build.
-        _FFMPEG_LAST_PROBE_ERR="$("${cmd[@]}" 2>&1 >/dev/null || true)"
-    fi
-    if "${cmd[@]}" >/dev/null 2>&1; then
-        rm -rf "${probe_dir}"
-        return 0
-    fi
-
-    rm -rf "${probe_dir}"
-    return 1
+_ffmpeg_condition_source() {
+    ffmpeg_write_includes "$1"
+    printf '#if !(%s)\n' "$2"
+    printf '#error condition failed\n#endif\nint ffmpeg_probe_condition = 0;\n'
 }
 
-ffmpeg_try_link_probe() {
-    local headers="$1"
-    local symbols="$2"
-    local cflags_string="${3:-}"
-    local libs_string="${4:-}"
-    local compiler_string probe_dir source_file output_file
-    local -a compiler_cmd=()
-    local -a cflags=()
-    local -a libs=()
-    local -a cmd=()
+_ffmpeg_link_source() {
+    local symbol
     local -a symbol_list=()
+    split_shell_words symbol_list "$2"
+    ffmpeg_write_includes "$1"
+    for symbol in "${symbol_list[@]}"; do
+        printf 'long ffmpeg_probe_%s(void) { return (long)%s; }\n' "${symbol//[^A-Za-z0-9_]/_}" "${symbol}"
+    done
+    printf 'int main(void) { return 0'
+    for symbol in "${symbol_list[@]}"; do
+        printf ' | ((int)(ffmpeg_probe_%s() & 0xFFFF))' "${symbol//[^A-Za-z0-9_]/_}"
+    done
+    printf '; }\n'
+}
 
+_ffmpeg_try_source_probe() {
+    local mode="$1" cflags_string="$2" libs_string="$3" writer="$4"
+    shift 4
+    local compiler_string probe_dir source_file output_file status=0
+    local -a cmd=() cflags=() libs=()
     compiler_string="$(ffmpeg_probe_compiler)"
-    split_shell_words compiler_cmd "${compiler_string}"
+    split_shell_words cmd "${compiler_string}"
     split_shell_words cflags "${cflags_string}"
     split_shell_words libs "${libs_string}"
-    split_shell_words symbol_list "${symbols}"
-
     probe_dir="$(mktemp -d)"
     source_file="${probe_dir}/probe.c"
     output_file="${probe_dir}/probe"
-
-    {
-        local symbol
-        ffmpeg_write_includes "${headers}"
-        for symbol in "${symbol_list[@]}"; do
-            printf 'long ffmpeg_probe_%s(void) { return (long)%s; }\n' "${symbol//[^A-Za-z0-9_]/_}" "${symbol}"
-        done
-        printf 'int main(void) { return 0'
-        for symbol in "${symbol_list[@]}"; do
-            printf ' | ((int)(ffmpeg_probe_%s() & 0xFFFF))' "${symbol//[^A-Za-z0-9_]/_}"
-        done
-        printf '; }\n'
-    } > "${source_file}"
-
-    cmd=("${compiler_cmd[@]}")
+    "${writer}" "$@" > "${source_file}"
     if cross_build_is_active; then
         cmd+=("--sysroot=/")
-        # Without the multiarch dirs every cross codec probe fails.
         ffmpeg_append_cross_search_flags cmd
     fi
-    if command -v ld.lld >/dev/null 2>&1 && { case "${USE_LLD:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
-        cmd+=("-fuse-ld=lld")
+    case "${mode}" in
+        compile)
+            output_file+=.o
+            cmd+=("${cflags[@]}" -c "${source_file}" -o "${output_file}")
+            ;;
+        link)
+            if command -v ld.lld >/dev/null 2>&1 && { case "${USE_LLD:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
+                cmd+=(-fuse-ld=lld)
+            fi
+            cmd+=("${cflags[@]}" "${source_file}" -o "${output_file}" "${libs[@]}")
+            ;;
+    esac
+    if [ "${mode}" = compile ] && [ "${FFMPEG_PROBE_DEBUG:-0}" = 1 ]; then
+        # Debug capture is advisory; the following compile owns the verdict.
+        _FFMPEG_LAST_PROBE_ERR="$("${cmd[@]}" 2>&1 >/dev/null || true)"
     fi
-    cmd+=("${cflags[@]}" "${source_file}" "-o" "${output_file}" "${libs[@]}")
-
-    if "${cmd[@]}" >/dev/null 2>&1; then
-        rm -rf "${probe_dir}"
-        return 0
-    fi
-
+    "${cmd[@]}" >/dev/null 2>&1 || status=1
     rm -rf "${probe_dir}"
-    return 1
+    return "${status}"
+}
+
+ffmpeg_try_cpp_condition() {
+    _ffmpeg_try_source_probe compile "${3:-}" '' _ffmpeg_condition_source "$1" "$2"
+}
+
+ffmpeg_try_link_probe() {
+    _ffmpeg_try_source_probe link "${3:-}" "${4:-}" _ffmpeg_link_source "$1" "$2"
 }
 
 ffmpeg_try_pkg_config_probe() {

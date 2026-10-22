@@ -97,6 +97,28 @@ prepare_cargo_host_cxx_wrapper() {
   prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR}"
 }
 
+_gst_prepare_target_cargo_env() {
+  # Without a target-triple linker cargo links the cross cdylibs with the host cc and fails "incompatible with elf64-x86-64".
+  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
+  if command -v cross_target_upper_rust >/dev/null 2>&1; then
+    target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
+  fi
+  if command -v cross_target_lower_rust >/dev/null 2>&1; then
+    target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
+  fi
+  if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
+    local _tgt_arch
+    _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
+    target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
+    target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
+    if export_cargo_target_linker "${target_rust_env}" "${target_rust_lower}" "${target_cc}" "${target_cxx}"; then
+      echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
+    else
+      echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
+    fi
+  fi
+}
+
 prepare_host_cargo_toolchain_env() {
   local build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
   local build_rust_lower="x86_64_unknown_linux_gnu"
@@ -135,25 +157,7 @@ prepare_host_cargo_toolchain_env() {
     export HOST_CXX="${cargo_host_cxx_wrapper}"
   fi
 
-  # Without a target-triple linker cargo links the cross cdylibs with the host cc and fails "incompatible with elf64-x86-64".
-  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
-  if command -v cross_target_upper_rust >/dev/null 2>&1; then
-    target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
-  fi
-  if command -v cross_target_lower_rust >/dev/null 2>&1; then
-    target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
-  fi
-  if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
-    local _tgt_arch
-    _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
-    target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
-    target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
-    if export_cargo_target_linker "${target_rust_env}" "${target_rust_lower}" "${target_cc}" "${target_cxx}"; then
-      echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
-    else
-      echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
-    fi
-  fi
+  _gst_prepare_target_cargo_env
 }
 
 _gst_xpy_check_meson() {
@@ -201,8 +205,7 @@ _gst_xpy_resolve_target_paths() {
   # The resolvers can return the host's /usr/local Python; use the staged cross Python instead.
   local _py_pv="${PYTHON_VERSION:-}"
   local _py_mm="${PYTHON_MAJOR_MINOR:-${_py_pv%.*}}"
-  if [ "${target_python_include}" = "/usr/local/include/python${_py_mm}" ] && \
-     [ -n "${target_triplet}" ]; then
+  if [ "${target_python_include}" = "/usr/local/include/python${_py_mm}" ]; then
     local _cross_arch="${target_triplet%%-*}"
     local _cross_stage="/opt/python-cross/${_cross_arch}/usr/local"
     if [ -d "${_cross_stage}" ]; then
@@ -221,8 +224,7 @@ _gst_xpy_resolve_target_paths() {
 _gst_xpy_write_config() {
   local python_build_config=""
   python_build_config="/tmp/meson-python-build-config-${target_triplet}.json"
-  if "${HOST_PYTHON}" "${_SETUP_GST_DIR}/write-python-build-config.py" "${python_build_config}" "${target_triplet}" "${target_python_include}" "${target_python_library}" "${target_python_pkgconfig_dir}"
-  then
+  if "${HOST_PYTHON}" "${_SETUP_GST_DIR}/gst-python-build-config.py" "${python_build_config}" "${target_triplet}" "${target_python_include}" "${target_python_library}" "${target_python_pkgconfig_dir}"; then
     CROSS_PYTHON_BUILD_CONFIG="${python_build_config}"
     export CROSS_PYTHON_BUILD_CONFIG
     echo "Generated Meson python.build_config for ${target_triplet}: ${CROSS_PYTHON_BUILD_CONFIG}"
@@ -311,14 +313,11 @@ dump_debug_info() {
   echo "--- Tool versions ---"
   printf 'host python: %s\n' "${HOST_PYTHON:-unresolved}" || true
   if [ -n "${HOST_PYTHON:-}" ]; then "${HOST_PYTHON}" --version 2>&1 || true; fi
-  which pip  || true; pip --version 2>&1 || true
-  which meson || true; meson --version 2>&1 || true
-  which ninja || true; ninja --version 2>&1 || true
-  which rustc || true; rustc --version 2>&1 || true
-  which cargo || true; cargo --version 2>&1 || true
-  which clang || true; clang --version 2>&1 || true
-  which cc || true; cc --version 2>&1 || true
-  which pkg-config || true; pkg-config --version 2>&1 || true
+  local tool
+  for tool in pip meson ninja rustc cargo clang cc pkg-config; do
+    which "${tool}" || true
+    "${tool}" --version 2>&1 || true
+  done
   echo "=== end debug info ==="
 }
 

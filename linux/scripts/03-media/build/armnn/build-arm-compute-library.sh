@@ -17,6 +17,21 @@ clone_acl() {
   retry 3 10 "ACL git clone" clone_or_update_repo "${ACL_REPO}" "${ACL_SRC_DIR}" "${ACL_VERSION}"
 }
 
+_acl_install_artifacts() {
+  mkdir -p "${ACL_INSTALL_DIR}/lib" "${ACL_INSTALL_DIR}/include"
+  # A build may yield only .so or only .a, so each copy may miss; the checks below verify the install as a whole.
+  cp -a build/*.so "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
+  cp -a build/*.a "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
+  cp -a include/* "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
+  cp -a arm_compute "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
+
+  ls "${ACL_INSTALL_DIR}/lib/"libarm_compute* >/dev/null 2>&1 \
+    || die "ACL install verification failed: no libarm_compute* in ${ACL_INSTALL_DIR}/lib"
+  [ -d "${ACL_INSTALL_DIR}/include/arm_compute" ] \
+    || die "ACL install verification failed: arm_compute headers missing from ${ACL_INSTALL_DIR}/include"
+
+}
+
 build_acl() {
   info "Building Arm Compute Library for ${ARCH}"
 
@@ -54,17 +69,7 @@ build_acl() {
     validation_tests=0 \
     "${@}"
 
-  mkdir -p "${ACL_INSTALL_DIR}/lib" "${ACL_INSTALL_DIR}/include"
-  # A build may yield only .so or only .a, so each copy may miss; the checks below verify the install as a whole.
-  cp -a build/*.so "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
-  cp -a build/*.a "${ACL_INSTALL_DIR}/lib/" 2>/dev/null || true
-  cp -a include/* "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
-  cp -a arm_compute "${ACL_INSTALL_DIR}/include/" 2>/dev/null || true
-
-  ls "${ACL_INSTALL_DIR}/lib/"libarm_compute* >/dev/null 2>&1 \
-    || die "ACL install verification failed: no libarm_compute* in ${ACL_INSTALL_DIR}/lib"
-  [ -d "${ACL_INSTALL_DIR}/include/arm_compute" ] \
-    || die "ACL install verification failed: arm_compute headers missing from ${ACL_INSTALL_DIR}/include"
+  _acl_install_artifacts
 
   info "ACL installed to ${ACL_INSTALL_DIR}"
   # Best-effort strip of the dedicated prefix; MEDIA_STRIP=0 disables it inside the helper.

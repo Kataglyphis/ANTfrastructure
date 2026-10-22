@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Does :latest index this run's bytes? Registry-only; see docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push
-# Usage: verify-manifest-freshness.sh [--repo OWNER/PKG] [--tag TAG]; env EXPECT_RUN_ID, STALE_<ARCH> (a digest that must not appear)
+# Verify indexed bytes rather than push status; see docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push.
 set -uo pipefail
 
 REPO="kataglyphis/kataglyphis_beschleuniger"

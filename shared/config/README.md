@@ -243,8 +243,10 @@ are legitimate and one is not:
 `agentic-loop-ps1`, the two files OmniAccelerANT and BeschleunigerBallett copied from
 `shared/agentic-loop/templates/`. In a PowerShell file a leading `<# … #>` block counts as
 header prose, since a script's comment-based help names its repository; the first line after it
-is code. `Run-AgenticLoop.sh` prints its own header as `--help` with `head -N "$0" | tail -M`,
-so `head -` is its knob: the range follows the consumer's header length.
+is code. `Run-AgenticLoop.sh` now prints explicit help from `_agentic_template_usage`,
+independent of the consumer header length. That help body is canonical shared code; there is no
+header-range knob. Consumers adopting this template keep their leading header and copy the new
+body, as for any body-mode update. Older header-reading bodies are reported as drift.
 
 ## The Flutter web shell
 

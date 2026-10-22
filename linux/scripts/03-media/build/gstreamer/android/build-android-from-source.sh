@@ -114,6 +114,35 @@ _cerbero_recipe_str() {
     sed -n "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*f\\{0,1\\}['\"]\\([^'\"]*\\)['\"].*/\\1/p" "$1" | head -1
 }
 
+_cerbero_soundtouch_archive_url() {
+    local ver="$1" nam="$2" url_tpl="$3" url
+    # ver/nam are spliced into a sed replacement and a URL, so only a plain version/name charset passes.
+    case "${ver}${nam}" in
+        *[!A-Za-z0-9._+-]*)
+            echo "WARNING: soundtouch name/version have unexpected characters ('${nam}' '${ver}'); leaving recipe as-is" >&2
+            return 1 ;;
+    esac
+
+    # The recipe's own url: a hardcoded one would re-pin over upstream's fix once the recipe moves source.
+    url="$(printf '%s' "${url_tpl}" | sed \
+        -e "s|%(version)s|${ver}|g" -e "s|%(name)s|${nam}|g" \
+        -e "s|{version}|${ver}|g" -e "s|{name}|${nam}|g")"
+    case "${url}" in
+        *'%('*|*'{'*)
+            echo "WARNING: soundtouch url '${url_tpl}' has placeholders this script cannot expand; leaving recipe as-is" >&2
+            return 1 ;;
+    esac
+    # Only a Forgejo auto-archive justifies trading the pinned hash for TLS plus the tag.
+    case "${url}" in
+        https://codeberg.org/*/archive/*) ;;
+        *)
+            echo "WARNING: soundtouch no longer fetches a Codeberg auto-archive (${url}); TOFU re-pin SKIPPED, upstream's tarball_checksum stands" >&2
+            return 1 ;;
+    esac
+
+    printf '%s' "${url}"
+}
+
 override_soundtouch_codeberg_checksum() {
     # Forgejo re-compresses Codeberg auto-archives, so the hash drifts while the source does not.
     local recipe="recipes/soundtouch.recipe"
@@ -132,29 +161,7 @@ override_soundtouch_codeberg_checksum() {
         echo "WARNING: could not parse soundtouch name/version/url/checksum from recipe; leaving as-is" >&2
         return 0
     fi
-    # ver/nam are spliced into a sed replacement and a URL, so only a plain version/name charset passes.
-    case "${ver}${nam}" in
-        *[!A-Za-z0-9._+-]*)
-            echo "WARNING: soundtouch name/version have unexpected characters ('${nam}' '${ver}'); leaving recipe as-is" >&2
-            return 0 ;;
-    esac
-
-    # The recipe's own url: a hardcoded one would re-pin over upstream's fix once the recipe moves source.
-    url="$(printf '%s' "${url_tpl}" | sed \
-        -e "s|%(version)s|${ver}|g" -e "s|%(name)s|${nam}|g" \
-        -e "s|{version}|${ver}|g" -e "s|{name}|${nam}|g")"
-    case "${url}" in
-        *'%('*|*'{'*)
-            echo "WARNING: soundtouch url '${url_tpl}' has placeholders this script cannot expand; leaving recipe as-is" >&2
-            return 0 ;;
-    esac
-    # Only a Forgejo auto-archive justifies trading the pinned hash for TLS plus the tag.
-    case "${url}" in
-        https://codeberg.org/*/archive/*) ;;
-        *)
-            echo "WARNING: soundtouch no longer fetches a Codeberg auto-archive (${url}); TOFU re-pin SKIPPED, upstream's tarball_checksum stands" >&2
-            return 0 ;;
-    esac
+    url="$(_cerbero_soundtouch_archive_url "${ver}" "${nam}" "${url_tpl}")" || return 0
 
     tmp="$(mktemp)"
     if curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 -o "${tmp}" "${url}"; then

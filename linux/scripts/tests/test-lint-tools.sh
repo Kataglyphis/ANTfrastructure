@@ -77,7 +77,14 @@ t_assert_ok test -n "$(_pin HADOLINT_SOURCE_SHA256)"
 t_assert_ok test -n "$(_pin HADOLINT_HACKAGE_INDEX_STATE)"
 
 t_case "lint-shell.sh bootstraps the same riscv64 asset on a riscv64 host"
-t_assert_contains "$(cat "${SCRIPTS}/lint-shell.sh")" 'shellcheck-%s.linux.riscv64.tar.xz %s\n'"' \"\${SHELLCHECK_VERSION}\" \"\${SHELLCHECK_LINUX_RISCV64_SHA256:-}\""
+t_assert_eq "shellcheck-${SC_V}.linux.riscv64.tar.xz $(_pin SHELLCHECK_LINUX_RISCV64_SHA256)" "$(
+  # shellcheck source=../01-core/lint-tool-release.sh
+  source "${SCRIPTS}/01-core/lint-tool-release.sh"
+  # shellcheck source=../01-core/tool-pins.env
+  source "${PINS}"
+  uname() { case "$1" in -s) printf Linux ;; -m) printf riscv64 ;; esac; }
+  lint_tool_release_asset shellcheck "${SC_V}"
+)"
 
 t_case "the bump modules refresh every new pin with its version"
 _bv="$(cat "${ROOT}"/docs/scripts/bump_*.py)"
@@ -95,7 +102,7 @@ t_assert_contains "${_torch}" "install-lint-tools.sh /usr/local/bin /tmp/hadolin
 t_case "the shipped-image contract row holds both tools to their tool-pins.env pins (mutation)"
 SMOKE="${SCRIPTS}/06-packaging/smoke-runtime-image.sh"
 mkdir -p "${_work}/rt/06-packaging" "${_work}/rt/01-core"; cp "${PINS}" "${_work}/rt/01-core/"
-for _fn in _consumer_contract_fact _consumer_lint_tools_verdict _rt_tool_pin; do
+for _fn in _consumer_contract_fact _consumer_lint_tools_verdict _rt_env_pin _rt_tool_pin; do
   t_fn_src "${SMOKE}" "${_fn}" >> "${_work}/rt/06-packaging/row.sh" || exit 1
 done
 _lint_row() { bash -c 'source "$1"; _consumer_lint_tools_verdict lint-tools "$2" "$3"' _ "${_work}/rt/06-packaging/row.sh" "$@"; }
@@ -105,7 +112,7 @@ t_assert_contains "$(_lint_row "FACT lint-tools shellcheck= hadolint=${HL_V#v}" 
 t_assert_contains "$(_lint_row "FACT lint-tools shellcheck=${SC_V#v} hadolint=" "${_pins_want}")" "BAD lint-tools"
 t_assert_contains "$(_lint_row "FACT other x" "${_pins_want}")" "NOFACT lint-tools"
 t_assert_eq "${SC_V}" "$(bash -c 'source "$1"; _rt_tool_pin SHELLCHECK_VERSION' _ "${_work}/rt/06-packaging/row.sh")" "the row reads tool-pins.env"
-_smoke_src="$(cat "${SMOKE}")"
+_smoke_src="$(cat "${SMOKE}" "${SMOKE%/*}/runtime-consumer-contract.sh")"
 t_assert_contains "${_smoke_src}" 'printf '"'"'FACT lint-tools shellcheck=%s hadolint=%s\n'"'"
 t_assert_contains "${_smoke_src}" 'lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"'
 t_assert_contains "$(grep '^_CONSUMER_CONTRACT_ROWS=' "${SMOKE}")" " lint-tools"

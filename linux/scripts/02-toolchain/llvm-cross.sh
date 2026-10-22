@@ -28,7 +28,7 @@ _llvm_cross_resolve_dirs() {
   : "${LLVM_CROSS_BUILD_ROOT:=/var/tmp/llvm-cross-build}"
   : "${LLVM_CROSS_JOBS:=}"
   : "${LLVM_CROSS_MB_PER_JOB:=3500}"
-  local -n _r="$1"
+  local -n _llvm_cross_resolve_dirs_result="$1"
   local mode="$2" target_label="$3" triplet
 
   [ -n "${target_label}" ] || die "_build_llvm_cross_core: target architecture required"
@@ -37,36 +37,36 @@ _llvm_cross_resolve_dirs() {
 
   triplet="$(arch_deb_multiarch_triplet_for "${target_label}")" || die "No triplet for ${target_label}"
 
-  _r[mode]="${mode}"
-  _r[target_label]="${target_label}"
-  _r[triplet]="${triplet}"
+  _llvm_cross_resolve_dirs_result["mode"]="${mode}"
+  _llvm_cross_resolve_dirs_result["target_label"]="${target_label}"
+  _llvm_cross_resolve_dirs_result["triplet"]="${triplet}"
 
   # One superset build per arch, installed to both prefixes; a shared clang_prefix would be clobbered.
-  _r[llvm_prefix]="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
-  _r[clang_prefix]="/opt/llvm-target-${target_label}"
+  _llvm_cross_resolve_dirs_result["llvm_prefix"]="$(llvm_cross_install_prefix "${target_label}")" || die "Unable to resolve LLVM cross install prefix for ${target_label}"
+  _llvm_cross_resolve_dirs_result["clang_prefix"]="/opt/llvm-target-${target_label}"
   # Configure with the clang prefix; /opt/llvm-cross is a second relocated install.
-  _r[prefix]="${_r[clang_prefix]}"
-  _r[release]="$(llvm_release_version)"
-  _r[tag]="$(llvm_git_tag)"
+  _llvm_cross_resolve_dirs_result["prefix"]="${_llvm_cross_resolve_dirs_result["clang_prefix"]}"
+  _llvm_cross_resolve_dirs_result["release"]="$(llvm_release_version)"
+  _llvm_cross_resolve_dirs_result["tag"]="$(llvm_git_tag)"
   # Both entry points describe the SAME unified build, so they name the same tree.
-  _r[build_dir_suffix]="${triplet}"
-  _r[wrapper_dir_suffix]="${triplet}-tool-bin"
+  _llvm_cross_resolve_dirs_result["build_dir_suffix"]="${triplet}"
+  _llvm_cross_resolve_dirs_result["wrapper_dir_suffix"]="${triplet}-tool-bin"
 
-  _r[backend]="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
-  _r[source_root]="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
-  _r[build_root]="${LLVM_CROSS_BUILD_ROOT}"
-  _r[source_dir]="${_r[source_root]}/llvm-project-${_r[release]}"
-  _r[build_dir]="${_r[build_root]}/${_r[build_dir_suffix]}"
-  _r[wrapper_dir]="${_r[build_root]}/${_r[wrapper_dir_suffix]}"
-  _r[zlib_include]="${_r[build_root]}/${triplet}-zlib-include"
-  _r[jobs]="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS}" "${LLVM_CROSS_MB_PER_JOB}")"
+  _llvm_cross_resolve_dirs_result["backend"]="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
+  _llvm_cross_resolve_dirs_result["source_root"]="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
+  _llvm_cross_resolve_dirs_result["build_root"]="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
+  _llvm_cross_resolve_dirs_result["source_dir"]="${_llvm_cross_resolve_dirs_result["source_root"]}/llvm-project-${_llvm_cross_resolve_dirs_result["release"]}"
+  _llvm_cross_resolve_dirs_result["build_dir"]="${_llvm_cross_resolve_dirs_result["build_root"]}/${_llvm_cross_resolve_dirs_result["build_dir_suffix"]}"
+  _llvm_cross_resolve_dirs_result["wrapper_dir"]="${_llvm_cross_resolve_dirs_result["build_root"]}/${_llvm_cross_resolve_dirs_result["wrapper_dir_suffix"]}"
+  _llvm_cross_resolve_dirs_result["zlib_include"]="${_llvm_cross_resolve_dirs_result["build_root"]}/${triplet}-zlib-include"
+  _llvm_cross_resolve_dirs_result["jobs"]="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS:-}" "${LLVM_CROSS_MB_PER_JOB:-3500}")"
   return 0
 }
 
 _llvm_cross_early_return() {
-  local -n _r="$1"
-  local target_label="${_r[target_label]}" release="${_r[release]}"
-  local llvm_prefix="${_r[llvm_prefix]}" clang_prefix="${_r[clang_prefix]}"
+  local -n _llvm_cross_early_return_result="$1"
+  local target_label="${_llvm_cross_early_return_result[target_label]}" release="${_llvm_cross_early_return_result[release]}"
+  local llvm_prefix="${_llvm_cross_early_return_result[llvm_prefix]}" clang_prefix="${_llvm_cross_early_return_result[clang_prefix]}"
   local installed_version llvm_ok=0 clang_ok=0
 
   # Reuse only when both trees are current; a partial state forces a full rebuild.
@@ -97,8 +97,8 @@ _llvm_cross_early_return() {
 }
 
 _llvm_cross_retrieve_source() {
-  local -n _r="$1"
-  local source_root="${_r[source_root]}" build_root="${_r[build_root]}" source_dir="${_r[source_dir]}" tag="${_r[tag]}" mode="${_r[mode]}" target_label="${_r[target_label]}"
+  local -n _llvm_cross_retrieve_source_result="$1"
+  local source_root="${_llvm_cross_retrieve_source_result[source_root]}" build_root="${_llvm_cross_retrieve_source_result[build_root]}" source_dir="${_llvm_cross_retrieve_source_result[source_dir]}" tag="${_llvm_cross_retrieve_source_result[tag]}" mode="${_llvm_cross_retrieve_source_result[mode]}" target_label="${_llvm_cross_retrieve_source_result[target_label]}"
 
   mkdir -p "${source_root}" "${build_root}"
   # A truncated clone passes a bare .git test, so require HEAD and tree; evict other ~2 GB checkouts.
@@ -122,16 +122,16 @@ _llvm_cross_retrieve_source() {
 }
 
 _llvm_cross_pre_build_hooks() {
-  local -n _r="$1"
-  local target_label="${_r[target_label]}" build_root="${_r[build_root]}"
+  local -n _llvm_cross_pre_build_hooks_result="$1"
+  local target_label="${_llvm_cross_pre_build_hooks_result[target_label]}" build_root="${_llvm_cross_pre_build_hooks_result[build_root]}"
 
   # Host gcc wrappers for the native tablegen/helper sub-build.
-  _r[native_wrapper_dir]="${build_root}/${_r[triplet]}-native-tool-bin"
-  _r[build_cc_real]="$(resolve_build_gcc_tool gcc 2>/dev/null || command -v gcc 2>/dev/null || true)"
-  _r[build_cxx_real]="$(resolve_build_gcc_tool g++ 2>/dev/null || command -v g++ 2>/dev/null || true)"
-  [ -n "${_r[build_cc_real]}" ] || die "Host C compiler not found for LLVM native helper tools"
-  [ -n "${_r[build_cxx_real]}" ] || die "Host C++ compiler not found for LLVM native helper tools"
-  _r[host_path]="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  _llvm_cross_pre_build_hooks_result[native_wrapper_dir]="${build_root}/${_llvm_cross_pre_build_hooks_result[triplet]}-native-tool-bin"
+  _llvm_cross_pre_build_hooks_result[build_cc_real]="$(resolve_build_gcc_tool gcc 2>/dev/null || command -v gcc 2>/dev/null || true)"
+  _llvm_cross_pre_build_hooks_result[build_cxx_real]="$(resolve_build_gcc_tool g++ 2>/dev/null || command -v g++ 2>/dev/null || true)"
+  [ -n "${_llvm_cross_pre_build_hooks_result[build_cc_real]}" ] || die "Host C compiler not found for LLVM native helper tools"
+  [ -n "${_llvm_cross_pre_build_hooks_result[build_cxx_real]}" ] || die "Host C++ compiler not found for LLVM native helper tools"
+  _llvm_cross_pre_build_hooks_result[host_path]="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 }
 
 # Empty out-array when the target has no existing runtime library dir.
@@ -232,14 +232,14 @@ _llvm_cross_resolve_configure_toolchain() {
   build_triplet="$(build_deb_multiarch_triplet 2>/dev/null || true)"
   [ -n "${triplet}" ] && [ "${triplet}" = "${build_triplet}" ] && native_ok=1
 
-  _rt[processor]="${CROSS_TARGET_PROCESSOR:-}"
-  [ -n "${_rt[processor]}" ] \
-    || _rt[processor]="$(arch_cmake_system_processor_for "${target_label}" 2>/dev/null || true)"
-  [ -n "${_rt[processor]}" ] \
+  _rt["processor"]="${CROSS_TARGET_PROCESSOR:-}"
+  [ -n "${_rt["processor"]}" ] \
+    || _rt["processor"]="$(arch_cmake_system_processor_for "${target_label}" 2>/dev/null || true)"
+  [ -n "${_rt["processor"]}" ] \
     || die "llvm-cross: no CMAKE_SYSTEM_PROCESSOR for '${target_label}'"
 
-  _rt[triplet]="${CROSS_TARGET_TRIPLET:-${triplet}}"
-  [ -n "${_rt[triplet]}" ] || die "llvm-cross: no target triplet for '${target_label}'"
+  _rt["triplet"]="${CROSS_TARGET_TRIPLET:-${triplet}}"
+  [ -n "${_rt["triplet"]}" ] || die "llvm-cross: no target triplet for '${target_label}'"
 
   _llvm_cross_resolve_tool _rt cc      CC      gcc     "${triplet}" "${native_ok}"
   _llvm_cross_resolve_tool _rt cxx     CXX     g++     "${triplet}" "${native_ok}"
@@ -356,12 +356,12 @@ _llvm_cross_build_and_install() {
 
 _llvm_cross_setup_and_build() {
   local state_name="$1"
-  local -n _r="$1"
-  local target_label="${_r[target_label]}" triplet="${_r[triplet]}"
-  local wrapper_dir="${_r[wrapper_dir]}"
-  local native_tool_dir="${_r[native_tool_dir]}"
-  local native_wrapper_dir="${_r[native_wrapper_dir]:-}"
-  local build_cc build_cxx build_cc_real="${_r[build_cc_real]:-}" build_cxx_real="${_r[build_cxx_real]:-}" host_path="${_r[host_path]:-}"
+  local -n _llvm_cross_setup_and_build_result="$1"
+  local target_label="${_llvm_cross_setup_and_build_result[target_label]}" triplet="${_llvm_cross_setup_and_build_result[triplet]}"
+  local wrapper_dir="${_llvm_cross_setup_and_build_result[wrapper_dir]}"
+  local native_tool_dir="${_llvm_cross_setup_and_build_result[native_tool_dir]}"
+  local native_wrapper_dir="${_llvm_cross_setup_and_build_result[native_wrapper_dir]:-}"
+  local build_cc build_cxx build_cc_real="${_llvm_cross_setup_and_build_result[build_cc_real]:-}" build_cxx_real="${_llvm_cross_setup_and_build_result[build_cxx_real]:-}" host_path="${_llvm_cross_setup_and_build_result[host_path]:-}"
   local clang_triple
 
   (
@@ -372,7 +372,7 @@ _llvm_cross_setup_and_build() {
     export SCCACHE_DIR="/var/cache/sccache"
     setup_linux_cross_env
     llvm_cross_populate_tool_wrapper_dir "${wrapper_dir}"
-    llvm_cross_stage_zlib_headers "${_r[zlib_include]}" "${CMAKE_SYSROOT:-/}"
+    llvm_cross_stage_zlib_headers "${_llvm_cross_setup_and_build_result[zlib_include]}" "${CMAKE_SYSROOT:-/}"
 
     # Without host wrappers and CLANG_TABLEGEN the native support lib is silently left unbuilt.
     build_cc="$(make_host_compiler_wrapper "${native_wrapper_dir}/host-gcc" "${build_cc_real}" "${host_path}")"
@@ -407,9 +407,9 @@ _llvm_cross_setup_and_build() {
 }
 
 _llvm_cross_post_build_hooks() {
-  local -n _r="$1"
-  local target_label="${_r[target_label]}" clang_prefix="${_r[clang_prefix]}" release="${_r[release]}"
-  local build_dir="${_r[build_dir]}" cmake_dir
+  local -n _llvm_cross_post_build_hooks_result="$1"
+  local target_label="${_llvm_cross_post_build_hooks_result[target_label]}" clang_prefix="${_llvm_cross_post_build_hooks_result[clang_prefix]}" release="${_llvm_cross_post_build_hooks_result[release]}"
+  local build_dir="${_llvm_cross_post_build_hooks_result[build_dir]}" cmake_dir
 
   # Copy llvm-config from the build tree: the installed one may be stripped.
   install_cross_llvm_config_binary "${target_label}" "${build_dir}"

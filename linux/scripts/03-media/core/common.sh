@@ -52,56 +52,21 @@ media_load_arch_flags() {
   source "${flags_file}"
 }
 
-# The single entry point replacing the old media_build_preamble_init().
-media_common_init() {
-  local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
-  local core_dir
-  core_dir="$(_media_find_core_dir "${script_dir}")" || {
-    echo "ERROR: could not locate 01-core module framework from ${script_dir}" >&2
-    return 1
-  }
-
-  # Without SCRIPTS_ROOT, modules.sh mistakes 03-media/ for the scripts root because 03-media/core/ exists.
-  case "${core_dir}" in
-    */01-core) export SCRIPTS_ROOT="$(cd "${core_dir}/.." && pwd)" ;;
-  esac
-
-  # shellcheck disable=SC1090
-  source "${core_dir}/modules.sh"
-  source_modules_framework "${script_dir}"
-
-  # Critical modules — must load or the script cannot function.
-  local _mm
-  for _mm in common.sh cross-env.sh logging.sh build-helpers.sh guard-helpers.sh parallelism.sh; do
-    source_module "${_mm}" || true
+_media_load_modules() {
+  local module
+  for module in "$@"; do
+    source_module "${module}" || true
   done
-  _media_assert_critical_fns || return 1
-
-  # Optional modules — may not be needed by every consumer.
-  for _mm in cross-meson.sh cross-apt.sh downloads.sh; do
-    source_module "${_mm}" || true
-  done
-  source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
-  source_module qnn-sdk.sh           || true
-  _media_setup_sccache_if_enabled
-  for _mm in compiler-resolution.sh python-host.sh cmake-cache-linker.sh abseil-headers.sh; do
-    source_module "${_mm}" || true
-  done
-
-  media_load_arch_flags
-
-  _media_arm_stats_at_exit
 }
 
-# Stats at exit: setup_ccache's own snapshot prints before the first object.
-_media_arm_stats_at_exit() {
-  if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
-    trap 'dump_compiler_cache_stats || true' EXIT
+_media_setup_rust_cache() {
+  if [ "${ENABLE_SCCACHE_RUST:-0}" = "1" ] && declare -F setup_sccache >/dev/null 2>&1; then
+    setup_sccache || true
+    { sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' || true; } >&2
   fi
-  return 0
 }
 
-# `|| true` tolerates a module's benign last rc, so assert its functions exist instead.
+# The single entry point replacing the old media_build_preamble_init().
 _media_assert_critical_fns() {
   local _fn _missing=""
   for _fn in log cross_build_is_active mem_capped_jobs; do
@@ -114,16 +79,40 @@ _media_assert_critical_fns() {
   return 0
 }
 
-  # On by default since 2026-10-17 (Dockerfile.media); stats go to stderr, which buildkit never clips.
-_media_setup_sccache_if_enabled() {
-  if [ "${ENABLE_SCCACHE_RUST:-0}" = "1" ]; then
-    if declare -F setup_sccache >/dev/null 2>&1; then
-      setup_sccache || true
-      # grep, not head: the stats output varies in length.
-      { sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' || true; } >&2
-    fi
+media_common_init() {
+  local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
+  local core_dir
+  core_dir="$(_media_find_core_dir "${script_dir}")" || {
+    echo "ERROR: could not locate 01-core module framework from ${script_dir}" >&2
+    return 1
+  }
+
+  # Without SCRIPTS_ROOT, modules.sh mistakes 03-media/ for the scripts root because 03-media/core/ exists.
+  case "${core_dir}" in
+    */01-core)
+      SCRIPTS_ROOT="$(cd "${core_dir}/.." && pwd)" || return 1
+      export SCRIPTS_ROOT ;;
+  esac
+
+  # shellcheck disable=SC1090
+  source "${core_dir}/modules.sh"
+  source_modules_framework "${script_dir}"
+
+  _media_load_modules common.sh cross-env.sh logging.sh build-helpers.sh guard-helpers.sh parallelism.sh
+  _media_assert_critical_fns || return 1
+
+  _media_load_modules cross-meson.sh cross-apt.sh downloads.sh
+  source_module compiler-cache.sh && { setup_ccache; setup_lld_linker; } || true
+  _media_load_modules qnn-sdk.sh
+  _media_setup_rust_cache
+  _media_load_modules compiler-resolution.sh python-host.sh cmake-cache-linker.sh abseil-headers.sh
+
+  media_load_arch_flags
+
+  # Stats at exit: setup_ccache's own snapshot prints before the first object.
+  if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
+    trap 'dump_compiler_cache_stats || true' EXIT
   fi
-  return 0
 }
 
 # install-deps.sh bootstrap. Usage: source this file, then media_install_deps_init "${SCRIPT_DIR}".

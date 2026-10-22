@@ -20,16 +20,25 @@ clone_armnn() {
   ( cd "${ARMNN_SRC_DIR}" && git submodule update --init --recursive )
 }
 
+_armnn_link_openmp() {
+  local destination="$1" source="$2" message="$3" source_file="$2"
+  case "${source_file}" in
+    /*) ;;
+    *) source_file="${destination%/*}/${source_file}" ;;
+  esac
+  if [ -d "${destination%/*}" ] && [ ! -e "${destination}" ] && [ -e "${source_file}" ]; then
+    ln -sf "${source}" "${destination}"
+    info "${message}"
+  fi
+}
+
 build_armnn() {
   info "Building Arm NN for ${ARCH}"
 
   # libgomp1 ships no libgomp.so dev symlink; repeated from install-deps.sh in case that layer is cached.
   if [ "${ARCH}" = "arm64" ] || [ "${ARCH}" = "aarch64" ]; then
     local _gdir="/usr/lib/aarch64-linux-gnu"
-    if [ -d "${_gdir}" ] && [ ! -e "${_gdir}/libgomp.so" ] && [ -e "${_gdir}/libgomp.so.1" ]; then
-      ln -sf libgomp.so.1 "${_gdir}/libgomp.so"
-      info "Created ${_gdir}/libgomp.so -> libgomp.so.1"
-    fi
+    _armnn_link_openmp "${_gdir}/libgomp.so" libgomp.so.1 "Created ${_gdir}/libgomp.so -> libgomp.so.1"
   fi
 
   local cross_args=()
@@ -61,11 +70,8 @@ build_armnn() {
     _tri="$(cross_target_triplet 2>/dev/null || true)"
     _libdir="/usr/lib/${_tri}"
     _gcc_libdir="/opt/gcc-${GCC_VERSION:-16.2.0}/${_tri}/lib"
-    if [ -n "${_tri}" ] && [ -d "${_libdir}" ] && [ -d "${_gcc_libdir}" ]; then
-      if [ -e "${_libdir}/libgomp.so.1" ] && [ ! -e "${_gcc_libdir}/libgomp.so" ]; then
-        ln -sf "${_libdir}/libgomp.so.1" "${_gcc_libdir}/libgomp.so"
-        info "Symlinked ${_gcc_libdir}/libgomp.so -> ${_libdir}/libgomp.so.1"
-      fi
+    if [ -n "${_tri}" ]; then
+      _armnn_link_openmp "${_gcc_libdir}/libgomp.so" "${_libdir}/libgomp.so.1" "Symlinked ${_gcc_libdir}/libgomp.so -> ${_libdir}/libgomp.so.1"
     fi
   fi
 

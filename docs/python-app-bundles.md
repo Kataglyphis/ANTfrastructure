@@ -62,6 +62,11 @@ What the app itself must do:
 
 ## What the builders do
 
+The Linux drivers source the sibling `python-app-cli.sh`. It owns shared option parsing while
+each driver retains its defaults and usage. Bundle-only options remain invalid for packaging,
+and packaging's `--no-test` remains invalid for bundling. Keep the sibling with the drivers;
+normal hub and submodule checkouts already provide it.
+
 Both run in the family image, from a built app wheel (`--wheel-dir`, default `dist`):
 
 1. **Runtime.**

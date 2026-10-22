@@ -5,31 +5,7 @@
 
 include_guard(GLOBAL)
 
-# Configures the shared CPack variables; sets KATAGLYPHIS_CPACK_ARCH, the normalised arch in the package name.
-#   kataglyphis_cpack_common(
-#     VENDOR                 <string>          # required: vendor + DEB maintainer
-#     WIX_UPGRADE_GUID       <guid>            # required, no default: products sharing one uninstall each other
-#     [EXECUTABLE            <name>]           # default ${PROJECT_NAME}
-#     [LICENSE_FILE          <path>]           # default ${PROJECT_SOURCE_DIR}/LICENSE
-#     [README_FILE           <path>]           # default ${PROJECT_SOURCE_DIR}/README.md
-#     [WELCOME_FILE          <path>]           # default ${PROJECT_SOURCE_DIR}/docs/packaging/WelcomeFile.txt
-#     [PACKAGE_ICON          <path>]           # installer icon; left unset if omitted
-#     [NSIS_WELCOME_TITLE    <string>]
-#     [NSIS_FINISH_TITLE     <string>]
-#     [NSIS_HEADER_IMAGE     <path.bmp>]
-#     [NSIS_MUI_ICON         <path.ico>]
-#     [WIX_PRODUCT_ICON      <path.ico>]
-#     [WIX_LICENSE_RTF       <path.rtf>]       # default ${PROJECT_SOURCE_DIR}/LICENSE.rtf, synthesised if absent
-#     [WIX_DEFAULT           ON|OFF]           # default OFF: initial ENABLE_WIX_PACKAGING
-#     [APPIMAGE_DEFAULT      ON|OFF]           # default ON:  initial CPACK_ENABLE_APPIMAGE
-#     [APPIMAGE_DESKTOP_FILE <name.desktop>]   # required once AppImage packaging can run
-#     [APPIMAGE_ICON_NAME    <name>]           # installed icon name, NOT a path
-#     [DEBIAN_DEPENDS        <string>]         # default "libc6 (>= 2.31)"
-#     [DEBIAN_SECTION        <string>]         # default "devel"
-#     [DEBIAN_PRIORITY       <string>]         # default "optional"
-#     [UNIX_INSTALL_PREFIX   <path>]           # CPACK_PACKAGING_INSTALL_PREFIX; unset if omitted
-#     [SHORT_WINDOWS_FILE_NAME])               # Windows: <project>-<version>-<config>-<arch>, within NSIS's MAX_PATH
-# A Linux package that bundles libraries calls kataglyphis_install_linux_closure (below) as well.
+# See cmake/README.md for the CPack API; product upgrade GUIDs must be unique.
 
 # Drops vcruntime<ver>_1.dll: the arm64 redist ships it as ARM64EC, which the cross lanes' arch gate refuses.
 function(kataglyphis_arm64_system_runtime_libs out_var)

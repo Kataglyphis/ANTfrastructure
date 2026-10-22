@@ -327,3 +327,23 @@ t_gate_probe() {
     cat
   } | "${PREFLIGHT_PYTHON:-python3}" -
 }
+
+# Override one optional command lookup while retaining the host's other command behavior.
+t_command_available_override() {
+  local target="$1" available="$2"; shift 2
+  if [ "$1" = -v ] && [ "${2:-}" = "${target}" ]; then
+    [ "${available}" = 1 ] && return 0
+    return 1
+  fi
+  builtin command "$@"
+}
+
+# Load production functions without executing an entry script's host or container actions.
+t_source_functions() {
+  local source_file="$1" function_name function_source
+  shift
+  for function_name in "$@"; do
+    function_source="$(t_fn_src "${source_file}" "${function_name}")" || return $?
+    eval "${function_source}" || return $?
+  done
+}

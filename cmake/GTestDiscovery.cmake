@@ -7,8 +7,7 @@ include_guard(GLOBAL)
 
 include(GoogleTest)
 
-# Registers a GoogleTest executable with CTest; KATAGLYPHIS_ENABLE_GTEST_DISCOVERY=OFF forces the add_test fallback.
-#   kataglyphis_register_gtest_target(<target> [WORKING_DIRECTORY <absolute dir>] [DISCOVERY_TIMEOUT <seconds, default 300>])
+# Discovery can be disabled when target executables cannot run on the build host.
 function(kataglyphis_register_gtest_target test_target)
   set(_kataglyphis_options "")
   set(_kataglyphis_one_value_args WORKING_DIRECTORY DISCOVERY_TIMEOUT)

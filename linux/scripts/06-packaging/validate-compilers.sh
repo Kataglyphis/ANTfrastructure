@@ -97,6 +97,30 @@ _artifact_source_check_cross_compilers() {
   done
 }
 
+_artifact_source_check_swapped_gcc() {
+  local target_arch="$1" gcc_prefix="$2" native_gcc="$3"
+  # Dockerfile.android's swap may already have moved the native GCC into /opt/gcc-${GCC_VERSION}.
+  local main_gcc_dump main_gcc_elf expected_machine expected_triple
+  main_gcc_dump="$("${gcc_prefix}/bin/gcc" -dumpmachine 2>/dev/null || true)"
+  expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
+  expected_triple=""
+  if [ -n "${expected_machine}" ]; then
+    expected_triple="$(arch_deb_multiarch_triplet_for "${target_arch}" 2>/dev/null || true)"
+  fi
+  if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
+    echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
+  elif [ -n "${expected_machine}" ]; then
+    main_gcc_elf="$(LC_ALL=C readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+    if echo "${main_gcc_elf}" | grep -qi "${expected_machine}"; then
+      echo "OK: main gcc is cross-built ELF for ${target_arch} (${main_gcc_elf}) - swap completed"
+    else
+      validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
+    fi
+  else
+    validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
+  fi
+}
+
 _artifact_source_check_native_gcc() {
   local target_arch="${_VCS_TARGET_ARCH}"
   local gcc_prefix="${_VCS_GCC_PREFIX}"
@@ -118,26 +142,7 @@ _artifact_source_check_native_gcc() {
         fi
       fi
     elif [ "${BUILD_MODE:-native}" = "cross" ]; then
-      # Dockerfile.android's swap may already have moved the native GCC into /opt/gcc-${GCC_VERSION}.
-      local main_gcc_dump main_gcc_elf
-      main_gcc_dump="$("${gcc_prefix}/bin/gcc" -dumpmachine 2>/dev/null || true)"
-      expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
-      expected_triple=""
-      if [ -n "${expected_machine}" ]; then
-        expected_triple="$(arch_deb_multiarch_triplet_for "${target_arch}" 2>/dev/null || true)"
-      fi
-      if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
-        echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
-      elif [ -n "${expected_machine}" ]; then
-        main_gcc_elf="$(LC_ALL=C readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
-        if echo "${main_gcc_elf}" | grep -qi "${expected_machine}"; then
-          echo "OK: main gcc is cross-built ELF for ${target_arch} (${main_gcc_elf}) - swap completed"
-        else
-          validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
-        fi
-      else
-        validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
-      fi
+      _artifact_source_check_swapped_gcc "${target_arch}" "${gcc_prefix}" "${native_gcc}"
     fi
   fi
 }
@@ -446,52 +451,44 @@ _smoke_compiler_versions() {
   fi
 }
 
-_smoke_gcc_signatures() {
-  local gcc_ver="${_VCS_SMOKE_GCC_VER}"
-  # Compiled library GCC signatures
-  echo "=== smoke: checking compiled library compiler signatures ==="
-  local gcc_sig_ok=0 libdir lib comment
-  for libdir in \
-    /opt/opencv5/lib \
-    /opt/gstreamer/lib \
-    /opt/ffmpeg/lib \
-    /opt/libcamera/lib \
-    /usr/local/lib; do
+# Sampling remains advisory: stripped libraries may carry no compiler signature.
+_smoke_compiler_signatures() {
+  local compiler="$1" version="$2" depth cap pattern note libdir lib comment
+  local -a names=()
+  shift 2
+  case "${compiler}" in
+    GCC)
+      depth=1; cap=5; pattern="GCC: (GNU) ${version}"
+      names=(-name '*.so' -o -name '*.so.*')
+      note='.comment signature found in sampled libs (may be clang-built or stripped)' ;;
+    Clang)
+      depth=2; cap=10; pattern="clang version ${version}"
+      names=(-name '*.so' -o -name '*.a')
+      note='.comment signature found (libraries may be GCC-built)' ;;
+    *) return 1 ;;
+  esac
+  for libdir in "$@"; do
     [ -d "${libdir}" ] || continue
-    for lib in $(find "${libdir}" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) 2>/dev/null | head -5); do
+    while IFS= read -r lib; do
       [ -f "${lib}" ] || continue
       comment="$(readelf -p .comment "${lib}" 2>/dev/null || true)"
-      if echo "${comment}" | grep -q "GCC: (GNU) ${gcc_ver}"; then
-        echo "SMOKE OK: ${lib} compiled with GCC ${gcc_ver}"
-        gcc_sig_ok=1
-        break 2
+      if echo "${comment}" | grep -q "${pattern}"; then
+        echo "SMOKE OK: ${lib} compiled with ${compiler} ${version}"
+        return 0
       fi
-    done
+    done < <(find "${libdir}" -maxdepth "${depth}" \( "${names[@]}" \) 2>/dev/null | head -"${cap}")
   done
-  if [ "${gcc_sig_ok}" -eq 0 ]; then
-    echo "SMOKE NOTE: no GCC ${gcc_ver} .comment signature found in sampled libs (may be clang-built or stripped)"
-  fi
+  echo "SMOKE NOTE: no ${compiler} ${version} ${note}"
+}
+
+_smoke_gcc_signatures() {
+  echo "=== smoke: checking compiled library compiler signatures ==="
+  _smoke_compiler_signatures GCC "${_VCS_SMOKE_GCC_VER}" \
+    /opt/opencv5/lib /opt/gstreamer/lib /opt/ffmpeg/lib /opt/libcamera/lib /usr/local/lib
 }
 
 _smoke_clang_signatures() {
-  local llvm_ver="${_VCS_SMOKE_LLVM_VER}"
-  # Compiled library Clang signatures
-  local clang_sig_ok=0
-  for libdir in /usr/local/llvm-target/lib /usr/local/lib; do
-    [ -d "${libdir}" ] || continue
-    for lib in $(find "${libdir}" -maxdepth 2 \( -name '*.so' -o -name '*.a' \) 2>/dev/null | head -10); do
-      [ -f "${lib}" ] || continue
-      comment="$(readelf -p .comment "${lib}" 2>/dev/null || true)"
-      if echo "${comment}" | grep -q "clang version ${llvm_ver}"; then
-        echo "SMOKE OK: ${lib} compiled with Clang ${llvm_ver}"
-        clang_sig_ok=1
-        break 2
-      fi
-    done
-  done
-  if [ "${clang_sig_ok}" -eq 0 ]; then
-    echo "SMOKE NOTE: no Clang ${llvm_ver} .comment signature found (libraries may be GCC-built)"
-  fi
+  _smoke_compiler_signatures Clang "${_VCS_SMOKE_LLVM_VER}" /usr/local/llvm-target/lib /usr/local/lib
 }
 
 _smoke_symlink_chains() {

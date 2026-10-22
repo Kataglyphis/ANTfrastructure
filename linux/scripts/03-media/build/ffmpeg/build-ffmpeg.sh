@@ -135,70 +135,38 @@ _ffmpeg_cross_args() {
 }
 
 # Probe-gated core codecs; libx265 is gated separately behind FFMPEG_ENABLE_X265.
+_ffmpeg_append_pkg_features() {
+    local -n _ff_features="$1"
+    local feature package headers symbol
+    while IFS='|' read -r feature package headers symbol; do
+        if ffmpeg_probe_pkg_config_feature "${feature}" "${package}" "${headers}" "${symbol}"; then
+            _ff_features+=("--enable-${feature}")
+        fi
+    done
+}
+
 _ffmpeg_probe_core_codecs() {
     local -n _ffpcc_out="$1"
-
-    if ffmpeg_probe_pkg_config_feature "libfreetype" "freetype2" "ft2build.h FT_FREETYPE_H" "FT_Init_FreeType"; then
-        _ffpcc_out+=("--enable-libfreetype")
-    fi
-
-    # drawtext needs harfbuzz for text shaping and fontconfig for font discovery.
-    if ffmpeg_probe_pkg_config_feature "libharfbuzz" "harfbuzz" "hb.h" "hb_buffer_create"; then
-        _ffpcc_out+=("--enable-libharfbuzz")
-    fi
-    if ffmpeg_probe_pkg_config_feature "libfontconfig" "fontconfig" "fontconfig/fontconfig.h" "FcInit"; then
-        _ffpcc_out+=("--enable-libfontconfig")
-    fi
-
-    if ffmpeg_probe_libmp3lame; then
-        _ffpcc_out+=("--enable-libmp3lame")
-    fi
-
-    if ffmpeg_probe_libopus; then
-        _ffpcc_out+=("--enable-libopus")
-    fi
-
-    if ffmpeg_probe_libvorbis; then
-        _ffpcc_out+=("--enable-libvorbis")
-    fi
-
-    if ffmpeg_probe_libvpx; then
-        _ffpcc_out+=("--enable-libvpx")
-    fi
-
-    if ffmpeg_probe_libx264; then
-        _ffpcc_out+=("--enable-libx264")
-    fi
-
-    if ffmpeg_probe_pkg_config_feature "gnutls" "gnutls" "gnutls/gnutls.h" "gnutls_global_init"; then
-        _ffpcc_out+=("--enable-gnutls")
-    fi
-
-    if ffmpeg_probe_pkg_config_feature "libass" "libass >= 0.11.0" "ass/ass.h" "ass_library_init"; then
-        _ffpcc_out+=("--enable-libass")
-    fi
-
-    if ffmpeg_probe_pkg_config_feature "libaom" "aom >= 2.0.0" "aom/aom_codec.h" "aom_codec_version"; then
-        _ffpcc_out+=("--enable-libaom")
-    fi
-
-    if ffmpeg_probe_pkg_config_feature "libdav1d" "dav1d >= 1.0.0" "dav1d/dav1d.h" "dav1d_version"; then
-        _ffpcc_out+=("--enable-libdav1d")
-    fi
-
-    if ffmpeg_probe_pkg_config_feature "libsvtav1" "SvtAv1Enc >= 0.9.0" "EbSvtAv1Enc.h" "svt_av1_enc_init_handle"; then
-        _ffpcc_out+=("--enable-libsvtav1")
-    fi
-
-    # Image codecs
-    if ffmpeg_probe_pkg_config_feature "libwebp" "libwebp" "webp/decode.h" "WebPGetDecoderVersion"; then
-        _ffpcc_out+=("--enable-libwebp")
-    fi
-
-    # Video quality metrics (if installed)
-    if ffmpeg_probe_pkg_config_feature "libvmaf" "libvmaf" "libvmaf/libvmaf.h" "vmaf_version"; then
-        _ffpcc_out+=("--enable-libvmaf")
-    fi
+    _ffmpeg_append_pkg_features "$1" <<'FFMPEG_FEATURES'
+libfreetype|freetype2|ft2build.h FT_FREETYPE_H|FT_Init_FreeType
+libharfbuzz|harfbuzz|hb.h|hb_buffer_create
+libfontconfig|fontconfig|fontconfig/fontconfig.h|FcInit
+FFMPEG_FEATURES
+    local codec_probe
+    for codec_probe in ffmpeg_probe_libmp3lame ffmpeg_probe_libopus ffmpeg_probe_libvorbis ffmpeg_probe_libvpx ffmpeg_probe_libx264; do
+        if "${codec_probe}"; then
+            _ffpcc_out+=("--enable-${codec_probe#ffmpeg_probe_}")
+        fi
+    done
+    _ffmpeg_append_pkg_features "$1" <<'FFMPEG_FEATURES'
+gnutls|gnutls|gnutls/gnutls.h|gnutls_global_init
+libass|libass >= 0.11.0|ass/ass.h|ass_library_init
+libaom|aom >= 2.0.0|aom/aom_codec.h|aom_codec_version
+libdav1d|dav1d >= 1.0.0|dav1d/dav1d.h|dav1d_version
+libsvtav1|SvtAv1Enc >= 0.9.0|EbSvtAv1Enc.h|svt_av1_enc_init_handle
+libwebp|libwebp|webp/decode.h|WebPGetDecoderVersion
+libvmaf|libvmaf|libvmaf/libvmaf.h|vmaf_version
+FFMPEG_FEATURES
 }
 
 # DNN backends; each probe exports the _FFMPEG_*_EXTRA_* flags its configure line needs.
@@ -401,6 +369,17 @@ install_ffmpeg() {
     ${SUDO_WRAP} ldconfig || true
 }
 
+# The bundler owns the visited set for the complete recursive walk.
+_ffmpeg_enqueue_unresolved() {
+    local -n _ff_queue="$1"
+    local binary="$2" soname
+    while IFS= read -r soname; do
+        { [ -n "${soname}" ] && [ -z "${seen[${soname}]:-}" ]; } || continue
+        seen["${soname}"]=1
+        _ff_queue+=("${soname}")
+    done < <(elf_unresolved_needed "${binary}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
+}
+
 bundle_sdk_runtime_libs() {
     # The SDK cache mount is gone at runtime and no apt package owns its libs, so every NEEDED only it resolves (and that lib's closure) ships in the prefix.
     local sdk_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
@@ -412,13 +391,9 @@ bundle_sdk_runtime_libs() {
 
         local -a queue=()
         local -A seen=()
-        local _f _so _src _dep
+        local _f _so _src
         while IFS= read -r _f; do
-            while IFS= read -r _so; do
-                { [ -n "${_so}" ] && [ -z "${seen[${_so}]:-}" ]; } || continue
-                seen["${_so}"]=1
-                queue+=("${_so}")
-            done < <(elf_unresolved_needed "${_f}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
+            _ffmpeg_enqueue_unresolved queue "${_f}"
         done < <(
             find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
             find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
@@ -439,11 +414,7 @@ bundle_sdk_runtime_libs() {
             echo "  BUNDLED: ${_so} (from ${_src%/*})"
             bundled=$((bundled + 1))
             # Walk the bundled lib's own NEEDED so SDK-internal deps ship too.
-            while IFS= read -r _dep; do
-                { [ -n "${_dep}" ] && [ -z "${seen[${_dep}]:-}" ]; } || continue
-                seen["${_dep}"]=1
-                queue+=("${_dep}")
-            done < <(elf_unresolved_needed "${_src}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
+            _ffmpeg_enqueue_unresolved queue "${_src}"
         done
 
         echo "Bundled ${bundled} SDK runtime .so file(s) into ${FFMPEG_PREFIX}/lib"

@@ -154,21 +154,24 @@ require_cross_gcc_tool() {
   printf '%s' "${resolved}"
 }
 
-make_host_compiler_wrapper() {
-  local wrapper_path="$1"
-  local compiler="$2"
-  local host_path="${3:-/usr/bin:/bin}"
-
-  [ -n "${wrapper_path}" ] || return 1
-  [ -n "${compiler}" ] || return 1
-
-  mkdir -p "$(dirname "${wrapper_path}")"
-  cat > "${wrapper_path}" <<EOF
-#!/usr/bin/env bash
-exec env PATH="${host_path}" "${compiler}" -B/usr/bin/ "\$@"
-EOF
-  chmod +x "${wrapper_path}"
+make_compiler_wrapper() {
+  local wrapper_path="$1" compiler="$2" bin_dir="$3" host_path="${4:-}"
+  [ -n "${wrapper_path}" ] && [ -n "${compiler}" ] || return 1
+  mkdir -p "$(dirname "${wrapper_path}")" || return 1
+  {
+    printf '#!/usr/bin/env bash\nexec '
+    if [ -n "${host_path}" ]; then
+      printf '%q ' env "PATH=${host_path}"
+    fi
+    printf '%q ' "${compiler}" "-B${bin_dir%/}/"
+    printf '"$@"\n'
+  } > "${wrapper_path}" || return 1
+  chmod +x "${wrapper_path}" || return 1
   printf '%s' "${wrapper_path}"
+}
+
+make_host_compiler_wrapper() {
+  make_compiler_wrapper "$1" "$2" /usr/bin "${3:-/usr/bin:/bin}"
 }
 
 make_named_host_compiler_wrapper() {

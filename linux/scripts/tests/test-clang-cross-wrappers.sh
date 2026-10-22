@@ -15,10 +15,7 @@ trap 'rm -rf "${_bin}"' EXIT
 _install() {
   bash -c "set -eu
 arch_deb_multiarch_triplet_for() { printf 'x86_64-linux-gnu'; }
-# This suite asserts the AMD64-HOST contract (sysroot \"/\" for amd64). The
-# wrapper became host-relative on 2026-09-08, so the scenario has to be stated
-# explicitly — otherwise the suite fails on an arm64 runner, where amd64 is a
-# FOREIGN target. Stubbed like the other enclosing-scope helpers.
+# Pin the simulated host because amd64 is foreign on an arm64 runner.
 build_arch_oci() { printf 'amd64'; }
 die() { printf '%s\n' \"\$*\" >&2; exit 1; }
 log() { :; }

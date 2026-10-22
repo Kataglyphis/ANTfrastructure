@@ -15,10 +15,16 @@ _host_python_try() {
 }
 
 host_python_bin() {
-  _host_python_try "${MEDIA_HOST_PYTHON:-}" && return 0
-  _host_python_try "${UV_PYTHON:-}" && return 0
-  _host_python_try "${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin/python}" && return 0
-  _host_python_try "${PYTHON_MAJOR_MINOR:+/usr/local/bin/python${PYTHON_MAJOR_MINOR}}" && return 0
+  local interpreter
+  interpreter="$(_resolve_first_path -x \
+    "${MEDIA_HOST_PYTHON:-}" \
+    "${UV_PYTHON:-}" \
+    "${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin/python}" \
+    "${PYTHON_MAJOR_MINOR:+/usr/local/bin/python${PYTHON_MAJOR_MINOR}}")" && {
+    printf '%s' "${interpreter}"
+    return 0
+  }
+
   if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
     local python_mm=""
     python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"

@@ -5,6 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
 source "${TESTS_DIR}/test-harness.sh"
 source "${CORE_DIR}/chain-lifecycle.sh"
+source "${CORE_DIR}/chain-storage.sh"
 
 workdir="$(mktemp -d)"
 trap 'rm -rf "${workdir}"' EXIT
@@ -48,7 +49,7 @@ t_assert_eq "/run/mychain.pid" \
 
 t_case "cross_chain_pidfile_path defaults under TMPDIR"
 t_assert_eq "/custom/tmp/kata-cross-chain.pid" \
-  "$(TMPDIR=/custom/tmp CROSS_CHAIN_PIDFILE= cross_chain_pidfile_path)"
+  "$(TMPDIR=/custom/tmp CROSS_CHAIN_PIDFILE='' cross_chain_pidfile_path)"
 
 # O1: TERM a root's subtree: its leaf dies, and the root's parent (this test) is never targeted
 t_case "chain_terminate_descendants TERMs the descendant subtree"
@@ -180,7 +181,7 @@ t_assert_eq "" "$(cross_stage_log_redirect media-arm64)"
 log()  { :; }    # re-stub: sourcing cross-stage-build.sh may pull in the real ones
 warn() { :; }
 is_dry_run() { [ "${DRY_RUN:-0}" = "1" ]; }   # stands in for build-helpers.sh's
-eval "$(sed -n '/^_chain_prune_archived_logs() {$/,/^}$/p' "${CHAIN_SH}")"
+t_assert_contains "$(cat "${CHAIN_SH}")" 'source "${REPO_ROOT}/linux/scripts/01-core/chain-storage.sh"'
 t_case "the retention function was extracted from the shipped script"
 t_assert_eq "function" "$(type -t _chain_prune_archived_logs || true)"
 

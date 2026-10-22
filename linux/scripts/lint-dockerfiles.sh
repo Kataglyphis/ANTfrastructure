@@ -103,59 +103,12 @@ python3 linux/scripts/verify_image_env.py --dockerfile "${DOCKERFILES[@]}" || FA
 # ---------------------------------------------------------------------------
 # hadolint bootstrap (PATH copy preferred; else pinned, SHA-verified download)
 # ---------------------------------------------------------------------------
-hadolint_load_pin() {
-  # shellcheck source=01-core/load-versions-env.sh
-  source "${CORE_DIR}/load-versions-env.sh"
-  load_versions_env "${CORE_DIR}/tool-pins.env"
-}
 
-hadolint_asset_and_sha() {
-  local os
-  case "$(uname -s)" in
-    Linux) os=linux ;;
-    MINGW*|MSYS*|CYGWIN*) os=windows ;;
-    *) return 1 ;;
-  esac
-  case "$(uname -m)" in
-    x86_64|amd64)
-      if [ "${os}" = windows ]; then
-        printf 'hadolint-windows-x86_64.exe %s\n' "${HADOLINT_WINDOWS_X86_64_SHA256:-}"
-      else
-        printf 'hadolint-linux-x86_64 %s\n' "${HADOLINT_LINUX_X86_64_SHA256:-}"
-      fi ;;
-    aarch64|arm64) printf 'hadolint-linux-arm64 %s\n' "${HADOLINT_LINUX_ARM64_SHA256:-}" ;;
-    *) return 1 ;;
-  esac
-}
+# shellcheck source=01-core/lint-tool-release.sh
+source "${CORE_DIR}/lint-tool-release.sh"
 
 hadolint_ensure() {
-  : "${HADOLINT_CACHE_DIR:=${TMPDIR:-/tmp}}"
-  if command -v hadolint >/dev/null 2>&1; then
-    HADOLINT_BIN="$(command -v hadolint)"
-    return 0
-  fi
-
-  hadolint_load_pin
-  [ -n "${HADOLINT_VERSION:-}" ] || err "HADOLINT_VERSION is not set (tool-pins.env not found?)."
-
-  local asset expected_sha cache_root bin_name
-  read -r asset expected_sha < <(hadolint_asset_and_sha) \
-    || err "Unsupported platform for hadolint bootstrap ($(uname -s)/$(uname -m)); install hadolint on PATH instead."
-  [ -n "${expected_sha}" ] || err "No pinned hadolint SHA256 for ${asset}; add one to tool-pins.env."
-
-  cache_root="${HADOLINT_CACHE_DIR}/hadolint-${HADOLINT_VERSION}"
-  bin_name="hadolint"; case "${asset}" in *.exe) bin_name="hadolint.exe" ;; esac
-  HADOLINT_BIN="${cache_root}/${bin_name}"
-
-  if [ ! -x "${HADOLINT_BIN}" ]; then
-    # shellcheck source=01-core/downloads.sh
-    source "${CORE_DIR}/downloads.sh" || err "downloads.sh not available for verified hadolint fetch"
-    # The release asset is the binary itself, so there is no archive member to name.
-    download_verified_install \
-      "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/${asset}" \
-      "${expected_sha}" "${HADOLINT_BIN}" \
-      || err "Verified install of ${asset} failed (checksum mismatch or network error)."
-  fi
+  lint_tool_ensure hadolint HADOLINT_BIN
 }
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,7 @@ prepare_ci_workspace
 VENV_DIR="$WORKSPACE_ROOT/.venv-docs"
 
 # uv_venv_ensure activates only an existing venv, so a fresh one is activated here.
+venv_existed=0
 uv_venv_ensure "$VENV_DIR" "${COVERAGE_VERSION}" "docs venv" venv_existed
 if [ "$venv_existed" -eq 0 ]; then
   uv_venv_activate "$VENV_DIR"

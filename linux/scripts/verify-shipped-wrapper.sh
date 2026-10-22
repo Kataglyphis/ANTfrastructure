@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# A pushed, smoke-green wrapper can still carry a prior run's bytes, so the shipped rootfs is checked against versions.env toggles.
-# Usage: verify-shipped-wrapper.sh <image-ref> <arch>; env NERDCTL_BIN, VERSIONS_ENV, WRAPPER_CONTENT_GATE=0 (advisory)
+# A successful push can ship stale bytes; see docs/cross-build-verification.md#verify-the-shipped-bytes-never-the-push.
 set -euo pipefail
 
 _ref="${1:-}"

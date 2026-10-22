@@ -329,11 +329,26 @@ runtime_resolve_app_ref() {
   export APP_REF
 }
 
+# Package and smoke must resolve the same local context or immutable android parent.
+_runtime_package_artifact_context() {
+  local arch="$1" android_pin="$2" mode context
+  local -n _runtime_artifact_result="$3" _runtime_artifact_args="$4"
+  if runtime_use_local_artifact_context; then
+    mode="${ARTIFACT_CONTEXT_MODE:-oci}"
+    context="$(runtime_artifact_context_ref "${arch}" "${mode}")"
+    _runtime_artifact_result=runtime_artifact
+    _runtime_artifact_args+=(--build-context "runtime_artifact=${context}")
+  else
+    _runtime_artifact_result="$(runtime_artifact_image_ref "${arch}")"
+    [ -z "${android_pin}" ] || _runtime_artifact_result="${android_pin}"
+  fi
+}
+
 runtime_build_package_image() {
   : "${PACKAGE_DOCKERFILE_TARGET:=package}"
   local arch="$1"
   local tag parent_image parent_context_dir
-  local artifact_image artifact_context_ref artifact_context_mode package_base_stage
+  local artifact_image
   local -a build_args=()
 
   tag="$(runtime_package_tag "${arch}")"
@@ -344,17 +359,7 @@ runtime_build_package_image() {
   local _android_pin
   _android_pin="$(runtime_android_pin "${arch}")"
 
-  if runtime_use_local_artifact_context; then
-    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-oci}"
-    artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
-    artifact_image="runtime_artifact"
-    package_base_stage="package-image"
-    build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
-  else
-    artifact_image="$(runtime_artifact_image_ref "${arch}")"
-    [ -n "${_android_pin}" ] && artifact_image="${_android_pin}"
-    package_base_stage="package-image"
-  fi
+  _runtime_package_artifact_context "${arch}" "${_android_pin}" artifact_image build_args
 
   _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
 
@@ -363,7 +368,7 @@ runtime_build_package_image() {
     return 0
   fi
 
-  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}" || return 1
+  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" package-image || return 1
 
   local _rb_pull="--pull=true"
   runtime_pushes_intermediate_images || _rb_pull="--pull=false"
@@ -410,24 +415,13 @@ _runtime_run_package_smoke() {
   local _android_pin
   _android_pin="$(runtime_android_pin "${arch}")"
 
-  local artifact_image package_base_stage
-  if runtime_use_local_artifact_context; then
-    local artifact_context_ref artifact_context_mode
-    artifact_context_mode="${ARTIFACT_CONTEXT_MODE:-oci}"
-    artifact_context_ref="$(runtime_artifact_context_ref "${arch}" "${artifact_context_mode}")"
-    artifact_image="runtime_artifact"
-    package_base_stage="package-image"
-    build_args+=(--build-context "runtime_artifact=${artifact_context_ref}")
-  else
-    artifact_image="$(runtime_artifact_image_ref "${arch}")"
-    [ -n "${_android_pin}" ] && artifact_image="${_android_pin}"
-    package_base_stage="package-image"
-  fi
+  local artifact_image
+  _runtime_package_artifact_context "${arch}" "${_android_pin}" artifact_image build_args
 
   local parent_image parent_context_dir
   _runtime_resolve_parent_context base "${arch}" parent_image parent_context_dir build_args
 
-  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" "${package_base_stage}" || return 1
+  append_package_build_args build_args "${arch}" "${parent_image}" "${artifact_image}" package-image || return 1
 
   log "[smoke] running wrapper-smoke gate for ${arch} (target wrapper-smoke)"
 

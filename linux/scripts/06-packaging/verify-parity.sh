@@ -379,7 +379,7 @@ verify_parity_parse_args() {
       --verbose)   VERBOSE=1;         shift ;;
       --diff-tool) DIFF_TOOL="$2";    shift 2 ;;
       -h|--help)   usage; exit 0 ;;
-      *) warn "Unknown option: $1"; usage >&2; exit 1 ;;
+      *) reject_unknown_option "$1" ;;
     esac
   done
   if [ -z "${NATIVE_IMAGE}" ] || [ -z "${CROSS_IMAGE}" ]; then

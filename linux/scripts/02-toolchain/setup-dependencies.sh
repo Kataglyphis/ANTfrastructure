@@ -104,42 +104,8 @@ dockerfile_install_llvm() {
   install_llvm_clang
 }
 
-main() {
-  local cmd="all"
-  local arch_override=""
-  local normalized_arch_override=""
-
-  # Parse args
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --llvm)          LLVM_WANTED="$2"; shift 2 ;;
-      --clang)         CLANG_WANTED="$2"; shift 2 ;;
-      --gcc)           GCC_WANTED="$2"; shift 2 ;;
-      --vulkan-version)VULKAN_VERSION_DEFAULT="$2"; shift 2 ;;
-      --arch)          arch_override="$2"; shift 2 ;;
-      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|target-clang)
-        cmd="$1"; shift ;;
-      -h|--help) usage; exit 0 ;;
-      *) die "Unknown argument: $1" ;;
-    esac
-  done
-
-  # Export for modules
-  export LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION_DEFAULT
-
-  if [ -n "$arch_override" ]; then
-    normalized_arch_override="$(cross_require_single_target_arch "${arch_override}" "setup-dependencies.sh --arch")"
-    setup_dependencies_apply_arch_override "${normalized_arch_override}"
-  fi
-
-  require_sudo
-  detect_system
-  if [ -n "$normalized_arch_override" ]; then
-    setup_dependencies_apply_arch_override "${normalized_arch_override}"
-    log "Overridden arch=${normalized_arch_override}"
-  fi
-  setup_dependencies_seed_verify_cross_targets "${cmd}" "${normalized_arch_override}"
-
+setup_dependencies_dispatch() {
+  local cmd="$1" normalized_arch_override="$2"
   case "$cmd" in
     base)
       install_core_tools_if_needed
@@ -198,6 +164,45 @@ main() {
       verify_summary
       ;;
   esac
+}
+
+main() {
+  local cmd="all"
+  local arch_override=""
+  local normalized_arch_override=""
+
+  # Parse args
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --llvm)          LLVM_WANTED="$2"; shift 2 ;;
+      --clang)         CLANG_WANTED="$2"; shift 2 ;;
+      --gcc)           GCC_WANTED="$2"; shift 2 ;;
+      --vulkan-version)VULKAN_VERSION_DEFAULT="$2"; shift 2 ;;
+      --arch)          arch_override="$2"; shift 2 ;;
+      all|base|repos|cmake|llvm|gcc|vulkan|verify|dockerfile-gcc|dockerfile-llvm|target-clang)
+        cmd="$1"; shift ;;
+      -h|--help) usage; exit 0 ;;
+      *) die "Unknown argument: $1" ;;
+    esac
+  done
+
+  # Export for modules
+  export LLVM_WANTED CLANG_WANTED GCC_WANTED VULKAN_VERSION_DEFAULT
+
+  if [ -n "$arch_override" ]; then
+    normalized_arch_override="$(cross_require_single_target_arch "${arch_override}" "setup-dependencies.sh --arch")"
+    setup_dependencies_apply_arch_override "${normalized_arch_override}"
+  fi
+
+  require_sudo
+  detect_system
+  if [ -n "$normalized_arch_override" ]; then
+    setup_dependencies_apply_arch_override "${normalized_arch_override}"
+    log "Overridden arch=${normalized_arch_override}"
+  fi
+  setup_dependencies_seed_verify_cross_targets "${cmd}" "${normalized_arch_override}"
+
+  setup_dependencies_dispatch "${cmd}" "${normalized_arch_override}"
 }
 
 main "$@"

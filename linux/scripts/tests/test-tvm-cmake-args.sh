@@ -603,4 +603,24 @@ t_assert_eq "0" "${_rc}" "binding cmake_args/wheel_cmake_args must not be a circ
 t_assert_eq "-DCMAKE_BUILD_TYPE=Release -DUSE_OPENCL=OFF -DUSE_CUDA=OFF -DTVM_BUILD_PYTHON_MODULE=OFF -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DUSE_ALTERNATIVE_LINKER=OFF -DLLVM_DIR=/d -DCMAKE_IGNORE_PATH=/i -DCMAKE_C_COMPILER=cc -DCMAKE_CXX_COMPILER=c++ -DCMAKE_C_COMPILER_LAUNCHER=/l/sccache -DCMAKE_CXX_COMPILER_LAUNCHER=/l/sccache -DUSE_VULKAN=ON -DVulkan_LIBRARY=/l -DUSE_LLVM=OFF|-DCMAKE_BUILD_TYPE=Release -DUSE_OPENCL=OFF -DUSE_CUDA=OFF -DTVM_BUILD_PYTHON_MODULE=ON -DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DUSE_ALTERNATIVE_LINKER=OFF -DCMAKE_C_COMPILER=cc -DCMAKE_CXX_COMPILER=c++ -DCMAKE_C_COMPILER_LAUNCHER=/l/sccache -DCMAKE_CXX_COMPILER_LAUNCHER=/l/sccache -DUSE_VULKAN=OFF -DUSE_LLVM=OFF" \
   "${_out}" "call-site array names: emitted args drifted"
 
+t_case "native and wheel argument forwarding preserves every resolved value"
+eval "$(t_fn_src "${TESTS_DIR}/../05-frameworks/tvm.sh" append_tvm_resolved_cmake_args)"
+_resolved_args() {
+  (
+    append_tvm_cmake_args() { printf '<%s>' "$@"; }
+    build_type='Debug mode' desired_cc='cc path' desired_cxx='cxx path' \
+      llvm_cmake_value=llvm-config llvm_dir='/llvm dir' llvm_ignore_paths='/foreign;/other' \
+      use_vulkan=1 use_cuda=0 use_opencl=1 spirv_tools_lib='/spirv path' \
+      cross_link_flags='-L/target -Wl,flags' vulkan_library='/vulkan lib' vulkan_include='/vulkan include' \
+      append_tvm_resolved_cmake_args "$1" "$2"
+  )
+}
+_resolved_expected='<--out><cmake_args><--python-module><OFF><--build-type><Debug mode><--cc><cc path><--cxx><cxx path><--llvm-cmake-value><llvm-config><--llvm-dir></llvm dir><--llvm-ignore-paths></foreign;/other><--use-vulkan><1><--use-cuda><0><--use-opencl><1><--spirv-tools-lib></spirv path><--cross-link-flags><-L/target -Wl,flags><--vulkan-library></vulkan lib><--vulkan-include></vulkan include>'
+t_assert_eq "${_resolved_expected}" "$(_resolved_args cmake_args OFF)"
+t_assert_eq "${_resolved_expected/<cmake_args><--python-module><OFF>/<wheel_cmake_args><--python-module><ON>}" "$(_resolved_args wheel_cmake_args ON)"
+for _site in 'tvm.sh cmake_args OFF' 'tvm-python.sh wheel_cmake_args ON'; do
+  read -r _file _array _module <<< "${_site}"
+  t_assert_contains "$(cat "${TESTS_DIR}/../05-frameworks/${_file}")" "append_tvm_resolved_cmake_args ${_array} ${_module}"
+done
+
 t_summary

@@ -254,42 +254,43 @@ vulkan_sdk_arch_dir() {
   esac
 }
 
-detect_spirv_tools_library() {
-  # TVM's Vulkan build requires the SPIRV-Tools *library*.
-  local candidates=()
-
-  local _arch_dir
-  _arch_dir="$(vulkan_sdk_arch_dir)"
-
+# Library order outranks SDK version order, matching the original per-library globs.
+_tvm_append_sdk_libraries() {
+  local -n _tvm_sdk_candidates_result="$1"
+  local root="$2" arch="$3" library
+  shift 3
   shopt -s nullglob
-  # 1) The target-arch SPIRV-Tools vulkan.sh cross-builds.
-  if [ -n "${_arch_dir}" ]; then
-    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools.a)
-    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools-shared.so)
-    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libSPIRV-Tools.so)
-  fi
-  # 2) Generic Vulkan SDK copy — may be host-arch only.
-  candidates+=(/opt/vulkan/*/*/lib/libSPIRV-Tools.a)
-  candidates+=(/opt/vulkan/*/*/lib/libSPIRV-Tools-shared.so)
-  candidates+=(/opt/vulkan/*/*/lib/libSPIRV-Tools.so)
-  # 3) VULKAN_SDK override.
-  if [ -n "${VULKAN_SDK:-}" ]; then
-    candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools.a")
-    candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools-shared.so")
-    candidates+=("${VULKAN_SDK}/lib/libSPIRV-Tools.so")
-  fi
+  for library in "$@"; do
+    case "${arch}" in
+      '*') _tvm_sdk_candidates_result+=("${root}"/*/*/lib/"${library}") ;;
+      *) _tvm_sdk_candidates_result+=("${root}"/*/"${arch}"/lib/"${library}") ;;
+    esac
+  done
   shopt -u nullglob
+}
 
-  local c
-  for c in "${candidates[@]}"; do
-    if [ -r "$c" ]; then
-      echo "$c"
+_tvm_first_readable_library() {
+  local candidate
+  for candidate in "$@"; do
+    if [ -r "${candidate}" ]; then
+      echo "${candidate}"
       return 0
     fi
   done
-
   echo ""
   return 1
+}
+
+detect_spirv_tools_library() {
+  local -a candidates=() libraries=(libSPIRV-Tools.a libSPIRV-Tools-shared.so libSPIRV-Tools.so)
+  local arch root="${1:-/opt/vulkan}" library
+  arch="$(vulkan_sdk_arch_dir)"
+  [ -z "${arch}" ] || _tvm_append_sdk_libraries candidates "${root}" "${arch}" "${libraries[@]}"
+  _tvm_append_sdk_libraries candidates "${root}" '*' "${libraries[@]}"
+  if [ -n "${VULKAN_SDK:-}" ]; then
+    for library in "${libraries[@]}"; do candidates+=("${VULKAN_SDK}/lib/${library}"); done
+  fi
+  _tvm_first_readable_library "${candidates[@]}"
 }
 
 # 0 when the ELF at $1 matches the cross target, and when undeterminable, so a missing readelf drops nothing.
@@ -308,28 +309,12 @@ elf_matches_target() {
 
 # LunarG ships only the x86_64 loader: echo vulkan.sh's target libvulkan.so, or "" to disable Vulkan.
 detect_vulkan_library() {
-  local candidates=()
-  local _arch_dir
-
-  _arch_dir="$(vulkan_sdk_arch_dir)"
-
-  shopt -s nullglob
-  if [ -n "${_arch_dir}" ]; then
-    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libvulkan.so)
-    candidates+=(/opt/vulkan/*/"${_arch_dir}"/lib/libvulkan.so.1)
-  fi
+  local -a candidates=()
+  local arch
+  arch="$(vulkan_sdk_arch_dir)"
+  [ -z "${arch}" ] || _tvm_append_sdk_libraries candidates "${1:-/opt/vulkan}" "${arch}" libvulkan.so libvulkan.so.1
   shopt -u nullglob
-
-  local c
-  for c in "${candidates[@]}"; do
-    if [ -r "$c" ]; then
-      echo "$c"
-      return 0
-    fi
-  done
-
-  echo ""
-  return 1
+  _tvm_first_readable_library "${candidates[@]}"
 }
 
 is_under_opt_vulkan() {

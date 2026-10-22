@@ -12,8 +12,7 @@ set(MYPROJECT_PROJECT_OPTIONS_COMMON_VERSION 1)
 
 # Option declarations
 
-# Declares the core options; the four defaults the consumers disagree on are required, so none silently becomes OFF.
-#   myproject_define_core_options(ASAN_DEFAULT <ON|OFF> UBSAN_DEFAULT <ON|OFF> TSAN_DEFAULT <ON|OFF> CPPCHECK_DEFAULT <ON|OFF>)
+# Require consumer-specific defaults so a missing argument cannot silently disable a check.
 function(myproject_define_core_options)
   cmake_parse_arguments(
     _MPCO

@@ -8,6 +8,8 @@ source "${SCRIPT_DIR}/../lib/app-packaging.sh"
 # shellcheck source=../01-core/logging.sh
 source "${SCRIPT_DIR}/../01-core/logging.sh"
 
+source "${SCRIPT_DIR}/python-app-cli.sh"
+
 REPO_ROOT="${PWD}"
 CONFIG="packaging/app.json"
 BUNDLE=""
@@ -20,19 +22,7 @@ usage() {
   printf 'usage: %s --bundle DIR [--repo-root DIR] [--config FILE] [--out-dir DIR] [--formats tar,deb,appimage] [--no-test] [--work-dir DIR]\n' "$0"
 }
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --repo-root) REPO_ROOT="${2:?}"; shift 2 ;;
-    --config) CONFIG="${2:?}"; shift 2 ;;
-    --bundle) BUNDLE="${2:?}"; shift 2 ;;
-    --out-dir) OUT_DIR="${2:?}"; shift 2 ;;
-    --formats) FORMATS="${2:?}"; shift 2 ;;
-    --no-test) RUN_TESTS=false; shift ;;
-    --work-dir) WORK_DIR="${2:?}"; shift 2 ;;
-    -h|--help) usage; exit 0 ;;
-    *) usage >&2; exit 2 ;;
-  esac
-done
+parse_python_app_args package "$@"
 
 cd "${REPO_ROOT}"
 [ -n "${BUNDLE}" ] || { usage >&2; exit 2; }

@@ -9,14 +9,19 @@ ANCESTRY_PARENT_STAGE_KEY="${ANCESTRY_PARENT_STAGE_KEY:-org.kataglyphis.parent-s
 # Lets a manifest run prove its per-arch tags come from one orchestrator run.
 ANCESTRY_RUN_ID_KEY="${ANCESTRY_RUN_ID_KEY:-org.kataglyphis.run-id}"
 
+_ancestry_annotation_value_safe() {
+  [ -n "${2:-}" ] || return 1
+  # A comma would split the exporter spec.
+  case "$2" in
+    *,*) warn "[ancestry] $1 contains a comma, not recording: $2"; return 1 ;;
+  esac
+  return 0
+}
+
 # ancestry_output_annotations <pin> [parent_stage]: the --output annotation fragment; empty without a parent.
 ancestry_output_annotations() {
   local parent_pin="${1:-}" parent_stage="${2:-}"
-  [ -n "${parent_pin}" ] || return 0
-  # A comma would split the exporter spec.
-  case "${parent_pin}" in
-    *,*) warn "[ancestry] parent pin contains a comma, not recording: ${parent_pin}"; return 0 ;;
-  esac
+  _ancestry_annotation_value_safe 'parent pin' "${parent_pin}" || return 0
   printf ',annotation.%s=%s' "${ANCESTRY_PARENT_DIGEST_KEY}" "${parent_pin}"
   [ -n "${parent_stage}" ] && printf ',annotation.%s=%s' "${ANCESTRY_PARENT_STAGE_KEY}" "${parent_stage}"
   return 0
@@ -25,10 +30,7 @@ ancestry_output_annotations() {
 # ancestry_run_id_annotation <run_id>: the run-id --output fragment; empty for an empty id.
 ancestry_run_id_annotation() {
   local run_id="${1:-}"
-  [ -n "${run_id}" ] || return 0
-  case "${run_id}" in
-    *,*) warn "[ancestry] run id contains a comma, not recording: ${run_id}"; return 0 ;;
-  esac
+  _ancestry_annotation_value_safe 'run id' "${run_id}" || return 0
   printf ',annotation.%s=%s' "${ANCESTRY_RUN_ID_KEY}" "${run_id}"
   return 0
 }

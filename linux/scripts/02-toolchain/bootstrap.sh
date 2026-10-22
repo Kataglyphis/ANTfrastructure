@@ -51,8 +51,7 @@ source_toolchain_build_helpers_or_fallback() {
 
   strip_elf_tree() {
     local dir jobs strip_bin; dir="$1"; jobs="${2:-$(nproc)}"; strip_bin="${3:-strip}"
-    [ -n "${dir}" ] || return 0
-    [ -d "${dir}" ] || return 0
+      [ -d "${dir}" ] || return 0
     ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \
       | awk -F': *' '/ELF/{print $1}' \
       | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true

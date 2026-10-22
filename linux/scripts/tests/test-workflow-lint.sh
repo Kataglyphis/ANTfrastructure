@@ -85,6 +85,7 @@ _pin_tree() {  # <tool-pins.env body>
   local d; d="$(mktemp -d "${_work}/pin.XXXXXX")"
   _stage "${d}" lint-workflows.sh 0755
   _stage "${d}" 01-core/load-versions-env.sh
+  _stage "${d}" 01-core/lint-tool-release.sh
   _stage "${d}" 01-core/downloads.sh
   # The gate sources the interpreter probe before its Python half.
   _stage "${d}" 01-core/python-probe.sh

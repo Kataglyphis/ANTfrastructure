@@ -61,14 +61,22 @@ _serial_arch_loop() {
   return "${failed}"
 }
 
+_arch_loop_create_flagdir() {
+  local flagdir_prefix="$1" _flagdir
+  if ! _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")" \
+     || [ -z "${_flagdir}" ] || [ ! -w "${_flagdir}" ]; then
+    return 1
+  fi
+  printf '%s' "${_flagdir}"
+}
+
 run_parallel_arch_loop() {
   local fn_name="$1" flagdir_prefix="${2:-/tmp/arch-loop-flags}"
   local max_parallel="${3:-4}"
   shift 3
   local _flagdir failed=0
   # Without a writable flag dir worker failures go unrecorded and every arch reads green. docs/failure-modes.md
-  if ! _flagdir="$(mktemp -d "${flagdir_prefix}.XXXXXX")" \
-     || [ -z "${_flagdir}" ] || [ ! -w "${_flagdir}" ]; then
+  if ! _flagdir="$(_arch_loop_create_flagdir "${flagdir_prefix}")"; then
     warn "run_parallel_arch_loop: no writable flag dir (${flagdir_prefix}.XXXXXX) -- refusing, because arch failures could not be recorded"
     return 1
   fi

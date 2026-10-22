@@ -204,38 +204,29 @@ _run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "GENAI_MODEL_DIR=/nonexistent-genai-model is not a directory"
 
-# D. The program crosses into the image via SMOKE_GENAI_PY; an empty crossing is exit 4.
+# The actual wrapper is reused here, with only the host interpreter substituted.
+_SRI="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+eval "$(t_fn_src "${_SRI}" _rt_python_probe_command)"
+_WRAP="$(_rt_python_probe_command SMOKE_GENAI_PY GENAI-BIND)"
+_HOST_WRAP="${_WRAP//\/opt\/venv\/bin\/python/python3 -S}"
 t_case "the program survives the SMOKE_GENAI_PY env-var round trip with the same verdict"
 _INJ_OUT="$(env -u GENAI_MODEL_DIR PYTHONPATH="${STUB}" PYTHONDONTWRITEBYTECODE=1 \
   GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
   STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so" \
-  SMOKE_GENAI_PY="$(_emit smoke_genai_py)" \
-  bash -lc 'if [ -z "${SMOKE_GENAI_PY:-}" ]; then
-  echo "GENAI-BIND ABSENT: SMOKE_GENAI_PY is empty inside the container -- the program never crossed the boundary"
-  exit 4
-fi
-printf "%s\n" "${SMOKE_GENAI_PY}" | python3 -S -' 2>&1)"
+  SMOKE_GENAI_PY="$(_emit smoke_genai_py)" bash -lc "${_HOST_WRAP}" 2>&1)"
 _INJ_RC=$?
 t_assert_eq "0" "${_INJ_RC}"
 t_assert_contains "${_INJ_OUT}" "GENAI-BIND OK: onnxruntime_genai 0.15.2"
 
 t_case "an empty SMOKE_GENAI_PY is the ABSENT sentinel with rc=4, never a silent pass"
-_INJ_OUT="$(SMOKE_GENAI_PY="" bash -lc 'if [ -z "${SMOKE_GENAI_PY:-}" ]; then
-  echo "GENAI-BIND ABSENT: SMOKE_GENAI_PY is empty inside the container -- the program never crossed the boundary"
-  exit 4
-fi
-printf "%s\n" "${SMOKE_GENAI_PY}" | python3 -S -' 2>&1)"
+_INJ_OUT="$(SMOKE_GENAI_PY="" bash -lc "${_HOST_WRAP}" 2>&1)"
 _INJ_RC=$?
 t_assert_eq "4" "${_INJ_RC}"
 t_assert_contains "${_INJ_OUT}" "GENAI-BIND ABSENT:"
 
-
-# Drift guard: the cases above run a hand copy of check_genai_binding's wrapper.
-t_case "the replica above still matches check_genai_binding's real wrapper"
-_SRI="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
-# Only the wrapper: the file has a second `exit 4` that would keep a whole-file check green.
-_WRAP="$(sed -n '/SMOKE_GENAI_PY:-/,/python -.$/p' "${_SRI}")"
+t_case "the shared wrapper guards the payload before starting Python"
 t_assert_contains "${_WRAP}" "GENAI-BIND ABSENT:" "wrapper lost its ABSENT sentinel"
 t_assert_contains "${_WRAP}" "exit 4" "wrapper no longer exits 4 on an empty payload"
+t_assert_contains "$(t_fn_src "${_SRI}" check_genai_binding)" '_rt_run_python_probe SMOKE_GENAI_PY GENAI-BIND'
 
 t_summary

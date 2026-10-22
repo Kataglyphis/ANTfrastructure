@@ -17,12 +17,12 @@ _path_prepend_unique() {
   __cur="${!__varname:-}"
   if [ -z "$__cur" ]; then
     printf -v "${__varname}" '%s' "${__value}"
-    export "${__varname}"
+    export "${__varname}=${!__varname}"
   else
     if _path_contains "$__cur" "$__value"; then
       return 0
     fi
     printf -v "${__varname}" '%s:%s' "${__value}" "${__cur}"
-    export "${__varname}"
+    export "${__varname}=${!__varname}"
   fi
 }

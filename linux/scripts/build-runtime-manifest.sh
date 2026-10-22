@@ -50,17 +50,31 @@ EOF
   runtime_shared_usage_env_overrides
 }
 
-# Prove the per-arch wrapper tags are one generation before indexing them.
-_manifest_wrapper_gate() {
-  local -a run_ids=()
-  local arch tag rid coherent=1 missing=0
-
+# Collection fills the gate's local run_ids and missing count without capturing logs.
+_manifest_collect_wrapper_runs() {
+  local arch tag rid
   for arch in $(arch_list_to_words "${TARGET_ARCHES}"); do
-    tag="$(runtime_wrapper_tag "${arch}")" || return 0
+    tag="$(runtime_wrapper_tag "${arch}")" || return 1
     rid="$(ancestry_recorded_run_id "${tag}" 2>/dev/null || true)"
     run_ids+=("${rid}")
     [ -z "${rid}" ] && missing=$((missing + 1))
   done
+
+  return 0
+}
+
+_manifest_warn_generation_mismatch() {
+  [ "${coherent}" -eq 0 ] && warn "[manifest] per-arch wrapper tags span multiple generations (run-ids: ${run_ids[*]}) — assembling ${IMAGE_NAME} would MIX releases."
+  [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] a wrapper tag predates the current android artifact (see the [ancestry] lines above)."
+  [ "${missing}" -gt 0 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) have no readable generation stamp, so a mixed release CANNOT be ruled out — refusing rather than assuming."
+  return 0
+}
+
+_manifest_wrapper_gate() {
+  local -a run_ids=()
+  local coherent=1 missing=0
+
+  _manifest_collect_wrapper_runs || return 0
 
   if declare -F ancestry_run_ids_coherent >/dev/null 2>&1; then
     ancestry_run_ids_coherent "${run_ids[@]}" || coherent=0
@@ -84,9 +98,7 @@ _manifest_wrapper_gate() {
     return 0
   fi
 
-  [ "${coherent}" -eq 0 ] && warn "[manifest] per-arch wrapper tags span multiple generations (run-ids: ${run_ids[*]}) — assembling ${IMAGE_NAME} would MIX releases."
-  [ "${android_stale}" -eq 1 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] a wrapper tag predates the current android artifact (see the [ancestry] lines above)."
-  [ "${missing}" -gt 0 ] && [ "${BUILD_IMAGES}" -eq 0 ] && warn "[manifest] ${missing}/${#run_ids[@]} wrapper tag(s) have no readable generation stamp, so a mixed release CANNOT be ruled out — refusing rather than assuming."
+  _manifest_warn_generation_mismatch
 
   if [ "${FORCE_MANIFEST}" -eq 1 ]; then
     warn "[manifest] --force set: assembling ${IMAGE_NAME} despite the generation mismatch above."

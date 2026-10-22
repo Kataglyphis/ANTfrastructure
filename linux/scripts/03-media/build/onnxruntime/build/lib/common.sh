@@ -107,28 +107,27 @@ parse_common_args() {
 
   while [ $# -gt 0 ]; do
     case "$1" in
+      --ort-version|--build-type|--native-cpu-config|--native-config|--wasm-config|--genai-version|--genai-config)
+        [ $# -ge 2 ] || err "$1 requires a value" ;;
+    esac
+    case "$1" in
       --ort-version)
-        [ $# -ge 2 ] || err "--ort-version requires a value"
         ORT_VERSION="$2"
         shift 2
         ;;
       --build-type|--native-cpu-config|--native-config)
-        [ $# -ge 2 ] || err "$1 requires a value"
         NATIVE_CPU_CONFIG="$2"
         shift 2
         ;;
       --wasm-config)
-        [ $# -ge 2 ] || err "--wasm-config requires a value"
         WASM_CONFIG="$2"
         shift 2
         ;;
       --genai-version)
-        [ $# -ge 2 ] || err "--genai-version requires a value"
         GENAI_VERSION="$2"
         shift 2
         ;;
       --genai-config)
-        [ $# -ge 2 ] || err "--genai-config requires a value"
         GENAI_CONFIG="$2"
         shift 2
         ;;
@@ -536,6 +535,42 @@ append_onnx_lld_build_args() {
   fi
 }
 
+# Keep CPU apt flags distinct while preserving update and install failure behavior.
+install_onnx_native_dependencies() {
+  [ "${SKIP_DEP_INSTALL:-false}" != true ] || return 0
+  local -a apt=(apt-get) update=() install=(-y)
+  if [ "$1" = gpu ]; then update=(-qq); install+=(--no-install-recommends); fi
+  if command -v sudo >/dev/null 2>&1; then apt=(sudo apt-get); fi
+  if "${apt[@]}" update "${update[@]}"; then
+    "${apt[@]}" install "${install[@]}" libgcc-s1 || return "$?"
+  fi
+  return 0
+}
+
+# Cache setup exports must remain in the caller, outside the launcher's command substitution.
+_onnx_compiler_cache_launcher() {
+  local -n _onnx_launcher_result="$1"
+  local fallback="${2:-}"
+  compiler_cache_launcher_env 2>/dev/null || true
+  _onnx_launcher_result="$(compiler_cache_launcher 2>/dev/null || printf '%s\n' "${fallback}")"
+  return 0
+}
+
+# ccache cannot wrap either GPU compiler; these launchers must resolve to sccache.
+append_onnx_gpu_cache_args() {
+  local -n _onnx_gpu_cache_result="$1"
+  local language="$2" enabled="ENABLE_SCCACHE_$2" launcher
+  local -A compiler=([CUDA]=nvcc [HIP]=HIP)
+  [ "${!enabled:-0}" = 1 ] || return 0
+  _onnx_compiler_cache_launcher launcher
+  case "${launcher}" in
+    *sccache*)
+      info "sccache: wrapping ${compiler[${language}]} via CMAKE_${language}_COMPILER_LAUNCHER (${launcher})"
+      _onnx_gpu_cache_result+=(--cmake_extra_defines "CMAKE_${language}_COMPILER_LAUNCHER=${launcher}") ;;
+    *) warn "sccache unavailable for ${language} caching — building uncached" ;;
+  esac
+}
+
 append_onnx_ccache_build_args() {
   local build_args_name="$1"
   # shellcheck disable=SC2178
@@ -544,8 +579,8 @@ append_onnx_ccache_build_args() {
   if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
       # The resolved launcher may be sccache, so ccache is only the fallback.
-      compiler_cache_launcher_env 2>/dev/null || true
-      _ort_launcher="$(compiler_cache_launcher 2>/dev/null || echo ccache)"
+      _ort_launcher=""
+      _onnx_compiler_cache_launcher _ort_launcher ccache
       build_args_ref+=(
         --cmake_extra_defines
         "CMAKE_C_COMPILER_LAUNCHER=${_ort_launcher}"

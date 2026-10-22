@@ -20,7 +20,7 @@ gcovr                | shared/config/gcovr.cfg                          | gcovr.
 pre-commit           | shared/config/.pre-commit-config.yaml            | .pre-commit-config.yaml                 | exact |
 antfrastructure-sh      | shared/linux/templates/antfrastructure.sh           | scripts/linux/lib/antfrastructure.sh       | body  | : "${KATAGLYPHIS_REPO_ROOT_RELATIVE:=
 resolve-build-module | shared/windows/templates/Resolve-BuildModule.ps1 | scripts/windows/Resolve-BuildModule.ps1 | body  | $script:RepoRootRelativeToHere
-agentic-loop-sh      | shared/agentic-loop/templates/Run-AgenticLoop.sh     | scripts/agentic-loop/Run-AgenticLoop.sh     | body  | head -
+agentic-loop-sh      | shared/agentic-loop/templates/Run-AgenticLoop.sh     | scripts/agentic-loop/Run-AgenticLoop.sh     | body  |
 agentic-loop-ps1     | shared/agentic-loop/templates/Invoke-AgenticLoop.ps1 | scripts/agentic-loop/Invoke-AgenticLoop.ps1 | body  |
 web-cookie-css       | shared/web/css/cookie.css                         | web/css/cookie.css                          | exact |
 web-loading-css      | shared/web/css/loading_animation.css              | web/css/loading_animation.css               | exact |

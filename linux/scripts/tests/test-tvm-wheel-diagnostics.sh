@@ -107,7 +107,7 @@ t_assert_contains "$(cat "${_err}")" "pipefail" \
 TVM_WHEEL_SKIP_REASON="probe reason"
 
 _verdict() {  # <prefix-dir> -> stderr of the verdict
-  prefix="$1" _tvm_wheel_verdict 2>&1 >/dev/null
+  { prefix="$1" _tvm_wheel_verdict >/dev/null; } 2>&1
 }
 
 t_case "a staged wheel reports success and no 'native runtime' consolation"

@@ -116,7 +116,7 @@ _cross_build_pull_flag() {
 
 _cross_build_append_push_output() {
   : "${CROSS_LAYER_COMPRESSION:=zstd}"
-  local -n _out="$1"
+  local -n _cross_build_append_push_output_result="$1"
   local tag="$2" push_flag="$3"
   [ "${push_flag}" -eq 1 ] || return 0
     # The parent stamp lets a later partial run detect a stale ancestor (ancestry.sh).
@@ -126,12 +126,12 @@ _cross_build_append_push_output() {
         "${_CROSS_STAGE_PARENT_PIN:-}" "${_CROSS_STAGE_PARENT_STAGE:-}")"
     fi
     # zstd for new layers: push time is the chain's ceiling on a slow uplink.
-    _out+=(
-      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION}${_ancestry_ann}"
+    _cross_build_append_push_output_result+=(
+      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
     )
     # Opt-in: the SBOM scanner adds time to every stage.
     if [ -n "${BUILD_ATTEST:-}" ]; then
-      _out+=(
+      _cross_build_append_push_output_result+=(
         --provenance=mode=max
         --sbom=true
       )
@@ -140,23 +140,23 @@ _cross_build_append_push_output() {
 
 # Local cache first (ghcr 400s on big mode=max blobs), inline registry cache when pushing: docs/build-cache-tiers.md#1-the-tiers
 _cross_build_append_cache_args() {
-  local -n _out="$1"
+  local -n _cross_build_append_cache_args_result="$1"
   local tag="$2" push_flag="$3" _cache_dir="$4" _cache_slug="$5"
   if [ -z "${NO_CACHE:-}" ]; then
     mkdir -p "${_cache_dir}/${_cache_slug}" 2>/dev/null || true
     # Without a manifest, --cache-from logs a clean miss as "could not read".
     if [ -s "${_cache_dir}/${_cache_slug}/index.json" ]; then
-      _out+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
+      _cross_build_append_cache_args_result+=( --cache-from "type=local,src=${_cache_dir}/${_cache_slug}" )
     fi
     # The disk guard sets this when pruning cannot free enough: stop writing, keep reading.
     if [ -z "${CROSS_NO_LOCAL_CACHE_EXPORT:-}" ]; then
-      _out+=(
+      _cross_build_append_cache_args_result+=(
         --cache-to "type=local,dest=${_cache_dir}/${_cache_slug},mode=max"
       )
     fi
     # Inline cache lives in the image config, so no separate blob to 400; NO_CACHE_EXPORT skips only this.
     if [ "${push_flag}" -eq 1 ] && [ -z "${NO_CACHE_EXPORT:-}" ]; then
-      _out+=(
+      _cross_build_append_cache_args_result+=(
         --cache-from "type=registry,ref=${tag}"
         --cache-to "type=inline"
       )
@@ -489,6 +489,36 @@ _cross_stage_run_capture_pin() {
   fi
 }
 
+_cross_stage_record_local() {
+  local stage="$1" arch="$2" label="$3" tag="$4"
+  # Without the flag the runtime handoff pulls the stale published parent over this run's image.
+  if ! is_dry_run && cross_stage_is_per_arch "${stage}"; then
+    local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
+    if declare -p "${built_flag_varname}" &>/dev/null; then
+      local -n _local_built_flag="${built_flag_varname}"
+      _local_built_flag["${arch}"]=1
+    fi
+    if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
+      : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
+    fi
+  fi
+  # The parent half of the --no-push handoff; rc propagated because errexit is off here.
+  if ! is_dry_run && cross_local_handoff_enabled; then
+    local ctx_dir
+    ctx_dir="$(cross_stage_context_dir "${stage}" "${arch}")" || return 1
+    log "[stage ${label}] exporting OCI layout for local handoff → ${ctx_dir}"
+    export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${ctx_dir}" || return 1
+    # android is also the runtime lane's artifact, which a no-push package build must copy from.
+    if [ "${stage}" = "android" ]; then
+      local artifact_dir
+      artifact_dir="$(cross_stage_context_dir android-artifacts "${arch}")" || return 1
+      log "[stage android-${arch}] exporting artifact layout for the runtime lane → ${artifact_dir}"
+      export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
+    fi
+  fi
+  return 0
+}
+
 # cross_stage_run <stage> [arch] [push=1]: push=0 builds against the mutable parent tag and captures no pin.
 cross_stage_run() {
   local stage="$1" arch="${2:-}" push_flag="${3:-1}"
@@ -526,32 +556,8 @@ cross_stage_run() {
   fi
 
   if [ "${push_flag}" -eq 0 ]; then
-    # Without the flag the runtime handoff pulls the stale published parent over this run's image.
-    if ! is_dry_run && cross_stage_is_per_arch "${stage}"; then
-      local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
-      if declare -p "${built_flag_varname}" &>/dev/null; then
-        local -n _local_built_flag="${built_flag_varname}"
-        _local_built_flag["${arch}"]=1
-      fi
-      if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
-        : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
-      fi
-    fi
-    # The parent half of the --no-push handoff; rc propagated because errexit is off here.
-    if ! is_dry_run && cross_local_handoff_enabled; then
-      local ctx_dir
-      ctx_dir="$(cross_stage_context_dir "${stage}" "${arch}")" || return 1
-      log "[stage ${label}] exporting OCI layout for local handoff → ${ctx_dir}"
-      export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${ctx_dir}" || return 1
-      # android is also the runtime lane's artifact, which a no-push package build must copy from.
-      if [ "${stage}" = "android" ]; then
-        local artifact_dir
-        artifact_dir="$(cross_stage_context_dir android-artifacts "${arch}")" || return 1
-        log "[stage android-${arch}] exporting artifact layout for the runtime lane → ${artifact_dir}"
-        export_image_to_oci_layout "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
-      fi
-    fi
-    return 0
+    _cross_stage_record_local "${stage}" "${arch}" "${label}" "${tag}"
+    return $?
   fi
   if is_dry_run; then
     log "[stage ${label}] [DRY RUN] would pin ${tag}"

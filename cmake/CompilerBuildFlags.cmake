@@ -31,8 +31,7 @@ macro(myproject_strip_clang_cl_asan_debug_runtime_flags)
   endforeach()
 endmacro()
 
-# Applies Debug/Release/RelWithDebInfo flags (the *-Profile presets resolve to RelWithDebInfo).
-#   myproject_apply_compiler_build_flags(${myproject_ENABLE_SANITIZER_ADDRESS})  # ASan tells clang-cl to strip /MDd
+# ASan must remove /MDd from clang-cl flags; see cmake/README.md.
 macro(myproject_apply_compiler_build_flags enable_sanitizer_address)
   if(MSVC AND NOT (CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
     myproject_strip_msvc_debug_runtime_flags()

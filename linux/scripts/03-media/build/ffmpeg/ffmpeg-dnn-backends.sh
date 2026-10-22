@@ -124,6 +124,37 @@ ffmpeg_ort_link_findings() {
 }
 
 # Cache the TensorFlow C API SDK (libtensorflow.so + headers) across rebuilds.
+_ffmpeg_install_tensorflow_archive() {
+    local cache_dir="$1" tf_dir="$2" tf_version="$3" tf_archive="$4"
+    # A failed extract disables the backend and drops the archive so the next build refetches.
+    if ! tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}"; then
+        rm -f "${cache_dir}/${tf_archive}"
+        echo "WARNING: TensorFlow C SDK archive extraction failed (corrupt/truncated ${tf_archive}). libtensorflow will not be available."
+        return 1
+    fi
+    # The .pc advertises ${tf_dir} to configure, so it is written only once lib/ and include/ exist.
+    if [ ! -f "${cache_dir}/lib/libtensorflow.so" ] \
+        || [ ! -f "${cache_dir}/include/tensorflow/c/c_api.h" ]; then
+        echo "WARNING: TensorFlow C SDK archive lacks the expected lib/ + include/ layout. libtensorflow will not be available."
+        return 1
+    fi
+    # A previous unstamped attempt may already have moved one tree; replacing it avoids lib/lib on retry.
+    rm -rf "${tf_dir:?}/lib" "${tf_dir:?}/include" || return 1
+    if ! mv "${cache_dir}/lib" "${tf_dir}/lib" \
+        || ! mv "${cache_dir}/include" "${tf_dir}/include"; then
+        echo "WARNING: failed to move TensorFlow C SDK into ${tf_dir}. libtensorflow will not be available."
+        return 1
+    fi
+    generate_pkgconfig_file "${cache_dir}/tensorflow.pc" \
+        "TensorFlow" "TensorFlow C API" "${tf_version}" "${tf_dir}" \
+        '-L${libdir} -ltensorflow' || return 1
+    export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
+    # Written last so a retry trusts only a tree whose every step succeeded.
+    : > "${tf_dir}/.complete-${tf_version}"
+    echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
+    return 0
+}
+
 ensure_tensorflow_c_sdk() {
     # Second gate for the large download. See docs/linux-cross-builds.md § versions.env feature toggles (Linux lane)
     if command -v is_truthy >/dev/null 2>&1 && ! is_truthy "${FFMPEG_ENABLE_TF:-0}"; then
@@ -172,31 +203,8 @@ ensure_tensorflow_c_sdk() {
     fi
     if [ "${_tf_fetch_ok}" = "1" ] \
         && [ -s "${cache_dir}/${tf_archive}" ]; then
-        # A failed extract disables the backend and drops the archive so the next build refetches.
-        if ! tar -xzf "${cache_dir}/${tf_archive}" -C "${cache_dir}"; then
-            rm -f "${cache_dir}/${tf_archive}"
-            echo "WARNING: TensorFlow C SDK archive extraction failed (corrupt/truncated ${tf_archive}). libtensorflow will not be available."
-            return 1
-        fi
-        # The .pc advertises ${tf_dir} to configure, so it is written only once lib/ and include/ exist.
-        if [ ! -f "${cache_dir}/lib/libtensorflow.so" ] \
-            || [ ! -f "${cache_dir}/include/tensorflow/c/c_api.h" ]; then
-            echo "WARNING: TensorFlow C SDK archive lacks the expected lib/ + include/ layout. libtensorflow will not be available."
-            return 1
-        fi
-        if ! mv "${cache_dir}/lib" "${tf_dir}/lib" \
-            || ! mv "${cache_dir}/include" "${tf_dir}/include"; then
-            echo "WARNING: failed to move TensorFlow C SDK into ${tf_dir}. libtensorflow will not be available."
-            return 1
-        fi
-        generate_pkgconfig_file "${cache_dir}/tensorflow.pc" \
-            "TensorFlow" "TensorFlow C API" "${tf_version}" "${tf_dir}" \
-            '-L${libdir} -ltensorflow'
-        export PKG_CONFIG_PATH="${cache_dir}:${PKG_CONFIG_PATH:-}"
-        # Written last so a retry trusts only a tree whose every step succeeded.
-        : > "${tf_dir}/.complete-${tf_version}"
-        echo "TensorFlow C SDK ${tf_version} installed to ${tf_dir}"
-        return 0
+        _ffmpeg_install_tensorflow_archive "${cache_dir}" "${tf_dir}" "${tf_version}" "${tf_archive}"
+        return $?
     fi
 
     echo "WARNING: TensorFlow C SDK download failed. libtensorflow will not be available."

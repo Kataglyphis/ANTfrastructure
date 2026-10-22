@@ -304,6 +304,7 @@ COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packagi
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-cross-all-arches.sh /opt/scripts/packaging/smoke-cross-all-arches.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-torch-venv.sh /opt/scripts/packaging/smoke-torch-venv.sh
+COPY --chmod=644 linux/scripts/06-packaging/venv-version-probe.py /opt/scripts/packaging/venv-version-probe.py
 
 # The Vulkan SDK installs under x86_64/, so the other arches get symlinks.
 RUN set -euo pipefail; \

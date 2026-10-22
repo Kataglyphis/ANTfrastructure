@@ -57,7 +57,7 @@ mkdir -p "${_work}/sdk-empty"
 t_assert_eq "" "$(_run_helper "${_work}/sdk-empty")"
 
 t_case "definition plus both call sites all go through the helper"
-_src="$(cat "${SUBJECT}")"
+_src="$(cat "${SUBJECT}" "${SUBJECT%/*}/litert-wheel.sh")"
 t_assert_eq "3" "$(printf '%s\n' "${_src}" | grep -c -e '_litert_qairt_include_dir')"
 
 t_case "no call site passes a bare include root any more"

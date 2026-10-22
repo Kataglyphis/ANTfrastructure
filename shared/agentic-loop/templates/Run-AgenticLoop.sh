@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Keep task prompts in the shared library; see shared/agentic-loop/templates/README.md.
+set -euo pipefail
+
+_agentic_template_usage() {
+  cat <<'HELP'
 # ─────────────────────────────────────────────────────────────────────────
 # TEMPLATE - copy to <your-repo>/scripts/agentic-loop/Run-AgenticLoop.sh.
 #
@@ -26,7 +31,9 @@
 #   --executor-only      Drain the current queue and exit
 #   --help               Show this help
 # ─────────────────────────────────────────────────────────────────────────
-set -euo pipefail
+HELP
+}
+
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -50,7 +57,7 @@ while [[ $# -gt 0 ]]; do
     --planner-only)   export PLANNER_ONLY=true; shift ;;
     --executor-only)  export EXECUTOR_ONLY=true; shift ;;
     --help|-h)
-      head -28 "$0" | tail -27
+      _agentic_template_usage
       exit 0 ;;
     *) echo "Unknown option: $1"; exit 1 ;;
   esac

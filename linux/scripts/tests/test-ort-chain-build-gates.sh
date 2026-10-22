@@ -289,7 +289,7 @@ printf '#!/bin/sh\nexit 0\n' > "${_ffsrc}/configure"
 chmod +x "${_ffsrc}/configure"
 _ff_cfg() {
   FFMPEG_SRC="${_ffsrc}" FFMPEG_PREFIX=/opt/ffmpeg bash -c 'source "$1"; eval "$2"
-    for f in _ffmpeg_cross_args _ffmpeg_probe_core_codecs _ffmpeg_probe_dnn_backends _ffmpeg_probe_extra_pkgconfig_loop \
+    for f in _ffmpeg_cross_args _ffmpeg_append_pkg_features _ffmpeg_probe_core_codecs _ffmpeg_probe_dnn_backends _ffmpeg_probe_extra_pkgconfig_loop \
         _ffmpeg_probe_extra_link_loop _ffmpeg_hwaccel_args _ffmpeg_linker_ccache_args; do eval "${f}() { :; }"; done
     is_truthy() { return 1; }; die() { echo "DIE $*"; exit 1; }
     _FFMPEG_ONNX_ROOT="$3"; configure_ffmpeg; echo SURVIVED' _ "${DNN}" "${_cfgff}" "${_chain}" 2>&1

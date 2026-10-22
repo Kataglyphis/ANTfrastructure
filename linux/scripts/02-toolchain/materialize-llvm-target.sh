@@ -40,10 +40,10 @@ _llvm_target_repair_links() {
         [ -n "${e}" ] || continue
         real="$(readlink -f "${root}/${e#"${prefix}/"}" 2>/dev/null || true)"
         base="${real##*/}"
-        if [ -n "${real}" ] && [ -d "${real}" ]; then
+        if [ -d "${real}" ]; then
             rm -rf "${e}"; cp -a "${real}" "${e}"; continue
         fi
-        if [ -n "${real}" ] && [ -f "${real}" ] && [ ! -e "${prefix}/lib/${base}" ] \
+        if [ -f "${real}" ] && [ ! -e "${prefix}/lib/${base}" ] \
            && _is_llvm_family "${base}"; then
             rm -f "${prefix}/lib/${base}"
             cp -a "${real}" "${prefix}/lib/${base}"

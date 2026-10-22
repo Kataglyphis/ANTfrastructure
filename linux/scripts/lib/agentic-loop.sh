@@ -157,7 +157,7 @@ invoke_sanitizer_tests() {
     env_assignment=$(get_sanitizer_env_vars "$sanitizer")
     env_var="${env_assignment%%=*}"
     saved_val="${!env_var:-}"
-    export "$env_assignment"
+    export "${env_var}=${env_assignment#*=}"
     log "Sanitizer: $sanitizer — env vars set ($env_var)"
     invoke_tests "$cmd"
     local rc=$?

@@ -31,13 +31,17 @@ _rt_run() {
 }
 
 # Env wins over versions.env; EMPTY on a miss means "not asserted" (docs/gen1-riscv64-genai.md).
-_rt_versions_env_pin() {
-  local _key="$1" _val="${!1:-}" _venv
+_rt_env_pin() {
+  local _key="$2" _val="${!2:-}" _venv
   if [ -z "${_val}" ]; then
-    _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
+    _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/$1"
     [ -f "${_venv}" ] && _val="$(grep -E "^${_key}=" "${_venv}" | head -1 | cut -d= -f2 || true)"
   fi
   printf '%s' "${_val}"
+}
+
+_rt_versions_env_pin() {
+  _rt_env_pin versions.env "$1"
 }
 
 # check_torchless_sentinel sets 0 when the torch-less sentinel is present; later gates read it.
@@ -273,36 +277,53 @@ check_app_wheel_smoke() {
     echo ""
 }
 
+# The script is generated from fixed probe identifiers; the Python payload stays in the environment.
+_rt_python_probe_command() {
+  printf 'if [ -z "${%s:-}" ]; then\n  echo "%s ABSENT: %s is empty inside the container -- the program never crossed the boundary"\n  exit 4\nfi\nprintf "%%s\\n" "${%s}" | /opt/venv/bin/python -' "$1" "$2" "$1" "$1"
+}
+
+_rt_run_python_probe() {
+  local variable="$1" tag="$2" program="$3"
+  shift 3
+  _rt_run -e "${variable}=${program}" "$@" bash -lc "$(_rt_python_probe_command "${variable}" "${tag}")"
+}
+
+# Both probes require an OK sentinel; only GenAI may be absent from an image.
+_rt_native_python_verdict() {
+  local kind="$1" out="$2" rc="$3" target_arch="$4" sentinel tag
+  local -A _rt_native_tags=([onnx]=ONNX-EP [genai]=GENAI-BIND)
+  local -A _rt_native_names=([onnx]='onnxruntime session check' [genai]='onnxruntime-genai binding check')
+  local -A _rt_native_nouns=([onnx]=provider [genai]=binding)
+  local -A _rt_native_successes=([onnx]='onnxruntime executed a real graph on-target' [genai]='onnxruntime-genai native binding exercised on-target')
+  local -A _rt_native_failures=([onnx]='onnxruntime InferenceSession FAILED on the generated Add graph' [genai]='onnxruntime-genai binding check FAILED')
+  tag="${_rt_native_tags[${kind}]}"
+  printf '%s\n' "${out}" | sed 's/^/  /'
+  sentinel="$(printf '%s\n' "${out}" | grep -Eo "${tag} (OK|FAIL|SKIP|ABSENT):.*" | head -1 || true)"
+  if [ -z "${sentinel}" ]; then
+    fail "${_rt_native_names[${kind}]} exited ${rc} but printed NO ${tag} sentinel (${target_arch}) -- the generated program did not run; an exit 0 here means python got an EMPTY stdin, not a working ${_rt_native_nouns[${kind}]}"
+  elif [ "${rc}" = 0 ]; then
+    case "${sentinel}" in
+      "${tag} OK:"*) pass "${_rt_native_successes[${kind}]} (${target_arch}) -- ${sentinel}" ;;
+      *) fail "${_rt_native_names[${kind}]} exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
+    esac
+  elif [ "${rc}" = 3 ]; then
+    case "${kind}" in
+      onnx) fail "onnxruntime/numpy not importable in the runtime image (${target_arch}) -- the HEALTHCHECK imports onnxruntime, so this is a defect: ${sentinel}" ;;
+      genai) echo "  SKIP: onnxruntime_genai not installed in this image (${target_arch}); presence is asserted by ARCH-PARITY, not here" ;;
+    esac
+  else
+    fail "${_rt_native_failures[${kind}]} (${target_arch}, rc=${rc}): ${sentinel}"
+  fi
+}
 # A pass needs the ONNX-EP OK: sentinel: an empty SMOKE_ONNX_PY makes `python -` exit 0 having run nothing.
 check_onnx_execution_provider() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: onnxruntime InferenceSession (generated Add graph) ---"
-    local out rc sentinel
-    out="$(_rt_run -e "SMOKE_ONNX_PY=$(smoke_minimal_onnx_py)" \
-             bash -lc 'if [ -z "${SMOKE_ONNX_PY:-}" ]; then
-  echo "ONNX-EP ABSENT: SMOKE_ONNX_PY is empty inside the container -- the program never crossed the boundary"
-  exit 4
-fi
-printf "%s\n" "${SMOKE_ONNX_PY}" | /opt/venv/bin/python -' 2>&1)" \
+    local out rc
+    out="$(_rt_run_python_probe SMOKE_ONNX_PY ONNX-EP "$(smoke_minimal_onnx_py)" 2>&1)" \
       && rc=0 || rc=$?
-    printf '%s\n' "${out}" | sed 's/^/  /'
-    sentinel="$(printf '%s\n' "${out}" | grep -Eo 'ONNX-EP (OK|FAIL|SKIP|ABSENT):.*' | head -1 || true)"
-    if [ -z "${sentinel}" ]; then
-      fail "onnxruntime session check exited ${rc} but printed NO ONNX-EP sentinel (${target_arch}) -- the generated program did not run; an exit 0 here means python got an EMPTY stdin, not a working provider"
-    elif [ "${rc}" = "0" ]; then
-      case "${sentinel}" in
-        "ONNX-EP OK:"*)
-          pass "onnxruntime executed a real graph on-target (${target_arch}) -- ${sentinel}" ;;
-        *)
-          fail "onnxruntime session check exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
-      esac
-    elif [ "${rc}" = "3" ]; then
-      # Fail, not skip: the image's own HEALTHCHECK imports onnxruntime.
-      fail "onnxruntime/numpy not importable in the runtime image (${target_arch}) -- the HEALTHCHECK imports onnxruntime, so this is a defect: ${sentinel}"
-    else
-      fail "onnxruntime InferenceSession FAILED on the generated Add graph (${target_arch}, rc=${rc}): ${sentinel}"
-    fi
+    _rt_native_python_verdict onnx "${out}" "${rc}" "${target_arch}"
     echo ""
 }
 
@@ -311,33 +332,12 @@ check_genai_binding() {
   local image_tag="$1"
   local target_arch="$2"
     echo "--- Functional: onnxruntime-genai native binding (GEN1) ---"
-    local expect_version out rc sentinel
+    local expect_version out rc
     expect_version="$(_rt_versions_env_pin ONNXRUNTIME_GENAI_VERSION)"
-    out="$(_rt_run -e "SMOKE_GENAI_PY=$(smoke_genai_py)" \
-             -e "GENAI_EXPECT_VERSION=${expect_version}" \
-             -e "GENAI_EXPECT_ARCH=${target_arch}" \
-             bash -lc 'if [ -z "${SMOKE_GENAI_PY:-}" ]; then
-  echo "GENAI-BIND ABSENT: SMOKE_GENAI_PY is empty inside the container -- the program never crossed the boundary"
-  exit 4
-fi
-printf "%s\n" "${SMOKE_GENAI_PY}" | /opt/venv/bin/python -' 2>&1)" \
+    out="$(_rt_run_python_probe SMOKE_GENAI_PY GENAI-BIND "$(smoke_genai_py)" \
+      -e "GENAI_EXPECT_VERSION=${expect_version}" -e "GENAI_EXPECT_ARCH=${target_arch}" 2>&1)" \
       && rc=0 || rc=$?
-    printf '%s\n' "${out}" | sed 's/^/  /'
-    sentinel="$(printf '%s\n' "${out}" | grep -Eo 'GENAI-BIND (OK|FAIL|SKIP|ABSENT):.*' | head -1 || true)"
-    if [ -z "${sentinel}" ]; then
-      fail "onnxruntime-genai binding check exited ${rc} but printed NO GENAI-BIND sentinel (${target_arch}) -- the generated program did not run; an exit 0 here means python got an EMPTY stdin, not a working binding"
-    elif [ "${rc}" = "0" ]; then
-      case "${sentinel}" in
-        "GENAI-BIND OK:"*)
-          pass "onnxruntime-genai native binding exercised on-target (${target_arch}) -- ${sentinel}" ;;
-        *)
-          fail "onnxruntime-genai binding check exited 0 but reported '${sentinel}' (${target_arch}) -- a non-OK verdict must never pass" ;;
-      esac
-    elif [ "${rc}" = "3" ]; then
-      echo "  SKIP: onnxruntime_genai not installed in this image (${target_arch}); presence is asserted by ARCH-PARITY, not here"
-    else
-      fail "onnxruntime-genai binding check FAILED (${target_arch}, rc=${rc}): ${sentinel}"
-    fi
+    _rt_native_python_verdict genai "${out}" "${rc}" "${target_arch}"
     echo ""
 }
 
@@ -484,30 +484,7 @@ _consumer_present_verdict() {
 }
 
 # Quotes each row's consumer-side symptom so a red run names the failure in the other repo.
-_consumer_contract_symptom() {
-  case "$1" in
-    ccache-dir|sccache-dir) printf '%s' 'the cache lands in the consumer checkout and flatpak-builder aborts: "Can'"'"'t initialize ccache use: Failed to set permissions of .../ccache.conf: Operation not permitted"' ;;
-    rustup-tmp)    printf '%s' 'rustup dies with "could not create temp file ...: Permission denied (os error 13)" and Corrosion / cargokit / flutter_rust_bridge_codegen cannot run; redirecting the var does not help, the toolchains live there' ;;
-    cargo-home)    printf '%s' 'every consumer has to pass -e CARGO_HOME=... to work around it' ;;
-    android-home)  printf '%s' '"flutter build apk" stops with "[!] No Android SDK found"; under CodeQL database create that surfaces three steps later as "bundle source directory not found"' ;;
-    jdk)           printf '%s' 'Gradle stops the Android lane with "ERROR: JAVA_HOME is not set and no '"'"'java'"'"' command could be found in your PATH", and flutter doctor reports "No Java Development Kit (JDK) found" -- the SDK COPY leaves the source stage'"'"'s JDK behind in /usr/lib/jvm' ;;
-    appimagetool)  printf '%s' 'appimagetool is an AppImage: it reads /proc/self/exe for its own squashfs offset, so a mode that is executable but not READABLE gives "Cannot open /proc/self/exe: Permission denied" and no .AppImage is produced' ;;
-    dart-tool)     printf '%s' '"flutter pub get" fails with "Cannot open file ... package_config.json (OS Error: Permission denied, errno = 13)"' ;;
-    flutter-owner) printf '%s' 'a root-owned path in a read-only overlay layer a consumer can neither chown, empty nor rename -- the only workaround is mounting a tmpfs over it' ;;
-    flatpak-runtimes) printf '%s' 'flatpak list --runtime returns 0 refs, so every run re-downloads seven org.freedesktop refs (~1.9 GB) -- the single largest download in a consumer build' ;;
-    appimage-runtime) printf '%s' 'appimagetool refetches runtime-<arch> from the type2-runtime continuous release on every build, so packaging hangs on GitHub being reachable' ;;
-    web-lane-tools) printf '%s' 'flutter_rust_bridge_codegen build-web cargo-installs wasm-pack (258 crates) and itself (174) from source in every run' ;;
-    ort-crate-env) printf '%s' 'an ort-sys build (OxidANT'"'"'s onnxruntime feature) statically links pyke'"'"'s ORT 1.28.0 from pyke'"'"'s CDN instead of the chain ORT, and ort load-dynamic opens whichever libonnxruntime.so the loader finds first' ;;
-    chrome)        printf '%s' 'flutter doctor reports "Cannot find Chrome executable at google-chrome" and "flutter test --platform chrome" has no browser, so the web lane tests nothing in one' ;;
-    android-emulator) printf '%s' 'an Android lane has no device to install on: adb reports "no devices/emulators found" and every on-device test is skipped' ;;
-    cargo-qa-tools) printf '%s' 'every OxidANT security and coverage step cargo-installs cargo-audit, cargo-deny and cargo-tarpaulin from crates.io first, minutes of compiles per run' ;;
-    free-threaded-python) printf '%s' 'every X.Yt leg has uv download a free-threaded CPython first, its patch version unpinned' ;;
-    lint-tools)    printf '%s' 'OrchestrANT'"'"'s coding bench reports "[shellcheck SKIPPED: not on PATH]" and "[hadolint SKIPPED: not on PATH]" on every row, so no bash or Dockerfile answer is linted' ;;
-    uv-cache-seed) printf '%s' 'the riscv64 Python lane'"'"'s uv sync of the test extra builds numpy, matplotlib, contourpy, pillow, line-profiler, psutil and pyyaml under QEMU: 108 min of a 6 h job' ;;
-    gtk4-dev)      printf '%s' 'OxidANT'"'"'s GTK GUI stops in a gtk4-rs -sys build script ("The system library `graphene-gobject-1.0` required by crate `graphene-sys` was not found" on amd64, `gtk4` elsewhere), and uid 1001 cannot apt-get the dev package' ;;
-    *)             printf '%s' 'no symptom recorded for this row' ;;
-  esac
-}
+
 
 # Key <arch>:<row>; an arm that stops applying fails. docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_contract_exempt() {
@@ -894,12 +871,7 @@ _consumer_free_threaded_verdict() {
 
 # A tool-pins.env pin, for the rows whose tools the torch stage installs from it (CON83).
 _rt_tool_pin() {
-  local _key="$1" _val="${!1:-}" _pins
-  if [ -z "${_val}" ]; then
-    _pins="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/tool-pins.env"
-    [ -f "${_pins}" ] && _val="$(grep -E "^${_key}=" "${_pins}" | head -1 | cut -d= -f2 || true)"
-  fi
-  printf '%s' "${_val}"
+  _rt_env_pin tool-pins.env "$1"
 }
 
 # CON83's lint tools on PATH at their pins: docs/consumer-image-contract.md#shellcheck-and-hadolint
@@ -949,23 +921,23 @@ _consumer_gtk4_verdict() {
 }
 
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
+
+
+
+
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
-  case "$(_consumer_contract_fact "${p}" FACT chrome)" in
-    yes) ;;
-    no) printf 'BAD %s CHROME_EXECUTABLE (%s) names no executable browser' "${row}" \
-          "$(_consumer_contract_fact "${p}" ENV chrome-executable)"; return 0 ;;
-    *)  printf 'NOFACT %s no FACT chrome line' "${row}"; return 0 ;;
-  esac
+  _consumer_require_fact "${p}" "${row}" chrome \
+    "CHROME_EXECUTABLE ($(_consumer_contract_fact "${p}" ENV chrome-executable)) names no executable browser" || return 0
   have="$(_consumer_contract_fact "${p}" FACT chrome-version)"
   drv="$(_consumer_contract_fact "${p}" FACT chromedriver-version)"
   if [ -z "${want}" ]; then
     printf 'BAD %s no CHROME_FOR_TESTING_VERSION pin to compare with' "${row}"
-  elif [ "${have}" != "${want}" ]; then
-    printf 'BAD %s chrome reports %s, the pin is %s' "${row}" "${have:-nothing}" "${want}"
-  elif [ "${drv}" != "${want}" ]; then
-    printf 'BAD %s chromedriver reports %s, the pin is %s' "${row}" "${drv:-nothing}" "${want}"
-  elif [ "$(_consumer_contract_fact "${p}" FACT chrome-headless)" != yes ]; then
+    return 0
+  fi
+  _consumer_version_matches "${row}" "${have}" "${want}" 'chrome reports' nothing || return 0
+  _consumer_version_matches "${row}" "${drv}" "${want}" 'chromedriver reports' nothing || return 0
+  if [ "$(_consumer_contract_fact "${p}" FACT chrome-headless)" != yes ]; then
     printf 'BAD %s headless chrome rendered no page as the image user' "${row}"
   else
     printf 'OK %s Chrome for Testing %s renders headless' "${row}" "${want}"
@@ -980,20 +952,16 @@ _consumer_emulator_verdict() {
     no) ;;
     *)  printf 'NOFACT %s no FACT android-payload-off line' "${row}"; return 0 ;;
   esac
-  case "$(_consumer_contract_fact "${p}" FACT android-emulator)" in
-    yes) ;;
-    no) printf 'BAD %s ANDROID_HOME/emulator/emulator is missing' "${row}"; return 0 ;;
-    *)  printf 'NOFACT %s no FACT android-emulator line' "${row}"; return 0 ;;
-  esac
+  _consumer_require_fact "${p}" "${row}" android-emulator 'ANDROID_HOME/emulator/emulator is missing' || return 0
   have="$(_consumer_contract_fact "${p}" FACT android-emulator-version)"
   got="$(_consumer_contract_fact "${p}" FACT android-system-image)"
   if [ "$(_consumer_contract_fact "${p}" FACT android-emulator-runs)" != yes ]; then
     printf 'BAD %s the emulator does not run as the image user' "${row}"
-  elif [ "${have}" != "${want}" ]; then
-    printf 'BAD %s emulator %s, the pin is %s' "${row}" "${have:-unknown}" "${want:-unset}"
-  elif [ "${got}" != "${img}" ]; then
-    printf 'BAD %s system image %s, the pin is %s' "${row}" "${got:-none}" "${img}"
-  elif [ "$(_consumer_contract_fact "${p}" FACT android-avd)" != yes ]; then
+    return 0
+  fi
+  _consumer_version_matches "${row}" "${have}" "${want}" emulator unknown unset || return 0
+  _consumer_version_matches "${row}" "${got}" "${img}" 'system image' none || return 0
+  if [ "$(_consumer_contract_fact "${p}" FACT android-avd)" != yes ]; then
     printf 'BAD %s android-avd.sh is not on PATH' "${row}"
   else
     printf 'OK %s emulator %s with %s' "${row}" "${want}" "${img}"
@@ -1001,33 +969,18 @@ _consumer_emulator_verdict() {
 }
 
 # Pure verdicts from probe text, so every failure path is testable. docs/consumer-image-contract.md#how-the-gate-proves-it
-_consumer_contract_verdicts() {
-  local arch="$1" probe="$2" row fact line asserted=0 _sc _hl
-  for row in ${_CONSUMER_CONTRACT_ROWS}; do
-    if _consumer_contract_exempt "${arch}" "${row}"; then
-      fact="$(_consumer_exempt_fact "${row}")"
-      line="$(_consumer_exempt_verdict "${row}" "${arch}" \
-                "$(_consumer_contract_fact "${probe}" FACT "${fact}")" "${fact}")"
-    else
+
+
+_consumer_contract_row_verdict() {
+  local row="$1" probe="$2" arch="$3" line
       case "${row}" in
         android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
         jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
         appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
         flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
         ort-crate-env) line="$(_consumer_ort_env_verdict "${row}" "${probe}")" ;;
-        chrome)        line="$(_consumer_chrome_verdict "${row}" "${probe}" "$(_rt_versions_env_pin CHROME_FOR_TESTING_VERSION)")" ;;
-        android-emulator)
-                       line="$(_consumer_emulator_verdict "${row}" "${probe}" "$(_rt_versions_env_pin ANDROID_EMULATOR_VERSION)" \
-                                 "android-$(_rt_versions_env_pin ANDROID_EMULATOR_API);google_apis;x86_64;r$(_rt_versions_env_pin ANDROID_EMULATOR_SYSIMG_REVISION)")" ;;
-        cargo-qa-tools)
-                       line="$(_consumer_cargo_qa_verdict "${row}" "${probe}" \
-                                 "cargo-audit=$(_rt_versions_env_pin CARGO_AUDIT_VERSION) cargo-deny=$(_rt_versions_env_pin CARGO_DENY_VERSION) cargo-tarpaulin=$(_rt_versions_env_pin CARGO_TARPAULIN_VERSION)")" ;;
-        free-threaded-python)
-                       line="$(_consumer_free_threaded_verdict "${row}" "${probe}" "$(_rt_versions_env_pin PYTHON_VERSION)")" ;;
-        lint-tools)    _sc="$(_rt_tool_pin SHELLCHECK_VERSION)"; _hl="$(_rt_tool_pin HADOLINT_VERSION)"
-                       line="$(_consumer_lint_tools_verdict "${row}" "${probe}" "shellcheck=${_sc#v} hadolint=${_hl#v}")" ;;
-        uv-cache-seed) line="$(_consumer_uv_seed_verdict "${row}" "${probe}" "${arch}")" ;;
-        gtk4-dev)      line="$(_consumer_gtk4_verdict "${row}" "${probe}")" ;;
+        chrome|android-emulator|cargo-qa-tools|free-threaded-python|lint-tools|uv-cache-seed|gtk4-dev)
+          line="$(_consumer_versioned_verdict "${row}" "${probe}" "${arch}")" ;;
         flatpak-runtimes|appimage-runtime|web-lane-tools)
                        line="$(_consumer_present_verdict "${row}" \
                                  "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;
@@ -1035,6 +988,18 @@ _consumer_contract_verdicts() {
                                  "$(_consumer_contract_fact "${probe}" ENV "${row}")" \
                                  "$(_consumer_contract_fact "${probe}" WRITE "${row}")")" ;;
       esac
+  printf '%s' "${line}"
+}
+
+_consumer_contract_verdicts() {
+  local arch="$1" probe="$2" row fact line asserted=0
+  for row in ${_CONSUMER_CONTRACT_ROWS}; do
+    if _consumer_contract_exempt "${arch}" "${row}"; then
+      fact="$(_consumer_exempt_fact "${row}")"
+      line="$(_consumer_exempt_verdict "${row}" "${arch}" \
+                "$(_consumer_contract_fact "${probe}" FACT "${fact}")" "${fact}")"
+    else
+      line="$(_consumer_contract_row_verdict "${row}" "${probe}" "${arch}")"
     fi
     printf '%s\n' "${line}"
     case "${line}" in OK\ *) asserted=$((asserted + 1)) ;; esac
@@ -1095,6 +1060,8 @@ printf "%s\n" "${RT_CONTRACT_SH}" | bash' 2>/dev/null)" || true
   fi
   echo ""
 }
+
+source "${_SCRIPT_DIR}/runtime-consumer-contract.sh"
 
 # Venv extensions are excluded: they add package lib dirs at import time, which bare ldd cannot see.
 check_native_so_closure() {
@@ -1310,11 +1277,22 @@ _tree_arch_verdicts() {
 }
 
 # HT1 gate: read the ELF machine of what each manifest tree actually ships.
-check_manifest_tree_arch() {
-  local image_tag="$1"
-  local target_arch="$2"
-  echo "--- HT1: shipped artifact trees carry the ${target_arch} ELF machine ---"
-  local trees="" tree want out verb machine count sample bad=0 ok=0 _frozen
+_tree_arch_bad_verdict() {
+  _frozen="$(_rt_tree_arch_frozen "${target_arch}" "${tree}" "${machine}" || true)"
+               if [ -n "${_frozen}" ] && [ "${_frozen}" = "${count}" ]; then
+                 echo "  ~~   ${tree}: ${count} ${machine} object(s) FROZEN on ${target_arch} (backlog HT3) -- known, counted, not waived"
+                 return 0
+               fi
+               if [ -n "${_frozen}" ]; then
+                 bad=$((bad + 1))
+                 fail "tree-arch: ${tree} ships ${count} ${machine} object(s) on ${target_arch}, but ${_frozen} are frozen (backlog HT3) -- the count MOVED; find what changed before re-freezing"
+                 return 0
+               fi
+               bad=$((bad + 1))
+               fail "tree-arch: ${tree} ships ${count} ${machine} object(s) in the ${target_arch} image, e.g. ${sample} -- artifact-source is the BUILDER's image, so this tree was installed on the host instead of built for the target (the rustup/Flutter class). Build it for the target, or name the tree in _RT_TREE_ARCH_EXEMPT with the reason"
+}
+
+_tree_arch_collect_manifest() {
   while read -r tree; do
     case "${tree}" in
       UNRESOLVED*)
@@ -1328,6 +1306,14 @@ check_manifest_tree_arch() {
     fi
     trees="${trees} ${tree}"
   done < <(_rt_manifest_trees)
+}
+
+check_manifest_tree_arch() {
+  local image_tag="$1"
+  local target_arch="$2"
+  echo "--- HT1: shipped artifact trees carry the ${target_arch} ELF machine ---"
+  local trees="" tree want out verb machine count sample bad=0 ok=0 _frozen
+  _tree_arch_collect_manifest
   want="$(smoke_elf_machine_grep "${target_arch}")"
   out="$(_rt_run -e "RT_TREES=${trees# }" -e "RT_TREE_PY=$(_tree_arch_py)" \
            bash -lc 'p=/opt/venv/bin/python; [ -x "$p" ] || p="$(command -v python3)"
@@ -1343,18 +1329,7 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
     case "${verb}" in
       OK)      ok=$((ok + 1)); echo "  OK   ${tree}: ${count} ELF object(s), all ${machine}" ;;
       NOELF)   echo "  ~~   ${tree} ships no ELF object at all (a per-arch empty tree; ARCH-PARITY owns presence)" ;;
-      BAD)     _frozen="$(_rt_tree_arch_frozen "${target_arch}" "${tree}" "${machine}" || true)"
-               if [ -n "${_frozen}" ] && [ "${_frozen}" = "${count}" ]; then
-                 echo "  ~~   ${tree}: ${count} ${machine} object(s) FROZEN on ${target_arch} (backlog HT3) -- known, counted, not waived"
-                 continue
-               fi
-               if [ -n "${_frozen}" ]; then
-                 bad=$((bad + 1))
-                 fail "tree-arch: ${tree} ships ${count} ${machine} object(s) on ${target_arch}, but ${_frozen} are frozen (backlog HT3) -- the count MOVED; find what changed before re-freezing"
-                 continue
-               fi
-               bad=$((bad + 1))
-               fail "tree-arch: ${tree} ships ${count} ${machine} object(s) in the ${target_arch} image, e.g. ${sample} -- artifact-source is the BUILDER's image, so this tree was installed on the host instead of built for the target (the rustup/Flutter class). Build it for the target, or name the tree in _RT_TREE_ARCH_EXEMPT with the reason" ;;
+      BAD)     _tree_arch_bad_verdict ;;
       MISSING) bad=$((bad + 1))
                fail "tree-arch: ${tree} is declared in runtime-artifacts.manifest but is ABSENT from the ${target_arch} image -- the COPY landed elsewhere or the tree was dropped" ;;
       CAPPED)  bad=$((bad + 1))
@@ -1476,6 +1451,27 @@ _parity_gst_plugin_known() {
   esac
 }
 
+_parity_presence_verdicts() {
+  local target_arch="$1" prefixes="$2" wheels="$3"
+    local want present
+    for want in ${_PARITY_PREFIXES} ${_PARITY_WHEELS}; do
+      case " ${_PARITY_PREFIXES} " in
+        *" ${want} "*) present="$(printf '%s\n' "${prefixes}" | grep -cxF -- "${want}" || true)" ;;
+        *)             present="$(_pkg_count "${want}" "${wheels}")" ;;
+      esac
+      if [ "${present}" != "0" ]; then
+        if _parity_exempt "${target_arch}" "${want}"; then
+          fail "ARCH-PARITY: the documented ${target_arch} exception for ${want} NO LONGER APPLIES -- ${want} is PRESENT in this image. Delete the '${target_arch}:${want})' arm from _parity_exempt in linux/scripts/06-packaging/smoke-runtime-image.sh; the table then asserts ${want} on ${target_arch} like on every other arch."
+        fi
+      elif _parity_exempt "${target_arch}" "${want}"; then
+        echo "  ~~   ${want} absent (documented ${target_arch} exception)"
+      else
+        fail "ARCH-PARITY: ${want} missing on ${target_arch} and NOT in the documented exception list -- ship it or record the exception in _parity_exempt"
+      fi
+    done
+
+}
+
 check_arch_parity() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1497,22 +1493,7 @@ done' 2>/dev/null)"; then
     prefixes="$(printf '%s\n' "${probe}" | sed -n 's/^PREFIX //p' | sed -E 's/-[0-9][0-9.]*$//' | sort -u)"
     wheels="$(printf '%s\n' "${probe}" | sed -n 's/^DIST //p' | tr '.-' '__' | sort -u)"
 
-    local want present
-    for want in ${_PARITY_PREFIXES} ${_PARITY_WHEELS}; do
-      case " ${_PARITY_PREFIXES} " in
-        *" ${want} "*) present="$(printf '%s\n' "${prefixes}" | grep -cxF -- "${want}" || true)" ;;
-        *)             present="$(_pkg_count "${want}" "${wheels}")" ;;
-      esac
-      if [ "${present}" != "0" ]; then
-        if _parity_exempt "${target_arch}" "${want}"; then
-          fail "ARCH-PARITY: the documented ${target_arch} exception for ${want} NO LONGER APPLIES -- ${want} is PRESENT in this image. Delete the '${target_arch}:${want})' arm from _parity_exempt in linux/scripts/06-packaging/smoke-runtime-image.sh; the table then asserts ${want} on ${target_arch} like on every other arch."
-        fi
-      elif _parity_exempt "${target_arch}" "${want}"; then
-        echo "  ~~   ${want} absent (documented ${target_arch} exception)"
-      else
-        fail "ARCH-PARITY: ${want} missing on ${target_arch} and NOT in the documented exception list -- ship it or record the exception in _parity_exempt"
-      fi
-    done
+    _parity_presence_verdicts "${target_arch}" "${prefixes}" "${wheels}"
 
     # Info only: untracked prefixes are the table's blind spot, and gating would need all three images.
     local untracked p

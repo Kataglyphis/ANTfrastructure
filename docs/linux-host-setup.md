@@ -139,6 +139,9 @@ Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for
   ```bash
   linux/scripts/setup-rootless-binfmt.sh --arches arm64,riscv64 --install-service
   ```
+
+`setup-rootless-binfmt.sh --help` lists the supported flags without printing script source.
+
   `--install-service` installs a systemd --user unit so re-registration is
   automatic. Without registration, foreign-arch execs fail with `exec format
   error` — including wrong-arch NATIVE tool sub-builds inside "no-emulation"

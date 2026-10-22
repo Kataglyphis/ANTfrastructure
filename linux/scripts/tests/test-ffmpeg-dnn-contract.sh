@@ -118,4 +118,49 @@ for _flag in nvenc nvdec cuvid ffnvcodec; do
 done
 rm -f "${_ff_stripped}"
 
+eval "$(t_fn_src "${DNN}" _ffmpeg_install_tensorflow_archive)"
+_archive_root="$(mktemp -d)"
+trap 'rm -rf "${_archive_root}"' EXIT
+mkdir -p "${_archive_root}/input/lib" "${_archive_root}/input/include/tensorflow/c"
+touch "${_archive_root}/input/lib/libtensorflow.so" "${_archive_root}/input/include/tensorflow/c/c_api.h"
+command tar -czf "${_archive_root}/valid.tar.gz" -C "${_archive_root}/input" lib include
+generate_pkgconfig_file() { printf 'fixture\n' > "$1"; }
+_prepare_archive() {
+  mkdir -p "${_archive_root}/$1/tensorflow-c"
+  cp "${_archive_root}/valid.tar.gz" "${_archive_root}/$1/sdk.tar.gz"
+}
+_install_archive() {
+  _ffmpeg_install_tensorflow_archive "${_archive_root}/$1" "${_archive_root}/$1/tensorflow-c" fixture sdk.tar.gz
+}
+t_case "a complete TensorFlow archive installs its advertised layout before writing its stamp"
+_prepare_archive complete
+t_assert_eq 0 "$(t_rc _install_archive complete)"
+t_assert_ok test -f "${_archive_root}/complete/tensorflow-c/.complete-fixture"
+t_assert_ok test -f "${_archive_root}/complete/tensorflow-c/lib/libtensorflow.so"
+t_assert_ok test -f "${_archive_root}/complete/tensorflow-c/include/tensorflow/c/c_api.h"
+t_assert_ok test -f "${_archive_root}/complete/tensorflow.pc"
+t_case "a corrupt TensorFlow archive is removed and cannot leave a completion stamp"
+_prepare_archive corrupt
+printf broken > "${_archive_root}/corrupt/sdk.tar.gz"
+t_assert_eq 1 "$(t_rc _install_archive corrupt)"
+t_assert_fails test -e "${_archive_root}/corrupt/sdk.tar.gz"
+t_assert_fails test -e "${_archive_root}/corrupt/tensorflow-c/.complete-fixture"
+t_case "a partial TensorFlow layout cannot be stamped complete"
+_prepare_archive partial
+command tar -czf "${_archive_root}/partial/sdk.tar.gz" -C "${_archive_root}/input" lib
+t_assert_eq 1 "$(t_rc _install_archive partial)"
+t_assert_fails test -e "${_archive_root}/partial/tensorflow-c/.complete-fixture"
+t_case "failed TensorFlow metadata generation cannot stamp an unusable SDK complete"
+_prepare_archive metadata-failure
+generate_pkgconfig_file() { return 1; }
+t_assert_eq 1 "$(t_rc _install_archive metadata-failure)"
+t_assert_fails test -e "${_archive_root}/metadata-failure/tensorflow-c/.complete-fixture"
+
+t_case "retrying an unstamped TensorFlow SDK replaces partial trees without nesting them"
+generate_pkgconfig_file() { printf 'fixture\n' > "$1"; }
+t_assert_eq 0 "$(t_rc _install_archive metadata-failure)"
+t_assert_ok test -f "${_archive_root}/metadata-failure/tensorflow-c/.complete-fixture"
+t_assert_ok test -f "${_archive_root}/metadata-failure/tensorflow-c/lib/libtensorflow.so"
+t_assert_fails test -d "${_archive_root}/metadata-failure/tensorflow-c/lib/lib"
+
 t_summary

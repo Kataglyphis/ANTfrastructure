@@ -32,12 +32,12 @@ cross_linker_search_flags() {
 
 # $1=array name  $2=cross link flags
 _tvm_emit_cross_args() {
-  local -n _tvm_emit_ref="$1"
+  local -n _tvm_emit_cross_args_result="$1"
   if cross_build_is_active; then
     append_cmake_cross_args "$1"
-    _tvm_emit_ref+=( -DUSE_ALTERNATIVE_LINKER=OFF )
+    _tvm_emit_cross_args_result+=( -DUSE_ALTERNATIVE_LINKER=OFF )
     if [ -n "${2:-}" ]; then
-      _tvm_emit_ref+=(
+      _tvm_emit_cross_args_result+=(
         "-DCMAKE_EXE_LINKER_FLAGS=${2}${CMAKE_EXE_LINKER_FLAGS:+ ${CMAKE_EXE_LINKER_FLAGS}}"
         "-DCMAKE_SHARED_LINKER_FLAGS=${2}${CMAKE_SHARED_LINKER_FLAGS:+ ${CMAKE_SHARED_LINKER_FLAGS}}"
         "-DCMAKE_MODULE_LINKER_FLAGS=${2}${CMAKE_MODULE_LINKER_FLAGS:+ ${CMAKE_MODULE_LINKER_FLAGS}}"
@@ -48,23 +48,23 @@ _tvm_emit_cross_args() {
 
 # $1=array name  $2=llvm dir  $3=llvm ignore paths
 _tvm_emit_llvm_args() {
-  local -n _tvm_emit_ref="$1"
+  local -n _tvm_emit_llvm_args_result="$1"
   if [ -n "${2:-}" ]; then
-    _tvm_emit_ref+=( -DLLVM_DIR="${2}" )
+    _tvm_emit_llvm_args_result+=( -DLLVM_DIR="${2}" )
     if [ -n "${3:-}" ]; then
-      _tvm_emit_ref+=( "-DCMAKE_IGNORE_PATH=${3}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
+      _tvm_emit_llvm_args_result+=( "-DCMAKE_IGNORE_PATH=${3}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}" )
     fi
   fi
 }
 
 # $1=array name; compiler_cache_launcher decides, not TVM's USE_CCACHE=AUTO.
 _tvm_emit_compiler_cache_args() {
-  local -n _tvm_emit_ref="$1"
+  local -n _tvm_emit_compiler_cache_args_result="$1"
   local _tvm_launcher
   compiler_cache_launcher_env 2>/dev/null || true
   _tvm_launcher="$(compiler_cache_launcher 2>/dev/null || true)"
   if [ -n "${_tvm_launcher}" ]; then
-    _tvm_emit_ref+=(
+    _tvm_emit_compiler_cache_args_result+=(
       "-DCMAKE_C_COMPILER_LAUNCHER=${_tvm_launcher}"
       "-DCMAKE_CXX_COMPILER_LAUNCHER=${_tvm_launcher}"
     )
@@ -89,20 +89,20 @@ _tvm_emit_cuda_companion_args() {
 
 # $1=array $2=use (0/1) $3..$5=Vulkan loader, headers, SPIRV-Tools; cross builds must pass the target's.
 _tvm_emit_vulkan_args() {
-  local -n _tvm_emit_ref="$1"
+  local -n _tvm_emit_vulkan_args_result="$1"
   if [ "${2}" -eq 1 ]; then
-    _tvm_emit_ref+=( -DUSE_VULKAN=ON )
+    _tvm_emit_vulkan_args_result+=( -DUSE_VULKAN=ON )
     if [ -n "${3:-}" ]; then
-      _tvm_emit_ref+=( -DVulkan_LIBRARY="${3}" )
+      _tvm_emit_vulkan_args_result+=( -DVulkan_LIBRARY="${3}" )
     fi
     if [ -n "${4:-}" ]; then
-      _tvm_emit_ref+=( -DVulkan_INCLUDE_DIR="${4}" )
+      _tvm_emit_vulkan_args_result+=( -DVulkan_INCLUDE_DIR="${4}" )
     fi
     if [ -n "${5:-}" ]; then
-      _tvm_emit_ref+=( -DVulkan_SPIRV_TOOLS_LIBRARY="${5}" )
+      _tvm_emit_vulkan_args_result+=( -DVulkan_SPIRV_TOOLS_LIBRARY="${5}" )
     fi
   else
-    _tvm_emit_ref+=( -DUSE_VULKAN=OFF )
+    _tvm_emit_vulkan_args_result+=( -DUSE_VULKAN=OFF )
   fi
 }
 
@@ -127,6 +127,36 @@ _tvm_require_options() {
 }
 
 # append_tvm_cmake_args --out ARRAY_NAME [--option VALUE ...]; locals are _tvm_-prefixed so no caller array collides.
+_tvm_parse_cmake_options() {
+  local -A _tvm_option_vars=(
+    [--out]=_tvm_out_name
+    [--python-module]=_tvm_python_module
+    [--build-type]=_tvm_build_type
+    [--cc]=_tvm_desired_cc
+    [--cxx]=_tvm_desired_cxx
+    [--llvm-cmake-value]=_tvm_llvm_cmake_value
+    [--llvm-dir]=_tvm_llvm_dir
+    [--llvm-ignore-paths]=_tvm_llvm_ignore_paths
+    [--use-vulkan]=_tvm_use_vulkan
+    [--use-cuda]=_tvm_use_cuda
+    [--use-opencl]=_tvm_use_opencl
+    [--spirv-tools-lib]=_tvm_spirv_tools_lib
+    [--cross-link-flags]=_tvm_cross_link_flags
+    [--vulkan-library]=_tvm_vulkan_library
+    [--vulkan-include]=_tvm_vulkan_include
+  )
+  local _tvm_target
+  while [ $# -gt 0 ]; do
+    _tvm_opt="$1"
+    [ $# -ge 2 ] || die "append_tvm_cmake_args: option '${_tvm_opt}' requires a value"
+    _tvm_target="${_tvm_option_vars[${_tvm_opt:-__empty__}]:-}"
+    [ -n "${_tvm_target}" ] || die "append_tvm_cmake_args: unknown option '${_tvm_opt}' (a typo here would otherwise silently emit the wrong TVM feature set)"
+    printf -v "${_tvm_target}" '%s' "$2"
+    _tvm_seen["${_tvm_opt}"]=1
+    shift 2
+  done
+}
+
 append_tvm_cmake_args() {
   local _tvm_out_name=""
   local _tvm_python_module=""
@@ -146,30 +176,7 @@ append_tvm_cmake_args() {
   local -A _tvm_seen=()
   local _tvm_opt
 
-  while [ $# -gt 0 ]; do
-    _tvm_opt="$1"
-    [ $# -ge 2 ] || die "append_tvm_cmake_args: option '${_tvm_opt}' requires a value"
-    case "${_tvm_opt}" in
-      --out)               _tvm_out_name="$2" ;;
-      --python-module)     _tvm_python_module="$2" ;;
-      --build-type)        _tvm_build_type="$2" ;;
-      --cc)                _tvm_desired_cc="$2" ;;
-      --cxx)               _tvm_desired_cxx="$2" ;;
-      --llvm-cmake-value)  _tvm_llvm_cmake_value="$2" ;;
-      --llvm-dir)          _tvm_llvm_dir="$2" ;;
-      --llvm-ignore-paths) _tvm_llvm_ignore_paths="$2" ;;
-      --use-vulkan)        _tvm_use_vulkan="$2" ;;
-      --use-cuda)          _tvm_use_cuda="$2" ;;
-      --use-opencl)        _tvm_use_opencl="$2" ;;
-      --spirv-tools-lib)   _tvm_spirv_tools_lib="$2" ;;
-      --cross-link-flags)  _tvm_cross_link_flags="$2" ;;
-      --vulkan-library)    _tvm_vulkan_library="$2" ;;
-      --vulkan-include)    _tvm_vulkan_include="$2" ;;
-      *) die "append_tvm_cmake_args: unknown option '${_tvm_opt}' (a typo here would otherwise silently emit the wrong TVM feature set)" ;;
-    esac
-    _tvm_seen["${_tvm_opt}"]=1
-    shift 2
-  done
+  _tvm_parse_cmake_options "$@"
 
   # A dropped option must fail HERE, not as a wrong -D flag hours into the compile.
   _tvm_require_options _tvm_seen

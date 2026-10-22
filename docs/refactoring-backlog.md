@@ -77,80 +77,29 @@ changes again.
 
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
-**`function-size.allow` and `code-complexity.allow` are the authority — do not
-transcribe them here.** Both are fully reviewed: **24** function rows over 80 lines
-and **59** `cc` rows over 15 (plus 1 nesting), every one carrying a verdict that says what its
-number IS. Read the reasons, not the numbers — and re-derive the counts from
-`verify_code_size.py` / `verify_code_complexity.py`, never from this line.
+**`function-size.allow` and `code-complexity.allow` are empty.** Both branch and nesting
+limits now hold without exceptions. Keep these lists empty and preserve gate coverage.
 
-**Four measurement facts that decided most of the remaining verdicts**, and that a
-future reader should not re-discover:
+The completed refactors separate shell orchestration from Python probes, metadata extraction,
+Meson emission, UV extras and dependency dispatch. GStreamer configuration separates host
+and target settings. Runtime checks separate row dispatch, version comparisons and tree
+verdicts. Storage admission, pressure recovery and archive enumeration retain their refusal
+paths. Vulkan installation separates download verification from archive placement and target
+builds. Regression and mutation suites exercise these boundaries.
 
-* **Heredoc payloads are not shell.** `assert_pinned_versions` is 44 lines of shell
-  around a **312**-line embedded Python program — top of the size queue and the
-  WORST candidate on it, because splitting the shell moves 44 lines and its `cc` is
-  **7**. Same shape: `assert_app_venv_parity` (20 around 72),
-  `_gst_xpy_write_config` (14 around 70), `ensure_meson_cross_file` (56 around a
-  37-line Meson-ini template).
-* **Much of the `cc` here is a TABLE, not tangle**: flag and subcommand parsers
-  (`parse_tvm_args` 13 options, `append_tvm_cmake_args` 15, `setup-dependencies.sh`
-  `main` 5 valued flags × 11 commands), feature tables (`_ffmpeg_probe_core_codecs`
-  is fifteen `if probe; then --enable-<codec>` lines and nothing else), and two rows
-  where the metric is simply literal — `dump_debug_info` (cc 23) holds one decision
-  (the `HOST_PYTHON` guard) and otherwise ~20 which-then-`--version` pairs each
-  swallowed, and `_torch_run_setup_py` counts the size of torch's build environment.
-* **Refusal matrices cost safety when flattened**: `_chain_prune_archived_logs`
-  (every branch is a refusal to delete the wrong thing), `_manifest_wrapper_gate`
-  (the cell that decides whether a manifest would MIX releases),
-  `install_target_packages`, `override_soundtouch_codeberg_checksum`.
-* **Precedence ladders where the ORDER is the contract**: `host_python_bin`,
-  `install_abseil_headers`' five download/extract rungs, `_detect_gcc_cxxabi_header`,
-  `configure_opencv_build_env`'s gstreamer-libdir search (the RV1-GST-PC ladder).
+The comment walker keeps its independent scan: importing `verify_code_size.scan` would omit
+patch directories and narrow comment coverage. Function extraction changes no scan scope.
 
-**One row still carries a KEEP verdict worth keeping:** `media_common_init` (29) —
-a module loader whose load ORDER is load-bearing. A table plus a loop would read
-shorter and say less; the ordering is the knowledge.
+### F2. Files over ~800 lines [L each]
 
-**The last outside-the-closure row closed on 2026-09-18.** `bump_versions.py
-main` (160) is now 32: `linux/scripts/tests/test-bump-versions.sh` — 40
-assertions over fake specs, in-process — was the coverage it was blocked on,
-then the split into `_parse_args` / `_lookup` / `_sweep` / `_safe_row` /
-`_report_row` / `_write_phase` and the reporting helpers. Its
-`function-size.allow` and `code-complexity.allow` rows were deleted rather than
-re-baselined. Every named row left in the two registers is inside the build
-closure.
+**`file-size.allow` is the authority; re-run the gate before choosing a target.** The wheelhouse,
+Vulkan driver, chain driver and runtime test driver now fit below the limit. Their libraries
+remain in the scan. Explicit sourcing, SDK COPY wiring and behavioral suites cover the splits.
 
-**Two rows were given a "do not do the obvious thing" verdict; one is a row today.**
-`verify_comment_size.blocks` (nesting 6) is not in `code-complexity.allow`:
-`_walk_scan` holds the walk and `blocks` measures cc 9, nesting 4 (2026-09-25;
-the one nesting row is `smoke-android.sh check_ndk`, 7). Its verdict still stands
-for the walk: importing `verify_code_size.scan` would NARROW the scan by
-`SKIP_DIRS 'patches'` (the gate's own `SCAN` comment says why), which changes the
-gate's scope and needs a fresh `comment-size.allow` baseline. And
-`verify_package_names.load_arch` (17): every branch is a way the gate must not
-produce a FALSE verdict, the all-or-nothing partial-fetch refusal above all.
-
-### F2. Files over ~800 lines [L each, low priority]
-
-**`file-size.allow` is the authority — do not transcribe it here.** The gate
-prints `files: 13 over 800 lines; 13 frozen`; read it there. All rows were
-reviewed and all but the one historical split are NOT split targets, each with a
-reason a stranger can act on.
-
-**Two verdicts worth not re-litigating.** `build-app-wheelhouse.sh` is the
-near-miss: the stage suites extract blocks from it **by line range**, so a file
-split silently re-aims them. And `smoke-runtime-image.sh` — which every earlier
-version of this entry nominated as THE one to split — is an explicit **NO**: its
-99 functions (2026-09-25; 91 on 2026-09-18) are the `check_*` / `_probe_*`
-assertions and the probe-and-verdict layer they share, all over one image through
-one `_rt_run` under one `main()`. Its
-length is the number of assertions it makes about the shipped bytes, and that
-number growing is the gate succeeding.
-
-**`lib/app-packaging.sh` crossed 800 on 2026-09-17** (CON2's scope probe + CON6's
-finish-args block, 797 → 851); the row carries the NOT-a-split reason and the seam
-that kept it that way. Record in
-[`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
+The remaining rows are the version updater, media Dockerfile and runtime smoke driver. Earlier
+KEEP verdicts record the constraints a split must preserve; they do not prohibit improvements.
+The smoke must still call every assertion, version specs must keep their offline test seams,
+and Dockerfile changes must preserve narrow build-input closures and cache order.
 
 **Standing context, not a block:** `git push` is the agent's (2026-09-06) via
 `gh auth setup-git` + HTTPS remotes, and twelve of the fifteen `*.sh` files in

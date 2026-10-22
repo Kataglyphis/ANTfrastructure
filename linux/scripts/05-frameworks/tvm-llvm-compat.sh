@@ -3,6 +3,25 @@ set -euo pipefail
 
 # LLVM's -isystem include dir can carry a cxxabi.h that clashes with libstdc++'s; a -I shim forwards to GCC's.
 
+_gcc_compiler_prefix() {
+  local real_cxx="$1" real_cxx_path="$1"
+  if [ -x "$real_cxx" ]; then
+    real_cxx_path="$real_cxx"
+  elif command -v "$real_cxx" >/dev/null 2>&1; then
+    real_cxx_path="$(command -v "$real_cxx")"
+  fi
+  if command -v readlink >/dev/null 2>&1; then
+    real_cxx_path="$(readlink -f "$real_cxx_path" 2>/dev/null || echo "$real_cxx_path")"
+  fi
+
+  local gcc_prefix=""
+  case "$real_cxx_path" in
+    */bin/*) gcc_prefix="${real_cxx_path%/bin/*}" ;;
+  esac
+
+  printf '%s' "${gcc_prefix}"
+}
+
 # Prints GCC's libstdc++ cxxabi.h for the real g++, or nothing.
 _detect_gcc_cxxabi_header() {
   local real_cxx="$1"
@@ -20,20 +39,8 @@ _detect_gcc_cxxabi_header() {
   # Last-resort safety net (matches versions.env GCC_VERSION major).
   [ -n "$gcc_major" ] || gcc_major="16"
 
-  local real_cxx_path="${real_cxx}"
-  if [ -x "$real_cxx" ]; then
-    real_cxx_path="$real_cxx"
-  elif command -v "$real_cxx" >/dev/null 2>&1; then
-    real_cxx_path="$(command -v "$real_cxx")"
-  fi
-  if command -v readlink >/dev/null 2>&1; then
-    real_cxx_path="$(readlink -f "$real_cxx_path" 2>/dev/null || echo "$real_cxx_path")"
-  fi
-
-  local gcc_prefix=""
-  case "$real_cxx_path" in
-    */bin/*) gcc_prefix="${real_cxx_path%/bin/*}" ;;
-  esac
+  local gcc_prefix
+  gcc_prefix="$(_gcc_compiler_prefix "${real_cxx}")"
 
   local -a cxxabi_candidates=(
     "/usr/include/c++/${gcc_full}/cxxabi.h"

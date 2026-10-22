@@ -277,7 +277,7 @@ t_case "torch twin: its CMAKE_ARGS name only the target 3.14t, never the GIL pas
 # shellcheck disable=SC2034  # the globals below are read by the eval'd build-app-wheelhouse.sh functions
 _twin_args() (
   _wh="${SCRIPTS}/05-frameworks/torch/build-app-wheelhouse.sh"
-  for _f in append_common_cross_cmake_args _torch_cmake_args _torch_build_free_threaded_wheel; do
+  for _f in _wheelhouse_start_twin _wheelhouse_resolve_target_python append_common_cross_cmake_args _torch_cmake_args _torch_build_free_threaded_wheel; do
     eval "$(t_fn_src "${_wh}" "${_f}" 2>/dev/null)"
   done
   eval "$(t_fn_src "${SCRIPTS}/01-core/common.sh" shell_quote_args)"
@@ -351,7 +351,7 @@ t_assert_contains "${_onnx_fn}" 'ft_twin_start onnxruntime '
 t_assert_contains "${_onnx_fn}" '"${output_dir}/wheels-free-threaded"'
 t_assert_contains "$(t_fn_src "${SCRIPTS}/03-media/build/pyav/build-pyav.sh" pyav_build_free_threaded_wheel)" 'ft_twin_start av '
 t_assert_contains "$(t_fn_src "${SCRIPTS}/05-frameworks/tvm-python.sh" _tvm_stage_ffi_wheel_free_threaded)" 'ft_twin_start apache-tvm-ffi '
-t_assert_contains "$(t_fn_src "${SCRIPTS}/05-frameworks/torch/build-app-wheelhouse.sh" _iree_package_free_threaded_wheels)" 'ft_twin_wanted "iree-base-${_proj}"'
+t_assert_contains "$(t_fn_src "${SCRIPTS}/05-frameworks/torch/iree-wheelhouse.sh" _iree_package_free_threaded_wheels)" 'ft_twin_wanted "iree-base-${_proj}"'
 _ort_steps=0
 for _s in "${ORT_BUILD}"/30-build-native*.sh; do
   _ort_steps=$((_ort_steps + 1))

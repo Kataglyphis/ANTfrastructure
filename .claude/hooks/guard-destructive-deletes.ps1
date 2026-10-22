@@ -28,11 +28,7 @@ function Write-Decision {
     exit 0
 }
 
-# ------------------------------------------------------------- predicates ---
-# Verbs are matched on the text with QUOTED SPANS REMOVED, so that reading
-# about a delete (grep 'Remove-Item', a doc quoting a command) is not itself
-# treated as one. Paths are matched on the FULL text, because the path of a
-# real delete usually lives inside those quotes.
+# Quoted prose must not count as a delete, but quoted paths must remain visible.
 
 $verbPattern =
     '(?<!git )(?:\bremove-item\b|\bremove-itemproperty\b|\bclear-content\b|' +

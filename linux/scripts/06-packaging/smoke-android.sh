@@ -53,6 +53,36 @@ check_adb() {
   echo ""
 }
 
+_check_ndk_compiler() {
+  local toolchain_dir="$1" target_arch="$2"
+  local cc="${toolchain_dir}/bin/${target_arch}-linux-android${ANDROID_API_LEVEL}-clang"
+  if [ -x "${cc}" ]; then
+    pass "NDK clang for ${target_arch}: ${cc}"
+    # The NDK clang is an x86_64 host binary, so it runs everywhere; the object is target-arch.
+    local ndk_tmp ndk_machine ndk_want
+    ndk_tmp="$(mktemp -d)"
+    if printf 'int f(void){return 1;}\n' | "${cc}" -x c - -c -o "${ndk_tmp}/a.o" 2>/dev/null; then
+      ndk_machine="$(smoke_elf_machine_of "${ndk_tmp}/a.o" || true)"
+      # smoke-common's arch map takes OCI names; the loop keys are uname names.
+      ndk_want="$(smoke_elf_machine_grep "$(smoke_host_arch "${target_arch}")" 2>/dev/null || true)"
+      if [ -z "${ndk_want}" ]; then
+        # Never reach `case ... in *""*)`: it matches anything and would pass silently.
+        fail "NDK clang ${target_arch}: no ELF-machine mapping for this arch, object not verified"
+      else
+        case "${ndk_machine}" in
+          *"${ndk_want}"*)
+            pass "NDK clang ${target_arch}: compiles, object ELF machine=${ndk_machine}" ;;
+          *)
+            fail "NDK clang ${target_arch}: object ELF machine '${ndk_machine}' does not match target" ;;
+        esac
+      fi
+    else
+      fail "NDK clang for ${target_arch} exists but cannot compile a trivial object"
+    fi
+    rm -rf "${ndk_tmp}"
+  fi
+}
+
 check_ndk() {
   # 4. NDK
   echo "--- NDK ---"
@@ -72,32 +102,7 @@ check_ndk() {
     if [ -d "${toolchain_dir}" ]; then
       pass "NDK LLVM toolchain present"
       for target_arch in aarch64 x86_64 riscv64; do
-        local cc="${toolchain_dir}/bin/${target_arch}-linux-android${ANDROID_API_LEVEL}-clang"
-        if [ -x "${cc}" ]; then
-          pass "NDK clang for ${target_arch}: ${cc}"
-          # The NDK clang is an x86_64 host binary, so it runs everywhere; the object is target-arch.
-          local ndk_tmp ndk_machine ndk_want
-          ndk_tmp="$(mktemp -d)"
-          if printf 'int f(void){return 1;}\n' | "${cc}" -x c - -c -o "${ndk_tmp}/a.o" 2>/dev/null; then
-            ndk_machine="$(smoke_elf_machine_of "${ndk_tmp}/a.o" || true)"
-            # smoke-common's arch map takes OCI names; the loop keys are uname names.
-            ndk_want="$(smoke_elf_machine_grep "$(smoke_host_arch "${target_arch}")" 2>/dev/null || true)"
-            if [ -z "${ndk_want}" ]; then
-              # Never reach `case ... in *""*)`: it matches anything and would pass silently.
-              fail "NDK clang ${target_arch}: no ELF-machine mapping for this arch, object not verified"
-            else
-              case "${ndk_machine}" in
-                *"${ndk_want}"*)
-                  pass "NDK clang ${target_arch}: compiles, object ELF machine=${ndk_machine}" ;;
-                *)
-                  fail "NDK clang ${target_arch}: object ELF machine '${ndk_machine}' does not match target" ;;
-              esac
-            fi
-          else
-            fail "NDK clang for ${target_arch} exists but cannot compile a trivial object"
-          fi
-          rm -rf "${ndk_tmp}"
-        fi
+        _check_ndk_compiler "${toolchain_dir}" "${target_arch}"
       done
     else
       fail "NDK LLVM toolchain not found at ${toolchain_dir}"
