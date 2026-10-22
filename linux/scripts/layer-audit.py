@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-# layer-audit.py [--json] [--find PREFIX] MANIFEST_JSON BLOB_DIR
-# What an image stores, layer by layer: unpacked size, file versions a later layer deletes or replaces (bytes kept
-# but dead), and the layers holding PREFIX. MANIFEST_JSON is `nerdctl image inspect --mode=native IMAGE`;
-# BLOB_DIR is the content store's blobs/sha256 (rootless: ~/.local/share/containerd/io.containerd.content.v1.content/blobs/sha256).
+# Dead bytes stay invisible to `docker history`; this counts them per layer (usage: --help).
 import argparse
 import collections
 import json

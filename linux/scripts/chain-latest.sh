@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# chain-latest.sh [--plan|--run]: the :latest multi-arch chain as a systemd user unit, bounded by RuntimeMaxSec.
-#   (none)  refuse on low disk or memory or a running unit, refresh the worktree, start the unit
-#   --plan  print what a start would do; start nothing
-#   --run   the unit's body: a memory sampler, then build-cross-chain.sh (the unit calls it, not you)
-# Settings: linux/scripts/chain-latest.env. Logs and the memory trace: <worktree>/out/.
+# The :latest chain as a bounded systemd user unit; a second one would share the host's disk and RAM.
 set -u
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

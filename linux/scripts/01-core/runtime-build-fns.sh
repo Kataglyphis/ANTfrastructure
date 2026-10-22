@@ -668,7 +668,7 @@ runtime_shared_usage_options() {
   --image-prefix TAG            Prefix for built wrapper image tags
   --dry-run                    Print build commands without executing them
   --parallel-archs              Build per-architecture images in parallel
-  --max-parallel-archs N        Max concurrent arch builds (default: 4)
+  --max-parallel-archs N        Max concurrent arch builds (default: nproc, 4 if unknown)
   --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
   --architectures LIST          Alias for --target-arches
   --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
