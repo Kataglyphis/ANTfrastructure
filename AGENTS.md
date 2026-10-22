@@ -882,6 +882,8 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
     map a `libonnxruntime*` soname to a distro package.
   - The app venv's ORT is the chain wheel byte for byte (`ort-venv-census.py`); a missing chain
     wheel fails the torch stage, with no PyPI fallback.
+  - Linux app bundles exclude PyPI ORT providers before exporting the lock and pass the chain
+    wheel to the first requirements install; a later replacement cannot rescue a failed resolver.
   - The census's ORT fingerprint is a whole NUL-terminated `__FILE__` source path, never the bare
     `onnxruntime/core/` directory: consumers name that directory as data (OxidANT's loader,
     FFmpeg's configure line) and must stay importers. A file that DEFINES `OrtGetApiBase` (ELF
@@ -963,7 +965,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   | every `git commit` | `linux/host-config/git-hooks/pre-commit` — the 20 cheap whole-tree slugs, `shellcheck` + the warning ratchet on STAGED shell, the doc gates only when `docs/` is staged, the derived doc numbers when a page that quotes them is staged, and the mutation gate on at most `PRECOMMIT_MUTATION_CAP` (default 16) staged entries, newest first | **8.0 s** one-file, **27.2 s** for a 43-file commit (measured 2026-09-04) |
   | every `git push` | `linux/host-config/git-hooks/pre-push` — the mutation gate's `--stale-check` over the whole manifest, then `--changed` for real ([`code-quality-tooling.md` § The pre-push hook](docs/code-quality-tooling.md#the-pre-push-hook)) | the staleness pass: 0.06 s over 378 entries (measured 2026-09-05); `--changed` depends on the push |
   | before a rebuild, by hand | `make preflight` — all slugs | minutes (the secret scan alone is ~170 s) |
-  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as four `PREFLIGHT_MUTATION_SHARD=K/4` jobs that together prove every entry | CI |
+  | every push | `.github/workflows/linux-x64.yml` — `preflight.sh` with `PREFLIGHT_SKIP=mutations`, plus the `mutations` slug as eight `PREFLIGHT_MUTATION_SHARD=K/8` jobs that together prove every entry | CI |
 
   Install the hooks once with **`make hooks`**: it sets `core.hooksPath` rather than copying into
   `.git/hooks`, so both hooks are version-controlled and arrive with a clone.
@@ -974,7 +976,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   prints how many of how many it ran. Why it is capped, and what it measured before:
   [`code-quality-tooling.md` § The pre-commit hook's cost budget](docs/code-quality-tooling.md#the-pre-commit-hooks-cost-budget).
 
-  CI never samples: its four `mutations` jobs split the manifest with `--shard` and together prove
+  CI never samples: its eight `mutations` jobs split the manifest with `--shard` and together prove
   every entry. When the gate gets slow, fix the suite that got slow; never raise a timeout or
   sample in CI. The 2026-09-23 timeout and the layout:
   [`code-quality-tooling.md` § The mutation gate in CI, sharded](docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded).

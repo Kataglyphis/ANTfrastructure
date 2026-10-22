@@ -1,5 +1,37 @@
 [
  {
+  "id": "python.app-bundle.exclude-provider-before-resolver",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "export_args+=(--no-emit-package \"${provider}\")",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-app-packages.sh",
+  "why": "a PyPI ORT provider in the exported requirements fails resolution on an ABI without a published wheel before the chain provider can replace it"
+ },
+ {
+  "id": "python.app-bundle.chain-provider-in-first-resolver",
+  "target": "linux/scripts/06-packaging/python-app-bundle.sh",
+  "find": "    --requirement \"${work}/requirements.lock.txt\" \"${ort}\" || return 1",
+  "replace": "    --requirement \"${work}/requirements.lock.txt\" || return 1",
+  "test": "bash linux/scripts/tests/test-python-app-packages.sh",
+  "why": "the first dependency transaction must resolve against the explicit chain wheel while retaining the other locked dependencies"
+ },
+ {
+  "id": "mutations.baseline-diagnostic-head",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "lines[:3] + [\"...\"] + lines[-3:]",
+  "replace": "lines[-6:]",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a long assertion report must retain the first failure instead of hiding it behind the final lines of a multiline comparison"
+ },
+ {
+  "id": "mutations.baseline-diagnostic-bounded",
+  "target": "docs/scripts/verify_mutations.py",
+  "find": "line[:500] for line in excerpt",
+  "replace": "line for line in excerpt",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "a single very long baseline line must not turn every failed entry sharing that baseline into an unbounded repeated CI log"
+ },
+ {
   "id": "runtime-smoke.gates-only-exit",
   "target": "linux/scripts/build-runtime-manifest.sh",
   "find": "  _manifest_exit_after_gates_if_requested\n",
@@ -11129,15 +11161,15 @@
   "find": " \\\n  ${PREFLIGHT_MUTATION_SHARD:+--shard \"${PREFLIGHT_MUTATION_SHARD}\"}",
   "replace": "",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-  "why": "without the pass-through every CI mutations job proves the WHOLE manifest, four times over, into the timeout the split exists to avoid"
+  "why": "without the pass-through every CI mutations job proves the WHOLE manifest, eight times over, into the timeout the split exists to avoid"
  },
  {
   "id": "mutations.ci-shards-cover-the-manifest",
   "target": ".github/workflows/linux-x64.yml",
-  "find": "        shard: [0, 1, 2, 3]",
-  "replace": "        shard: [0, 1, 2]",
+  "find": "        shard: [0, 1, 2, 3, 4, 5, 6, 7]",
+  "replace": "        shard: [0, 1, 2, 3, 4, 5, 6]",
   "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-  "why": "a matrix that stops short of N-1 leaves a quarter of the manifest proven by nobody, green"
+  "why": "a matrix that stops short of N-1 leaves an eighth of the manifest proven by nobody, green"
  },
  {
   "id": "mutations.ci-preflight-skips-the-slug",

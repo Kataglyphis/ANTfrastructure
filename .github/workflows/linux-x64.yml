@@ -37,7 +37,7 @@ jobs:
       - name: Run preflight checks
         run: PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh
 
-  # The mutations slug (docs/scripts/verify_mutations.py) in four shards. See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
+  # The mutations slug (docs/scripts/verify_mutations.py) in eight shards. See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
   mutations:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Same setup as preflight: without pytest and PyYAML the baselines fail unmutated.
@@ -56,5 +56,5 @@ jobs:
         run: pip install --quiet pytest
       - name: Install PyYAML (renovate_audit.py's real YAML parser)
         run: pip install --quiet pyyaml
-      - name: Mutation gate, shard ${{ matrix.shard }} of 4
-        run: PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/4" bash linux/scripts/preflight.sh
+      - name: Mutation gate, shard ${{ matrix.shard }} of 8
+        run: PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/8" bash linux/scripts/preflight.sh

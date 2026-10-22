@@ -12,6 +12,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — CI proofs and Python app resolution
+
+- Capacity-test fixtures isolate the disk and memory refusals on small CI runners.
+  Eight mutation shards retain every proof within the existing 30-minute budget;
+  a complete 532-entry shard previously passed its gate at the deadline.
+  Failed baselines retain a bounded first diagnostic and final summary for diagnosis.
+- Linux app bundles exclude PyPI ORT providers before exporting locked requirements
+  and resolve the chain wheel in the first install transaction. This avoids the missing
+  CPython 3.15 PyPI wheel failure while retaining other locked dependencies and GenAI.
+
 ## 2026-10-22 — shared wrapper build and shipping
 
 - Image and rootfs wrappers share one build, smoke-verdict and ship sequence. Regression

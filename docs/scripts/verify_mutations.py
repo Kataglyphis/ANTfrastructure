@@ -181,8 +181,10 @@ def passes(cmd, root, timeout):
         skip = [l.strip() for l in output.splitlines() if "SKIP [" in l][:1]
         return None, (skip or ["the suite exited 77"])[0]
     if rc != 0:
-        tail = [l for l in output.strip().splitlines() if l.strip()][-3:]
-        return False, "exited rc=%s; output tail: %s" % (rc, " | ".join(tail) or "<empty>")
+        lines = [line for line in output.strip().splitlines() if line.strip()]
+        excerpt = lines if len(lines) <= 6 else lines[:3] + ["..."] + lines[-3:]
+        return False, "exited rc=%s; output excerpt: %s" % (
+            rc, " | ".join(line[:500] for line in excerpt) or "<empty>")
     return True, None
 
 
