@@ -42,6 +42,9 @@ _uv_calls_env() {
 # The original harness is this one with the defaults the first four cases used.
 _uv_calls() { _uv_calls_env x86_64 "" "$@"; }
 
+# _torch_calls <importable modules>: the uv calls for one torch wheel, with the named modules importable.
+_torch_calls() { _uv_calls_env x86_64 "$1" "torch-2.13.0-cp314-cp314-linux_x86_64.whl"; }
+
 t_case "no local wheels means uv sync's result is kept untouched"
 # Weak by construction: it cannot tell an early return from nothing to do.
 t_assert_eq "" "$(_uv_calls)" "an empty wheel dir must produce no uv call at all"
@@ -63,21 +66,18 @@ t_assert_contains "${_out}" "iree" "IREE likewise"
 
 
 t_case "a torch wheel backfills exactly the deps that do NOT import"
-_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock" \
-        "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
+_out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock")"
 # Match the uv call, not the unstubbed printf notice, which survives the install being deleted.
 _bf="$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl')"
 t_assert_contains "${_bf}" "fsspec" "fsspec does not import, so it must be backfilled"
 t_assert_contains "${_bf}" "typing-extensions" "the PACKAGE name is installed, not the module name"
 
 t_case "nothing is backfilled when every torch dep already imports"
-_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions setuptools" \
-        "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
+_out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions setuptools")"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl' | grep -v -e 'ml_dtypes')"
 
 t_case "setuptools is backfilled when the torch venv cannot import it (c8192781)"
-_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions" \
-        "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
+_out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions")"
 t_assert_contains "${_out}" "uv pip install --no-deps setuptools==84.0.0" "torch declares setuptools unconditionally; riscv64's sync never installed it"
 
 t_case "a non-torch wheel set never enters the backfill at all"
@@ -116,8 +116,7 @@ _rc=0; _T_CENSUS_RC=1 _uv_calls "onnxruntime_dnnl-1.30.0-cp314-cp314-linux_x86_6
 t_assert_eq 1 "${_rc}" "reconcile_local_wheels must fail, not install over an unknown venv"
 
 t_case "a torch wheel triggers the shadowing purge"
-_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions" \
-        "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
+_out="$(_torch_calls "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions")"
 t_assert_contains "${_out}" "torch" "the torch wheel itself is force-reinstalled"
 
 t_summary
