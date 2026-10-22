@@ -42,9 +42,9 @@ function Write-TestSummary {
     }
     # A skipped suite is a failed gate, or a host without Pester reports a green "0 tests" run.
     if (@($Skipped).Count -gt 0) {
-        Write-Host "  $(@($Skipped).Count) suite(s) SKIPPED (Pester >= 5.0 required):" -ForegroundColor Red
+        Write-Host "  $(@($Skipped).Count) suite(s) SKIPPED (Pester >= 6.2 required):" -ForegroundColor Red
         foreach ($s in @($Skipped)) { Write-Host "    $s" -ForegroundColor Red }
-        Write-Host '  Install it with: Install-Module Pester -MinimumVersion 5.7 -Scope CurrentUser -Force -SkipPublisherCheck' -ForegroundColor Red
+        Write-Host '  Install it with: Install-Module Pester -MinimumVersion 6.2 -Scope CurrentUser -Force -SkipPublisherCheck' -ForegroundColor Red
     }
     if (@($Broken).Count -gt 0) {
         Write-Host "  $(@($Broken).Count) suite(s) wrote no tallies and did not finish: $($Broken -join ', ')" -ForegroundColor Red
@@ -97,7 +97,7 @@ $pesterFailures = 0
 $pesterPassed = 0
 $pesterTotal = 0
 $skippedSuites = @()
-$pesterMinVersion = [version]'5.0'
+$pesterMinVersion = [version]'6.2'
 $pesterAvailable = $null -ne (Get-Module -ListAvailable -Name Pester |
         Where-Object { $_.Version -ge $pesterMinVersion } | Select-Object -First 1)
 $harnessFiles = @()
