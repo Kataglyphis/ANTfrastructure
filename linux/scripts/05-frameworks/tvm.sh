@@ -110,14 +110,19 @@ source "${SCRIPT_DIR}/tvm-llvm-compat.sh"
 
 # Parse CLI options into main()'s option locals.
 parse_tvm_args() {
+  # Value options take the next word; the flags below set a fixed value.
+  local -A _tvm_value_var=(
+    [k--workdir]=workdir [k--prefix]=prefix [k--ref]=ref [k--build-type]=build_type
+    [k--llvm-config]=llvm_config [k--llvm-dir]=llvm_dir
+  )
   while [ $# -gt 0 ]; do
+    if [[ -n "${_tvm_value_var[k$1]+x}" ]]; then
+      [ $# -ge 2 ] || die "$1 expects a value"
+      printf -v "${_tvm_value_var[k$1]}" '%s' "$2"
+      shift 2
+      continue
+    fi
     case "$1" in
-      --workdir)     workdir="$2"; shift 2 ;;
-      --prefix)      prefix="$2"; shift 2 ;;
-      --ref)         ref="$2"; shift 2 ;;
-      --build-type)  build_type="$2"; shift 2 ;;
-      --llvm-config) llvm_config="$2"; shift 2 ;;
-      --llvm-dir)    llvm_dir="$2"; shift 2 ;;
       --use-vulkan)  use_vulkan=1; shift ;;
       --use-cuda)   use_cuda=1; shift ;;
       --use-opencl) use_opencl=1; shift ;;
