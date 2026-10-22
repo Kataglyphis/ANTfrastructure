@@ -101,26 +101,38 @@ runtime_prepare_local_context_chain() {
   RUNTIME_CONTEXT_WORKDIR="$(mktemp -d "${RUNTIME_CONTEXT_ROOT}/runtime-flow.XXXXXX")"
 }
 
-# A hard-killed run leaks its whole workdir; age-based so a concurrent chain's young workdir survives.
-_runtime_sweep_orphaned_contexts() {
-  local keep_hours="${RUNTIME_CONTEXT_KEEP_HOURS:-24}"
+# _context_sweep_orphaned <root> <glob> <keep_hours> <live> <label>: a hard-killed run leaks its whole workdir, so
+# reclaim the trees older than the cutoff (age-based: a concurrent chain's young workdir survives; <live> is ours).
+_context_sweep_orphaned() {
+  local root="$1" glob="$2" keep_hours="$3" live="$4" label="$5"
   local d freed=0
-  [ -d "${RUNTIME_CONTEXT_ROOT}" ] || return 0
+  [ -d "${root}" ] || return 0
   while IFS= read -r d; do
     [ -n "${d}" ] || continue
-    [ "${d}" = "${RUNTIME_CONTEXT_WORKDIR:-}" ] && continue
-    log "[context] reclaiming orphaned stage-context $(basename "${d}") ($(du -sh "${d}" 2>/dev/null | cut -f1 || true), older than ${keep_hours}h)"
+    [ "${d}" = "${live}" ] && continue
+    log "[context] reclaiming orphaned ${label} $(basename "${d}") (older than ${keep_hours}h)"
     rm -rf "${d}" && freed=$((freed + 1))
-  done < <(find "${RUNTIME_CONTEXT_ROOT}" -mindepth 1 -maxdepth 1 -type d \
-             -name 'runtime-flow.*' -mmin "+$((keep_hours * 60))" 2>/dev/null || true)
-  [ "${freed}" -eq 0 ] || log "[context] reclaimed ${freed} orphaned stage-context tree(s)"
+  done < <(find "${root}" -mindepth 1 -maxdepth 1 -type d -name "${glob}" \
+             -mmin "+$((keep_hours * 60))" 2>/dev/null || true)
+  [ "${freed}" -eq 0 ] || log "[context] reclaimed ${freed} orphaned ${label} tree(s)"
+}
+
+# _context_cleanup_workdir <var>: removes the workdir a run recorded in <var>, then clears it.
+_context_cleanup_workdir() {
+  local -n _workdir="$1"
+  if [ -n "${_workdir:-}" ] && [ -d "${_workdir}" ]; then
+    rm -rf "${_workdir}"
+  fi
+  _workdir=""
+}
+
+_runtime_sweep_orphaned_contexts() {
+  _context_sweep_orphaned "${RUNTIME_CONTEXT_ROOT}" 'runtime-flow.*' "${RUNTIME_CONTEXT_KEEP_HOURS:-24}" \
+    "${RUNTIME_CONTEXT_WORKDIR:-}" "stage-context"
 }
 
 runtime_cleanup_local_context_chain() {
-  if [ -n "${RUNTIME_CONTEXT_WORKDIR:-}" ] && [ -d "${RUNTIME_CONTEXT_WORKDIR}" ]; then
-    rm -rf "${RUNTIME_CONTEXT_WORKDIR}"
-  fi
-  RUNTIME_CONTEXT_WORKDIR=""
+  _context_cleanup_workdir RUNTIME_CONTEXT_WORKDIR
 }
 
 runtime_use_local_stage_context_outputs() {

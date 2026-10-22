@@ -74,18 +74,9 @@ cross_local_handoff_enabled() {
   declare -F export_image_to_oci_layout >/dev/null 2>&1
 }
 
-# Age-based, like _runtime_sweep_orphaned_contexts: a live run's workdir is younger than the cutoff.
 _cross_sweep_orphaned_contexts() {
-  local keep_hours="${CROSS_CONTEXT_KEEP_HOURS:-24}" d freed=0
-  [ -d "${CROSS_CONTEXT_ROOT}" ] || return 0
-  while IFS= read -r d; do
-    [ -n "${d}" ] || continue
-    [ "${d}" = "${CROSS_CONTEXT_WORKDIR:-}" ] && continue
-    log "[context] reclaiming orphaned cross stage-context $(basename "${d}") (older than ${keep_hours}h)"
-    rm -rf "${d}" && freed=$((freed + 1))
-  done < <(find "${CROSS_CONTEXT_ROOT}" -mindepth 1 -maxdepth 1 -type d \
-             -name 'cross-flow.*' -mmin "+$((keep_hours * 60))" 2>/dev/null || true)
-  [ "${freed}" -eq 0 ] || log "[context] reclaimed ${freed} orphaned cross stage-context tree(s)"
+  _context_sweep_orphaned "${CROSS_CONTEXT_ROOT}" 'cross-flow.*' "${CROSS_CONTEXT_KEEP_HOURS:-24}" \
+    "${CROSS_CONTEXT_WORKDIR:-}" "cross stage-context"
 }
 
 cross_ensure_local_context_workdir() {
@@ -100,10 +91,7 @@ cross_ensure_local_context_workdir() {
 }
 
 cross_cleanup_local_context_workdir() {
-  if [ -n "${CROSS_CONTEXT_WORKDIR:-}" ] && [ -d "${CROSS_CONTEXT_WORKDIR}" ]; then
-    rm -rf "${CROSS_CONTEXT_WORKDIR}"
-  fi
-  CROSS_CONTEXT_WORKDIR=""
+  _context_cleanup_workdir CROSS_CONTEXT_WORKDIR
 }
 
 cross_stage_context_dir() {
