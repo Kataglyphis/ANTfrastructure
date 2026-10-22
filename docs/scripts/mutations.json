@@ -1,5 +1,13 @@
 [
  {
+  "id": "lib.cmake-build-empty-positional",
+  "target": "linux/scripts/lib/cmake-build.sh",
+  "find": "if [[ -n \"$1\" && -n \"${_value_var[$1]+x}\" ]]; then",
+  "replace": "if [[ -n \"${_value_var[$1]+x}\" ]]; then",
+  "test": "bash linux/scripts/tests/test-lib-smoke.sh",
+  "why": "an empty positional preset must retain its array entry and caller default instead of aborting on an empty associative-array key"
+ },
+ {
   "id": "docs-site.chrome-close-failed-initialization",
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "    try { await close(); }",

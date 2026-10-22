@@ -255,6 +255,10 @@ source, and end up with the *real* logging module rather than the fallbacks.
 | `CMAKE_BUILD_PREBUILD_LABEL` | label logged around the pre-build hook | — |
 | `CMAKE_BUILD_USAGE_INTRO` | one-line description shown in `--help` | — |
 
+An empty positional preset remains in `CMAKE_BUILD_POSITIONAL` and uses the normal
+caller default. The value-option table is consulted only for a nonempty argument;
+Bash associative arrays reject an empty key.
+
 **Vulkan selection — `_cmake_build_resolve_vulkan`.** Three sources can name a
 Vulkan SDK, and they are resolved in one place: an explicit `--vulkan-version` /
 `--vulkan-setup-script` / `--vulkan-sdk` flag overwrites whatever the image

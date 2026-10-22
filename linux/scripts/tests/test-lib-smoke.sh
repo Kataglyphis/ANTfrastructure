@@ -54,6 +54,14 @@ _out="$(bash -c "set -euo pipefail
   printf '%s' \"\${PRESET}\"")"
 t_assert_eq "my-preset" "${_out}"
 
+t_case "cmake_build_parse_args: an empty positional preserves the empty preset"
+_out="$(bash -c "set -euo pipefail
+  source '${LIB_DIR}/cmake-build.sh'
+  cmake_build_parse_args ''
+  printf '%s|%s|%s' \"\${PRESET}\" \"\${#CMAKE_BUILD_POSITIONAL[@]}\" \
+    \"\${CMAKE_BUILD_POSITIONAL[0]}\"")"
+t_assert_eq "|1|" "${_out}"
+
 
 # Vulkan: flag, then env, then the caller default, adopted only if its setup script exists.
 

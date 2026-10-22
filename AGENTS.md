@@ -588,6 +588,9 @@ was calling it. The rule and the mechanism: § Contributing Reusable Work Here a
 
 ## Shell safety conventions (five bug classes, all found live 2026-08-08)
 
+Guard empty arguments before associative-array lookups; an empty positional CMake
+preset retains the caller-default behavior and its positional-array entry.
+
 Each of these killed or falsified a real build before it was fixed. The full stories:
 [`changelog-archive-2026-08-13.md`](docs/changelog-archive-2026-08-13.md) (2026-08-08);
 `tests/test-ifs-safety.sh` lint-gates class 3. When writing or reviewing bash here:

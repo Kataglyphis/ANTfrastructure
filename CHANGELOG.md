@@ -14,6 +14,8 @@
 
 ## 2026-10-22 — CI proofs and Python app resolution
 
+- CMake argument parsing retains an empty positional preset without indexing the
+  value-option table with an empty key; its regression also checks the positional array.
 - Capacity-test fixtures isolate the disk and memory refusals on small CI runners.
   Eight mutation shards retain every proof within the existing 30-minute budget;
   a complete 532-entry shard previously passed its gate at the deadline.
