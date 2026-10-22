@@ -82,9 +82,19 @@ append_cmake_cross_args() {
   )
 }
 
+# Target-side helpers during setup need a runner: MESON_EXE_WRAPPER, else the pre-setup qemu wrapper.
+_meson_cross_exe_wrapper() {
+  local candidate; candidate="/usr/local/bin/meson-$(cross_target_arch)-exe-wrapper"
+  if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
+    printf '%s' "${MESON_EXE_WRAPPER}"
+  elif [ -x "${candidate}" ]; then
+    printf '%s' "${candidate}"
+  fi
+}
+
 ensure_meson_cross_file() {
   local path; path="${1:-${TMPDIR:-/tmp}/meson-cross-$(cross_target_arch).ini}"
-  local triplet pkg_config_libdir exe_wrapper exe_wrapper_line wrapper_candidate
+  local triplet pkg_config_libdir exe_wrapper exe_wrapper_line
   local rust_target rustc_bin rust_binary_line rust_wrapper rust_wrapper_dir
 
   cross_build_enabled || return 0
@@ -95,20 +105,9 @@ ensure_meson_cross_file() {
   rust_target="$(cross_target_rust_triple)"
   rustc_bin="$(command -v rustc 2>/dev/null || true)"
   [ -n "${rustc_bin}" ] || rustc_bin="rustc"
-  exe_wrapper=""
-  # Target-side helpers during setup need a runner: MESON_EXE_WRAPPER, else the pre-setup qemu wrapper.
-  if [ -n "${MESON_EXE_WRAPPER:-}" ] && [ -x "${MESON_EXE_WRAPPER}" ]; then
-    exe_wrapper="${MESON_EXE_WRAPPER}"
-  else
-    wrapper_candidate="/usr/local/bin/meson-$(cross_target_arch)-exe-wrapper"
-    if [ -x "${wrapper_candidate}" ]; then
-      exe_wrapper="${wrapper_candidate}"
-    fi
-  fi
+  exe_wrapper="$(_meson_cross_exe_wrapper)"
   exe_wrapper_line=""
-  if [ -n "${exe_wrapper}" ]; then
-    exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
-  fi
+  [ -z "${exe_wrapper}" ] || exe_wrapper_line="exe_wrapper = '${exe_wrapper}'"
 
   # Meson's Rust sanity check cannot infer the target, so the wrapper adds --target when absent.
   if [ -n "${rust_target}" ]; then
