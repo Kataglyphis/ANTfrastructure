@@ -103,8 +103,15 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
     else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
     if (m.method && onEvent) onEvent(m);
   };
-  const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-  const close = () => { ws.close(); proc.kill('SIGKILL'); fs.rmSync(profile, { recursive: true, force: true }); };
+  // A Chrome that stops answering must fail the check, not hang the preflight: bound every call.
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const i = ++id;
+    const timer = setTimeout(() => { pending.delete(i); reject(new Error(`${method} got no answer from Chrome in 30 s`)); }, 30000);
+    pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
+    ws.send(JSON.stringify({ id: i, method, params }));
+  });
+  // Chrome writes its profile until the SIGKILL lands: retry the removal instead of failing on ENOTEMPTY.
+  const close = () => { ws.close(); proc.kill('SIGKILL'); fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); };
   await send('Page.enable');
   await send('Runtime.enable');
   const product = (await send('Browser.getVersion')).result.product;
