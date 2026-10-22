@@ -88,31 +88,30 @@ PARALLEL_ARCHS=0
 
 # PARALLEL_LOOP_FAIL_FAST=1 stops the sequential loop at the first failure; workers log each arch they ran.
 
+# One sequential loop in which amd64 fails: the environment given decides whether the loop stops there.
+_sequential_order_case() {
+  local name="$1" expect="$2" msg="$3"
+  shift 3
+  : > "${workdir}/${name}"
+  PARALLEL_ARCHS=0
+  t_assert_fails env "$@" bash -c '
+    source "'"${CORE_DIR}"'/parallel-loop.sh"
+    _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
+    warn() { :; }
+    w() { printf "%s\n" "$1" >> "'"${workdir}/${name}"'"; [ "$1" != "amd64" ]; }
+    run_parallel_arch_loop w "'"${workdir}/${name}"'.flags" 4 amd64 arm64 riscv64
+  '
+  t_assert_eq "${expect}" "$(tr '\n' ' ' < "${workdir}/${name}" | sed 's/ *$//')" "${msg}"
+}
+
+# PARALLEL_LOOP_FAIL_FAST=1 stops the sequential loop at the first failure; workers log each arch they ran.
 t_case "O4: fail-fast aborts the sequential loop after the first arch failure"
-: > "${workdir}/ff-order"
-PARALLEL_ARCHS=0
-t_assert_fails env PARALLEL_LOOP_FAIL_FAST=1 bash -c '
-  source "'"${CORE_DIR}"'/parallel-loop.sh"
-  _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
-  warn() { :; }
-  w() { printf "%s\n" "$1" >> "'"${workdir}"'/ff-order"; [ "$1" != "amd64" ]; }
-  run_parallel_arch_loop w "'"${workdir}"'/ff" 4 amd64 arm64 riscv64
-'
-t_assert_eq "amd64" "$(tr '\n' ' ' < "${workdir}/ff-order" | sed 's/ *$//')" \
-  "fail-fast must stop after amd64 fails (arm64/riscv64 skipped)"
+_sequential_order_case ff-order "amd64" "fail-fast must stop after amd64 fails (arm64/riscv64 skipped)" \
+  PARALLEL_LOOP_FAIL_FAST=1
 
 t_case "O4: default (keep-going) still attempts every arch after a failure"
-: > "${workdir}/kg-order"
-PARALLEL_ARCHS=0
-t_assert_fails env -u PARALLEL_LOOP_FAIL_FAST bash -c '
-  source "'"${CORE_DIR}"'/parallel-loop.sh"
-  _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
-  warn() { :; }
-  w() { printf "%s\n" "$1" >> "'"${workdir}"'/kg-order"; [ "$1" != "amd64" ]; }
-  run_parallel_arch_loop w "'"${workdir}"'/kg" 4 amd64 arm64 riscv64
-'
-t_assert_eq "amd64 arm64 riscv64" "$(tr '\n' ' ' < "${workdir}/kg-order" | sed 's/ *$//')" \
-  "default keep-going must attempt all three arches"
+_sequential_order_case kg-order "amd64 arm64 riscv64" "default keep-going must attempt all three arches" \
+  -u PARALLEL_LOOP_FAIL_FAST
 
 
 # Workers persist state to files; --no-push writes only built.*, so the harvest must not key on pin.*.
