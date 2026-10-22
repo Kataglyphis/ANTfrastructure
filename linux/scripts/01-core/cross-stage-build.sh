@@ -75,7 +75,8 @@ cross_local_handoff_enabled() {
 }
 
 _cross_sweep_orphaned_contexts() {
-  _context_sweep_orphaned "${CROSS_CONTEXT_ROOT}" 'cross-flow.*' "${CROSS_CONTEXT_KEEP_HOURS:-24}" \
+  : "${CROSS_CONTEXT_KEEP_HOURS:=24}"
+  _context_sweep_orphaned "${CROSS_CONTEXT_ROOT}" 'cross-flow.*' "${CROSS_CONTEXT_KEEP_HOURS}" \
     "${CROSS_CONTEXT_WORKDIR:-}" "cross stage-context"
 }
 
@@ -114,6 +115,7 @@ _cross_build_pull_flag() {
 }
 
 _cross_build_append_push_output() {
+  : "${CROSS_LAYER_COMPRESSION:=zstd}"
   local -n _out="$1"
   local tag="$2" push_flag="$3"
   [ "${push_flag}" -eq 1 ] || return 0
@@ -125,7 +127,7 @@ _cross_build_append_push_output() {
     fi
     # zstd for new layers: push time is the chain's ceiling on a slow uplink.
     _out+=(
-      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION:-zstd}${_ancestry_ann}"
+      --output "type=image,name=${tag},push=true,compression=${CROSS_LAYER_COMPRESSION}${_ancestry_ann}"
     )
     # Opt-in: the SBOM scanner adds time to every stage.
     if [ -n "${BUILD_ATTEST:-}" ]; then

@@ -25,6 +25,9 @@ install_cross_llvm_target_packages() {
 }
 
 _llvm_cross_resolve_dirs() {
+  : "${LLVM_CROSS_BUILD_ROOT:=/var/tmp/llvm-cross-build}"
+  : "${LLVM_CROSS_JOBS:=}"
+  : "${LLVM_CROSS_MB_PER_JOB:=3500}"
   local -n _r="$1"
   local mode="$2" target_label="$3" triplet
 
@@ -51,12 +54,12 @@ _llvm_cross_resolve_dirs() {
 
   _r[backend]="$(llvm_cross_backend "${target_label}")" || die "No LLVM backend for ${target_label}"
   _r[source_root]="${LLVM_CROSS_SOURCE_ROOT:-/var/cache/llvm-src}"
-  _r[build_root]="${LLVM_CROSS_BUILD_ROOT:-/var/tmp/llvm-cross-build}"
+  _r[build_root]="${LLVM_CROSS_BUILD_ROOT}"
   _r[source_dir]="${_r[source_root]}/llvm-project-${_r[release]}"
   _r[build_dir]="${_r[build_root]}/${_r[build_dir_suffix]}"
   _r[wrapper_dir]="${_r[build_root]}/${_r[wrapper_dir_suffix]}"
   _r[zlib_include]="${_r[build_root]}/${triplet}-zlib-include"
-  _r[jobs]="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS:-}" "${LLVM_CROSS_MB_PER_JOB:-3500}")"
+  _r[jobs]="$(compute_jobs_with_mem_cap "${LLVM_CROSS_JOBS}" "${LLVM_CROSS_MB_PER_JOB}")"
   return 0
 }
 

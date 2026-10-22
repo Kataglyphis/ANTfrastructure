@@ -32,8 +32,6 @@ BUILDKIT_HOST
 BUILD_DIR_DEFAULT
 BUILD_TYPE_DEFAULT
 CI_TESTS_LOG_FILE
-CLANG_BUILD_MB_PER_JOB
-CLANG_NUM_JOBS
 CMAKE_BUILD_DEFAULT_ALLOW_PREBUILD_FAILURE
 CMAKE_BUILD_DEFAULT_BUILD_DIR
 CMAKE_BUILD_DEFAULT_CLEAN_BUILD_DIR
@@ -54,7 +52,6 @@ COVERAGE_LLVM_HTML_DIR
 CPP_HEAVY_MB_PER_JOB
 CROSS_BIN_DIR
 CROSS_CACHE_MAX_GB
-CROSS_LAYER_COMPRESSION  # PUSH1: zstd (default) | gzip — layer encoding for pushed cross-stage images
 DS_JOBS                  # CON42: make -j for the DeepStream components (default nproc)
 PAR_INTRA_STEP_BUDGET    # PAR4: assumed concurrent heavy steps per build under --parallel-archs (default 2; multiplies BUILD_MEM_DIVISOR)
 CROSS_TARGET_ARCH
@@ -103,9 +100,6 @@ IREE_ROOT_ANDROID
 LITERT_ANDROID_CONFIGURE_RETRIES
 LITERT_ROOT_ANDROID
 LLVM_BUILD_ROOT
-LLVM_CROSS_BUILD_ROOT
-LLVM_CROSS_JOBS
-LLVM_CROSS_MB_PER_JOB
 LLVM_CROSS_ROOT
 LLVM_CROSS_SOURCE_ROOT
 MAX_ITERATIONS_OVERRIDE
@@ -202,7 +196,6 @@ CROSS_LOCAL_CONTEXT_HANDOFF
 # Age (hours) after which orphaned cross-flow.* workdirs are reclaimed at the
 # next chain start (01-core/cross-stage-build.sh). Default 24; mirrors the
 # runtime lane's RUNTIME_CONTEXT_KEEP_HOURS.
-CROSS_CONTEXT_KEEP_HOURS
 # Root for the per-run cross stage-context workdirs (01-core/cross-stage-
 # build.sh). Default ${XDG_CACHE_HOME:-$HOME/.cache}/opencode/cross-stage-
 # contexts. Transient: reclaimed at chain exit and on the age sweep.

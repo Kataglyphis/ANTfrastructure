@@ -166,6 +166,8 @@ detect_system || echo "WARNING: detect_system failed; ARCH/HOST_ARCH/DISTRO may 
 
 # Preflight checks
 run_preflight_checks() {
+  : "${CLANG_NUM_JOBS:=}"
+  : "${CLANG_BUILD_MB_PER_JOB:=2000}"
     info "---- preflight: workdir safety ----"
     [ -n "${WD:-}" ] && [ "${WD}" != "/" ] || die "Unsafe WD: '${WD:-<empty>}' (should have been fixed)"
 
@@ -185,10 +187,10 @@ run_preflight_checks() {
 # Job count
 if [ -n "${NUM_JOBS:-}" ] && [[ "${NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     : # Explicitly set by user, respect it.
-elif [ -n "${CLANG_NUM_JOBS:-}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
+elif [ -n "${CLANG_NUM_JOBS}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
     NUM_JOBS="${CLANG_NUM_JOBS}"
 elif command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    NUM_JOBS="$(compute_jobs_with_mem_cap "" "${CLANG_BUILD_MB_PER_JOB:-2000}")"
+    NUM_JOBS="$(compute_jobs_with_mem_cap "" "${CLANG_BUILD_MB_PER_JOB}")"
 else
     NUM_JOBS="$(nproc || echo 1)"
 fi
