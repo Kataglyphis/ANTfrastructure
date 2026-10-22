@@ -12,6 +12,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — the restart skips a push whose digest the registry holds (CON158)
+
+- `runtime_push_tag` compares the local manifest digest (`nerdctl image inspect --mode=native`) with the
+  registry's `Docker-Content-Digest` (anonymous HEAD on ghcr.io). Equal: `already in the registry`, no upload.
+  `test-runtime-push-skip.sh`. Checked live: amd64's digest matches the registry.
+
 ## 2026-10-22 — Linux container backlog: four items closed (CON153 default, CON154–157)
 
 - **CON153** `download_file` retries after 20 s by default (was 2 s), so one retry outwaits a short GitHub

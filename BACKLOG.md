@@ -456,15 +456,6 @@ owner carries the breakage that costs.
       a short outage. Work left: mirror the pinned release assets (shellcheck, hadolint, rustup-init) to storage
       we own, SHA-verified, so a longer GitHub outage cannot fail an arch.
 
-- [ ] **CON158 — a restarted run does not re-push a wrapper whose digest is already in the registry** [M, ★★★].
-      2026-10-21: each restart rebuilt amd64 and uploaded it again (23 to 29 minutes each), though its layers and
-      digest were unchanged. Work: before `nerdctl push`, compare the local digest with the registry's manifest
-      for that tag and skip on a match. Done when a restart with an unchanged amd64 logs `already in the registry`
-      and spends no upload time on it. Pairs with CON139, which re-runs only the failed arch.
-      2026-10-22: the local image's `nerdctl image inspect` exposes a manifest digest, but the registry's digest
-      needs an authenticated manifest HEAD (`Docker-Content-Digest`); `nerdctl manifest inspect` prints the body
-      only. Not built yet: pick the HEAD call first.
-
 - [ ] **CON129 — GTK 4 for OxidANT's mandatory GTK GUI: lands with the next image build** [M, ★★★].
       Owner decision 2026-10-20: every Rust feature is mandatory, `gui_unix` (gtk4-rs 0.11, `v4_10`)
       included. In source: the package stage installs the dev surface of the GTK 4 each arch runs,
@@ -529,6 +520,8 @@ owner carries the breakage that costs.
       1. The default chain from `compiler` (amd64, arm64, riscv64), published, with every per-ABI wheel rebuilt for
          cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch. The
          owner's other build host runs it since 2026-10-20.
+         - 2026-10-22: the published arm64 and riscv64 children run `/usr/local/bin/python3.15`, and its sysconfig
+           `AR` (`/opt/gcc-16.2.0/bin/<triple>-ar`) exists, so the check below passed on both.
          - **The cross children's GIL tree likely lacks its `ar` too.** The published arm64 and riscv64 children
            run Ubuntu's 3.14.4 as their GIL interpreter (`/usr` 3.14.4 in OrchestrANT job 118397954209); from
            source, `install_staged_target_python` copies the cross-built `/opt/python-cross/<arch>/usr/local`
