@@ -141,12 +141,16 @@ _web_wasm_node_compile() {
   local label="$1" dir="$2"
   command -v node >/dev/null 2>&1 || { echo "  INFO: node unavailable; skipping ${label} WASM engine-compile"; return 0; }
   [ -n "$(find "${dir}" -name '*.wasm' -print -quit 2>/dev/null)" ] || return 0
-  if WEB_DIR="${dir}" WEB_LABEL="${label}" node <<'NODE_EOF'
+  local rc=0
+  WEB_DIR="${dir}" WEB_LABEL="${label}" node <<'NODE_EOF' || rc=$?
 const fs = require('fs'), path = require('path');
 const dir = process.env.WEB_DIR, label = process.env.WEB_LABEL;
 function walk(d){ let o=[]; for(const e of fs.readdirSync(d,{withFileTypes:true})){ const p=path.join(d,e.name); if(e.isDirectory()) o=o.concat(walk(p)); else if(e.name.endsWith('.wasm')) o.push(p);} return o; }
 (async () => {
   const ws = walk(dir); let ok=0, bad=0;
+  // A SIMD-free engine rejects every SIMD module: one probe, one SKIP line, no FAILED per module (CON154).
+  const simdProbe = new Uint8Array([0,97,115,109,1,0,0,0,1,5,1,96,0,1,123,3,2,1,0,10,10,1,8,0,65,0,253,15,253,98,11]);
+  if (!WebAssembly.validate(simdProbe)) { console.log(`  SKIP ${label}: no WASM SIMD in this node, ${ws.length} module(s) not engine-compiled`); process.exit(3); }
   for (const w of ws) {
     try { await WebAssembly.compile(fs.readFileSync(w)); ok++; }
     catch (e) { console.log('  wasm engine-compile FAILED: ' + path.basename(w) + ' :: ' + String(e.message).slice(0,80)); bad++; }
@@ -155,11 +159,11 @@ function walk(d){ let o=[]; for(const e of fs.readdirSync(d,{withFileTypes:true}
   process.exit(bad === 0 ? 0 : 1);
 })();
 NODE_EOF
-  then
-    pass "${label} WASM engine-compiles in node (V8 accepts every module)"
-  else
-    echo "  WARN: ${label} has WASM the engine rejects (corrupt module, or a node/V8 that lacks a wasm feature it uses; optional asset, not gating)"
-  fi
+  case "${rc}" in
+    0) pass "${label} WASM engine-compiles in node (V8 accepts every module)" ;;
+    3) ;; # node already printed the SKIP line
+    *) echo "  WARN: ${label} has WASM the engine rejects (corrupt module, or a node/V8 that lacks a wasm feature it uses; optional asset, not gating)" ;;
+  esac
 }
 
 _check_web_runtime "LiteRT.js"  /usr/local/lib/litert-web 4

@@ -16622,8 +16622,8 @@
  {
   "id": "runtime-smoke.reaped-on-wrapper-failure",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
-  "replace": "  _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
+  "find": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || { _runtime_smoke_wait \"${arch}\" || true; return 1; }\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
+  "replace": "  _runtime_timed wrapper-build \"${arch}\" _runtime_build_wrapper \"${arch}\" tag parent_image build_args || return 1\n\n  if is_dry_run; then\n    log \"[DRY RUN] would push wrapper image",
   "test": "bash linux/scripts/tests/test-runtime-smoke-overlap.sh",
   "why": "a failed wrapper build would leave its gate running into the next arch's lane"
  },

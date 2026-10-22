@@ -11,6 +11,10 @@ to a SHA-256 reference, runs the declared consumer checks, and promotes those ex
 bytes to the requested tag only when every consumer passes. `:latest` and workflow
 `@develop` remain the family's public entry points.
 
+`--gates-only` runs the existing wrapper and runtime gates, then exits without building,
+creating a candidate, running consumer acceptance or promoting a tag. It takes precedence
+over publication flags in either order; publishing later still requires full acceptance.
+
 The plan is [`shared/config/image-consumers.json`](../shared/config/image-consumers.json).
 It declares the Linux test platform, timeout, repository branch and argument array for
 each check: C++/GStreamer inference, Rust tests, ANThology, both Flutter apps and WebDAV.

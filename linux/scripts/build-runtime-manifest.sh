@@ -12,6 +12,7 @@ IMAGE_NAME="${IMAGE_NAME:-}"
 PUSH_MANIFEST=0
 BUILD_IMAGES=1
 CREATE_MANIFEST=1
+GATES_ONLY=0
 # --force overrides the per-arch wrapper generation-coherence gate below.
 FORCE_MANIFEST=0
 
@@ -32,6 +33,8 @@ Options:
   --push-manifest              Push the final manifest after creating it
   --skip-manifest              Build images only; do not create a manifest locally
   --manifest-only              Create/push the manifest only; skip all image builds
+  --gates-only                 Run the wrapper and runtime gates on the per-arch images already in the
+                               registry: no build, no push, no manifest (a gate fix costs minutes)
   --repair                     Alias for --manifest-only (repair manifest from existing per-arch images)
   --force                      Assemble the manifest even if the per-arch wrapper tags
                                 span multiple generations (skip the XC3 coherence gate)
@@ -209,6 +212,7 @@ _manifest_extra_arg() {
     --push-manifest) PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
     --skip-manifest) CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --manifest-only|--repair) BUILD_IMAGES=0; _OARG_SHIFT=1 ;;
+    --gates-only) GATES_ONLY=1; BUILD_IMAGES=0; CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --force) FORCE_MANIFEST=1; _OARG_SHIFT=1 ;;
     --push) PUSH_IMAGES=1; PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
     --push-all) PUSH_IMAGES=1; PUSH_MANIFEST=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
@@ -359,6 +363,32 @@ _manifest_build_and_smoke() {
   runtime_push_queue_finish
 }
 
+# The gates alone, on the images already pushed; _manifest_build_and_smoke runs the same two gates after a build.
+_manifest_gates_only() {
+  ensure_foreign_binfmt "${TARGET_ARCHES}"
+  _manifest_each_arch "Wrapper content gate" "${REPO_ROOT}/linux/scripts/verify-shipped-wrapper.sh" || return 1
+  if [ "${RUNTIME_IMAGE_SMOKE}" = "1" ]; then
+    _manifest_each_arch "Runtime-image smoke" "${REPO_ROOT}/linux/scripts/06-packaging/smoke-runtime-image.sh" || return 1
+  fi
+}
+
+_manifest_check_freshness() {
+  # Advisory, since it runs after the push; MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
+  if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
+     && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
+    # --tag: the default :latest is never touched by a host-infixed run.
+    if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
+       bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
+      log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
+    elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
+      err "[manifest] freshness check FAILED and MANIFEST_FRESHNESS_STRICT=1"
+    else
+      warn "[manifest] freshness check FAILED — the published index does not match this run (advisory; set MANIFEST_FRESHNESS_STRICT=1 to make this fatal)"
+    fi
+  fi
+  return 0
+}
+
 main() {
   run_runtime_arg_loop usage _manifest_extra_arg "$@"
 
@@ -383,6 +413,12 @@ main() {
   # The app too: every arch of one index builds the same OrchestrANT commit.
   runtime_resolve_app_ref
 
+  if [ "${GATES_ONLY}" -eq 1 ]; then
+    _manifest_gates_only || exit 1
+    log "[gates-only] every gate passed on the existing per-arch images; nothing built, pushed or indexed"
+    exit 0
+  fi
+
   # Nothing pushed means manifest create has no descriptors and dies "no such manifest".
   if [ "${CROSS_NO_PUSH:-0}" = "1" ] && [ "${CREATE_MANIFEST}" -eq 1 ]; then
     log "CROSS_NO_PUSH=1 — skipping multi-arch manifest creation (no pushed per-arch refs to index)"
@@ -400,19 +436,7 @@ main() {
   # Publish the multi-arch manifest only after every per-arch image passed its smoke.
   if [ "${CREATE_MANIFEST}" -eq 1 ]; then
     create_manifest
-    # Advisory, since it runs after the push; MANIFEST_FRESHNESS_STRICT=1 makes it fatal.
-    if [ "${MANIFEST_FRESHNESS_GATE:-1}" = "1" ] \
-       && [ -x "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" ]; then
-      # --tag: the default :latest is never touched by a host-infixed run.
-      if EXPECT_RUN_ID="${CROSS_RUN_ID:-}" \
-         bash "${REPO_ROOT}/linux/scripts/verify-manifest-freshness.sh" --tag "${IMAGE_NAME##*:}"; then
-        log "[manifest] freshness verified: every child matches its per-arch tag and shares this run's id"
-      elif [ "${MANIFEST_FRESHNESS_STRICT:-0}" = "1" ]; then
-        err "[manifest] freshness check FAILED and MANIFEST_FRESHNESS_STRICT=1"
-      else
-        warn "[manifest] freshness check FAILED — the published index does not match this run (advisory; set MANIFEST_FRESHNESS_STRICT=1 to make this fatal)"
-      fi
-    fi
+    _manifest_check_freshness
   fi
 }
 

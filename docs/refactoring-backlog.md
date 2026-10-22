@@ -35,6 +35,46 @@ here, including these.**
 
 ## OPEN
 
+### RV. Review of the Linux chain, 2026-10-22 (re-derive before acting)
+
+Found while the 3-arch `:latest` chain ran, from the stage logs and the layer audit. Evidence:
+`build-logs/base.log`, `build-logs/compiler.log`, `linux/scripts/layer-audit.py`. Done in the same
+change: the push retry policy (one helper), the status-only chain log, the `--max-parallel-archs`
+usage default; see CHANGELOG 2026-10-22.
+
+- **RV1 — every edit of `base-image.sh` re-runs the base and the toolchain [M, ★★★].** Six of the nine
+  base RUNs bind-mount it (`Dockerfile.base`), so a retry-default edit re-runs them (about 8 min of
+  step time in `base.log`). The compiler stage then gets a new base and its first heavy RUN (2/14,
+  34 min of source build) runs again. Work: mount per RUN only the scripts that step reads.
+- **RV2 — the S3 level stored 2177 objects and served none [S, ★★★, investigate first].**
+  `compiler.log`: `sccache-drain| every upload done after 0 s (L1 (s3): 2177 written, 0 failed of 2177)`.
+  Find which part of the cache key changed before calling it a fix.
+- **RV3 — ten standalone helpers keep an output contract [decide per script].** Lint scripts print
+  `ERROR:` and have tests on it; `lint-shell` draws ✓/✗; `docs-site` prints `::error` annotations;
+  `probe-sccache` has its own report; `git-sync-branches` counts through a file. Six more
+  (`build-hailort`, `install-litert-web`, `build-hadolint`, `install-lint-tools`, `smoke-common`,
+  `uv-cache-seed`) are bind-mounted into Dockerfiles: they need `logging.sh` in those RUN mounts, which
+  re-keys the stage. Do them with the next build.
+- **RV4 — `check-target-toolchain.sh` is not wired into any stage [S, ★★].** The musl-loader failure
+  of 2026-10-22 would have stopped at the package stage, not after the wrapper. Wiring it re-keys the
+  package stage, so do it with the next package change.
+- **RV5 — disk policy in three places [M].** `_chain_disk_preflight`, `_chain_stage_disk_guard`
+  (`build-cross-chain.sh`) and `disk-guard.sh` (trim and watch). The DISK entries are archived as
+  closed; check the consolidation against them first.
+- **RV6 — environment knobs [L].** 169 knobs read on the chain path, 985 across the scripts;
+  `lint-env-knobs.allow` has 491 rows. `chain-latest.env` is the first step: a profile in place of
+  the operator's exported variables.
+- **RV7 — `cross-android-*` tags carry every arch [M].** Thirty references in the scripts; the name
+  says Android for amd64, arm64 and riscv64. Rename to `cross-artifacts-*` with a migration of the
+  existing tags.
+- **RV8 — masking on the chain path [L].** `|| true` (1195) and `2>/dev/null` (1478) across the tree.
+  The `masked-assignments.allow` and `trailing-conditional.allow` gates cover single classes only.
+  Audit per site with a verdict.
+
+Not taken: the wrapper pair `runtime_build_wrapper_image` / `_rootfs` repeats the build, gate and
+ship order. About three lines each; the overlap test pins the order, so leave it until the wrapper
+changes again.
+
 ### F1. The extent queues — what is left after every row got a verdict [M each]
 
 **`function-size.allow` and `code-complexity.allow` are the authority — do not

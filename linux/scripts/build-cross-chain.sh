@@ -118,7 +118,7 @@ Options:
                             CROSS_LOCAL_CONTEXT_HANDOFF=0. Override:
                             CROSS_NO_PUSH_FORCE=1 (accept the stale-parent risk).
   --parallel-archs          Build per-arch stages (sdk/media/android) in parallel
-  --max-parallel-archs N    Max concurrent arch builds (default: 4)
+  --max-parallel-archs N    Max concurrent arch builds (default: nproc, 4 if unknown)
                             Env PARALLEL_STAGES=all|csv (e.g. "sdk,android")
                             limits WHICH stages parallelize (default: all)
 EOF

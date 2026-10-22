@@ -450,40 +450,11 @@ owner carries the breakage that costs.
       trim names the stages it protects and the bytes it evicts; tool-build caches (CON151) are protected. Done
       when the trim log lists what it evicted, and a second run's tool builds hit the cache.
 
-- [ ] **CON153 — upstream downloads outwait a 60 s GitHub outage, and the pinned release assets are mirrored** [S, ★★★].
-      2026-10-21: GitHub answered HTTP 500 for shellcheck's aarch64 asset for about a minute, and curl's three
-      retries 2 s apart failed the arm64 wrapper. Only `install-lint-tools.sh` sets `DOWNLOAD_RETRY_DELAY=20` so
-      far. Work: make the default in `downloads.sh` 20 s (or exponential, up to about 3 min), and mirror the
-      pinned release assets (shellcheck, hadolint, rustup-init) to storage we own, SHA-verified, so a GitHub
-      outage cannot fail an arch.
-
-- [ ] **CON154 — the smoke gate skips WASM engine-compile on riscv64 instead of printing a FAILED line per module** [S, ★].
-      2026-10-21: riscv64's smoke printed 10 `wasm engine-compile FAILED … Wasm SIMD unsupported` lines. They
-      WARN and gate nothing (`smoke-media.sh`), but they read as failures, and the reader (an agent) took them
-      for one at first. Work: probe SIMD once (`WebAssembly.validate` on a SIMD module) and print one `SKIP` with
-      the reason on arches without it; keep FAIL for corrupt modules where SIMD exists.
-
-- [ ] **CON155 — two expected lines print as [ERROR] or WARN on every arch's package stage** [S, ★].
-      `[ERROR] Command failed (line 281): tr '\n' ' '` (the rustup-reinstall probe, harmless) appeared 4 times today;
-      `requested-but-absent packages dropped: clang-23 …` (LLVM 23 from Ubuntu, deliberately absent, the image has
-      its own 23.1.3) appeared 6 times. Work: the probe reports as INFO, and the LLVM 23 names move to an optional
-      list that logs nothing when absent. Done when a clean run prints no `[ERROR]` line that is not a failure.
-
-- [ ] **CON156 — riscv64's base asks for a nodejs version ports does not publish** [S, ★].
-      Every riscv64 base run: `E: Version '22.22.1-1~ubuntu26.04.1' for 'nodejs' was not found` (apt continues, so
-      it is silent in the verdict). Work: pin the nodejs riscv64 actually gets from ports, or install it the way
-      amd64 does, so the line disappears and the pin says what the image ships.
-
-- [ ] **CON157 — long stages print a heartbeat, so the wait is not a guess** [S, ★★].
-      2026-10-21: riscv64's torch and hadolint phases ran 80 to 120 minutes printing only cabal lines, and every
-      ETA I gave was wrong by about a factor of two. Work: a `[heartbeat <arch> <stage>] elapsed <m> min, last step
-      <name>` line every 10 minutes from any stage over 15 minutes, and a per-package time in the cabal output.
-
-- [ ] **CON158 — a restarted run does not re-push a wrapper whose digest is already in the registry** [M, ★★★].
-      2026-10-21: each restart rebuilt amd64 and uploaded it again (23 to 29 minutes each), though its layers and
-      digest were unchanged. Work: before `nerdctl push`, compare the local digest with the registry's manifest
-      for that tag and skip on a match. Done when a restart with an unchanged amd64 logs `already in the registry`
-      and spends no upload time on it. Pairs with CON139, which re-runs only the failed arch.
+- [ ] **CON153 — the pinned release assets are mirrored, so a GitHub outage cannot fail an arch** [S, ★★★].
+      2026-10-21: GitHub answered HTTP 500 for shellcheck's aarch64 asset for about a minute, and the arm64
+      wrapper failed. 2026-10-22: `downloads.sh` defaults to a 20 s retry delay now (was 2 s), so a retry outwaits
+      a short outage. Work left: mirror the pinned release assets (shellcheck, hadolint, rustup-init) to storage
+      we own, SHA-verified, so a longer GitHub outage cannot fail an arch.
 
 - [ ] **CON129 — GTK 4 for OxidANT's mandatory GTK GUI: lands with the next image build** [M, ★★★].
       Owner decision 2026-10-20: every Rust feature is mandatory, `gui_unix` (gtk4-rs 0.11, `v4_10`)
@@ -549,6 +520,8 @@ owner carries the breakage that costs.
       1. The default chain from `compiler` (amd64, arm64, riscv64), published, with every per-ABI wheel rebuilt for
          cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch. The
          owner's other build host runs it since 2026-10-20.
+         - 2026-10-22: the published arm64 and riscv64 children run `/usr/local/bin/python3.15`, and its sysconfig
+           `AR` (`/opt/gcc-16.2.0/bin/<triple>-ar`) exists, so the check below passed on both.
          - **The cross children's GIL tree likely lacks its `ar` too.** The published arm64 and riscv64 children
            run Ubuntu's 3.14.4 as their GIL interpreter (`/usr` 3.14.4 in OrchestrANT job 118397954209); from
            source, `install_staged_target_python` copies the cross-built `/opt/python-cross/<arch>/usr/local`
@@ -636,6 +609,29 @@ owner carries the breakage that costs.
       unreachable places all 18, and a Flutter bump re-pins the lock in the same change.
       Status 2026-10-21: implemented (store in `linux/Dockerfile.sdk`, read-first in the fetcher, 21 test
       assertions under WSL); open until a family image build shows the 18 placed without a download.
+
+- [ ] **CON159 — the Android payload is 12 GB of the amd64 `:latest`'s 36 GB unpacked** [M, ★★★]. Measured
+      2026-10-22 with `layer-audit.py`: layer 47 (the SDK install) 4.66 GB, of which the emulator's `system.img` is
+      3.58 GB; layer 10 (`/opt/android-sdk`: NDK 2.4 GB) 3.9 GB; layer 11 (GStreamer and OpenCV for Android)
+      3.4 GB. Every Linux CI job pulls all of it, and the riscv64 image already switches it off
+      (`/opt/android/.android-payload-off`). Work: move the emulator and its system image (4.4 GB) out first,
+      into an `android` variant beside `:latest` (as `:latest-nvidia` is), then the rest. Done when the amd64
+      `:latest` unpacks ≥ 4 GB smaller and the Android lane runs on the variant.
+
+- [ ] **CON160 — the flatpak runtime sits in the base layer: 3.2 GB of every image** [S, ★★★]. Measured
+      2026-10-22: `/var/lib/flatpak/repo/objects` is 3.23 GB in layer 00, the base stage, so every stage above
+      inherits it. Work: fetch the runtime when the flatpak packaging runs, pinned by commit; the base stage keeps
+      the flatpak binary only. Done when the base layer is under 3.5 GB unpacked and the flatpak lane fetches.
+
+- [ ] **CON161 — the Flutter SDK ships its git history and a pub preload cache: 0.55 GB** [S, ★]. Measured
+      2026-10-22 in layer 08: `/opt/flutter/.git` 0.31 GB, `.pub-preload-cache` tarballs about 0.24 GB
+      (`flutter_gallery_assets` 87 MB). Work: a shallow clone (`--depth 1`), and the preload cache deleted in the
+      same RUN. Done when the layer drops by 0.5 GB and `flutter --version` and the web lane pass.
+
+- [ ] **CON162 — name the RUN steps: `nerdctl history` shows the ENV list, not the step** [S, ★★]. The 5 GB
+      Android layer read as "ORT-Build" for that reason. Work: a `LABEL kataglyphis.step=<name>` before each heavy
+      RUN (metadata only, no layer), so `nerdctl history` and `layer-audit.py` name every step. Done when the
+      history names the step of the Android layer.
 
 ## Open — Linux arm64 and riscv64
 

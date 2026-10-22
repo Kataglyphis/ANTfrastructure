@@ -29,6 +29,63 @@
   pinned source roots, so OxidANT owns and regenerates its shaders independently while
   BeschleunigerBallett consumes that same definition.
 
+## 2026-10-22 — review refactors: one push retry policy, a status-only chain log, the logging helper
+
+- **Push retries:** `push_retry_delay` (cross-stage-build.sh) decides both push paths. The backoff is linear
+  (attempt x base) on the runtime path too; it was a constant 15 s there. Permanent errors and exhausted
+  attempts stop as before. `test-push-retry-delay.sh`.
+- **Build output:** a cross stage writes BuildKit's output to `build-logs/<stage>.log`, and the runtime arch
+  to `build-logs/runtime-<arch>.log`. The chain log keeps the `[build]` status line per attempt and the last
+  30 lines of a failure. `test-build-output-routing.sh`.
+- **`--max-parallel-archs`:** the usage said "default: 4"; the code takes nproc. Fixed in both usage texts.
+- **Logging:** `riscv64-sysroot.sh`, `build-android.sh` and `collect-release-assets.sh` source `logging.sh`.
+  The other standalone helpers keep their output contracts; see `docs/refactoring-backlog.md` RV3.
+- **Gates:** the headers of `chain-latest.sh` and `layer-audit.py` are one line each.
+
+## 2026-10-22 — the chain starts from one profile; gates alone; the wrapper timer; a layer audit
+
+- `chain-latest.sh` and `chain-latest.env` start `:latest` as a systemd user unit bounded by `RuntimeMaxSec`.
+  The profile runs three arches at once (`MAX_PARALLEL_ARCHS=3`, so `BUILD_MEM_DIVISOR=18` under PAR4). The
+  start refuses below 150G free, 20G available memory, or while the unit runs. `--plan` prints the command and
+  the divisor; the unit samples `MemAvailable` into `<log>.mem.tsv`. `test-chain-latest.sh`.
+- `build-runtime-manifest.sh --gates-only`: the wrapper content gate and the runtime-image smoke on the per-arch
+  images already pushed; no build, push or manifest. Run through the entry point against the published amd64
+  tag: green. `test-manifest-gates-only.sh`.
+- The `wrapper` timer covered the smoke gate's wait, so the smoke and the wrapper showed the same seconds. The
+  build has its own `wrapper-build` line now; `wrapper` stays the total (build, gate wait, push).
+  `test-runtime-wrapper-timing.sh`; `test-runtime-wheels-source.sh` expects the new step.
+- `layer-audit.py` (`test-layer-audit.sh`) reports what an image stores. On the published amd64 `:latest`:
+  live 36.11 GB unpacked (12.9 GB compressed); kept but dead 61 MB (22.4 MB deleted by later layers, 38.7 MB
+  replaced). The image carries no build residue to speak of.
+  - The ORT copy is layer 01: 34 MB, 209 files, install only.
+  - The "5 GB ORT-Build" RUN is layer 47: the Android SDK install, with `system.img` at 3.58 GB. `nerdctl history`
+    shows the RUN's ENV list, not its step, which is why it read as ORT.
+
+Not changed: nothing about the arches' OOM risk. `MAX_PARALLEL_ARCHS=3` is what the PAR4 divisor was built for; the
+first profile run is the measurement, so check `dmesg | grep -i oom` and `<log>.mem.tsv` after it.
+
+## 2026-10-22 — the restart skips a push whose digest the registry holds (CON158)
+
+- `runtime_push_tag` compares the local manifest digest (`nerdctl image inspect --mode=native`) with the
+  registry's `Docker-Content-Digest` (anonymous HEAD on ghcr.io). Equal: `already in the registry`, no upload.
+  `test-runtime-push-skip.sh`. Checked live: amd64's digest matches the registry.
+
+## 2026-10-22 — Linux container backlog: four items closed (CON153 default, CON154–157)
+
+- **CON153** `download_file` retries after 20 s by default (was 2 s), so one retry outwaits a short GitHub
+  outage. The asset mirror stays open.
+- **CON154** the riscv64 smoke probes WASM SIMD once. Without it: one `SKIP` line, no `FAILED` per module;
+  a corrupt module where SIMD exists still fails. `test-smoke-wasm-simd-skip.sh`.
+- **CON155** the rustup probe's pipeline failure no longer logs as `[ERROR]`; the LLVM majors Ubuntu lacks
+  (`clang-23`, …) are optional and silent when absent. `test-package-lists-optional.sh`.
+- **CON156** riscv64 asks apt for `nodejs` and checks the version against the pin, instead of an exact
+  `-1~ubuntu26.04.1` revision ports never publishes.
+- **CON157** `_runtime_timed` prints `[heartbeat <arch> <step>] elapsed <m> min` every 10 min after the first
+  15, and stops when the step ends. `test-runtime-heartbeat.sh`.
+
+Verified by the new tests only; the next chain run confirms the `[ERROR]`, `E: Version` and `FAILED` lines are
+gone and the heartbeat appears on a long riscv64 stage.
+
 ## 2026-10-22 — riscv64's torch venv ships setuptools
 
 - The riscv64 runtime lane skips `uv sync` (the lock would build torch under QEMU), so torch's

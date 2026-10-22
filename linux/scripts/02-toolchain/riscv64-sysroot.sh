@@ -33,7 +33,8 @@ RISCV64_SYSROOT_SKOPEO names another skopeo binary.
 EOF
 }
 
-die() { printf 'riscv64-sysroot.sh: %s\n' "$*" >&2; exit 1; }
+# shellcheck source=/dev/null
+. "$(dirname "${BASH_SOURCE[0]}")/../01-core/logging.sh"
 
 # An absolute link target would resolve against the build container's own root.
 relativize_symlinks() {

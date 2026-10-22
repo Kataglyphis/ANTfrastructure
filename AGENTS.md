@@ -62,6 +62,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    moves; see [image-acceptance.md](docs/image-acceptance.md) for replay and its coverage limits.
    Successful consumers must preserve versioned sources. Manual promotion also preserves
    the target's runtime platforms; an early shell-gate override cannot bypass acceptance.
+   `--gates-only` exits before builds, candidate creation and promotion, including when
+   combined with push flags; it provides no consumer acceptance receipt.
 5. **Our build always wins over the distro copy** (owner directive 2026-09-01). Where a `/opt`
    tree and a distro package export the same soname, ours wins the `ld.so` lookup: write
    `000-<name>.conf` into `/etc/ld.so.conf.d` (read in SORT order) and never rely on a purge,

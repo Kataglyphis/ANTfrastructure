@@ -105,13 +105,23 @@ image_exists() {
   "${nerdctl_bin}" image inspect "${image_ref}" >/dev/null 2>&1
 }
 
+# With RUN_NERDCTL_LOG set (the chain sets it per arch), BuildKit's output goes there and a failure's tail is shown.
 run_nerdctl_build() {
   local nerdctl_bin="$1"
   shift
   local -a build_cmd=("${nerdctl_bin}" build)
   append_buildkit_host_arg build_cmd
   build_cmd+=("$@")
-  run "${build_cmd[@]}"
+  if [ -z "${RUN_NERDCTL_LOG:-}" ]; then
+    run "${build_cmd[@]}"
+    return
+  fi
+  local rc=0
+  run "${build_cmd[@]}" >> "${RUN_NERDCTL_LOG}" 2>&1 || rc=$?
+  if [ "${rc}" -ne 0 ]; then
+    tail -n 30 "${RUN_NERDCTL_LOG}" | sed 's/^/  | /'
+  fi
+  return "${rc}"
 }
 
 # strip_elf_tree <dir> [jobs] [strip-bin]: best-effort parallel strip; pass <triplet>-strip for a foreign tree.

@@ -132,11 +132,11 @@ select_dev_packages() {
     local _pkg_llvm_major
     _pkg_llvm_major="${LLVM_RELEASE%%.*}"
     [ -n "${_pkg_llvm_major}" ] || _pkg_llvm_major=22
-    append_available_packages _sdp_out \
+    append_optional_available_packages _sdp_out \
         "clang-${_pkg_llvm_major}" "lld-${_pkg_llvm_major}" \
         "llvm-${_pkg_llvm_major}" "llvm-${_pkg_llvm_major}-dev" \
         "libclang-rt-${_pkg_llvm_major}-dev" "libfuzzer-${_pkg_llvm_major}-dev"
-    append_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
+    append_optional_available_packages _sdp_out clang-22 lld-22 llvm-22 llvm-22-dev \
         libclang-rt-22-dev libfuzzer-22-dev cargo-c
     # What consumer lanes installed per run: lavapipe, perf (26.04's linux-perf), libprofiler, jq, Xvfb; ripgrep for searches.
     append_available_packages _sdp_out mesa-vulkan-drivers linux-perf \
@@ -278,7 +278,7 @@ ensure_native_rust_toolchain() {
         echo "Rust toolchain in ${RUSTUP_HOME} is native (${triple})"
         return 0
     fi
-    echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ')-- reinstalling natively"
+    echo "Rust toolchain in ${RUSTUP_HOME} is not ${triple}: $(ls "${RUSTUP_HOME}/toolchains" 2>/dev/null | tr '\n' ' ' || true)-- reinstalling natively"
     # Spare ${CARGO_HOME}/registry: it is a live BuildKit cache mount, and rm over it fails EBUSY.
     rm -rf "${RUSTUP_HOME:?}"
     if [ -d "${CARGO_HOME:?}" ]; then

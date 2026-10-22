@@ -365,19 +365,16 @@ install_nodejs() {
       node_sha256="${NODE_ARM64_SHA256:?NODE_ARM64_SHA256 not set - versions.env half-loaded?}"
       ;;
     riscv64)
-      # No official riscv64 tarball: pin the distro package instead.
-      log "Installing pinned Node.js distro packages on riscv64"
+      # No official riscv64 tarball: the distro package. Ports never has the pin's exact revision, so ask for nodejs and check the version.
+      log "Installing the distro Node.js on riscv64 (pin ${BASE_IMAGE_NODE_VERSION})"
       apt-get update -qq
-      if ! apt_install "nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1"; then
-        warn "Exact Node.js pin nodejs=${BASE_IMAGE_NODE_VERSION}-1~ubuntu26.04.1 unavailable on riscv64; falling back to the distro default version"
-        apt_install nodejs
-        # `node --version` is v-prefixed; the bare pin must not warn about an equal version.
-        _node_have="$(node --version 2>/dev/null)"; _node_have="${_node_have#v}"
-        if [ "${_node_have}" = "${BASE_IMAGE_NODE_VERSION}" ]; then
-          log "Distro Node.js ${_node_have} matches the pin; only the package revision differed"
-        else
-          warn "Installed Node.js ${_node_have} instead of pinned ${BASE_IMAGE_NODE_VERSION}"
-        fi
+      apt_install nodejs
+      # `node --version` is v-prefixed; the bare pin must not warn about an equal version.
+      _node_have="$(node --version 2>/dev/null)"; _node_have="${_node_have#v}"
+      if [ "${_node_have}" = "${BASE_IMAGE_NODE_VERSION}" ]; then
+        log "Distro Node.js ${_node_have} matches the pin"
+      else
+        warn "Installed Node.js ${_node_have} instead of pinned ${BASE_IMAGE_NODE_VERSION}"
       fi
       # Required: fail at the install, which names the culprit.
       apt_install npm

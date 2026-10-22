@@ -15,29 +15,53 @@ _runtime_push_attempt() {
   return "${rc}"
 }
 
+# The manifest digest the local image would publish (CON158).
+_runtime_local_digest() {
+  "${NERDCTL_BIN:-nerdctl}" image inspect --mode=native "$1" 2>/dev/null \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); d=d[0] if isinstance(d,list) else d; print((d.get("ManifestDesc") or {}).get("digest",""))' 2>/dev/null
+}
+
+# The manifest digest ghcr.io holds for a tag, anonymously (CON158); empty for other registries or any failure.
+_runtime_registry_digest() {
+  local ref="$1" repo tag tok
+  case "${ref}" in ghcr.io/*) ;; *) return 0 ;; esac
+  repo="${ref#ghcr.io/}"; tag="${repo##*:}"; repo="${repo%:*}"
+  tok="$(curl -fsS "https://ghcr.io/token?service=ghcr.io&scope=repository:${repo}:pull" 2>/dev/null \
+    | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')" || return 0
+  [ -n "${tok}" ] || return 0
+  curl -fsSI -H "Authorization: Bearer ${tok}" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json,application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json' \
+    "https://ghcr.io/v2/${repo}/manifests/${tag}" 2>/dev/null | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: //p' | head -n 1
+}
+
 # Transient push failures retry (PUSH_MAX_ATTEMPTS, PUSH_RETRY_BASE_SECS), permanent ones do not. docs/cross-build-verification.md
 runtime_push_tag() {
   local tag="$1"
   local max_attempts="${PUSH_MAX_ATTEMPTS:-4}" base_secs="${PUSH_RETRY_BASE_SECS:-15}"
-  local attempt=1 rc=0 log_file=""
+  local attempt=1 rc=0 log_file="" local_digest remote_digest delay
+  # A restart re-pushes what the registry already holds: same manifest digest, nothing to upload (CON158).
+  local_digest="$(_runtime_local_digest "${tag}")"
+  remote_digest="$(_runtime_registry_digest "${tag}")"
+  if [ -n "${local_digest}" ] && [ "${local_digest}" = "${remote_digest}" ]; then
+    log "[push] ${tag}: already in the registry (${local_digest}), no upload"
+    return 0
+  fi
   log_file="$(mktemp "${TMPDIR:-/tmp}/runtime-push-XXXXXX" 2>/dev/null || true)"
 
   while :; do
     rc=0
     _runtime_push_attempt "${tag}" "${log_file:-/dev/null}" || rc=$?
     [ "${rc}" -eq 0 ] && break
-    if [ -n "${log_file}" ] \
-       && declare -F _cross_stage_push_error_is_transient >/dev/null 2>&1 \
-       && ! _cross_stage_push_error_is_transient "${log_file}"; then
-      warn "[push] ${tag} failed with a PERMANENT error (not a registry/network flake) — not retrying"
+    if ! delay="$(push_retry_delay "${attempt}" "${max_attempts}" "${base_secs}" "${log_file}")"; then
+      if [ "${attempt}" -lt "${max_attempts}" ]; then
+        warn "[push] ${tag} failed with a PERMANENT error (not a registry/network flake) — not retrying"
+      else
+        warn "[push] ${tag} failed after ${attempt} attempts"
+      fi
       break
     fi
-    if [ "${attempt}" -ge "${max_attempts}" ]; then
-      warn "[push] ${tag} failed after ${attempt} attempts"
-      break
-    fi
-    warn "[push] ${tag} attempt ${attempt}/${max_attempts} hit a transient registry/network error; retrying in ${base_secs}s"
-    sleep "${base_secs}"
+    warn "[push] ${tag} attempt ${attempt}/${max_attempts} hit a transient registry/network error; retrying in ${delay}s"
+    sleep "${delay}"
     attempt=$(( attempt + 1 ))
   done
 
@@ -505,8 +529,8 @@ runtime_build_wrapper_image() {
   local tag parent_image
   local -a build_args=()
 
-  # errexit is off here: without || return 1 a failed build reaches the push, which blames the wrong step.
-  _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
+  # errexit is off here, so a failed build cannot reach the push; this timer stops before the gate wait below.
+  _runtime_timed wrapper-build "${arch}" _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
     log "[DRY RUN] would push wrapper image ${tag}"
@@ -527,7 +551,7 @@ runtime_build_wrapper_rootfs() {
   local -a build_args=()
 
   # A failed build must not reach the export/push below, which would ship a stale tag.
-  _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
+  _runtime_timed wrapper-build "${arch}" _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
     log "[DRY RUN] would export rootfs from ${tag} to ${rootfs_dir} and push"
@@ -555,6 +579,9 @@ _runtime_push_wrapper_tag() {
 runtime_build_chain() {
   local arch="$1"
   local rootfs_dir="${2:-}"
+  # This arch's BuildKit output goes to its own log; the chain log keeps the status lines.
+  # shellcheck disable=SC2034 # build-helpers.sh reads this per-arch path in run_nerdctl_build.
+  RUN_NERDCTL_LOG="$(cross_stage_log_redirect "runtime-${arch}")"
 
   # Explicit || return 1 on every step: run_parallel_arch_loop's `if !` disables errexit for the whole tree.
   _runtime_timed base "${arch}" runtime_build_base_image "${arch}" || return 1
@@ -597,12 +624,27 @@ _runtime_smoke_wait() {
   return "${rc}"
 }
 
+# A long step prints its elapsed minutes every 10 min after the first 15, so a wait reads as progress (CON157).
+_runtime_heartbeat() {
+  local step="$1" arch="$2" t0="$3" s
+  trap 'kill "${s:-}" 2>/dev/null; exit 0' TERM INT
+  sleep "${RUNTIME_HEARTBEAT_FIRST_SECS:-900}" & s=$!; wait "${s}" || exit 0
+  while :; do
+    log "[heartbeat ${arch} ${step}] elapsed $(( ($(date +%s) - t0) / 60 )) min"
+    sleep "${RUNTIME_HEARTBEAT_EVERY_SECS:-600}" & s=$!; wait "${s}" || exit 0
+  done
+}
+
 # <step> <arch> <cmd...>: logs the step's wall time. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv
 _runtime_timed() {
-  local step="$1" arch="$2" t0 rc=0
+  local step="$1" arch="$2" t0 rc=0 hb
   shift 2
   t0="$(date +%s)"
+  _runtime_heartbeat "${step}" "${arch}" "${t0}" &
+  hb=$!
   "$@" || rc=$?
+  kill "${hb}" 2>/dev/null || true
+  wait "${hb}" 2>/dev/null || true
   log "[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}"
   return "${rc}"
 }
@@ -627,7 +669,7 @@ runtime_shared_usage_options() {
   --image-prefix TAG            Prefix for built wrapper image tags
   --dry-run                    Print build commands without executing them
   --parallel-archs              Build per-architecture images in parallel
-  --max-parallel-archs N        Max concurrent arch builds (default: 4)
+  --max-parallel-archs N        Max concurrent arch builds (default: nproc, 4 if unknown)
   --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
   --architectures LIST          Alias for --target-arches
   --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
