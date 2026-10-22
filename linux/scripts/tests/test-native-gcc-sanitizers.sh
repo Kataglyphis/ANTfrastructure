@@ -9,6 +9,10 @@ VALIDATE="${TESTS_DIR}/../06-packaging/validate-compilers.sh"
 PLATFORM="${TESTS_DIR}/../01-core/platform.sh"
 GCCV=16.2.0
 ARM64_LIBS=(asan ubsan lsan tsan hwasan)
+# Fixture inputs the generated stubs read from their environment; each case passes its own value.
+: "${SAN_BIN_RC:=0}"
+: "${STUB_AS_NEEDED:=0}"
+: "${STUB_NO_SAN_LIBS:=0}"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
