@@ -71,9 +71,14 @@ t_assert_contains "${_bf}" "fsspec" "fsspec does not import, so it must be backf
 t_assert_contains "${_bf}" "typing-extensions" "the PACKAGE name is installed, not the module name"
 
 t_case "nothing is backfilled when every torch dep already imports"
-_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions" \
+_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions setuptools" \
         "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '^uv pip install --no-deps ' | grep -v -e '\.whl' | grep -v -e 'ml_dtypes')"
+
+t_case "setuptools is backfilled when the torch venv cannot import it (c8192781)"
+_out="$(_uv_calls_env x86_64 "sympy mpmath networkx jinja2 markupsafe filelock fsspec typing_extensions" \
+        "torch-2.13.0-cp314-cp314-linux_x86_64.whl")"
+t_assert_contains "${_out}" "uv pip install --no-deps setuptools==84.0.0" "torch declares setuptools unconditionally; riscv64's sync never installed it"
 
 t_case "a non-torch wheel set never enters the backfill at all"
 _out="$(_uv_calls_env x86_64 "" "numpy-2.5.2-cp314-cp314-linux_x86_64.whl")"
