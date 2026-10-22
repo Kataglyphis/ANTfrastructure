@@ -531,8 +531,8 @@ runtime_build_wrapper_image() {
   local tag parent_image
   local -a build_args=()
 
-  # errexit is off here: without || return 1 a failed build reaches the push, which blames the wrong step.
-  _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
+  # errexit is off here, so a failed build cannot reach the push; this timer stops before the gate wait below.
+  _runtime_timed wrapper-build "${arch}" _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
     log "[DRY RUN] would push wrapper image ${tag}"
@@ -553,7 +553,7 @@ runtime_build_wrapper_rootfs() {
   local -a build_args=()
 
   # A failed build must not reach the export/push below, which would ship a stale tag.
-  _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
+  _runtime_timed wrapper-build "${arch}" _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
     log "[DRY RUN] would export rootfs from ${tag} to ${rootfs_dir} and push"

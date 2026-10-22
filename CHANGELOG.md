@@ -12,6 +12,28 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-22 — the chain starts from one profile; gates alone; the wrapper timer; a layer audit
+
+- `chain-latest.sh` and `chain-latest.env` start `:latest` as a systemd user unit bounded by `RuntimeMaxSec`.
+  The profile runs three arches at once (`MAX_PARALLEL_ARCHS=3`, so `BUILD_MEM_DIVISOR=18` under PAR4). The
+  start refuses below 150G free, 20G available memory, or while the unit runs. `--plan` prints the command and
+  the divisor; the unit samples `MemAvailable` into `<log>.mem.tsv`. `test-chain-latest.sh`.
+- `build-runtime-manifest.sh --gates-only`: the wrapper content gate and the runtime-image smoke on the per-arch
+  images already pushed; no build, push or manifest. Run through the entry point against the published amd64
+  tag: green. `test-manifest-gates-only.sh`.
+- The `wrapper` timer covered the smoke gate's wait, so the smoke and the wrapper showed the same seconds. The
+  build has its own `wrapper-build` line now; `wrapper` stays the total (build, gate wait, push).
+  `test-runtime-wrapper-timing.sh`; `test-runtime-wheels-source.sh` expects the new step.
+- `layer-audit.py` (`test-layer-audit.sh`) reports what an image stores. On the published amd64 `:latest`:
+  live 36.11 GB unpacked (12.9 GB compressed); kept but dead 61 MB (22.4 MB deleted by later layers, 38.7 MB
+  replaced). The image carries no build residue to speak of.
+  - The ORT copy is layer 01: 34 MB, 209 files, install only.
+  - The "5 GB ORT-Build" RUN is layer 47: the Android SDK install, with `system.img` at 3.58 GB. `nerdctl history`
+    shows the RUN's ENV list, not its step, which is why it read as ORT.
+
+Not changed: nothing about the arches' OOM risk. `MAX_PARALLEL_ARCHS=3` is what the PAR4 divisor was built for; the
+first profile run is the measurement, so check `dmesg | grep -i oom` and `<log>.mem.tsv` after it.
+
 ## 2026-10-22 — the restart skips a push whose digest the registry holds (CON158)
 
 - `runtime_push_tag` compares the local manifest digest (`nerdctl image inspect --mode=native`) with the

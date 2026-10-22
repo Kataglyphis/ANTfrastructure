@@ -118,7 +118,7 @@ for _v in image auto; do
   t_assert_contains "${_out}" "ROOT=" "RUNTIME_WHEELS_SOURCE=${_v}: no export root"
   t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -F 'ROOT=/leaked' || true)" "an inherited root cannot switch the wrapper to export"
   t_assert_eq "STEP base,STEP package,STEP smoke,BUILD-BEGIN wrapper," "$(_events)" "exactly base, package, smoke, wrapper, as before"
-  t_assert_eq "base package smoke wrapper " "$(_steps "${_out}")" "each of them prints its [runtime-timing] line, in order"
+  t_assert_eq "base package smoke wrapper-build wrapper " "$(_steps "${_out}")" "each of them prints its [runtime-timing] line, in order"
   t_assert_eq "--build-arg WHEELS_IMAGE=repo@sha256:abc . " "$(_wheels_tail)" "the torch RUN mounts the pinned android image"
   t_assert_eq "" "$(ls -A "${RUNTIME_CONTEXT_ROOT}" 2>/dev/null)" "nothing is staged"
 done
@@ -151,7 +151,7 @@ t_assert_eq "--build-arg WHEELS_IMAGE=runtime_wheels --build-context runtime_whe
   "the wrapper mounts the staged directory and never the image"
 t_assert_eq "${_IMAGE_HEAD}" "$(_head)" "every other wrapper argument is image mode's, byte for byte"
 t_assert_contains "${_out}" "[wheels] arm64: files=2 bytes=3 sha256=" "the export logs what it staged"
-t_assert_eq "wheels-export base package smoke wrapper " "$(_steps "${_out}")" \
+t_assert_eq "wheels-export base package smoke wrapper-build wrapper " "$(_steps "${_out}")" \
   "every step prints its [runtime-timing] line, the export first: the A/B reads all five"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep '^LEFT ' || true)" "the arch's directory and seal are gone after the wrapper"
 _out="$(RUNTIME_WHEELS_SOURCE='export' _run 'runtime_wheels_setup; r="${RUNTIME_WHEELS_EXPORT_ROOT}"; runtime_wheels_cleanup; [ -d "${r}" ] && echo KEPT || echo GONE')"

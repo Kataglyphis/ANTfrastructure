@@ -610,6 +610,29 @@ owner carries the breakage that costs.
       Status 2026-10-21: implemented (store in `linux/Dockerfile.sdk`, read-first in the fetcher, 21 test
       assertions under WSL); open until a family image build shows the 18 placed without a download.
 
+- [ ] **CON159 — the Android payload is 12 GB of the amd64 `:latest`'s 36 GB unpacked** [M, ★★★]. Measured
+      2026-10-22 with `layer-audit.py`: layer 47 (the SDK install) 4.66 GB, of which the emulator's `system.img` is
+      3.58 GB; layer 10 (`/opt/android-sdk`: NDK 2.4 GB) 3.9 GB; layer 11 (GStreamer and OpenCV for Android)
+      3.4 GB. Every Linux CI job pulls all of it, and the riscv64 image already switches it off
+      (`/opt/android/.android-payload-off`). Work: move the emulator and its system image (4.4 GB) out first,
+      into an `android` variant beside `:latest` (as `:latest-nvidia` is), then the rest. Done when the amd64
+      `:latest` unpacks ≥ 4 GB smaller and the Android lane runs on the variant.
+
+- [ ] **CON160 — the flatpak runtime sits in the base layer: 3.2 GB of every image** [S, ★★★]. Measured
+      2026-10-22: `/var/lib/flatpak/repo/objects` is 3.23 GB in layer 00, the base stage, so every stage above
+      inherits it. Work: fetch the runtime when the flatpak packaging runs, pinned by commit; the base stage keeps
+      the flatpak binary only. Done when the base layer is under 3.5 GB unpacked and the flatpak lane fetches.
+
+- [ ] **CON161 — the Flutter SDK ships its git history and a pub preload cache: 0.55 GB** [S, ★]. Measured
+      2026-10-22 in layer 08: `/opt/flutter/.git` 0.31 GB, `.pub-preload-cache` tarballs about 0.24 GB
+      (`flutter_gallery_assets` 87 MB). Work: a shallow clone (`--depth 1`), and the preload cache deleted in the
+      same RUN. Done when the layer drops by 0.5 GB and `flutter --version` and the web lane pass.
+
+- [ ] **CON162 — name the RUN steps: `nerdctl history` shows the ENV list, not the step** [S, ★★]. The 5 GB
+      Android layer read as "ORT-Build" for that reason. Work: a `LABEL kataglyphis.step=<name>` before each heavy
+      RUN (metadata only, no layer), so `nerdctl history` and `layer-audit.py` name every step. Done when the
+      history names the step of the Android layer.
+
 ## Open — Linux arm64 and riscv64
 
 - [ ] **CON130 — riscv64 cross builds read the amd64 image's `PKG_CONFIG_PATH` first** [S, ★★].
