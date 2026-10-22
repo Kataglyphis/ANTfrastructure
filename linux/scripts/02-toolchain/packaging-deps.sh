@@ -38,7 +38,8 @@ cleanup() {
 trap cleanup EXIT
 
 best_effort_mode() {
-    [ "${PACKAGING_DEPS_MODE}" = "best-effort" ]
+    if [ "${PACKAGING_DEPS_MODE}" = "best-effort" ]; then return 0; fi
+    return 1
 }
 
 run_step() {

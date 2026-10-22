@@ -50,7 +50,8 @@ ubuntu_archive_mirror_is_official() {
   local normalized_url
 
   normalized_url="$(ubuntu_mirror_normalize_url "${1:-$(ubuntu_default_archive_mirror_url)}")"
-  [[ "${normalized_url}" =~ ^https?://([A-Za-z0-9-]+\.)?archive\.ubuntu\.com/ubuntu/$ ]]
+  if [[ "${normalized_url}" =~ ^https?://([A-Za-z0-9-]+\.)?archive\.ubuntu\.com/ubuntu/$ ]]; then return 0; fi
+  return 1
 }
 
 ubuntu_ports_mirror_from_archive() {

@@ -314,7 +314,8 @@ build_arch_oci() {
 cross_build_platform() { printf '%s' "${CROSS_BUILD_PLATFORM:-linux/amd64}"; }
 
 android_build_host_supported() {
-  [ "$(build_arch_oci)" = "amd64" ]
+  if [ "$(build_arch_oci)" = "amd64" ]; then return 0; fi
+  return 1
 }
 
 android_require_amd64_build_host() {

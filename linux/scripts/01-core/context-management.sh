@@ -189,7 +189,8 @@ runtime_wheels_context_dir() {
 }
 
 runtime_use_local_artifact_context() {
-  [ -n "${ARTIFACT_CONTEXT_ROOT:-}" ]
+  if [ -n "${ARTIFACT_CONTEXT_ROOT:-}" ]; then return 0; fi
+  return 1
 }
 
 # `<root>-<arch>`, exactly what cross_stage_context_dir writes; a slash made --no-push fall back to a stale tag.

@@ -67,7 +67,8 @@ verify_cross_mode_requested() {
     return $?
   fi
 
-  [ "${BUILD_MODE:-native}" = "cross" ]
+  if [ "${BUILD_MODE:-native}" = "cross" ]; then return 0; fi
+  return 1
 }
 
 verify_cross_target_versions() {

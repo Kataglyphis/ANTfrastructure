@@ -8,36 +8,22 @@ fi
 [ -z "${_CROSS_PYTHON_LOADED:-}" ] || return 0
 _CROSS_PYTHON_LOADED=1
 
+# Prints its first argument if it is an executable path, else fails; an unset pin is an empty argument.
+_host_python_try() {
+  [ -n "$1" ] && [ -x "$1" ] || return 1
+  printf '%s' "$1"
+}
+
 host_python_bin() {
-  if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
-    printf '%s' "${MEDIA_HOST_PYTHON}"
-    return 0
-  fi
-
-  if [ -n "${UV_PYTHON:-}" ] && [ -x "${UV_PYTHON}" ]; then
-    printf '%s' "${UV_PYTHON}"
-    return 0
-  fi
-
-  if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
-    printf '%s' "${VIRTUAL_ENV}/bin/python"
-    return 0
-  fi
-
-  if [ -n "${PYTHON_MAJOR_MINOR:-}" ] && [ -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
-    printf '%s' "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
-    return 0
-  fi
-
+  _host_python_try "${MEDIA_HOST_PYTHON:-}" && return 0
+  _host_python_try "${UV_PYTHON:-}" && return 0
+  _host_python_try "${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin/python}" && return 0
+  _host_python_try "${PYTHON_MAJOR_MINOR:+/usr/local/bin/python${PYTHON_MAJOR_MINOR}}" && return 0
   if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
     local python_mm=""
     python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"
-    if [ -n "${python_mm}" ] && [ -x "/usr/local/bin/python${python_mm}" ]; then
-      printf '%s' "/usr/local/bin/python${python_mm}"
-      return 0
-    fi
+    _host_python_try "${python_mm:+/usr/local/bin/python${python_mm}}" && return 0
   fi
-
   command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
 }
 

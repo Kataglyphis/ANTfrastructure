@@ -97,7 +97,8 @@ verify_shared_lib() {
 # Side-effect-free, for one-of logic: `verify_x A || verify_x B` counts A's failure even when B passes.
 probe_lib() {
   local dir="$1" glob_pattern="$2"
-  [ -n "$(find "${dir}" -maxdepth 2 -name "${glob_pattern}" -type f 2>/dev/null | head -1 || true)" ]
+  if [ -n "$(find "${dir}" -maxdepth 2 -name "${glob_pattern}" -type f 2>/dev/null | head -1 || true)" ]; then return 0; fi
+  return 1
 }
 
 # Exactly one verdict for "at least one of these dir:pattern pairs must match".

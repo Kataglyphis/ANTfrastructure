@@ -298,5 +298,6 @@ _ancestry_distinct_nonempty() {
 ancestry_run_ids_coherent() {
   local -a distinct
   mapfile -t distinct < <(_ancestry_distinct_nonempty "$@")
-  [ "${#distinct[@]}" -le 1 ]
+  if [ "${#distinct[@]}" -le 1 ]; then return 0; fi
+  return 1
 }
