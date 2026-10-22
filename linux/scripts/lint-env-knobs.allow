@@ -25,7 +25,6 @@ APP_UV_LOCK
 ARCHITECTURES
 ARTIFACT_CONTEXT_MODE
 ARTIFACT_CONTEXT_ROOT
-BASE_PARENT_IMAGE
 BINFMT_QEMU_DIR
 BUILDKIT_CACHE_DIR
 BUILDKIT_HOST
@@ -134,7 +133,6 @@ SKIP_QUALITY
 SKIP_TESTS
 SLANG_COMPILE_MANIFEST
 SLANG_COMPILE_SOURCE_ROOT
-STRIP_JOBS
 TARGET_PYTHON_MAJOR_MINOR
 TF_CXX_FLAGS
 TVM_LLVM_CONFIG
@@ -245,7 +243,6 @@ CARGO_VERSION
 # reader with no assignment anywhere in the repo.
 # 1 ships the venv even though ffmpeg has unresolved libraries
 # (06-packaging/setup-torch-venv.sh, default 0).
-ALLOW_BROKEN_FFMPEG
 # 1 accepts an empty wheelhouse — a deliberately wheel-less riscv64 image
 # (03-media/runtime/verify-media-artifacts.sh, default 0).
 ALLOW_EMPTY_APP_WHEELS
@@ -314,7 +311,6 @@ GST_RS_BUILD_ALL
 # (03-media/build/litert/build-litert.sh, default 0).
 KEEP_SOURCES
 # 1 keeps /opt/wheels in the final torch image (setup-torch-venv.sh, default 0).
-KEEP_WHEELHOUSE
 # 1 makes the post-create_manifest freshness check fatal
 # (build-runtime-manifest.sh, default 0 = advisory).
 MANIFEST_FRESHNESS_STRICT
@@ -364,7 +360,6 @@ STV_REQUIRE_VENV
 # cannot execute on the build host (default 0).
 VALIDATE_CC_STATIC_ONLY
 # 0 skips the venv byte-compile (06-packaging/setup-torch-venv.sh, default 1).
-VENV_COMPILE
 # 1 promotes a wrong-SOABI native extension in a wheel to fatal
 # (03-media/runtime/verify-wheels.sh, default 0 = warn).
 WHEEL_SOABI_STRICT

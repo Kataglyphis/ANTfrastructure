@@ -77,7 +77,8 @@ append_optional_build_arg() {
 }
 
 append_runtime_base_parent_build_arg() {
-  append_optional_build_arg "$1" BASE_IMAGE "${BASE_PARENT_IMAGE:-}"
+  : "${BASE_PARENT_IMAGE:=}"
+  append_optional_build_arg "$1" BASE_IMAGE "${BASE_PARENT_IMAGE}"
 }
 
 append_runtime_accelerator_build_args() {
@@ -154,9 +155,10 @@ _resolve_media_strip_bin() {
 
 # strip_media_prefixes [prefix...]: best-effort strip of the media install trees (default set without args), not wheels.
 strip_media_prefixes() {
+  : "${STRIP_JOBS:=$(nproc)}"
   # The MEDIA_STRIP gate lives here, not at the call sites.
   [ "${MEDIA_STRIP}" = "1" ] || return 0
-  local strip_bin jobs="${STRIP_JOBS:-$(nproc)}" p
+  local strip_bin jobs="${STRIP_JOBS}" p
   strip_bin="$(_resolve_media_strip_bin)"
   local -a prefixes=("$@")
   if [ "${#prefixes[@]}" -eq 0 ]; then

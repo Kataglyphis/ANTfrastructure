@@ -166,6 +166,7 @@ _install_ffmpeg_runtime_codecs() {
 
 # Fail loud: the codec installs are best-effort and the ffmpeg smoke skips without binfmt.
 _assert_ffmpeg_so_closure() {
+  : "${ALLOW_BROKEN_FFMPEG:=0}"
   if [ -x /opt/ffmpeg/bin/ffmpeg ] && command -v ldd >/dev/null 2>&1; then
     local _ff_unresolved
     # --transitive is the loader's view, with setup_torch_deps' LD_LIBRARY_PATH.
@@ -174,7 +175,7 @@ _assert_ffmpeg_so_closure() {
       echo "FATAL: /opt/ffmpeg/bin/ffmpeg has unresolved shared libraries on the runtime loader path:" >&2
       printf '  %s (not found)\n' ${_ff_unresolved} >&2
       echo "  Install the providing apt package(s) in setup_torch_deps or via the ffmpeg runtime-apt manifest (emit_runtime_apt_manifest)." >&2
-      if [ "${ALLOW_BROKEN_FFMPEG:-0}" = "1" ]; then
+      if [ "${ALLOW_BROKEN_FFMPEG}" = "1" ]; then
         echo "WARNING: ALLOW_BROKEN_FFMPEG=1 -- shipping ffmpeg with unresolved libraries anyway." >&2
       else
         rm -rf /var/lib/apt/lists/*
@@ -342,12 +343,13 @@ verify_torch_import_or_fail() {
 }
 
 cleanup_wheelhouse() {
+  : "${KEEP_WHEELHOUSE:=0}"
   # Nothing after venv assembly reads /opt/wheels; KEEP_WHEELHOUSE=1 keeps it for debugging.
   if [ "${BUILD_MODE}" = "cross" ]; then
     echo "Keeping /opt/wheels (pure cross artifact mode; venv assembly deferred)"
     return 0
   fi
-  if [ "${KEEP_WHEELHOUSE:-0}" = "1" ]; then
+  if [ "${KEEP_WHEELHOUSE}" = "1" ]; then
     echo "Keeping /opt/wheels (KEEP_WHEELHOUSE=1)"
     return 0
   fi
@@ -362,7 +364,8 @@ cleanup_wheelhouse() {
 
 # uid 1001 cannot write __pycache__ into /opt/venv, so compile once as root with the target python.
 bytecompile_venv() {
-  [ "${VENV_COMPILE:-1}" = "1" ] || { echo "VENV_COMPILE=0 — skipping venv byte-compile"; return 0; }
+  : "${VENV_COMPILE:=1}"
+  [ "${VENV_COMPILE}" = "1" ] || { echo "VENV_COMPILE=0 — skipping venv byte-compile"; return 0; }
   local py="${VENV}/bin/python"
   [ -x "${py}" ] || return 0
   echo "Byte-compiling ${VENV}/lib (AP2; may be slow under qemu on cross arches)..."
