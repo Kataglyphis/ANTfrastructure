@@ -20,7 +20,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
             0x5032 = 'RISCV32'
             0x5064 = 'RISCV64'
         }
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-TargetArch.ps1' `
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Test-TargetArch.ps1' `
                 -FunctionName 'Get-CoffMachine', 'Get-ArchiveMachine', 'Format-Machine')
 
         $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('archgate-' + [guid]::NewGuid().ToString('N'))
@@ -250,19 +250,33 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 Describe 'verify-target-arch: device-OS import allowances (#121 QNN)' {
 
     It 'classifies the Qualcomm FastRPC drivers as device OS (libcdsprpc/libadsprpc)' {
-        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\Test-TargetArch.ps1')
+        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts/build/Test-TargetArch.ps1')
         Assert-True ($scriptText.Contains('lib(cds|ads)prpc\.dll')) 'libcdsprpc/libadsprpc must be client-OS allowed (QAIRT HTP stubs import them; they ship in every Windows-on-Snapdragon OS image)'
         Assert-True ($scriptText.Contains('FastRPC')) 'the comment must say why'
     }
 
     It 'allowlists the cp313 torch stack''s interpreter as an external (python313.dll)' {
-        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\Test-TargetArch.ps1')
+        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts/build/Test-TargetArch.ps1')
         Assert-True ($scriptText.Contains('python313\.dll')) 'the cp313 wheels import python313.dll; the bundle ships python314 and the device provides the 3.13 interpreter'
         Assert-True ($scriptText.Contains('cp313')) 'the comment must say why'
     }
 }
 
 Describe 'verify-target-arch: the import walk opens every wheel' {
+    BeforeAll {
+        # The gate resolves system imports against $env:SystemRoot\System32; a fake one holds the names these fixtures import.
+        $script:savedSystemRoot = $env:SystemRoot
+        $script:fakeSystemRoot = Join-Path $TestDrive 'Windows'
+        $script:fakeSys32 = Join-Path $script:fakeSystemRoot 'System32'
+        New-Item -ItemType Directory -Force -Path $script:fakeSys32 | Out-Null
+        Set-Content -LiteralPath (Join-Path $script:fakeSys32 'kernel32.dll') -Value 'MZ'
+        $env:SystemRoot = $script:fakeSystemRoot
+    }
+
+    AfterAll {
+        $env:SystemRoot = $script:savedSystemRoot
+    }
+
 
     It 'walks two same-named wheels, as the GIL and the free-threaded tree each ship ensurepip''s pip' {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -277,7 +291,7 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
                 [IO.Compression.ZipFile]::CreateFromDirectory($src, $whl)
             }
             # A child process: the gate re-imports its arch module with -Force.
-            $out = @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1)
+            $out = @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1)
             Assert-Equal 0 $LASTEXITCODE "the gate failed: $($out -join ' | ')"
             Assert-Match 'import walk: 3 file\(s\) walked, 0 unresolved' ($out -join "`n") 'the DLL and the launcher of each wheel'
         }
@@ -290,7 +304,7 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
             foreach ($dll in 'python\python314.dll', 'python-freethreaded\python314t.dll') { New-OrtTestPe -Path (Join-Path $rt $dll) -Machine 0xAA64 -Import 'kernel32.dll' }
             $whl = Join-Path $rt 'wheels-cp314t\av-1.0-cp314-cp314t-win_arm64.whl'
             $pack = { param([hashtable]$Member) Remove-Item -LiteralPath $whl -ErrorAction SilentlyContinue; [void](New-TestWheel -Path $whl -Member $Member) }
-            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1) -join "`n" }
+            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1) -join "`n" }
             & $pack @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0xAA64; Import = 'python314t.dll' }; 'av\avutil.dll' = @{ Machine = 0xAA64; Import = 'kernel32.dll' } }
             $out = & $gate
             Assert-Equal 0 $LASTEXITCODE "a clean twin passes: $out"
@@ -298,11 +312,11 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
             & $pack @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0x8664; Import = 'python314t.dll' } }
             $out = & $gate
             Assert-True ($LASTEXITCODE -ne 0) 'an x64 member fails the arch gate'
-            Assert-Match 'av-1\.0-cp314-cp314t-win_arm64\.whl!av\\_core\.cp314t-win_arm64\.pyd  is 0x8664 \(AMD64\)' $out 'the member is named inside its wheel'
+            Assert-Match 'av-1\.0-cp314-cp314t-win_arm64\.whl!av[\\/]_core\.cp314t-win_arm64\.pyd  is 0x8664 \(AMD64\)' $out 'the member is named inside its wheel'
             & $pack @{ 'av\_core.pyd' = @{ Machine = 0xAA64; Import = 'python314.dll' } }
             $out = & $gate
             Assert-True ($LASTEXITCODE -ne 0) 'a GIL module in a cp3XYt wheel fails'
-            Assert-Match 'FREE-THREADED ABI: .*av\\_core\.pyd imports python314\.dll, not python314t\.dll' $out 'the GIL runtime'
+            Assert-Match 'FREE-THREADED ABI: .*av[\\/]_core\.pyd imports python314\.dll, not python314t\.dll' $out 'the GIL runtime'
             Assert-Match 'FREE-THREADED ABI: .*av-1\.0-cp314-cp314t-win_arm64\.whl has no module importing its free-threaded runtime' $out 'and none imports its own'
         }
     }
@@ -313,7 +327,7 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
             New-OrtTestPe -Path (Join-Path $tree 'bundle\bin\app.exe') -Machine 0xAA64 -Import 'kernel32.dll'
             $setup = Join-Path $tree 'packages\App-1.0-Release-aarch64.exe'
             New-OrtTestPe -Path $setup -Machine 0x014C -Import 'kernel32.dll'
-            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $tree -Arch arm64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
+            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $tree -Arch arm64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
             $out = & $gate
             Assert-True ($LASTEXITCODE -ne 0) 'an x86 exe without the NSIS header fails'
             Assert-Match 'App-1\.0-Release-aarch64\.exe  is 0x014C \(I386\)' $out 'named'
@@ -338,7 +352,7 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
             foreach ($t in @(@('t32', 0x014C), @('w32', 0x014C), @('t64', 0x8664), @('w64', 0x8664), @('t64-arm', 0xAA64), @('w64-arm', 0xAA64))) {
                 $templates["pip\_vendor\distlib\$($t[0]).exe"] = @{ Machine = $t[1]; Import = 'kernel32.dll' }
             }
-            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-TargetArch.ps1') -Path $rt -Arch amd64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
+            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $rt -Arch amd64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
             [void](New-TestWheel -Path $whl -Member $templates)
             $out = & $gate
             Assert-Equal 0 $LASTEXITCODE "the six templates pass an amd64 bundle: $out"

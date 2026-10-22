@@ -501,6 +501,20 @@ Plain text after the block.
                 git = @{ autoCommit = $false; commitPrefix = 'test' }
                 build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok'; linuxTestCommand = 'echo ok'; linuxQualityCommand = 'echo ok' }
             }
+            # The engine tests share one config shape; only the engines table differs.
+            function New-EngineTestConfig {
+                param([hashtable]$Engines)
+                @{
+                    engine = 'claude'
+                    engines = $Engines
+                    intervals = @{
+                        buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
+                        maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
+                    }
+                    git = @{ autoCommit = $false; commitPrefix = 'test' }
+                    build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
+                }
+            }
         }
 
         It 'runs planner-only mode without error' {
@@ -524,34 +538,16 @@ Plain text after the block.
         }
 
         It 'full loop works with the claude engine (dry-run, max 1 iteration)' {
-            $claudeCfg = @{
-                engine = 'claude'
-                engines = @{ claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' } }
-                intervals = @{
-                    buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
-                    maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
-                }
-                git = @{ autoCommit = $false; commitPrefix = 'test' }
-                build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
-            }
+            $claudeCfg = New-EngineTestConfig -Engines @{ claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' } }
             { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality } `
                 | Should -Not -Throw
         }
 
         It 'full loop works with an engine override to opencode' {
-            $claudeCfg = @{
-                engine = 'claude'
-                engines = @{
-                    claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' }
-                    opencode = @{ plannerModel = 'oc-planner'; executorModel = 'oc-executor' }
-                }
-                intervals = @{
-                    buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
-                    maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
-                }
-                git = @{ autoCommit = $false; commitPrefix = 'test' }
-                build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
+            $claudeCfg = New-EngineTestConfig -Engines @{
+                claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' }
+                opencode = @{ plannerModel = 'oc-planner'; executorModel = 'oc-executor' }
             }
             { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
                 -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality -Engine 'opencode' } `

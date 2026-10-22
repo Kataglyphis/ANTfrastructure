@@ -60,6 +60,21 @@ test('an already exited child still cleans its profile', async () => {
   assert.equal(fs.existsSync(profile), false);
 });
 
+test('the caller termination callback runs before the same child-reaping bound', async () => {
+  const profile = directory();
+  const proc = await writer(profile);
+  let killed = false;
+  try {
+    await closeChrome(socket(), proc, profile, 5000, () => { killed = true; proc.kill('SIGKILL'); });
+    assert.ok(killed);
+    assert.notEqual(proc.signalCode, null);
+    assert.equal(fs.existsSync(profile), false);
+  } finally {
+    proc.kill('SIGKILL');
+    fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test('a child that never exits fails within the bound and retains its live profile', { timeout: 2000 }, async () => {
   const profile = directory();
   const proc = new EventEmitter();

@@ -26,6 +26,11 @@
 - Browser checks await Chrome exit before removing profiles with bounded retries;
   cleanup failures remain fatal and every peer is reaped. Sidebar, live-site and
   WebGPU callers use the asynchronous cleanup, avoiding the observed `ENOTEMPTY` race.
+  Upstream process-group termination and signal cleanup remain intact, and every
+  DevTools call retains its 30-second response bound.
+- Parallel builds reject a failed result harvest even when their workers succeeded.
+  Failed, partial or empty worker-pin reads retain the parent pin and cannot mark
+  that stage built; the regression runs through an `errexit`-disabled caller.
 
 ## 2026-10-22 — shared wrapper build and shipping
 

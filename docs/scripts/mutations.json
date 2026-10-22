@@ -1,5 +1,37 @@
 [
  {
+  "id": "parallel.harvest-failure-is-fatal",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "    parallel_loop_harvest \"${flagdir}\" || failed=1",
+  "replace": "    parallel_loop_harvest \"${flagdir}\" || true",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "successful workers cannot hide a failed parent result harvest"
+ },
+ {
+  "id": "harvest.failed-pin-read-is-fatal",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "      pin_value=\"$(cat \"${flagdir}/pin.${name}\")\" || {\n        warn \"Cannot read parallel worker pin: ${flagdir}/pin.${name}\"\n        return 1\n      }",
+  "replace": "      pin_value=\"$(cat \"${flagdir}/pin.${name}\")\" || true",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "a pin read that emits partial bytes and fails must not publish that pin or the built flag, including under an errexit-disabled caller"
+ },
+ {
+  "id": "harvest.empty-pin-is-fatal",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "      [ -n \"${pin_value}\" ] || { warn \"Empty parallel worker pin: ${flagdir}/pin.${name}\"; return 1; }",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "an empty worker pin must not clear a valid parent pin or advertise a completed build"
+ },
+ {
+  "id": "docs-site.chrome-close-uses-group-callback",
+  "target": "linux/scripts/check-docs-sidebars.js",
+  "find": "    kill();",
+  "replace": "    proc.kill('SIGKILL');",
+  "test": "bash linux/scripts/tests/test-chrome-close.sh",
+  "why": "real Chrome launches supply process-group termination while standalone child fixtures retain the direct-kill default; bypassing the callback leaves renderer descendants alive"
+ },
+ {
   "id": "docs-site.chrome-close-reaps-before-profile",
   "target": "linux/scripts/check-docs-sidebars.js",
   "find": "await Promise.race([exited, new Promise",
@@ -2322,8 +2354,8 @@
  {
   "id": "python-lint.heredoc-python-decision",
   "target": "linux/scripts/extract_embedded_python.py",
-  "find": "            except SyntaxError:\n                continue",
-  "replace": "            except SyntaxError:\n                pass",
+  "find": "        except SyntaxError:\n            continue",
+  "replace": "        except SyntaxError:\n            pass",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "the parse check is what keeps non-Python out: without it a cat'ed TPL_PY_* config template is emitted as Python and reddens the gate on a file that was never Python"
  },

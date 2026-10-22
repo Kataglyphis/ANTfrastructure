@@ -24,6 +24,47 @@ def _stem(src):
     return os.path.basename(src)[:-3] if src.endswith(".sh") else os.path.basename(src)
 
 
+def _extract_blocks(src, text, outdir):
+    """Write the blocks that run their own interpreter; return how many, and the cat-ed fragments by family."""
+    written = 0
+    fragments = {}
+    # Test fixtures are deliberately broken; assembling them would report fake findings.
+    is_fixture_source = os.sep + "tests" + os.sep in os.path.abspath(src)
+    for m in BLOCK.finditer(text):
+        opener, marker, body = m.group(1), m.group(2), m.group(3)
+        if COMMENT_OPENER.match(opener):
+            continue
+        if RUNS_IT.search(opener):
+            line = text[:m.start()].count("\n") + 1
+            out = os.path.join(outdir, "{}__{}.py".format(_stem(src), line))
+            with open(out, "w", encoding="utf-8") as fh:
+                fh.write(body + "\n")
+            print("{}\t{}:{}".format(out, src, line))
+            written += 1
+        elif CATS_IT.search(opener) and not is_fixture_source:
+            fragments.setdefault(FAMILY.sub(r"\1", marker), []).append(body)
+    return written, fragments
+
+
+def _extract_families(src, fragments, outdir):
+    written = 0
+    for family, frags in sorted(fragments.items()):
+        # A lone fragment lints with bogus undefined names, which ast.parse cannot catch.
+        if len(frags) < 2:
+            continue
+        joined = "\n".join(frags) + "\n"
+        try:
+            ast.parse(joined)
+        except SyntaxError:
+            continue  # not one program after all — leave it out rather than guess
+        out = os.path.join(outdir, "{}__{}.py".format(_stem(src), family.lower()))
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write(joined)
+        print("{}\t{}: {} cat-ed fragments".format(out, src, len(frags)))
+        written += 1
+    return written
+
+
 def main():
     if len(sys.argv) < 3:
         sys.stderr.write("usage: extract_embedded_python.py <outdir> <file.sh>...\n")
@@ -37,36 +78,8 @@ def main():
                 text = fh.read()
         except OSError:
             continue
-        # Test fixtures are deliberately broken; assembling them would report fake findings.
-        is_fixture_source = os.sep + "tests" + os.sep in os.path.abspath(src)
-        fragments = {}
-        for m in BLOCK.finditer(text):
-            opener, marker, body = m.group(1), m.group(2), m.group(3)
-            if COMMENT_OPENER.match(opener):
-                continue
-            if RUNS_IT.search(opener):
-                line = text[:m.start()].count("\n") + 1
-                out = os.path.join(outdir, "{}__{}.py".format(_stem(src), line))
-                with open(out, "w", encoding="utf-8") as fh:
-                    fh.write(body + "\n")
-                print("{}\t{}:{}".format(out, src, line))
-                written += 1
-            elif CATS_IT.search(opener) and not is_fixture_source:
-                fragments.setdefault(FAMILY.sub(r"\1", marker), []).append(body)
-        for family, frags in sorted(fragments.items()):
-            # A lone fragment lints with bogus undefined names, which ast.parse cannot catch.
-            if len(frags) < 2:
-                continue
-            joined = "\n".join(frags) + "\n"
-            try:
-                ast.parse(joined)
-            except SyntaxError:
-                continue  # not one program after all — leave it out rather than guess
-            out = os.path.join(outdir, "{}__{}.py".format(_stem(src), family.lower()))
-            with open(out, "w", encoding="utf-8") as fh:
-                fh.write(joined)
-            print("{}\t{}: {} cat-ed fragments".format(out, src, len(frags)))
-            written += 1
+        n_blocks, fragments = _extract_blocks(src, text, outdir)
+        written += n_blocks + _extract_families(src, fragments, outdir)
     if not written:
         sys.stderr.write("extract-embedded-python: nothing extracted\n")
         return 1

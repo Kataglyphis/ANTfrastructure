@@ -71,13 +71,38 @@ media_common_init() {
   source_modules_framework "${script_dir}"
 
   # Critical modules — must load or the script cannot function.
-  source_module common.sh            || true
-  source_module cross-env.sh         || true
-  source_module logging.sh           || true
-  source_module build-helpers.sh     || true
-  source_module guard-helpers.sh     || true
-  source_module parallelism.sh       || true
-  # `|| true` tolerates a module's benign last rc, so assert its functions exist instead.
+  local _mm
+  for _mm in common.sh cross-env.sh logging.sh build-helpers.sh guard-helpers.sh parallelism.sh; do
+    source_module "${_mm}" || true
+  done
+  _media_assert_critical_fns || return 1
+
+  # Optional modules — may not be needed by every consumer.
+  for _mm in cross-meson.sh cross-apt.sh downloads.sh; do
+    source_module "${_mm}" || true
+  done
+  source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
+  source_module qnn-sdk.sh           || true
+  _media_setup_sccache_if_enabled
+  for _mm in compiler-resolution.sh python-host.sh cmake-cache-linker.sh abseil-headers.sh; do
+    source_module "${_mm}" || true
+  done
+
+  media_load_arch_flags
+
+  _media_arm_stats_at_exit
+}
+
+# Stats at exit: setup_ccache's own snapshot prints before the first object.
+_media_arm_stats_at_exit() {
+  if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
+    trap 'dump_compiler_cache_stats || true' EXIT
+  fi
+  return 0
+}
+
+# `|| true` tolerates a module's benign last rc, so assert its functions exist instead.
+_media_assert_critical_fns() {
   local _fn _missing=""
   for _fn in log cross_build_is_active mem_capped_jobs; do
     declare -F "${_fn}" >/dev/null 2>&1 || _missing="${_missing} ${_fn}"
@@ -86,14 +111,11 @@ media_common_init() {
     echo "ERROR: media_common_init: critical module(s) did not load -- missing:${_missing}" >&2
     return 1
   fi
+  return 0
+}
 
-  # Optional modules — may not be needed by every consumer.
-  source_module cross-meson.sh       || true
-  source_module cross-apt.sh         || true
-  source_module downloads.sh         || true
-  source_module compiler-cache.sh    && { setup_ccache; setup_lld_linker; } || true
-  source_module qnn-sdk.sh           || true
   # On by default since 2026-10-17 (Dockerfile.media); stats go to stderr, which buildkit never clips.
+_media_setup_sccache_if_enabled() {
   if [ "${ENABLE_SCCACHE_RUST:-0}" = "1" ]; then
     if declare -F setup_sccache >/dev/null 2>&1; then
       setup_sccache || true
@@ -101,17 +123,7 @@ media_common_init() {
       { sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' || true; } >&2
     fi
   fi
-  source_module compiler-resolution.sh || true
-  source_module python-host.sh       || true
-  source_module cmake-cache-linker.sh || true
-  source_module abseil-headers.sh    || true
-
-  media_load_arch_flags
-
-  # Stats at exit: setup_ccache's own snapshot prints before the first object.
-  if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
-    trap 'dump_compiler_cache_stats || true' EXIT
-  fi
+  return 0
 }
 
 # install-deps.sh bootstrap. Usage: source this file, then media_install_deps_init "${SCRIPT_DIR}".

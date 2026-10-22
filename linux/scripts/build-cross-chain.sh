@@ -437,7 +437,8 @@ _chain_disk_preflight() {
 
   # ~30G per arch of rootfs + OCI layout on the runtime-context filesystem.
   if [ -n "${rt_free_gb}" ] && [ "${rt_free_gb}" != "${free_gb}" ]; then
-    local rt_need=$(( n_arch * 30 ))
+    local rt_need
+    rt_need=$(( n_arch * 30 ))
     if [ "${rt_free_gb}" -lt "${rt_need}" ]; then
       log "DISK PREFLIGHT (runtime contexts): ${rt_free_gb}G free on ${rt_root} < ~${rt_need}G for ${n_arch} arch(es) — the runtime stage may ENOSPC there."
     fi

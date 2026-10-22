@@ -152,6 +152,7 @@ function New-OrtTestExportTable {
 function New-OrtTestPe {
     param([Parameter(Mandatory)][string]$Path, [string[]]$Import = @(), [string[]]$Text = @(), [string[]]$Export = @(), [switch]$Forward,
         [uint16]$Machine = 0x8664, [string[]]$DelayImport = @())
+    $Path = $Path -replace '\\', '/'
     $rva = 0x1000
     $descSize = 20 * ($Import.Count + 1)
     $names = [System.Collections.Generic.List[byte]]::new()
@@ -203,10 +204,11 @@ function New-OrtTestPe {
 # A wheel at -Path from -Member: each value is a file's text, or @{ Machine; Import } for a synthetic PE (New-OrtTestPe).
 function New-TestWheel {
     param([Parameter(Mandatory)][string]$Path, [hashtable]$Member = @{})
+    $Path = $Path -replace '\\', '/'
     $tree = "$Path.tree"
     $null = New-Item -ItemType Directory -Force -Path $tree, (Split-Path $Path -Parent)
     foreach ($m in $Member.GetEnumerator()) {
-        $file = Join-Path $tree $m.Key
+        $file = Join-Path $tree ($m.Key -replace '\\', '/')
         if ($m.Value -is [hashtable]) { New-OrtTestPe -Path $file -Machine $m.Value.Machine -Import @($m.Value.Import); continue }
         $null = New-Item -ItemType Directory -Force -Path (Split-Path $file -Parent)
         [IO.File]::WriteAllText($file, $m.Value)

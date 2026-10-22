@@ -611,6 +611,10 @@ Each of these killed or falsified a real build before it was fixed. The full sto
    function's return value 1, and under `set -e` the HEALTHY path kills the caller. End with
    `|| true`, `; return 0`, or an `if`.
 
+Parallel result collection must explicitly propagate a failed harvest, including when
+workers succeeded. Publish worker pins only after a successful, nonempty read;
+conditional callers disable `errexit` throughout the helper's body.
+
 **Host tool traps when you MEASURE a run.** These falsify your AUDIT, not the build; each produced
 a wrong verdict on 2026-08-31, and none announces itself:
 

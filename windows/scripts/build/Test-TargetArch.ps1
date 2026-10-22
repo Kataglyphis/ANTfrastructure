@@ -34,7 +34,7 @@ param(
     [int]$MinInspected = 1,
     [string]$HostToolPattern = '',
     # pip's and setuptools' script-launcher templates: every arch ships by design, and the installer copies the target's.
-    [string]$LauncherTemplatePattern = '\\distlib\\[tw](32|64)(-arm)?\.exe$|\\setuptools\\(cli|gui)(-32|-64|-arm64)?\.exe$',
+    [string]$LauncherTemplatePattern = '[\\/]distlib[\\/][tw](32|64)(-arm)?\.exe$|[\\/]setuptools[\\/](cli|gui)(-32|-64|-arm64)?\.exe$',
     [switch]$IncludeArchives,
     # Resolves every import against bundle, API sets and System32 (never the CRT on cross): the 0xC0000135 class; extracts and machine-checks every wheel too.
     [switch]$ImportWalk,
@@ -259,7 +259,10 @@ if ($ImportWalk) {
     $bundleNames = @{}
     foreach ($f in $walkFiles) { $bundleNames[([IO.Path]::GetFileName($f)).ToLowerInvariant()] = $true }
     $systemNames = @{}
-    foreach ($d in @(Get-ChildItem -Path (Join-Path $env:SystemRoot 'System32') -Filter '*.dll' -File -ErrorAction SilentlyContinue)) { $systemNames[$d.Name.ToLowerInvariant()] = $true }
+    # Off Windows there is no SystemRoot and no System32 to name; Join-Path on a null path would throw.
+    if ($env:SystemRoot) {
+        foreach ($d in @(Get-ChildItem -Path (Join-Path $env:SystemRoot 'System32') -Filter '*.dll' -File -ErrorAction SilentlyContinue)) { $systemNames[$d.Name.ToLowerInvariant()] = $true }
+    }
     # A cross device or a standalone bundle has no image PATH behind it.
     $standsAlone = (Test-WindowsCrossTarget -Arch $targetArch) -or $Standalone
     $crtPattern = '^(vcruntime|msvcp|concrt|vcomp|vccorlib|vcamp|msvcr|mfc)[0-9]'

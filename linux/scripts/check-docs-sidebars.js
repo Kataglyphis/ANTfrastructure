@@ -71,14 +71,14 @@ function serve(root) {
 }
 
 // Chrome may still write its profile after kill() returns; reaping precedes bounded filesystem retries.
-async function closeChrome(ws, proc, profile, timeoutMs = 5000) {
+async function closeChrome(ws, proc, profile, timeoutMs = 5000, kill = () => proc.kill('SIGKILL')) {
   ws.close();
   let timer, onExit;
   const exited = proc.exitCode !== null || proc.signalCode !== null
     ? Promise.resolve()
     : new Promise((resolve) => { onExit = resolve; proc.once('exit', onExit); });
   try {
-    proc.kill('SIGKILL');
+    kill();
     await Promise.race([exited, new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error(`Chrome did not exit within ${timeoutMs} ms; profile retained at ${profile}`)), timeoutMs);
     })]);
@@ -101,7 +101,14 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'docs-sidebars-'));
   const proc = spawn(chrome, ['--headless=new', '--no-sandbox', ...gpuFlags, '--no-first-run',
     '--disable-dev-shm-usage', '--remote-debugging-port=0', `--user-data-dir=${profile}`, 'about:blank'],
-  { stdio: 'ignore' });
+  { stdio: 'ignore', detached: true });
+  // Chrome's children share its process group: one group kill leaves no renderer behind.
+  const killGroup = () => { try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* the group is gone already */ } };
+  const cleanup = () => { killGroup(); process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); fs.rmSync(profile, { recursive: true, force: true, maxRetries: 50, retryDelay: 100 }); };
+  // Ctrl-C must not leave a detached browser or its profile behind.
+  const onSignal = () => { try { cleanup(); } catch { /* best effort on the way out */ } process.exit(130); };
+  process.once('SIGINT', onSignal);
+  process.once('SIGTERM', onSignal);
   const portFile = path.join(profile, 'DevToolsActivePort');
   // Chrome creates the file before it writes the port: under load a read in between got '' and polled 127.0.0.1: for nothing.
   let port = '';
@@ -129,9 +136,18 @@ async function launch(chrome, gpuFlags = ['--disable-gpu'], onEvent = null) {
     else if (m.method === 'Runtime.exceptionThrown') thrown.push(m.params.exceptionDetails);
     if (m.method && onEvent) onEvent(m);
   };
-  const send = (method, params = {}) => new Promise((resolve) => { const i = ++id; pending.set(i, resolve); ws.send(JSON.stringify({ id: i, method, params })); });
-  const close = () => closeChrome(ws, proc, profile);
-  const kill = () => proc.kill('SIGKILL');
+  // A Chrome that stops answering must fail the check, not hang the preflight: bound every call.
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const i = ++id;
+    const timer = setTimeout(() => { pending.delete(i); reject(new Error(`${method} got no answer from Chrome in 30 s`)); }, 30000);
+    pending.set(i, (m) => { clearTimeout(timer); resolve(m); });
+    ws.send(JSON.stringify({ id: i, method, params }));
+  });
+  const close = async () => {
+    try { await closeChrome(ws, proc, profile, 5000, killGroup); }
+    finally { process.off('SIGINT', onSignal); process.off('SIGTERM', onSignal); }
+  };
+  const kill = killGroup;
   await send('Page.enable');
   await send('Runtime.enable');
   const product = (await send('Browser.getVersion')).result.product;

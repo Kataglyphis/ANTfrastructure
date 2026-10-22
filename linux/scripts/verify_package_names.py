@@ -453,6 +453,28 @@ def _read_cache(stamp, vstamp):
     return real, virtual
 
 
+def _merge_indices(blobs):
+    """Parse every fetched index into one (real, virtual, how-many-arrived) triple."""
+    real, virtual, ok_n = set(), {}, 0
+    for blob in blobs:
+        if blob is None:
+            continue
+        fresh_real, fresh_virtual = parse_index(blob)
+        real |= fresh_real
+        for key, providers in fresh_virtual.items():
+            virtual.setdefault(key, set()).update(providers)
+        ok_n += 1
+    return real, virtual, ok_n
+
+
+def _write_stamps(stamp, vstamp, real, virtual):
+    with open(stamp, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(sorted(real)))
+    with open(vstamp, "w", encoding="utf-8") as fh:
+        for key in sorted(virtual):
+            fh.write(f"{key} {min(virtual[key])}\n")
+
+
 def load_arch(arch, codename, pocket, mirrors, cdir, ttl, timeout, refresh):
     """-> (real, virtual, source) or None when unreachable and uncached."""
     suffix = pocket or ""
@@ -467,16 +489,9 @@ def load_arch(arch, codename, pocket, mirrors, cdir, ttl, timeout, refresh):
     urls = [f"{base}dists/{codename}{suffix}/{c}/binary-{arch}/Packages.xz"
             for c in COMPONENTS]
     # All or nothing: a partial index makes real packages look dead.
-    real, virtual, ok_n = set(), {}, 0
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        for blob in pool.map(lambda u: _try(u, timeout), urls):
-            if blob is None:
-                continue
-            fresh_real, fresh_virtual = parse_index(blob)
-            real |= fresh_real
-            for key, providers in fresh_virtual.items():
-                virtual.setdefault(key, set()).update(providers)
-            ok_n += 1
+        blobs = list(pool.map(lambda u: _try(u, timeout), urls))
+    real, virtual, ok_n = _merge_indices(blobs)
     got = ok_n == len(urls)
     if ok_n and not got:
         sys.stderr.write(
@@ -488,11 +503,7 @@ def load_arch(arch, codename, pocket, mirrors, cdir, ttl, timeout, refresh):
             real, virtual = _read_cache(stamp, vstamp)
             return real, virtual, "STALE cache"
         return None
-    with open(stamp, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(sorted(real)))
-    with open(vstamp, "w", encoding="utf-8") as fh:
-        for key in sorted(virtual):
-            fh.write(f"{key} {min(virtual[key])}\n")
+    _write_stamps(stamp, vstamp, real, virtual)
     return real, virtual, "network"
 
 

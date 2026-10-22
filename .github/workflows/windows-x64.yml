@@ -41,9 +41,9 @@ jobs:
         run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer
 
       # Our own floor: runner-image updates have swapped preinstalled module versions before.
-      - name: Ensure Pester >= 5.7
+      - name: Ensure Pester >= 6.2
         shell: pwsh
-        run: Install-Module Pester -MinimumVersion 5.7 -Scope CurrentUser -Force -SkipPublisherCheck
+        run: Install-Module Pester -MinimumVersion 6.2 -Scope CurrentUser -Force -SkipPublisherCheck
 
       - name: Run test suites
         shell: pwsh

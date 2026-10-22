@@ -49,6 +49,74 @@ SHAPED = re.compile(r"(VERSION|RELEASE|REF)$")
 FROZEN_UNPROBED = set()
 
 
+def _advertised(seen_files):
+    advertised = set()
+    for dpath in seen_files:
+        with open(dpath) as fh:
+            for ln in fh:
+                m = re.match(r"\s*(?:ENV|ARG)\s+([A-Z0-9_]+)", ln)
+                if m and SHAPED.search(m.group(1)):
+                    advertised.add(m.group(1))
+    return advertised
+
+
+def _report_unchecked(advertised, checked):
+    unchecked = sorted(advertised - checked - set(EXCUSED))
+    for k in unchecked:
+        sys.stderr.write(
+            "FAIL: {} is advertised by the image but neither checked by the smoke's "
+            "advertised-vs-actual gate nor excused -- add a HAVE probe + a row in "
+            "_ADVERTISED_VERSION_KEYS, or an EXCUSED entry saying why not.\n".format(k))
+    return 1 if unchecked else 0
+
+
+def _report_stale(advertised, checked):
+    stale = sorted(set(EXCUSED) - advertised - checked)
+    for k in stale:
+        sys.stderr.write(
+            "FAIL: STALE excuse for {} ({}) -- the image no longer advertises it; "
+            "delete the EXCUSED entry.\n".format(k, EXCUSED[k]))
+    return 1 if stale else 0
+
+
+def _report_new_unprobed(checked, probed):
+    unprobed = sorted(checked - probed)
+    new_unprobed = [k for k in unprobed if k not in FROZEN_UNPROBED]
+    if new_unprobed:
+        for k in new_unprobed:
+            sys.stderr.write(
+                "FAIL: {} sits in _ADVERTISED_VERSION_KEYS but the in-image probe "
+                "prints no `ADV {}` line, so its row can only ever SKIP -- add the "
+                "printf next to the others, or drop the row.\n".format(k, k))
+        return 1
+    return 0
+
+
+def _report_healed(probed):
+    healed = sorted(FROZEN_UNPROBED & probed)
+    if healed:
+        for k in healed:
+            sys.stderr.write(
+                "FAIL: {} now HAS a probe -- remove it from FROZEN_UNPROBED so the "
+                "baseline cannot rot.\n".format(k))
+        return 1
+    return 0
+
+
+def _report_still_unprobed(checked, probed):
+    still = sorted(FROZEN_UNPROBED - probed)
+    if still:
+        print("note: {} of {} table rows still have no ADV probe and can only SKIP "
+              "(frozen baseline, see backlog WC): {}"
+              .format(len(still), len(checked), " ".join(still)))
+
+
+def _report_phantom(advertised, checked):
+    for k in sorted(checked - advertised):
+        print("note: {} is checked but not ENV/ARG-set in any Dockerfile "
+              "(it may come from a base image)".format(k))
+
+
 def main():
     spath = os.path.join(ROOT, SMOKE)
     if not os.path.exists(spath):
@@ -59,13 +127,7 @@ def main():
     if not seen_files:
         sys.stderr.write("FAIL: no Dockerfile matched {}\n".format(DOCKERFILE_GLOB))
         return 1
-    advertised = set()
-    for dpath in seen_files:
-        with open(dpath) as fh:
-            for ln in fh:
-                m = re.match(r"\s*(?:ENV|ARG)\s+([A-Z0-9_]+)", ln)
-                if m and SHAPED.search(m.group(1)):
-                    advertised.add(m.group(1))
+    advertised = _advertised(seen_files)
 
     with open(spath) as fh:
         smoke = fh.read()
@@ -74,55 +136,19 @@ def main():
         sys.stderr.write("FAIL: _ADVERTISED_VERSION_KEYS not found in {}\n".format(SMOKE))
         return 1
     checked = set(m.group(1).split())
+    # A row without an `ADV <KEY>` probe line is a permanent SKIP that reads as a pass.
+    probed = set(re.findall(r"printf\s+'ADV ([A-Z0-9_]+) ", smoke))
 
     print("=== advertised version keys ===")
     print("{} advertised across {} Dockerfile(s), {} checked by the smoke, {} excused"
           .format(len(advertised), len(seen_files), len(checked), len(EXCUSED)))
 
-    rc = 0
-    unchecked = sorted(advertised - checked - set(EXCUSED))
-    if unchecked:
-        rc = 1
-        for k in unchecked:
-            sys.stderr.write(
-                "FAIL: {} is advertised by the image but neither checked by the smoke's "
-                "advertised-vs-actual gate nor excused -- add a HAVE probe + a row in "
-                "_ADVERTISED_VERSION_KEYS, or an EXCUSED entry saying why not.\n".format(k))
-    stale = sorted(set(EXCUSED) - advertised - checked)
-    if stale:
-        rc = 1
-        for k in stale:
-            sys.stderr.write(
-                "FAIL: STALE excuse for {} ({}) -- the image no longer advertises it; "
-                "delete the EXCUSED entry.\n".format(k, EXCUSED[k]))
-    # A row without an `ADV <KEY>` probe line is a permanent SKIP that reads as a pass.
-    probed = set(re.findall(r"printf\s+'ADV ([A-Z0-9_]+) ", smoke))
-    unprobed = sorted(checked - probed)
-    new_unprobed = [k for k in unprobed if k not in FROZEN_UNPROBED]
-    if new_unprobed:
-        rc = 1
-        for k in new_unprobed:
-            sys.stderr.write(
-                "FAIL: {} sits in _ADVERTISED_VERSION_KEYS but the in-image probe "
-                "prints no `ADV {}` line, so its row can only ever SKIP -- add the "
-                "printf next to the others, or drop the row.\n".format(k, k))
-    healed = sorted(FROZEN_UNPROBED & probed)
-    if healed:
-        rc = 1
-        for k in healed:
-            sys.stderr.write(
-                "FAIL: {} now HAS a probe -- remove it from FROZEN_UNPROBED so the "
-                "baseline cannot rot.\n".format(k))
-    still = sorted(FROZEN_UNPROBED - probed)
-    if still:
-        print("note: {} of {} table rows still have no ADV probe and can only SKIP "
-              "(frozen baseline, see backlog WC): {}"
-              .format(len(still), len(checked), " ".join(still)))
-
-    phantom = sorted(checked - advertised)
-    for k in phantom:
-        print("note: {} is checked but not ENV/ARG-set in any Dockerfile "
-              "(it may come from a base image)".format(k))
+    rc = (_report_unchecked(advertised, checked)
+          | _report_stale(advertised, checked)
+          | _report_new_unprobed(checked, probed)
+          | _report_healed(probed))
+    _report_still_unprobed(checked, probed)
+    _report_phantom(advertised, checked)
     if rc == 0:
         print("OK: every advertised version key is checked or excused")
     return rc

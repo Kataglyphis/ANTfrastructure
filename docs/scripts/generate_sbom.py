@@ -54,6 +54,54 @@ def spdx_id(*parts: str) -> str:
     return f"SPDXRef-Package-{slug[:60]}-{digest}"
 
 
+def _license_notes(entry: dict, src: dict, spdx_expr: str, versions: dict[str, str]) -> list[str]:
+    notes: list[str] = []
+    obligations = lo.obligations_for(spdx_expr)
+    notes.append("Obligations: " + ", ".join(obligations) if obligations else
+                 "Obligations: none")
+    if lo.requires_source(spdx_expr):
+        ref = src.get("ref") or versions.get(src.get("ref_var", ""), "")
+        notes.append(
+            "Corresponding source required. Upstream: "
+            f"{src.get('url', 'NOASSERTION')}"
+            + (f" at {ref}" if ref else "")
+        )
+        if src.get("build_flags"):
+            notes.append(f"Build configuration: {src['build_flags']}")
+    if src.get("patches"):
+        notes.append("Patched in this repository: " + ", ".join(src["patches"]))
+    if entry.get("modified"):
+        notes.append("MODIFIED before redistribution: "
+                     + entry["modified"].get("note", ""))
+    return notes
+
+
+def _package(section: dict, subsection: dict, entry: dict, versions: dict[str, str]) -> dict:
+    name = entry["name"]
+    version = resolve_dep_version(entry, versions)
+    spdx_expr = entry["spdx"]
+    src = entry.get("source") or {}
+    download = src.get("url") or entry.get("url") or "NOASSERTION"
+
+    pkg = {
+        "SPDXID": spdx_id(section["title"], name),
+        "name": name,
+        "versionInfo": version if version != "—" else "NOASSERTION",
+        "downloadLocation": download,
+        "filesAnalyzed": False,
+        "supplier": "NOASSERTION",
+        "licenseDeclared": spdx_expr,
+        "licenseConcluded": spdx_expr,
+        "copyrightText": "NOASSERTION",
+        "comment": (
+            f"Image section: {section['title']} / {subsection['title']}"
+            + (f" ({subsection['dockerfile']})" if subsection.get("dockerfile") else "")
+        ),
+    }
+    pkg["licenseComments"] = " | ".join(_license_notes(entry, src, spdx_expr, versions))
+    return pkg
+
+
 def build_document(versions: dict[str, str]) -> dict:
     metadata = load_deps_metadata()
     packages: list[dict] = []
@@ -62,48 +110,7 @@ def build_document(versions: dict[str, str]) -> dict:
     for section in metadata["sections"]:
         for subsection in section["subsections"]:
             for entry in subsection["entries"]:
-                name = entry["name"]
-                version = resolve_dep_version(entry, versions)
-                spdx_expr = entry["spdx"]
-                src = entry.get("source") or {}
-                download = src.get("url") or entry.get("url") or "NOASSERTION"
-
-                pkg = {
-                    "SPDXID": spdx_id(section["title"], name),
-                    "name": name,
-                    "versionInfo": version if version != "—" else "NOASSERTION",
-                    "downloadLocation": download,
-                    "filesAnalyzed": False,
-                    "supplier": "NOASSERTION",
-                    "licenseDeclared": spdx_expr,
-                    "licenseConcluded": spdx_expr,
-                    "copyrightText": "NOASSERTION",
-                    "comment": (
-                        f"Image section: {section['title']} / {subsection['title']}"
-                        + (f" ({subsection['dockerfile']})" if subsection.get("dockerfile") else "")
-                    ),
-                }
-
-                notes: list[str] = []
-                obligations = lo.obligations_for(spdx_expr)
-                notes.append("Obligations: " + ", ".join(obligations) if obligations else
-                             "Obligations: none")
-                if lo.requires_source(spdx_expr):
-                    ref = src.get("ref") or versions.get(src.get("ref_var", ""), "")
-                    notes.append(
-                        "Corresponding source required. Upstream: "
-                        f"{src.get('url', 'NOASSERTION')}"
-                        + (f" at {ref}" if ref else "")
-                    )
-                    if src.get("build_flags"):
-                        notes.append(f"Build configuration: {src['build_flags']}")
-                if src.get("patches"):
-                    notes.append("Patched in this repository: " + ", ".join(src["patches"]))
-                if entry.get("modified"):
-                    notes.append("MODIFIED before redistribution: "
-                                 + entry["modified"].get("note", ""))
-                pkg["licenseComments"] = " | ".join(notes)
-
+                pkg = _package(section, subsection, entry, versions)
                 packages.append(pkg)
                 relationships.append({
                     "spdxElementId": "SPDXRef-DOCUMENT",

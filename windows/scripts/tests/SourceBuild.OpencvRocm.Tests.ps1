@@ -298,8 +298,20 @@ Describe 'rocm-checks/OpenCV.ps1: end to end against a fake python' {
     # The fake answers each of the check's three python calls from files beside it.
     $newFakePython = {
         param([string]$Dir, [string]$BuildInfo, [int]$BuildExit, [string]$Loader, [int]$LoaderExit)
-        Set-Content -LiteralPath (Join-Path $Dir 'python.cmd') -Encoding ASCII -Value @(
-            '@echo off', "`"$pwshExe`" -NoProfile -File `"%~dp0fake.ps1`" %*", 'exit /b %ERRORLEVEL%')
+        if ($IsWindows) {
+            Set-Content -LiteralPath (Join-Path $Dir 'python.cmd') -Encoding ASCII -Value @(
+                '@echo off', "`"$pwshExe`" -NoProfile -File `"%~dp0fake.ps1`" %*", 'exit /b %ERRORLEVEL%')
+        } else {
+            # A POSIX shim: the test PATH holds only $Dir, so the shim calls no external command.
+            $shimText = @'
+#!/bin/sh
+exec 'PWSH' -NoProfile -File "${0%/*}/fake.ps1" "$@"
+'@
+            $shim = $shimText.Replace("`r`n", "`n").Replace('PWSH', $pwshExe)
+            $shimPath = Join-Path $Dir 'python'
+            [System.IO.File]::WriteAllText($shimPath, $shim)
+            [System.IO.File]::SetUnixFileMode($shimPath, [System.IO.UnixFileMode]'UserRead, UserWrite, UserExecute')
+        }
         Set-Content -LiteralPath (Join-Path $Dir 'fake.ps1') -Encoding UTF8 -Value @'
 $kind = switch -Regex ("$($args[1])") { 'getBuildInformation' { 'build'; break } 'OpenCL\.dll' { 'loader'; break } default { 'ocl' } }
 if ($kind -eq 'ocl') { 'ocl|False|no platform'; exit 0 }

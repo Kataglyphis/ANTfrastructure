@@ -22,7 +22,7 @@ t_assert_ok grep -q 'cross_build_is_active() { cross_build_enabled; }' "${TESTS_
 
 # 03-media/core/common.sh needs no copy only while media_common_init refuses to run without the function.
 MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
-_MEDIA_INIT_SRC="$(t_fn_src "${MEDIA_COMMON}" media_common_init)" || exit 1
+_MEDIA_INIT_SRC="$(t_fn_src "${MEDIA_COMMON}" media_common_init)$(t_fn_src "${MEDIA_COMMON}" _media_assert_critical_fns)" || exit 1
 
 t_case "media_common_init still REFUSES to continue without cross_build_is_active"
 t_assert_contains "${_MEDIA_INIT_SRC}" 'for _fn in log cross_build_is_active mem_capped_jobs; do' \
@@ -30,6 +30,9 @@ t_assert_contains "${_MEDIA_INIT_SRC}" 'for _fn in log cross_build_is_active mem
 t_assert_contains "${_MEDIA_INIT_SRC}" "critical module(s) did not load" "and it must still be a hard return 1"
 t_assert_contains "${_MEDIA_INIT_SRC}" 'if [ -n "${_missing}" ]; then' \
   "a warning instead of a branch would let the caller reach a function that is not there"
+
+t_assert_contains "${_MEDIA_INIT_SRC}" '_media_assert_critical_fns || return 1' \
+  "media_common_init runs that check and returns 1 when it fails"
 
 t_case "and it carries no unreachable clone of the fallback"
 t_assert_eq "" "$(printf '%s\n' "${_MEDIA_INIT_SRC}" | grep -e 'cross_build_is_active() {')" \

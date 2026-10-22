@@ -45,7 +45,8 @@ append_buildkit_host_arg() {
 append_mirror_build_args() {
   local -n out_args_ref=$1
   local use_fast_mirror="${2:-${USE_FAST_UBUNTU_MIRROR:-false}}"
-  local archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-$(ubuntu_default_archive_mirror_url)}}}"
+  local archive_url
+  archive_url="${3:-${FAST_UBUNTU_MIRROR_URL:-${FAST_UBUNTU_MIRROR_URL_DEFAULT:-$(ubuntu_default_archive_mirror_url)}}}"
   local ports_url="${4:-${FAST_UBUNTU_PORTS_MIRROR_URL:-}}"
 
   out_args_ref+=(
@@ -126,7 +127,8 @@ run_nerdctl_build() {
 
 # strip_elf_tree <dir> [jobs] [strip-bin]: best-effort parallel strip; pass <triplet>-strip for a foreign tree.
 strip_elf_tree() {
-  local dir="$1" jobs="${2:-$(nproc)}" strip_bin="${3:-strip}"
+  local dir="$1" jobs strip_bin="${3:-strip}"
+  jobs="${2:-$(nproc)}"
   [ -n "${dir}" ] || return 0
   [ -d "${dir}" ] || return 0
   ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \
