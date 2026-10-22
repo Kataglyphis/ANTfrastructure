@@ -524,47 +524,57 @@ runtime_assert_provenance_stamped() {
   return 1
 }
 
-runtime_build_wrapper_image() {
-  local arch="$1"
+# _runtime_wrapper_then_ship <arch> <ship-fn> [extra...]: build, wait for the smoke verdict, then ship (ship-fn dry|ship tag arch ...).
+_runtime_wrapper_then_ship() {
+  local arch="$1" ship="$2"
+  shift 2
   local tag parent_image
   local -a build_args=()
 
-  # errexit is off here, so a failed build cannot reach the push; this timer stops before the gate wait below.
+  # errexit is off here, so a failed build cannot reach the ship step; this timer stops before the gate wait.
   _runtime_timed wrapper-build "${arch}" _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
 
   if is_dry_run; then
+    "${ship}" dry "${tag}" "${arch}" "$@"
+    return
+  fi
+  # Nothing ships past a red wrapper-smoke gate.
+  _runtime_smoke_wait "${arch}" || return 1
+  "${ship}" ship "${tag}" "${arch}" "$@"
+}
+
+# The image variant: the wrapper goes to the registry as it is.
+_runtime_ship_image() {
+  local mode="$1" tag="$2" arch="$3"
+  if [ "${mode}" = dry ]; then
     log "[DRY RUN] would push wrapper image ${tag}"
     return 0
   fi
-
-  # Nothing ships past a red wrapper-smoke gate.
-  _runtime_smoke_wait "${arch}" || return 1
   if runtime_pushes_wrapper_images; then
     _runtime_push_wrapper_tag "${tag}" "${arch}" || return 1
   fi
 }
 
-runtime_build_wrapper_rootfs() {
-  local arch="$1"
-  local rootfs_dir="$2"
-  local tag parent_image artifact_dir
-  local -a build_args=()
-
-  # A failed build must not reach the export/push below, which would ship a stale tag.
-  _runtime_timed wrapper-build "${arch}" _runtime_build_wrapper "${arch}" tag parent_image build_args || { _runtime_smoke_wait "${arch}" || true; return 1; }
-
-  if is_dry_run; then
+# The rootfs variant: export the rootfs beside the artifacts first, then push as the image variant does.
+_runtime_ship_rootfs() {
+  local mode="$1" tag="$2" arch="$3" rootfs_dir="$4" artifact_dir
+  if [ "${mode}" = dry ]; then
     log "[DRY RUN] would export rootfs from ${tag} to ${rootfs_dir} and push"
     return 0
   fi
-  _runtime_smoke_wait "${arch}" || return 1
-
   artifact_dir="$(dirname "${rootfs_dir}")"
   export_rootfs_from_image "${NERDCTL_BIN:-nerdctl}" "${tag}" "${artifact_dir}" || return 1
-
   if runtime_pushes_wrapper_images; then
     _runtime_push_wrapper_tag "${tag}" "${arch}" || return 1
   fi
+}
+
+runtime_build_wrapper_image() {
+  _runtime_wrapper_then_ship "$1" _runtime_ship_image
+}
+
+runtime_build_wrapper_rootfs() {
+  _runtime_wrapper_then_ship "$1" _runtime_ship_rootfs "$2"
 }
 
 # The orchestrators' background pusher when loaded (lib-runtime-push.sh), else the inline push.
@@ -581,6 +591,7 @@ runtime_build_chain() {
   local rootfs_dir="${2:-}"
   # This arch's BuildKit output goes to its own log; the chain log keeps the status lines.
   RUN_NERDCTL_LOG="$(cross_stage_log_redirect "runtime-${arch}")"
+  export RUN_NERDCTL_LOG
 
   # Explicit || return 1 on every step: run_parallel_arch_loop's `if !` disables errexit for the whole tree.
   _runtime_timed base "${arch}" runtime_build_base_image "${arch}" || return 1

@@ -13,7 +13,8 @@ trap 'rm -f "${_CALLS}"' EXIT
 _gates() {
   (
     set +e
-    TARGET_ARCHES=amd64,arm64 REPO_ROOT=/repo RUNTIME_IMAGE_SMOKE="${RUNTIME_IMAGE_SMOKE:-1}"
+    export TARGET_ARCHES=amd64,arm64 REPO_ROOT=/repo
+    RUNTIME_IMAGE_SMOKE="${RUNTIME_IMAGE_SMOKE:-1}"
     eval "${_fn}"
     ensure_foreign_binfmt() { :; }
     _manifest_each_arch() {

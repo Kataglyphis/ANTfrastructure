@@ -11,7 +11,7 @@ _LOG="${_work}/log"
 : > "${_LOG}"
 
 _FNS=""
-for _fn in runtime_build_wrapper_image _runtime_timed _runtime_heartbeat; do
+for _fn in runtime_build_wrapper_image _runtime_wrapper_then_ship _runtime_ship_image _runtime_timed _runtime_heartbeat; do
   _FNS+="$(t_fn_src "${RBF}" "${_fn}")"$'\n' || exit 1
 done
 eval "${_FNS}"

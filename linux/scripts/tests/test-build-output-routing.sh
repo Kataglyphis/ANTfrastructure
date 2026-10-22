@@ -15,7 +15,7 @@ printf '#!/usr/bin/env bash\nfor i in 1 2 3 4 5; do echo "LAYER ${i}"; done\nexi
 chmod +x "${_work}/nerdctl"
 
 t_case "success: BuildKit's output stays in the arch log, nothing reaches the chain log"
-RUN_NERDCTL_LOG="${_work}/arch.log"; : > "${_work}/arch.log"
+export RUN_NERDCTL_LOG="${_work}/arch.log"; : > "${_work}/arch.log"
 out="$(run_nerdctl_build "${_work}/nerdctl" build -t x . 2>&1)"; rc=$?
 t_assert_eq "0" "${rc}"
 t_assert_eq "" "${out}"

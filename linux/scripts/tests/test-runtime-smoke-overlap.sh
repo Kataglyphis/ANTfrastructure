@@ -11,7 +11,7 @@ trap 'rm -rf "${_work}"' EXIT
 
 _FNS=""
 for _fn in runtime_build_chain _runtime_smoke_start _runtime_smoke_wait _runtime_timed \
-           runtime_build_wrapper_image runtime_build_wrapper_rootfs _runtime_push_wrapper_tag; do
+           runtime_build_wrapper_image runtime_build_wrapper_rootfs _runtime_wrapper_then_ship _runtime_ship_image _runtime_ship_rootfs _runtime_push_wrapper_tag; do
   _FNS+="$(t_fn_src "${RBF}" "${_fn}")"$'\n' || exit 1
 done
 

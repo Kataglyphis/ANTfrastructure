@@ -59,7 +59,8 @@ refresh_worktree() {
 }
 
 start_unit() {
-  local log="${CHAIN_WORKTREE}/out/chain-latest-$(date +%Y%m%d-%H%M)-${CHAIN_FROM_STAGE}.log"
+  local log
+  log="${CHAIN_WORKTREE}/out/chain-latest-$(date +%Y%m%d-%H%M)-${CHAIN_FROM_STAGE}.log"
   systemctl --user reset-failed "${CHAIN_UNIT}" 2>/dev/null || true
   systemd-run --user --unit="${CHAIN_UNIT}" -p "RuntimeMaxSec=${CHAIN_RUNTIME_MAX}" \
     --working-directory="${CHAIN_WORKTREE}" \

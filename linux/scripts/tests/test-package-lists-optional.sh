@@ -9,6 +9,7 @@ LISTS="$(cd "${TESTS_DIR}/.." && pwd)/01-core/package-lists.sh"
 apt_package_exists() { case " ${PRESENT} " in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 append_unique_packages() { local -n _a="$1"; _a+=("$2"); }
 warn() { echo "WARN $*"; }
+# shellcheck source=/dev/null
 source "${LISTS}"
 
 # Output goes to a file: a command substitution would run the append in a subshell and lose the array.
