@@ -18,9 +18,13 @@ init_runtime_flow_defaults() {
   init_mirror_defaults
 
   # CLI-only, hard-reset so a leaked env var can never trigger a push; MAX_PARALLEL_ARCHS stays env-overridable.
+  # shellcheck disable=SC2034 # runtime-flow default; read by context-management.sh
   PUSH_IMAGES=0
+  # shellcheck disable=SC2034 # runtime-flow default; read by context-management.sh
   PUSH_INTERMEDIATE_IMAGES=0
+  # shellcheck disable=SC2034 # runtime-flow default; read by prune-safe.sh
   DRY_RUN=0
+  # shellcheck disable=SC2034 # runtime-flow default; read by parallel-loop.sh
   PARALLEL_ARCHS=0
   MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 }

@@ -11,6 +11,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-${REPO_ROOT}/out/linux-sdk}"
 TARGET_ARCHES="$(resolve_arch_list)"
 CROSS_TARGETS="${CROSS_TARGETS:-${TARGET_ARCHES}}"
 PUSH_IMAGES=0
+# shellcheck disable=SC2034 # default for the arch loop in parallel-loop.sh
 PARALLEL_ARCHS=0
 MAX_PARALLEL_ARCHS="${MAX_PARALLEL_ARCHS:-$(nproc 2>/dev/null || echo 4)}"
 

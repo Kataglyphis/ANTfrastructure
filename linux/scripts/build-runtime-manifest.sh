@@ -206,6 +206,7 @@ _manifest_accept_and_promote() {
 }
 
 _manifest_extra_arg() {
+  # shellcheck disable=SC2034 # --push-all sets it for context-management.sh
   case "$1" in
     --image) IMAGE_NAME="$2"; _OARG_SHIFT=2 ;;
     --push-images) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;

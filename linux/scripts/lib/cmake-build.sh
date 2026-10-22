@@ -40,12 +40,14 @@ _cmake_build_resolve_vulkan() {
   local version_arg="$1" setup_arg="$2" sdk_arg="$3"
 
   if [[ -n "${version_arg}" ]]; then
+    # shellcheck disable=SC2034 # library output; read by 01-core/vulkan-env.sh
     VULKAN_VERSION="${version_arg}"
   fi
   if [[ -n "${setup_arg}" ]]; then
     VULKAN_SETUP_SCRIPT="${setup_arg}"
   fi
   if [[ -n "${sdk_arg}" ]]; then
+    # shellcheck disable=SC2034 # library output; read by 01-core/vulkan-env.sh
     VULKAN_SDK="${sdk_arg}"
   fi
   if [[ -z "${VULKAN_SETUP_SCRIPT:-}" \

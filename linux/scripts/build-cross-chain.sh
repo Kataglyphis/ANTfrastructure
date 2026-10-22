@@ -206,7 +206,7 @@ _chain_extra_arg() {
 
 _chain_parse_args() {
   ONLY_STAGE=""
-  # --push is inert (every stage is pushed; --no-push is the toggle), so warn about it.
+  # shellcheck disable=SC2034 # read by cli-parsers.sh, which warns that --push is inert (--no-push is the toggle)
   ORCHESTRATOR_UNSUPPORTED_FLAGS="--push"
   run_orchestrator_arg_loop usage _chain_extra_arg \
     TARGET_ARCHES USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \

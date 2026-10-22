@@ -43,6 +43,7 @@ ctest_run_parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --vulkan-version)
+        # shellcheck disable=SC2034 # library output; read by the Vulkan env script it sources
         VULKAN_VERSION="${2:-}"
         shift 2
         ;;
@@ -51,6 +52,7 @@ ctest_run_parse_args() {
         shift 2
         ;;
       --vulkan-sdk)
+        # shellcheck disable=SC2034 # library output; read by the Vulkan env script it sources
         VULKAN_SDK="${2:-}"
         shift 2
         ;;

@@ -28,10 +28,13 @@ _parse_global_flags() {
 
   case "${arg}" in
     --dry-run)
+      # shellcheck disable=SC2034 # shared flag parser; read by the orchestrators that source it
       DRY_RUN=1; return 1 ;;
     --parallel-archs)
+      # shellcheck disable=SC2034 # shared flag parser; read by parallel-loop.sh
       PARALLEL_ARCHS=1; return 1 ;;
     --max-parallel-archs)
+      # shellcheck disable=SC2034 # shared flag parser; read by runtime-flow-common.sh
       MAX_PARALLEL_ARCHS="${val}"; return 2 ;;
     *)
       return 0 ;;

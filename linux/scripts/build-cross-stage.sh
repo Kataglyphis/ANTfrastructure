@@ -70,6 +70,7 @@ _stage_start_resource_monitor() {
 
 main() {
   # Single-arch: the parallel-arch knobs only parse for compatibility, so warn about them.
+  # shellcheck disable=SC2034 # read by the shared parser in 01-core/cli-parsers.sh
   ORCHESTRATOR_UNSUPPORTED_FLAGS="--parallel-archs --max-parallel-archs"
   run_orchestrator_arg_loop usage _cross_stage_extra_arg \
     TARGET_ARCH USE_FAST_UBUNTU_MIRROR FAST_UBUNTU_MIRROR_URL \

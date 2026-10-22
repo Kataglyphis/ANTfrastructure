@@ -120,6 +120,7 @@ require_sudo() {
     SUDO_WRAP="sudo"
   else
     SUDO=""
+    # shellcheck disable=SC2034 # set beside SUDO; read by the scripts that source common.sh
     SUDO_WRAP=""
   fi
 }
