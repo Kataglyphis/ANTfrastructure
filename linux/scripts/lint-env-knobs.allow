@@ -91,9 +91,7 @@ FFMPEG_HOST_TOOLCHAIN_DIR
 GCC_CROSS_SCRATCH_ROOT
 GITHUB_ENV
 GITHUB_OUTPUT
-GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR
 GSTREAMER_CARGO_TARGET_TOOLCHAIN_DIR
-GSTREAMER_DEBUG_LOGS
 HADOLINT_CACHE_DIR
 IREE_ROOT_ANDROID
 LITERT_ANDROID_CONFIGURE_RETRIES
@@ -114,7 +112,6 @@ OPENCV_ROOT_ANDROID
 ORT_PKGCONFIG_DIR
 PACKAGE_DOCKERFILE_TARGET
 PIP_CACHE_DIR  # pip's own: its cache dir, a fetch cache G2 (03-media/ort-provenance.sh) grades
-PKG_CONFIG_LIBDIR_ORIG
 PLANNER_ONLY
 PLATFORM
 PUSH_MAX_ATTEMPTS
@@ -435,11 +432,9 @@ WEBDAV_VENV_DIR
 # Hailo build script: the work tree holding the verified HailoRT and protobuf
 # sources (default /var/cache/hailo-build, which is a cache mount in
 # Dockerfile.torch). An operator override for a pre-populated tree.
-HAILO_BUILD_ROOT
 # Hailo build script: TAPPAS's install prefix (default /opt/tappas). Only the
 # headers land there — TAPPAS's meson hardcodes libdir to the system multiarch
 # dirs — so this is a relocation knob for a development tree.
-TAPPAS_PREFIX
 # Dockerfile.nvidia hands install-cuda-stack.sh the CUDA multi-target directory
 # for a CROSS build (sbsa-linux), empty on a native one. Not an operator switch:
 # the stage derives it from TARGET_ARCH. docs/linux-accelerator-images.md

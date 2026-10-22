@@ -46,7 +46,8 @@ hailo_validate_knobs || exit 2
 : "${HAILO_CPPZMQ_SHA256:?HAILO_CPPZMQ_SHA256 must be set (versions.env)}"
 
 HAILO_PREFIX="${HAILO_PREFIX:-/opt/hailo}"
-WORK="${HAILO_BUILD_ROOT:-/var/cache/hailo-build}"
+: "${HAILO_BUILD_ROOT:=/var/cache/hailo-build}"
+WORK="${HAILO_BUILD_ROOT}"
 GSTREAMER_PREFIX="${GSTREAMER_PREFIX:-/opt/gstreamer}"
 
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
@@ -348,13 +349,14 @@ build_libzmq() {
 
 # libargs is a Meson array: comma-separate its elements, or only the last survives and the HailoRT headers go missing.
 build_tappas() {
+  : "${TAPPAS_PREFIX:=/opt/tappas}"
   local build="${WORK}/tappas-build" triple plugin_dir mark
   rm -rf "${build}"
   info "configuring TAPPAS v${TAPPAS_VERSION} (GStreamer, HailoRT ${HAILORT_VERSION})"
   mark="$(hailo_cache_mark "${CMAKE_CXX_COMPILER_LAUNCHER:-}")"
   PKG_CONFIG_PATH="$(gst_pkgconfig_dir):${HAILO_PREFIX}/lib/pkgconfig:${PKG_CONFIG_PATH:-}" \
     meson setup "${build}" "${TAPPAS_SRC}/core/hailo" \
-      --prefix="${TAPPAS_PREFIX:-/opt/tappas}" --buildtype=release \
+      --prefix="${TAPPAS_PREFIX}" --buildtype=release \
       -Dlibargs="-I${HAILO_PREFIX}/include,-I${HAILO_PREFIX}/include/gstreamer-1.0/gst/hailo" \
       -Dlibxtensor=../open_source/xtensor_stack/base \
       -Dlibcxxopts=../open_source/cxxopts \

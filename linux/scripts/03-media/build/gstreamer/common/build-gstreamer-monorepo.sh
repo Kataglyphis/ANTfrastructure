@@ -333,6 +333,7 @@ _gst_monorepo_cross_flags() {
 }
 
 _gst_monorepo_pkgconfig_env() {
+  : "${PKG_CONFIG_LIBDIR_ORIG:=}"
   local deb_host_multiarch_dir=""
   local sys_pkgconf_dir=""
 
@@ -357,7 +358,7 @@ _gst_monorepo_pkgconfig_env() {
   else
     PKG_CONFIG_LIBDIR="${sys_pkgconf_dir}:/usr/lib/pkgconfig:/usr/local/lib/pkgconfig"
   fi
-  if [ -n "${PKG_CONFIG_LIBDIR_ORIG:-}" ]; then
+  if [ -n "${PKG_CONFIG_LIBDIR_ORIG}" ]; then
     PKG_CONFIG_LIBDIR="${PKG_CONFIG_LIBDIR}:${PKG_CONFIG_LIBDIR_ORIG}"
   fi
   export PKG_CONFIG_LIBDIR

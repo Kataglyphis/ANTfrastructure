@@ -83,8 +83,9 @@ resolve_host_gcc_for_cargo() {
 }
 
 prepare_cargo_host_linker_wrapper() {
+  : "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:=/tmp/gstreamer-cargo-host-toolchain}"
   local compiler="$1"
-  prepare_host_compiler_wrapper "${compiler}" host-gcc "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+  prepare_host_compiler_wrapper "${compiler}" host-gcc "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR}"
 }
 
 resolve_host_gxx_for_cargo() {
@@ -93,7 +94,7 @@ resolve_host_gxx_for_cargo() {
 
 prepare_cargo_host_cxx_wrapper() {
   local compiler="$1"
-  prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR:-/tmp/gstreamer-cargo-host-toolchain}"
+  prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR}"
 }
 
 prepare_host_cargo_toolchain_env() {
@@ -322,6 +323,7 @@ dump_debug_info() {
 }
 
 save_logs() {
+  : "${GSTREAMER_DEBUG_LOGS:=false}"
   echo "Collecting logs to ${LOG_DIR}..."
   cp -a /tmp/meson-compile.log "${LOG_DIR}/" 2>/dev/null || true
   cp -a builddir/meson-logs/* "${LOG_DIR}/" 2>/dev/null || true
@@ -332,7 +334,7 @@ save_logs() {
   echo "Logs preserved in ${LOG_DIR}"
 }
 
-if [ "${GSTREAMER_DEBUG_LOGS:-false}" = "true" ]; then
+if [ "${GSTREAMER_DEBUG_LOGS}" = "true" ]; then
   mkdir -p "${LOG_DIR}"
   trap save_logs EXIT
 fi
