@@ -360,7 +360,7 @@ Describe 'Install-LlamaCpp + LlamaCpp check: the manifest proves the shipped byt
 
 Describe 'LlamaCpp check: PE import/export reader' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaCheck -FunctionName 'Invoke-PeReader', 'ConvertTo-PeFileOffset', 'Read-PeString', 'Get-PeSymbolTable')
-    $script:Kernel32 = Join-Path $env:SystemRoot 'System32\kernel32.dll'
+    $script:Kernel32 = "$env:SystemRoot\System32\kernel32.dll"
 
     It 'agrees with the hub''s Get-PeImportNames on which DLLs a real PE imports' {
         foreach ($pe in $script:Kernel32, (Get-Process -Id $PID).Path) {
@@ -428,7 +428,7 @@ Describe 'LlamaCpp check: the import walk into ROCm (real PEs as stand-ins)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaCheck -FunctionName 'Invoke-PeReader', 'ConvertTo-PeFileOffset', 'Read-PeString', 'Get-PeSymbolTable',
         'Resolve-LoaderDll', 'Test-SameDirectory', 'Get-LlamaCppHipLinkFinding')
     # kernel32 plays ggml-hip.dll (its one non-API-set import is ntdll.dll); ntdll plays a ROCm library.
-    $sys = Join-Path $env:SystemRoot 'System32'
+    $sys = "$env:SystemRoot\System32"
     function New-LinkFixture {
         param([string]$Root, [string]$GgmlHip = 'kernel32.dll', [string]$RocmName = 'ntdll.dll', [string]$RocmFrom, [string]$OtherFrom, [string]$LlamaFrom)
         $f = @{ Llama = (Join-Path $Root 'llama'); Rocm = (Join-Path $Root 'rocm'); Other = (Join-Path $Root 'other'); Sys = $sys }

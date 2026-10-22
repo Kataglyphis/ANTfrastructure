@@ -451,8 +451,8 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
         [System.IO.Compression.ZipFile]::CreateFromDirectory($tree, $zip)
         return $zip
     }
-    $script:VkPe = Join-Path $env:SystemRoot 'System32\version.dll'
-    $script:VkPeVersion = Get-PeFileVersionNumber -Path $script:VkPe
+    $script:VkPe = "$env:SystemRoot\System32\version.dll"
+    $script:VkPeVersion = if (Test-Path -LiteralPath $script:VkPe) { Get-PeFileVersionNumber -Path $script:VkPe } else { $null }
 
     It 'builds LunarG''s Components URL and refuses anything but a four-part version' {
         Assert-Equal 'https://sdk.lunarg.com/sdk/download/1.4.357.0/windows/VulkanRT-X64-1.4.357.0-Components.zip' (Get-VulkanRuntimeZipUrl -Version '1.4.357.0') 'url'
@@ -513,7 +513,7 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
         $sysLoader = if ($pins.SystemDir) { Join-Path $pins.SystemDir 'vulkan-1.dll' } else { '' }
         return [pscustomobject]@{ Error = $failure; Pins = $pins; SystemHash = $(if ($sysLoader -and (Test-Path -LiteralPath $sysLoader)) { (Get-FileHash -LiteralPath $sysLoader).Hash }) }
     }
-    $script:VkPeHash = (Get-FileHash -LiteralPath $script:VkPe).Hash
+    $script:VkPeHash = if (Test-Path -LiteralPath $script:VkPe) { (Get-FileHash -LiteralPath $script:VkPe).Hash } else { $null }
 
     It 'downloads the zip through the real download and SHA256 check, installs the loader into System32 (none for an empty -SystemDir, the final stage''s CON25 mode) and the pinned copy with its licence, keeps no zip' {
         foreach ($systemCopy in $true, $false) {

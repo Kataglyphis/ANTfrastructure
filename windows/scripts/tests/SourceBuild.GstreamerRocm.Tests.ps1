@@ -200,7 +200,7 @@ Describe 'Get-GstRocmLeakFinding (the proof for the scrub)' {
 
 # rocm-checks/GStreamer.ps1 over real System32 bytes: msimg32.dll with its GDI32 import renamed must go red.
 $script:gstCheck = 'windows\scripts\build\rocm-checks\GStreamer.ps1'
-$script:sys32 = Join-Path $env:SystemRoot 'System32'
+$script:sys32 = "$env:SystemRoot\System32"
 
 function New-GstFixtureDll {
     param([string]$Path, [string]$RenameImport = '')
