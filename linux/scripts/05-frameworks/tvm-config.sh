@@ -114,6 +114,18 @@ _tvm_resolve_qnn_home() {
   fi
 }
 
+# Dies on the first required option the caller never passed; SEEN is the caller's associative array.
+_tvm_require_options() {
+  local -n _seen="$1"
+  local _opt
+  for _opt in --out --python-module --build-type --cc --cxx \
+              --llvm-cmake-value --llvm-dir --llvm-ignore-paths --use-vulkan; do
+    # `+x` (not `:-`): unset key must be safe under `set -u` on bash 4.3.
+    [ -n "${_seen[${_opt}]+x}" ] \
+      || die "append_tvm_cmake_args: missing required option '${_opt}'"
+  done
+}
+
 # append_tvm_cmake_args --out ARRAY_NAME [--option VALUE ...]; locals are _tvm_-prefixed so no caller array collides.
 append_tvm_cmake_args() {
   local _tvm_out_name=""
@@ -160,12 +172,7 @@ append_tvm_cmake_args() {
   done
 
   # A dropped option must fail HERE, not as a wrong -D flag hours into the compile.
-  for _tvm_opt in --out --python-module --build-type --cc --cxx \
-                  --llvm-cmake-value --llvm-dir --llvm-ignore-paths --use-vulkan; do
-    # `+x` (not `:-`): unset key must be safe under `set -u` on bash 4.3.
-    [ -n "${_tvm_seen[${_tvm_opt}]+x}" ] \
-      || die "append_tvm_cmake_args: missing required option '${_tvm_opt}'"
-  done
+  _tvm_require_options _tvm_seen
   [ -n "${_tvm_out_name}" ] || die "append_tvm_cmake_args: --out needs the NAME of the caller's array"
 
   local -n _tvm_out_ref="${_tvm_out_name}"
