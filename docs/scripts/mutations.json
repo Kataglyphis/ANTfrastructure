@@ -17962,5 +17962,69 @@
   "replace": "  cp -a \"$source/\"* \"$destination/\"",
   "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
   "why": "Shared bundle staging must retain hidden files as well as symlinks and executable payloads."
+ },
+ {
+  "id": "tvm-llvm.compiler-c-priority",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "  cc_name=\"gcc-${GCC_WANTED}\"",
+  "replace": "  cc_name=gcc",
+  "test": "bash linux/scripts/tests/test-tvm-compiler-selection.sh",
+  "why": "The pinned C compiler must precede the generic fallback."
+ },
+ {
+  "id": "tvm-llvm.compiler-cxx-fallback",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "|| cxx_name=g++",
+  "replace": "|| cxx_name=gcc",
+  "test": "bash linux/scripts/tests/test-tvm-compiler-selection.sh",
+  "why": "The C++ fallback must remain g++, independently of the C compiler."
+ },
+ {
+  "id": "tvm-llvm.compiler-override-validation",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "command -v \"${CC}\" >/dev/null 2>&1 || die \"CC=${CC} is set but not available\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-tvm-compiler-selection.sh",
+  "why": "An unavailable explicit C override must fail validation."
+ },
+ {
+  "id": "tvm-llvm.compiler-wrapper-input",
+  "target": "linux/scripts/05-frameworks/tvm.sh",
+  "find": "\"$llvm_config\" \"$build_dir\" \"$desired_cc\" \"$desired_cxx\"",
+  "replace": "\"$llvm_config\" \"$build_dir\" \"$desired_cxx\" \"$desired_cc\"",
+  "test": "bash linux/scripts/tests/test-tvm-compiler-selection.sh",
+  "why": "The wrapper must receive resolved C and C++ compilers in the original order."
+ },
+ {
+  "id": "lib.logging-prefix-severity",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "    WARN) color=';33' ;;",
+  "replace": "    WARN) color=';31' ;;",
+  "test": "bash linux/scripts/tests/test-logging-format.sh",
+  "why": "Warning colors must retain their exact ANSI sequence."
+ },
+ {
+  "id": "lib.logging-prefix-unknown",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "    *) label=LOG ;;",
+  "replace": "    *) label=INFO ;;",
+  "test": "bash linux/scripts/tests/test-logging-format.sh",
+  "why": "Unrecognized levels retain the LOG label in both formats."
+ },
+ {
+  "id": "lib.logging-prefix-plain",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "_log_prefix_plain() { _log_prefix \"$1\" plain; }",
+  "replace": "_log_prefix_plain() { _log_prefix \"$1\" color; }",
+  "test": "bash linux/scripts/tests/test-logging-format.sh",
+  "why": "Plain output must never acquire ANSI escapes."
+ },
+ {
+  "id": "lib.logging-prefix-no-color",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "  if [ -n \"${NO_COLOR:-}\" ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-logging-format.sh",
+  "why": "NO_COLOR must override LOG_COLOR=always."
  }
 ]

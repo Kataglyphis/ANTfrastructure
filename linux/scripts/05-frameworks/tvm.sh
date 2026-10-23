@@ -83,12 +83,18 @@ install_deps() {
     libopenblas-dev
 }
 
-require_toolchain_compilers() {
-  local gcc_bin="gcc-${GCC_WANTED}"
-  local gxx_bin="g++-${GCC_WANTED}"
+_tvm_gcc_commands() {
+  local -n cc_name="$1" cxx_name="$2"
+  cc_name="gcc-${GCC_WANTED}"
+  cxx_name="g++-${GCC_WANTED}"
+  command -v "$cc_name" >/dev/null 2>&1 || cc_name=gcc
+  command -v "$cxx_name" >/dev/null 2>&1 || cxx_name=g++
+}
 
-  command -v "$gcc_bin" >/dev/null 2>&1 || gcc_bin="gcc"
-  command -v "$gxx_bin" >/dev/null 2>&1 || gxx_bin="g++"
+require_toolchain_compilers() {
+  local gcc_bin gxx_bin
+  _tvm_gcc_commands gcc_bin gxx_bin
+
 
   command -v "$gcc_bin" >/dev/null 2>&1 || die "Expected GCC from linux/Dockerfile.toolchain, but '${gcc_bin}' is unavailable"
   command -v "$gxx_bin" >/dev/null 2>&1 || die "Expected G++ from linux/Dockerfile.toolchain, but '${gxx_bin}' is unavailable"
@@ -227,10 +233,8 @@ resolve_tvm_llvm() {
 
 # GCC by default, wrapped when LLVM injects a conflicting cxxabi.h. Sets desired_cc/desired_cxx.
 select_tvm_compilers() {
-  local gcc_bin="gcc-${GCC_WANTED}"
-  local gxx_bin="g++-${GCC_WANTED}"
-  command -v "$gcc_bin" >/dev/null 2>&1 || gcc_bin="gcc"
-  command -v "$gxx_bin" >/dev/null 2>&1 || gxx_bin="g++"
+  local gcc_bin gxx_bin
+  _tvm_gcc_commands gcc_bin gxx_bin
 
   desired_cc="$(command -v "${CC:-$gcc_bin}" 2>/dev/null || echo "${CC:-$gcc_bin}")"
   desired_cxx="$(command -v "${CXX:-$gxx_bin}" 2>/dev/null || echo "${CXX:-$gxx_bin}")"

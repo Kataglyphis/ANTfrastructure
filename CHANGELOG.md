@@ -12,6 +12,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share compiler selection, logging and OCI fixtures
+
+- TVM compiler validation and selection share pinned-name and fallback resolution; preserve overrides, wrapper inputs and missing-tool failures.
+- Share plain and colored log-prefix formatting, retaining byte sequences, severity labels, streams, NO_COLOR precedence and fatal error behavior.
+- Share parent-context and no-push guard fixtures while retaining the OCI handoff cases; remove the three resolved duplication exemptions and the obsolete ShellCheck warning freeze, and add mutation proofs.
+
 ## 2026-10-23 — share Linux bundle packaging lifetime
 
 - Keep the three public packaging APIs and format layouts while sharing scoped facts, bundle copying, desktop/icon staging, architecture validation and the final artifact verdict.

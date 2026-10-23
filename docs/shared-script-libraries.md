@@ -1315,3 +1315,23 @@ format-specific Exec, Icon and destination values remain with the caller.
 fixtures. The existing archive suite also builds and inspects a real deb; the
 Flatpak suite uses tool stubs. These checks do not validate real AppImage or
 Flatpak creation on a target machine.
+
+### TVM compiler-name resolution
+
+`_tvm_gcc_commands` in `05-frameworks/tvm.sh` selects versioned GCC and G++
+names independently, falling back to the corresponding generic command.
+Validation still requires both toolchain compilers and checks explicit CC
+and CXX overrides. Selection still resolves override paths and hands C then
+C++ to the ABI wrapper with the original LLVM and build-directory arguments.
+The local selection fixtures also run against the previous implementation;
+they execute neither compilers nor TVM builds.
+
+### Shared log-prefix formatting
+
+`01-core/logging.sh` formats severity labels and their color policy in one
+place. `_log_prefix_plain` and `_log_prefix_color` keep their existing names
+and output. INFO is blue, WARN yellow, ERROR red; unknown levels retain LOG
+with the existing bold-only colored form. `NO_COLOR` still wins over forced
+color, normal messages use stdout, warnings use stderr and errors exit 1.
+The prefix/stream fixtures and ERR-trap suite run without a terminal; actual
+terminal rendering is outside their coverage.

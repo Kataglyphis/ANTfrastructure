@@ -25,28 +25,30 @@ export CROSS_CONTEXT_WORKDIR=""
 export CROSS_LOCAL_CONTEXT_HANDOFF=1
 trap 'rm -rf "${CROSS_CONTEXT_ROOT}"' EXIT
 
-case_context_present() {
-  export CROSS_NO_PUSH=1
-  cross_stage_context_dir() { printf '%s' "${CROSS_CONTEXT_ROOT}/parent-amd64"; }
-  mkdir -p "${CROSS_CONTEXT_ROOT}/parent-amd64"
-  printf '{"schemaVersion":2,"manifests":[]}\n' > "${CROSS_CONTEXT_ROOT}/parent-amd64/index.json"
-  out=()
-  _cross_stage_run_resolve_parent out "child" "amd64" 0 "parent"
-  t_assert_eq "1" "$( printf '%s\n' "${out[@]}" | grep -c -- '--build-context' || true )"
-  t_assert_eq "reg.io/img:cross-parent-amd64=oci-layout://${CROSS_CONTEXT_ROOT}/parent-amd64" \
-    "$( printf '%s\n' "${out[@]}" | grep -A1 '^--build-context$' | tail -1 )"
-  t_assert_eq "4" "${#out[@]}"   # --build-arg BASE_IMAGE + --build-context (2 words)
-}
+_fixture_parent=''
+cross_stage_context_dir() { printf '%s' "$_fixture_parent"; }
 
-case_context_missing() {
+case_parent_context() {
+  local present="$1"
   export CROSS_NO_PUSH=1
-  cross_stage_context_dir() { printf '%s' "${CROSS_CONTEXT_ROOT}/parent-amd64-missing"; }
+  _fixture_parent="${CROSS_CONTEXT_ROOT}/parent-amd64-$present"
+  if [ "$present" = present ]; then
+    mkdir -p "$_fixture_parent"
+    printf '{"schemaVersion":2,"manifests":[]}\n' > "$_fixture_parent/index.json"
+  fi
   out=()
-  _cross_stage_run_resolve_parent out "child" "amd64" 0 "parent"
-  t_assert_eq "0" "$( printf '%s\n' "${out[@]}" | grep -c -- '--build-context' || true )"
-  t_assert_eq "2" "${#out[@]}"
-  t_assert_eq "--build-arg" "${out[0]}"
-  t_assert_eq "BASE_IMAGE=reg.io/img:cross-parent-amd64" "${out[1]}"
+  _cross_stage_run_resolve_parent out child amd64 0 parent
+  t_assert_eq --build-arg "${out[0]}"
+  if [ "$present" = present ]; then
+    t_assert_eq 1 "$(printf '%s\n' "${out[@]}" | grep -c -- '--build-context' || true)"
+    t_assert_eq "reg.io/img:cross-parent-amd64=oci-layout://$_fixture_parent" \
+      "$(printf '%s\n' "${out[@]}" | grep -A1 '^--build-context$' | tail -1)"
+    t_assert_eq 4 "${#out[@]}"
+  else
+    t_assert_eq 0 "$(printf '%s\n' "${out[@]}" | grep -c -- '--build-context' || true)"
+    t_assert_eq 2 "${#out[@]}"
+    t_assert_eq BASE_IMAGE=reg.io/img:cross-parent-amd64 "${out[1]}"
+  fi
 }
 
 case_push_never_context() {
@@ -79,59 +81,32 @@ case_workdir_idempotent() {
   esac
 }
 
-case_guard_full_chain_allowed() {
+case_no_push_guard() {
+  local from="$1" handoff="$2" force="$3" verdict="$4"
   unset CROSS_NO_PUSH_FORCE 2>/dev/null || true
-  export CROSS_NO_PUSH=1 CROSS_LOCAL_CONTEXT_HANDOFF=1
-  FROM_STAGE_IDX=0 TO_STAGE_IDX=6
-  _last_err=""
+  export CROSS_NO_PUSH=1 CROSS_LOCAL_CONTEXT_HANDOFF="$handoff"
+  if [ "$force" = 1 ]; then export CROSS_NO_PUSH_FORCE=1; fi
+  export FROM_STAGE_IDX="$from" TO_STAGE_IDX=6
+  _last_err=''
   _chain_no_push_guard
-  t_assert_eq "" "${_last_err}"
-}
-
-case_guard_mid_chain_refused() {
-  unset CROSS_NO_PUSH_FORCE 2>/dev/null || true
-  export CROSS_NO_PUSH=1 CROSS_LOCAL_CONTEXT_HANDOFF=1
-  FROM_STAGE_IDX=2 TO_STAGE_IDX=6
-  _last_err=""
-  _chain_no_push_guard
-  case "${_last_err}" in
-    *unsafe*) t_assert_eq refused refused ;;
-    *) t_assert_eq "guard did not refuse: ${_last_err}" refused ;;
-  esac
-}
-
-case_guard_force_escapes() {
-  export CROSS_NO_PUSH=1 CROSS_LOCAL_CONTEXT_HANDOFF=1 CROSS_NO_PUSH_FORCE=1
-  FROM_STAGE_IDX=2 TO_STAGE_IDX=6
-  _last_err=""
-  _chain_no_push_guard
-  t_assert_eq "" "${_last_err}"
-}
-
-case_guard_handoff_disabled_refuses() {
-  unset CROSS_NO_PUSH_FORCE 2>/dev/null || true
-  export CROSS_NO_PUSH=1 CROSS_LOCAL_CONTEXT_HANDOFF=0
-  FROM_STAGE_IDX=0 TO_STAGE_IDX=6
-  _last_err=""
-  _chain_no_push_guard
-  case "${_last_err}" in
-    *unsafe*) t_assert_eq refused refused ;;
-    *) t_assert_eq "guard did not refuse: ${_last_err}" refused ;;
+  case "$verdict" in
+    allowed) t_assert_eq '' "$_last_err" ;;
+    refused) t_assert_contains "$_last_err" unsafe ;;
   esac
 }
 
 # err() used by the guard RECORDS instead of exiting (cases assert on _last_err).
 err() { _last_err="$*"; return 42; }
 
-t_case "push=0 with a built parent context → --build-context appended";  case_context_present
-t_case "push=0 without the parent context → registry fallback, no --build-context"; case_context_missing
+t_case "push=0 with a built parent context → --build-context appended";  case_parent_context present
+t_case "push=0 without the parent context → registry fallback, no --build-context"; case_parent_context missing
 t_case "push=1 → never a --build-context"; case_push_never_context
 t_case "base (no parent) → no build args"; case_base_no_parent
 t_case "context workdir minted fresh under CROSS_CONTEXT_ROOT, idempotent"; case_workdir_idempotent
-t_case "guard: full no-push chain allowed with the handoff live"; case_guard_full_chain_allowed
-t_case "guard: mid-chain no-push still refused"; case_guard_mid_chain_refused
-t_case "guard: CROSS_NO_PUSH_FORCE still escapes the refusal"; case_guard_force_escapes
-t_case "guard: handoff disabled → full-chain no-push refused (old behavior)"; case_guard_handoff_disabled_refuses
+t_case "guard: full no-push chain allowed with the handoff live"; case_no_push_guard 0 1 0 allowed
+t_case "guard: mid-chain no-push still refused"; case_no_push_guard 2 1 0 refused
+t_case "guard: CROSS_NO_PUSH_FORCE still escapes the refusal"; case_no_push_guard 2 1 1 allowed
+t_case "guard: handoff disabled → full-chain no-push refused (old behavior)"; case_no_push_guard 0 0 0 refused
 
 
 # Production reaches cross_stage_context_dir through $(...), so an assignment inside it never escapes.

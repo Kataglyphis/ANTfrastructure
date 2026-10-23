@@ -24,23 +24,23 @@ _log_use_color() {
   esac
 }
 
-_log_prefix_plain() {
-  case "$1" in
-    INFO)  printf '%s' "[INFO]" ;;
-    WARN)  printf '%s' "[WARN]" ;;
-    ERROR) printf '%s' "[ERROR]" ;;
-    *)     printf '%s' "[LOG]" ;;
+_log_prefix() {
+  local label="$1" color=''
+  case "$label" in
+    INFO) color=';34' ;;
+    WARN) color=';33' ;;
+    ERROR) color=';31' ;;
+    *) label=LOG ;;
   esac
+  if [ "$2" = color ]; then
+    printf '\033[1%sm[%s]\033[0m' "$color" "$label"
+  else
+    printf '[%s]' "$label"
+  fi
 }
 
-_log_prefix_color() {
-  case "$1" in
-    INFO)  printf '%b' "\033[1;34m[INFO]\033[0m" ;;
-    WARN)  printf '%b' "\033[1;33m[WARN]\033[0m" ;;
-    ERROR) printf '%b' "\033[1;31m[ERROR]\033[0m" ;;
-    *)     printf '%b' "\033[1m[LOG]\033[0m" ;;
-  esac
-}
+_log_prefix_plain() { _log_prefix "$1" plain; }
+_log_prefix_color() { _log_prefix "$1" color; }
 
 _log_emit() {
   local level="$1"; shift

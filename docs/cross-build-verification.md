@@ -2015,3 +2015,12 @@ stale known omissions. Reversing the operands distinguishes the two ratchet
 directions. Local fixtures cover duplicate and unordered inputs, empty sets
 and identical sets. This checks map bookkeeping; a new SONAME still needs
 verification in a built image before the map changes.
+
+### OCI handoff fixture sharing
+
+The local OCI-handoff suite shares parent-layout setup for present and missing
+contexts and one no-push guard fixture. It retains full-chain allowance,
+mid-chain refusal, the explicit force override and disabled-handoff refusal.
+The context case also checks the BASE_IMAGE argument before its distinct
+layout and registry verdicts. These fixtures validate argument composition
+and refusal policy; they do not export images or invoke BuildKit.
