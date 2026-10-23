@@ -12,6 +12,10 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — classify the shared cache utility as a core leaf
+
+- Register `compiler-cache-utils.sh` as L0 so the layer gate accepts its intended use by `common.sh` and enforces that the helper sources no core modules.
+
 ## 2026-10-23 — share Linux cache, dependency and packaging behavior
 
 - Remove 14 measured duplication exemptions through shared cache probes, staged Python reporting, Debian metadata and test fixtures; keep scanner thresholds and scan scope unchanged.
