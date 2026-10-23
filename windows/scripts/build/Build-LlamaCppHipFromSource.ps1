@@ -124,8 +124,7 @@ try {
     Write-Host ('ggml-hip.dll: {0:N0} bytes; build record {1}' -f ([System.IO.FileInfo]::new($dll)).Length, $record)
     Complete-CurrentBuildPhase
 } catch {
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'llama.cpp HIP'
+    Complete-SourceBuildFailure -Label 'llama.cpp HIP' -ErrorRecord $_
     throw
 }
 

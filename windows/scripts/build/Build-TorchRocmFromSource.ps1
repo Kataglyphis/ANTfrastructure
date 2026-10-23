@@ -296,8 +296,7 @@ try {
     Remove-Item -LiteralPath (Join-Path $WorkDir 'rocm-runtime') -Recurse -Force
     Complete-CurrentBuildPhase
 } catch {
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'PyTorch ROCm'
+    Complete-SourceBuildFailure -Label 'PyTorch ROCm' -ErrorRecord $_
     throw
 }
 

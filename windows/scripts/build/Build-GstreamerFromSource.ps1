@@ -1415,8 +1415,7 @@ cpp_link_args = [$buildLinkArgs]
 
 } catch {
     # Name the failing phase before the stack.
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'gstreamer'
+    Complete-SourceBuildFailure -Label 'gstreamer' -ErrorRecord $_
     # Stop the server on failure too: the failing run is the one whose error log you want.
     try { Complete-SccacheServerSession } catch { Write-Warning "sccache session flush failed in catch: $($_.Exception.Message)" }
     log "FATAL ERROR: $($_.Exception.Message)"

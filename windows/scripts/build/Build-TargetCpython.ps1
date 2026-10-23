@@ -25,7 +25,7 @@ if (-not (Test-WindowsCrossTarget -Arch $tgtArch)) {
     exit 0
 }
 
-trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'target-cpython'; break }
+trap { Complete-SourceBuildFailure -Label 'target-cpython' -ErrorRecord $_; break }
 
 Switch-BuildPhase '1. preconditions'
 $buildBat = Join-Path $SourceDir 'PCbuild\build.bat'

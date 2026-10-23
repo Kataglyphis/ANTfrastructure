@@ -61,4 +61,32 @@ Describe 'Build phase machinery (#109)' {
         $out = Write-BuildPhaseSummary 6>&1 | Out-String
         Assert-Match '\[FAIL\] doomed-current' $out 'tracked phase stamped failed'
     }
+
+    It 'summarizes the failed phase before the caller rethrows' {
+        $failure = $null
+        $output = ''
+        try {
+            Switch-BuildPhase 'source phase' 6>$null
+            try { throw 'source phase failure' } catch {
+                $output = Complete-SourceBuildFailure -Label 'source-builder' -ErrorRecord $_ 6>&1 | Out-String
+                throw
+            }
+        } catch { $failure = $_ }
+        Assert-Match 'PHASE FAILED: source phase' $output 'phase is marked failed before the summary'
+        Assert-Match 'phase summary \(source-builder\)' $output 'summary keeps the caller label'
+        Assert-Match '\[FAIL\] source phase' $output 'summary contains the failed phase'
+        Assert-Match 'source phase failure' $failure.Exception.Message 'caller rethrows the original error'
+    }
+
+    It 'mutation control catches a missing source-build failure summary' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsSourceBuild.Common.psm1' `
+            -FunctionName Start-BuildPhase, Switch-BuildPhase, Complete-BuildPhase, Complete-CurrentBuildPhase, Complete-SourceBuildFailure, Write-BuildPhaseSummary `
+            -Find 'Write-BuildPhaseSummary -Label $Label' -Replace '' -Expected 'failure summary includes its caller label' -IncludeControl -Body {
+                Switch-MutBuildPhase 'mutation phase' 6>$null
+                $errorRecord = $null
+                try { throw 'phase failure' } catch { $errorRecord = $_ }
+                $output = Complete-MutSourceBuildFailure -Label 'source-builder' -ErrorRecord $errorRecord 6>&1 | Out-String
+                Assert-Match 'phase summary \(source-builder\)' $output 'failure summary includes its caller label'
+            }
+    }
 }

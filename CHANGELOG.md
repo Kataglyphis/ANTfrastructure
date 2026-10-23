@@ -18,6 +18,11 @@
 - Split the PowerShell literal masker into state handlers so the complexity gate can grade it without freezing an exception.
 - Add focused regression cases for raw cache values, registry write failures and container inspect stream policy.
 
+## 2026-10-23 — share source-build failure summaries
+
+- Close the active failed phase and print its caller-labeled summary through one helper across source builders; keep each caller's rethrow, cleanup and trap behavior.
+- Add integration and mutation coverage for failure labeling, phase status and error propagation.
+
 ## 2026-10-23 — remove another Windows duplication wave
 
 - Share ONNX source-patch fallback and TVM ROCm probe lifecycles while preserving caller patch, argv, wait and verdict policies.

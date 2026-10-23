@@ -67,8 +67,7 @@ try {
         (Get-TorchRocmWheelName -Distribution 'torch' -BuildVersion $torchVersion -PythonTag $pyTag), (Split-Path $visionWheel -Leaf))
     Complete-CurrentBuildPhase
 } catch {
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'torchvision ROCm'
+    Complete-SourceBuildFailure -Label 'torchvision ROCm' -ErrorRecord $_
     throw
 }
 

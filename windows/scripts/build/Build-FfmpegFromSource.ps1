@@ -270,7 +270,7 @@ if (Test-Path $SourceDir) { Remove-Item $SourceDir -Recurse -Force }
 New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 
 # Phase brackets via trap, not a whole-body try/catch, so a failure names its phase.
-trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'ffmpeg'; break }
+trap { Complete-SourceBuildFailure -Label 'ffmpeg' -ErrorRecord $_; break }
 
 Switch-BuildPhase '1. download + extract'
 Write-Host "Downloading FFmpeg $FfmpegVersion..."

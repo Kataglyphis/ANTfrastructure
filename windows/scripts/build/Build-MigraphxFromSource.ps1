@@ -183,8 +183,7 @@ try {
     Assert-RocmBuiltPe -Path (Join-Path $InstallDir 'bin\migraphx_gpu.dll')
     Complete-CurrentBuildPhase
 } catch {
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'MIGraphX'
+    Complete-SourceBuildFailure -Label 'MIGraphX' -ErrorRecord $_
     throw
 }
 

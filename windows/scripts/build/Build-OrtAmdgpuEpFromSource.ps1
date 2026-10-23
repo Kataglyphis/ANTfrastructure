@@ -152,8 +152,7 @@ try {
         -Record (Join-Path $buildDir 'CMakeCache.txt'), (Join-Path $buildDir 'build.ninja')
     Complete-CurrentBuildPhase
 } catch {
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'onnxruntime-ep-amdgpu'
+    Complete-SourceBuildFailure -Label 'onnxruntime-ep-amdgpu' -ErrorRecord $_
     throw
 }
 

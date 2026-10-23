@@ -543,7 +543,7 @@ $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
 
 # EAP=Stop makes every failure terminating, so the trap stamps the open phase and rethrows.
-trap { Complete-CurrentBuildPhase -ErrorRecord $_; Write-BuildPhaseSummary -Label 'onnx'; break }
+trap { Complete-SourceBuildFailure -Label 'onnx' -ErrorRecord $_; break }
 Switch-BuildPhase '1. clone + source patches (DML clang-cl, rc filter)'
 Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime.git' -Tag "v$OnnxVersion" -SourceDir $SourceDir -Recursive | Out-Null
 

@@ -831,8 +831,7 @@ else { Remove-SourceBuildTree -Path $SourceDir }
 
 } catch {
     # Name the failing phase before the throw reaches the chain wrapper.
-    Complete-CurrentBuildPhase -ErrorRecord $_
-    Write-BuildPhaseSummary -Label 'litert-lm'
+    Complete-SourceBuildFailure -Label 'litert-lm' -ErrorRecord $_
     throw
 } finally {
     # $null removes the variable: SetEnvironmentVariable($null) leaves it defined-empty for children.

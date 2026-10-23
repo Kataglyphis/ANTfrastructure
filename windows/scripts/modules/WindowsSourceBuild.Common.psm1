@@ -1643,6 +1643,19 @@ function Write-BuildPhaseSummary {
     $script:BuildPhaseTable = [System.Collections.Generic.List[object]]::new()
 }
 
+<#
+.SYNOPSIS
+    Closes the failed phase and emits its caller-labeled summary before the caller rethrows.
+#>
+function Complete-SourceBuildFailure {
+    param(
+        [Parameter(Mandatory)][string]$Label,
+        [Parameter(Mandatory)][System.Management.Automation.ErrorRecord]$ErrorRecord
+    )
+    Complete-CurrentBuildPhase -ErrorRecord $ErrorRecord
+    Write-BuildPhaseSummary -Label $Label
+}
+
 function Get-WarningNoiseSuppressionFlags {
     # One list for every clang-cl CMake build: these five classes bury the genuine warnings.
     return '-Wno-unused-parameter -Wno-documentation-unknown-command -Wno-deprecated-copy -Wno-undef -Wno-missing-field-initializers'
@@ -2736,6 +2749,7 @@ Export-ModuleMember -Function @(
     'Start-BuildPhase',
     'Switch-BuildPhase',
     'Complete-CurrentBuildPhase',
+    'Complete-SourceBuildFailure',
     'Complete-BuildPhase',
     'Write-BuildPhaseSummary',
     'Install-CpythonPip',
