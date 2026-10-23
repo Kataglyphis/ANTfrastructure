@@ -354,6 +354,22 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
     }
 }
 
+function Invoke-SourceFilePatchSet {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$File,
+        [Parameter(Mandatory)][scriptblock]$Patch,
+        [scriptblock]$OnChanged
+    )
+    $changed = 0
+    foreach ($item in $File) {
+        if (& $Patch $item ($changed + 1)) {
+            $changed++
+            if ($OnChanged) { & $OnChanged $item $changed | Out-Null }
+        }
+    }
+    return $changed
+}
+
 function Invoke-VerifiedSourceFilePatch {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Marker,
         [Parameter(Mandatory)][scriptblock]$Patch, [Parameter(Mandatory)][scriptblock]$Condition,
@@ -431,6 +447,7 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
+    'Invoke-SourceFilePatchSet',
     'Assert-SourceFileContent',
     'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',

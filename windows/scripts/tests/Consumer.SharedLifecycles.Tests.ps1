@@ -225,7 +225,7 @@ function cmake { $global:LASTEXITCODE = 0 }
     @('WindowsMigraphx.Common', 'WindowsScripts.Shared', 'Invoke-DownloadWithRetry'),
     @('WindowsMigraphx.Common', 'WindowsSourceBuild.Common', 'Get-SourceBuildPython'),
     @('WindowsTvm.Common', 'WindowsNative.Common', 'Invoke-ShieldedNative'),
-    @('WindowsFlutter.Common', 'WindowsBuild.Common', 'Write-BuildLog'),
+    @('WindowsFlutter.Common', 'WindowsBuild.Common', 'Invoke-BuildArtifactCopy'),
     @('WindowsFormatting.Common', 'WindowsUv.Common', 'Initialize-UvVenv'),
     @('WindowsFormatting.Common', 'WindowsBuild.Common', 'New-UvBuildDelegates'),
     @('WindowsCodeQL.Common', 'WindowsBuild.Common', 'Write-BuildLog'),
@@ -237,6 +237,8 @@ function cmake { $global:LASTEXITCODE = 0 }
     @('WindowsUv.Common', 'WindowsPythonWheel.Common', 'Resolve-SharedLinuxScriptFile'),
     @('WindowsPythonApp.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
     @('WindowsOrtPayload.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
+    @('WindowsBuildDriver.Common', 'WindowsScripts.Shared', 'Get-DriveFreeSpaceGb'),
+    @('WindowsTesting.Common', 'WindowsScripts.Shared', 'Invoke-WithProcessEnvironment'),
     @('WindowsRustToolchain.Common', 'WindowsScripts.Shared', 'Invoke-DownloadWithRetry'),
     @('WindowsContainerImage.Common', 'WindowsScripts.Shared', 'Resolve-BuildValue')
 )
@@ -270,7 +272,7 @@ foreach (`$case in `$cases) {
         $result = Invoke-TestPwshProbe -Source $probe
         Assert-Equal 0 $result.ExitCode $result.Output
         Invoke-InTestDir { param($dir)
-            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common')
+            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common', 'WindowsBuildDriver.Common', 'WindowsTesting.Common')
             Copy-TestModuleClosure -Seed $seeds -Destination $dir
             $mutations = @(
                 @{ Module = 'WindowsSourceBuild.Common'; Find = 'Import-Module $targetArchPath -ErrorAction Stop'; Replace = 'if (-not (Get-Module -Name WindowsTargetArch.Common)) { Import-Module $targetArchPath -ErrorAction Stop }'; Message = 'source-build architecture re-export missing' },
@@ -307,7 +309,9 @@ foreach (`$case in `$cases) {
                 @{ Owner = 'WindowsMsix.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsUv.Common'; Copy = @(); Message = 'WindowsUvLock.Common.psm1' },
                 @{ Owner = 'WindowsPythonApp.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
-                @{ Owner = 'WindowsOrtPayload.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' }
+                @{ Owner = 'WindowsOrtPayload.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
+                @{ Owner = 'WindowsBuildDriver.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
+                @{ Owner = 'WindowsTesting.Common'; Copy = @(); Message = 'WindowsBuild.Common.psm1' }
             )
             foreach ($case in $cases) {
                 $destination = Join-Path $dir $case.Owner

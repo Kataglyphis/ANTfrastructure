@@ -9,8 +9,7 @@ Describe 'WindowsWebDav.Common' {
     Import-Module (Join-Path $modDir 'WindowsBuild.Common.psm1') -Force -DisableNameChecking
     Import-Module (Join-Path $modDir 'WindowsWebDav.Common.psm1') -Force -DisableNameChecking
 
-    $script:workspace = (New-Item -ItemType Directory `
-        -Path (Join-Path $env:TEMP ('webdav-common-' + (Get-Random))) -Force).FullName
+    $script:workspace = New-TestDir -Prefix 'webdav-common-'
   }
 
   AfterAll {

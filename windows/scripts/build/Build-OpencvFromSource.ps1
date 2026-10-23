@@ -99,11 +99,11 @@ if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemP
     $checksDir = Join-Path $mainSrc 'cmake\checks'
     $probePattern = '\(defined __GNUC__ && \(defined __arm__ \|\| defined __aarch64__\)\)\s*/\*\s*\|\|\s*\(defined _MSC_VER && \(defined _M_ARM64 \|\| defined _M_ARM64EC\)\)\s*\*/'
     $probeReplacement = '(defined __GNUC__ && (defined __arm__ || defined __aarch64__)) || (defined __clang__ && (defined _M_ARM64 || defined _M_ARM64EC)) /* clang-cl: clang''s arm_neon.h carries the intrinsics (#129) */'
-    $probesPatched = 0
-    foreach ($probe in @(Get-ChildItem -Path $checksDir -Filter 'cpu_*.cpp' -File -ErrorAction SilentlyContinue)) {
-        if (Invoke-InlineRegexPatch -Path $probe.FullName -SkipIfMatch '__clang__ && \(defined _M_ARM64' `
-                -Pattern $probePattern -Replacement $probeReplacement `
-                -Description "opencv feature probe $($probe.Name): accept clang-cl on ARM64 (#129)") { $probesPatched++ }
+    $probesPatched = Invoke-SourceFilePatchSet -File @(Get-ChildItem -Path $checksDir -Filter 'cpu_*.cpp' -File -ErrorAction SilentlyContinue) -Patch {
+        param($file)
+        Invoke-InlineRegexPatch -Path $file.FullName -SkipIfMatch '__clang__ && \(defined _M_ARM64' `
+            -Pattern $probePattern -Replacement $probeReplacement `
+            -Description "opencv feature probe $($file.Name): accept clang-cl on ARM64 (#129)"
     }
     if ($probesPatched -lt 2) { throw "opencv cmake/checks: only $probesPatched probe file(s) carried the commented-out Windows-ARM64 guard (expected >= 2: cpu_neon_fp16.cpp, cpu_neon_dotprod.cpp) -- upstream changed the probes; the NEON_FP16/DOTPROD dispatch would fail silently (#129). Check $checksDir." }
     Write-Host "OpenCV feature probes: $probesPatched file(s) now accept clang-cl on ARM64 (#129)"

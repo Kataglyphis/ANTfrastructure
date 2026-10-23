@@ -30,23 +30,23 @@ Invoke-GitClone -RepoUrl 'https://github.com/google-ai-edge/LiteRT.git' -Tag "$L
 $tfliteSrc = Join-Path $SourceDir 'tflite'
 
 # Inline, not a .patch: the set of proto CMakeLists changes between versions. See docs/windows-builds.md § Source Patch Policy
-$patchedIndex = 0
-Get-ChildItem -Path $tfliteSrc -Filter 'CMakeLists.txt' -Recurse -ErrorAction SilentlyContinue | Where-Object {
-    $_.FullName -match 'proto\\CMakeLists\.txt'
-} | ForEach-Object {
-    $content = [System.IO.File]::ReadAllText($_.FullName)
+[void](Invoke-SourceFilePatchSet -File @(Get-ChildItem -Path $tfliteSrc -Filter 'CMakeLists.txt' -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match 'proto\\CMakeLists\.txt' }) -Patch {
+    param($file, $nextIndex)
+    $content = [System.IO.File]::ReadAllText($file.FullName)
     if ($content -match 'protobuf_generate|protoc') {
-        $patchedIndex++
-        $targetName = "proto_stub_$patchedIndex"
+        $targetName = "proto_stub_$nextIndex"
         $noopCmake = @"
 cmake_minimum_required(VERSION 3.10)
 project($targetName)
 add_library($targetName INTERFACE)
 "@
-        Set-Content -Path $_.FullName -Value $noopCmake -Encoding ASCII
-        Write-Host "Patched: $($_.FullName) (target=$targetName)"
+        Set-Content -Path $file.FullName -Value $noopCmake -Encoding ASCII
+        Write-Host "Patched: $($file.FullName) (target=$targetName)"
+        return $true
     }
-}
+    return $false
+})
 
 # gst's tflite plugin needs tensorflowlite_c; upstream's tflite/c project re-adds the whole tree, so inject the target.
 $mainCmake = Join-Path $tfliteSrc 'CMakeLists.txt'
@@ -209,15 +209,8 @@ Copy-BuildArtifact -BuildDir $buildDir -InstallDir $litertInstallDir -Recurse -M
 Write-Host 'Copying LiteRT headers (tflite/ tree)...'
 $includeRoot = Join-Path $litertInstallDir 'include\tflite'
 New-Item -Path $includeRoot -ItemType Directory -Force | Out-Null
-$headerCount = 0
-Get-ChildItem -Path $tfliteSrc -Filter '*.h' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-    $rel = $_.FullName.Substring($tfliteSrc.Length).TrimStart('\')
-    $dest = Join-Path $includeRoot $rel
-    $destDir = Split-Path $dest -Parent
-    if (-not (Test-Path $destDir)) { New-Item -Path $destDir -ItemType Directory -Force | Out-Null }
-    Copy-Item $_.FullName $dest -Force
-    $headerCount++
-}
+$headerCount = Copy-SourceBuildFileTree -SourceRoot $tfliteSrc -DestinationRoot $includeRoot `
+    -File @(Get-ChildItem -Path $tfliteSrc -Filter '*.h' -Recurse -ErrorAction SilentlyContinue)
 Write-Host "Copied $headerCount headers to $includeRoot"
 # Copy-BuildArtifact is silent by design; a hollow install would only fail hours later in litert-lm.
 if ($headerCount -eq 0) { throw "LiteRT manual install copied 0 headers to $includeRoot (source tree layout changed?)" }

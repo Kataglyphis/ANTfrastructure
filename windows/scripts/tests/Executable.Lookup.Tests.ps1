@@ -48,11 +48,10 @@ Describe 'Build executable lookup' {
         Invoke-InTestDir { param($dir)
             $path = Join-Path $dir 'probe.exe'
             New-ExecutableLookupFile $path
-            Push-Location $dir
-            try {
+            Invoke-InTestLocation -Path $dir -Body {
                 Assert-Equal (Resolve-Path $path).Path (Resolve-AppExecutablePath -BuildRoot '.' -ExecutableName 'probe.exe')
                 Assert-Equal (Join-Path '.' 'probe.exe') (Resolve-TestExecutable -BuildRoot '.' -ExecutableName 'probe.exe')
-            } finally { Pop-Location }
+            }
         }
     }
 

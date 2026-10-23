@@ -226,9 +226,8 @@ if (Test-Path $buildctl) {
 # The repo drive too, like Assert-DiskHeadroom: a VHDX-backed checkout runs out on its own.
 $repoDrive = (Get-Item (Split-Path $scriptAssetRoot -Parent)).PSDrive.Name
 foreach ($driveLetter in (@('C', $repoDrive) | Select-Object -Unique)) {
-    $psDrive = Get-PSDrive $driveLetter -ErrorAction SilentlyContinue
-    if (-not $psDrive -or $null -eq $psDrive.Free) { continue }
-    $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
+    $freeGb = Get-DriveFreeSpaceGb -Drive $driveLetter
+    if ($null -eq $freeGb) { continue }
     $role = if ($driveLetter -eq 'C') { 'layer stores' } else { 'repo/build context' }
     if ($freeGb -ge $MinFreeGb) {
         Write-Check PASS "disk headroom ${driveLetter}: ${freeGb} GB (min ${MinFreeGb}, ${role})"

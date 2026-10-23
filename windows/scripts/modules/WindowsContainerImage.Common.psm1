@@ -340,6 +340,27 @@ function Get-LavapipePinValues {
     }
 }
 
+function Install-LavapipeRuntime {
+    param(
+        [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch,
+        [Parameter(Mandatory)][scriptblock]$Lookup,
+        [Parameter(Mandatory)][string]$ArchiveDirectory,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    $pins = Get-LavapipePinValues -Arch $Arch -Lookup $Lookup
+    $assets = Resolve-LavapipeAssets -Arch $Arch -MesaVersion $pins.MesaVersion -VulkanVersion $pins.VulkanVersion -MesaSha256 $pins.MesaSha256 -LoaderSha256 $pins.LoaderSha256
+    $mesaArchive = Join-Path $ArchiveDirectory ([IO.Path]::GetFileName($assets.MesaUrl))
+    $loaderZip = Join-Path $ArchiveDirectory ([IO.Path]::GetFileName($assets.LoaderUrl))
+    Write-Host "Downloading lavapipe $($pins.MesaVersion) ($Arch): $($assets.MesaUrl)"
+    Invoke-DownloadWithRetry -Url $assets.MesaUrl -DestinationPath $mesaArchive -Description "lavapipe $($pins.MesaVersion)" -ExpectedSha256 $pins.MesaSha256
+    Expand-LavapipeArchive -ArchivePath $mesaArchive -Destination $Destination
+    Write-Host "Downloading the Vulkan loader $($pins.VulkanVersion): $($assets.LoaderUrl)"
+    Invoke-DownloadWithRetry -Url $assets.LoaderUrl -DestinationPath $loaderZip -Description "Vulkan Runtime Components $($pins.VulkanVersion)" -ExpectSignature PK -ExpectedSha256 $pins.LoaderSha256
+    Expand-VulkanRuntimeComponents -ZipPath $loaderZip -Destination $Destination -BinPrefix $assets.BinPrefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
+    Remove-Item -LiteralPath $mesaArchive, $loaderZip -Force -ErrorAction SilentlyContinue
+    return @{ MesaVersion = $pins.MesaVersion; VulkanVersion = $pins.VulkanVersion; IcdName = $assets.IcdName }
+}
+
 Export-ModuleMember -Function @(
     'Resolve-ContainerImageValue',
     'Resolve-VsBuildToolsRoot',
@@ -356,6 +377,7 @@ Export-ModuleMember -Function @(
     'Resolve-LavapipeAssets',
     'Expand-LavapipeArchive',
     'Get-LavapipePinValues',
+    'Install-LavapipeRuntime',
     # Re-exported from WindowsScripts.Shared, so one Import-Module suffices.
     'Find-FirstTreeFile',
     'Resolve-DirectoryPath',

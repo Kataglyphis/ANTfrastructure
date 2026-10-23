@@ -632,11 +632,9 @@ int _isatty(int);
     if (-not $dtlsPatched) { log 'gstdtlsconnection.c already carries upstream 17d22abe89; retire the DTLS patch.' }
 
     # c++11 pins become c++17: VS 18's MSVC STL uses C++14 constructs that clang-cl rejects in C++11 mode.
-    $cppStdPatched = 0
-    Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        if (Invoke-InlineRegexPatch -Path $_.FullName -Pattern 'cpp_std=c\+\+11' -Replacement 'cpp_std=c++17' -Require -Quiet) {
-            $cppStdPatched++
-        }
+    $cppStdPatched = Invoke-SourceFilePatchSet -File @(Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue) -Patch {
+        param($file)
+        Invoke-InlineRegexPatch -Path $file.FullName -Pattern 'cpp_std=c\+\+11' -Replacement 'cpp_std=c++17' -Require -Quiet
     }
     if ($cppStdPatched -eq 0) {
         Write-Warning 'cpp_std patch matched 0 meson.build files — upstream likely bumped past c++11; verify and retire this patch (or the MSVC-14.51 STL build breaks return)'
@@ -645,13 +643,10 @@ int _isatty(int);
 
     # The opencv plugin targets OpenCV 4; OpenCV 5 moved the same APIs to new headers, so add those.
     $ocvExtDir = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\opencv'
-    $ocvPortPatched = 0
-    Get-ChildItem -Path $ocvExtDir -Include '*.cpp', '*.h', '*.hpp' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        if (Edit-SourceFile -Path $_.FullName -Transform ${function:ConvertTo-GstOpenCv5Text} -Require -Quiet) {
-            $ocvPortPatched++
-            log "OpenCV5 port -> $($_.Name)"
-        }
-    }
+    $ocvPortPatched = Invoke-SourceFilePatchSet -File @(Get-ChildItem -Path $ocvExtDir -Include '*.cpp', '*.h', '*.hpp' -Recurse -ErrorAction SilentlyContinue) -Patch {
+        param($file)
+        Edit-SourceFile -Path $file.FullName -Transform ${function:ConvertTo-GstOpenCv5Text} -Require -Quiet
+    } -OnChanged { param($file) log "OpenCV5 port -> $($file.Name)" }
     log "OpenCV 5 header port applied to $ocvPortPatched gst ext/opencv file(s)"
     # gst hardcodes Linux's unversioned -lopencv_tracking; opencv4.pc already brings the versioned Windows lib.
     $ocvMeson = Join-Path $ocvExtDir 'meson.build'

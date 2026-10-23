@@ -1,7 +1,9 @@
 #requires -Version 7.0
 # Fixtures cover preparation, artifact verdicts and DLL graph policy; they do not compile upstream projects or fetch from the network.
 
-function Invoke-SourcePreparationFixture {
+Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
+
+function New-SourcePreparationArguments {
     param([string[]]$FunctionName, [scriptblock]$Body, [Collections.IDictionary[]]$Mutation,
         [string]$Prelude = '', [object]$FixtureState,
         [string]$ScriptPath = 'windows/scripts/modules/WindowsSourceBuild.Common.psm1')
@@ -10,8 +12,7 @@ function Invoke-SourcePreparationFixture {
     # Literal mutants must match the source module's committed line endings.
     $newline = if ([IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $ScriptPath)).Contains("`r`n")) { "`r`n" } else { "`n" }
     foreach ($edit in $Mutation) { $edit.Find = $edit.Find -replace '\r?\n', $newline }
-    Invoke-WithFunctionModule @module -Body $Body
-    Invoke-TestFunctionMutations -ModuleArguments $module -Case $Mutation -Body $Body
+    return @{ ModuleArguments = $module; Case = $Mutation; Body = $Body }
 }
 
 function Assert-SourceCachePreparation {
@@ -122,13 +123,7 @@ function Assert-DllDependencyGraphFixture {
 }
 
 function Get-PortableZipFixturePrelude {
-    @'
-function Invoke-DownloadWithRetry {
-    param($Url, $DestinationPath, $Description, $ExpectSignature)
-    $State.Calls.Add(@{ Url = $Url; Destination = $DestinationPath; Description = $Description; Signature = $ExpectSignature })
-    if ($State.DownloadFailure) { throw 'fixture fetch failed' }
-    [IO.File]::WriteAllText($DestinationPath, 'archive')
-}
+    (Get-TestDownloadPrelude) + [Environment]::NewLine + @'
 function Expand-Archive {
     param($Path, $DestinationPath, [switch]$Force)
     $State.Calls.Add(@{ Archive = $Path; Destination = $DestinationPath; Force = [bool]$Force })
@@ -156,6 +151,64 @@ function Assert-RequiredBuildArtifactFixture {
     }
 }
 
+function Assert-SourceTreeCopyContract {
+    Invoke-InTestDir -Files @{ 'source/nested/header[1].h' = 'header'; 'source/root.cc' = 'impl'; 'outside.h' = 'outside' } -Body { param($dir)
+        $source = Join-Path $dir source
+        $destination = Join-Path $dir installed
+        $header = Get-Item -LiteralPath (Join-Path $source 'nested/header[1].h')
+        $bytes = [byte[]](0xef, 0xbb, 0xbf, 0x41, 0x0d, 0x0a, 0, 0xff)
+        [IO.File]::WriteAllBytes($header.FullName, $bytes)
+        $options = @{ SourceRoot = $source; DestinationRoot = $destination }
+        Assert-Equal 2 (Copy-MutSourceBuildFileTree @options -File @($header, (Get-Item (Join-Path $source root.cc))))
+        Assert-Equal ([Convert]::ToHexString($bytes)) ([Convert]::ToHexString([IO.File]::ReadAllBytes((Join-Path $destination 'nested/header[1].h')))) 'relative layout and literal file bytes survive staging'
+        Assert-Equal impl ([IO.File]::ReadAllText((Join-Path $destination root.cc)))
+        [IO.File]::WriteAllText($header.FullName, 'replacement')
+        Assert-Equal 1 (Copy-MutSourceBuildFileTree @options -File @($header))
+        Assert-Equal replacement ([IO.File]::ReadAllText((Join-Path $destination 'nested/header[1].h'))) 'a repeated stage replaces an existing file'
+        $empty = Join-Path $dir empty
+        Assert-Equal 0 (Copy-MutSourceBuildFileTree -SourceRoot $source -DestinationRoot $empty -File @())
+        Assert-False (Test-Path $empty) 'an empty selection does not create an install tree'
+        Assert-Throws { Copy-MutSourceBuildFileTree -SourceRoot $source -DestinationRoot (Join-Path $destination child) -File @(Get-Item (Join-Path $dir outside.h)) } -MessagePattern 'is outside'
+        Assert-False (Test-Path (Join-Path $destination outside.h))
+        $gone = Get-Item (Join-Path $source root.cc)
+        Remove-Item -LiteralPath $gone.FullName
+        $ErrorActionPreference = 'Continue'
+        Assert-Throws { Copy-MutSourceBuildFileTree @options -File @($gone) } -MessagePattern 'root\.cc'
+    }
+}
+
+function Assert-SourcePatchSetContract {
+    Invoke-InTestDir -Files @{ 'one.cpp' = 'old'; 'noop.cpp' = 'current'; 'two.cpp' = 'old' } -Body { param($dir)
+        $files = @('one.cpp', 'noop.cpp', 'two.cpp' | ForEach-Object { Get-Item (Join-Path $dir $_) })
+        $state = New-TestCallState
+        $patch = {
+            param($file, $nextIndex)
+            $state.Calls.Add("patch:$($file.Name):$nextIndex")
+            Edit-SourceFile -Path $file.FullName -Require -Quiet -Transform { param($text) $text.Replace('old', "new-$nextIndex") }
+        }.GetNewClosure()
+        $onChanged = {
+            param($file, $index)
+            $state.Calls.Add("changed:$($file.Name):$index")
+            Write-Information "changed $($file.Name)" -InformationAction Continue
+            'callback output'
+        }.GetNewClosure()
+        $records = @(Invoke-MutSourceFilePatchSet -File $files -Patch $patch -OnChanged $onChanged 6>&1)
+        $count = @($records | Where-Object { $_ -isnot [Management.Automation.InformationRecord] })
+        Assert-Equal 1 $count.Count 'callbacks do not pollute the scalar count'
+        Assert-Equal 2 $count[0] 'only changed files are counted'
+        Assert-Equal 'patch:one.cpp:1|changed:one.cpp:1|patch:noop.cpp:2|patch:two.cpp:2|changed:two.cpp:2' ($state.Calls -join '|') 'unchanged files do not consume a target index and changed callbacks run immediately'
+        Assert-Equal 2 @($records | Where-Object { $_ -is [Management.Automation.InformationRecord] }).Count 'information diagnostics retain their stream'
+        Assert-Equal new-2 ([IO.File]::ReadAllText($files[2].FullName))
+        Assert-Equal 0 (Invoke-MutSourceFilePatchSet -File $files -Patch $patch)
+        Assert-Equal 0 (Invoke-MutSourceFilePatchSet -File @() -Patch { throw 'an empty patch set must not run' })
+        $state.Calls.Clear()
+        $failingPatch = { param($file) $state.Calls.Add($file.Name); throw 'fixture patch failed' }.GetNewClosure()
+        Assert-Throws { Invoke-MutSourceFilePatchSet -File $files -Patch $failingPatch } -MessagePattern 'fixture patch failed'
+        Assert-Equal one.cpp ($state.Calls -join '|') 'a patch failure stops later files'
+        Assert-Throws { Invoke-MutSourceFilePatchSet -File $files -Patch { $true } -OnChanged { throw 'fixture notification failed' } } -MessagePattern 'fixture notification failed'
+    }
+}
+
 Describe 'Shared source-build preparation' {
     $scenarios = @(
         @{ Name = 'gates compiler caching on remote configuration plus an executable and preserves the caller job limit'
@@ -165,7 +218,7 @@ Describe 'Shared source-build preparation' {
             ) }
         @{ Name = 'shares ZIP acquisition while retaining warm probes, signatures, archive cleanup and strict postconditions'
             FunctionName = @('Install-PortableZipTool', 'Install-ProtobufCompiler'); Body = { param($state) Assert-PortableZipPreparation $state }
-            FixtureState = (New-TestCallState @{ Tool = ''; SkipExpansion = $false; DownloadFailure = $false; ExpansionFailure = $false })
+            FixtureState = (New-TestCallState @{ Tool = ''; SkipExpansion = $false; DownloadFailure = $false; ExpansionFailure = $false; Download = { param($record, $state) if ($state.DownloadFailure) { throw 'fixture fetch failed' } } })
             Mutation = @(@{ Find = @'
     if (-not $found) {
         if ($FailureMessage) { throw $FailureMessage }
@@ -183,14 +236,26 @@ Describe 'Shared source-build preparation' {
             FunctionName = @('Get-RequiredBuildArtifact'); Body = { Assert-RequiredBuildArtifactFixture }
             Mutation = @(@{ Find = 'if ($files.Count -lt $MinimumCount -or $files.Count -gt $MaximumCount) { throw (& $FailureMessage $files) }'
                 Replace = ''; Expected = 'expected an exception but none was thrown' }) }
+        @{ Name = 'stages selected files byte-for-byte and fails on escaped or missing inputs'
+            FunctionName = @('Copy-SourceBuildFileTree'); Body = { Assert-SourceTreeCopyContract }; Mutation = @(
+                @{ Find = "if ([IO.Path]::IsPathRooted(`$relative) -or `$relative -match '^\.\.([\\/]|$)')"; Replace = 'if ($false)'; Expected = 'expected an exception but none was thrown' }
+                @{ Find = 'Copy-Item -LiteralPath $item.FullName -Destination $destination -Force -ErrorAction Stop'; Replace = 'Copy-Item -LiteralPath $item.FullName -Destination $destination -Force -ErrorAction SilentlyContinue'; Expected = 'expected an exception but none was thrown' }
+            ) }
+        @{ Name = 'preserves ordered patch results, next changed indices and notification streams'
+            ScriptPath = 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1'
+            FunctionName = @('Invoke-SourceFilePatchSet'); Body = { Assert-SourcePatchSetContract }; Mutation = @(
+                @{ Find = '($changed + 1)'; Replace = '($changed + 2)'; Expected = 'unchanged files do not consume a target index' }
+                @{ Find = 'if (& $Patch $item ($changed + 1))'; Replace = 'if ((& $Patch $item ($changed + 1)) -or $true)'; Expected = 'only changed files are counted' }
+                @{ Find = '& $OnChanged $item $changed | Out-Null'; Replace = '& $OnChanged $item $changed'; Expected = 'callbacks do not pollute the scalar count' }
+            ) }
     )
-    foreach ($scenario in $scenarios) {
-        It $scenario.Name {
-            $parameters = $scenario.Clone()
-            $parameters.Remove('Name')
-            Invoke-SourcePreparationFixture @parameters
-        }.GetNewClosure()
-    }
+    $prepare = Get-Command New-SourcePreparationArguments
+    Invoke-TestMutationChecks -Check $scenarios -ArgumentsFactory {
+        param($scenario)
+        $parameters = $scenario.Clone()
+        $parameters.Remove('Name')
+        & $prepare @parameters
+    }.GetNewClosure()
 
     It 'keeps LLVM bare launchers, GStreamer shims and each ZIP consumer policy at the actual call sites' {
         $llvm = Get-TestScriptCommands -ScriptPath 'windows/scripts/build/Build-LlvmFromSource.ps1' -Name Get-SourceBuildSccache
@@ -229,12 +294,13 @@ Describe 'Shared source-build preparation' {
                 if ([IO.Path]::GetFileName($ArgumentList[1]) -eq 'plugin.dll') { '    child.dll'; '    parent-missing.dll'; '    api-ms-loader.dll' }
                 else { '    child-missing.dll' }
             } -Body { param($state)
-                Invoke-SourcePreparationFixture -ScriptPath 'windows/scripts/build/Build-GstreamerFromSource.ps1' -FunctionName Get-UnresolvedDeps `
+                $recipe = New-SourcePreparationArguments -ScriptPath 'windows/scripts/build/Build-GstreamerFromSource.ps1' -FunctionName Get-UnresolvedDeps `
                     -FixtureState $state -Mutation @(@{ Find = '-ReadImports $readImports -DepthFirst -Seen $Seen'; Replace = '-ReadImports $readImports -Seen $Seen'; Expected = 'the builder emits child findings before parent findings' }) `
                     -Body { param($state)
                         $missing = @(Get-MutUnresolvedDeps (Join-Path $state.Root plugin.dll) Invoke-DependencyDumpbin @($state.Root) ([Collections.Generic.HashSet[string]]::new()))
                         Assert-Equal 'child-missing.dll|parent-missing.dll' ($missing -join '|') 'the builder emits child findings before parent findings'
                     }
+                Invoke-TestFunctionMutations @recipe -IncludeControl
             }
         }
     }

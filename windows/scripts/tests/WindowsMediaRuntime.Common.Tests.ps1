@@ -9,16 +9,13 @@ Describe 'WindowsMediaRuntime.Common' {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsBuild.Common.psm1') -DisableNameChecking
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsMediaRuntime.Common.psm1') -Force -DisableNameChecking
 
-    $root = Join-Path ([IO.Path]::GetTempPath()) ("mediart-" + [guid]::NewGuid().ToString('N'))
+    $files = @{ 'gst-a/bin/gstreamer-1.0-0.dll' = "a$([Environment]::NewLine)"; 'gst-a/bin/glib-2.0-0.dll' = "a$([Environment]::NewLine)"
+        'gst-a/bin/notes.txt' = "a$([Environment]::NewLine)"; 'gst-b/bin/gstreamer-1.0-0.dll' = "b$([Environment]::NewLine)"
+        'gst-foreign/bin/gstreamer-1.0-0.dll' = "f$([Environment]::NewLine)" }
+    Invoke-InTestDir -Prefix 'mediart-' -Files $files -Body { param($root)
     $gstA = Join-Path $root 'gst-a\bin'
     $gstB = Join-Path $root 'gst-b\bin'
     $gstForeign = Join-Path $root 'gst-foreign\bin'
-    foreach ($d in @($gstA, $gstB, $gstForeign)) { New-Item -ItemType Directory -Path $d -Force | Out-Null }
-    'a' | Set-Content -LiteralPath (Join-Path $gstA 'gstreamer-1.0-0.dll')
-    'a' | Set-Content -LiteralPath (Join-Path $gstA 'glib-2.0-0.dll')
-    'a' | Set-Content -LiteralPath (Join-Path $gstA 'notes.txt')
-    'b' | Set-Content -LiteralPath (Join-Path $gstB 'gstreamer-1.0-0.dll')
-    'f' | Set-Content -LiteralPath (Join-Path $gstForeign 'gstreamer-1.0-0.dll')
 
     # The chain ORT and GenAI installs in the image's layout, a NuGet package planted inside the chain root, a bundled ORT.
     $nugetNative = 'onnxruntime-source\packages\Microsoft.ML.OnnxRuntime.1.2.3\runtimes\win-x64\native'
@@ -231,5 +228,5 @@ Describe 'WindowsMediaRuntime.Common' {
         }
     }
 
-    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }

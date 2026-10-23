@@ -6,6 +6,7 @@
 $flutterModulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsFlutter.Common.psm1'
 $flutterSource = [IO.File]::ReadAllText($flutterModulePath)
 Import-Module $flutterModulePath
+Import-Module (Join-Path $PSScriptRoot 'WindowsConsumer.ArtifactFixtures.psm1') -ErrorAction Stop
 
 function Invoke-FlutterPatchFixture {
     param([AllowEmptyString()][string]$Source, [scriptblock]$Body, [switch]$ReadOnly)
@@ -31,22 +32,8 @@ function Invoke-FlutterReadOnlyPatch {
 
 function Invoke-FlutterSyncFixture {
     param([int[]]$Codes, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
-    $state = New-TestCallState -Properties @{
-        Warnings = [Collections.Generic.List[string]]::new()
-        Codes = [Collections.Generic.Queue[int]]::new([int[]]$Codes)
-    }
-    $prelude = @'
-$script:fixtureState = $State
-function Write-BuildLog { param($Context, $Message) }
-function Write-BuildLogWarning { param($Context, $Message) $script:fixtureState.Warnings.Add($Message) }
-function robocopy.exe {
-    $script:fixtureState.Calls.Add([string[]]$args)
-    $global:LASTEXITCODE = $script:fixtureState.Codes.Dequeue()
-}
-'@
-    Invoke-WithFunctionModule -Text $flutterSource `
-        -FunctionName @('Sync-FlutterArtifactTree', 'Sync-FastLocalArtifactsToHost') `
-        -Prelude $prelude -FixtureState $state -Body $Body -Find $Find -Replace $Replace
+    $module = New-TestArtifactCopyModuleArguments -Codes $Codes
+    Invoke-WithFunctionModule @module -Body $Body -Find $Find -Replace $Replace
 }
 
 function Invoke-FlutterFullSyncCase {

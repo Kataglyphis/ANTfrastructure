@@ -105,16 +105,9 @@ function Invoke-LiteRtLmSupportGraft {
     }
     # Graft sources+headers only (tests/testdata/BUILD are dead weight in the staging globs).
     $dstSupport = Join-Path $SourceDir 'support'
-    $grafted = 0
-    Get-ChildItem "$supportClone\support" -Recurse -File -Include '*.cc', '*.h' |
-        Where-Object { $_.Name -notmatch '_test\.cc$' -and $_.FullName -notmatch '\\testdata\\' } |
-        ForEach-Object {
-            $rel = $_.FullName.Substring("$supportClone\support\".Length)
-            $dst = Join-Path $dstSupport $rel
-            New-Item -ItemType Directory -Force -Path (Split-Path $dst) | Out-Null
-            Copy-Item $_.FullName $dst -Force
-            $grafted++
-        }
+    $grafted = Copy-SourceBuildFileTree -SourceRoot (Join-Path $supportClone 'support') -DestinationRoot $dstSupport -File @(
+        Get-ChildItem "$supportClone\support" -Recurse -File -Include '*.cc', '*.h' |
+            Where-Object { $_.Name -notmatch '_test\.cc$' -and $_.FullName -notmatch '\\testdata\\' })
     Remove-Item $supportClone -Recurse -Force -ErrorAction SilentlyContinue
     Write-Host "[LiteRTLM-winfix support-graft] grafted $grafted support/ file(s) from LiteRT $litertRef"
     # Re-home impls whose CMake targets still list the pre-move paths.

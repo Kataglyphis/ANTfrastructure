@@ -279,6 +279,16 @@ The image and the bundle carry Mesa's lavapipe; what ships and why:
 (CON50). For this lane, `Test-Arm64Bundle.ps1`'s device step (18 steps, floor 18 since 2026-10-12) is the gate that
 proves the bundle's device, and `:winamd64` carries it since the 2026-10-04 republish; `:winarm64` followed the same day and its device gate passed 12/12.
 
+`Install-LavapipeRuntime` in `WindowsContainerImage.Common.psm1` owns the image
+and host installers' pin lookup, Mesa download/extraction, loader download/extraction
+and successful archive cleanup. Both archives retain their architecture-specific
+SHA256 pins; the loader also requires a ZIP signature and the correct binary
+prefix. Any download or extraction failure stops before later work and keeps its
+downloaded evidence. The image caller retains PE-machine and ICD checks plus amd64
+registration. The host caller retains its environment settings and elevated-only
+registration. Stubbed acquisition tests cover forwarding and failure order; the
+device gates above prove runtime behavior.
+
 ## The Vulkan validation layer
 
 The merge stage stages `VkLayer_khronos_validation.dll` and its JSON in `C:\runtime\vulkan-layers`

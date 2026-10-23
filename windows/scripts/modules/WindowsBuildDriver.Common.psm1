@@ -5,10 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-# Only if absent, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
-if (-not (Get-Command Resolve-LatestVersionTag -ErrorAction SilentlyContinue)) {
-    Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking
-}
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking -ErrorAction Stop
 
 # The one transient-failure pattern every retry loop classifies against.
 $script:BuildDriverContext = @{
@@ -435,10 +432,9 @@ function Assert-DiskHeadroom {
     }
     $short = @()
     foreach ($letter in $letters) {
-        $psDrive = Get-PSDrive $letter -ErrorAction SilentlyContinue
+        $freeGb = Get-DriveFreeSpaceGb -Drive $letter
         # A missing drive is not a failure: another machine may keep the repo on C:.
-        if (-not $psDrive -or $null -eq $psDrive.Free) { continue }
-        $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
+        if ($null -eq $freeGb) { continue }
         if ($freeGb -ge $MinFreeGb) {
             Write-Host "disk headroom OK: ${letter}: ${freeGb} GB free (min ${MinFreeGb} GB)" -ForegroundColor Cyan
             continue
@@ -621,14 +617,13 @@ function Assert-StageDiskHeadroom {
         [switch]$Force
     )
     if ($FloorGb -le 0) { $FloorGb = Get-StageDiskFloorGb -Label $Label }
-    $psDrive = Get-PSDrive $Drive -ErrorAction SilentlyContinue
-    if (-not $psDrive -or $null -eq $psDrive.Free) {
+    $freeGb = Get-DriveFreeSpaceGb -Drive $Drive
+    if ($null -eq $freeGb) {
         # Silence would read as "plenty of space" in the build log.
         Write-Warning "[$Label] disk headroom NOT checked: drive '$Drive' has no readable free space (network drive, or wrong letter?)."
         Write-DriverRecord "[$Label] disk headroom NOT checked: drive '$Drive' has no readable free space"
         return
     }
-    $freeGb = [math]::Round($psDrive.Free / 1GB, 1)
     if ($freeGb -ge $FloorGb) {
         Write-Host "[$Label] disk OK: ${freeGb} GB free (stage floor ${FloorGb} GB)" -ForegroundColor DarkGray
         Write-DriverRecord "[$Label] disk OK: ${freeGb} GB free on ${Drive}: (stage floor ${FloorGb} GB)"

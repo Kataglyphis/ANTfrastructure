@@ -159,15 +159,10 @@ function Sync-FlutterArtifactTree {
     )
 
     Write-BuildLog -Context $Context -Message "Syncing fast local $Kind artifacts ($Source) back to host ($Destination)..."
-    if (-not (Test-Path $Destination)) {
-        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    }
-    # /R:1 /W:1 avoid a locked file's million retries; /FFT avoids false bind-mount changes.
-    $copyArgs = @($Source, $Destination, '/E', '/MT:16', '/R:1', '/W:1', '/FFT', '/NOOFFLOAD', '/XF') +
+    $copyArgs = @('/XF') +
         $ExcludeFiles + @('/XD') + $ExcludeDirectories +
         @('/NFL', '/NDL', '/NJH', '/NJS', '/nc', '/ns', '/np', '/LOG:nul')
-    & robocopy.exe @copyArgs > $null 2>&1
-    $copyExit = $LASTEXITCODE
+    $copyExit = Invoke-BuildArtifactCopy -Source $Source -Destination $Destination -Arguments $copyArgs
     if ($copyExit -ge 8) {
         Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of $Kind artifacts to '$Destination' failed (exit code $copyExit); host copy may be incomplete."
     }

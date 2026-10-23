@@ -983,6 +983,17 @@ function Assert-FlutterPluginsBuilt {
     }
 }
 
+function Invoke-BuildArtifactCopy {
+    param([string]$Source, [string]$Destination, [AllowEmptyCollection()][object[]]$Arguments = @())
+    if (-not (Test-Path $Destination)) {
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    }
+    # Bounded retries and timestamp tolerance keep a live bind-mounted tree from hanging the build.
+    $copyArgs = @($Source, $Destination, '/E', '/MT:16', '/R:1', '/W:1', '/FFT', '/NOOFFLOAD') + $Arguments
+    & robocopy.exe @copyArgs > $null 2>&1
+    return $LASTEXITCODE
+}
+
 function Sync-BuildArtifacts {
     <#
     .SYNOPSIS
@@ -1005,26 +1016,18 @@ function Sync-BuildArtifacts {
         [switch] $ExcludeCommonRustAndCppCache
     )
 
-    if (-not (Test-Path $Destination)) {
-        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
-    }
-
     if ($ExcludeCommonRustAndCppCache) {
         $ExcludeDirs += @('target', '.git', 'node_modules',
             'build-clangcl-debug', 'build-clangcl-release', 'build-clangcl-profile')
     }
 
-    # /R:1 /W:1 avoid retry hangs on locked files, /FFT suits bind-mount timestamps, /NOOFFLOAD the VM boundary.
     $robocopyArgs = @(
-        $Source, $Destination,
-        '/E', '/MT:16', '/R:1', '/W:1', '/FFT', '/NOOFFLOAD',
         '/NFL', '/NDL', '/NJH', '/NJS', '/nc', '/ns', '/np'
     )
     if ($ExcludeDirs.Count -gt 0) { $robocopyArgs += @('/XD') + $ExcludeDirs }
     if ($ExcludeFiles.Count -gt 0) { $robocopyArgs += @('/XF') + $ExcludeFiles }
 
-    & robocopy.exe @robocopyArgs > $null 2>&1
-    $robocopyExit = $LASTEXITCODE
+    $robocopyExit = Invoke-BuildArtifactCopy -Source $Source -Destination $Destination -Arguments $robocopyArgs
     # robocopy exits with a bitmask: only 16 means no mirror; bit 8 is routine for a transient lock on a live tree.
     if ($robocopyExit -ge 16) {
         throw "Sync-BuildArtifacts failed (robocopy exit $robocopyExit, serious error): '$Source' -> '$Destination'"
@@ -1149,7 +1152,7 @@ function Save-CiCompilerCache {
     return $ok
 }
 
-Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Sync-BuildArtifacts,
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Invoke-BuildArtifactCopy, Sync-BuildArtifacts,
     Test-SccacheModuleSafe, Restore-CiCompilerCache, Save-CiCompilerCache
 
 

@@ -8,9 +8,9 @@
 Set-StrictMode -Version Latest
 
 # Not -Force, so an entry script's -Force -Global copy is not displaced.
-Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1') -ErrorAction Stop
 # Get-MsvcToolsRoots.
-Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 # Memoised: resolving walks the VS install tree, and a test step asks once per executable.
 $script:MsvcAsanRuntimeDir = $null
@@ -193,20 +193,8 @@ function Invoke-WithAsanOptions {
   }
 
   $oldAsanOptions = $env:ASAN_OPTIONS
-  if ([string]::IsNullOrEmpty($oldAsanOptions)) {
-    $env:ASAN_OPTIONS = $Options
-  } else {
-    $env:ASAN_OPTIONS = "${Options}:$oldAsanOptions"
-  }
-  try {
-    & $Script
-  } finally {
-    if ($null -ne $oldAsanOptions) {
-      $env:ASAN_OPTIONS = $oldAsanOptions
-    } else {
-      Remove-Item Env:\ASAN_OPTIONS -ErrorAction SilentlyContinue
-    }
-  }
+  $asanOptions = if ([string]::IsNullOrEmpty($oldAsanOptions)) { $Options } else { "${Options}:$oldAsanOptions" }
+  Invoke-WithProcessEnvironment -Environment @{ ASAN_OPTIONS = $asanOptions } -ScriptBlock $Script
 }
 
 function Invoke-WithRuntimePath {
@@ -223,17 +211,12 @@ function Invoke-WithRuntimePath {
 
   # Normalize to a clean string array, even when the caller provides $null or a scalar value.
   $normalizedRuntimeDirs = @($RuntimeDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-  $oldPath = $env:PATH
+  $environment = @{}
   if ($normalizedRuntimeDirs.Length -gt 0) {
-    $env:PATH = (($normalizedRuntimeDirs -join ';') + ';' + $oldPath)
+    $environment['PATH'] = (($normalizedRuntimeDirs -join ';') + ';' + $env:PATH)
   }
-
-  try {
+  Invoke-WithProcessEnvironment -Environment $environment -ScriptBlock {
     Invoke-WithAsanOptions -Options $AsanOptions -Script $Script
-  } finally {
-    if ($normalizedRuntimeDirs.Length -gt 0) {
-      $env:PATH = $oldPath
-    }
   }
 }
 

@@ -5,24 +5,15 @@ BeforeAll {
     $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
     Import-Module (Join-Path $modDir 'WindowsTesting.Common.psm1') -Force -DisableNameChecking
 
-    function New-FakeBuildRoot {
-        $dir = New-TestDir -Prefix 'wtc-'
-        Set-Content -Path (Join-Path $dir 'x.exe') -Value 'x'
-        return $dir
-    }
-
     function Assert-ManualTestOutcome {
         param(
             [Parameter(Mandatory)][bool]$Expected,
             [string]$ExecutableName = 'x.exe'
         )
-        $root = New-FakeBuildRoot
-        try {
+        Invoke-InTestDir -Prefix 'wtc-' -Files @{ 'x.exe' = "x$([Environment]::NewLine)" } -Body { param($root)
             $result = @(Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName $ExecutableName)
             $result.Count | Should -Be 1
             $result[0] | Should -Be $Expected
-        } finally {
-            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }
@@ -62,12 +53,9 @@ Describe 'Invoke-ManualTestExecutable' {
             Mock -ModuleName 'WindowsTesting.Common' Invoke-BuildExternal { throw 'Process exited with exit code 1' }
             Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
-            $root = New-FakeBuildRoot
-            try {
+            Invoke-InTestDir -Prefix 'wtc-' -Files @{ 'x.exe' = "x$([Environment]::NewLine)" } -Body { param($root)
                 { Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'x.exe' } |
                     Should -Throw
-            } finally {
-                Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
     }

@@ -49,25 +49,8 @@ function Register-LavapipeIcd {
 $arch = if ([string]::IsNullOrWhiteSpace($TargetArch)) { Get-WindowsTargetArch } else { $TargetArch }
 if ($arch -notin 'amd64', 'arm64') { throw "Install-Lavapipe: -TargetArch must be amd64 or arm64; got '$arch'" }
 
-$pinValues = Get-LavapipePinValues -Arch $arch -Lookup { param([string]$name) [Environment]::GetEnvironmentVariable($name) }
-$assets = Resolve-LavapipeAssets -Arch $arch -MesaVersion $pinValues.MesaVersion -VulkanVersion $pinValues.VulkanVersion -MesaSha256 $pinValues.MesaSha256 -LoaderSha256 $pinValues.LoaderSha256
-$mesaUrl = $assets.MesaUrl
-$loaderUrl = $assets.LoaderUrl
-$mesaArchive = Join-Path $TempDir ([IO.Path]::GetFileName($mesaUrl))
-$loaderZip = Join-Path $TempDir ([IO.Path]::GetFileName($loaderUrl))
-
-Write-Host "Downloading lavapipe $($pinValues.MesaVersion) ($arch): $mesaUrl"
-Invoke-DownloadWithRetry -Url $mesaUrl -DestinationPath $mesaArchive -Description "lavapipe $($pinValues.MesaVersion)" -ExpectedSha256 $pinValues.MesaSha256
-Expand-LavapipeArchive -ArchivePath $mesaArchive -Destination $InstallDir
-
-Write-Host "Downloading the Vulkan loader $($pinValues.VulkanVersion): $loaderUrl"
-Invoke-DownloadWithRetry -Url $loaderUrl -DestinationPath $loaderZip -Description "Vulkan Runtime Components $($pinValues.VulkanVersion)" -ExpectSignature PK -ExpectedSha256 $pinValues.LoaderSha256
-$binPrefix = $assets.BinPrefix
-Expand-VulkanRuntimeComponents -ZipPath $loaderZip -Destination $InstallDir -BinPrefix $binPrefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
-
-Remove-Item -LiteralPath $mesaArchive, $loaderZip -Force -ErrorAction SilentlyContinue
-
-$icdName = $assets.IcdName
+$runtime = Install-LavapipeRuntime -Arch $arch -Lookup { param([string]$name) [Environment]::GetEnvironmentVariable($name) } -ArchiveDirectory $TempDir -Destination $InstallDir
+$icdName = $runtime.IcdName
 $icd = Join-Path $InstallDir $icdName
 $driver = Join-Path $InstallDir 'vulkan_lvp.dll'
 $loader = Join-Path $InstallDir 'vulkan-1.dll'
@@ -87,4 +70,4 @@ if ($icdJson.ICD.library_path -notmatch 'vulkan_lvp\.dll$') {
 
 if ($arch -eq 'amd64') { Register-LavapipeIcd -IcdPath $icd }
 Write-Host ("lavapipe {0} ({1}) + Vulkan loader {2} staged in {3}{4}" -f `
-        $pinValues.MesaVersion, $arch, $pinValues.VulkanVersion, $InstallDir, $(if ($arch -eq 'amd64') { ', ICD registered in HKLM' } else { '' }))
+        $runtime.MesaVersion, $arch, $runtime.VulkanVersion, $InstallDir, $(if ($arch -eq 'amd64') { ', ICD registered in HKLM' } else { '' }))

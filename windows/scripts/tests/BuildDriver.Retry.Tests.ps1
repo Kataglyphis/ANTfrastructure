@@ -97,12 +97,26 @@ Describe 'The driver log keeps what the console alone loses (hub #184)' {
 
     # The records -Body leaves in a fresh driver log; the context is cleared again whatever -Body does.
     function Get-DriverRecord([string]$Pattern, [scriptblock]$Body) {
-        $dir = New-TestDir
-        Initialize-BuildDriverContext -DriverLog (Join-Path $dir 'driver.log') -TransientPattern $Pattern
-        try { & $Body } finally { Initialize-BuildDriverContext -DriverLog '' }
-        $records = @(Get-Content -LiteralPath (Join-Path $dir 'driver.log') -ErrorAction SilentlyContinue)
-        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
-        return , $records
+        $action = $Body
+        Invoke-InTestDir -Body { param($dir)
+            Initialize-BuildDriverContext -DriverLog (Join-Path $dir 'driver.log') -TransientPattern $Pattern
+            try { & $action } finally { Initialize-BuildDriverContext -DriverLog '' }
+            return , @(Get-Content -LiteralPath (Join-Path $dir 'driver.log') -ErrorAction SilentlyContinue)
+        }.GetNewClosure()
+    }
+
+    It 'removes the log fixture and clears the driver context when its callback throws' {
+        $observed = [pscustomobject]@{ Log = '' }
+        $driver = Get-Module WindowsBuildDriver.Common
+        Assert-Throws {
+            Get-DriverRecord -Pattern 'fixture transient' -Body {
+                $observed.Log = & $driver { $script:BuildDriverContext.DriverLog }
+                throw 'driver record callback sentinel'
+            }
+        } -MessagePattern 'driver record callback sentinel'
+        Assert-True ([bool]$observed.Log) 'the callback must have run with its log context'
+        Assert-False (Test-Path -LiteralPath (Split-Path $observed.Log)) 'a failed callback cannot leak its fixture root'
+        Assert-Equal 0 @(Write-DriverRecord 'after a failed fixture' 3>&1).Count 'a failed callback still clears the driver context'
     }
 
     It 'records each retry verdict and each disk-gate verdict (mutation)' {

@@ -2482,7 +2482,7 @@ fixtures exercise these policies with independent expectations; they do not
 replace container, compiler, certificate or GPU acceptance.
 
 
-The Windows unit runner's discovery floor is 2,378 after a complete 2,403-test
+The Windows unit runner's discovery floor is 2,416 after a complete 2,441-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
 
@@ -2540,6 +2540,37 @@ a baseline failure cannot count as a killed mutation. Module-argument factories
 share temporary recipe workspaces; factory and import failures propagate before
 mutation expectations. These fixtures cover local
 policy and failure cleanup, not installed toolchains, ACLs or container builds.
+
+`Get-DriveFreeSpaceGb` shares the optional-drive lookup and one-decimal reading
+between initial, per-stage and host setup checks. A full disk returns zero; an
+absent drive or null `Free` returns unknown. The initial check and host report
+retain their skip policy, while per-stage checks warn and record an unreadable
+drive. Thresholds, force overrides and refusal diagnostics remain with each caller.
+
+`Invoke-BuildArtifactCopy` owns bounded robocopy transport and returns its raw
+status. Build synchronization keeps its fatal threshold of 16 and exit reset;
+Flutter keeps warning at 8, attempts both trees and resets afterward. Testing's
+ASan and runtime-path scopes delegate restoration to `Invoke-WithProcessEnvironment`;
+no-options and no-runtime-directory calls still invoke the body without a scope.
+
+`Copy-SourceBuildFileTree` owns relative layout, parent creation and counted file
+copying for LiteRT headers and LiteRT-LM support staging. Selected files outside
+the source root and copy failures terminate. `Invoke-SourceFilePatchSet` owns ordered
+patch invocation, changed counts and optional per-change callbacks; each source
+builder keeps its file selection, transformations and minimum-count verdicts.
+
+The harness shares temporary working-directory restoration and local download
+fixtures. Temporary-directory cleanup uses literal paths, so bracketed diagnostic
+prefixes cannot leave roots behind after a successful or failed body. Fake download transport records forwarded pins and signature options
+before a caller hook runs, then writes its archive stand-in. Script-command
+fixtures parse and enforce cardinality before returning executable command blocks.
+Their failure and mutation cases verify local policy without fetching upstream
+archives, copying a live build tree or running upstream compilers.
+`WindowsTest.MutationCases.psm1` owns named mutation-check registration and
+control execution for consumer operations and source preparation. Copy that
+companion beside those suites and the harness; copy suites also carry
+`WindowsConsumer.ArtifactFixtures.psm1`. Case bodies keep their independent
+assertions, and invalid recipes or failed controls remain failed test results.
 
 `Initialize-BuildDirectory` shares literal-root reset and directory creation for
 Python app staging, GenAI's ORT shim and proven ORT payloads. Child directories

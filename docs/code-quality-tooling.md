@@ -3293,6 +3293,13 @@ ROCm suites also share source reading and script workspace lifetime. Build loggi
 and Rust packaging use the existing rooted-path resolver. Compiler identity
 fixtures use a real batch command to pin first-line output, stderr, argv and status.
 
+Windows acquisition, disk readings, artifact copy and test environment scopes
+also share existing module companions. Source tree copies and patch sweeps retain
+their caller filters and fatal verdicts. Download and location fixtures reuse the
+harness while keeping independent expected values and fault controls; see the
+[Windows behavior contract](windows-builds.md#shared-windows-behavior) for coverage
+limits. Measured debt reductions never authorize a higher budget or narrower scan.
+
 ### Workflow fixture builders
 
 The workflow-lint suite shares repository initialization, job headers and

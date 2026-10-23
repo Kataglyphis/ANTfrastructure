@@ -125,8 +125,31 @@ function Invoke-InTestDir {
     try {
         & $Body $d
     }
-    finally { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue }
+    finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
 }
+
+# A location fixture must unwind even when an assertion fails; it leaves the native exit code observable.
+function Invoke-InTestLocation {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][scriptblock]$Body)
+    Push-Location -LiteralPath $Path -ErrorAction Stop
+    try { & $Body }
+    finally { Pop-Location }
+}
+
+Export-ModuleMember -Function Invoke-InTestLocation
+
+function Invoke-DirectoryCleanupProbe {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $record = [pscustomobject]@{ Path = ''; Exit = -1 }
+    $savedExit = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+    try { & $Body $record }
+    finally {
+        if ($savedExit) { $global:LASTEXITCODE = $savedExit.Value } else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+        if ($record.Path) { Remove-Item -LiteralPath $record.Path -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+Export-ModuleMember -Function Invoke-DirectoryCleanupProbe
 
 function Get-TestFileTreeEntry {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][Collections.IDictionary]$Files)
@@ -264,6 +287,22 @@ function Invoke-WithTestNativeCommand {
 }
 
 Export-ModuleMember -Function Invoke-WithTestNativeCommand
+
+# The callback adds caller policy after recording the attempted fetch, before an archive can appear.
+function Get-TestDownloadPrelude {
+    @'
+function Invoke-DownloadWithRetry {
+    param($Url, $DestinationPath, $Description, $ExpectedSha256, $ExpectSignature)
+    $record = @{ Url = $Url; Destination = $DestinationPath; Description = $Description; Sha = $ExpectedSha256; Signature = $ExpectSignature }
+    $State.Calls.Add($record)
+    if ($State.PSObject.Properties['Download']) { & $State.Download $record $State }
+    $content = if ($State.PSObject.Properties['DownloadContent']) { $State.DownloadContent } else { 'archive' }
+    [IO.File]::WriteAllText($DestinationPath, $content)
+}
+'@
+}
+
+Export-ModuleMember -Function Get-TestDownloadPrelude
 
 function New-TestCallState {
     param([System.Collections.IDictionary]$Properties = @{})
@@ -441,7 +480,7 @@ function Resolve-TestParseResult {
 function Get-TestScriptAst {
     param([Parameter(Mandatory)][string]$ScriptPath, [string]$ErrorLabel = 'Get-TestScriptAst')
     $full = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
-    if (-not (Test-Path $full -PathType Leaf)) { throw "${ErrorLabel}: script not found: $full" }
+    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "${ErrorLabel}: script not found: $full" }
     $tokens = $null; $parseErrors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($full, [ref]$tokens, [ref]$parseErrors)
     Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "${ErrorLabel}: parse errors in $full"
@@ -458,6 +497,18 @@ function Get-TestScriptCommands {
     param([string]$ScriptPath, [string]$Name)
     Get-TestAstCommands -Ast (Get-TestScriptAst -ScriptPath $ScriptPath) -Name $Name
 }
+
+# Executable call-site fixtures must reject missing or extra wiring before creating runnable blocks.
+function Get-TestScriptCommandBlock {
+    param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][string]$Name,
+        [int]$ExpectedCount = 1)
+    Assert-True ($ExpectedCount -gt 0) 'ExpectedCount must be positive'
+    $calls = @(Get-TestScriptCommands -ScriptPath $ScriptPath -Name $Name)
+    Assert-Equal $ExpectedCount $calls.Count "Expected $ExpectedCount $Name call(s) in $ScriptPath; found $($calls.Count)"
+    foreach ($call in $calls) { [scriptblock]::Create($call.Extent.Text) }
+}
+
+Export-ModuleMember -Function Get-TestScriptCommandBlock
 
 function Get-TestCommandArguments {
     param([System.Management.Automation.Language.CommandAst]$Command, [switch]$AsAst)

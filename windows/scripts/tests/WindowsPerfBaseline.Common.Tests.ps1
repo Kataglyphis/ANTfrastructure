@@ -8,7 +8,7 @@ Describe 'WindowsPerfBaseline.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsPerfBaseline.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('perfbaseline-' + (Get-Random))) -Force).FullName
+    $script:root = New-TestDir -Prefix 'perfbaseline-'
 
     function New-BenchmarkDocument {
       param([string]$Path, [array]$Benchmarks)

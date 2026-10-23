@@ -7,20 +7,18 @@ Describe 'WindowsAppRunner.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsAppRunner.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('apprunner-' + (Get-Random))) -Force).FullName
+    $script:root = New-TestDir -Prefix 'apprunner-'
     $script:workDir = (New-Item -ItemType Directory -Path (Join-Path $script:root 'work') -Force).FullName
     $script:buildRoot = (New-Item -ItemType Directory -Path (Join-Path $script:root 'build') -Force).FullName
 
     # A .cmd stands in for the app: it prints its working directory and exits non-zero, so both can be asserted.
     $script:appName = 'apprunner-probe.cmd'
     $binReleaseDir = (New-Item -ItemType Directory -Path (Join-Path $script:buildRoot 'bin\Release') -Force).FullName
-    Set-Content -Path (Join-Path $binReleaseDir $script:appName) `
-      -Value @('@echo off', 'echo CWD=%CD%', 'echo HOOK=%APPRUNNER_TEST_HOOK%', 'exit /b 3') -Encoding ascii
+    $null = New-TestBatchTool -Directory $binReleaseDir -Name $script:appName -Line @('echo CWD=%CD%', 'echo HOOK=%APPRUNNER_TEST_HOOK%') -ExitCode 3
   }
 
   AfterAll {
     Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item Env:\APPRUNNER_TEST_HOOK -ErrorAction SilentlyContinue
   }
 
   Context 'Resolve-AppExecutablePath' {
@@ -54,17 +52,16 @@ Describe 'WindowsAppRunner.Common' {
     }
 
     It 'runs the executable in the working directory, applies the env hook and reports the exit code' {
-      Push-Location $script:root
-      try {
-        $output = Invoke-AppRun -BuildRoot $script:buildRoot `
-          -ExecutableName $script:appName `
-          -Configurations @('Release') `
-          -WorkingDirectory $script:workDir `
-          -EnvHook { $env:APPRUNNER_TEST_HOOK = 'hooked' } 3>$null
-        $exitCode = $LASTEXITCODE
-      } finally {
-        Pop-Location
+      $output = Invoke-WithEnv @{ APPRUNNER_TEST_HOOK = $null } {
+        Invoke-InTestLocation -Path $script:root -Body {
+          Invoke-AppRun -BuildRoot $script:buildRoot `
+            -ExecutableName $script:appName `
+            -Configurations @('Release') `
+            -WorkingDirectory $script:workDir `
+            -EnvHook { $env:APPRUNNER_TEST_HOOK = 'hooked' } 3>$null
+        }
       }
+      $exitCode = $LASTEXITCODE
 
       $joined = ($output -join "`n")
       $joined | Should -Match ([regex]::Escape("CWD=$script:workDir"))

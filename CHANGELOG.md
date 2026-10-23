@@ -12,6 +12,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Windows acquisition, copy and probe operations
+
+- Share pinned lavapipe acquisition across host and image installers while retaining caller PE, ICD, registry and environment checks.
+- Share disk-space probing without confusing measured zero with an unknown drive or changing stage refusal policies.
+- Share bounded artifact-copy transport and temporary test environments while retaining caller flags, failure thresholds and no-scope behavior.
+- Share source file-tree staging and ordered patch accounting while keeping file filters, changed diagnostics and fatal minimums.
+- Share working-directory, fake-download and source-command fixtures with failure cleanup and real mutation controls.
+- Fix wildcard interpretation in fixture cleanup; bracketed directory prefixes must be removed after both successful and failed bodies.
+- Remove one resolved Windows duplication exception and lower four measured budgets without adding exceptions or weakening gates.
+- Pass all 2,441 Windows tests and strict lint over 441 files; raise the discovery floor to 2,416.
+- Verify 68 portable cases on Linux, the three deferred batch-setup faults and all four shared harness mutation gates.
+
 ## 2026-10-23 — classify the shared cache utility as a core leaf
 
 - Register `compiler-cache-utils.sh` as L0 so the layer gate accepts its intended use by `common.sh` and enforces that the helper sources no core modules.

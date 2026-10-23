@@ -915,6 +915,27 @@ function Get-RequiredBuildArtifact {
     return $files
 }
 
+function Copy-SourceBuildFileTree {
+    param(
+        [Parameter(Mandatory)][string]$SourceRoot,
+        [Parameter(Mandatory)][string]$DestinationRoot,
+        [Parameter(Mandatory)][AllowEmptyCollection()][IO.FileSystemInfo[]]$File
+    )
+    $source = [IO.Path]::GetFullPath($SourceRoot)
+    $copied = 0
+    foreach ($item in $File) {
+        $relative = [IO.Path]::GetRelativePath($source, $item.FullName)
+        if ([IO.Path]::IsPathRooted($relative) -or $relative -match '^\.\.([\\/]|$)') {
+            throw "Source file '$($item.FullName)' is outside $SourceRoot"
+        }
+        $destination = Join-Path $DestinationRoot $relative
+        [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination))
+        Copy-Item -LiteralPath $item.FullName -Destination $destination -Force -ErrorAction Stop
+        $copied++
+    }
+    return $copied
+}
+
 function Copy-BuildArtifact {
     param(
         [Parameter(Mandatory)][string]$BuildDir,
@@ -2638,6 +2659,7 @@ Export-ModuleMember -Function @(
     'Invoke-OnnxDmlClangClPatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
+    'Invoke-SourceFilePatchSet',
     'Assert-SourceFileContent',
     'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',
@@ -2702,6 +2724,7 @@ Export-ModuleMember -Function @(
     'Install-CpythonPipPin',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
+    'Copy-SourceBuildFileTree',
     'Get-RequiredBuildArtifact',
     'Copy-SidecarDll',
     'Get-NvccCudaCmakeArgs',

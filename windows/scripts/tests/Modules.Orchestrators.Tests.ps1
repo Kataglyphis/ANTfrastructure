@@ -109,9 +109,25 @@ Describe 'Get-ReusableBuildContainer (orchestrator)' {
 
 }
 
+function Write-WaitDockerFixtureReply {
+    param($Answer)
+    if ($Answer -like 'ERR:*') {
+        $global:LASTEXITCODE = 1
+        Write-Error $Answer.Substring(4) -ErrorAction Continue
+        return
+    }
+    if ($Answer -like 'NOISY:*') {
+        Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
+        $Answer = $Answer.Substring(6)
+    }
+    $global:LASTEXITCODE = 0
+    return $Answer
+}
+
 Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
 
-    # WBT_W_STATUS is a comma-separated script of answers, the last repeating; 'ERR:<text>' exits 1 with <text> on stderr.
+    # Status sequencing and exit-code policy share the same encoded stdout/stderr reply transport.
+    $reply = Get-Command Write-WaitDockerFixtureReply
     $dockerDefinition = {
         $joined = $args -join ' '
         if ($joined -match 'State\.Status') {
@@ -119,36 +135,11 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
             $i = [int]$env:WBT_W_CALL
             $env:WBT_W_CALL = "$($i + 1)"
             $answer = if ($i -lt $seq.Count) { $seq[$i] } else { $seq[-1] }
-            if ($answer -like 'ERR:*') {
-                $global:LASTEXITCODE = 1
-                Write-Error $answer.Substring(4) -ErrorAction Continue
-                return
-            }
-            # 'NOISY:<answer>' prints a stderr notice first, as docker does with client warnings.
-            if ($answer -like 'NOISY:*') {
-                Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
-                $global:LASTEXITCODE = 0
-                return $answer.Substring(6)
-            }
-            $global:LASTEXITCODE = 0
-            return $answer
+            return & $reply $answer
         }
-        if ($joined -match 'State\.ExitCode') {
-            if ($env:WBT_W_EXIT -like 'ERR:*') {
-                $global:LASTEXITCODE = 1
-                Write-Error $env:WBT_W_EXIT.Substring(4) -ErrorAction Continue
-                return
-            }
-            if ($env:WBT_W_EXIT -like 'NOISY:*') {
-                Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
-                $global:LASTEXITCODE = 0
-                return $env:WBT_W_EXIT.Substring(6)
-            }
-            $global:LASTEXITCODE = 0
-            return $env:WBT_W_EXIT
-        }
+        if ($joined -match 'State\.ExitCode') { return & $reply $env:WBT_W_EXIT }
         $global:LASTEXITCODE = 0
-    }
+    }.GetNewClosure()
 
     # Always removes the fake, so a failing case cannot leak state into the next.
     $withFake = {
@@ -156,6 +147,19 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
         Invoke-WithTestFunction -Name WbtWaitDockerFake -Definition $dockerDefinition -Body {
             Invoke-WithEnv @{ WBT_W_CALL = '0'; WBT_W_STATUS = $Status; WBT_W_EXIT = $ExitCode } $Body
         }.GetNewClosure()
+    }
+
+    It 'keeps fake error replies on stderr with a nonzero native result, with a fault control' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Modules.Orchestrators.Tests.ps1' -FunctionName Write-WaitDockerFixtureReply `
+            -Find '$global:LASTEXITCODE = 1' -Replace '$global:LASTEXITCODE = 0' -Expected 'fake errors must be nonzero' -IncludeControl -Body {
+                $errors = @(Write-MutWaitDockerFixtureReply 'ERR:encoded failure' 2>&1)
+                Assert-Equal 1 $errors.Count
+                Assert-True ($errors[0] -is [Management.Automation.ErrorRecord]) 'fake failures must use stderr'
+                Assert-Equal 'encoded failure' $errors[0].ToString()
+                Assert-Equal 1 $global:LASTEXITCODE 'fake errors must be nonzero'
+                Assert-Null (Write-MutWaitDockerFixtureReply $null) 'absent replies retain the original null value'
+                Assert-Equal 0 $global:LASTEXITCODE 'a successful absent reply resets an earlier failure'
+            }
     }
 
     It 'returns the real exit code of a container that has already stopped' {

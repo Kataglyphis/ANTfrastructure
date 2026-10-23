@@ -1,6 +1,10 @@
 #requires -Version 7.0
 # Host-independent only: -Msvc must never yield LLVM's ASan runtime, which aborts COM/CRT hosts with a bad-free.
 
+foreach ($module in 'WindowsTesting.Common', 'WindowsClang.Common') {
+    Import-Module (Join-Path (Get-RepoRoot) "windows/scripts/modules/$module.psm1") -ErrorAction Stop
+}
+
 function Assert-TestExecutableLayout {
     param([Collections.IDictionary]$Files, [string]$ExecutableName, [string]$ExpectedRelativePath,
         [string[]]$AdditionalDirectory = @(), [string]$Reason)

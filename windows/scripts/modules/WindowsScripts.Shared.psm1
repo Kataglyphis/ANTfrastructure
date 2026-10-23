@@ -721,6 +721,14 @@ function Add-DirectoriesToPath {
     }
 }
 
+function Get-DriveFreeSpaceGb {
+    param([Parameter(Mandatory)][string]$Drive)
+    $disk = Get-PSDrive -Name $Drive -ErrorAction SilentlyContinue
+    if (-not $disk -or $null -eq $disk.Free) { return $null }
+    return [math]::Round($disk.Free / 1GB, 1)
+}
+Export-ModuleMember -Function Get-DriveFreeSpaceGb
+
 function Get-PreferredToolPath {
     <#
     .SYNOPSIS

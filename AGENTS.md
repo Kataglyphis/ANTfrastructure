@@ -85,6 +85,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
+   Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
+   Source file-tree staging and patch sweeps share transport and accounting; keep caller selection, ordering and fatal minimums.
    Stateful Windows fixtures use the harness binding APIs; preserve collection identity, fake argv and nested-function restoration.
    Required Windows siblings import unforced into their owner scope and fail on missing companions; test cold, private-warm and global-warm visibility.
    Windows compiler-wrapper setup and removal share the canonical variable list; emptying an environment variable and removing it remain distinct.
@@ -92,6 +94,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
+   Fixture cleanup uses literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies.
@@ -99,6 +102,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
+   Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.

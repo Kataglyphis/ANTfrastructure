@@ -42,37 +42,10 @@ $versionsPath = Join-Path $hubRoot 'linux\scripts\01-core\versions.env'
 if (-not (Test-Path -LiteralPath $versionsPath)) { throw "Install-LavapipeHost: no versions.env at $versionsPath" }
 $pins = ConvertFrom-VersionsEnv -Path $versionsPath
 
-$pinValues = Get-LavapipePinValues -Arch $Arch -Lookup { param([string]$name) $pins[$name] }
-$assets = Resolve-LavapipeAssets -Arch $Arch -MesaVersion $pinValues.MesaVersion -VulkanVersion $pinValues.VulkanVersion -MesaSha256 $pinValues.MesaSha256 -LoaderSha256 $pinValues.LoaderSha256
-$mesaUrl = $assets.MesaUrl
-$loaderUrl = $assets.LoaderUrl
-
-function Get-LavapipeArchive {
-    param(
-        [Parameter(Mandatory)][string]$Url,
-        [Parameter(Mandatory)][string]$Sha256,
-        [Parameter(Mandatory)][string]$Description,
-        [string]$ExpectSignature = ''
-    )
-    $dest = Join-Path $ToolDir ([IO.Path]::GetFileName($Url))
-    Write-Host "Downloading ${Description}: $Url"
-    $download = @{ Url = $Url; DestinationPath = $dest; Description = $Description; ExpectedSha256 = $Sha256 }
-    if ($ExpectSignature) { $download['ExpectSignature'] = $ExpectSignature }
-    Invoke-DownloadWithRetry @download
-    return $dest
-}
 $lavapipeDir = Join-Path $ToolDir 'lavapipe'
 New-Item -ItemType Directory -Force -Path $lavapipeDir | Out-Null
-
-$archive = Get-LavapipeArchive -Url $mesaUrl -Sha256 $pinValues.MesaSha256 -Description "lavapipe $pinValues.MesaVersion"
-Expand-LavapipeArchive -ArchivePath $archive -Destination $lavapipeDir
-
-$zip = Get-LavapipeArchive -Url $loaderUrl -Sha256 $pinValues.LoaderSha256 -Description "Vulkan Runtime Components $pinValues.VulkanVersion" -ExpectSignature PK
-$binPrefix = $assets.BinPrefix
-Expand-VulkanRuntimeComponents -ZipPath $zip -Destination $lavapipeDir -BinPrefix $binPrefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
-Remove-Item -LiteralPath $archive, $zip -Force -ErrorAction SilentlyContinue
-
-$icdName = $assets.IcdName
+$runtime = Install-LavapipeRuntime -Arch $Arch -Lookup { param([string]$name) $pins[$name] } -ArchiveDirectory $ToolDir -Destination $lavapipeDir
+$icdName = $runtime.IcdName
 $icd = Join-Path $lavapipeDir $icdName
 $vulkanInfo = Join-Path $lavapipeDir 'vulkaninfo.exe'
 foreach ($f in $icd, $vulkanInfo, (Join-Path $lavapipeDir 'vulkan-1.dll')) {
@@ -88,5 +61,5 @@ if (Test-Elevated) {
 }
 $env:LP_NATIVE_VECTOR_WIDTH = $env:LP_NATIVE_VECTOR_WIDTH ?? '256'
 
-Write-Host "lavapipe $pinValues.MesaVersion ($Arch) + Vulkan loader $pinValues.VulkanVersion provisioned in $lavapipeDir"
+Write-Host "lavapipe $($runtime.MesaVersion) ($Arch) + Vulkan loader $($runtime.VulkanVersion) provisioned in $lavapipeDir"
 return @{ Icd = $icd; LoaderDir = $lavapipeDir; VulkanInfo = $vulkanInfo }

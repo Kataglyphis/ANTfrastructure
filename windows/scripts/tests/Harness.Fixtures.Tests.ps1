@@ -3,17 +3,6 @@
 # SPDX-License-Identifier: MIT
 # Local filesystem and exception fixtures cover harness contracts, not Windows tools or image builds.
 
-function Invoke-DirectoryCleanupProbe {
-    param([Parameter(Mandatory)][scriptblock]$Body)
-    $record = [pscustomobject]@{ Path = ''; Exit = -1 }
-    $savedExit = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
-    try { & $Body $record }
-    finally {
-        if ($savedExit) { $global:LASTEXITCODE = $savedExit.Value } else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
-        if ($record.Path) { Remove-Item -LiteralPath $record.Path -Recurse -Force -ErrorAction SilentlyContinue }
-    }
-}
-
 function Assert-FixtureTreeContent {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][Collections.IDictionary]$Expected)
     if ($Expected.Count -eq 0) { throw 'Expected must contain at least one file' }
