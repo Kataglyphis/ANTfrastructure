@@ -35,8 +35,7 @@ Get-Service containerd, buildkitd | Select-Object Name, Status | Format-Table -A
 
 Write-Host ''
 Write-Host '== Step 3: buildctl reaches the worker? ==' -ForegroundColor Cyan
-$bt = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'C:\Program Files\Stevedore\bin\buildctl.exe', 'D:\Stevedore\bin\buildctl.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
-Write-HostMaintenanceProbe -Command $bt -ArgumentList @('--addr', 'npipe:////./pipe/buildkitd', 'debug', 'workers') `
+Write-HostMaintenanceProbe -Command (Get-HostMaintenanceBuildCtlPath -IncludeCProgramFilesFallback) -ArgumentList @('--addr', 'npipe:////./pipe/buildkitd', 'debug', 'workers') `
     -Pattern 'windows/amd64|worker' -UnavailableMessage 'buildctl.exe not found on the usual paths'
 
 Write-Host ''

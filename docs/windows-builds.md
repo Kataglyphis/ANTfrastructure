@@ -2555,8 +2555,10 @@ variables even if a setup write fails. GenieX log setup and hidden process launc
 use that scope. The standalone agentic module instead applies sanitizer overrides
 inside its existing child pwsh transport, retaining command logs and exit handling
 without adding a vendored dependency. Silo probes share recursive read-only log
-access, wininit identifier projection and debugger transport through their existing
+access, the wininit CIM query and identifier projection, and debugger transport through their existing
 `WindowsSiloProbe.Common` companion. Probe-specific commands stay with each caller.
+Host maintenance worker probes share `Get-HostMaintenanceBuildCtlPath`, while each
+script retains its candidate order and PATH fallback policy.
 Debugger output and stderr go to the caller log and raw exit status stays visible.
 Attaches default to non-invasive; only the existing wait-object opt-in uses a
 controlling attach. A supplied LSM process/handle pair skips debugger discovery

@@ -52,8 +52,7 @@ Restart-Service buildkitd -Force
 Write-Host 'buildkitd restarted.' -ForegroundColor Green
 
 # The effective GC rules must show reservedSpace, not the computed defaults that once evicted the VS layer.
-$buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
+$buildctl = Get-HostMaintenanceBuildCtlPath
 Write-HostMaintenanceProbe -Command $buildctl -ArgumentList @('debug', 'workers', '-v') `
     -Pattern 'GC Policy|reserved|maxUsedSpace|minFreeSpace|keepDuration|all=|filters' `
     -UnavailableMessage 'buildctl not found for verification — run: buildctl debug workers -v'

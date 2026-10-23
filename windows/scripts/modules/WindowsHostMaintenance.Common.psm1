@@ -161,6 +161,15 @@ function Get-HostMaintenanceTreeStats {
     return [pscustomobject]@{ Bytes = $bytes; Files = $files; Errors = $errors }
 }
 
+function Get-HostMaintenanceBuildCtlPath {
+    param([switch]$SearchPath, [switch]$IncludeCProgramFilesFallback)
+    $candidates = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
+    if ($IncludeCProgramFilesFallback) { $candidates = @($candidates[0], 'C:\Program Files\Stevedore\bin\buildctl.exe', $candidates[1]) }
+    if ($SearchPath) { return Get-PreferredToolPath -CommandName 'buildctl.exe' -CandidatePaths $candidates }
+    foreach ($candidate in $candidates) { if (Test-Path $candidate) { return $candidate } }
+    return $null
+}
+
 Export-ModuleMember -Function @(
     'New-HostMaintenanceLog',
     'Write-HostStep',
@@ -170,6 +179,7 @@ Export-ModuleMember -Function @(
     'Start-HostServices',
     'Get-HostMaintenanceProcess',
     'Get-HostMaintenanceTreeStats',
+    'Get-HostMaintenanceBuildCtlPath',
     'Write-HostMaintenanceFailure',
     'Write-HostMaintenanceError',
     'Invoke-HostMaintenanceTask',

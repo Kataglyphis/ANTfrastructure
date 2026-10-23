@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Fakes cover debugger arguments, log capture and manual discovery; no debugger attaches to a process and no system handles are scanned.
+# NOT covered: live container behavior, host CIM state or debugger attaches; fixtures pin query logic, transport and manual discovery.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
 
@@ -48,16 +48,55 @@ function Assert-SiloManualHandlePlan {
     Assert-Equal 0x338 $Handle 'manual discovery retains the supplied handle'
 }
 
+function Get-SiloWininitPrelude {
+    @'
+function Get-CimInstance { param($ClassName, $Filter) $State.Calls.Add(@($ClassName, $Filter)); $State.Rows }
+function Get-Date { $State.Now }
+function Start-Sleep { param([int]$Seconds) $State.Now = $State.Now.AddSeconds($Seconds) }
+'@
+}
+
+function Assert-SiloWininitQueries {
+    param($State)
+    Assert-Equal 0 @(Get-MutSiloWininitId).Count
+    $State.Rows = @([pscustomobject]@{ ProcessId = 13 })
+    Assert-Equal 13 (Get-MutSiloWininitId)
+    $State.Rows += [pscustomobject]@{ ProcessId = 29 }
+    Assert-Equal '13|29' ((Get-MutSiloWininitId) -join '|')
+
+    $State.Now = [datetime]'2026-01-01T00:00:00Z'
+    $newWininit = Wait-MutForNewSilo -BaselinePid @(13) -TimeoutSec 1 -PollSec 1
+    Assert-Equal 29 $newWininit.ProcessId 'polling must exclude existing silo ids'
+
+    $State.Rows = @([pscustomobject]@{ ProcessId = 13 })
+    $State.Now = [datetime]'2026-01-01T00:00:00Z'
+    Assert-Null (Wait-MutForNewSilo -BaselinePid @(13) -TimeoutSec 1 -PollSec 1) 'a missed silo remains a timeout result'
+    Assert-Equal 5 $State.Calls.Count 'baseline and polling both use the shared query'
+    foreach ($call in $State.Calls) {
+        Assert-Equal "Win32_Process|Name='wininit.exe'" ($call -join '|') 'all discovery paths must use the exact wininit query'
+    }
+}
+
 Describe 'Shared silo debugger transport' {
     Invoke-TestMutationChecks -Check @(
-        @{ Name = 'keeps non-invasive defaults and detects controlling attaches'; Find = "'-pv', '-p'"; Replace = "'-p'" },
-        @{ Name = 'retains a single native argument for an invasive attach'; Find = '[string[]]$attach'; Replace = '$attach' },
-        @{ Name = 'saves both debugger streams and detects uncaptured output'; Find = ' > $LogPath 2>&1'; Replace = '' }
+        @{ Name = 'keeps non-invasive defaults and detects controlling attaches'; Kind = 'debugger'; Find = "'-pv', '-p'"; Replace = "'-p'" },
+        @{ Name = 'retains a single native argument for an invasive attach'; Kind = 'debugger'; Find = '[string[]]$attach'; Replace = '$attach' },
+        @{ Name = 'saves both debugger streams and detects uncaptured output'; Kind = 'debugger'; Find = ' > $LogPath 2>&1'; Replace = '' },
+        @{ Name = 'keeps the shared CIM query scoped to wininit'; Kind = 'wininit'; Find = "Name='wininit.exe'"; Replace = "Name='services.exe'" },
+        @{ Name = 'excludes existing process ids while waiting'; Kind = 'wininit'; Find = '$_.ProcessId -notin $BaselinePid'; Replace = '$_.ProcessId -in $BaselinePid' }
     ) -ArgumentsFactory {
         param($check)
-        $expected = if ($check.Replace) { 'attach policy and command boundaries must remain exact' } else { 'debugger streams must reach only the capture log' }
-        @{ ScriptPath = 'windows/scripts/modules/WindowsSiloProbe.Common.psm1'; FunctionName = 'Invoke-SiloDebugger';
-            Find = $check.Find; Replace = $check.Replace; Expected = $expected; Body = { Assert-SiloDebuggerCapture } }
+        if ($check.Kind -eq 'debugger') {
+            $expected = if ($check.Replace) { 'attach policy and command boundaries must remain exact' } else { 'debugger streams must reach only the capture log' }
+            @{ ScriptPath = 'windows/scripts/modules/WindowsSiloProbe.Common.psm1'; FunctionName = 'Invoke-SiloDebugger';
+                Find = $check.Find; Replace = $check.Replace; Expected = $expected; Body = { Assert-SiloDebuggerCapture } }
+        } else {
+            $expected = if ($check.Find -eq "Name='wininit.exe'") { 'all discovery paths must use the exact wininit query' } else { 'polling must exclude existing silo ids' }
+            @{ ScriptPath = 'windows/scripts/modules/WindowsSiloProbe.Common.psm1';
+                FunctionName = @('Get-SiloWininit', 'Get-SiloWininitId', 'Wait-ForNewSilo');
+                Find = $check.Find; Replace = $check.Replace; Expected = $expected; IncludeControl = $true;
+                Prelude = Get-SiloWininitPrelude; Body = { param($state) Assert-SiloWininitQueries $state } }
+        }
     }
 
     It 'propagates a missing debugger command' {
@@ -69,15 +108,16 @@ Describe 'Shared silo debugger transport' {
     }
 
     It 'shares the exact wininit query while preserving zero, one and several identifiers' {
-        $state = New-TestCallState @{ Rows = @() }
-        $prelude = 'function Get-CimInstance { param($ClassName, $Filter) $State.Calls.Add(@($ClassName, $Filter)); $State.Rows }'
-        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsSiloProbe.Common.psm1' -FunctionName Get-SiloWininitId -FixtureState $state -Prelude $prelude -Body { param($state)
-            Assert-Equal 0 @(Get-MutSiloWininitId).Count
-            $state.Rows = @([pscustomobject]@{ ProcessId = 13 })
-            Assert-Equal 13 (Get-MutSiloWininitId)
-            $state.Rows += [pscustomobject]@{ ProcessId = 29 }
-            Assert-Equal '13|29' ((Get-MutSiloWininitId) -join '|')
-            Assert-Equal 'Win32_Process|Name=''wininit.exe''' ($state.Calls[0] -join '|')
+        $state = New-TestCallState @{ Rows = @(); Now = [datetime]'2026-01-01T00:00:00Z' }
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsSiloProbe.Common.psm1' `
+            -FunctionName @('Get-SiloWininit', 'Get-SiloWininitId', 'Wait-ForNewSilo') -FixtureState $state `
+            -Prelude (Get-SiloWininitPrelude) -Body { param($state) Assert-SiloWininitQueries $state }
+        $moduleAst = Get-TestScriptAst -ScriptPath 'windows/scripts/modules/WindowsSiloProbe.Common.psm1'
+        foreach ($name in 'Get-SiloWininitId', 'Wait-ForNewSilo') {
+            $functionAst = @($moduleAst.FindAll({ param($node)
+                $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name
+            }, $true)) | Select-Object -First 1
+            Assert-Equal 1 @(Get-TestAstCommands -Ast $functionAst -Name Get-SiloWininit).Count "$name must use the shared query helper"
         }
     }
 

@@ -53,7 +53,7 @@ foreach ($f in @('C:\Program Files\containerd\cni\conf\0-containerd-nat.conf', '
 }
 
 Write-HostMaintenanceMessage '== buildctl worker ==' 'Cyan'
-$bt = Get-PreferredToolPath -CommandName 'buildctl.exe' -CandidatePaths @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
+$bt = Get-HostMaintenanceBuildCtlPath -SearchPath
 Write-HostMaintenanceProbe -Command $bt -ArgumentList @('--addr', 'npipe:////./pipe/buildkitd', 'debug', 'workers') `
     -Pattern 'windows/amd64|worker' -UnavailableMessage '  buildctl missing' -UnavailableColor Red
 

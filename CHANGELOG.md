@@ -19,6 +19,8 @@
 - Share Torch and torchvision ROCm target-family selection through one helper at both original setup points.
 - Share leaf-file gap detection across MIGraphX install, ORT EP staging and license checks while preserving each caller's required-file list.
 - Share host tree byte, file and access-error enumeration for VHDX verification and disk-reclaim sizing while preserving caller-specific verdicts.
+- Centralize host buildctl lookup while retaining each script's candidate and PATH fallback policy.
+- Share the wininit CIM query between silo baseline collection and polling while retaining timeout and baseline-exclusion behavior.
 
 ## 2026-10-23 — remove another Windows duplication wave
 

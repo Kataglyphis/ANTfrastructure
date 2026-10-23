@@ -70,21 +70,6 @@ function New-OrtGateZip {
     try { $w = [System.IO.StreamWriter]::new($zip.CreateEntry($Member).Open()); try { $w.Write('x') } finally { $w.Dispose() } } finally { $zip.Dispose() }
 }
 
-# The calls to -Name in a script's text, by AST: a comment or a string naming it is no call.
-function Get-OrtGateCommandAst {
-    param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][string]$Name)
-    $ast = (ConvertTo-TestScriptAst -Text $Text)
-    return @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Name }, $true))
-}
-
-# The argument text one call passes after -Parameter; $null when it passes none.
-function Get-OrtGateCallArg {
-    param([Parameter(Mandatory)][System.Management.Automation.Language.CommandAst]$Call, [Parameter(Mandatory)][string]$Parameter)
-    $i = [array]::IndexOf(@($Call.CommandElements | ForEach-Object { "$_" }), $Parameter)
-    if ($i -lt 0) { return $null }
-    return "$($Call.CommandElements[$i + 1])"
-}
-
 # A junction at -Path to -Target, removed as a link (never recursed into) by the caller's finally.
 function New-OrtGateJunction {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Target)
@@ -396,8 +381,10 @@ Describe 'ORT gate (G2): the link to G1' {
         $build = Join-Path (Get-RepoRoot) 'windows\scripts\build'
         $calls = @{}
         foreach ($f in (Get-ChildItem -LiteralPath $build -Filter '*.ps1' -File)) {
-            foreach ($c in (Get-OrtGateCommandAst -Text ([System.IO.File]::ReadAllText($f.FullName)) -Name 'Assert-ChainOrtOnly')) {
-                $name = "$(Get-OrtGateCallArg -Call $c -Parameter '-Consumer')".Trim("'", '"')
+            $ast = Get-TestScriptAst -ScriptPath $f.FullName
+            foreach ($c in (Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')) {
+                $arguments = Get-TestCommandArguments -Command $c
+                $name = "$($arguments.Consumer)".Trim("'", '"')
                 $calls["$($f.Name)|$name"] = 1 + $(if ($calls.ContainsKey("$($f.Name)|$name")) { $calls["$($f.Name)|$name"] } else { 0 })
             }
         }
@@ -418,12 +405,14 @@ Describe 'ORT gate (G2): wiring' {
         foreach ($consumer in $script:GateConsumerScript.Keys) {
             $rel = "windows\scripts\build\$($script:GateConsumerScript[$consumer])"
             $text = & $read $rel
-            $resolve = @(Get-OrtGateCommandAst -Text $text -Name 'Resolve-SourceBuildLeafModule')
+            $ast = ConvertTo-TestScriptAst -Text $text
+            $resolve = @(Get-TestAstCommands -Ast $ast -Name 'Resolve-SourceBuildLeafModule')
             Assert-Equal 1 $resolve.Count "$consumer resolves the gate once"
-            Assert-Equal '$scriptAssetRoot' (Get-OrtGateCallArg -Call $resolve[0] -Parameter '-AssetRoot') "$consumer uses its mounted asset root"
-            Assert-Equal "'WindowsOrtProvenance.Build.psm1'" (Get-OrtGateCallArg -Call $resolve[0] -Parameter '-Name') "$consumer resolves the G2 gate"
-            $call = @(Get-OrtGateCommandAst -Text $text -Name 'Assert-ChainOrtOnly')[0]
-            $stops = @(Get-OrtGateCommandAst -Text $text -Name $end[$consumer] | Where-Object { $consumer -ne 'gstreamer' -or "$($_.CommandElements[1])" -match '10\. cleanup' })
+            $resolveArguments = Get-TestCommandArguments -Command $resolve[0]
+            Assert-Equal '$scriptAssetRoot' $resolveArguments.AssetRoot "$consumer uses its mounted asset root"
+            Assert-Equal "'WindowsOrtProvenance.Build.psm1'" $resolveArguments.Name "$consumer resolves the G2 gate"
+            $call = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')[0]
+            $stops = @(Get-TestAstCommands -Ast $ast -Name $end[$consumer] | Where-Object { $consumer -ne 'gstreamer' -or "$($_.CommandElements[1])" -match '10\. cleanup' })
             Assert-True ($stops.Count -gt 0) "$consumer has a '$($end[$consumer])'"
             Assert-True ($call.Extent.EndOffset -lt @($stops | Sort-Object { $_.Extent.StartOffset })[0].Extent.StartOffset) "$consumer gates before its first '$($end[$consumer])'"
             for ($p = $call.Parent; $p; $p = $p.Parent) { Assert-False ($p -is [System.Management.Automation.Language.IfStatementAst]) "$consumer gates on every lane (no if around the call)" }
@@ -446,9 +435,11 @@ Describe 'ORT gate (G2): wiring' {
         }
         foreach ($consumer in $want.Keys) {
             $text = & $read "windows\scripts\build\$($script:GateConsumerScript[$consumer])"
-            $call = @(Get-OrtGateCommandAst -Text $text -Name 'Assert-ChainOrtOnly')[0]
-            Assert-Equal $want[$consumer][0] (Get-OrtGateCallArg -Call $call -Parameter '-Log') "$consumer -Log"
-            Assert-Equal $want[$consumer][1] (Get-OrtGateCallArg -Call $call -Parameter '-Record') "$consumer -Record"
+            $ast = ConvertTo-TestScriptAst -Text $text
+            $call = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')[0]
+            $arguments = Get-TestCommandArguments -Command $call
+            Assert-Equal $want[$consumer][0] $arguments.Log "$consumer -Log"
+            Assert-Equal $want[$consumer][1] $arguments.Record "$consumer -Record"
             if ($want[$consumer][2]) { Assert-Match ('Tee-Object -FilePath ' + [regex]::Escape($want[$consumer][2]) + '\b') $text "$consumer tees its configure into the log G2 reads" }
         }
     }

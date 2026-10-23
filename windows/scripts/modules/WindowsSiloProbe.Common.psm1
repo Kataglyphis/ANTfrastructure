@@ -5,8 +5,12 @@
 
 Set-StrictMode -Version Latest
 
+function Get-SiloWininit {
+    Get-CimInstance Win32_Process -Filter "Name='wininit.exe'"
+}
+
 function Get-SiloWininitId {
-    Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId
+    Get-SiloWininit | Select-Object -ExpandProperty ProcessId
 }
 
 function Invoke-SiloDebugger {
@@ -131,8 +135,7 @@ function Wait-ForNewSilo {
     )
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        $newWininit = Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" |
-            Where-Object { $_.ProcessId -notin $BaselinePid } | Select-Object -First 1
+        $newWininit = Get-SiloWininit | Where-Object { $_.ProcessId -notin $BaselinePid } | Select-Object -First 1
         if ($newWininit) { return $newWininit }
         Start-Sleep -Seconds $PollSec
     }
