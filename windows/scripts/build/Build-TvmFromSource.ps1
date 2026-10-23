@@ -231,9 +231,8 @@ $buildDir = Join-Path $SourceDir 'build'
 $tvmInstallDir = Join-Path $InstallDir 'lib\tvm'
 
 $gpuEnv = Get-GpuEnvironment
-# CUDA on the cross lane only when the image carries the arm64 payload, the signal ORT, GenAI and OpenCV use.
 $tvmCross = Test-WindowsCrossTarget
-$tvmCudaUsable = $gpuEnv.HasCuda -and ((-not $tvmCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+$tvmCudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $tvmCross
 $useCuda = if ($tvmCudaUsable) { 'ON' } else { 'OFF' }
 if ($useCuda -eq 'ON') { Write-Host "CUDA detected at: $($gpuEnv.CudaRoot) - enabling TVM CUDA support" }
 

@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # The rocm-lane MIGraphX spike's module, scripts, Dockerfile and check; no download, compile or load probe.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
+
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsMigraphx.Common.psm1') -Force -DisableNameChecking
 
 $script:MgxRepo = Get-RepoRoot
@@ -537,9 +539,8 @@ Describe 'Dockerfile.rocm-migraphx' {
     It 'mounts both scripts with the media lane''s buildmods closure plus the leaf, and sets the rocm-check markers' {
         # BuildKit.ModuleClosure.Tests.ps1 proves media-builder's buildmods is WindowsSourceBuild.Common's closure.
         $bkmodsOf = { param($path)
-            $j = ([System.IO.File]::ReadAllText($path)) -replace '`\r?\n', ' '
             # The COPY that carries SourceBuild.Common: buildmods there, migraphxmods here (not tvmmods).
-            @($j -split "`n" | Where-Object { $_ -match '^COPY\s.*WindowsSourceBuild\.Common.*bkmods' } | ForEach-Object {
+            @(Get-TestDockerLogicalLine -LiteralPath $path | Where-Object { $_ -match '^COPY\s.*WindowsSourceBuild\.Common.*bkmods' } | ForEach-Object {
                     [regex]::Matches($_, 'modules\\([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value } })
         }
         $mine = & $bkmodsOf $script:MgxDockerfile
@@ -549,7 +550,7 @@ Describe 'Dockerfile.rocm-migraphx' {
         $leaf = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo 'windows\scripts\modules\WindowsMigraphx.Common.psm1'))
         $leafImports = @([regex]::Matches($leaf, "PSScriptRoot\s+'([A-Za-z0-9._]+)\.psm1'") | ForEach-Object { $_.Groups[1].Value })
         Assert-Equal '' (@($leafImports | Where-Object { $media -notcontains $_ }) -join ',') 'the leaf imports only buildmods modules'
-        $joined = ([System.IO.File]::ReadAllText($script:MgxDockerfile)) -replace '`\r?\n', ' '
+        $joined = Get-TestDockerLogicalText -LiteralPath $script:MgxDockerfile
         foreach ($rel in @($script:MgxScript, $script:EpScript)) {
             Assert-Match ([regex]::Escape("source=$($rel -replace '\\', '/'),")) $joined "$rel is mounted"
             $imports = @([regex]::Matches([System.IO.File]::ReadAllText((Join-Path $script:MgxRepo $rel)), 'modules\\([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })

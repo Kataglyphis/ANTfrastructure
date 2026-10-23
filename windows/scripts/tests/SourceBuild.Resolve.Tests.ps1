@@ -232,6 +232,43 @@ Describe 'Test-CudaWindowsArm64Payload' {
     }
 }
 
+function Assert-CudaBuildCallerPolicy {
+    param([Parameter(Mandatory)][Management.Automation.Language.ScriptBlockAst]$Ast, [Parameter(Mandatory)][string]$Name)
+    $decision = @(Get-TestAstCommands -Ast $Ast -Name Test-CudaTargetUsable)
+    Assert-Equal 1 $decision.Count 'every builder uses the shared target policy exactly once'
+    $arguments = Get-TestCommandArguments -Command $decision[0]
+    Assert-Equal '$gpuEnv' $arguments.GpuEnvironment
+    $scope = Get-TestAstAncestor -Node $decision[0] -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
+    $crossAssignments = @(foreach ($probe in @(Get-TestAstCommands -Ast $Ast -Name Test-WindowsCrossTarget)) {
+        $probeScope = Get-TestAstAncestor -Node $probe -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
+        if (-not [object]::ReferenceEquals($scope, $probeScope)) { continue }
+        $assignment = Get-TestAstAncestor -Node $probe -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
+        if ($assignment -and $assignment.Extent.EndOffset -lt $decision[0].Extent.StartOffset -and $assignment.Left.Extent.Text -eq $arguments.CrossTarget) { $assignment }
+    })
+    Assert-Equal 1 $crossAssignments.Count 'the target policy uses the result of the actual architecture probe'
+    $probe = @(Get-TestAstCommands -Ast $Ast -Name Get-GpuEnvironment)
+    Assert-Equal 1 $probe.Count
+    $selection = Get-TestCommandArguments -Command $probe[0]
+    $expectedOverride = switch ($Name) {
+        'Build-OnnxFromSource' { "'ONNX_FORCE_CPU'" }
+        'Build-OnnxGenaiFromSource' { "'GENAI_FORCE_CPU'" }
+        default { '' }
+    }
+    if ($expectedOverride) { Assert-Equal $expectedOverride $selection.ForceCpuEnvVar }
+    else { Assert-False $selection.ContainsKey('ForceCpuEnvVar') 'callers without a CPU override keep their original GPU selection' }
+}
+
+Describe 'Test-CudaTargetUsable caller policy' {
+    It 'keeps each builder GPU selection, CPU override and architecture-probe result' {
+        foreach ($name in @('Build-OnnxFromSource', 'Build-OnnxGenaiFromSource', 'Build-OpencvFromSource', 'Build-TvmFromSource')) {
+            Assert-CudaBuildCallerPolicy -Ast (Get-TestScriptAst -ScriptPath "windows/scripts/build/$name.ps1") -Name $name
+        }
+        $onnx = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OnnxFromSource.ps1'
+        $mutant = ConvertTo-TestScriptAst -Text ($onnx.Extent.Text.Replace('-CrossTarget $onnxCross', '-CrossTarget $false'))
+        Assert-Throws { Assert-CudaBuildCallerPolicy -Ast $mutant -Name Build-OnnxFromSource } -MessagePattern 'target policy uses the result of the actual architecture probe'
+    }
+}
+
 Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
 
     It 'short-circuits to a CPU-only environment when the named var is 1 (all GPU paths null)' {

@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
+
 # A mounted script's transitive imports must all be mounted, and leaf stages must keep one consumer; BuildKit checks neither.
 
 Describe 'BuildKit module closure' {
@@ -25,9 +27,8 @@ Describe 'BuildKit module closure' {
         # Per RUN: the module stage or module files it mounts, and its build scripts.
         function script:Get-RunMounts {
             param([string]$DockerfilePath)
-            $joined = ([System.IO.File]::ReadAllText($DockerfilePath)) -replace '`\r?\n', ' '
             $runs = @()
-            foreach ($line in ($joined -split "`n")) {
+            foreach ($line in (Get-TestDockerLogicalLine -LiteralPath $DockerfilePath)) {
                 if ($line -notmatch '^RUN\s') { continue }
                 $runs += [pscustomobject]@{
                     Line          = $line
@@ -42,11 +43,10 @@ Describe 'BuildKit module closure' {
         # Follows `FROM <parent> AS <name>` so a derived stage inherits its parent's modules.
         function script:Get-ModuleStages {
             param([string]$DockerfilePath)
-            $joined = ([System.IO.File]::ReadAllText($DockerfilePath)) -replace '`\r?\n', ' '
             $stages = @{}
             $parents = @{}
             $current = ''
-            foreach ($line in ($joined -split "`n")) {
+            foreach ($line in (Get-TestDockerLogicalLine -LiteralPath $DockerfilePath)) {
                 if ($line -match '^FROM\s+(\S+)\s+AS\s+([\w.-]+)') {
                     $current = $Matches[2]
                     $parents[$current] = $Matches[1]

@@ -531,16 +531,17 @@ endif()
 }
 
 # The target maps name GNU libabsl_*.a, which the stub sweep fills with empty archives; the real libs are absl_*.lib.
-foreach ($abslCmakeRel in @('cmake\packages\absl\absl_import_static_lib.cmake', 'cmake\packages\absl\absl_target_map.cmake')) {
-    [void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir $abslCmakeRel) `
-            -Pattern 'libabsl_([A-Za-z0-9_]+)\.a' -Replacement 'absl_$1.lib' -Guard 'libabsl_[A-Za-z0-9_]+\.a' `
-            -Description "$abslCmakeRel : libabsl_*.a -> absl_*.lib (point at the real MSVC abseil libs)")
-}
+[void](Edit-SourceStaticLibraryReferences -SourceRoot $SourceDir -RelativePath @(
+        'cmake\packages\absl\absl_import_static_lib.cmake', 'cmake\packages\absl\absl_target_map.cmake') `
+        -NamePrefix 'absl_' -NamePattern '[A-Za-z0-9_]+' -Description {
+            param($relative)
+            "$relative : libabsl_*.a -> absl_*.lib (point at the real MSVC abseil libs)"
+        })
 
 # The same naming mismatch for protobuf, whose symbols would otherwise vanish at link.
-[void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir 'cmake\packages\protobuf\protobuf_target_map.cmake') `
-        -Pattern '/lib([a-z0-9_-]+)\.a' -Replacement '/$1.lib' -Guard '/lib[a-z0-9_-]+\.a' `
-        -Description 'protobuf_target_map.cmake : /lib*.a -> /*.lib (point at the real MSVC protobuf libs)')
+[void](Edit-SourceStaticLibraryReferences -SourceRoot $SourceDir -RelativePath 'cmake\packages\protobuf\protobuf_target_map.cmake' `
+        -NamePattern '[a-z0-9_-]+' -RequireLeadingSlash `
+        -Description { 'protobuf_target_map.cmake : /lib*.a -> /*.lib (point at the real MSVC protobuf libs)' })
 
 # The rust cxx-bridge libs come out as *.lib where lib*.a is expected; copies under the GNU names suffice for lld-link.
 $findCopy = Get-ChildItem $SourceDir -Recurse -Filter 'find_and_copy_cxxbridge.cmake' -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -581,7 +582,7 @@ $cdCmake = Join-Path $SourceDir 'runtime\components\constrained_decoding\CMakeLi
 })
 
 # The same lib-name mismatch across the remaining target maps.
-foreach ($rel in @(
+[void](Edit-SourceStaticLibraryReferences -SourceRoot $SourceDir -RelativePath @(
         'cmake\packages\litert\litert_target_map.cmake',
         'cmake\packages\sentencepiece\sentencepiece_target_map.cmake',
         'cmake\packages\sentencepiece\sentencepiece.cmake',
@@ -591,11 +592,10 @@ foreach ($rel in @(
         'cmake\packages\re2\re2.cmake',
         'cmake\packages\tokenizers\tokenizers.cmake',
         'cmake\packages\tokenizers\tokenizers_target_map.cmake',
-        'cmake\packages\flatbuffers\flatbuffers_target_map.cmake')) {
-    [void](Invoke-InlineRegexPatch -Path (Join-Path $SourceDir $rel) `
-            -Pattern 'lib([a-zA-Z0-9_-]+)\.a' -Replacement '$1.lib' -Guard 'lib[a-zA-Z0-9_-]+\.a' `
-            -Description "$rel : lib*.a -> *.lib (real MSVC litert/sentencepiece/tflite libs)")
-}
+        'cmake\packages\flatbuffers\flatbuffers_target_map.cmake') -Description {
+        param($relative)
+        "$relative : lib*.a -> *.lib (real MSVC litert/sentencepiece/tflite libs)"
+    })
 
 #endregion
 

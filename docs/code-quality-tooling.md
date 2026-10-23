@@ -2262,6 +2262,12 @@ stable parts are the shape: no block over 10 shared 12-token shingles, deliberat
 twins budgeted in `code-dupes.allow`, and shingles with more than 6 owners
 suppressed as idiom.
 
+PowerShell function boundaries count braces only outside strings, comments and
+here-strings. Literal contents remain in the token stream; masking applies only
+while finding the function end, so a regex quantifier or generated source block
+cannot absorb later functions. `linux/scripts/tests/test-code-dupes.sh` covers
+unbalanced regex and comment braces plus a here-string terminator followed by code.
+
 ### `env-knobs` — a stale allow row always fails
 
 `linux/scripts/lint-env-knobs.sh` against `linux/scripts/lint-env-knobs.allow`,

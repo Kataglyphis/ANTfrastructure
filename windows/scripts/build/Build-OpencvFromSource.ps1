@@ -451,8 +451,7 @@ function Get-OpencvOrtConfigureFinding {
 
 # Get-GpuEnvironment sets CUDA_PATH and PATH; CMake's enable_language(CUDA) probe also needs CUDACXX.
 $gpuEnv = Get-GpuEnvironment
-# On cross, CUDA comes only from the image's arm64 payload, never the host probe.
-$ocvCudaUsable = $gpuEnv.HasCuda -and ((-not $ocvCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+$ocvCudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $ocvCross
 if ($ocvCudaUsable) {
     $env:CUDACXX = Join-Path $gpuEnv.CudaRoot 'bin\nvcc.exe'
     $cmakeExtra += '-DWITH_CUDA=ON', '-DWITH_CUDNN=ON', '-DWITH_CUBLAS=ON'

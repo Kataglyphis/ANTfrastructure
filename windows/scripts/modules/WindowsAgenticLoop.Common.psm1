@@ -768,11 +768,21 @@ function Resolve-AgenticRolePromptFile {
 }
 
 # -- BACKLOG helpers ------------------------------------------------------
-function Get-UncheckedTaskCount {
-    param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
+function Get-AgenticDefaultBacklogPath {
+    return Join-Path (Get-Location).Path 'BACKLOG.md'
+}
+
+function Get-AgenticBacklogTaskCount {
+    param([string]$BacklogPath, [switch]$Blocked)
+    $pattern = if ($Blocked) { '(?m)^- \[[bB]\]' } else { '(?m)^- \[ \]' }
     if (-not (Test-Path $BacklogPath)) { return 0 }
     $content = Get-Content $BacklogPath -Raw
-    return [regex]::Matches($content, '(?m)^- \[ \]').Count
+    return [regex]::Matches($content, $Pattern).Count
+}
+
+function Get-UncheckedTaskCount {
+    param([string]$BacklogPath = (Get-AgenticDefaultBacklogPath))
+    return Get-AgenticBacklogTaskCount -BacklogPath $BacklogPath
 }
 
 function Get-BlockedTaskCount {
@@ -780,10 +790,8 @@ function Get-BlockedTaskCount {
     .SYNOPSIS
       Count blocked (- [b]) tasks, which Get-UncheckedTaskCount excludes so the planner can run again.
     #>
-    param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
-    if (-not (Test-Path $BacklogPath)) { return 0 }
-    $content = Get-Content $BacklogPath -Raw
-    return [regex]::Matches($content, '(?m)^- \[[bB]\]').Count
+    param([string]$BacklogPath = (Get-AgenticDefaultBacklogPath))
+    return Get-AgenticBacklogTaskCount -BacklogPath $BacklogPath -Blocked
 }
 
 function Remove-CheckedBacklogTasks {
@@ -791,7 +799,7 @@ function Remove-CheckedBacklogTasks {
     .SYNOPSIS
       Remove completed (- [x]) task blocks with their indented bodies; returns how many were removed.
     #>
-    param([string]$BacklogPath = (Join-Path (Get-Location).Path 'BACKLOG.md'))
+    param([string]$BacklogPath = (Get-AgenticDefaultBacklogPath))
     if (-not (Test-Path $BacklogPath)) { return 0 }
     $lines = @(Get-Content $BacklogPath)
     $checked = @($lines | Where-Object { $_ -match '^- \[[xX]\]' }).Count
@@ -855,38 +863,45 @@ function Invoke-LoggedAgenticCommand {
     return $LASTEXITCODE
 }
 
+function Start-AgenticCommandPhase {
+    param([string]$Command, [string]$Title)
+    Write-AgenticSection $Title
+    Write-AgenticLog "Command: $Command"
+    return (-not $script:AgenticDryRun)
+}
+
+function Invoke-AgenticCommandPhase {
+    param([string]$Command, [string]$Title, [string]$Label, [string]$Verdict,
+        [string]$RepoRoot, [switch]$UseRepoRoot, [switch]$Advisory, [Collections.IDictionary]$Environment = @{})
+    if (-not (Start-AgenticCommandPhase -Command $Command -Title $Title)) {
+        if (-not $Advisory) { return $true }
+        return
+    }
+    if ($UseRepoRoot) { Push-Location $RepoRoot }
+    try {
+        $ec = Invoke-LoggedAgenticCommand -Command $Command -Label $Label -Environment $Environment
+        if ($Advisory) { return }
+        if ($ec -ne 0) { Write-AgenticLog "$Verdict FAILED (exit $ec)" 'ERROR'; return $false }
+        Write-AgenticLog "$Verdict PASSED"
+        return $true
+    } finally {
+        if ($UseRepoRoot) { Pop-Location }
+    }
+}
+
 function Invoke-BuildCommand {
     param([string]$Command, [string]$Configuration = 'default')
-    Write-AgenticSection "BUILD: $Configuration"
-    Write-AgenticLog "Command: $Command"
-    if ($script:AgenticDryRun) { return $true }
-    $ec = Invoke-LoggedAgenticCommand -Command $Command -Label 'build'
-    if ($ec -ne 0) { Write-AgenticLog "BUILD FAILED (exit $ec)" 'ERROR'; return $false }
-    Write-AgenticLog 'BUILD PASSED'; return $true
+    return Invoke-AgenticCommandPhase -Command $Command -Title "BUILD: $Configuration" -Label 'build' -Verdict 'BUILD'
 }
 
 function Invoke-TestCommand {
     param([string]$Command, [string]$RepoRoot, [Collections.IDictionary]$Environment = @{})
-    Write-AgenticSection 'TESTS'
-    Write-AgenticLog "Command: $Command"
-    if ($script:AgenticDryRun) { return $true }
-    Push-Location $RepoRoot
-    try {
-        $ec = Invoke-LoggedAgenticCommand -Command $Command -Label 'test' -Environment $Environment
-        if ($ec -ne 0) { Write-AgenticLog "TESTS FAILED (exit $ec)" 'ERROR'; return $false }
-        Write-AgenticLog 'TESTS PASSED'; return $true
-    } finally { Pop-Location }
+    return Invoke-AgenticCommandPhase -Command $Command -Title 'TESTS' -Label 'test' -Verdict 'TESTS' -UseRepoRoot -RepoRoot $RepoRoot -Environment $Environment
 }
 
 function Invoke-QualityCommand {
     param([string]$Command, [string]$RepoRoot)
-    Write-AgenticSection 'QUALITY'
-    Write-AgenticLog "Command: $Command"
-    if ($script:AgenticDryRun) { return }
-    Push-Location $RepoRoot
-    try {
-        [void](Invoke-LoggedAgenticCommand -Command $Command -Label 'quality')
-    } finally { Pop-Location }
+    Invoke-AgenticCommandPhase -Command $Command -Title 'QUALITY' -Label 'quality' -UseRepoRoot -RepoRoot $RepoRoot -Advisory
 }
 
 # -- Build-failure fixer --------------------------------------------------
@@ -1105,30 +1120,37 @@ function Invoke-AgenticLoop {
         return ($script:consecutiveBuildFailures -lt $maxConsecutiveBuildFailures)
     }
 
-    if ($PlannerOnly) { Invoke-PlannerPhase -Refactor:$((($iteration+1) % $refactorEveryN -eq 0)); return }
-    if ($ExecutorOnly) {
-        $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
-        if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
-        $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
+    function Invoke-ExecutorTaskBatch {
+        param([string]$BacklogPath, [ref]$CompletedTotal, [string]$FailureMessage)
+        if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $BacklogPath }
+        $pending = Get-UncheckedTaskCount -BacklogPath $BacklogPath
         $retries = 0
-        while ($u -gt 0) {
+        $completed = 0
+        $stopped = $false
+        while ($pending -gt 0) {
             Invoke-ExecutorPhase
-            $nu = Get-UncheckedTaskCount -BacklogPath $backlogPath
-            if ($nu -ge $u) {
+            $remaining = Get-UncheckedTaskCount -BacklogPath $BacklogPath
+            if ($remaining -ge $pending) {
                 $retries++
                 if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
             } else {
-                $retries = 0; $tasksDone++; $u = $nu
-                $script:AgenticTasksCompleted = $tasksDone
-                if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
+                $retries = 0; $CompletedTotal.Value++; $completed++; $pending = $remaining
+                $script:AgenticTasksCompleted = $CompletedTotal.Value
+                if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $BacklogPath }
                 if (-not (Invoke-AfterTaskPhases)) {
-                    Write-AgenticLog 'Too many consecutive build failures — stopping' 'ERROR'
-                    # A capped run must not exit 0.
+                    Write-AgenticLog $FailureMessage 'ERROR'
                     $script:AgenticExitCode = 1
+                    $stopped = $true
                     break
                 }
             }
         }
+        return [pscustomobject]@{ Completed = $completed; Stopped = $stopped }
+    }
+
+    if ($PlannerOnly) { Invoke-PlannerPhase -Refactor:$((($iteration+1) % $refactorEveryN -eq 0)); return }
+    if ($ExecutorOnly) {
+        $null = Invoke-ExecutorTaskBatch -BacklogPath (Join-Path $RepoRoot 'BACKLOG.md') -CompletedTotal ([ref]$tasksDone) -FailureMessage 'Too many consecutive build failures — stopping'
         return
     }
 
@@ -1154,31 +1176,9 @@ function Invoke-AgenticLoop {
             $plannerRan = $true
         }
 
-        if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
-        $u = Get-UncheckedTaskCount -BacklogPath $backlogPath
-        $retries = 0
-        $stop = $false
-        $iterTasks = 0
-        while ($u -gt 0) {
-            Invoke-ExecutorPhase
-            $nu = Get-UncheckedTaskCount -BacklogPath $backlogPath
-            if ($nu -ge $u) {
-                $retries++
-                if ($retries -ge $maxRetries -or $script:AgenticDryRun) { break }
-            } else {
-                $retries = 0; $tasksDone++; $iterTasks++; $u = $nu
-                $script:AgenticTasksCompleted = $tasksDone
-                if ($deleteCompleted) { $null = Remove-CheckedBacklogTasks -BacklogPath $backlogPath }
-                if (-not (Invoke-AfterTaskPhases)) {
-                    Write-AgenticLog 'Too many consecutive build failures — stopping loop' 'ERROR'
-                    $script:AgenticExitCode = 1
-                    $stop = $true
-                    break
-                }
-            }
-        }
-        if ($stop) { break }
-        if ($iterTasks -eq 0) {
+        $batch = Invoke-ExecutorTaskBatch -BacklogPath $backlogPath -CompletedTotal ([ref]$tasksDone) -FailureMessage 'Too many consecutive build failures — stopping loop'
+        if ($batch.Stopped) { break }
+        if ($batch.Completed -eq 0) {
             if ($plannerRan) {
                 Write-AgenticLog 'No executor progress even after running the planner — stopping loop (no actionable tasks left)' 'WARN'
                 break

@@ -73,8 +73,7 @@ Invoke-InlineRegexPatch -Path $genaiCml -Guard 'RESTORE_PACKAGES ALL' `
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
 # A CPU build drops GenAI's .cu kernels with no fallback to ORT's CUDA EP; GENAI_FORCE_CPU=1 is dev-only.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
-# Decided by the target, not the probed host: a cross lane builds CUDA only when the image carries the arm64 payload.
-$genaiCudaUsable = $gpuEnv.HasCuda -and ((-not $genaiCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+$genaiCudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $genaiCross
 if ($genaiCudaUsable) {
     $cudaRoot  = $gpuEnv.CudaRoot
     $cudaArch  = Get-CudaArchitectureList -Decoration '-real'

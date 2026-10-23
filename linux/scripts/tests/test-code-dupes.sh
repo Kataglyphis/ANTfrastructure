@@ -265,6 +265,26 @@ _ps_verdict '$WidgetStrict' '$GadgetStrict' same '/<#/,/#>/d'
 t_assert_eq "${PS_N}" "$(_shared)" "dropping the comment must not change what is measured"
 rm -rf "${fix}"
 
+t_case "regex, comment and here-string braces do not absorb later PowerShell functions"
+_fixture
+mkdir -p "${fix}/windows/scripts"
+cat > "${fix}/${P}" <<'EOF'
+function Read-Lock {
+  $pattern = 'sdist = \{ url = "(?<url>[^\"]+)", hash = "sha256:(?<sha>[0-9a-f]{64})'
+  $shim = @'
+if value:
+    print('{')
+'@ + 'tail'
+  # { is not part of the function body
+}
+function Stop-NextUnit {
+  return $true
+}
+EOF
+units="$(${PY} -c 'import importlib.util,sys; from pathlib import Path; sys.path.insert(0,str(Path(sys.argv[1]).parent)); s=importlib.util.spec_from_file_location("dupes",sys.argv[1]); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); u=m.ps_units(Path(sys.argv[2])); print("{}|{}".format(len(u), "function Stop-NextUnit" in u[0][1]))' "${GATE}" "${fix}/${P}")"
+t_assert_eq "2|False" "${units}" "literal braces stay out of the function-depth count"
+rm -rf "${fix}"
+
 t_case "a Pester suite named Dockerfile.*.ps1 is PowerShell, not a Dockerfile"
 _ps_verdict '$WidgetStrict' '$GadgetStrict' same
 mv "${fix}/${Q}" "${fix}/${R}"

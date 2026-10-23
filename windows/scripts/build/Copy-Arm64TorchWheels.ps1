@@ -94,7 +94,7 @@ foreach ($prefix in $stacks.Keys) {
         $sha = "$([Environment]::GetEnvironmentVariable("${key}_SHA256"))".Trim()
         if (-not $url) { throw "${key}_URL is not set -- the ${prefix} wheel stack cannot be pinned" }
         if ($sha -notmatch '^[0-9a-f]{64}$') { throw "${key}_SHA256 must be a 64-hex SHA256, got '$sha'" }
-        $file = Join-Path $WheelDir ([uri]::UnescapeDataString(([uri]$url).Segments[-1]))
+        $file = Join-Path $WheelDir ((Get-UrlFileName -Url $url))
         Invoke-DownloadWithRetry -Url $url -DestinationPath $file -Description "win-arm64 $name wheel" -ExpectedSha256 $sha
         if ($wheels[$name]) { Assert-WheelTargetArch -WheelPath $file }
         $count++

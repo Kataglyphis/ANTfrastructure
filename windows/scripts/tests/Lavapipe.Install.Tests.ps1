@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # Install-Lavapipe: the URL builders, the arch->pin mapping and the loader-zip layout; no downloads.
 
+. (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Assert-LavapipeReleaseVersion', 'Get-LavapipeArchFact', 'Get-LavapipeAssetUrl')
+
 Describe 'Install-Lavapipe: the mmozeiko release asset' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Get-LavapipeWindowsUrl')
 
@@ -43,6 +45,18 @@ Describe 'Install-Lavapipe: the versions.env pin names' {
         Assert-Equal 'LAVAPIPE_WINDOWS_ARM64_SHA256' (Get-LavapipePinName -Arch 'arm64' -Kind 'mesa') 'arm64 mesa pin'
         Assert-Equal 'VULKAN_RT_WINDOWS_ZIP_SHA256' (Get-LavapipePinName -Arch 'amd64' -Kind 'loader') 'amd64 loader pin'
         Assert-Equal 'VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256' (Get-LavapipePinName -Arch 'arm64' -Kind 'loader') 'arm64 loader pin'
+    }
+}
+
+Describe 'Install-Lavapipe version guard' {
+    It 'detects removal of the shared version check' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsContainerImage.Common.psm1' `
+            -FunctionName Assert-LavapipeReleaseVersion -Find 'if ($Version -notmatch $Pattern)' -Replace 'if ($false)' `
+            -Expected 'expected an exception but none was thrown' -IncludeControl -Body {
+            Assert-Throws {
+                Assert-MutLavapipeReleaseVersion -Version 'v1.4.357.0' -Pattern '^\d+\.\d+\.\d+\.\d+$' -FailureMessage 'release shape is rejected'
+            } -MessagePattern 'release shape is rejected'
+        }
     }
 }
 

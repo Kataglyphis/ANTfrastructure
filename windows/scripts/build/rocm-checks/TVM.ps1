@@ -197,6 +197,15 @@ function ConvertFrom-TvmRocmProbeOutput {
     return "TVM: the $Probe probe exited $ExitCode without a report: $(@($Lines | Select-Object -Last 3) -join ' | ')"
 }
 
+function Invoke-TvmRocmProbe {
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Directory,
+        [Parameter(Mandatory)][string]$Probe, [Parameter(Mandatory)][string]$Source, [string[]]$ArgumentList = @())
+    $path = Join-Path $Directory "tvm_rocm_$Probe.py"
+    [System.IO.File]::WriteAllText($path, $Source)
+    $out = @(& $Python $path @ArgumentList 2>&1 | ForEach-Object { "$_" })
+    ConvertFrom-TvmRocmProbeOutput -Probe $Probe -ExitCode $LASTEXITCODE -Lines $out
+}
+
 $tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { 'C:\runtime\lib\tvm' }
 $libDir = if ($env:TVM_LIBRARY_PATH) { $env:TVM_LIBRARY_PATH } else { Join-Path $tvmRoot 'lib' }
 $marker = Join-Path $tvmRoot 'ROCM-FEATURES.txt'
@@ -220,20 +229,14 @@ $probes = [System.IO.Directory]::CreateTempSubdirectory('rocm-check-tvm-').FullN
 try {
     # Probe 1 gets TheRock's bin as its DLL dir: no AMD driver puts amdhip64_7.dll in System32 here.
     $hipBin = if ($env:HIP_PATH) { Join-Path $env:HIP_PATH 'bin' } else { '' }
-    $runtimePy = Join-Path $probes 'tvm_rocm_runtime.py'
-    [System.IO.File]::WriteAllText($runtimePy, (Get-TvmRocmRuntimeProbe))
-    $out = @(& $python.Source $runtimePy $hipBin 2>&1 | ForEach-Object { "$_" })
-    $runtime = ConvertFrom-TvmRocmProbeOutput -Probe 'runtime' -ExitCode $LASTEXITCODE -Lines $out
+    $runtime = Invoke-TvmRocmProbe -Python $python.Source -Directory $probes -Probe runtime -Source (Get-TvmRocmRuntimeProbe) -ArgumentList @($hipBin)
     if ($runtime -is [string]) { $runtime } else {
         Get-TvmRocmRuntimeFinding -Report $runtime -Features $features
         Get-TvmRocmLlvmTargetFinding -Report $runtime -Features $features
     }
 
     if ($features['TVM_ROCM'] -eq '1') {
-        $codegenPy = Join-Path $probes 'tvm_rocm_codegen.py'
-        [System.IO.File]::WriteAllText($codegenPy, (Get-TvmRocmCodegenProbe))
-        $out = @(& $python.Source $codegenPy 'gfx1201' 2>&1 | ForEach-Object { "$_" })
-        $codegen = ConvertFrom-TvmRocmProbeOutput -Probe 'codegen' -ExitCode $LASTEXITCODE -Lines $out
+        $codegen = Invoke-TvmRocmProbe -Python $python.Source -Directory $probes -Probe codegen -Source (Get-TvmRocmCodegenProbe) -ArgumentList @('gfx1201')
         if ($codegen -is [string]) { $codegen } else { Get-TvmRocmCodegenFinding -Report $codegen }
     }
 } finally {

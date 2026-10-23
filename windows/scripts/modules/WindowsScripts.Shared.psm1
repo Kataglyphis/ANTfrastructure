@@ -121,6 +121,13 @@ function ConvertTo-ParameterList {
     return @("$Value")
 }
 
+function Get-UrlFileName {
+    param([Parameter(Mandatory)][string]$Url)
+    return [uri]::UnescapeDataString(([uri]$Url).Segments[-1])
+}
+
+Export-ModuleMember -Function Get-UrlFileName
+
 function Invoke-DownloadWithRetry {
     <#
     .SYNOPSIS

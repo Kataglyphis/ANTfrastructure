@@ -121,7 +121,8 @@ def normalise(text: str) -> list[str]:
     return out
 
 
-def _brace_units(lines: list[str], header: re.Pattern) -> list[tuple[int, str]]:
+def _brace_units(lines: list[str], header: re.Pattern,
+                 structure: list[str] | None = None) -> list[tuple[int, str]]:
     """Brace-delimited blocks opened by `header` (shell or PowerShell); everything else is chunked on blank lines."""
     units: list[tuple[int, str]] = []
     i, n = 0, len(lines)
@@ -135,7 +136,8 @@ def _brace_units(lines: list[str], header: re.Pattern) -> list[tuple[int, str]]:
                 loose = []
             start, depth, body = i + 1, 0, []
             while i < n:
-                depth += lines[i].count("{") - lines[i].count("}")
+                shape = structure[i] if structure else lines[i]
+                depth += shape.count("{") - shape.count("}")
                 body.append(lines[i])
                 i += 1
                 if depth <= 0 and len(body) > 1:
@@ -162,11 +164,79 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
                         SHELL_FUNC)
 
 
+def _mask_ps_braces_in_literals(text: str) -> str:
+    chars = list(text)
+    quote = None
+    here = None
+    comment = False
+    i = 0
+    while i < len(text):
+        char = text[i]
+        if here:
+            if i == 0 or text[i - 1] == "\n":
+                end = text.find("\n", i)
+                end = len(text) if end < 0 else end
+                start = i + (len(text[i:end]) - len(text[i:end].lstrip(" \t")))
+                if text.startswith(here, start):
+                    here = None
+                    i = start + 2
+                    continue
+            if here:
+                if char in "{}":
+                    chars[i] = " "
+                i += 1
+                continue
+        if comment:
+            if char in "\r\n":
+                comment = False
+            elif char in "{}":
+                chars[i] = " "
+            i += 1
+            continue
+        if quote:
+            if char in "{}":
+                chars[i] = " "
+            if quote == "'" and char == "'" and i + 1 < len(text) and text[i + 1] == "'":
+                i += 2
+                continue
+            if quote == '"' and char == "`":
+                if i + 1 < len(text) and text[i + 1] in "{}":
+                    chars[i + 1] = " "
+                i += 2
+                continue
+            if char == quote:
+                quote = None
+            i += 1
+            continue
+        if char == "`" and i + 1 < len(text):
+            if text[i + 1] in "{}":
+                chars[i + 1] = " "
+            i += 2
+            continue
+        if char == "#":
+            comment = True
+            i += 1
+            continue
+        if char == "@" and i + 1 < len(text) and text[i + 1] in "'\"":
+            end = text.find("\n", i)
+            end = len(text) if end < 0 else end
+            if not text[i + 2:end].strip(" \t\r"):
+                here = text[i + 1] + "@"
+                i += 2
+                continue
+        if char in "'\"":
+            quote = char
+        i += 1
+    return "".join(chars)
+
+
 def ps_units(path: Path) -> list[tuple[int, str]]:
     """PowerShell functions and filters; block comments are blanked with their newlines, so line numbers hold."""
     text = PS_BLOCK_COMMENT.sub(lambda m: "\n" * m.group(0).count("\n"),
                                 path.read_text(encoding="utf-8", errors="replace"))
-    return _brace_units(text.split("\n"), PS_FUNC)
+    lines = text.split("\n")
+    structure = _mask_ps_braces_in_literals(text).split("\n")
+    return _brace_units(lines, PS_FUNC, structure)
 
 
 def docker_units(path: Path) -> list[tuple[int, str]]:

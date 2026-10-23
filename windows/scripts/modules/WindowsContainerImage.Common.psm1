@@ -218,17 +218,28 @@ function Expand-VulkanRuntimeComponents {
     } finally { $zip.Dispose() }
 }
 
+function Get-LavapipeArchFact {
+    param([Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch)
+    if ($Arch -eq 'amd64') {
+        return @{ MesaAssetArch = 'x64'; VulkanDirectory = 'windows'; VulkanAssetArch = 'X64'; MesaPinArch = 'X64'
+            LoaderPinName = 'VULKAN_RT_WINDOWS_ZIP_SHA256'; IcdArch = 'x86_64'; BinPrefix = 'x64/' }
+    }
+    return @{ MesaAssetArch = 'arm64'; VulkanDirectory = 'warm'; VulkanAssetArch = 'ARM64'; MesaPinArch = 'ARM64'
+        LoaderPinName = 'VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256'; IcdArch = 'aarch64'; BinPrefix = '' }
+}
+
+function Assert-LavapipeReleaseVersion {
+    param([AllowEmptyString()][string]$Version, [Parameter(Mandatory)][string]$Pattern, [Parameter(Mandatory)][string]$FailureMessage)
+    if ($Version -notmatch $Pattern) { throw $FailureMessage }
+}
+
 <#
 .SYNOPSIS
     The mmozeiko/build-mesa release asset for an arch.
 #>
 function Get-LavapipeWindowsUrl {
     param([AllowEmptyString()][string]$Version, [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch)
-    if ($Version -notmatch '^\d+\.\d+\.\d+$') {
-        throw "Get-LavapipeWindowsUrl: LAVAPIPE_VERSION must be an x.y.z release like 26.2.3; got '$Version'"
-    }
-    $suffix = if ($Arch -eq 'amd64') { 'x64' } else { 'arm64' }
-    return "https://github.com/mmozeiko/build-mesa/releases/download/$Version/mesa-lavapipe-$suffix-$Version.7z"
+    return Get-LavapipeAssetUrl mesa $Version $Arch
 }
 
 <#
@@ -237,11 +248,22 @@ function Get-LavapipeWindowsUrl {
 #>
 function Get-VulkanRuntimeComponentsUrl {
     param([AllowEmptyString()][string]$Version, [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch)
-    if ($Version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
-        throw "Get-VulkanRuntimeComponentsUrl: VULKAN_VERSION must be a four-part LunarG SDK version like 1.4.357.0; got '$Version'"
+    return Get-LavapipeAssetUrl loader $Version $Arch
+}
+
+function Get-LavapipeAssetUrl {
+    param([Parameter(Mandatory)][ValidateSet('mesa', 'loader')][string]$Kind, [AllowEmptyString()][string]$Version,
+        [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch)
+    if ($Kind -eq 'mesa') {
+        Assert-LavapipeReleaseVersion -Version $Version -Pattern '^\d+\.\d+\.\d+$' `
+            -FailureMessage "Get-LavapipeWindowsUrl: LAVAPIPE_VERSION must be an x.y.z release like 26.2.3; got '$Version'"
+        $fact = Get-LavapipeArchFact -Arch $Arch
+        return "https://github.com/mmozeiko/build-mesa/releases/download/$Version/mesa-lavapipe-$($fact.MesaAssetArch)-$Version.7z"
     }
-    if ($Arch -eq 'amd64') { return "https://sdk.lunarg.com/sdk/download/$Version/windows/VulkanRT-X64-$Version-Components.zip" }
-    return "https://sdk.lunarg.com/sdk/download/$Version/warm/VulkanRT-ARM64-$Version-Components.zip"
+    Assert-LavapipeReleaseVersion -Version $Version -Pattern '^\d+\.\d+\.\d+\.\d+$' `
+        -FailureMessage "Get-VulkanRuntimeComponentsUrl: VULKAN_VERSION must be a four-part LunarG SDK version like 1.4.357.0; got '$Version'"
+    $fact = Get-LavapipeArchFact -Arch $Arch
+    return "https://sdk.lunarg.com/sdk/download/$Version/$($fact.VulkanDirectory)/VulkanRT-$($fact.VulkanAssetArch)-$Version-Components.zip"
 }
 
 <#
@@ -250,13 +272,9 @@ function Get-VulkanRuntimeComponentsUrl {
 #>
 function Get-LavapipePinName {
     param([Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch, [Parameter(Mandatory)][ValidateSet('mesa', 'loader')][string]$Kind)
-    if ($Kind -eq 'mesa') {
-        # X64, not AMD64: the pin follows the release asset's spelling (mesa-lavapipe-x64-...).
-        $suffix = if ($Arch -eq 'amd64') { 'X64' } else { 'ARM64' }
-        return "LAVAPIPE_WINDOWS_${suffix}_SHA256"
-    }
-    if ($Arch -eq 'amd64') { return 'VULKAN_RT_WINDOWS_ZIP_SHA256' }
-    return 'VULKAN_RT_WINDOWS_ARM64_ZIP_SHA256'
+    $fact = Get-LavapipeArchFact -Arch $Arch
+    if ($Kind -eq 'mesa') { return "LAVAPIPE_WINDOWS_$($fact.MesaPinArch)_SHA256" }
+    return $fact.LoaderPinName
 }
 
 <#
@@ -277,11 +295,12 @@ function Resolve-LavapipeAssets {
     if ($MesaSha256 -notmatch '^[0-9a-fA-F]{64}$' -or $LoaderSha256 -notmatch '^[0-9a-fA-F]{64}$') {
         throw 'Resolve-LavapipeAssets: the SHA256 pins must be 64 hex (see versions.env)'
     }
+    $fact = Get-LavapipeArchFact -Arch $Arch
     return @{
         MesaUrl   = Get-LavapipeWindowsUrl -Version $MesaVersion -Arch $Arch
         LoaderUrl = Get-VulkanRuntimeComponentsUrl -Version $VulkanVersion -Arch $Arch
-        IcdName   = if ($Arch -eq 'amd64') { 'lvp_icd.x86_64.json' } else { 'lvp_icd.aarch64.json' }
-        BinPrefix = if ($Arch -eq 'amd64') { 'x64/' } else { '' }
+        IcdName   = "lvp_icd.$($fact.IcdArch).json"
+        BinPrefix = $fact.BinPrefix
     }
 }
 

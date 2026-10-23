@@ -59,6 +59,36 @@ Describe 'Get-FreeThreadedTwinTable' {
     }
 }
 
+Describe 'Set-FreeThreadedWheelDllSearchPath' {
+
+    It 'writes the explicit and wheel-owned DLL paths with the caller path policy' {
+        Invoke-InTestDir { param($d)
+            $site = New-Item -ItemType Directory -Path (Join-Path $d 'site')
+            $native = New-Item -ItemType Directory -Path (Join-Path $site.FullName 'pkg\native')
+            Set-Content -LiteralPath (Join-Path $native.FullName 'dep.dll') -Value 'dll'
+            $external = New-Item -ItemType Directory -Path (Join-Path $d 'external')
+            $filePath = Join-Path $d 'not-a-directory'
+            Set-Content -LiteralPath $filePath -Value 'file'
+            $missing = Join-Path $d 'missing'
+            [string[]]$extra = @($external.FullName, $missing, $filePath)
+            $module = Get-Module WindowsPythonWheel.Common
+            $policies = @(
+                @{ Kind = 'Container'; Include = @($external.FullName, $native.FullName); Omit = @($missing, $filePath) }
+                @{ Kind = 'Existing'; Include = @($external.FullName, $native.FullName, $filePath); Omit = @($missing) }
+            )
+            foreach ($policy in $policies) {
+                & $module {
+                    param($sitePath, $additional, $pathKind)
+                    Set-FreeThreadedWheelDllSearchPath -SitePackages $sitePath -DllDirectory $additional -PathKind $pathKind
+                } $site.FullName $extra $policy.Kind
+                $shim = Get-Content -LiteralPath (Join-Path $site.FullName 'sitecustomize.py') -Raw
+                foreach ($path in $policy.Include) { Assert-Match ([regex]::Escape($path)) $shim "$($policy.Kind) path" }
+                foreach ($path in $policy.Omit) { Assert-False ($shim.Contains($path)) "$($policy.Kind) omits $path" }
+            }
+        }
+    }
+}
+
 Describe 'Get-FreeThreadedWheelFinding' {
 
     It 'passes a cp3XY-cp3XYt wheel whose tagged modules carry its suffix; an untagged .pyd is the proof''s to judge' {

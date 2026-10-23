@@ -1,5 +1,7 @@
 #requires -Version 7.0
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
+
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # The Windows ROCm sdk layer: guards, layout, ICD and loader install, env and PATH contract; no real downloads or hipcc.
 
@@ -594,7 +596,7 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
     }
 
     It 'names the pinned copy''s directory in VULKAN_LOADER_DIR and keeps it off PATH: the loaded copy is System32''s' {
-        $dir = [regex]::Match(($df -replace '`\r?\n', ' '), "Install-VulkanLoader\.ps1' -TempDir \`$env:TEMP_DIR -InstallDir '([^']+)'(.*)").Groups
+        $dir = [regex]::Match((ConvertTo-TestDockerLogicalText -Text $df), "Install-VulkanLoader\.ps1' -TempDir \`$env:TEMP_DIR -InstallDir '([^']+)'(.*)").Groups
         Assert-Equal 'C:\vulkan-loader' $dir[1].Value 'install dir'
         Assert-Equal '' $dir[2].Value.Trim() 'no -SystemDir override: the script''s default is the real System32'
         Assert-Match ('(?m)^\s+VULKAN_LOADER_DIR="' + [regex]::Escape($dir[1].Value) + '" `') $df 'VULKAN_LOADER_DIR'
@@ -645,7 +647,7 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
     }
 
     It 'the final stage installs without a System32 copy, amd64 only, not over the rocm variant''s, and appends PATH' {
-        $run = [regex]::Match(($finalDf -replace '`\r?\n', ' '), "(?m)^RUN .*Install-VulkanLoader\.ps1.*$").Value
+        $run = [regex]::Match((ConvertTo-TestDockerLogicalText -Text $finalDf), "(?m)^RUN .*Install-VulkanLoader\.ps1.*$").Value
         Assert-Match "-InstallDir 'C:\\vulkan-loader' -SystemDir ''" $run 'no System32 copy'
         Assert-Match "WINDOWS_TARGET_ARCH -eq 'amd64'" $run 'amd64 only: the pinned zip is x64'
         Assert-Match '-not \$env:VULKAN_LOADER_DIR' $run 'the rocm variant keeps its own'

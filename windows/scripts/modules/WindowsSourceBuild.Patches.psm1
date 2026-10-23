@@ -375,6 +375,25 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
     }
 }
 
+function Edit-SourceStaticLibraryReferences {
+    param(
+        [Parameter(Mandatory)][string]$SourceRoot,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$RelativePath,
+        [string]$NamePattern = '[a-zA-Z0-9_-]+',
+        [string]$NamePrefix = '',
+        [switch]$RequireLeadingSlash,
+        [scriptblock]$Description = { param($relative) "$relative : GNU static library names -> MSVC" }
+    )
+    $slash = if ($RequireLeadingSlash) { '/' } else { '' }
+    $pattern = $slash + 'lib' + [regex]::Escape($NamePrefix) + '(' + $NamePattern + ')\.a'
+    $replacement = $slash + $NamePrefix.Replace('$', '$$') + '$1.lib'
+    Invoke-SourceFilePatchSet -File $RelativePath -Patch {
+        param($relative)
+        Invoke-InlineRegexPatch -Path (Join-Path $SourceRoot $relative) -Pattern $pattern -Replacement $replacement -Guard $pattern `
+            -Description (& $Description $relative)
+    }
+}
+
 function Invoke-SourceFilePatchSet {
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$File,
@@ -469,6 +488,7 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Invoke-SourceFilePatchSet',
+    'Edit-SourceStaticLibraryReferences',
     'Assert-SourceFileContent',
     'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',

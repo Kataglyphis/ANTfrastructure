@@ -51,6 +51,8 @@ zero-match C++ standard warning remains at the caller. C++ keyword conversion,
 Ninja cleanup, IREE egg-info edits and LiteRT-LM CMake edits use the same
 write/no-change machinery.
 
+`Edit-SourceStaticLibraryReferences` sends LiteRT-LM import maps through the ordered file-patch set. Abseil retains its canonical `absl_` prefix and underscore-only names, protobuf keeps its leading-slash and lowercase/hyphen policy, and the remaining maps retain their broad GNU-name policy; each relative file keeps its own diagnostic. The suite checks these rules against fixture bytes and the builder callsites.
+
 `Assert-SourceFileContent`, also re-exported by `WindowsSourceBuild.Common`, verifies
 the written file with a caller predicate and diagnostic. The predicate must return
 exactly one Boolean true; empty, textual or multiple results fail. OpenCV's ARM
@@ -2343,7 +2345,10 @@ per-file ARM feature selection and application while keeping different minimum
 architectures and source predicates. PE and COFF checks share machine names through
 `WindowsTargetArch.Common`. Handoff transfers share context and curl execution;
 source-build sccache sessions share lookup and command capture without changing
-startup, upload-drain or completion policy.
+startup, upload-drain or completion policy. ONNX, GenAI, OpenCV and TVM share
+`Test-CudaTargetUsable`: cross builds require the arm64 payload while native builds
+use the detected CUDA environment; each builder keeps its own CPU-forcing knob and
+project flags.
 
 `Set-CompilerWrapperEnvironment` and `Remove-CompilerWrapperEnvironment` share the
 canonical launcher names in `WindowsScripts.Shared`. Build sets its five launchers,
@@ -2362,6 +2367,10 @@ setup shares maintenance logging and live-build guards before protected writes;
 forced, report-only and skipped steps keep their own policy. Optional Vulkan file
 verdicts share `Assert-VulkanArm64Library`; installation and verification still
 run independently with their own paths, strict inputs and messages.
+
+Free-threaded wheel proofs share DLL search-path `sitecustomize.py` generation while container proofs keep their directory-only rule and device proofs keep their existing-path rule. Lavapipe URLs, pin names, ICD names and loader prefixes read one architecture fact. Sccache probes share process-start settings, stop-before-configuration updates and post-flush log reads while retaining their caller-specific launch, wait and verdict policies. Docker test fixtures share literal reads and continuation folding; each suite retains its own parser and assertions.
+
+Python application wheel writers share one requirements read, hash update and write only after a matching wheel is found; pure-build and store-wheel callers retain their own pin and artifact filters. Agentic execution shares task counting and executor-batch progression while planner-only behavior, retry limits and fatal stop messages stay with their callers. The RDNA4 guard uses the shared active-device filter for its final verdict.
 
 Required sibling imports bind into each owner's scope without forcing a reload.
 Fixtures cover cold, private-warm and global-warm visibility plus fatal missing

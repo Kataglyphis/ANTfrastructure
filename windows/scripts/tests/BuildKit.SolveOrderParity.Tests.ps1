@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
+
 # The media-core solve order lives in the Dockerfile and the driver; drift silently builds on a stale ancestor.
 
 Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
@@ -77,9 +79,8 @@ Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
         # No cross-Dockerfile stage sharing exists, so the 5-module core stays in step by hand.
         $mergeText2 = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-merge-builder')
         $getMods = { param($text)
-            $j = $text -replace ('`' + "`r?`n"), ' '
             $inStage = $false; $mods = @()
-            foreach ($line in ($j -split "`n")) {
+            foreach ($line in (ConvertTo-TestDockerLogicalLine -Text $text)) {
                 if ($line -match '^FROM \S+ AS buildmods') { $inStage = $true; continue }
                 if ($inStage -and $line -match '^FROM ') { break }
                 if ($inStage) {

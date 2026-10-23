@@ -45,7 +45,6 @@ $ErrorActionPreference = 'Stop'
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'deploy-shim-patch' -LogPath $LogPath
-$LogPath = $hostLog.LogPath
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$EnvironmentService"
 

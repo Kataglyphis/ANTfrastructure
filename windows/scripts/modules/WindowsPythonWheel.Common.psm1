@@ -204,6 +204,20 @@ function Add-PythonLibPath {
     if (Get-ChildItem -LiteralPath $PythonDir -Filter 'python3*.lib' -File) { $env:LIB = "$PythonDir;$env:LIB" }
 }
 
+function Set-FreeThreadedWheelDllSearchPath {
+    param(
+        [Parameter(Mandatory)][IO.DirectoryInfo]$SitePackages,
+        [AllowEmptyCollection()][string[]]$DllDirectory = @(),
+        [ValidateSet('Existing', 'Container')][string]$PathKind = 'Existing'
+    )
+    $own = @(Get-ChildItem -LiteralPath $SitePackages.FullName -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
+    $pathType = if ($PathKind -eq 'Container') { 'Container' } else { 'Any' }
+    [string[]]$dirs = @(@($DllDirectory) + $own | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType $pathType) })
+    $shim = @('# Bundled DLL paths must be registered before native wheel modules load.', 'import os', 'for _d in (') +
+        @($dirs | ForEach-Object { "    r'$_'," }) + @('):', '    os.add_dll_directory(_d)')
+    Set-Content -LiteralPath (Join-Path $SitePackages.FullName 'sitecustomize.py') -Encoding ascii -Value $shim
+}
+
 function Invoke-FreeThreadedWheelProof {
     <#
     .SYNOPSIS
@@ -244,11 +258,7 @@ function Invoke-FreeThreadedWheelVenvProof {
         & uv pip install --no-cache --quiet --no-deps --no-index --python $python $Wheel 2>&1 | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "free-threaded proof: $([IO.Path]::GetFileName($Wheel)) does not install into a fresh $Interpreter venv" }
         $site = Join-Path $VenvDir 'Lib\site-packages'
-        $own = @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
-        $dirs = @(@($DllDirectory) + $own | Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) })
-        $shim = @('# Written by Invoke-FreeThreadedWheelVenvProof for this proof venv only.', 'import os', 'for _d in (') +
-            @($dirs | ForEach-Object { "    r'$_'," }) + @('):', '    os.add_dll_directory(_d)')
-        Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value $shim
+        Set-FreeThreadedWheelDllSearchPath -SitePackages $site -DllDirectory $DllDirectory -PathKind Container
         return Invoke-FreeThreadedWheelProof -Python $python -Distribution $Distribution -Helper $Helper -Check $Check
     } finally {
         Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -301,9 +311,7 @@ function Invoke-TwinDeviceProof {
             & $venvPy -I -m pip install --quiet --disable-pip-version-check --no-index @resolve $whl.FullName
             if ($LASTEXITCODE) { throw "pip install exited $LASTEXITCODE" }
             $site = Join-Path $venv 'Lib\site-packages'
-            $dirs = @($DllDirectory) + @(Get-ChildItem -LiteralPath $site -Recurse -Filter '*.dll' -File | ForEach-Object DirectoryName | Sort-Object -Unique)
-            Set-Content -LiteralPath (Join-Path $site 'sitecustomize.py') -Encoding ascii -Value (
-                @('import os') + @($dirs | Where-Object { Test-Path -LiteralPath $_ } | ForEach-Object { "os.add_dll_directory(r'$_')" }))
+            Set-FreeThreadedWheelDllSearchPath -SitePackages $site -DllDirectory $DllDirectory -PathKind Existing
             $verdict = @(& $venvPy -I $Helper prove $whl.Name.Split('-')[0] 2>&1 | ForEach-Object { "$_" }) -join ' | '
             Write-Host "   $($whl.Name): $verdict"
             if ($LASTEXITCODE) { "$($whl.Name): $verdict" }

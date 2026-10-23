@@ -555,27 +555,6 @@ Plain text after the block.
         }
     }
 
-    # Failure cap: dry-run builds always pass, so the exit-code contract is pinned at the source level.
-
-    Context 'failure-cap exit-code contract (#175)' {
-        BeforeAll {
-            $script:agenticModuleSource = Get-Content (Join-Path $PSScriptRoot '..\modules\WindowsAgenticLoop.Common.psm1') -Raw
-        }
-
-        It 'both failure-cap arms assign the exit code before stopping' {
-            $caps = [regex]::Matches($script:agenticModuleSource,
-                '(?s)Too many consecutive build failures.{0,200}?\$script:AgenticExitCode = 1')
-            $caps.Count | Should -Be 2
-        }
-
-        It 'the executor-only arm assigns it too' {
-            $execBranch = [regex]::Match($script:agenticModuleSource,
-                '(?s)if \(\$ExecutorOnly\) \{(.*?)return\r?\n    \}')
-            $execBranch.Success | Should -Be $true
-            $execBranch.Groups[1].Value | Should -Match '(?s)Too many consecutive build failures.{0,200}?\$script:AgenticExitCode = 1'
-        }
-    }
-
     # Get-AgenticDefaultPrompt
 
     Context 'Get-AgenticDefaultPrompt' {

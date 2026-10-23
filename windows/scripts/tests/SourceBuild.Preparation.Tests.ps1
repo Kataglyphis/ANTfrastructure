@@ -3,6 +3,8 @@
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
 Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.GraphFixture.psm1') -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.PatchFixture.psm1') -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -ErrorAction Stop
 
 function New-SourcePreparationArguments {
     param([string[]]$FunctionName, [scriptblock]$Body, [Collections.IDictionary[]]$Mutation,
@@ -241,7 +243,149 @@ function Assert-SourceRegexGuardFixture {
 
 }
 
+function Assert-StaticLibraryReferenceFixture {
+    Assert-SourceFileConversion -Case @{
+        ChangedCount = 2; CountMessage = 'both selected absl files are patched'
+        ResultMessage = 'absl prefix, canonical case and name scope remain exact'; DescriptionPattern = 'Patched ABSL absl/one.cmake'
+        Files = @{ 'absl/one.cmake' = 'libabsl_OK_1.a libABSL_UPPER.a libabsl_skip-hyphen.a libother.a'; 'absl/two.cmake' = 'libabsl_SECOND.a'; 'unchanged.cmake' = 'already correct.lib' }
+        Expected = @{ 'absl/one.cmake' = 'absl_OK_1.lib absl_UPPER.lib libabsl_skip-hyphen.a libother.a'; 'absl/two.cmake' = 'absl_SECOND.lib'; 'unchanged.cmake' = 'already correct.lib' }
+        Operation = { param($dir)
+            Edit-MutSourceStaticLibraryReferences -SourceRoot $dir -RelativePath @('absl/one.cmake', 'absl/two.cmake', 'absl/missing.cmake') `
+                -NamePrefix 'absl_' -NamePattern '[A-Za-z0-9_]+' -Description { param($relative) "ABSL $relative" }
+        }
+        Body = { param($dir)
+            Assert-False (Test-Path (Join-Path $dir absl/missing.cmake)) 'missing optional inputs remain absent'
+            Assert-Equal 0 (Edit-MutSourceStaticLibraryReferences -SourceRoot $dir -RelativePath @())
+            Assert-Equal 0 (Edit-MutSourceStaticLibraryReferences -SourceRoot (Join-Path $dir missing) -RelativePath absent.cmake)
+            $null = New-Item -ItemType Directory -Path (Join-Path $dir broken.cmake)
+            Assert-Throws { Edit-MutSourceStaticLibraryReferences -SourceRoot $dir -RelativePath broken.cmake } -MessagePattern 'broken\.cmake'
+        }
+    }
+    Assert-SourceFileConversion -Case @{
+        ChangedCount = 1; ResultMessage = 'protobuf requires and preserves a leading slash'
+        Files = @{ 'protobuf/map.cmake' = 'libbare.a /libproto-lib.a /libUPPER_2.A C:\libwindows.a' }
+        Expected = @{ 'protobuf/map.cmake' = 'libbare.a /proto-lib.lib /UPPER_2.lib C:\libwindows.a' }
+        Operation = { param($dir) Edit-MutSourceStaticLibraryReferences -SourceRoot $dir -RelativePath protobuf/map.cmake -RequireLeadingSlash -NamePattern '[a-z0-9_-]+' }
+    }
+    Assert-SourceFileConversion -Case @{
+        ChangedCount = 1; ResultMessage = 'generic maps retain hyphens, case-insensitive matching and unrelated names'
+        Files = @{ 'all/map.cmake' = 'libfoo.a libbar-baz_2.A lib.a libabsl_foo.a libready.lib' }
+        Expected = @{ 'all/map.cmake' = 'foo.lib bar-baz_2.lib lib.a absl_foo.lib libready.lib' }
+        Operation = { param($dir) Edit-MutSourceStaticLibraryReferences -SourceRoot $dir -RelativePath all/map.cmake }
+    }
+}
+
+function Assert-OrtRegexFallbackOperation {
+    Invoke-InTestDir -Body { param($dir)
+        $SourceDir = Join-Path $dir source
+        $scriptAssetRoot = Join-Path $dir assets
+        Assert-False (Test-Path $scriptAssetRoot) 'the actual ONNX call sites must take the missing-patch fallback'
+        $null = New-Item -ItemType Directory -Path $SourceDir
+        Write-TestFileTree -Root $SourceDir -Files @{
+            'cmake/onnxruntime_providers_cuda.cmake' = 'before target_precompile_headers(t PRIVATE foo.h) after'
+            'onnxruntime/core/framework/tunable.h' = '#include "core/framework/tuning_context.h"'
+            'onnxruntime/contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh' = '#elif defined(HAS_SM80_OR_LATER) || !defined(__CUDACC__)'
+        }
+        $operation = Get-Command Invoke-MutOrtRegexPatchWithFallback
+        Invoke-WithTestFunction -Name Invoke-OrtRegexPatchWithFallback -Definition { & $operation @args }.GetNewClosure() -Body {
+            $calls = @(Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-OnnxFromSource.ps1' -Name Invoke-OrtRegexPatchWithFallback -ExpectedCount 3)
+            foreach ($call in $calls) { Assert-True (& $call 6>$null) 'a real ONNX fallback reports its replacement' }
+        }
+        Assert-Equal 'before  after' ([IO.File]::ReadAllText((Join-Path $SourceDir cmake/onnxruntime_providers_cuda.cmake))) 'the PCH fallback strips only the call'
+        $expected = '#include "core/framework/tuning_context.h"' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif"
+        Assert-Equal $expected ([IO.File]::ReadAllText((Join-Path $SourceDir onnxruntime/core/framework/tunable.h))) 'the tunable fallback preserves capture text and macro order'
+        Assert-Equal '#else' ([IO.File]::ReadAllText((Join-Path $SourceDir onnxruntime/contrib_ops/cuda/bert/xqa/xqa_impl_gen.cuh))) 'the XQA fallback removes the host-pass guard'
+        $null = Invoke-TestGitCommand -Path $SourceDir -ArgumentList init
+        Write-TestFileTree -Root $SourceDir -Files @{ 'priority.txt' = "old`n"; 'priority.patch' = "--- a/priority.txt`n+++ b/priority.txt`n@@ -1 +1 @@`n-old`n+patched`n" }
+        $options = @{ SourceDir = $SourceDir; RelativePath = 'priority.txt'; Pattern = 'old'; Replacement = 'fallback'; WarnMessage = 'fixture anchor missing'; FallbackNote = 'fixture fallback note' }
+        Assert-True (Invoke-MutOrtRegexPatchWithFallback @options -PatchFile (Join-Path $SourceDir priority.patch) 6>$null)
+        Assert-Equal patched ([IO.File]::ReadAllText((Join-Path $SourceDir priority.txt)).Trim()) 'the reviewable patch takes precedence over the regex fallback'
+        $records = @(Invoke-MutOrtRegexPatchWithFallback @options -PatchFile (Join-Path $dir absent.patch) *>&1)
+        Assert-Equal 1 @($records | Where-Object { $_ -is [bool] }).Count 'one fallback verdict reaches stdout'
+        Assert-False @($records | Where-Object { $_ -is [bool] })[0] 'a missing anchor stays an advisory miss'
+        Assert-Match 'fixture anchor missing' ($records -join '|') 'the caller warning survives the adapter'
+        Assert-Match 'fixture fallback note' ($records -join '|') 'the caller fallback note survives the adapter'
+        $options.RelativePath = 'absent-source.txt'
+        Assert-False (Invoke-MutOrtRegexPatchWithFallback @options -PatchFile (Join-Path $dir absent.patch) 6>$null) 'an optional absent source retains the false verdict'
+    }
+}
+
+function Assert-TvmProbeOperation {
+    Invoke-InTestDir -Body { param($dir)
+        $state = New-TestCallState @{ Code = 0; Mode = 'report'; Source = '' }
+        Invoke-WithTestNativeCommand -Name Invoke-TvmFixturePython -FixtureState $state -Implementation {
+            param($State, $ArgumentList)
+            $State.Source = [IO.File]::ReadAllText($ArgumentList[0])
+            if ($State.Mode -eq 'empty') { return }
+            'probe noise'
+            '{"value": 1}'
+            Write-Error 'probe stderr detail' -ErrorAction Continue
+            '{"value": 7}'
+        } -Body { param($State)
+            $options = @{ Python = 'Invoke-TvmFixturePython'; Directory = $dir; Probe = 'runtime'; Source = "print('runtime')`n"; ArgumentList = @('', 'C:\HIP bin', '--literal=one;two') }
+            $report = @(Invoke-MutTvmRocmProbe @options)
+            Assert-Equal 1 $report.Count 'probe diagnostics do not contaminate the report stream'
+            Assert-Equal 7 $report[0].value 'the last JSON line wins'
+            Assert-Equal $options.Source $State.Source 'the source file preserves every byte'
+            Assert-Equal (Join-Path $dir tvm_rocm_runtime.py) $State.Calls[0][0] 'the probe retains its source filename'
+            Assert-Equal 4 $State.Calls[0].Count 'empty and spaced arguments remain separate'
+            Assert-Equal '|C:\HIP bin|--literal=one;two' ($State.Calls[0][1..3] -join '|') 'the native argument order survives'
+            $State.Code = 9
+            $failure = Invoke-MutTvmRocmProbe @options
+            Assert-Match 'runtime probe exited 9 without a report: .*probe stderr detail.*value' $failure 'nonzero exit overrides a JSON-looking report and retains the diagnostic tail'
+            $State.Code = 0; $State.Mode = 'empty'; $options.Probe = 'codegen'
+            Assert-Match 'codegen probe exited 0 without a report' (Invoke-MutTvmRocmProbe @options) 'an empty success cannot pass'
+            $options.Directory = Join-Path $dir absent
+            $before = $State.Calls.Count
+            Assert-Throws { Invoke-MutTvmRocmProbe @options } -MessagePattern 'absent'
+            Assert-Equal $before $State.Calls.Count 'a source write failure prevents launching the probe'
+        }
+    }
+}
+
+function Assert-UrlFileNameOperation {
+    $examples = @(
+        ,@('https://fixture.invalid/wheels/torch.whl', 'torch.whl')
+        ,@('https://fixture.invalid/releases/torch%2Brocm%20build.whl?download=1#proof', 'torch+rocm build.whl')
+        ,@('https://fixture.invalid/ignored%20parent/kept%2520escape.whl', 'kept%20escape.whl')
+        ,@('https://fixture.invalid/encoded%2Fsegment.whl', 'encoded/segment.whl')
+    )
+    foreach ($example in $examples) {
+        Assert-Equal $example[1] (Get-MutUrlFileName -Url $example[0]) 'the final URI segment is decoded exactly once'
+    }
+    $operation = Get-Command Get-MutUrlFileName
+    Invoke-WithTestFunction -Name Get-UrlFileName -Definition { & $operation @args }.GetNewClosure() -Body {
+        $url = 'https://stable.repo.amd.com/rocm/releases/torch%2Brocm.whl?download=1'
+        Assert-Equal 'torch+rocm.whl' (Get-MutUrlFileName -Url $url) 'AMD runtime URLs retain the wheel local version'
+        foreach ($scriptPath in @('windows/scripts/build/Build-TorchRocmFromSource.ps1', 'windows/scripts/build/Copy-Arm64TorchWheels.ps1')) {
+            $call = Get-TestScriptCommandBlock -ScriptPath $scriptPath -Name Get-UrlFileName
+            Assert-Equal 'torch+rocm.whl' (& $call) 'both build callers delegate the same filename leaf'
+        }
+    }
+}
+
+function Assert-CudaTargetPolicyFixture {
+    Assert-True (Test-MutCudaTargetUsable -GpuEnvironment @{ HasCuda = $true } -CrossTarget $false) 'native CUDA does not inspect target payload or root'
+    foreach ($cross in $false, $true) {
+        Assert-False (Test-MutCudaTargetUsable -GpuEnvironment @{ HasCuda = $false } -CrossTarget $cross) 'disabled CUDA short-circuits without reading its root'
+    }
+    Invoke-InTestDir -Files @{ 'lib/arm64/cudart.lib' = ''; 'lib/arm64/cudadevrt.lib' = ''; 'lib/x64/cudadevrt.lib' = 'host decoy' } -Body { param($dir)
+        $gpu = @{ HasCuda = $true; CudaRoot = $dir }
+        $records = @(Test-MutCudaTargetUsable -GpuEnvironment $gpu -CrossTarget $true)
+        Assert-Equal 1 $records.Count 'the target decision emits one verdict'
+        Assert-True ($records[0] -is [bool]) 'the target decision emits a boolean'
+        Assert-True $records[0] 'cross CUDA accepts both target import libraries'
+        Assert-False (Test-MutCudaTargetUsable -GpuEnvironment @{ HasCuda = $false; CudaRoot = $dir } -CrossTarget $true) 'a payload cannot override disabled CUDA'
+        Remove-Item -LiteralPath (Join-Path $dir lib/arm64/cudadevrt.lib)
+        Assert-False (Test-MutCudaTargetUsable -GpuEnvironment $gpu -CrossTarget $true) 'cross CUDA refuses a partial target payload despite host libraries'
+        $gpu.CudaRoot = Join-Path $dir absent
+        Assert-False (Test-MutCudaTargetUsable -GpuEnvironment $gpu -CrossTarget $true) 'cross CUDA refuses an absent target payload'
+    }
+}
+
 Describe 'Shared source-build preparation' {
+    $patchModule = Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1'
+    $patchPrelude = "Import-Module '$($patchModule.Replace("'", "''"))' -ErrorAction Stop"
     $scenarios = @(
         @{ Name = 'gates compiler caching on remote configuration plus an executable and preserves the caller job limit'
             FunctionName = @('Get-SourceBuildSccache'); Body = { Assert-SourceCachePreparation }; Mutation = @(
@@ -297,6 +441,42 @@ Describe 'Shared source-build preparation' {
                 @{ Find = "-SkipImportPattern ''"; Replace = ''; Expected = 'every seed stays ahead of its imported children' }
                 @{ Find = "-SystemDirectoryPattern ''"; Replace = ''; Expected = 'every seed stays ahead of its imported children' }
                 @{ Find = '$null = & $assertMachine -Path $source -Arch $Arch -Context "closure DLL imported as $name, which the device could not load"'; Replace = ''; Expected = 'expected an exception but none was thrown' }
+            ) }
+        @{ Name = 'shares static-library reference conversion while retaining prefix, slash and optional-file policies'
+            ScriptPath = 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1'
+            FunctionName = @('Read-SourcePatchInput', 'Save-SourcePatchText', 'Invoke-InlineRegexPatch', 'Invoke-SourceFilePatchSet', 'Edit-SourceStaticLibraryReferences')
+            Body = { Assert-StaticLibraryReferenceFixture }; Mutation = @(
+                @{ Find = "`$slash = if (`$RequireLeadingSlash) { '/' } else { '' }"; Replace = "`$slash = ''"; Expected = 'protobuf requires and preserves a leading slash' }
+                @{ Find = "[regex]::Escape(`$NamePrefix)"; Replace = "''"; Expected = 'absl prefix, canonical case and name scope remain exact|both selected absl files are patched' }
+                @{ Find = '-Guard $pattern'; Replace = ''; Expected = 'already-converted inputs remain quiet' }
+                @{ Find = '-File $RelativePath'; Replace = '-File @($RelativePath[0])'; Expected = 'both selected absl files are patched' }
+            ) }
+        @{ Name = 'preserves ONNX patch precedence, all three regex callbacks and caller diagnostics'
+            ScriptPath = 'windows/scripts/build/Build-OnnxFromSource.ps1'; FunctionName = @('Invoke-OrtRegexPatchWithFallback'); Prelude = $patchPrelude
+            Body = { Assert-OrtRegexFallbackOperation }; Mutation = @(
+                @{ Find = '-Replacement $Replacement'; Replace = "-Replacement ''"; Expected = 'tunable fallback preserves capture text|real ONNX fallback' }
+                @{ Find = '-WarnMessage $WarnMessage'; Replace = "-WarnMessage 'lost warning'"; Expected = 'caller warning survives' }
+                @{ Find = '-SourceDir $SourceDir -FallbackNote'; Replace = '-SourceDir (Join-Path $SourceDir absent) -FallbackNote'; Expected = 'reviewable patch takes precedence' }
+            ) }
+        @{ Name = 'preserves TVM source bytes, argv, merged diagnostics and failed or empty probe verdicts'
+            ScriptPath = 'windows/scripts/build/rocm-checks/TVM.ps1'; FunctionName = @('Invoke-TvmRocmProbe', 'ConvertFrom-TvmRocmProbeOutput')
+            Body = { Assert-TvmProbeOperation }; Mutation = @(
+                @{ Find = '-ExitCode $LASTEXITCODE'; Replace = '-ExitCode 0'; Expected = 'nonzero exit overrides a JSON-looking report' }
+                @{ Find = '$path @ArgumentList 2>&1'; Replace = '$path 2>&1'; Expected = 'empty and spaced arguments remain separate' }
+                @{ Find = '[System.IO.File]::WriteAllText($path, $Source)'; Replace = "[System.IO.File]::WriteAllText(`$path, 'wrong source')"; Expected = 'source file preserves every byte' }
+            ) }
+        @{ Name = 'preserves the percent-decoded URL final segment and both wheel builder bindings'
+            ScriptPath = 'windows/scripts/modules/WindowsScripts.Shared.psm1'; FunctionName = @('Get-UrlFileName')
+            Body = { Assert-UrlFileNameOperation }; Mutation = @(
+                @{ Find = 'return [uri]::UnescapeDataString(([uri]$Url).Segments[-1])'; Replace = 'return ([uri]$Url).Segments[-1]'; Expected = 'final URI segment is decoded exactly once' }
+                @{ Find = '.Segments[-1]'; Replace = '.Segments[0]'; Expected = 'final URI segment is decoded exactly once' }
+            ) }
+        @{ Name = 'shares the CUDA native and cross decision with disabled, complete and missing target payloads'
+            ScriptPath = 'windows/scripts/modules/WindowsSourceBuild.Cuda.psm1'; FunctionName = @('Test-CudaTargetUsable', 'Test-CudaWindowsArm64Payload', 'Get-CudaRoot')
+            Body = { Assert-CudaTargetPolicyFixture }; Mutation = @(
+                @{ Find = '$GpuEnvironment.HasCuda -and'; Replace = ''; Expected = 'disabled CUDA short-circuits|payload cannot override disabled CUDA' }
+                @{ Find = '(-not $CrossTarget)'; Replace = '$false'; Expected = 'CudaRoot|native CUDA does not inspect' }
+                @{ Find = 'Test-CudaWindowsArm64Payload -CudaRoot $GpuEnvironment.CudaRoot'; Replace = '$true'; Expected = 'cross CUDA refuses a partial target payload' }
             ) }
     )
     $prepare = Get-Command New-SourcePreparationArguments

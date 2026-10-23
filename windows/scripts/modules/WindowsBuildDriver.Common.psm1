@@ -717,7 +717,7 @@ function Assert-NoActiveRdna4Gpu {
     $hazards = @(Get-Rdna4HazardDevice -Devices $Devices -Pattern $HazardPattern)
     if ($hazards.Count -eq 0) { return }
 
-    $active = @($hazards | Where-Object { $_.Status -eq 'OK' })
+    $active = @(Get-Rdna4HazardDevice -Devices $hazards -Pattern $HazardPattern -ActiveOnly)
     if ($active.Count -eq 0) {
         # -f binds tighter than +, so the concat stays parenthesized.
         Write-Host (("RDNA4 gate: {0} present but DISABLED - RUN-layer finalize is safe; re-enable after the " +

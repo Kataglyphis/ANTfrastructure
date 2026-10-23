@@ -2660,6 +2660,7 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Invoke-SourceFilePatchSet',
+    'Edit-SourceStaticLibraryReferences',
     'Assert-SourceFileContent',
     'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',
@@ -2676,6 +2677,7 @@ Export-ModuleMember -Function @(
     'Get-CudnnLibraryDir',
     'Get-CudnnLibrary',
     'Test-CudaWindowsArm64Payload',
+    'Test-CudaTargetUsable',
     'Get-NvccHostCompilerPath',
     'Get-LlvmArchiverCmakeArg',
     # Called directly by Build-LlvmFromSource.ps1 and Build-TvmFromSource.ps1.

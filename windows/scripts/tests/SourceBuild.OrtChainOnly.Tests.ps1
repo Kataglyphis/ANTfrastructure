@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
+
 # G2 (Assert-ChainOrtOnly) over fixture trees, the stamp G1 reads, and its wiring into the five ORT consumers.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Build.psm1') -Force -DisableNameChecking
@@ -454,8 +456,7 @@ Describe 'ORT gate (G2): wiring' {
     It 'every consumer RUN mounts the module per file, nothing else mounts it, and no stage COPYs it (mutation)' {
         $consumers = 0
         foreach ($df in 'windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder', 'windows\Dockerfile.rocm-migraphx') {
-            $joined = (& $read $df) -replace '`\r?\n', ' '
-            foreach ($line in ($joined -split "`n")) {
+            foreach ($line in (ConvertTo-TestDockerLogicalLine -Text (& $read $df))) {
                 $isConsumer = $line -match 'source=windows/scripts/build/Build-(Opencv|OnnxGenai|Ffmpeg|Gstreamer|OrtAmdgpuEp)FromSource\.ps1'
                 if ($line -match '^RUN\s') {
                     if ($isConsumer) { $consumers++ }

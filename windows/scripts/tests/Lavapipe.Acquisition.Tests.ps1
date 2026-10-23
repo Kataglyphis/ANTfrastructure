@@ -23,7 +23,7 @@ function Expand-VulkanRuntimeComponents {
 }
 '@
     $module = @{ ScriptPath = 'windows/scripts/modules/WindowsContainerImage.Common.psm1'; Prelude = $prelude; FixtureState = $state
-        FunctionName = @('Get-LavapipeWindowsUrl', 'Get-VulkanRuntimeComponentsUrl', 'Get-LavapipePinName', 'Resolve-LavapipeAssets', 'Get-LavapipePinValues', 'Install-LavapipeRuntime') }
+        FunctionName = @('Assert-LavapipeReleaseVersion', 'Get-LavapipeArchFact', 'Get-LavapipeAssetUrl', 'Get-LavapipeWindowsUrl', 'Get-VulkanRuntimeComponentsUrl', 'Get-LavapipePinName', 'Resolve-LavapipeAssets', 'Get-LavapipePinValues', 'Install-LavapipeRuntime') }
     if ($Find) { Invoke-TestFunctionMutations -ModuleArguments $module -IncludeControl -Find $Find -Replace $Replace -Expected $Expected -Body $Body }
     else { Invoke-WithFunctionModule @module -Body $Body }
 }
@@ -68,6 +68,10 @@ function Assert-LavapipeAcquisition {
 }
 
 Describe 'Shared lavapipe acquisition' {
+    It 'keeps the ARM64 loader under warm/ and detects the wrong release directory' {
+        Invoke-LavapipeAcquisitionFixture -Find "VulkanDirectory = 'warm'" -Replace "VulkanDirectory = 'windows'" -Expected 'expected .*warm.*VulkanRT-ARM64.* but got .*windows.*VulkanRT-ARM64'
+    }
+
     It 'forwards the Mesa hash and detects its omission' {
         Invoke-LavapipeAcquisitionFixture -Find '-ExpectedSha256 $pins.MesaSha256' -Replace '' -Expected 'Mesa SHA must be forwarded'
     }

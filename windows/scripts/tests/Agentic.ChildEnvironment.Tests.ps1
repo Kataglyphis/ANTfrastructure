@@ -3,25 +3,17 @@
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsScripts.Shared.psm1')
 
-function New-AgenticChildEnvironmentModule {
-    param([string]$Root)
-    $state = [pscustomobject]@{ Root = $Root; Log = (Join-Path $Root 'child.log'); ParentValue = $null; ParentPresent = $false; Messages = [Collections.Generic.List[string]]::new() }
-    return @{
-        ScriptPath = 'windows\scripts\modules\WindowsAgenticLoop.Common.psm1'
-        FunctionName = @('Invoke-LoggedAgenticCommand', 'Invoke-TestCommand', 'Get-SanitizerEnvVars', 'Invoke-SanitizerTestCommand')
-        FixtureState = $state
-        Prelude = @'
-$script:AgenticDryRun = $false
-function Write-AgenticSection {}
-function Write-AgenticLog { param($Message, $Level) $State.Messages.Add($Message) }
+Import-Module (Join-Path $PSScriptRoot 'WindowsAgentic.Fixtures.psm1') -ErrorAction Stop
+
+$script:agenticChildFactory = New-TestAgenticModuleFactory -Properties @{ Log = $null; ParentValue = $null; ParentPresent = $false } `
+        -FunctionName @('Invoke-AgenticCommandPhase', 'Start-AgenticCommandPhase', 'Invoke-LoggedAgenticCommand', 'Invoke-TestCommand', 'Get-SanitizerEnvVars', 'Invoke-SanitizerTestCommand') -Prelude @'
 function Get-AgenticLogFile {
+    $State.Log = Join-Path $State.Root 'child.log'
     $State.ParentValue = [Environment]::GetEnvironmentVariable('ASAN_OPTIONS')
     $State.ParentPresent = Test-Path Env:ASAN_OPTIONS
     $State.Log
 }
 '@
-    }
-}
 
 function Assert-AgenticSanitizerChildIsolation {
     param($State)
@@ -41,14 +33,14 @@ function Assert-AgenticSanitizerChildIsolation {
             $log = Get-Content -LiteralPath $State.Log -Raw
             Assert-Match 'child stdout' $log 'stdout remains in the durable phase log'
             Assert-Match 'child stderr' $log 'stderr remains in the durable phase log'
-            Assert-True ($State.Messages.Contains("Command: $command")) 'command logging retains the original command without environment setup text'
+            Assert-True ($State.Calls.Contains("log|INFO|Command: $command")) 'command logging retains the original command without environment setup text'
         }
     }
 }
 
 function Invoke-AgenticChildEnvironmentMutation {
     param([string]$Find, [string]$Replace, [string]$Expected, [scriptblock]$Body)
-    Invoke-TestFunctionMutations -ModuleArgumentsFactory { param($dir) New-AgenticChildEnvironmentModule -Root $dir } `
+    Invoke-TestFunctionMutations -ModuleArgumentsFactory { param($dir) & $script:agenticChildFactory $dir } `
         -IncludeControl -Find $Find -Replace $Replace -Expected $Expected -Body $Body
 }
 
@@ -67,7 +59,7 @@ Describe 'Agentic child environment isolation' {
 
     It 'preserves apostrophes, newlines, empty values and removals in the child environment' {
         Invoke-InTestDir { param($dir)
-            $arguments = New-AgenticChildEnvironmentModule -Root $dir
+            $arguments = & $script:agenticChildFactory $dir
             Invoke-WithFunctionModule @arguments -Body { param($state)
                 $report = (Join-Path $state.Root 'quoted.json').Replace("'", "''")
                 $value = "a'b`nsecond line"

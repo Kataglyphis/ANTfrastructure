@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — remove another Windows duplication wave
+
+- Share ONNX source-patch fallback and TVM ROCm probe lifecycles while preserving caller patch, argv, wait and verdict policies.
+- Share CUDA target-usability checks, source-build preparation, Python wheel DLL search paths and requirements, Agentic execution, RDNA4 filtering, and Lavapipe asset facts.
+- Share Windows test fixtures and mutation setup while keeping suite-specific assertions and failure controls.
+- Correct PowerShell function-boundary scanning for braces in strings, comments and here-strings; add a regression fixture without removing literal tokens from comparison.
+- Remove 16 stale Windows duplication exceptions and lower 12 measured budgets without widening thresholds or narrowing scan coverage.
+
 ## 2026-10-23 — share Windows graph, debugger and fixture lifetimes
 
 - Reuse the architecture DLL graph for cross bundles while preserving multi-root breadth-first order, machine checks and indexed API-set/system traversal.

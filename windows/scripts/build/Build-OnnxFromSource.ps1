@@ -598,13 +598,22 @@ $cxxFlags = (@('/WX-', $baseSimdFlags, $x86OnlyFlags,
                '/clang:-Wno-invalid-specialization', '/clang:-Wno-unused-value',
                (Get-WarningNoiseSuppressionFlags)) | Where-Object { $_ }) -join ' '
 
+function Invoke-OrtRegexPatchWithFallback {
+    param([Parameter(Mandatory)][string]$PatchFile, [Parameter(Mandatory)][string]$SourceDir,
+        [Parameter(Mandatory)][string]$RelativePath, [Parameter(Mandatory)][string]$Pattern,
+        [string]$Replacement = '', [Parameter(Mandatory)][string]$WarnMessage,
+        [string]$FallbackNote = 'falling back to inline regex')
+    Invoke-SourcePatchWithFallback -PatchFile $PatchFile -SourceDir $SourceDir -FallbackNote $FallbackNote -Fallback {
+        Invoke-InlineRegexPatch -Path (Join-Path $SourceDir $RelativePath) -Pattern $Pattern -Replacement $Replacement -WarnMessage $WarnMessage
+    }
+}
+
 # CUDA stays bare unless SCCACHE_CUDA_LAUNCHER=1, and Blackwell takes it back from the PTX-only targets; see docs/windows-build-resources.md.
 
 # GPU detection; ONNX_FORCE_CPU=1 is a dev knob that skips the hour of CUDA and TensorRT kernels.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
 $gpuArgs = @()
-# On cross, CUDA comes only from the image's arm64 payload, never the host probe of the shared toolchain image.
-$cudaUsable = $gpuEnv.HasCuda -and ((-not $onnxCross) -or (Test-CudaWindowsArm64Payload -CudaRoot $gpuEnv.CudaRoot))
+$cudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $onnxCross
 if ($cudaUsable) {
     Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
     $gpuArgs += Get-OrtPtxLauncherExemptArg -PatchDir (Join-Path $scriptAssetRoot 'patches\onnxruntime')
@@ -614,32 +623,21 @@ if ($cudaUsable) {
     $cudnnLib = Get-CudnnLibrary -CudnnRoot $cudnnRoot
 
     # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
-    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir `
-        -FallbackNote 'falling back to inline regex' `
-        -Fallback {
-            $pch = "$SourceDir\cmake\onnxruntime_providers_cuda.cmake"
-            Invoke-InlineRegexPatch -Path $pch -Pattern 'target_precompile_headers\([^)]+\)' `
-                -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $pch."
-        }
+    $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir `
+        -RelativePath 'cmake\onnxruntime_providers_cuda.cmake' -Pattern 'target_precompile_headers\([^)]+\)' `
+        -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $SourceDir\cmake\onnxruntime_providers_cuda.cmake."
     # The CUDA includes define ERROR/VERBOSE despite -DNOGDI, which paste into a nonexistent Severity::k0.
-    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
+    $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
+        -RelativePath 'onnxruntime\core\framework\tunable.h' -Pattern '(#include "core/framework/tuning_context\.h")' `
+        -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
         -FallbackNote 'falling back to inline #undef insertion' `
-        -Fallback {
-            $tunable = Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h'
-            Invoke-InlineRegexPatch -Path $tunable -Pattern '(#include "core/framework/tuning_context\.h")' `
-                -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
-                -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $tunable."
-        }
+        -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $(Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h')."
 
     # sccache's nvcc decomposition can drop HAS_SM80_OR_LATER in the host pass, and we always target sm80+.
-    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir `
-        -FallbackNote 'falling back to inline guard rewrite' `
-        -Fallback {
-            $xqaGen = Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh'
-            Invoke-InlineRegexPatch -Path $xqaGen -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
-                -Replacement '#else' `
-                -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $xqaGen."
-        }
+    $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir `
+        -RelativePath 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh' -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
+        -Replacement '#else' -FallbackNote 'falling back to inline guard rewrite' `
+        -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $(Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh')."
 
     # Undefined fused_moe/QkvToContext symbols point at the mozilla/sccache#2811 series, not at a bare-nvcc exception.
 

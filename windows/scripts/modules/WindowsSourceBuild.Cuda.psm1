@@ -159,6 +159,12 @@ function Test-CudaWindowsArm64Payload {
     return (Test-Path -LiteralPath "$arm\cudart.lib") -and (Test-Path -LiteralPath "$arm\cudadevrt.lib")
 }
 
+function Test-CudaTargetUsable {
+    param([Parameter(Mandatory)][Collections.IDictionary]$GpuEnvironment, [Parameter(Mandatory)][bool]$CrossTarget)
+    # A host toolkit proves native usability; cross builds also require the target payload.
+    return $GpuEnvironment.HasCuda -and ((-not $CrossTarget) -or (Test-CudaWindowsArm64Payload -CudaRoot $GpuEnvironment.CudaRoot))
+}
+
 function Get-NvccHostCompilerPath {
     <#
     .SYNOPSIS
@@ -210,6 +216,7 @@ Export-ModuleMember -Function @(
     'Get-CudnnLibraryDir',
     'Get-CudnnLibrary',
     'Test-CudaWindowsArm64Payload',
+    'Test-CudaTargetUsable',
     'Get-NvccHostCompilerPath',
     'Get-NvccCudaCmakeArgs',
     'Resolve-DirectoryPath',

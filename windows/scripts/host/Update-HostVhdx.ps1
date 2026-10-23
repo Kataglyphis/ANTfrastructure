@@ -56,7 +56,6 @@ $oldVhdxPath = "$VhdxPath.old"
 
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -LogPath $LogPath
-$LogPath = $hostLog.LogPath
 
 # Access errors are counted, not swallowed: an unreadable file is a different problem than a short copy.
 function Measure-Tree {

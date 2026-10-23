@@ -219,7 +219,7 @@ function Get-TorchRocmRuntimePin {
         $sha = "$($Pins["TORCH_ROCM_WINDOWS_${name}_SHA256"])".Trim().ToLowerInvariant()
         if (-not $url.StartsWith('https://stable.repo.amd.com/rocm/')) { throw "TORCH_ROCM_WINDOWS_${name}_URL must be an AMD stable-repo URL, got '$url'" }
         if ($sha -notmatch '^[0-9a-f]{64}$') { throw "TORCH_ROCM_WINDOWS_${name}_SHA256 must be a 64-hex SHA256, got '$sha'" }
-        [pscustomobject]@{ Distribution = $dists[$name]; Url = $url; Sha256 = $sha; FileName = [uri]::UnescapeDataString(([uri]$url).Segments[-1]) }
+        [pscustomobject]@{ Distribution = $dists[$name]; Url = $url; Sha256 = $sha; FileName = (Get-UrlFileName -Url $url) }
     }
 }
 

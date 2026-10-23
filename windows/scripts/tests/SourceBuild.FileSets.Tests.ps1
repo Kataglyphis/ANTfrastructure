@@ -1,6 +1,7 @@
 #requires -Version 7.0
 # Local trees cover staging and patch-set execution; they do not compile upstream projects or exercise network acquisition.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.PatchFixture.psm1') -ErrorAction Stop
 Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
 
 Describe 'Shared source file-set operations' {
@@ -127,6 +128,29 @@ Describe 'Shared source file-set operations' {
             Assert-Throws { & $query } -MessagePattern 'expected exactly one.*found 2:.*core'
             Remove-Item (Join-Path $BuildDir core.pyd), $one[0].FullName
             Assert-Throws { & $query } -MessagePattern 'expected exactly one.*found 0:'
+        }
+    }
+
+    It 'keeps every LiteRT-LM static import map on its exact absl, protobuf or generic naming policy' {
+        $profiles = @(
+            @{ Path = @('cmake/packages/absl/absl_import_static_lib.cmake', 'cmake/packages/absl/absl_target_map.cmake'); Expected = 'absl_A.lib libabsl_skip-hyphen.a /libfoo.a libbare.a'; Description = 'libabsl_*.a -> absl_*.lib' }
+            @{ Path = @('cmake/packages/protobuf/protobuf_target_map.cmake'); Expected = 'libabsl_A.a libabsl_skip-hyphen.a /foo.lib libbare.a'; Description = 'protobuf_target_map.cmake : /lib*.a -> /*.lib' }
+            @{ Path = @('cmake/packages/litert/litert_target_map.cmake', 'cmake/packages/sentencepiece/sentencepiece_target_map.cmake', 'cmake/packages/sentencepiece/sentencepiece.cmake', 'cmake/packages/tflite/tflite_target_map.cmake', 'cmake/packages/tflite/tflite.cmake', 'cmake/packages/re2/re2_target_map.cmake', 'cmake/packages/re2/re2.cmake', 'cmake/packages/tokenizers/tokenizers.cmake', 'cmake/packages/tokenizers/tokenizers_target_map.cmake', 'cmake/packages/flatbuffers/flatbuffers_target_map.cmake'); Expected = 'absl_A.lib absl_skip-hyphen.lib /foo.lib bare.lib'; Description = 'lib*.a -> *.lib' }
+        )
+        $calls = @(Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-LitertLmFromSource.ps1' -Name Edit-SourceStaticLibraryReferences -ExpectedCount 3)
+        for ($index = 0; $index -lt $profiles.Count; $index++) {
+            $mapPolicy = $profiles[$index]
+            $files = @{}; $expected = @{}
+            foreach ($relative in $mapPolicy.Path) {
+                $files[$relative] = 'libabsl_A.a libabsl_skip-hyphen.a /libfoo.a libbare.a'
+                $expected[$relative] = $mapPolicy.Expected
+            }
+            $convert = $calls[$index]
+            Assert-SourceFileConversion -Case @{
+                Files = $files; Expected = $expected; ChangedCount = $mapPolicy.Path.Count
+                DescriptionPattern = [regex]::Escape($mapPolicy.Description)
+                Operation = { param($SourceDir) & $convert }
+            }
         }
     }
 

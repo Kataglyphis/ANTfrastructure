@@ -236,6 +236,18 @@ $pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue)
 $shell = if ($pwsh) { $pwsh.Source } else { (Get-Command powershell.exe).Source }
 Write-Host "  child shell: $shell"
 
+function New-SccacheProbeProcessInfo {
+    param([Parameter(Mandatory)][string]$FilePath, [string[]]$ArgumentList = @(), [string]$WorkingDirectory = '')
+    $info = [Diagnostics.ProcessStartInfo]::new($FilePath)
+    foreach ($argument in $ArgumentList) { $null = $info.ArgumentList.Add($argument) }
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    if ($WorkingDirectory) { $info.WorkingDirectory = $WorkingDirectory }
+    return $info
+}
+
 function Invoke-SpawnMode {
     param([string]$Mode, [string]$Dir)
     $tagLine = "MODE=$Mode DIR=$Dir"
@@ -253,12 +265,7 @@ function Invoke-SpawnMode {
         }
         'detached' {
             # The closest shape to `sccache --start-server`.
-            $psi = [Diagnostics.ProcessStartInfo]::new($shell)
-            foreach ($a in $childArgs) { $null = $psi.ArgumentList.Add($a) }
-            $psi.UseShellExecute = $false
-            $psi.CreateNoWindow = $true
-            $psi.RedirectStandardOutput = $true
-            $psi.RedirectStandardError = $true
+            $psi = New-SccacheProbeProcessInfo -FilePath $shell -ArgumentList $childArgs
             $proc = [Diagnostics.Process]::Start($psi)
             $null = $proc.WaitForExit(60000)
         }
@@ -286,6 +293,23 @@ $origDir = $env:SCCACHE_DIR
 $altDir = 'C:\sccache-alt'
 $null = New-Item -ItemType Directory -Force -Path $altDir -ErrorAction SilentlyContinue
 
+function Set-SccacheProbeConfiguration {
+    param([Parameter(Mandatory)][string]$SccachePath, [string]$Chain = '', [string]$Endpoint = '', [string]$Directory)
+    # The server reads configuration once, so it must stop before the environment changes.
+    Stop-SccacheProbeServer -SccachePath $SccachePath
+    if ($Chain) { $env:SCCACHE_MULTILEVEL_CHAIN = $Chain } else { Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue }
+    if ($Endpoint) { $env:SCCACHE_WEBDAV_ENDPOINT = $Endpoint } else { Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue }
+    $env:SCCACHE_DIR = $Directory
+}
+
+function Read-SccacheProbeErrorLog {
+    param([Parameter(Mandatory)][string]$SccachePath, [AllowEmptyString()][string]$StopPattern = '')
+    Stop-SccacheProbeServer -SccachePath $SccachePath -Pattern $StopPattern
+    $path = $env:SCCACHE_ERROR_LOG
+    $found = [bool]($path -and (Test-Path $path))
+    return [pscustomobject]@{ Found = $found; Path = $path; Lines = @(if ($found) { Get-Content $path -ErrorAction SilentlyContinue }) }
+}
+
 function Invoke-SccacheVariant {
     param(
         [string]$Name,
@@ -295,12 +319,7 @@ function Invoke-SccacheVariant {
     )
     Write-Section "variant: $Name"
 
-    # The server reads its config once at start, so a running one would silently measure the old config.
-    Stop-SccacheProbeServer -SccachePath $sccache.Source
-
-    if ($Chain) { $env:SCCACHE_MULTILEVEL_CHAIN = $Chain } else { Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue }
-    if ($Endpoint) { $env:SCCACHE_WEBDAV_ENDPOINT = $Endpoint } else { Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue }
-    $env:SCCACHE_DIR = $Dir
+    Set-SccacheProbeConfiguration -SccachePath $sccache.Source -Chain $Chain -Endpoint $Endpoint -Directory $Dir
     Write-Host ("  chain='{0}' endpoint='{1}' dir='{2}'" -f $Chain, $Endpoint, $Dir)
 
     Start-SccacheProbeServer -SccachePath $sccache.Source
@@ -322,9 +341,9 @@ function Invoke-SccacheVariant {
     Write-DiagnosticResult "$Name wrote to cache" ($writeErr -eq 0) "compile exit ok=$compileOk, write errors=$writeErr"
 
     # Stopping flushes the log (the server never idles out), where a failing variant names the path it could not write.
-    Stop-SccacheProbeServer -SccachePath $sccache.Source
-    if ($env:SCCACHE_ERROR_LOG -and (Test-Path $env:SCCACHE_ERROR_LOG)) {
-        $vlines = @(Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue)
+    $log = Read-SccacheProbeErrorLog -SccachePath $sccache.Source
+    if ($log.Found) {
+        $vlines = $log.Lines
         $interesting = @($vlines | Where-Object {
                 $_ -match 'storing in cache|Created cache artifact|executing cache write|storage|cache_write|service=fs|Failed|failed' -and
                 $_ -notmatch 'Mozilla'
@@ -548,13 +567,8 @@ $procs = @()
 for ($i = 1; $i -le $parallel; $i++) {
     $s = Join-Path $pwork "p$i.cpp"
     Write-SccacheProbeSource -Path $s -Value $i
-    $psi = [Diagnostics.ProcessStartInfo]::new($sccache.Source)
-    foreach ($a in @('clang-cl', '/c', '/nologo', '/EHsc', "/Fo$(Join-Path $pwork "p$i.obj")", $s)) { $null = $psi.ArgumentList.Add($a) }
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.WorkingDirectory = $pwork
+    $psi = New-SccacheProbeProcessInfo -FilePath $sccache.Source -WorkingDirectory $pwork `
+        -ArgumentList @('clang-cl', '/c', '/nologo', '/EHsc', "/Fo$(Join-Path $pwork "p$i.obj")", $s)
     $procs += [Diagnostics.Process]::Start($psi)
 }
 foreach ($p in $procs) { $null = $p.WaitForExit(180000) }
@@ -616,10 +630,7 @@ Write-Section "bulk write test: cache MOUNT vs plain directory (N unique objects
 function Invoke-BulkWrite {
     param([string]$Label, [string]$Dir, [int]$Count)
 
-    Stop-SccacheProbeServer -SccachePath $sccache.Source
-    Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue
-    Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
-    $env:SCCACHE_DIR = $Dir
+    Set-SccacheProbeConfiguration -SccachePath $sccache.Source -Directory $Dir
     $null = New-Item -ItemType Directory -Force -Path $Dir -ErrorAction SilentlyContinue
     Start-SccacheProbeServer -SccachePath $sccache.Source
 
@@ -673,15 +684,14 @@ if ($onMount.WriteErrors -gt 0 -and $offMount.WriteErrors -eq 0) {
 Write-Host ("  kept for the next run: {0}" -f $mountDir)
 
 Write-Section 'sccache error log'
-Stop-SccacheProbeServer -SccachePath $sccache.Source -Pattern 'Stopping|error'
-$errLog = $env:SCCACHE_ERROR_LOG
-if ($errLog -and (Test-Path $errLog)) {
-    $lines = @(Get-Content $errLog -ErrorAction SilentlyContinue)
+$errLog = Read-SccacheProbeErrorLog -SccachePath $sccache.Source -StopPattern 'Stopping|error'
+if ($errLog.Found) {
+    $lines = $errLog.Lines
     $writeFails = @($lines | Where-Object { $_ -match 'Error executing cache write' })
     Write-Host "  $($lines.Count) line(s) in $errLog; $($writeFails.Count) cache-write error(s)"
     $lines | Select-Object -Last 25 | ForEach-Object { Write-Host "  log| $_" }
 } else {
-    Write-Host "  no error log at '$errLog'"
+    Write-Host "  no error log at '$($errLog.Path)'"
 }
 
 Remove-Item $altDir -Recurse -Force -ErrorAction SilentlyContinue

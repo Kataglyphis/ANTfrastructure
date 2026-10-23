@@ -266,6 +266,23 @@ function Add-RequirementHash {
     return [string[]]$out
 }
 
+function Invoke-PythonAppWheelRequirementUpdate {
+    param([Parameter(Mandatory)][string]$Requirements, [Parameter(Mandatory)][scriptblock]$Action)
+    $update = [pscustomobject]@{
+        Lines = [string[]](Get-Content -LiteralPath $Requirements)
+        Names = [Collections.Generic.List[string]]::new()
+    }
+    & $Action $update
+    if ($update.Names.Count -gt 0) { Set-Content -LiteralPath $Requirements -Value $update.Lines -Encoding utf8NoBOM }
+    return [string[]]$update.Names
+}
+
+function Add-PythonAppRequirementWheelHash {
+    param([Parameter(Mandatory)]$Update, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Path)
+    $Update.Lines = Add-RequirementHash -Lines $Update.Lines -Name $Name -Sha256 (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $Update.Names.Add($Name)
+}
+
 # Builds each -PureBuild package the requirements pin from uv.lock's sdist, with its env, as a py3-none-any wheel; returns their names.
 function Add-PurePythonWheel {
     [OutputType([string[]])]
@@ -277,46 +294,42 @@ function Add-PurePythonWheel {
         [Parameter(Mandatory)][hashtable]$PureBuild
     )
     if (-not (Test-Path -LiteralPath $Requirements -PathType Leaf)) { return @() }
-    [string[]]$lines = Get-Content -LiteralPath $Requirements
-    $built = [Collections.Generic.List[string]]::new()
-    foreach ($name in $PureBuild.Keys) {
-        $pin = $lines | Where-Object { $_ -match "^$([regex]::Escape($name))==" } | Select-Object -First 1
-        if (-not $pin) { continue }
-        $version = [regex]::Match($pin, '==([^\s;\\]+)').Groups[1].Value
-        $sdist = Get-LockSdist -Lock $Lock -Name $name -Version $version
-        $archive = Join-Path $OutDir ([IO.Path]::GetFileName(([uri]$sdist.Url).AbsolutePath))
-        Invoke-DownloadWithRetry -Url $sdist.Url -DestinationPath $archive -ExpectedSha256 $sdist.Sha256 -Description "$name $version sdist"
-        Invoke-WithProcessEnvironment -Environment $PureBuild[$name] -ScriptBlock {
-            Invoke-AppUv -What "building $name $version as pure Python" -Arguments @('build', '--wheel', '--python', $HostPython, '--out-dir', $OutDir, $archive) | Out-Host
+    return Invoke-PythonAppWheelRequirementUpdate -Requirements $Requirements -Action {
+        param($update)
+        foreach ($name in $PureBuild.Keys) {
+            $pin = $update.Lines | Where-Object { $_ -match "^$([regex]::Escape($name))==" } | Select-Object -First 1
+            if (-not $pin) { continue }
+            $version = [regex]::Match($pin, '==([^\s;\\]+)').Groups[1].Value
+            $sdist = Get-LockSdist -Lock $Lock -Name $name -Version $version
+            $archive = Join-Path $OutDir ([IO.Path]::GetFileName(([uri]$sdist.Url).AbsolutePath))
+            Invoke-DownloadWithRetry -Url $sdist.Url -DestinationPath $archive -ExpectedSha256 $sdist.Sha256 -Description "$name $version sdist"
+            Invoke-WithProcessEnvironment -Environment $PureBuild[$name] -ScriptBlock {
+                Invoke-AppUv -What "building $name $version as pure Python" -Arguments @('build', '--wheel', '--python', $HostPython, '--out-dir', $OutDir, $archive) | Out-Host
+            }
+            $stem = ($name -replace '[-.]+', '_')
+            $wheel = @(Get-PythonAppWheelFile -Directory $OutDir -Filter "*-$version-*.whl" | Where-Object { $_.Name -like "$stem-*" })
+            if ($wheel.Count -ne 1 -or $wheel[0].Name -notlike '*-py3-none-any.whl') { throw "$name $version built $($wheel.Name -join ', '), not one py3-none-any wheel" }
+            Add-Type -AssemblyName System.IO.Compression.FileSystem
+            $zip = [IO.Compression.ZipFile]::OpenRead($wheel[0].FullName)
+            try { $binaries = @($zip.Entries | Where-Object { $_.FullName -match '\.(pyd|dll|so|exe)$' } | ForEach-Object FullName) } finally { $zip.Dispose() }
+            if ($binaries.Count -gt 0) { throw "$($wheel[0].Name) carries $($binaries -join ', '): no pure-Python build" }
+            Add-PythonAppRequirementWheelHash -Update $update -Name $name -Path $wheel[0].FullName
         }
-        $stem = ($name -replace '[-.]+', '_')
-        $wheel = @(Get-PythonAppWheelFile -Directory $OutDir -Filter "*-$version-*.whl" | Where-Object { $_.Name -like "$stem-*" })
-        if ($wheel.Count -ne 1 -or $wheel[0].Name -notlike '*-py3-none-any.whl') { throw "$name $version built $($wheel.Name -join ', '), not one py3-none-any wheel" }
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $zip = [IO.Compression.ZipFile]::OpenRead($wheel[0].FullName)
-        try { $binaries = @($zip.Entries | Where-Object { $_.FullName -match '\.(pyd|dll|so|exe)$' } | ForEach-Object FullName) } finally { $zip.Dispose() }
-        if ($binaries.Count -gt 0) { throw "$($wheel[0].Name) carries $($binaries -join ', '): no pure-Python build" }
-        $lines = Add-RequirementHash -Lines $lines -Name $name -Sha256 (Get-FileHash -LiteralPath $wheel[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        $built.Add($name)
     }
-    if ($built.Count -gt 0) { Set-Content -LiteralPath $Requirements -Value $lines -Encoding utf8NoBOM }
-    return [string[]]$built
 }
 
 # Adds the hash of each -Store wheel tagged -Tag (cp315t-win_arm64) whose name and version -Requirements pins; returns their names.
 function Add-StoreWheelHash {
     [OutputType([string[]])]
     param([Parameter(Mandatory)][string]$Requirements, [string[]]$Store = @(), [Parameter(Mandatory)][string]$Tag)
-    [string[]]$lines = Get-Content -LiteralPath $Requirements
-    $added = [Collections.Generic.List[string]]::new()
-    foreach ($whl in @($Store | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { Get-PythonAppWheelFile -Directory $_ -Filter "*-$Tag.whl" })) {
-        $name = ($whl.Name.Split('-')[0] -replace '[-_.]+', '-').ToLowerInvariant()
-        if (-not @($lines -match "^$([regex]::Escape($name))==$([regex]::Escape($whl.Name.Split('-')[1]))(\s|$)").Count) { continue }
-        $lines = Add-RequirementHash -Lines $lines -Name $name -Sha256 (Get-FileHash -LiteralPath $whl.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-        $added.Add($name)
+    return Invoke-PythonAppWheelRequirementUpdate -Requirements $Requirements -Action {
+        param($update)
+        foreach ($whl in @($Store | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { Get-PythonAppWheelFile -Directory $_ -Filter "*-$Tag.whl" })) {
+            $name = ($whl.Name.Split('-')[0] -replace '[-_.]+', '-').ToLowerInvariant()
+            if (-not @($update.Lines -match "^$([regex]::Escape($name))==$([regex]::Escape($whl.Name.Split('-')[1]))(\s|$)").Count) { continue }
+            Add-PythonAppRequirementWheelHash -Update $update -Name $name -Path $whl.FullName
+        }
     }
-    if ($added.Count -gt 0) { Set-Content -LiteralPath $Requirements -Value $lines -Encoding utf8NoBOM }
-    return [string[]]$added
 }
 
 # --find-links on the pure builds and the stores, and --only-binary for every package taken from them.
@@ -525,6 +538,11 @@ function Get-PythonAppEntryPoint {
     return $scripts
 }
 
+function Assert-PythonAppTextPattern {
+    param([string]$Text, [string]$Pattern, [string]$Message)
+    if ($Text -notmatch $Pattern) { throw $Message }
+}
+
 function New-PythonAppLauncher {
     <#
     .SYNOPSIS
@@ -653,6 +671,12 @@ function Get-PythonAppShown {
     }
 }
 
+function Save-PythonAppManifest {
+    param([Parameter(Mandatory)][string]$Destination, [Parameter(Mandatory)][string]$Text)
+    Set-Content -LiteralPath $Destination -Value $Text -Encoding utf8NoBOM
+    return $Destination
+}
+
 function New-PythonAppWxs {
     <#
     .SYNOPSIS
@@ -674,7 +698,7 @@ function New-PythonAppWxs {
     foreach ($key in 'msi_upgrade_code', 'publisher') {
         if (-not $App.ContainsKey($key) -or -not $App[$key]) { throw "app.json needs '$key' for an MSI" }
     }
-    if ($Version -notmatch '^\d{1,3}\.\d{1,3}\.\d{1,5}$') { throw "MSI versions are major.minor.build (255.255.65535); '$Version' is not" }
+    Assert-PythonAppTextPattern -Text $Version -Pattern '^\d{1,3}\.\d{1,3}\.\d{1,5}$' -Message "MSI versions are major.minor.build (255.255.65535); '$Version' is not"
     $name = $App['name']
     # MSI cannot install below MAX_PATH; measured against the default install dir.
     $installRoot = "C:\Program Files\$name\"
@@ -724,8 +748,7 @@ $($files.ToString().TrimEnd())
   </Package>
 </Wix>
 "@
-    Set-Content -LiteralPath $Destination -Value $wxs -Encoding utf8NoBOM
-    return $Destination
+    return Save-PythonAppManifest -Destination $Destination -Text $wxs
 }
 
 function New-PythonAppAppxManifest {
@@ -745,9 +768,9 @@ function New-PythonAppAppxManifest {
         [ValidateSet('x64', 'arm64')][string]$Arch = 'x64'
     )
 
-    if ($Version -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}$') { throw "MSIX versions here are major.minor.build, with .0 appended; '$Version' is not" }
+    Assert-PythonAppTextPattern -Text $Version -Pattern '^\d{1,5}\.\d{1,5}\.\d{1,5}$' -Message "MSIX versions here are major.minor.build, with .0 appended; '$Version' is not"
     # The manifest's Publisher must equal the signing certificate's subject; a DN special character would need escaping in both.
-    if ($Publisher -notmatch '^CN=[A-Za-z0-9 ._-]+$') { throw "MSIX publisher '$Publisher' must be CN= plus letters, digits, space, '.', '_' or '-'" }
+    Assert-PythonAppTextPattern -Text $Publisher -Pattern '^CN=[A-Za-z0-9 ._-]+$' -Message "MSIX publisher '$Publisher' must be CN= plus letters, digits, space, '.', '_' or '-'"
     $identity = (@($App['publisher'], $App['name']) | ForEach-Object { $_ -replace '[^A-Za-z0-9]', '' }) -join '.'
     if ($identity.Length -lt 3 -or $identity.Length -gt 50) { throw "MSIX identity '$identity' must be 3 to 50 characters" }
     $name = $App['name']
@@ -805,8 +828,7 @@ $(($apps -join "`n").TrimEnd())
   </Capabilities>
 </Package>
 "@
-    Set-Content -LiteralPath $Destination -Value $manifest -Encoding utf8NoBOM
-    return $Destination
+    return Save-PythonAppManifest -Destination $Destination -Text $manifest
 }
 
 Export-ModuleMember -Function Get-PythonAppWheelFile, Initialize-PythonAppDirectory, New-PythonAppWorkDirectory, Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
