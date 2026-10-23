@@ -184,6 +184,17 @@ function Resolve-NinjaCommand {
     } finally { Pop-Location }
 }
 
+function Get-LlvmCompilerVersion {
+    param([Parameter(Mandatory)][string]$Compiler)
+    & $Compiler --version 2>$null | Select-Object -First 1
+}
+
+function Write-LlvmCompilerIdentity {
+    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$Compiler)
+    Write-Host ("{0}: {1}" -f $Label, $Compiler)
+    Write-Host ("           {0}" -f (Get-LlvmCompilerVersion -Compiler $Compiler))
+}
+
 # Capture
 function Invoke-Capture {
     if (-not (Test-Path (Join-Path $OpenCvBuildDir 'build.ninja'))) {
@@ -241,7 +252,7 @@ function Invoke-Capture {
     $manifest = [pscustomobject]@{
         SchemaVersion  = 1
         Target         = $Target
-        CapturedWith   = (& $captureClang --version 2>$null | Select-Object -First 1)
+        CapturedWith   = (Get-LlvmCompilerVersion -Compiler $captureClang)
         OpenCvBuildDir = $OpenCvBuildDir
         Cases          = $entries
     }
@@ -308,12 +319,10 @@ function Invoke-Run {
     }
 
     $baseline = Get-BaselineClangCl
-    Write-Host "baseline : $baseline"
-    Write-Host "           $((& $baseline --version 2>$null | Select-Object -First 1))"
+    Write-LlvmCompilerIdentity -Label 'baseline ' -Compiler $baseline
     if ($CandidateClangCl) {
         if (-not (Test-Path $CandidateClangCl)) { throw "-CandidateClangCl not found: $CandidateClangCl" }
-        Write-Host "candidate: $CandidateClangCl"
-        Write-Host "           $((& $CandidateClangCl --version 2>$null | Select-Object -First 1))"
+        Write-LlvmCompilerIdentity -Label candidate -Compiler $CandidateClangCl
     } else {
         Write-Host 'candidate: (none -- control arms only; this validates the corpus, it settles nothing)'
     }

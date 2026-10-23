@@ -2437,7 +2437,9 @@ raw-byte tar transport, log pipelines, benchmark rows and delta rendering. Calle
 keep fatal versus optional results, tar quoting, benchmark locale handling and
 cross-runtime file masks. `Resolve-PathFromRoot` and
 `ConvertTo-MsixSigningPassword` are exported by `WindowsScripts.Shared.psm1`;
-Python app wrappers retain their public names and signing callers retain their
+Build-log directories and Rust Cargo target directories use the same rooted-path
+resolver; external absolute paths stay external. Python app wrappers retain their
+public names and signing callers retain their
 empty or whitespace password policies. WasmOpt uses the shared SHA256 assertion;
 a mismatch still deletes the archive and fails before extraction.
 
@@ -2451,7 +2453,14 @@ and fatal or advisory policy. `Test-HostSetup.ps1` also carries
 host check; the shared subnet API keeps throwing by default. ONNX replay literal
 counters now count all case-insensitive occurrences instead of always returning
 zero; regex counters and classifier precedence retain their separate policies.
-LLVM diagnostic modes share command parsing while keeping each mode's arguments.
+LLVM diagnostic modes share command parsing and first-line compiler identity
+capture while keeping each mode's arguments, exact label spacing, suppressed stderr
+and native exit status.
+
+ROCm suites use the harness source reader for repository and rooted mutation
+inputs. `Invoke-InTestScriptDir` parses before allocating a workspace, supplies the
+absolute script path and cleans up when the body fails; reading never executes the
+inspected source. Its fixtures cover malformed input and callback failure.
 
 The harness also owns scoped fake-function restoration and recorded call state.
 `Invoke-WithFunctionModule -ScriptPath` loads selected functions without running

@@ -35,12 +35,6 @@ function Get-TorchRocmBuiltWheelFact {
     }
 }
 
-# Repo-relative, or rooted as given (a mutation run points the two paths above at mutant copies).
-function Resolve-TorchRocmSuitePath {
-    param([Parameter(Mandatory)][string]$Path)
-    if ([System.IO.Path]::IsPathRooted($Path)) { return $Path }
-    return (Join-Path (Get-RepoRoot) $Path)
-}
 
 function Get-TorchRocmTestPin {
     # versions.env as the build sees it (a fresh copy per call, so a case may mutate it).
@@ -164,8 +158,7 @@ Describe 'Install-TorchRocm: lane gate (cpu and nvidia unchanged)' {
     }
 
     It 'the script is a no-op with TORCH_ROCM=0, before it imports or touches anything' {
-        Invoke-InTestDir { param($dir)
-            $script = Resolve-TorchRocmSuitePath $script:TorchRocmScript
+        Invoke-InTestScriptDir -ScriptPath $script:TorchRocmScript -Body { param($dir, $script)
             $cache = Join-Path $dir 'cache'
             $out = Invoke-WithEnv @{ GPU_TYPE = 'nvidia'; TORCH_ROCM = $null } {
                 & pwsh -NoProfile -NonInteractive -File $script -TorchRocm '0' -AppDir (Join-Path $dir 'no-app') -WheelCache $cache 2>&1 | Out-String
@@ -600,7 +593,7 @@ Describe 'rocm-checks\Torch.ps1: findings' {
 
     It 'the whole script reports a missing app venv as one finding instead of passing' {
         Invoke-InTestDir { param($dir)
-            $check = Resolve-TorchRocmSuitePath $script:TorchRocmCheck
+            $check = (Get-TestScriptAst -ScriptPath $script:TorchRocmCheck).Extent.File
             $out = @(Invoke-WithEnv @{ TORCH_APP_DIR = $dir; ROCM_WINDOWS_RELEASE = '10.0.0' } { & $check 6>$null })
             Assert-Equal 1 $out.Count "findings: $($out -join ' / ')"
             Assert-Match '^Torch: app venv python not found at ' $out[0] 'missing venv finding'
@@ -614,7 +607,7 @@ Describe 'rocm-checks\Torch.ps1: findings' {
         Assert-False ($src -match 'onnxruntime_ep_webgpu|register_execution_provider_library') 'no prebuilt plugin EP (the chain ORT carries WebGPU; rocm-checks\OrtWebGpu.ps1 checks it)'
         Assert-Match '"dml"\] = "DmlExecutionProvider" in ort\.get_available_providers\(\)' $src 'the chain wheel''s DML EP is read'
         Assert-Match 'ctypes\.WinDLL\(path\), "LiteRtAcceleratorImpl"' $src 'accelerator loaded and its entry export resolved'
-        $ast = (Get-TestScriptAst -ScriptPath (Resolve-TorchRocmSuitePath $script:TorchRocmCheck))
+        $ast = (Get-TestScriptAst -ScriptPath $script:TorchRocmCheck)
         Assert-Null $ast.ParamBlock 'rocm-checks scripts take no parameters (Test-RocmImage.ps1 runs them bare)'
     }
 }
@@ -657,7 +650,7 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
         [void][System.IO.Directory]::CreateDirectory((Join-Path $app '.venv\Scripts'))
         [System.IO.File]::WriteAllBytes((Join-Path $app '.venv\Scripts\python.exe'), [byte[]]@())
         $fake = Join-Path $Dir 'FakeCheck.ps1'
-        $real = Resolve-TorchRocmSuitePath $script:TorchRocmCheck
+        $real = (Get-TestScriptAst -ScriptPath $script:TorchRocmCheck).Extent.File
         [System.IO.File]::WriteAllLines($fake, [string[]]@(". '$real'", "function Get-TorchRocmVenvReport { param(`$Python) @{ venv = $Venv } }",
                 "if (`$MyInvocation.InvocationName -eq '.') { return }", "'Torch: the fake check ran as a check'"))
         $pins = Get-TorchRocmTestPin
@@ -666,7 +659,7 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
             HTTPS_PROXY = 'http://127.0.0.1:9'; HTTP_PROXY = 'http://127.0.0.1:9'; NO_PROXY = $null }
         foreach ($k in @($pins.Keys | Where-Object { $_ -like 'TORCH_ROCM_WINDOWS_*' -or $_ -eq 'ROCM_WINDOWS_RELEASE' })) { $vars[$k] = $pins[$k] }
         foreach ($k in $Env.Keys) { $vars[$k] = $Env[$k] }
-        $installer = Resolve-TorchRocmSuitePath $script:TorchRocmScript
+        $installer = (Get-TestScriptAst -ScriptPath $script:TorchRocmScript).Extent.File
         $out = Invoke-WithEnv $vars {
             & pwsh -NoProfile -NonInteractive -File $installer -TorchRocm 1 -AppDir $app -WheelDir $WheelDir -WheelCache (Join-Path $Dir 'cache') -CheckScript $fake 2>&1 | Out-String
         }
@@ -712,7 +705,7 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
 
     It 'dot-sourcing the check defines the runner and runs no check' {
         Invoke-InTestDir { param($dir)
-            $check = Resolve-TorchRocmSuitePath $script:TorchRocmCheck
+            $check = (Get-TestScriptAst -ScriptPath $script:TorchRocmCheck).Extent.File
             $cmd = ". '$check'; if (Get-Command Get-TorchRocmVenvReport -ErrorAction SilentlyContinue) { 'RUNNER' }"
             $out = @(Invoke-WithEnv @{ TORCH_APP_DIR = $dir } { & pwsh -NoProfile -NonInteractive -Command $cmd 2>&1 })
             Assert-Equal 'RUNNER' ($out -join ' | ') 'dot-source output (a finding here means the check ran)'
@@ -866,7 +859,7 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
         $run = $run[0]
         Assert-True $run.Contains('source=windows/scripts/build/Install-TorchRocm.ps1,target=C:\bkmnt\Install-TorchRocm.ps1') 'installer mount'
         Assert-True $run.Contains('source=windows/scripts/build/rocm-checks/Torch.ps1,target=C:\bkmnt\rocm-checks\Torch.ps1') 'check mount (the installer''s default -CheckScript)'
-        $scriptText = [System.IO.File]::ReadAllText((Resolve-TorchRocmSuitePath $script:TorchRocmScript))
+        $scriptText = (Get-TestScriptAst -ScriptPath $script:TorchRocmScript).Extent.Text
         $modules = @([regex]::Matches($scriptText, "'(Windows[A-Za-z0-9._]+)\.psm1'") | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
         Assert-True ($modules.Count -ge 2) "module scan found: $($modules -join ',')"
         foreach ($m in $modules) {

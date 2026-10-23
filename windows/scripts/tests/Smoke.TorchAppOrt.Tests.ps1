@@ -6,14 +6,8 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.C
 
 # Smoke section 21: the app venv's onnxruntime carries DirectML and is the chain wheel on every amd64 lane.
 
-# Rooted = as given, so a mutation run can point this at a broken copy of the smoke script.
 $script:SmokeScript = 'windows\scripts\build\Test-Container.ps1'
 
-function Resolve-SmokeOrtSuitePath {
-    param([Parameter(Mandatory)][string]$Path)
-    if ([System.IO.Path]::IsPathRooted($Path)) { return $Path }
-    return (Join-Path (Get-RepoRoot) $Path)
-}
 
 $script:VenvSite = 'C:\opt\OrchestrANT\.venv\Lib\site-packages'
 $script:ChainWheel = [pscustomobject]@{
@@ -42,7 +36,7 @@ function New-VenvOrtReport {
 }
 
 Describe 'Smoke §21: the chain wheel the venv is compared against' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-SmokeOrtSuitePath $script:SmokeScript) -FunctionName 'Resolve-ChainOrtWheel')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Resolve-ChainOrtWheel')
 
     It 'resolves the one onnxruntime-*.whl and ignores the genai/tvm wheels beside it' {
         Invoke-InTestDir { param($dir)
@@ -73,7 +67,7 @@ Describe 'Smoke §21: the chain wheel the venv is compared against' {
 }
 
 Describe 'Smoke §21: venv DirectML findings' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-SmokeOrtSuitePath $script:SmokeScript) -FunctionName 'Get-TorchAppOrtFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtFinding')
 
     It 'passes a healthy venv' {
         Assert-Equal 0 @(Get-TorchAppOrtFinding -Report (New-VenvOrtReport) -Aspect Dml).Count 'healthy'
@@ -120,7 +114,7 @@ Describe 'Smoke §21: venv DirectML findings' {
 }
 
 Describe 'Smoke §21: venv chain-wheel provenance findings' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-SmokeOrtSuitePath $script:SmokeScript) -FunctionName 'Get-TorchAppOrtFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtFinding')
     $prov = { param($Report, $Wheel = $script:ChainWheel, $Site = $script:VenvSite)
         @(Get-TorchAppOrtFinding -Report $Report -Aspect Provenance -Wheel $Wheel -VenvSitePackages $Site) }
 
@@ -172,7 +166,7 @@ Describe 'Smoke §21: venv chain-wheel provenance findings' {
 }
 
 Describe 'Smoke §21: the probe runner' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-SmokeOrtSuitePath $script:SmokeScript) -FunctionName 'Get-TorchAppOrtProbeSource', 'Invoke-TorchAppOrtProbe')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtProbeSource', 'Invoke-TorchAppOrtProbe')
     # The fake records its argv, keeps a copy of the probe, prints out.txt and exits with rc.txt.
     $newFakePython = { param([string]$Dir, [string]$Out, [int]$Rc)
         Set-Content -LiteralPath (Join-Path $Dir 'python.cmd') -Encoding ASCII -Value @(
@@ -230,9 +224,8 @@ Describe 'Smoke §21: the probe runner' {
 }
 
 Describe 'Smoke §21: wiring in Test-Container.ps1' {
-    $path = Resolve-SmokeOrtSuitePath $script:SmokeScript
-    $text = [System.IO.File]::ReadAllText($path)
-    $ast = (Get-TestScriptAst -ScriptPath $path)
+    $ast = Get-TestScriptAst -ScriptPath $script:SmokeScript
+    $text = $ast.Extent.Text
     # The branch that runs once the venv and its verifier exist; every statement in it is unconditional.
     $venvBranch = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and
                 "$($n.Clauses[0].Item1.Extent.Text)" -match '^\$torchAppDir -and \(Test-Path \$torchAppDir\) -and \$torchAppScript$' }, $true))

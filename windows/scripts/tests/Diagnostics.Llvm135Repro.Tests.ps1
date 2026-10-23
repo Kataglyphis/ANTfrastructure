@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# A workaround spelling left in the flags reports a compiler fix that does not exist, so stripping is pinned on a real command line.
+# Fixtures pin command selection and diagnostic output; they do not establish compiler layout behavior.
 
 # Never -Force: it resets the harness result count; probe a harness-only command, since Pester also exports Describe.
 if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue)) {
@@ -20,6 +20,37 @@ $Target = $script:Target
 $script:RealCommand = 'C:\Users\ContainerAdministrator\.cargo\bin\sccache.exe C:\Users\ContainerAdministrator\scoop\apps\llvm\current\bin\clang-cl.exe --target=aarch64-pc-windows-msvc  /nologo -TP -DCVAPI_EXPORTS -DHAVE_STDARG_H=1 -DVK_NO_PROTOTYPES -D_USE_MATH_DEFINES -D_VARIADIC_MAX=10 -D_WIN32_WINNT=0x0601 -D__OPENCV_BUILD=1 -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS -IC:\temp\opencv-src\opencv\3rdparty\dlpack\include -IC:\temp\opencv-src\opencv\3rdparty\include -IC:\temp\opencv-src\opencv\modules\imgproc\include -IC:\temp\opencv-src\build\modules\imgproc -IC:\temp\opencv-src\opencv\modules\core\include -IC:\temp\opencv-src\opencv\modules\flann\include -IC:\temp\opencv-src\opencv\modules\geometry\include -IC:\temp\opencv-src\opencv\3rdparty\zlib -IC:\temp\opencv-src\build\3rdparty\zlib -imsvcC:\temp\opencv-src\build /FIcstring -Wno-unused-parameter -Wno-documentation-unknown-command -Wno-deprecated-copy -Wno-undef -Wno-missing-field-initializers --target=aarch64-pc-windows-msvc /D_USE_MATH_DEFINES -mllvm -aarch64-enable-compress-jump-tables=false  /D _CRT_SECURE_NO_DEPRECATE /D _CRT_NONSTDC_NO_DEPRECATE /D _SCL_SECURE_NO_WARNINGS /Gy /bigobj /D _ARM64_DISTINCT_NEON_TYPES /Oi  /fp:precise -W -Wreturn-type -Wnon-virtual-dtor -Waddress -Wsequence-point -Wformat -Wformat-security -Wmissing-declarations -Wmissing-prototypes -Wstrict-prototypes -Wundef -Winit-self -Wpointer-arith -Wshadow -Wsign-promo -Wuninitialized -Winconsistent-missing-override -Wno-delete-non-virtual-dtor -Wno-unnamed-type-template-args -Wno-comment -Wno-deprecated-enum-enum-conversion -Wno-deprecated-anon-enum-enum-conversion -Qunused-arguments /FS  /EHa /wd4127 /wd4251 /wd4324 /wd4275 /wd4512 /wd4589 /wd4819  /O2 /Ob2 /DNDEBUG  -DNDEBUG -std:c++17 -MD -clang:-MD -clang:-MTmodules\imgproc\CMakeFiles\opencv_imgproc.dir\src\median_blur.dispatch.cpp.obj -clang:-MFmodules\imgproc\CMakeFiles\opencv_imgproc.dir\src\median_blur.dispatch.cpp.obj.d /Fomodules\imgproc\CMakeFiles\opencv_imgproc.dir\src\median_blur.dispatch.cpp.obj /Fdlib\opencv_imgproc500.pdb -c -- C:\temp\opencv-src\opencv\modules\imgproc\src\median_blur.dispatch.cpp'
 
 $script:Flags = @(Get-CodegenFlags -Tokens (Split-CommandLine -Line $script:RealCommand))
+
+Describe 'LLVM compiler identity evidence' {
+    It 'keeps the first version line, argv, exit status and exact identity spacing' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'argv.log'
+            $compiler = New-TestBatchTool -Directory $dir -Name 'compiler identity.cmd' -ExitCode 17 -Line @(
+                ('>> "' + $log + '" echo %*'), 'echo version one', 'echo version two', 'echo hidden stderr 1>&2')
+            $state = [pscustomobject]@{ Compiler = $compiler; Log = $log }
+            Invoke-WithFunctionModule -ScriptPath 'windows/scripts/diagnostics/Invoke-LlvmAarch64Layout.ps1' `
+                -FunctionName Get-LlvmCompilerVersion, Write-LlvmCompilerIdentity -FixtureState $state -Body { param($state)
+                    $original = & $state.Compiler --version 2>$null | Select-Object -First 1
+                    $originalCode = $LASTEXITCODE
+                    Assert-Equal $original (Get-MutLlvmCompilerVersion -Compiler $state.Compiler)
+                    $owner = (Get-Command Get-MutLlvmCompilerVersion).Module
+                    Assert-Equal $originalCode (& $owner { $LASTEXITCODE })
+                    $lines = @(Write-MutLlvmCompilerIdentity -Label 'baseline ' -Compiler $state.Compiler 6>&1 | ForEach-Object { "$_" })
+                    Assert-Equal ("baseline : $($state.Compiler)|           version one") ($lines -join '|')
+                    Assert-Equal '--version|--version|--version' ((Get-Content -LiteralPath $state.Log) -join '|')
+                }
+        }
+    }
+
+    It 'rejects additional version lines leaking into captured evidence' {
+        Invoke-WithTestNativeCommand -Name Invoke-LlvmVersionFixture -FixtureState (New-TestCallState) -Implementation { 'first'; 'second' } -Body {
+            Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/diagnostics/Invoke-LlvmAarch64Layout.ps1' -FunctionName Get-LlvmCompilerVersion `
+                -Find '| Select-Object -First 1' -Replace '' -Expected 'one compiler identity line' -Body {
+                    Assert-Equal 1 @(Get-MutLlvmCompilerVersion -Compiler Invoke-LlvmVersionFixture).Count 'one compiler identity line'
+                }
+        }
+    }
+}
 
 Describe 'llvm135 repro harness: tokenizing the real ninja command' {
 

@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — continue Windows source and workspace cleanup
+
+- Remove three private ROCm suite path resolvers in favor of the shared source reader and isolated script workspace.
+- Share build-log and Cargo target resolution while preserving external absolute paths and relative workspace roots.
+- Share LLVM compiler identity capture across capture, baseline and candidate modes; pin real command arguments, output and status.
+- Add workspace cleanup, malformed-source and path regressions; remove another resolved duplication exception without relaxing the gate.
+- Raise the Windows discovery minimum to 2,318 for the expanded regression set.
+
 ## 2026-10-23 — share Linux artifact collection and probe execution
 
 - Share WASM artifact collection and IREE Android runtime options while retaining caller build and argument policies.

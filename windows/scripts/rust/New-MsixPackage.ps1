@@ -152,11 +152,7 @@ try {
     $Version = ConvertTo-NormalizedVersion $Version
     
     # Join-Path with an absolute second argument yields C:\ws\D:\cache, which cargo creates literally.
-    $resolvedCargoTargetDir = if ([System.IO.Path]::IsPathRooted($CargoTargetDir)) {
-        $CargoTargetDir
-    } else {
-        Join-Path $Workspace $CargoTargetDir
-    }
+    $resolvedCargoTargetDir = Resolve-PathFromRoot -Root $Workspace -Path $CargoTargetDir
     $env:CARGO_TARGET_DIR = $resolvedCargoTargetDir
     $env:CARGO_INCREMENTAL = "0"
     

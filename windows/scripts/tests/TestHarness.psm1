@@ -132,6 +132,15 @@ function Write-TestFileTree {
     }
 }
 
+function Invoke-InTestScriptDir {
+    param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][scriptblock]$Body)
+    $source = Get-TestScriptAst -ScriptPath $ScriptPath
+    $callback = $Body
+    Invoke-InTestDir -Body { param($dir) & $callback $dir $source.Extent.File }.GetNewClosure()
+}
+
+Export-ModuleMember -Function Invoke-InTestScriptDir
+
 Export-ModuleMember -Function Write-TestFileTree
 
 function New-TestBatchTool {

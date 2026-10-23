@@ -90,6 +90,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows compiler-wrapper setup and removal share the canonical variable list; emptying an environment variable and removing it remain distinct.
    Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
+   Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.

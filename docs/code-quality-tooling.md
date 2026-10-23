@@ -3277,6 +3277,9 @@ fixtures share batch tools, child imports, literal checks and mutation lifetime.
 Cold and warm visibility cases also check required companion failures. The
 [shared behavior reference](windows-builds.md#shared-windows-behavior) records
 caller differences and coverage limits; independent test expectations remain local.
+ROCm suites also share source reading and script workspace lifetime. Build logging
+and Rust packaging use the existing rooted-path resolver. Compiler identity
+fixtures use a real batch command to pin first-line output, stderr, argv and status.
 
 ### Workflow fixture builders
 

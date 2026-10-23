@@ -53,6 +53,28 @@ Describe 'AST ancestry and command wiring' {
 }
 
 Describe 'Get-TestScriptAst' {
+    It 'prepares an isolated script workspace without executing source and cleans up after failure' {
+        Invoke-InTestDir -Files @{ 'program.ps1' = "throw 'source must not execute'" } -Body { param($root)
+            $state = [pscustomobject]@{ Path = '' }
+            Assert-Throws {
+                Invoke-InTestScriptDir -ScriptPath (Join-Path $root program.ps1) -Body { param($dir, $path)
+                    $state.Path = $dir
+                    Assert-Equal (Join-Path $root program.ps1) $path
+                    Assert-True (Test-Path -LiteralPath $dir -PathType Container)
+                    throw 'workspace fixture failure'
+                }
+            } -MessagePattern '^workspace fixture failure$'
+            Assert-False (Test-Path -LiteralPath $state.Path)
+        }
+    }
+
+    It 'rejects malformed script input before entering its workspace body' {
+        Invoke-InTestDir -Files @{ 'broken.ps1' = 'function Get-Broken {' } -Body { param($root)
+            Assert-Throws {
+                Invoke-InTestScriptDir -ScriptPath (Join-Path $root broken.ps1) -Body { throw 'workspace body must not run' }
+            } -MessagePattern 'parse errors'
+        }
+    }
     It 'parses declarations without executing the script' {
         Invoke-InTestDir { param($dir)
             $path = Join-Path $dir 'declarations.ps1'

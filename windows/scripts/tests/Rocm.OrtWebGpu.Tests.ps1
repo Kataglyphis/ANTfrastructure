@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
+Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsScripts.Shared.psm1') -DisableNameChecking
+
 # The rocm-lane WebGPU EP spike offline: plan, pins, fetch chain, Dawn patch and gates; no real build or GPU.
 
 $script:OrtBuildScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
@@ -17,8 +19,6 @@ $script:OrtDawnRow = 'dawn;https://github.com/google/dawn/archive/refs/tags/v202
 # Dawn v20260916.214021 third_party/CMakeLists.txt, the block Invoke-DawnPrebuiltDxcPatch rewrites (verbatim).
 $script:DawnDxcBlock = "if (DAWN_USE_BUILT_DXC)`n    AddSubdirectoryDXC()`nendif()`n`nif (TINT_BUILD_MESA)`n"
 
-# Repo-relative, or rooted as given (a mutation run points the paths above at mutant copies).
-function Resolve-OrtWebGpuSuitePath([string]$Path) { if ([System.IO.Path]::IsPathRooted($Path)) { $Path } else { Join-Path (Get-RepoRoot) $Path } }
 
 # versions.env as the build sees it, a fresh copy per call (Get-OrtWebGpuPin reads only its own keys).
 function Get-OrtWebGpuTestPin { ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env') }
@@ -43,7 +43,7 @@ function Get-OrtWebGpuTestPython {
 }
 
 Describe 'Build-OnnxFromSource WebGPU: plan and pins (cpu/nvidia never enter the spike)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtBuildScript) -FunctionName $script:OrtWebGpuBuildFunction)
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
 
     It 'only the native rocm lane with ORT_WEBGPU=1 builds the EP; 0 or empty is the plain rocm ORT' {
         $rocm = @{ HasRocm = $true; GpuType = 'rocm' }
@@ -98,7 +98,7 @@ Describe 'Build-OnnxFromSource WebGPU: plan and pins (cpu/nvidia never enter the
 }
 
 Describe 'Build-OnnxFromSource WebGPU: ORT''s patch list, Dawn DEPS and the dependency fetch' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtBuildScript) -FunctionName $script:OrtWebGpuBuildFunction)
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
 
     It 'reads ORT''s Dawn patches in PATCH_COMMAND order, and refuses a moved block' {
         $text = "set(X`n  `${Patch_EXECUTABLE} -p1 < `${PROJECT_SOURCE_DIR}/patches/dawn/b_first.patch &&`n" +
@@ -149,7 +149,7 @@ Describe 'Build-OnnxFromSource WebGPU: ORT''s patch list, Dawn DEPS and the depe
 }
 
 Describe 'Build-OnnxFromSource WebGPU: archives and the Dawn DXC patch' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtBuildScript) -FunctionName $script:OrtWebGpuBuildFunction)
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
 
     It 'DXC: the five members come out of a backslash-named zip, dxil.dll stays in it, and a missing one refuses' {
         Invoke-InTestDir { param($dir)
@@ -207,7 +207,7 @@ Describe 'Build-OnnxFromSource WebGPU: archives and the Dawn DXC patch' {
 }
 
 Describe 'Build-OnnxFromSource WebGPU: the whole input chain, offline (downloads and git faked, patch.exe and Python real)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtBuildScript) -FunctionName $script:OrtWebGpuBuildFunction)
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
     # The two network steps, faked AFTER the lift so these definitions win: a URL -> local file map, verified like the real one.
     function Invoke-DownloadWithRetry { param($Url, $DestinationPath, $ExpectedSha256, $ExpectSignature, $Description)
         if (-not $script:OrtFakeDownload.ContainsKey($Url)) { throw "unexpected download: $Url" }
@@ -275,7 +275,7 @@ Describe 'Build-OnnxFromSource WebGPU: the whole input chain, offline (downloads
 }
 
 Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates, marker, wiring' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtBuildScript) -FunctionName $script:OrtWebGpuBuildFunction)
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtBuildScript -FunctionName $script:OrtWebGpuBuildFunction)
 
     It 'off the spike the configure line gains nothing; on it, the five switches with forward slashes' {
         Assert-Equal 0 @(Get-OrtWebGpuCmakeArgs -Plan ([pscustomobject]@{ OnLane = $true; WebGpu = $false })).Count 'rocm, spike off'
@@ -404,7 +404,7 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
     }
 
     It 'wiring: the spike args are appended only inside the spike branch, gated after configure and install, marker on the rocm lane only' {
-        $src = [System.IO.File]::ReadAllText((Resolve-OrtWebGpuSuitePath $script:OrtBuildScript))
+        $src = (Get-TestScriptAst -ScriptPath $script:OrtBuildScript).Extent.Text
         Assert-Match '\$webgpuPlan = Get-OrtWebGpuPlan -GpuEnv \$gpuEnv -Cross \$onnxCross -SpikeFlag "\$env:ORT_WEBGPU"' $src 'the plan reads the driver''s ORT_WEBGPU'
         Assert-Match '(?s)if \(\$webgpuPlan\.WebGpu\) \{\s+Switch-BuildPhase [^\n]+\s+\$webgpu = Initialize-OrtWebGpuInput [^\n]+\s+\$cmakeArgs \+= Get-OrtWebGpuCmakeArgs' $src 'args only in the spike branch'
         Assert-Equal 1 ([regex]::Matches($src, '\$cmakeArgs \+= ')).Count 'no other append to the ORT configure line'
@@ -421,7 +421,7 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
 }
 
 Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC DLLs and each interpreter' {
-    . (Get-ScriptFunctionDefinition -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtWebGpuCheck) -FunctionName 'Read-OrtWebGpuMarker', 'Get-OrtWebGpuDxcKey',
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtWebGpuCheck -FunctionName 'Read-OrtWebGpuMarker', 'Get-OrtWebGpuDxcKey',
         'Get-OrtWebGpuRetiredDxcDll', 'Get-OrtWebGpuMarkerFinding', 'Test-OrtWebGpuOutcome', 'Get-OrtWebGpuProbeSource', 'Get-OrtWebGpuInterpreterFinding')
     # A spike-on ORT root: bin\ with dxcompiler.dll and the licence, and the marker naming its hash.
     function New-OrtWebGpuTestRoot([string]$Dir, [string]$Mode = '1') {
@@ -529,13 +529,12 @@ Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC DLLs and each inter
         Assert-True ($src.IndexOf('"dxcompiler.dll", "dxil.dll"') -gt $src.IndexOf('og.Model(og.Config(model_dir))')) 'DXC loads last, dxcompiler first (the one Dawn loads; dxil.dll only to catch a leftover)'
         Assert-Match '"provider_options": \[\{"webgpu": \{\}\}\]' $src 'GenAI asks for its webgpu provider'
         Assert-False ($src -match 'ALLOW_SOFTWARE|forceFallback|dawnBackendType|register_execution_provider_library') 'no adapter forcing, no plugin EP'
-        $ast = (Get-TestScriptAst -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtWebGpuCheck))
+        $ast = (Get-TestScriptAst -ScriptPath $script:OrtWebGpuCheck)
         Assert-Null $ast.ParamBlock 'rocm-checks scripts take no parameters (Test-RocmImage.ps1 runs them bare)'
     }
 
     It 'the whole script: no marker is one finding, a stale spike mode stops before any probe, a gradable one probes base AND venv' {
-        Invoke-InTestDir { param($dir)
-            $check = Resolve-OrtWebGpuSuitePath $script:OrtWebGpuCheck
+        Invoke-InTestScriptDir -ScriptPath $script:OrtWebGpuCheck -Body { param($dir, $check)
             $shim = Join-Path $dir 'shim'
             $run = { @(Invoke-WithEnv @{ ONNX_ROOT = $dir; EXPECT_ROCM_SPIKES = '1'; TORCH_APP_DIR = $dir; PATH = "$shim;$env:SystemRoot\System32" } { & $check 6>$null }) }
             $out = @(& $run)
@@ -560,7 +559,7 @@ Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC DLLs and each inter
 
 Describe 'deps.json: what the WebGPU spike ships beside and inside the chain ORT' {
     It 'names the DXC compiler and Dawn/Tint in Windows rows with an spdx id, versioned by the ORT_WEBGPU_WINDOWS_* pins' {
-        $doc = [System.IO.File]::ReadAllText((Resolve-OrtWebGpuSuitePath $script:OrtWebGpuDepsJson)) | ConvertFrom-Json -AsHashtable
+        $doc = [System.IO.File]::ReadAllText((Resolve-PathFromRoot -Path $script:OrtWebGpuDepsJson -Root (Get-RepoRoot))) | ConvertFrom-Json -AsHashtable
         $byVar = @{}
         foreach ($sub in @($doc['sections'] | Where-Object { $_['title'] -eq 'Windows Image' } | ForEach-Object { $_['subsections'] })) {
             foreach ($e in @($sub['entries'] | Where-Object { $_['spdx'] -and $_['var'] })) {

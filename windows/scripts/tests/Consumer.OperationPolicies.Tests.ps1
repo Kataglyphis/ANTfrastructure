@@ -18,6 +18,29 @@ function Invoke-ConsumerBuildFixture {
     }
 }
 
+Describe 'Shared build log and Rust package paths' {
+    It 'anchors relative paths at the workspace and preserves external absolute paths' {
+        Import-Module (Join-Path $consumerModuleDir 'WindowsScripts.Shared.psm1') -DisableNameChecking
+        $ast = Get-TestScriptAst -ScriptPath 'windows/scripts/rust/New-MsixPackage.ps1'
+        $assignment = @($ast.FindAll({ param($node)
+            $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq '$resolvedCargoTargetDir'
+        }, $true))
+        Assert-Equal 1 $assignment.Count 'one Cargo target assignment'
+        $resolve = [scriptblock]::Create('param($Workspace, $CargoTargetDir); ' + $assignment[0].Extent.Text + '; $resolvedCargoTargetDir')
+        Invoke-InTestDir { param($dir)
+            $workspace = Join-Path $dir workspace
+            foreach ($case in @(
+                @{ Input = 'relative tree'; Expected = (Join-Path $workspace 'relative tree') }
+                @{ Input = (Join-Path $dir 'external tree'); Expected = (Join-Path $dir 'external tree') }
+            )) {
+                Assert-Equal $case.Expected (& $resolve $workspace $case.Input)
+                $context = New-BuildContext -Workspace $workspace -LogDir $case.Input
+                Assert-Equal $case.Expected ([IO.Path]::GetDirectoryName($context.LogPath))
+            }
+        }
+    }
+}
+
 function Invoke-ConsumerProbeFixture {
     param([scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
     $prelude = @'
