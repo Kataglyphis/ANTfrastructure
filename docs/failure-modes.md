@@ -35,6 +35,7 @@ Two neighbours, so you land on the right page:
 - [LiteRT configure: `fatal: expected flush after ref listing`](#litert-configure-fatal-expected-flush-after-ref-listing)
 - [`logging.sh: line NNN: action: unbound variable` instead of the real error](#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error)
 - [A fault-injection test passes and proves nothing (`grep` is ugrep)](#a-fault-injection-test-passes-and-proves-nothing-grep-is-ugrep)
+- [Shared harness mutations fail with `xdg-open` on batch fixtures](#shared-harness-mutations-fail-with-xdg-open-on-batch-fixtures)
 - [`GENAI-BIND SKIP` reported green while the native binding is broken](#genai-bind-skip-reported-green-while-the-native-binding-is-broken)
 - [The documented `GENAI_ALLOW_RISCV64` back-out does not reach the smoke](#the-documented-genai_allow_riscv64-back-out-does-not-reach-the-smoke)
 - [An unresolved `NEEDED` in a library that nothing scans](#an-unresolved-needed-in-a-library-that-nothing-scans)
@@ -292,6 +293,22 @@ must say what it does not cover — is in
 [`cross-build-verification.md`](cross-build-verification.md#the-linuxscriptstests-suites),
 along with the second half of this same incident: with injection finally
 working, the obvious `rc == 1` assertion still passed on every mutation.
+
+### Shared harness mutations fail with `xdg-open` on batch fixtures
+
+**Symptom.** The three `lib.harness-lifted-*` mutations fail their unmodified
+baseline on Linux. `Harness.Fixtures.Tests.ps1` reports `xdg-open` errors for
+`.cmd` files and missing expected native output.
+
+**Cause.** Native batch execution cases were added to a shared harness suite
+that Linux mutation jobs also run. PowerShell on Linux cannot execute Windows
+batch files, so even an unmodified writer fails those execution assertions.
+
+**Fix.** The shared suite verifies complete ASCII/CRLF bytes, ordering and real
+writer mutations. All original native execution assertions remain unchanged in
+`Harness.BatchTools.Tests.ps1`, discovered by the Windows runner. The shared
+suite passes all 28 cases without skips; its three lifted-fixture mutations still
+fail as intended. These Linux proofs do not establish native batch execution.
 
 ### Extracted fixture helpers disappear only on the CI runner
 

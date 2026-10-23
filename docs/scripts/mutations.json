@@ -2376,10 +2376,10 @@
   "why": "a git hook carries no .sh suffix, so it is reachable only through the second half of the extractor's file list; dropping it takes the pre-commit hook's embedded Python out of the gate and every suite stays green"
  },
  {
-  "id": "python-lint.root-argument-is-the-tree",
-  "target": "linux/scripts/lint-python.sh",
-  "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
-  "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
+  "id": "lib.lint-scope-python-root",
+  "target": "linux/scripts/01-core/lint-root.sh",
+  "find": "_lsb_root=\"${LINT_ROOT_PATH}\"",
+  "replace": "_lsb_root=\"$1\"",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "the root is the only thing that puts a consumer's Python in front of ruff at all; ignoring it grades ANTfrastructure -- which is clean -- and reports OK for 65 files nobody linted"
  },
@@ -3168,10 +3168,10 @@
   "why": "the hook must be in the DEFAULT scope, which is the set the shellcheck-warnings ratchet asks for"
  },
  {
-  "id": "shellcheck.root-argument-is-the-tree",
-  "target": "linux/scripts/lint-shell.sh",
-  "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
-  "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
+  "id": "lib.lint-scope-shell-root",
+  "target": "linux/scripts/01-core/lint-root.sh",
+  "find": "_lsb_root=\"${LINT_ROOT_PATH}\"",
+  "replace": "_lsb_root=\"$1\"",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "a submodule checkout puts this script inside the consumer; ignoring the root grades ANTfrastructure and reports OK for a tree nobody looked at"
  },
@@ -3656,10 +3656,10 @@
   "why": "copy-media-payloads.sh was written and never invoked for months; a gate nothing calls is that defect again"
  },
  {
-  "id": "dockerfile-lint.root-argument-is-the-tree",
-  "target": "linux/scripts/lint-dockerfiles.sh",
-  "find": "SCAN_ROOT=\"${LINT_ROOT_PATH}\"",
-  "replace": "SCAN_ROOT=\"${REPO_ROOT}\"",
+  "id": "lib.lint-scope-dockerfile-root",
+  "target": "linux/scripts/01-core/lint-root.sh",
+  "find": "_lsb_root=\"${LINT_ROOT_PATH}\"",
+  "replace": "_lsb_root=\"$1\"",
   "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
   "why": "a submodule checkout puts this script inside the consumer; ignoring the root grades this repo's own 24 Dockerfiles -- which are clean -- and reports their verdict as the consumer's"
  },
@@ -19642,5 +19642,245 @@
   "replace": "  : \"$1\"",
   "test": "bash linux/scripts/tests/test-lint-gates.sh",
   "why": "consumer fixture files must be tracked before lint scope and shared-config declarations are judged"
+ },
+ {
+  "id": "lib.flatpak-install-fixture-overrides",
+  "target": "linux/scripts/tests/test-app-packaging-flatpak.sh",
+  "find": "  _call \"$@\" -- app_packaging_package_cmake_install_flatpak",
+  "replace": "  _call -- app_packaging_package_cmake_install_flatpak",
+  "test": "bash linux/scripts/tests/test-app-packaging-flatpak.sh",
+  "why": "Shared CMake-install Flatpak fixtures must forward each failing tool or missing-payload override, keeping committed-ref and executable verdicts independent."
+ },
+ {
+  "id": "lib.workflow-fixture-runner",
+  "target": "linux/scripts/tests/test-workflow-lint.sh",
+  "find": "\"$1\" \"${3:-}\"",
+  "replace": "\"ubuntu-24.04\" \"${3:-}\"",
+  "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+  "why": "Generated workflows must retain array runners and malformed flow collections so parser fixtures still exercise their stated inputs."
+ },
+ {
+  "id": "lib.workflow-fixture-job-count",
+  "target": "linux/scripts/tests/test-workflow-lint.sh",
+  "find": "  for job in \"$@\"; do",
+  "replace": "  for job in \"$1\"; do",
+  "test": "bash linux/scripts/tests/test-workflow-lint.sh",
+  "why": "A two-job fixture must preserve both missing-timeout findings before testing the census growth verdict."
+ },
+ {
+  "id": "lib.core-owner-host-default",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "  [ \"${a}\" = \"amd64\" ] && return 0",
+  "replace": "  [ \"${a}\" = \"arm64\" ] && return 0",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Only amd64 omits shared and host suffixes."
+ },
+ {
+  "id": "lib.core-owner-host-format",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "  printf -- \"${format}\" \"${a}\"",
+  "replace": "  printf -- '-%s' \"${a}\"",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Artifact host infixes retain their host marker distinct from base suffixes."
+ },
+ {
+  "id": "lib.core-owner-caller-frame",
+  "target": "linux/scripts/01-core/modules.sh",
+  "find": "${BASH_SOURCE[2]}",
+  "replace": "${BASH_SOURCE[1]}",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "The shared resolver must retain the actual caller path rather than its owning module path."
+ },
+ {
+  "id": "lib.core-owner-caller-override",
+  "target": "linux/scripts/01-core/modules.sh",
+  "find": "  _mcd_output=\"$2\"",
+  "replace": "  _mcd_output=\"\"",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Explicit script directory continues to take precedence over call-stack discovery."
+ },
+ {
+  "id": "lib.core-owner-disk-invalid-target",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  case \"${2:-}\" in ''|*[!0-9]*) return 1 ;; esac\n  local measured",
+  "replace": "  local measured",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Malformed targets must skip disk probes and reclaim decisions."
+ },
+ {
+  "id": "lib.core-owner-disk-unknown",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  [ -n \"${measured}\" ] || return 1",
+  "replace": "  [ -n \"${measured}\" ] || measured=0",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Unknown disk measurements must not initiate reclaim."
+ },
+ {
+  "id": "lib.core-owner-built-map",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "    _csmb_built_flag[\"${arch}\"]=1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Built state must reach the caller-owned map."
+ },
+ {
+  "id": "lib.core-owner-built-marker",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "    : > \"${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Parallel workers publish built-state markers for harvest."
+ },
+ {
+  "id": "lib.core-owner-pin-marker",
+  "target": "linux/scripts/01-core/cross-stage-build.sh",
+  "find": "      printf '%s' \"$3\" > \"${PARALLEL_LOOP_FLAGDIR}/pin.${stage}.${arch}\"",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-core-owner-behavior.sh",
+  "why": "Parallel capture preserves the digest pin file alongside its built marker."
+ },
+ {
+  "id": "lib.core-owner-disk-zero-disabled",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "  local status=0\n  command [ \"$1\" -gt 0 ] || status=$?\n  return \"${status}\"",
+  "replace": "  if [ \"$1\" -ge 0 ]; then return 0; else return $?; fi",
+  "test": "bash linux/scripts/tests/test-disk-threshold-policies.sh",
+  "why": "Zero disables positive disk policies before any probe or watcher."
+ },
+ {
+  "id": "lib.core-owner-disk-invalid-disabled",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "_disk_guard_positive_integer() {\n  case \"${1:-}\" in ''|*[!0-9]*) return 1 ;; esac",
+  "replace": "_disk_guard_positive_integer() {\n  case \"${1:-}\" in ''|*[!0-9]*) return 0 ;; esac",
+  "test": "bash linux/scripts/tests/test-disk-threshold-policies.sh",
+  "why": "Malformed thresholds must not trigger probes or watchers."
+ },
+ {
+  "id": "lib.workflow-query-interpreter",
+  "target": "linux/scripts/tests/workflow-lane-fixture.sh",
+  "find": "read -r -a _WORKFLOW_PYTHON <<< \"${4//$'\\n'/ }\"",
+  "replace": "_WORKFLOW_PYTHON=(python3)",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "The shared query driver preserves multiword interpreter selection rather than silently using a different Python."
+ },
+ {
+  "id": "lib.workflow-query-build-role",
+  "target": "linux/scripts/tests/workflow-lane-query.py",
+  "find": "build = V.value(jobs, sys.argv[2])",
+  "replace": "build = V.value(jobs, \"missing-build\")",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "Queries must inspect the lane-specific build job while the Linux plan remains separately selected."
+ },
+ {
+  "id": "lib.workflow-query-focus-role",
+  "target": "linux/scripts/tests/workflow-lane-query.py",
+  "find": "job = V.value(jobs, sys.argv[3])",
+  "replace": "job = None",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "The lint focus and Python build job remain independently selected in the shared metadata reader."
+ },
+ {
+  "id": "lib.workflow-query-run-blocks",
+  "target": "linux/scripts/tests/workflow-lane-query.py",
+  "find": "out.append(lines[i])",
+  "replace": "out.append(\"\")",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "Opaque run blocks must remain available to the existing environment and staged-device contract assertions."
+ },
+ {
+  "id": "lib.workflow-input-field-completeness",
+  "target": "linux/scripts/tests/workflow-lane-fixture.sh",
+  "find": "    shift 2",
+  "replace": "    shift \"$#\"",
+  "test": "python3 docs/scripts/verify_mutations.py --only windows-lane.powershell-lint-defaults-off --jobs 1",
+  "why": "A weak field loop must be caught by the existing default-off mutation rather than silently omitting later assertions."
+ },
+ {
+  "id": "lib.mutation-fixture-copy-listing",
+  "target": "linux/scripts/tests/test-mutation-gate.sh",
+  "find": "  _copied=\"$(cat \"${_tmp}/copied\")\"",
+  "replace": "  _copied=",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "Copy exclusion fixtures retain the real copied-file listing and its positive ordinary-file controls."
+ },
+ {
+  "id": "lib.mutation-fixture-copy-source-files",
+  "target": "linux/scripts/tests/test-mutation-gate.sh",
+  "find": "  printf '%s' \"$2\" > \"$path\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
+  "why": "A source preparer must plant both the excluded inputs and the ordinary file that proves the copy was real."
+ },
+ {
+  "id": "lib.mutation-fixture-exclusion-assertion",
+  "target": "linux/scripts/tests/test-mutation-gate.sh",
+  "find": "case \"${_copied}\" in *\"$needle\"*) found=1 ;; esac",
+  "replace": "case \"${_copied}\" in *\"$needle\"*) found=0 ;; esac",
+  "test": "python3 docs/scripts/verify_mutations.py --only mutations.ignored-not-copied --jobs 1",
+  "why": "Weakening the shared absence assertion must make the existing ignored-file mutation survive and fail the outer proof."
+ },
+ {
+  "id": "lib.cli-nonempty-arguments",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "[[ -n \"${_cna_value}\" ]] || continue",
+  "replace": ": \"${_cna_value}\"",
+  "test": "bash linux/scripts/tests/test-quality-cli-arguments.sh",
+  "why": "quality and coverage argv skip empty configured elements without changing their arrays"
+ },
+ {
+  "id": "lib.cli-prefixed-arguments",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "_cna_args+=(\"${_cna_prefix}\")",
+  "replace": ": \"${_cna_prefix}\"",
+  "test": "bash linux/scripts/tests/test-quality-cli-arguments.sh",
+  "why": "each nonempty coverage exclusion retains its own --exclude flag before all extra arguments"
+ },
+ {
+  "id": "lib.quality-cli-companion-required",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": " || { unset _CODE_QUALITY_SH_LOADED; return 1; }",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-quality-cli-companions.sh",
+  "why": "a copied quality library missing its CLI companion fails cold import and can retry after restoration"
+ },
+ {
+  "id": "lib.coverage-cli-companion-required",
+  "target": "linux/scripts/lib/coverage.sh",
+  "find": " || { unset _COVERAGE_SH_LOADED; return 1; }",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-quality-cli-companions.sh",
+  "why": "a copied coverage library missing its CLI companion fails cold import and can retry after restoration"
+ },
+ {
+  "id": "lib.lint-scope-preserves-rest",
+  "target": "linux/scripts/01-core/lint-root.sh",
+  "find": "  lint_root_begin \"$@\" || return 1",
+  "replace": "  lint_root_begin \"$1\" || return 1",
+  "test": "bash linux/scripts/tests/test-lint-scope-handshake.sh",
+  "why": "scope publication consumes only root options and preserves every other argument in order"
+ },
+ {
+  "id": "shellcheck.fatal-replay-arguments",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "\"${SHELLCHECK_BIN}\" \"$@\" \"${f}\" 2>&1 | sed",
+  "replace": "\"${SHELLCHECK_BIN}\" \"${f}\" 2>&1 | sed",
+  "test": "bash linux/scripts/tests/test-lint-shell-verdicts.sh",
+  "why": "fatal diagnostic replays retain the error or SC2215 flag policy and quoted file path"
+ },
+ {
+  "id": "shellcheck.fatal-report-exit",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": "    done\n    exit 1\n  fi\n}\n\n# The gate:",
+  "replace": "    done\n    exit 0\n  fi\n}\n\n# The gate:",
+  "test": "bash linux/scripts/tests/test-lint-shell-verdicts.sh",
+  "why": "error and SC2215 findings remain fatal even when diagnostic replay commands fail"
+ },
+ {
+  "id": "lib.harness-batch-byte-verdict",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "    Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($Expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($Path)))",
+  "replace": "    $null = $Path",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 28 and d[\"Passed\"] == 28 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "why": "The byte verdict must reject changed caller lines and requested exit codes rather than let writer mutants survive."
  }
 ]

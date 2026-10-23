@@ -330,45 +330,72 @@ t_assert_contains "$(_iso_run)" "bites" \
 t_assert_eq "0" "$(_iso_rc)" "the executable subject must still produce an honest bite"
 fi
 
+_copy_fixture_file() {
+  local path="${_work}/$1"
+  mkdir -p "$(dirname "$path")"
+  printf '%s' "$2" > "$path"
+}
+
+_prepare_heavy_copy_fixture() {
+  _heavy=".git/objects out logs archive external linux/webserver/dist"
+  local _d
+  for _d in ${_heavy}; do _copy_fixture_file "${_d}/payload" $'heavy\n'; done
+}
+
+_prepare_ignored_copy_fixture() {
+  ( cd "${_work}" && git init -q . && printf 'blob.bin\nbuild/\n' > .gitignore ) 2>/dev/null
+  _copy_fixture_file blob.bin $'ignored\n'
+  _copy_fixture_file build/out $'ignored\n'
+  _copy_fixture_file keep.txt $'tracked\n'
+}
+
+_prepare_excluded_file_fixture() {
+  _copy_fixture_file linux/llm-stack/ollama-binary.tar.zst x
+}
+
+_assert_copy_paths_absent() {
+  local expected="$1" actual="$2" message="$3" needle found=0
+  shift 3
+  for needle in "$@"; do
+    case "${_copied}" in *"$needle"*) found=1 ;; esac
+  done
+  if [ "$found" -eq 1 ]; then
+    t_assert_eq "$expected" "$actual" "$message"
+  else
+    t_assert_ok true
+  fi
+}
+
+_capture_copy_listing() {
+  _fixture "GUARD=on" "GUARD=off" yes .
+  "$1"
+  printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' \
+    "${_tmp}" > "${_work}/t.sh"
+  t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
+  _copied="$(cat "${_tmp}/copied")"
+}
+
 t_case "the copy skips the heavy trees, it does not clone the whole checkout"
-_fixture "GUARD=on" "GUARD=off" yes .
-_heavy=".git/objects out logs archive external linux/webserver/dist"
-for _d in ${_heavy}; do mkdir -p "${_work}/${_d}"; printf 'heavy\n' > "${_work}/${_d}/payload"; done
-printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' \
-  "${_tmp}" > "${_work}/t.sh"
-t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
-_copied="$(cat "${_tmp}/copied")"
+_capture_copy_listing _prepare_heavy_copy_fixture
 t_assert_contains "${_copied}" "./subject.sh" "the tree under test is what gets copied"
 for _d in ${_heavy}; do
-  case "${_copied}" in
-    *"./${_d}/payload"*) t_assert_eq "no ${_d} in the copy" "${_d} was copied" \
-      "COPY_EXCLUDES must keep ${_d} out: the gate runs from a pre-commit hook, once per invocation" ;;
-    *) t_assert_ok true ;;
-  esac
+  _assert_copy_paths_absent "no ${_d} in the copy" "${_d} was copied" \
+    "COPY_EXCLUDES must keep ${_d} out: the gate runs from a pre-commit hook, once per invocation" "./${_d}/payload"
 done
 
 # The copy skips git-ignored paths and excluded files, and a failed copy must never read as a vacuous bite.
 
 t_case "a gitignored file in the source is not copied (git is asked at the SOURCE)"
-_fixture "GUARD=on" "GUARD=off" yes .
-( cd "${_work}" && git init -q . && printf 'blob.bin\nbuild/\n' > .gitignore ) 2>/dev/null
-printf 'ignored\n' > "${_work}/blob.bin"; mkdir -p "${_work}/build"; printf 'ignored\n' > "${_work}/build/out"
-printf 'tracked\n' > "${_work}/keep.txt"
-printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' "${_tmp}" > "${_work}/t.sh"
-t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
-_copied="$(cat "${_tmp}/copied")"
+_capture_copy_listing _prepare_ignored_copy_fixture
 t_assert_contains "${_copied}" "./keep.txt" "an ordinary file is still copied"
-case "${_copied}" in *"./blob.bin"*|*"./build/out"*) t_assert_eq "ignored paths absent" "ignored paths copied" \
-  "git-ignored output must not be cloned into the throwaway copy" ;; *) t_assert_ok true ;; esac
+_assert_copy_paths_absent "ignored paths absent" "ignored paths copied" \
+  "git-ignored output must not be cloned into the throwaway copy" ./blob.bin ./build/out
 rm -rf "${_work}/.git" "${_work}/.gitignore" "${_work}/blob.bin" "${_work}/build" "${_work}/keep.txt"
 
 t_case "a COPY_EXCLUDES entry that names a FILE is skipped, not just a directory"
-_fixture "GUARD=on" "GUARD=off" yes .
-mkdir -p "${_work}/linux/llm-stack"; printf 'x' > "${_work}/linux/llm-stack/ollama-binary.tar.zst"
-printf 'find . -type f | LC_ALL=C sort > "%s/copied"\ngrep -q "GUARD=on" ./subject.sh\n' "${_tmp}" > "${_work}/t.sh"
-t_assert_contains "$(_iso_run)" "bites" "the listing must come from a real, biting run"
-case "$(cat "${_tmp}/copied")" in *"ollama-binary.tar.zst"*) t_assert_eq "file excluded" "file copied" \
-  "an excluded FILE was still copied -- the skip only pruned dirnames" ;; *) t_assert_ok true ;; esac
+_capture_copy_listing _prepare_excluded_file_fixture
+_assert_copy_paths_absent "file excluded" "file copied" \
+  "an excluded FILE was still copied -- the skip only pruned dirnames" ollama-binary.tar.zst
 rm -rf "${_work}/linux"
 
 t_case "a copy that fails is a loud error, never a vacuous-bite verdict"

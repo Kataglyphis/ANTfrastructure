@@ -14,7 +14,7 @@ printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 TREE="${WORK}/tree"
 mkdir -p "${TREE}/cmake"
 # Every file code-quality.sh sources, or each case below reads "No such file" instead.
-for _m in lib/code-quality.sh lib/log-bootstrap.sh lib/cmakelang-py315.py 01-core/python_uv.sh \
+for _m in lib/code-quality.sh lib/log-bootstrap.sh lib/cli-value-options.sh lib/cmakelang-py315.py 01-core/python_uv.sh \
           01-core/logging.sh 01-core/tool-checks.sh cmake-format.requirements.txt; do
   install -D -m 0644 "${REPO_ROOT}/linux/scripts/${_m}" "${TREE}/linux/scripts/${_m}"
 done

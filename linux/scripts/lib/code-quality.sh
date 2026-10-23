@@ -15,6 +15,9 @@ _code_quality_project_root() {
   printf '%s\n' "${CODE_QUALITY_PROJECT_ROOT:-$(pwd)}"
 }
 
+# shellcheck source=cli-value-options.sh
+source "$(dirname "${BASH_SOURCE[0]}")/cli-value-options.sh" || { unset _CODE_QUALITY_SH_LOADED; return 1; }
+
 # cmake-format availability; paths resolve from this file, so a vendored checkout works too.
 _CQ_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CQ_CORE="${_CQ_LIB_DIR}/../01-core"
@@ -321,11 +324,7 @@ code_quality_run_clang_tidy() {
   [[ $# -gt 0 ]] || return 0
 
   local args=(-p "${db_dir}")
-  local extra
-  for extra in "${CODE_QUALITY_CLANG_TIDY_ARGS[@]:-}"; do
-    [[ -n "${extra}" ]] || continue
-    args+=("${extra}")
-  done
+  append_cli_nonempty_args args '' "${CODE_QUALITY_CLANG_TIDY_ARGS[@]:-}"
   if [[ "${CODE_QUALITY_CLANG_TIDY_FIX:-false}" == "true" ]]; then
     args+=(-fix)
   fi

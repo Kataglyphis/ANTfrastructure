@@ -12,6 +12,20 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — restore portable harness mutation baselines
+
+- Preserve all native batch execution checks in their separately discovered Windows suite, sharing fixture construction and mutation lifecycle.
+- Verify exact ASCII/CRLF batch bytes and real writer mutations in the shared harness suite, restoring all 28 cases on Linux without skips or command emulation.
+- Retain quoted arguments, final exit and early-exit execution assertions for native Windows.
+
+## 2026-10-23 — share Linux CLI, disk and workflow operations
+
+- Share nonempty CLI argument handling and lint scope initialization; carry the existing CLI companion in copied library fixtures.
+- Share core suffix, caller-directory, disk-probe and stage-publication operations while retaining ordering, raw values and caller failure policies.
+- Share lane YAML queries and mutation fixtures without dropping cases; retain Linux multiword interpreter and Windows path policies.
+- Share workflow document construction and Flatpak failure fixtures with unchanged assertions and exact generated YAML comparisons.
+- Remove measured duplication exceptions and lower remaining budgets without relaxing thresholds or scan scope.
+
 ## 2026-10-23 — continue Windows source and workspace cleanup
 
 - Remove three private ROCm suite path resolvers in favor of the shared source reader and isolated script workspace.

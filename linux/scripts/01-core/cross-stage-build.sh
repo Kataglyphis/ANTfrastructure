@@ -56,8 +56,7 @@ _cross_salvage_disk_ok() {
   local cache_dir="${1:-}" free_gb
   local min_gb="${SALVAGE_MIN_FREE_GB:-${CROSS_DISK_GUARD_GB:-40}}"
   declare -F _disk_guard_free_gb >/dev/null 2>&1 || return 0
-  case "${min_gb}" in ''|*[!0-9]*) return 0 ;; esac
-  [ "${min_gb}" -gt 0 ] || return 0
+  _disk_guard_positive_integer "${min_gb}" || return 0
   free_gb="$(_disk_guard_free_gb "${cache_dir}")"
   [ -n "${free_gb}" ] || return 0
   [ "${free_gb}" -ge "${min_gb}" ] && return 0
@@ -450,6 +449,20 @@ _cross_stage_run_dispatch() {
   fi
 }
 
+_cross_stage_mark_built() {
+  local stage="$1" arch="$2" built_flag_varname="${1^^}_BUILT_THIS_RUN"
+  if declare -p "${built_flag_varname}" &>/dev/null; then
+    local -n _csmb_built_flag="${built_flag_varname}"
+    _csmb_built_flag["${arch}"]=1
+  fi
+  if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
+    if [ "$#" -gt 2 ]; then
+      printf '%s' "$3" > "${PARALLEL_LOOP_FLAGDIR}/pin.${stage}.${arch}"
+    fi
+    : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
+  fi
+}
+
 _cross_stage_run_capture_pin() {
   local stage="$1" arch="$2" label="$3" tag="$4"
 
@@ -468,16 +481,7 @@ _cross_stage_run_capture_pin() {
       local -n pin_map="${pin_varname}"
       pin_map["${arch}"]="${pinned_digest}"
       log "[stage ${label}] pinned ${pinned_digest}"
-      local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
-      if declare -p "${built_flag_varname}" &>/dev/null; then
-        local -n built_flag="${built_flag_varname}"
-        built_flag["${arch}"]=1
-      fi
-      # --parallel-archs runs this in a subshell, so parallel_loop_harvest reads these files instead.
-      if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
-        printf '%s' "${pinned_digest}" > "${PARALLEL_LOOP_FLAGDIR}/pin.${stage}.${arch}"
-        : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
-      fi
+      _cross_stage_mark_built "${stage}" "${arch}" "${pinned_digest}"
     fi
   else
     if declare -p "${pin_varname}" &>/dev/null; then
@@ -493,14 +497,7 @@ _cross_stage_record_local() {
   local stage="$1" arch="$2" label="$3" tag="$4"
   # Without the flag the runtime handoff pulls the stale published parent over this run's image.
   if ! is_dry_run && cross_stage_is_per_arch "${stage}"; then
-    local built_flag_varname="${stage^^}_BUILT_THIS_RUN"
-    if declare -p "${built_flag_varname}" &>/dev/null; then
-      local -n _local_built_flag="${built_flag_varname}"
-      _local_built_flag["${arch}"]=1
-    fi
-    if [ -n "${PARALLEL_LOOP_FLAGDIR:-}" ] && [ -d "${PARALLEL_LOOP_FLAGDIR}" ]; then
-      : > "${PARALLEL_LOOP_FLAGDIR}/built.${stage}.${arch}"
-    fi
+    _cross_stage_mark_built "${stage}" "${arch}"
   fi
   # The parent half of the --no-push handoff; rc propagated because errexit is off here.
   if ! is_dry_run && cross_local_handoff_enabled; then

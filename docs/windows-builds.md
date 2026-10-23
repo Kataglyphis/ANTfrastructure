@@ -2481,3 +2481,18 @@ replace container, compiler, certificate or GPU acceptance.
 The Windows unit runner's discovery floor is 2,252 after a complete 2,275-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
+
+Shared harness mutations run `Harness.Fixtures.Tests.ps1` on Linux as well as
+Windows. Its batch-writer cases inspect complete ASCII/CRLF bytes and apply real
+content mutations. `Harness.BatchTools.Tests.ps1` retains native batch execution:
+quoted argument forwarding, requested final exit, caller early exit and execution
+mutation proofs. The normal Windows suite discovery includes both files. Linux
+has no batch interpreter; it does not emulate, skip or claim native execution.
+
+`New-TestBatchFixture`, `Assert-TestBatchFile` and
+`Invoke-TestBatchToolMutationCases` in `TestHarness.psm1` own common construction,
+byte verdicts and fault lifecycle. The native suite supplies execution assertions;
+the portable suite supplies byte assertions. Mutation callbacks are captured
+before `It` registration so its own body parameter cannot shadow the verdict.
+A dedicated mutation removes the byte assertion and requires the writer mutants
+to survive, making the outer suite fail instead of accepting an inert callback.

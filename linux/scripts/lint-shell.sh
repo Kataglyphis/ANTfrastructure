@@ -15,8 +15,7 @@ CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 # Everything below is scoped to the root; CORE_DIR and the bootstrap cache stay in REPO_ROOT.
 # shellcheck source=01-core/lint-root.sh
 . "${CORE_DIR}/lint-root.sh"
-lint_root_begin "${REPO_ROOT}" "$@" || exit 1
-SCAN_ROOT="${LINT_ROOT_PATH}"
+lint_scope_begin SCAN_ROOT "${REPO_ROOT}" "$@" || exit 1
 set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
 
 SHOW_WARNINGS=0
@@ -123,32 +122,32 @@ sc_failing_files() {
   mapfile -t _sff_out < <(printf '%s\n' "${verdicts}" | sed -n 's/^fail //p' | LC_ALL=C sort)
 }
 
+sc_report_fatal_files() {
+  local -n _srff_files="$1"
+  local heading="$2" f
+  shift 2
+  if [ "${#_srff_files[@]}" -gt 0 ]; then
+    fail "${heading}"
+    for f in "${_srff_files[@]}"; do
+      info "${f#"${SCAN_ROOT}"/}"
+      "${SHELLCHECK_BIN}" "$@" "${f}" 2>&1 | sed 's/^/    /' || true
+    done
+    exit 1
+  fi
+}
+
 # The gate: -S error must be clean
 error_files=()
 sc_failing_files error_files -S error
 
-if [ "${#error_files[@]}" -gt 0 ]; then
-  fail "shellcheck -S error found ${#error_files[@]} file(s) with error-level findings:"
-  for f in "${error_files[@]}"; do
-    info "${f#"${SCAN_ROOT}"/}"
-    "${SHELLCHECK_BIN}" -S error "${f}" 2>&1 | sed 's/^/    /' || true
-  done
-  exit 1
-fi
+sc_report_fatal_files error_files "shellcheck -S error found ${#error_files[@]} file(s) with error-level findings:" -S error
 pass "shellcheck -S error clean (${#CHECK[@]} file(s))"
 
 # SC2215 is fatal though a warning: a comment after `cmd \` runs cmd without its flags.
 sc2215_files=()
 sc_failing_files sc2215_files --include=SC2215 -S warning
 
-if [ "${#sc2215_files[@]}" -gt 0 ]; then
-  fail "SC2215 (flag used as a command name -- bad line break) in ${#sc2215_files[@]} file(s):"
-  for f in "${sc2215_files[@]}"; do
-    info "${f#"${SCAN_ROOT}"/}"
-    "${SHELLCHECK_BIN}" --include=SC2215 -S warning "${f}" 2>&1 | sed 's/^/    /' || true
-  done
-  exit 1
-fi
+sc_report_fatal_files sc2215_files "SC2215 (flag used as a command name -- bad line break) in ${#sc2215_files[@]} file(s):" --include=SC2215 -S warning
 pass "SC2215 clean (no flags orphaned by a bad line break)"
 
 # Non-fatal warning report (opt-in)

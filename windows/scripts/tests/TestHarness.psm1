@@ -155,6 +155,40 @@ function New-TestBatchTool {
 
 Export-ModuleMember -Function New-TestBatchTool
 
+function Assert-TestBatchFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Expected)
+    Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($Expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($Path)))
+}
+
+function New-TestBatchFixture {
+    param([Parameter(Mandatory)][string]$Directory)
+    $path = New-TestBatchTool -Directory (Join-Path $Directory 'missing parent') -Name 'fixture tool.cmd' -Line 'echo ARG1=[%~1] ARG2=[%~2]' -ExitCode 7
+    Assert-TestBatchFile -Path $path -Expected "@echo off`r`necho ARG1=[%~1] ARG2=[%~2]`r`nexit /b 7`r`n"
+    return $path
+}
+
+function Invoke-TestBatchToolMutationCases {
+    param([Parameter(Mandatory)][scriptblock]$Body, [string]$DroppedLineExpected = 'Assert-Equal')
+    $batchAssertion = $Body
+    foreach ($fault in @(
+            @{ Name = 'detects a batch writer that ignores the requested final exit'; Find = '"exit /b $ExitCode"'; Replace = '"exit /b 0"'; Expected = 'Assert-Equal' },
+            @{ Name = 'detects a batch writer that drops caller behavior'; Find = ' + $Line + '; Replace = ' + '; Expected = $DroppedLineExpected }
+        )) {
+        It $fault.Name {
+            Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/tests/TestHarness.psm1'; FunctionName = @('New-TestBatchTool'); BodyArgumentList = @($batchAssertion) } `
+                -Case $fault -Body {
+                    param($assertion)
+                    Invoke-InTestDir { param($dir)
+                        $path = New-MutTestBatchTool -Directory $dir -Name fail.cmd -Line 'echo caller-marker' -ExitCode 7
+                        & $assertion $path
+                    }
+                }
+        }
+    }
+}
+
+Export-ModuleMember -Function Assert-TestBatchFile, New-TestBatchFixture, Invoke-TestBatchToolMutationCases
+
 function Assert-TestScriptContains {
     # Literal presence cannot establish AST structure, uniqueness or runtime behavior.
     param([Parameter(Mandatory)][string]$ScriptPath,

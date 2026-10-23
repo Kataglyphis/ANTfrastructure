@@ -14,12 +14,17 @@ _find_scripts_root() {
   return 1
 }
 
-source_modules_framework() {
-  local caller_dir="${1:-${SCRIPT_DIR:-}}"
-
-  if [ -z "${caller_dir}" ]; then
-    caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
+_module_caller_dir() {
+  local -n _mcd_output="$1"
+  _mcd_output="$2"
+  if [ -z "${_mcd_output}" ]; then
+    _mcd_output="$(cd "$(dirname "${BASH_SOURCE[2]}")" && pwd)"
   fi
+}
+
+source_modules_framework() {
+  local caller_dir
+  _module_caller_dir caller_dir "${1:-${SCRIPT_DIR:-}}"
 
   if [ -z "${SCRIPT_DIR:-}" ]; then
     export SCRIPT_DIR="${caller_dir}"
@@ -42,10 +47,8 @@ source_module() {
     return 1
   fi
 
-  local caller_dir="${SCRIPT_DIR:-}"
-  if [ -z "${caller_dir}" ]; then
-    caller_dir="$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)"
-  fi
+  local caller_dir
+  _module_caller_dir caller_dir "${SCRIPT_DIR:-}"
 
   # Framework dirs first, caller-local last: a same-named caller file would otherwise re-source itself forever.
   local -a candidates=()

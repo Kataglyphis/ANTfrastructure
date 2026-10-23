@@ -55,8 +55,7 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # file-list call shape below is untouched.
 # shellcheck source=01-core/lint-root.sh
 . "${CORE_DIR}/lint-root.sh"
-lint_root_begin "${REPO_ROOT}" "$@" || exit 1
-SCAN_ROOT="${LINT_ROOT_PATH}"
+lint_scope_begin SCAN_ROOT "${REPO_ROOT}" "$@" || exit 1
 set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
 
 # The hub's .hadolint.yaml unless the consumer ships one of its own.

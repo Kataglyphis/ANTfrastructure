@@ -1664,3 +1664,32 @@ argument order and skips absent names. Worker fixtures use it only for optional
 helpers; required definitions remain mandatory. Focused tests check missing names,
 usable emitted bodies and exit status. This test API performs no source parsing
 or container execution.
+
+### CLI arguments, core probes and workflow fixtures
+
+`lib/cli-value-options.sh` owns `append_cli_nonempty_args`. Code-quality and
+coverage callers retain argument order, duplicate values and whitespace inside
+arguments. Empty values remain omitted; gcovr excludes keep their per-value
+prefix. Copied libraries carry this companion alongside their existing logging
+and tool-check dependencies. The CMake-format fixture explicitly copies it;
+repository and submodule consumers already resolve the complete library tree.
+
+`01-core/lint-root.sh` shares scope initialization and root publication without
+adding an environment export. Linter-specific options and pinned-tool handling
+remain in each driver. ShellCheck fatal reports share diagnostic replay while
+retaining distinct flags and headings and the original exit status.
+
+Core helpers share nondefault-host suffix formatting and caller-directory
+resolution while preserving explicit path bytes. Disk validation keeps positive
+settings distinct from nonnegative free-space readings: zero-disabled settings
+do not probe or start a watcher. Stage publication retains built-map, pin and
+parallel-marker ordering. These helpers stay in existing mounted/copied owners;
+no new runtime companion or broader mount is required.
+
+Lane fixtures share YAML loading and query execution while preserving lane fields,
+relative paths for Windows Python and the Linux multiword interpreter contract.
+Mutation fixtures keep their ignore and skip scenarios independent. Workflow
+fixtures share document and job construction while preserving malformed YAML and
+line-sensitive findings. Flatpak failure fixtures forward every per-case tool
+and payload override. Offline characterization and mutation proofs validate these
+contracts without starting container engines, builds, pruning or disk watchers.

@@ -89,12 +89,26 @@ _disk_guard_fmt_gib() {
 # Always returns 0 and sets _DISK_GUARD_TRIM_FREED_BYTES/_REMOVED, so call it directly, not in $(...).
 _DISK_GUARD_TRIM_FREED_BYTES=0
 _DISK_GUARD_TRIM_REMOVED=0
+_disk_guard_positive_integer() {
+  case "${1:-}" in ''|*[!0-9]*) return 1 ;; esac
+  local status=0
+  command [ "$1" -gt 0 ] || status=$?
+  return "${status}"
+}
+
 _disk_guard_trim_budget() {
   local target_gb="$1" free_gb="$2" budget_bytes="$3"
   [ -n "${budget_bytes}" ] || budget_bytes=$(( (target_gb - free_gb) * 1073741824 ))
-  case "${budget_bytes}" in ''|*[!0-9]*) return 1 ;; esac
-  [ "${budget_bytes}" -gt 0 ] || return 1
+  _disk_guard_positive_integer "${budget_bytes}" || return 1
   printf '%s' "${budget_bytes}"
+}
+
+_disk_guard_free_for_target() {
+  case "${2:-}" in ''|*[!0-9]*) return 1 ;; esac
+  local measured
+  measured="$(_disk_guard_free_gb "${1:-}")"
+  [ -n "${measured}" ] || return 1
+  printf '%s' "${measured}"
 }
 
 _disk_guard_trim_cache_export() {
@@ -105,11 +119,8 @@ _disk_guard_trim_cache_export() {
   _DISK_GUARD_TRIM_FREED_BYTES=0
   _DISK_GUARD_TRIM_REMOVED=0
   [ -d "${bc_dir}" ] || return 0
-  case "${target_gb}" in ''|*[!0-9]*) return 0 ;; esac
-
   local free_gb
-  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
-  [ -n "${free_gb}" ] || return 0                    # unknown -> do nothing
+  free_gb="$(_disk_guard_free_for_target "${bc_dir}" "${target_gb}")" || return 0
   [ "${free_gb}" -lt "${target_gb}" ] || return 0    # ample -> no-op
 
   budget_bytes="$(_disk_guard_trim_budget "${target_gb}" "${free_gb}" "${budget_bytes}")" || return 0
@@ -222,9 +233,7 @@ _disk_guard_cachemount_duplicates() {
 # Prints free GB and succeeds only when <path> is below <target_gb>; bad input or unknown df means "do nothing".
 _disk_guard_lever_needed() {
   local before
-  case "${2:-}" in ''|*[!0-9]*) return 1 ;; esac
-  before="$(_disk_guard_free_gb "${1:-}")"
-  [ -n "${before}" ] || return 1
+  before="$(_disk_guard_free_for_target "${1:-}" "${2:-}")" || return 1
   [ "${before}" -lt "$2" ] || return 1
   printf '%s' "${before}"
 }
@@ -417,10 +426,8 @@ _disk_guard_image_store_hint() {
 # One sample, reclaiming below <threshold_gb>; always returns 0 since a sampler must never abort a build.
 _disk_guard_watch_once() {
   local bc_dir="${1:-}" threshold="${2:-}" protected="${3:-}" keep_n="${4:-3}"
-  case "${threshold}" in ''|*[!0-9]*) return 0 ;; esac
   local free_gb
-  free_gb="$(_disk_guard_free_gb "${bc_dir}")"
-  [ -n "${free_gb}" ] || return 0
+  free_gb="$(_disk_guard_free_for_target "${bc_dir}" "${threshold}")" || return 0
   _disk_guard_log "[disk-watch] ${free_gb}G free on ${bc_dir}"
   [ "${free_gb}" -lt "${threshold}" ] || return 0
   _disk_guard_warn "[disk-watch] ${free_gb}G free < ${threshold}G DURING a stage — reclaiming regenerable cache exports now"

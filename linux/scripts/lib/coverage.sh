@@ -9,6 +9,9 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 # shellcheck source=../01-core/tool-checks.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/tool-checks.sh"
 
+# shellcheck source=cli-value-options.sh
+source "$(dirname "${BASH_SOURCE[0]}")/cli-value-options.sh" || { unset _COVERAGE_SH_LOADED; return 1; }
+
 # gcovr: [root] must be the compile directory, since .gcno paths are relative to it.
 coverage_run_gcovr() {
   local root="${1:-.}"
@@ -17,17 +20,8 @@ coverage_run_gcovr() {
 
   local args=(-r "${root}")
 
-  local pattern
-  for pattern in "${COVERAGE_GCOVR_EXCLUDES[@]:-}"; do
-    [[ -n "${pattern}" ]] || continue
-    args+=(--exclude "${pattern}")
-  done
-
-  local extra
-  for extra in "${COVERAGE_GCOVR_EXTRA_ARGS[@]:-}"; do
-    [[ -n "${extra}" ]] || continue
-    args+=("${extra}")
-  done
+  append_cli_nonempty_args args --exclude "${COVERAGE_GCOVR_EXCLUDES[@]:-}"
+  append_cli_nonempty_args args '' "${COVERAGE_GCOVR_EXTRA_ARGS[@]:-}"
 
   if [[ -n "${COVERAGE_GCOVR_OUTPUT:-}" ]]; then
     args+=(--output "${COVERAGE_GCOVR_OUTPUT}")

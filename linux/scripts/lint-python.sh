@@ -29,8 +29,7 @@ _LINT_PY="${PREFLIGHT_PYTHON}"
 
 # shellcheck source=01-core/lint-root.sh
 . "${_core}/lint-root.sh"
-lint_root_begin "${REPO_ROOT}" "$@" || exit 1
-SCAN_ROOT="${LINT_ROOT_PATH}"
+lint_scope_begin SCAN_ROOT "${REPO_ROOT}" "$@" || exit 1
 set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
 
 # Target set: first-party Python only

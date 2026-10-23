@@ -35,3 +35,14 @@ parse_cli_value_options() {
   done
   _cpo_remaining+=("$@")
 }
+
+append_cli_nonempty_args() {
+  local -n _cna_args="$1"
+  local _cna_prefix="$2" _cna_value
+  shift 2
+  for _cna_value in "$@"; do
+    [[ -n "${_cna_value}" ]] || continue
+    if [[ -n "${_cna_prefix}" ]]; then _cna_args+=("${_cna_prefix}"); fi
+    _cna_args+=("${_cna_value}")
+  done
+}

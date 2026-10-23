@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Runs python-ci-linux.yml's `arches` plan step, whose rows and refusals a green run never shows; see docs/python-ci.md#one-arch-per-caller-the-arches-input
+# Local lane queries and plan shells cover contracts, not actual CI jobs; see docs/python-ci.md#one-arch-per-caller-the-arches-input
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
-LANE="${ROOT}/.github/workflows/python-ci-linux.yml"
+# shellcheck source=linux/scripts/tests/workflow-lane-fixture.sh
+source "${TESTS_DIR}/workflow-lane-fixture.sh"
 # Plain python3 is a Microsoft Store stub on a Windows host.
 _PY="${PREFLIGHT_PYTHON:-python3}"
+workflow_lane_fixture_init .github/workflows/python-ci-linux.yml build - "${_PY}" || exit 1
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
@@ -14,21 +14,12 @@ trap 'rm -rf "${_work}"' EXIT
 t_case "the lane file is where every consumer's uses: line expects it"
 t_assert_ok test -f "${LANE}"
 
-# _q <python-expression> over the parsed lane (lane, jobs, inputs, plan, build); V.value unwraps (value, line).
-_q() {
-  # shellcheck disable=SC2086  # _PY may be a multi-word command (uv run ...)
-  ${_PY} - "${ROOT}/linux/scripts" "${LANE}" "$1" <<'PY' 2>&1
-import sys, pathlib
-sys.path.insert(0, sys.argv[1])
-import verify_workflow_conventions as V
-lane = V.load_yaml(pathlib.Path(sys.argv[2]))
-jobs = V.value(lane, 'jobs') or {}
-inputs = V.value(V.value(V.value(lane, 'on'), 'workflow_call'), 'inputs') or {}
-plan = V.value(jobs, 'plan')
-build = V.value(jobs, 'build')
-print(eval(sys.argv[3]))
-PY
-}
+t_case "the shared query driver retains multiword interpreter selection and Python errors"
+t_assert_eq fixture-query "$(
+  workflow_lane_fixture_init .github/workflows/python-ci-linux.yml build - $'env\nWORKFLOW_QUERY_MARKER=fixture-query\n'"${_PY}"
+  _q "__import__('os').environ.get('WORKFLOW_QUERY_MARKER')"
+)"
+t_assert_rc 1 _q '1 / 0'
 
 # Block scalars stay opaque in the loader, so all three cuts live here: the plan step's run body, the container steps' extra-args and every step's if.
 STEP="${_work}/plan-step.sh"

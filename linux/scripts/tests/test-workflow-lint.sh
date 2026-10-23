@@ -186,15 +186,26 @@ _conv_root() {
   printf '%s' "${d}"
 }
 
+_workflow_document_header() {
+  printf 'name: ci\non: %s\npermissions:\n  contents: read\njobs:\n' "${1:-push}"
+}
+
 _workflow_job_header() {
-  cat <<'YAML'
-name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-YAML
+  _workflow_document_header "$@"
+  printf '  build:\n'
+}
+
+_workflow_missing_timeout_body() {
+  local job
+  _workflow_document_header
+  for job in "$@"; do
+    printf '  %s:\n    runs-on: ubuntu-24.04\n    steps:\n      - run: echo hi\n' "${job}"
+  done
+}
+
+_workflow_run_body() {
+  _workflow_job_header "${2:-push}"
+  printf '    runs-on: %s\n    timeout-minutes: 5\n    steps:\n      - run: echo hi%s\n' "$1" "${3:-}"
 }
 
 _workflow_matrix_body() {
@@ -319,15 +330,7 @@ t_assert_fails grep -q -F -e "[job-timeout] job 'call'" <<<"$(t_out _conv "${d}"
 _ROW='OxidANT | .github/workflows/ci.yml | job-timeout | build | measured at 4 minutes and bounded upstream; a timeout here would only fire on an outage'
 
 # Exactly one deviation, so green under full arming proves the excuse silenced it.
-one_off="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo hi')"
+one_off="$(_conv_root OxidANT "$(_workflow_missing_timeout_body build)")"
 
 t_case "a declared deviation is excused, and its REASON reaches the log"
 hub="$(_conv_hub "${_ROW}")"
@@ -430,16 +433,7 @@ t_assert_fails grep -q -F -e '[job-timeout]' <<<"${_out}" \
 
 t_case "a flow sequence is READ, so a banned label inside one cannot hide"
 # Read as one opaque string, `[ubuntu-latest]` would slip past the runner ban.
-d="$(_conv_root OxidANT 'name: ci
-on: [push, pull_request]
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: [ubuntu-latest]
-    timeout-minutes: 5
-    steps:
-      - run: echo hi')"
+d="$(_conv_root OxidANT "$(_workflow_run_body '[ubuntu-latest]' '[push, pull_request]')")"
 t_assert_eq "1" "$(t_rc _p "${d}")"
 t_assert_contains "$(t_out _p "${d}")" "runner label 'ubuntu-latest'"
 
@@ -453,17 +447,7 @@ t_assert_contains "$(t_out _p "${d}")" "runner label 'ubuntu-latest'"
 
 t_case "a flow collection outside the subset REFUSES rather than guessing"
 # A flow collection spanning lines is outside the subset, so it must raise.
-d="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: [
-      ubuntu-24.04 ]
-    timeout-minutes: 5
-    steps:
-      - run: echo hi')"
+d="$(_conv_root OxidANT "$(_workflow_run_body $'[\n      ubuntu-24.04 ]')")"
 t_assert_eq "1" "$(t_rc _p "${d}")"
 t_assert_contains "$(t_out _p "${d}")" "[parse]"
 
@@ -477,17 +461,7 @@ t_assert_contains "${_out}" "no YAML at all"
 
 t_case "a line the walk never reached is a refusal, not a shorter document"
 # What the walk leaves behind was graded by nothing; here a mis-indented key has no parent.
-d="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - run: echo hi
- trailing: indented past the top level and under nothing')"
+d="$(_conv_root OxidANT "$(_workflow_run_body ubuntu-24.04 push $'\n trailing: indented past the top level and under nothing')")"
 t_assert_eq "1" "$(t_rc _p "${d}")"
 t_assert_contains "$(t_out _p "${d}")" "outside the document the walk read"
 
@@ -521,19 +495,7 @@ t_assert_contains "$(t_out _conv_at "${badcons}" "${clean_root}")" "not valid JS
 
 t_case "a NEW finding over the frozen count FAILS while its check is still advisory"
 hubc="$(_conv_hub 'CENSUS | OxidANT | job-timeout | 1 | one lane, the ceiling for this fixture')"
-two_off="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  a:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo hi
-  b:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo hi')"
+two_off="$(_conv_root OxidANT "$(_workflow_missing_timeout_body a b)")"
 t_assert_eq "1" "$(t_rc _conv_at "${hubc}" "${two_off}")" \
   "advisory with no ceiling is a backlog that grows for ever with nothing turning red"
 t_assert_contains "$(t_out _conv_at "${hubc}" "${two_off}")" "GREW from 1 to 2"

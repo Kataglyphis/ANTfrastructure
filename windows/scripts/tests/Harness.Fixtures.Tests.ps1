@@ -62,37 +62,19 @@ Describe 'Harness text trees' {
     }
 }
 
-Describe 'Native batch fixtures' {
-    It 'writes exact ASCII CRLF bytes, forwards quoted arguments and applies the requested final exit' {
+Describe 'Batch fixture bytes' {
+    It 'writes exact ASCII CRLF bytes and retains caller branches before the requested final exit' {
         Invoke-InTestDir { param($dir)
-            $lines = @('echo ARG1=[%~1] ARG2=[%~2]')
-            $path = New-TestBatchTool -Directory (Join-Path $dir 'missing parent') -Name 'fixture tool.cmd' -Line $lines -ExitCode 7
-            $expected = "@echo off`r`necho ARG1=[%~1] ARG2=[%~2]`r`nexit /b 7`r`n"
-            Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($path)))
-            Assert-Match 'ARG1=\[a b\] ARG2=\[second value\]' ((& $path 'a b' 'second value') | Out-String)
-            Assert-Equal 7 $global:LASTEXITCODE
+            $null = New-TestBatchFixture -Directory $dir
             $early = New-TestBatchTool -Directory $dir -Name early.cmd -Line 'exit /b 3' -ExitCode 7
-            & $early
-            Assert-Equal 3 $global:LASTEXITCODE 'caller branches can override the appended fallback'
+            $expectedEarly = "@echo off`r`nexit /b 3`r`nexit /b 7`r`n"
+            Assert-TestBatchFile -Path $early -Expected $expectedEarly
         }
     }
 
-    foreach ($fault in @(
-            @{ Name = 'detects a batch writer that ignores the requested final exit'; Find = '"exit /b $ExitCode"'; Replace = '"exit /b 0"'; Expected = 'Assert-Equal' },
-            @{ Name = 'detects a batch writer that drops caller behavior'; Find = ' + $Line + '; Replace = ' + '; Expected = 'does not match' }
-        )) {
-        It $fault.Name {
-            Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/tests/TestHarness.psm1'; FunctionName = @('New-TestBatchTool') } `
-                -Case $fault -Body {
-                    Invoke-InTestDir { param($dir)
-                        $path = New-MutTestBatchTool -Directory $dir -Name fail.cmd -Line 'echo caller-marker' -ExitCode 7
-                        $output = (& $path) | Out-String
-                        $code = $global:LASTEXITCODE
-                        Assert-Match caller-marker $output
-                        Assert-Equal 7 $code
-                    }
-                }
-        }
+    Invoke-TestBatchToolMutationCases -Body {
+        param($path)
+        Assert-TestBatchFile -Path $path -Expected "@echo off`r`necho caller-marker`r`nexit /b 7`r`n"
     }
 }
 

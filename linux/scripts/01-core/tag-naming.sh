@@ -29,11 +29,13 @@ cross_variant_infix() {
 
 # Shared stages carry the build host arch, or a non-amd64 host's FROM silently resolves the registry's amd64 image.
 _cross_build_host_arch()      { build_arch_oci 2>/dev/null || printf '%s' amd64; }
-_cross_shared_tag_suffix() {
+_cross_nondefault_host_suffix() {
+  local format="$1"
   local a; a="$(_cross_build_host_arch)"
   [ "${a}" = "amd64" ] && return 0
-  printf -- '-%s' "${a}"
+  printf -- "${format}" "${a}"
 }
+_cross_shared_tag_suffix() { _cross_nondefault_host_suffix '-%s'; }
 cross_base_tag()              { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:base$(_cross_shared_tag_suffix)"; }
 cross_compiler_tag()          { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-compiler-$(_cross_build_host_arch)"; }
 cross_sdk_tag()               { printf '%s' "${IMAGE_REPO:-${IMAGE_REGISTRY_PREFIX}}:cross-sdk-${1}"; }
@@ -48,11 +50,7 @@ cross_media_tag()             { printf '%s' "$(cross_stage_repo):cross-media$(cr
 # The variant chain's GPU library layer between sdk and media.
 cross_gpu_tag()               { printf '%s' "$(cross_stage_repo):cross-toolchain$(cross_variant_infix)-${1}"; }
 # Android lacks the NDK off amd64, so a non-amd64 host tags -host<arch> rather than overwrite the amd64 artifact.
-cross_build_host_infix() {
-  local a; a="$(_cross_build_host_arch)"
-  [ "${a}" = "amd64" ] && return 0
-  printf -- '-host%s' "${a}"
-}
+cross_build_host_infix() { _cross_nondefault_host_suffix '-host%s'; }
 # One function for cross-stage-build.sh's --artifact-image-prefix and cross_android_tag, so they cannot drift.
 cross_android_tag_prefix()    { printf '%s' "$(cross_stage_repo):cross-android$(cross_variant_infix)$(cross_build_host_infix)"; }
 cross_android_tag()           { printf '%s' "$(cross_android_tag_prefix)-${1}"; }

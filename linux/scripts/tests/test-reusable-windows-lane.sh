@@ -1,49 +1,13 @@
 #!/usr/bin/env bash
-# python-ci-windows.yml's PowerShell-lint contract, which a green run cannot show; see docs/python-ci.md#turning-the-windows-powershell-lint-on
+# Local workflow queries cover lane contracts, not Windows job execution; see docs/python-ci.md#turning-the-windows-powershell-lint-on
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
-LANE_REL=".github/workflows/python-ci-windows.yml"
-LANE="${ROOT}/${LANE_REL}"
+# shellcheck source=linux/scripts/tests/workflow-lane-fixture.sh
+source "${TESTS_DIR}/workflow-lane-fixture.sh"
+workflow_lane_fixture_init .github/workflows/python-ci-windows.yml build-test-python-package-on-windows lint-powershell python3 || exit 1
 
 t_case "the lane file is where preflight and every consumer expect it"
 t_assert_ok test -f "${LANE}"
-
-# _q <python-expression>: relative paths from ROOT, since a Git Bash /c/... path means nothing to native Windows python3.
-_q() {
-  (cd "${ROOT}" && python3 -c "
-import sys, pathlib
-sys.path.insert(0, 'linux/scripts')
-import verify_workflow_conventions as V
-lane = V.load_yaml(pathlib.Path('${LANE_REL}'))
-jobs = V.value(lane, 'jobs') or {}
-call = V.value(V.value(lane, 'on'), 'workflow_call')
-inputs = V.value(call, 'inputs') or {}
-secrets = V.value(call, 'secrets') or {}
-job = V.value(jobs, 'lint-powershell')
-build = V.value(jobs, 'build-test-python-package-on-windows')
-steps = V.value(job, 'steps') if job else []
-raw = pathlib.Path('${LANE_REL}').read_text(encoding='utf-8')
-def run_text():
-    return '\n'.join(str(V.value(s, 'run') or '') for s in (steps or []))
-def run_blocks(name):
-    # The loader keeps a run: | block empty, so a job's scripts are read from the raw file by indentation.
-    import re
-    lines = raw.splitlines()
-    start = lines.index('  %s:' % name)
-    end = next((i for i in range(start + 1, len(lines)) if re.match(r'^  [A-Za-z0-9_-]+:\s*$', lines[i])), len(lines))
-    out, i = [], start
-    while i < end:
-        m = re.match(r'^(\s*)run: \|', lines[i])
-        i += 1
-        while m and i < end and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > len(m.group(1))):
-            out.append(lines[i])
-            i += 1
-    return '\n'.join(out)
-print($1)
-" 2>&1)
-}
 
 # Needles are whole command fragments, never bare flags, which the lane's comments also name.
 _raw_has() { grep -qF -- "$1" "${LANE}" && echo True || echo False; }
@@ -54,13 +18,10 @@ t_assert_eq "True" "$(_q "'lint-path' in inputs")"
 
 t_case "lint-powershell is a boolean that DEFAULTS OFF"
 # Every caller that predates the input must be byte-for-byte unaffected.
-t_assert_eq "boolean" "$(_q "V.value(V.value(inputs,'lint-powershell'),'type')")"
-t_assert_eq "false" "$(_q "V.value(V.value(inputs,'lint-powershell'),'default')")"
-t_assert_eq "false" "$(_q "V.value(V.value(inputs,'lint-powershell'),'required')")"
+workflow_assert_input_fields lint-powershell type 'boolean' default 'false' required 'false'
 
 t_case "lint-path is a string defaulting to the family layout's scripts tree"
-t_assert_eq "string" "$(_q "V.value(V.value(inputs,'lint-path'),'type')")"
-t_assert_eq "scripts" "$(_q "V.value(V.value(inputs,'lint-path'),'default')")"
+workflow_assert_input_fields lint-path type 'string' default 'scripts'
 
 t_case "the lint job exists and is gated on the input"
 t_assert_eq "True" "$(_q "job is not None")"
@@ -97,9 +58,7 @@ t_assert_eq "True" "$(_raw_has "pwsh -NoProfile -File \$gate -Path '\${{ inputs.
 t_case "build-python-package is a boolean that DEFAULTS ON"
 # Callers written before the switch existed must still build.
 t_assert_eq "True" "$(_q "'build-python-package' in inputs")"
-t_assert_eq "boolean" "$(_q "V.value(V.value(inputs,'build-python-package'),'type')")"
-t_assert_eq "true" "$(_q "V.value(V.value(inputs,'build-python-package'),'default')")"
-t_assert_eq "false" "$(_q "V.value(V.value(inputs,'build-python-package'),'required')")"
+workflow_assert_input_fields build-python-package type 'boolean' default 'true' required 'false'
 
 t_case "the build job is GATED on it, which is what makes the lint takeable alone"
 t_assert_eq "True" "$(_q "build is not None")"
@@ -125,8 +84,7 @@ t_assert_eq "True" "$(_raw_has 'Test-Path -LiteralPath $gate')"
 
 t_case "arm64-tests is a boolean that DEFAULTS OFF, and both arm64 jobs are gated on it"
 # Defaulting on would hand every existing caller a windows-11-arm job its lock was never checked for.
-t_assert_eq "boolean" "$(_q "V.value(V.value(inputs,'arm64-tests'),'type')")"
-t_assert_eq "false" "$(_q "V.value(V.value(inputs,'arm64-tests'),'default')")"
+workflow_assert_input_fields arm64-tests type 'boolean' default 'false'
 for arm64_job in stage-python-for-windows-arm64 test-python-on-windows-arm64; do
   t_assert_contains "$(_q "V.value(V.value(jobs,'${arm64_job}'),'if')")" "inputs.arm64-tests" \
     "an ungated job runs on every caller"
@@ -152,7 +110,7 @@ t_assert_eq "True" "$(_raw_has "if (\$failed -gt 0) { throw \"\$failed arm64 tes
 
 t_case "build-script defaults to empty: the repo's own Build-Windows.ps1 first, else the hub driver"
 # A caller that relies on the default keeps running its own script until it deletes it.
-t_assert_eq "" "$(_q "V.value(V.value(inputs,'build-script'),'default')")"
+workflow_assert_input_fields build-script default ''
 t_assert_eq "True" "$(_raw_has "if (-not \$file -and (Test-Path -LiteralPath 'scripts/windows/Build-Windows.ps1' -PathType Leaf)) {")"
 t_assert_eq "True" "$(_raw_has 'third_party/ANTfrastructure/windows/scripts/python/Invoke-PythonCiBuild.ps1')"
 t_assert_eq "True" "$(_raw_has 'file: ${{ steps.build-script.outputs.file }}')"

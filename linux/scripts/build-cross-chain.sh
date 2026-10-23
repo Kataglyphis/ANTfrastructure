@@ -482,8 +482,7 @@ _chain_runtime_lane_need_gb() {
 # Refuse a runtime lane that cannot fit before hours are spent; FORCE_LOW_DISK and --dry-run precede the trim.
 _chain_runtime_lane_disk_gate() {
   [ "${DISK_PREFLIGHT:-1}" = "1" ] || return 0
-  case "${CROSS_RUNTIME_LANE_GB:-120}" in ''|*[!0-9]*) return 0 ;; esac
-  [ "${CROSS_RUNTIME_LANE_GB:-120}" -gt 0 ] || return 0
+  _disk_guard_positive_integer "${CROSS_RUNTIME_LANE_GB:-120}" || return 0
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local need free_gb protected
   need="$(_chain_runtime_lane_need_gb)"
@@ -521,8 +520,7 @@ _chain_disk_watch_start() {
   [ "${CROSS_DISK_WATCH:-1}" = "1" ] || return 0
   is_dry_run && return 0
   local threshold="${CROSS_DISK_GUARD_GB:-40}" secs="${CROSS_DISK_WATCH_SECS:-120}"
-  case "${threshold}" in ''|*[!0-9]*) return 0 ;; esac
-  [ "${threshold}" -gt 0 ] || return 0
+  _disk_guard_positive_integer "${threshold}" || return 0
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected
   protected="$(_disk_guard_protected_slugs '')"

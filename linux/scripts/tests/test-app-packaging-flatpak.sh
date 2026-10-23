@@ -307,39 +307,43 @@ t_assert_ok test -f "${_stage}/share/metainfo/${APP_ID}.appdata.xml"
 t_assert_eq "" "$(find "${_stage}/share" -name "${PROJECT}.*" 2>/dev/null)" \
   "the project-named copies must be MOVED, not duplicated: two .desktop files is an ambiguous install"
 
+_install_flatpak_case() {
+  _call "$@" -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+}
+
 t_case "package_cmake_install_flatpak: a non-zero flatpak-builder with a COMMITTED app still ships"
 # The export can be complete while `Pruning cache` fails on fchmod; the exit code is never the verdict.
-_call STUB_FB_RC=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+_install_flatpak_case STUB_FB_RC=1
 t_assert_eq "0" "${rc}" "output was: ${OUT}"
 t_assert_contains "${OUT}" "flatpak-builder exited 1"
 t_assert_contains "${OUT}" "Created: "
 
 t_case "package_cmake_install_flatpak: a ZERO exit with nothing committed FAILS"
-_call STUB_OSTREE_EMPTY=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+_install_flatpak_case STUB_OSTREE_EMPTY=1
 t_assert_eq "1" "${rc}" "the ostree ref is the verdict; a green exit code with an empty repo is the case that made this rule"
 t_assert_contains "${OUT}" "is not in "
 t_assert_eq "" "$(grep -F 'build-bundle' "${LOG}" || true)"
 
 t_case "package_cmake_install_flatpak: an install with no executable fails, naming the path"
-_call STUB_CMAKE_NO_BIN=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+_install_flatpak_case STUB_CMAKE_NO_BIN=1
 t_assert_eq "1" "${rc}" "committing an app whose command is missing moves the failure onto a user's machine"
 t_assert_contains "${OUT}" "bin/${PROJECT}"
 t_assert_eq "" "$(grep -F 'flatpak-builder' "${LOG}" || true)"
 
 t_case "package_cmake_install_flatpak: a failing cmake --install stops the run"
-_call STUB_CMAKE_RC=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+_install_flatpak_case STUB_CMAKE_RC=1
 t_assert_eq "1" "${rc}"
 t_assert_contains "${OUT}" "cmake --install failed"
 
 t_case "package_cmake_install_flatpak: a bundle file that is EMPTY is not a success"
 # build-bundle can exit 0 having written nothing, so success needs app_packaging_assert_artifact.
-_call STUB_EMPTY_BUNDLE=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+_install_flatpak_case STUB_EMPTY_BUNDLE=1
 t_assert_eq "1" "${rc}"
 t_assert_contains "${OUT}" "missing or empty"
 t_assert_eq "" "$(printf '%s' "${OUT}" | grep -F 'Created: ' || true)"
 
 t_case "package_cmake_install_flatpak: a failing build-bundle stops the run"
-_call STUB_BUNDLE_RC=1 -- app_packaging_package_cmake_install_flatpak "${_bdir}" "${_odir}" "${APP_ID}" "${PROJECT}" "v9"
+_install_flatpak_case STUB_BUNDLE_RC=1
 t_assert_eq "1" "${rc}"
 
 t_case "detect_bundle_binary: a bundle wrapped by bundle-loader.sh --beside names its launcher, not the loader or the .bin"

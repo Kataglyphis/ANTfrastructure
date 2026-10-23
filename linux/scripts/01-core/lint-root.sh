@@ -55,3 +55,10 @@ lint_root_tracked() {
   shift
   git -C "${root}" ls-files -z -- "$@"
 }
+
+lint_scope_begin() {
+  local -n _lsb_root="$1"
+  shift
+  lint_root_begin "$@" || return 1
+  _lsb_root="${LINT_ROOT_PATH}"
+}
