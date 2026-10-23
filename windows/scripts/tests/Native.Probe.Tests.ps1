@@ -104,7 +104,7 @@ Describe 'Python JSON probe report transport' {
     It 'detects accepting JSON from a failed interpreter in the shared parser' {
         Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows\scripts\modules\WindowsNative.Common.psm1'; FunctionName = @('ConvertFrom-PythonJsonProbeOutput') } `
             -Find '$ExitCode -ne 0 -or -not $json' -Replace '-not $json' -Expected 'nonzero exit status must suppress JSON' -IncludeControl -Body {
-                $parsed = Invoke-MutConvertFromPythonJsonProbeOutput -Lines @('{"ok":true}') -ExitCode 4
+                $parsed = ConvertFrom-MutPythonJsonProbeOutput -Lines @('{"ok":true}') -ExitCode 4
                 Assert-NotNull $parsed.Failure 'nonzero exit status must suppress JSON'
             }
     }

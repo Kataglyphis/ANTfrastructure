@@ -737,8 +737,8 @@ Describe 'rocm-checks\TVM.ps1' {
                 Set-Content -Path (Join-Path $d 'ROCM-FEATURES.txt') -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan (Get-TvmRocmPlan -GpuEnv $script:RocmEnv -Cross $false -SpikeFlag '1') -LlvmTargets $case.Targets)
                 $pythonShim = @'
 @echo off
-echo %~n1|findstr /B /L /C:"tvm-rocm-runtime-" >nul
-if not errorlevel 1 (type "%~dp0tvm_rocm_runtime.json") else (type "%~dp0tvm_rocm_codegen.json")
+set "probe=%~n1"
+if /I "%probe:~0,16%"=="tvm-rocm-runtime" (type "%~dp0tvm_rocm_runtime.json") else (type "%~dp0tvm_rocm_codegen.json")
 '@
                 $pythonShim = $pythonShim -replace '\r?\n', "`r`n"
                 [System.IO.File]::WriteAllText((Join-Path $d 'python.cmd'), $pythonShim)

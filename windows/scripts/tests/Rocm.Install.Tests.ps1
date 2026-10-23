@@ -327,7 +327,8 @@ Describe 'Install-Rocm: TheRock''s OpenCL ICD, registered the way the Khronos lo
         $common = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1')
         Assert-Match "OpenBaseKey\('LocalMachine', \[Microsoft\.Win32\.RegistryView\]::Registry64\)" $common '64-bit HKLM view has one owner'
         Assert-Match "OpenClIcdRegistrySubKey = 'SOFTWARE\\Khronos\\OpenCL\\Vendors'" $common 'the key the loader opens has one owner'
-        Assert-Match "\`$sharedModulePath = Join-Path \`$scriptAssetRoot 'modules\\WindowsContainerImage\.Common\.psm1'\s+Import-Module \`$sharedModulePath -Force" $src 'the installer loads the shared registration API from its resolved module root'
+        Assert-Match "\`$sharedModulePath = Join-Path \`$scriptAssetRoot 'modules\\WindowsContainerImage\.Common\.psm1'" $src 'the installer resolves the shared registration API from its module root'
+        Assert-Match 'Import-Module \$sharedModulePath -Force' $src 'the installer imports the shared registration API'
         Assert-Equal 'WindowsContainerImage.Common' (Get-Command Register-OpenClIcd -ErrorAction Stop).ModuleName 'the shared registration command is exported by its owner'
         Assert-Equal 'WindowsContainerImage.Common' (Get-Command Get-OpenClIcdRegistryEntry -ErrorAction Stop).ModuleName 'the shared read command is exported by its owner'
         $check = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\rocm-checks\GpuLoaders.ps1')
