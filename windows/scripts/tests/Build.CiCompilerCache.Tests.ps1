@@ -12,9 +12,8 @@ function script:Set-CacheFile([string]$Dir, [string[]]$Relative) { $Relative | F
 # A CI cache with an sccache object and a cargo archive, and the stand-in sccache; returns the env the cases run under.
 function script:New-CiCacheFixture([string]$Dir) {
     Set-CacheFile $Dir 'ci\sccache\a\obj', 'ci\cargo\registry\cache\x.crate'
-    $null = New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'bin')
-    Set-Content -LiteralPath (Join-Path $Dir 'bin\sccache.cmd') -Encoding ascii -Value @(
-        '@echo off', '>>"%FAKE_SCCACHE_LOG%" echo %*', 'if "%1"=="--version" echo sccache 0.19.0')
+    $null = New-TestBatchTool -Directory (Join-Path $Dir 'bin') -Name 'sccache.cmd' -Line @(
+        '>>"%FAKE_SCCACHE_LOG%" echo %*', 'if "%1"=="--version" echo sccache 0.19.0')
     return @{ PATH = "$(Join-Path $Dir 'bin');$env:PATH"; FAKE_SCCACHE_LOG = (Join-Path $Dir 'sccache.log'); SCCACHE_DIR = $null; CARGO_HOME = $null
         CI_COMPILER_CACHE = (Join-Path $Dir 'ci'); GLOBAL_CACHE_DIR = (Join-Path $Dir 'local'); KATAGLYPHIS_FAST_BUILD_DIR = $null }
 }

@@ -289,8 +289,7 @@ Describe 'The launcher-wiring sites probe before they wire' {
     It 'Initialize-BuildCacheEnvironment, with sccache on PATH, runs the probe' {
         Invoke-InTestDir { param($dir)
             $bin = Join-Path $dir 'bin'
-            $null = New-Item -ItemType Directory -Path $bin
-            Set-Content -Path (Join-Path $bin 'sccache.cmd') -Value '@exit /b 0' -Encoding ascii
+            $null = New-TestBatchTool -Directory $bin -Name 'sccache.cmd' -Line '@exit /b 0'
             $ctx = New-BuildContext -Workspace $dir -LogDir $dir
             $s = New-ClosedLoopbackPort
             try {

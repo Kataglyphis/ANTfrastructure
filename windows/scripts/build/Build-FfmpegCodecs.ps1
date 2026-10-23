@@ -78,11 +78,9 @@ function Initialize-CodecMeson {
 # One meson project: release, NDEBUG, static, clang-cl (meson would otherwise pick cl.exe).
 function Invoke-CodecMeson([string]$Name, [string]$SourceDir, [string[]]$Options) {
     $buildDir = Join-Path $WorkDir "$Name-build"
-    $saved = @{ CC = $env:CC; CXX = $env:CXX }
     # The same launcher rule as GStreamer's meson build: sccache only with a remote backend.
     $cc = if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) { 'sccache clang-cl' } else { 'clang-cl' }
-    $env:CC = $cc; $env:CXX = $cc
-    try {
+    Invoke-WithProcessEnvironment -Environment @{ CC = $cc; CXX = $cc } -ScriptBlock {
         $setup = @('setup', $buildDir, $SourceDir, "--prefix=$Prefix", '--libdir=lib',
             '--buildtype=release', '-Db_ndebug=true', '--default-library=static',
             # FFmpeg's DLLs link the static CRT, so meson's /MD default leaves __imp_ refs configure cannot resolve.
@@ -92,8 +90,6 @@ function Invoke-CodecMeson([string]$Name, [string]$SourceDir, [string[]]$Options
         if ($LASTEXITCODE -ne 0) { throw "$Name meson setup failed ($LASTEXITCODE)" }
         & meson install -C $buildDir | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "$Name meson build/install failed ($LASTEXITCODE)" }
-    } finally {
-        $env:CC = $saved.CC; $env:CXX = $saved.CXX
     }
 }
 

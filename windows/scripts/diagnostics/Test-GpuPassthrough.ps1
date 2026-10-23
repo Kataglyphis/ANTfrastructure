@@ -24,6 +24,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsContainerImage.Common.psm1')
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsDiagnostics.Common.psm1')
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
 if ([string]::IsNullOrWhiteSpace($Image)) { $Image = Get-CiImageReference -Windows }
 
@@ -31,7 +32,7 @@ if ([string]::IsNullOrWhiteSpace($Image)) { $Image = Get-CiImageReference -Windo
 $GpuDeviceClass = 'class/5B45201D-F2F2-4F3B-85BB-30FF1F953599'
 
 if ([string]::IsNullOrWhiteSpace($Docker)) {
-    $Docker = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe") -Required
+    $Docker = Resolve-DiagnosticDocker
 }
 Write-Host "Using docker: $Docker"
 Write-Host "Image:        $Image`n"

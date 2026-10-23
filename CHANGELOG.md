@@ -14,6 +14,11 @@
 
 ## 2026-10-23 — remove another Windows duplication wave
 
+- Scope FFmpeg codec and Vulkan Validation Layers compiler variables with the shared environment helper, route GPU diagnostics through shared Docker discovery, and build wheel/sccache fakes with the shared batch-tool fixture.
+- Cover environment restoration after success and failure, resolver removal and parse mutations, while retaining the original fixture behavior.
+
+## 2026-10-23 — remove another Windows duplication wave
+
 - Share CMake cache parsing, lavapipe ICD registry writes and container-client capture while preserving caller-specific verdict and failure policies.
 - Split the PowerShell literal masker into state handlers so the complexity gate can grade it without freezing an exception.
 - Add focused regression cases for raw cache values, registry write failures and container inspect stream policy.

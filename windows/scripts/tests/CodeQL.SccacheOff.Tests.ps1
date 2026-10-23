@@ -17,8 +17,7 @@ Describe 'sccache is off for a CodeQL-traced build' {
         # A fake sccache first on PATH; its body is the cmd line it runs when called.
         function Use-FakeSccache([string] $Name, [string] $Body = '@exit /b 0') {
             $bin = Join-Path $TestDrive $Name
-            $null = New-Item -ItemType Directory -Force -Path $bin
-            Set-Content -Path (Join-Path $bin 'sccache.cmd') -Value $Body -Encoding ascii
+            $null = New-TestBatchTool -Directory $bin -Name 'sccache.cmd' -Line $Body
             $env:PATH = "$bin;$env:PATH"
             $env:SCCACHE_WEBDAV_ENDPOINT = $null
         }

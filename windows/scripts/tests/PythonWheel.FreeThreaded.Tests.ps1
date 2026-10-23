@@ -7,9 +7,9 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWh
 
 # A python that logs its arguments to FAKE_PY_LOG, prints FAKE_PY_TEXT and exits FAKE_PY_RC.
 function script:New-FakePython([string]$Dir) {
-    $cmd = Join-Path $Dir 'python.cmd'
-    Set-Content -LiteralPath $cmd -Encoding ascii -Value @('@echo %*>> "%FAKE_PY_LOG%"', '@echo %FAKE_PY_TEXT%', '@exit /b %FAKE_PY_RC%')
-    return $cmd
+    return New-TestBatchTool -Directory $Dir -Name 'python.cmd' -Line @(
+        'echo %*>> "%FAKE_PY_LOG%"', 'echo %FAKE_PY_TEXT%', 'exit /b %FAKE_PY_RC%'
+    )
 }
 
 # Runs -Body with the fake python answering -Code and -Text; returns what -Body returned.

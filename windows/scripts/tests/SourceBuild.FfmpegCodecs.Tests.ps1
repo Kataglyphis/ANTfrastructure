@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# The codec .pc rewrite FFmpeg's configure link test reads; no real codec build.
+# NOT covered: real codec build or Meson; both Meson commands are stubbed here.
 
 Describe 'Add-CodecPcSystemLib (x265 4.2 static lib needs advapi32)' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegCodecs.ps1' -FunctionName 'Add-CodecPcSystemLib')
@@ -28,5 +28,71 @@ Describe 'Add-CodecPcSystemLib (x265 4.2 static lib needs advapi32)' {
     It 'refuses a .pc without exactly one Libs: line' {
         Assert-Throws { Invoke-OnPc "Name: x265`n" } -MessagePattern 'has 0 Libs: line'
         Assert-Throws { Invoke-OnPc "Libs: -lx265`nLibs: -lx265`n" } -MessagePattern 'has 2 Libs: line'
+    }
+}
+
+Describe 'FFmpeg codec Meson compiler environment' {
+    BeforeAll {
+        $sharedEnvironment = (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsScripts.Shared.psm1' -FunctionName 'Invoke-WithProcessEnvironment').ToString()
+        $script:MesonEnvironmentPrelude = @"
+`$script:WorkDir = 'C:\codec-test'
+`$script:Prefix = 'C:\codec-prefix'
+$sharedEnvironment
+function Test-SccacheRemoteConfigured { return `$false }
+function meson {
+    `$State.Calls.Add(@(`$args))
+    `$State.CompilerStates.Add([pscustomobject]@{
+        CCSet = Test-Path Env:CC
+        CC = [Environment]::GetEnvironmentVariable('CC')
+        CXXSet = Test-Path Env:CXX
+        CXX = [Environment]::GetEnvironmentVariable('CXX')
+    })
+    `$global:LASTEXITCODE = `$State.Code
+}
+"@
+    }
+
+    It 'uses clang-cl and restores compiler variables after success and failure' {
+        $cases = @(
+            @{ Code = 0; CC = $null; CXX = ''; ExpectedCalls = 2; FailurePattern = '' }
+            @{ Code = 23; CC = 'caller-cc'; CXX = 'caller-cxx'; ExpectedCalls = 1; FailurePattern = 'fixture meson setup failed \(23\)' }
+        )
+        $exercise = { param($fixture)
+            if ($fixture.FailurePattern) {
+                Assert-Throws { Invoke-MutCodecMeson -Name 'fixture' -SourceDir 'C:\codec-source' -Options @() } -MessagePattern $fixture.FailurePattern
+            } else {
+                Invoke-MutCodecMeson -Name 'fixture' -SourceDir 'C:\codec-source' -Options @('-Dfixture=true')
+            }
+            Assert-Equal $fixture.ExpectedCalls $fixture.Calls.Count 'setup failure prevents install'
+            Assert-Equal $fixture.ExpectedCalls $fixture.CompilerStates.Count
+            foreach ($during in $fixture.CompilerStates) {
+                Assert-True $during.CCSet
+                Assert-Equal 'clang-cl' $during.CC
+                Assert-True $during.CXXSet
+                Assert-Equal 'clang-cl' $during.CXX
+            }
+        }
+        Invoke-InTestDir {
+            foreach ($case in $cases) {
+                $state = New-TestCallState @{ Code = $case.Code; ExpectedCalls = $case.ExpectedCalls; FailurePattern = $case.FailurePattern; CompilerStates = [Collections.Generic.List[object]]::new() }
+                $module = @{ ScriptPath = 'windows\scripts\build\Build-FfmpegCodecs.ps1'; FunctionName = @('Invoke-CodecMeson'); FixtureState = $state; Prelude = $script:MesonEnvironmentPrelude }
+                Invoke-WithEnv @{ CC = $case.CC; CXX = $case.CXX } {
+                    Invoke-WithFunctionModule @module -Body $exercise
+                    if ($null -eq $case.CC) { Assert-False (Test-Path Env:CC) 'unset CC remains unset' }
+                    else { Assert-Equal $case.CC $env:CC 'CC returns to the caller value' }
+                    if ($case.CXX -eq '') {
+                        Assert-True (Test-Path Env:CXX) 'empty CXX remains defined'
+                        Assert-Equal '' (Get-Item Env:CXX).Value
+                    } else { Assert-Equal $case.CXX $env:CXX 'CXX returns to the caller value' }
+                }
+            }
+            $mutationState = New-TestCallState @{ Code = 0; ExpectedCalls = 2; FailurePattern = ''; CompilerStates = [Collections.Generic.List[object]]::new() }
+            $mutationModule = @{ ScriptPath = 'windows\scripts\build\Build-FfmpegCodecs.ps1'; FunctionName = @('Invoke-CodecMeson'); FixtureState = $mutationState; Prelude = $script:MesonEnvironmentPrelude }
+            Invoke-WithEnv @{ CC = $null; CXX = '' } {
+                Invoke-TestFunctionMutations -ModuleArguments $mutationModule `
+                    -Find 'Invoke-WithProcessEnvironment -Environment @{ CC = $cc; CXX = $cc } -ScriptBlock {' -Replace '& {' `
+                    -Expected 'expected \[clang-cl\] but got' -Body $exercise
+            }
+        }
     }
 }

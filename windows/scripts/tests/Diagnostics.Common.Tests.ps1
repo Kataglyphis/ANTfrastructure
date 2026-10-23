@@ -63,3 +63,37 @@ Describe 'Shared diagnostic result lines' {
         Assert-Equal '[ OK ] present - 64 bytes|[FAIL] absent|[FAIL] error - fixture failure|[FAIL] separate|       second line' ($lines -join '|')
     }
 }
+
+function Assert-GpuDockerLookupWiring {
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Ast)
+    $calls = @(Get-TestAstCommands -Ast $Ast -Name Resolve-DiagnosticDocker)
+    Assert-Equal 1 $calls.Count 'GPU diagnostic must delegate required Docker lookup'
+    Assert-Equal 0 (Get-TestCommandArguments -Command $calls[0]).Count 'shared Docker lookup owns candidate selection'
+    $condition = Get-TestAstAncestor -Node $calls[0] -Type ([Management.Automation.Language.IfStatementAst]) -First
+    Assert-NotNull $condition
+    Assert-Match 'IsNullOrWhiteSpace\(\$Docker\)' $condition.Clauses[0].Item1.Extent.Text
+    Assert-Equal 0 @(Get-TestAstCommands -Ast $Ast -Name Get-PreferredToolPath).Count 'Docker candidate selection belongs to WindowsDiagnostics.Common'
+}
+
+Describe 'GPU diagnostic Docker lookup' {
+    It 'uses the required shared resolver only when the caller leaves Docker blank' {
+        $ast = Get-TestScriptAst -ScriptPath 'windows/scripts/diagnostics/Test-GpuPassthrough.ps1'
+        Assert-GpuDockerLookupWiring -Ast $ast
+    }
+
+    It 'rejects a removed shared resolver call after parsing the valid mutation' {
+        $source = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/diagnostics/Test-GpuPassthrough.ps1'))
+        $mutated = $source.Replace('$Docker = Resolve-DiagnosticDocker', '$Docker = ''fixture''')
+        $ast = ConvertTo-TestScriptAst -Text $mutated
+        Assert-Throws { Assert-GpuDockerLookupWiring -Ast $ast } -MessagePattern 'GPU diagnostic must delegate required Docker lookup'
+    }
+
+    It 'rejects parse errors before inspecting the resolver declaration' {
+        $source = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/diagnostics/Test-GpuPassthrough.ps1'))
+        $mutated = $source.Replace('$Docker = Resolve-DiagnosticDocker', '$Docker = if (')
+        Assert-Throws {
+            $ast = ConvertTo-TestScriptAst -Text $mutated
+            Assert-GpuDockerLookupWiring -Ast $ast
+        } -MessagePattern 'snippet failed to parse'
+    }
+}
