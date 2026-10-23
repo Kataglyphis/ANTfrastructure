@@ -6,16 +6,16 @@ registers stay in [`docs/refactoring-backlog.md`](docs/refactoring-backlog.md).
 The CON1–CON6 prefix history is in
 [`…-archive-2026-09-17.md`](docs/refactoring-backlog-archive-2026-09-17.md).
 
-**State 2026-10-20**, read from the registry, reviewed against the 2026-10-21 commits (hub = the image's `revision` label, digest =
-the per-arch manifest). Published: `:latest` (2026-10-11, hub 57ba7420, index `b52f8c34…`;
-amd64 `624a8a63…`, arm64 `448591ff…`, riscv64 `7689579f…`; Python 3.14, ORT 1.30.0), `:latest-nvidia`
-(2026-10-19, hub e9cff670, index `0e9dec34…`, amd64 `be8b9726…`; Python 3.15, ORT 1.31.0), `:latest-rocm`
-(2026-10-09, hub 3f259111, index `a5d68fbe…`, amd64 `d58be41b…`), and on 2026-10-17, all with
-`PYTHON_VERSION=3.15.0` and label `13cf002c`: `:winamd64` (`bec12ad0…`), `:winamd64-nvidia` (`14c1a7e6…`),
-`:winamd64-rocm` (`ca682539…`) and `:winarm64` (`e78fa8c3…`, without NVIDIA; no `:winarm64-nvidia` tag exists).
-Every Linux image gap up to CON41 shipped and was checked in the published children (git history).
-Decisions and gaps checked closed live in [`docs/image-decisions.md`](docs/image-decisions.md). **Re-derive before acting; a number
-here is a date's measurement.**
+**Groomed 2026-10-23 against the merged source and recorded checks.** The immutable Linux index
+observed on 2026-10-22 was
+`sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+(hub `c819278171c47b9c6462dcc239377808b324476e`, run `20261022-055503-544d57b9`),
+with amd64, arm64 and riscv64 children. The recorded consumer runs on this index use Python 3.15
+and chain ORT 1.31.0. This replaces the earlier default-image baseline of Python 3.14/ORT 1.30;
+it is not a fresh assertion about a mutable tag or either GPU variant.
+Earlier Windows and GPU measurements remain dated evidence in their individual entries.
+Decisions and checked closures live in [`docs/image-decisions.md`](docs/image-decisions.md).
+**Re-derive before acting; source completion, image publication and device execution are separate.**
 
 ## Protocol
 
@@ -334,14 +334,6 @@ Effort S/M/L, impact ★ … ★★★, as in the refactoring backlog.
       dev upload, passing the URL by name (`-e DEV_WASM_SITE_URL`); the WASM check must run before
       the CanvasKit build replaces `build/web`. Done when a develop push shows both checks green.
 
-- [ ] **CON149 — OmniAccelerANT's web build serves the engine's fallback fonts** [S, ★★]. Found
-      2026-10-21: OmniAccelerANT builds with `--no-web-resources-cdn` and sets no CSP, so a glyph
-      outside its fonts (an emoji) makes the engine fetch a Noto chunk from fonts.gstatic.com, a
-      visitor request to Google against the owner's rule. Next: its `web/flutter_bootstrap.js` sets
-      `fontFallbackBaseUrl: "fallback-fonts/"`, its web lane runs `fetch-fallback-fonts.py --dest
-      build/web/fallback-fonts` and the smoke test `CHECK_FALLBACK_FONTS=1`, as jotrockenmitlocken
-      does ([`linux/webserver/README.md`](linux/webserver/README.md#fallback-fonts-from-the-site)).
-
 - [ ] **CON150 — the uncaught `postMessage` TypeError on jonasheinle.de's landingPage and error404** [S, ★★].
       Found 2026-10-21, when jotrockenmitlocken 1.4.1 went to main: the live check saw one
       `Uncaught TypeError: Cannot read properties of undefined (reading 'postMessage')` on
@@ -456,24 +448,16 @@ owner carries the breakage that costs.
       a short outage. Work left: mirror the pinned release assets (shellcheck, hadolint, rustup-init) to storage
       we own, SHA-verified, so a longer GitHub outage cannot fail an arch.
 
-- [ ] **CON129 — GTK 4 for OxidANT's mandatory GTK GUI: lands with the next image build** [M, ★★★].
-      Owner decision 2026-10-20: every Rust feature is mandatory, `gui_unix` (gtk4-rs 0.11, `v4_10`)
-      included. In source: the package stage installs the dev surface of the GTK 4 each arch runs,
-      riscv64's prefix GLib 2.86.3 yields to Ubuntu's 2.88.0, and `verify_gtk4_dev_surface` plus
-      contract row 9 (`gtk4-dev`) gate it ([`consumer-image-contract.md` § GTK 4 for
-      gtk4-rs](docs/consumer-image-contract.md#gtk-4-for-gtk4-rs)). Proved in throwaway containers of
-      `:latest` `b52f8c34`, no chain build. The next `:latest` (and `-nvidia`, `-rocm`) must show:
-      1. Package stage: amd64 `OK: gtk4 4.14.5 at /opt/gstreamer/lib/x86_64-linux-gnu/libgtk-4.so.1:
-         every Requires, NEEDED and symbol resolves` and still `OK: dropped the distro GTK 4 and
-         GStreamer runtime`; arm64 and riscv64 `OK: gtk4 4.22.4 at /usr/lib/<triplet>/libgtk-4.so.1: …`;
-         riscv64 `OK: libglib-2.0.so.0.8600.3 left /opt/gstreamer/lib; libglib-2.0.so.0.8800.0 serves
-         GStreamer, GTK 4 and PyGObject`.
-      2. Runtime smoke: `OK   gtk4-dev gtk4 …` in every arch's CONSUMER CONTRACT, and riscv64's
-         plugin health (290 plugins, none blacklisted) and SHIPPED-TRUTH D unchanged.
-      3. OxidANT on that image: `cargo build -p kataglyphis_cli --features gui_unix` in its x64 and
-         arm64 lanes, and in its riscv64-test step against the new child's sysroot.
-      Then OxidANT drops AGENTS.md's `gui_unix` "No, by design" row and its `--all-features` and
-      feature-check exclusions (OxidANT's change).
+- [ ] **CON129 — finish GTK 4 validation on foreign arches and GPU variants** [M, ★★★].
+      The mandatory `gui_unix` feature is enabled in OxidANT. On the recorded `3c558d88` index,
+      its x64 run `39865676735` passed 728 normal and 728 instrumented tests with real Xvfb/GTK;
+      all GUI coverage floors passed. That closes the x64 consumer blocker, not every image lane.
+      Left, using [`consumer-image-contract.md` § GTK 4 for
+      gtk4-rs](docs/consumer-image-contract.md#gtk-4-for-gtk4-rs):
+      1. Record the package-stage `verify_gtk4_dev_surface` and runtime `gtk4-dev` verdicts for
+         all three default children and the next nvidia/rocm builds. Preserve riscv64's GLib
+         handoff, plugin health and SHIPPED-TRUTH D checks.
+      2. Prove the mandatory GUI build in OxidANT's arm64 lane and its riscv64 sysroot test.
 
 - [ ] **CON131 — pwsh in the Linux image; then OrchestrANT's `benchmarks.yml` contract job moves into
       `:latest`** [S, ★★]. Found with CON124 (2026-10-20): in `:latest` the contract job's 41 PowerShell
@@ -510,37 +494,18 @@ owner carries the breakage that costs.
       ~4.5 MB/s uplink, and every consumer re-downloading once; Docker 23+, containerd and podman
       all read zstd layers.
 
-- [ ] **CON90 — Python 3.15 in the published images, built from the one pin** [L, ★★★]. Owner request 2026-10-12:
-      `PYTHON_VERSION=3.15.0` (released 2026-10-09), and an upgrade must stay that one line
-      (`docs/python-ci.md` § Upgrading Python). In source: every image ships the source-built interpreter on every
-      arch, GIL and free-threaded, never the distro `python3.14`; the free-threaded store has a version-free name
-      (`/opt/wheels-free-threaded`, `PYTHON_WHEELS_FREE_THREADED`); the drivers default to the pinned X.Y (and X.Yt
-      for a project that declares free-threading); arm64 and riscv64 build numpy, PyGObject, pycairo and contourpy
-      from sdists instead of copying apt's. uv moved to 0.13.0 with it (the first to know 3.15.0). Open:
-      1. The default chain from `compiler` (amd64, arm64, riscv64), published, with every per-ABI wheel rebuilt for
-         cp315/cp315t: ONNX Runtime and its twins, GenAI, IREE, PyAV, tvm-ffi, LiteRT, cv2, riscv64 torch. The
-         owner's other build host runs it since 2026-10-20.
-         - 2026-10-22: the published arm64 and riscv64 children run `/usr/local/bin/python3.15`, and its sysconfig
-           `AR` (`/opt/gcc-16.2.0/bin/<triple>-ar`) exists, so the check below passed on both.
-         - **The cross children's GIL tree likely lacks its `ar` too.** The published arm64 and riscv64 children
-           run Ubuntu's 3.14.4 as their GIL interpreter (`/usr` 3.14.4 in OrchestrANT job 118397954209); from
-           source, `install_staged_target_python` copies the cross-built `/opt/python-cross/<arch>/usr/local`
-           instead. `build_python.sh` builds that tree with the same cross configure as the X.Yt one, but
-           `Dockerfile.torch` runs
-           `free-threaded-sysconfig-tools.py fix` on `/opt/python-freethreaded` only (CON110). Check the
-           published children: `/usr/local/bin/python3.15` runs and its sysconfig's `AR` exists; else run the
-           fix on `/usr/local` too.
-      2. Then `:latest-nvidia` and `:latest-rocm`, serially. `:latest-nvidia` is published on 3.15 (2026-10-19,
-         run 20261019-055155, hub e9cff670: `PYTHON_MAJOR_MINOR=3.15`, `ONNXRUNTIME_VERSION=v1.31.0`, uv 0.13.1).
-      3. The consumers' fallout once `:latest` moves. Their edits are in: OrchestrANT (964c24f) and WebDavClient
-         (091da1c, fb5659b) name no version, and AccelerANTgine's `ci-python-bindings.sh` takes the image's X.Y
-         (66b1db2). Left: their first runs on the 3.15 `:latest`, whose locks need cp315 wheels (numpy 2.5.4 has
-         them; PyPI onnxruntime has none, the chain's serves the image). Those runs must repeat what their 3.14
-         runs proved on 2026-10-20 (OrchestrANT 39413508655, WebDavClient 39413315749): both legs logging
-         `the image's own interpreter, UV_PYTHON_DOWNLOADS=never`, and `free-threaded wheel tests passed` on
-         the cp315t wheel.
-      4. Left from CON66: PGO on arm64 needs a native arm64 toolchain build (the cross arches get LTO alone), and
-         the toolchain stage's CPython time on a 4-core CI runner is an estimate (25–40 min), not a measurement.
+- [ ] **CON90 — finish the Python 3.15 rollout and remaining measurements** [L, ★★★].
+      The default-image and x64 consumer rollout is recorded under
+      [`image-decisions.md`](docs/image-decisions.md); do not repeat the old 3.14 blocker.
+      The 2026-10-22 arm64/riscv64 observations also proved that `/usr/local/bin/python3.15`
+      runs and its sysconfig `AR` exists. Left:
+      1. Prove the 3.15 `:latest-rocm` rebuild, including its ABI-specific wheels and twins.
+         The nvidia 3.15 publish was already proved on 2026-10-19 (run `20261019-055155`).
+      2. Retain explicit per-ABI wheel/store verdicts on foreign arches; the x64 consumer runs
+         do not prove every arm64/riscv64 wheel or free-threaded leg.
+      3. PGO on arm64 needs a native arm64 toolchain build; cross arches currently get LTO alone.
+         Measure the toolchain's CPython time on a four-core CI runner; 25–40 minutes remains
+         an estimate. Keep the single-pin contract in [`python-ci.md`](docs/python-ci.md).
 
 - [ ] **CON123 — a relocatable pinned CPython in `:latest`, so Linux app bundles stop downloading one**
       [M, ★★]. `python-app-bundle.sh:109` runs `uv python install` for python-build-standalone,
@@ -650,11 +615,14 @@ owner carries the breakage that costs.
         warnings per process (OxidANT run 39487523314, 2026-10-20); harmless today, the riscv64 plugins
         still load. Point the run at the sysroot's riscv64 plugin dir with the build-time fix.
 
-- [ ] **CON135 — two Dependabot alerts in the Renovate CLI's lock, with no fixed release** [S, ★].
-      `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3 (GHSA-vfj7-8cjw-p6xm, high,
-      via micromatch) and sprintf-js 1.1.3 (GHSA-hp3w-g68c-fv3c, medium, via roarr), both a DoS
-      on attacker-made patterns; Renovate runs only locally against our own repos. Move both the
-      day a fixed version ships (targeted lockfile update, `dependency-updates.md`).
+- [b] **CON135 — the active braces advisory has no patched version** [S, ★].
+      Observed 2026-10-23 in `linux/scripts/renovate-npm/package-lock.json`: braces 3.0.3
+      ([GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), high, via
+      micromatch) still has an active advisory and no first patched version. Blocked on a fix;
+      use the local Renovate workflow when one exists ([`dependency-updates.md`](docs/dependency-updates.md)).
+      The second repository alert, sprintf-js 1.1.3 via roarr, is still open, but its advisory
+      [GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c) was withdrawn
+      on 2026-10-22 at 19:21:04 UTC. Withdrawal is not a package fix; neither alert was dismissed.
 
 - [ ] **CON145 — `cxxbridge` in the Linux and Windows images** [S, ★★]. Found 2026-10-21 with
       BeschleunigerBallett 7f54642c: every BB configure runs `_myproject_find_or_install_cxxbridge`,
@@ -709,9 +677,11 @@ owner carries the breakage that costs.
       - **Left:** the x64 consumer lanes (`Invoke-PythonCiBuild.ps1` since 2026-10-19, `Invoke-CiPackaging.ps1`)
         still build third-party sdists with VS's `cl` (`Invoke-PythonTestLegs.ps1` went with CON113). OrchestrANT's own `setup.py` switches to clang-cl but links with
         `link.exe`, so moving those lanes onto the shim changes its linker too and needs its own proof.
-- [ ] **CON95 — the chain ORT moves from v1.30.0 to v1.31.0** [M, ★★]. Released 2026-10-09; PyPI's 1.31.0 already reached
-      the consumers' locks (python-ci.md). **In source since 2026-10-13 (CHANGELOG); published on Windows and in `:latest-nvidia`.**
-      What moved with it, read from the two tags' `cmake/deps.txt` and sources:
+- [ ] **CON95 — finish ORT 1.31.0's ROCm rollout and consumer API update** [M, ★★].
+      The recorded default index `3c558d88`, Windows images and `:latest-nvidia` already carry
+      chain ORT 1.31.0. Left: prove it in the next `:latest-rocm`, then move OxidANT from its
+      current exact `ort` 2.0.0-rc.13 pin to rc.14 with its own tests.
+      Compatibility evidence for the remaining rebuild (read from the two tags' sources):
       - Dawn v20260818.211311 → v20260916.214021: `ORT_WEBGPU_WINDOWS_DAWN_SHA256` is
         `507949fd45d7ca0cfc672617fd1e06ee02ce23c4f32856b342c48133e71d682e` (full download, 2026-10-13), its SHA1 equal
         to deps.txt's `514e914f…`. ORT's six Dawn patches apply to it with GNU patch, five with fuzz.
@@ -736,9 +706,9 @@ owner carries the breakage that costs.
         chain bk-20261016-184041 passed `OrtWebGpu.ps1` on Dawn v20260916.214021 with DXC v1.9.2609 and loaded
         `migraphx-ep.dll`; `windows-11-arm` imported ort 1.31.0 from `:winarm64` (hub run 39200278761). **Linux:**
         `:latest-nvidia` of 2026-10-19 ships v1.31.0 with GenAI v0.17.0 (CUDA, with `002`'s `<cstdint>`).
-      - **Left:** the default `:latest` chain (the CPU, wasm and android media builds; CON90 item 1) and
-        `:latest-rocm`. ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package with a
-        different protobuf. After the images publish, OxidANT moves to `ort` 2.0.0-rc.14 (pinned `=2.0.0-rc.13`).
+      - ORT configure still builds onnx from source: v1.31.0 fails on a found ONNX package
+        with a different protobuf. The default-image consumer proof does not substitute for
+        the ROCm EP and GenAI rebuild.
 - [ ] **CON96 — the arm64 and riscv64 children without the x86_64 host payload** [S, ★★]. Owner request
       2026-10-13 (CI prologue measures, item 5). **In source since 2026-10-13 (CHANGELOG); the next chain proves it.**
       `prune-host-payload.sh` empties `/opt/android-sdk`, `/opt/android` and the builder's rustup in `artifact-source`
@@ -948,12 +918,13 @@ owner carries the breakage that costs.
       tvm-ffi wheels of the next arm64 and riscv64 media chain for a target tag; if one comes out
       host-tagged or withdrawn, give TVM the wheelhouse's copy-and-synthesise export.
 
-- [ ] **CON144 — headless Chrome on the build host loads no `http://` page, so both docs-site browser
-      suites hang** [M, ★★]. Found 2026-10-21 running the preflight. `test-docs-sidebars.sh` passed 47
-      of 47 at 10:51 and hung from about 11:20 on; `test-webgpu-canvas-readback.sh` hangs on unmodified
-      HEAD (b515b7ca). `run-tests.sh` has no per-suite timeout, so one hung suite stops the whole
-      preflight (it sat 27 min in `test-docs-sidebars.sh`), and the mutation gate's baselines time out
-      at 300 s and report `vacuous bite`. Reproduced without the hub: `google-chrome` 156.0.8078.47
+- [ ] **CON144 — explain the build host's Chrome HTTP stall** [M, ★★].
+      The 2026-10-22/23 Linux CI and immutable-image browser suites pass; that does not explain
+      the earlier failure on the other build host. Found 2026-10-21: `test-docs-sidebars.sh` passed 47
+      of 47 at 10:51 and hung from about 11:20 on; `test-webgpu-canvas-readback.sh` hung on
+      unmodified HEAD `b515b7ca`. At that time `run-tests.sh` had no per-suite timeout, so one hung
+      suite stopped preflight (27 min in `test-docs-sidebars.sh`), while the mutation baseline
+      timed out at 300 s and reported `vacuous bite`. Reproduced without the hub: `google-chrome` 156.0.8078.47
       (apt, updated 08:31 that day) `--headless=new --no-sandbox --disable-gpu --dump-dom` loads
       `data:` and `file:` URLs in 0 s but never returns on `http://127.0.0.1:<port>/`, not even on a
       refused port 1 (curl refuses in 20 ms). The `--v=1` log shows `NotifyBeforeURLRequest:
@@ -961,12 +932,12 @@ owner carries the breakage that costs.
       `--no-proxy-server`, `--disable-quic`, `--headless=old`, `--disable-background-networking`,
       `--disable-component-update`, `--disable-extensions`, `--disable-field-trial-config`, and
       `--disable-features=` `LocalNetworkAccessChecks`, `HttpsUpgrades` and `OptimizationHints`;
-      GNOME's proxy mode is `none`. Two side findings: `check-docs-sidebars.js`'s `close()` throws
-      `ENOTEMPTY` when it removes the profile right after `SIGKILL` (Chrome's children still write
-      it), and a suite killed on timeout leaves its headless Chrome orphaned: 24 of them, about 22 GB
-      RSS, were on the host at 12:00. Since the no-ghosts change `run-tests.sh` times a suite out
-      (`RUN_TESTS_SUITE_TIMEOUT`) and kills its whole group, so a hang costs 15 minutes and no
-      orphan. Work: find what the network service waits for.
+      GNOME's proxy mode was `none`. Work: re-check that host and, if it still stalls, identify
+      what the network service waits for. The separate Chrome cleanup race is fixed: callers
+      await group termination, child exit and bounded profile cleanup, and startup failures
+      release their resources too. Suite timeouts reap process groups. Those regression-tested
+      fixes do not establish the cause of the HTTP stall
+      ([`docs-sites.md`](docs/docs-sites.md#the-sidebar-toggle-check)).
 
 - [ ] **CON142 — the resource monitor names the runtime lane's arch and step** [S, ★]. All 1197
       samples of the 2026-10-20 runtime run (and every runtime run before it) carry `stage=?`, so the

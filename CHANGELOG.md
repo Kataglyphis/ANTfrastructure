@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — groom the open backlogs against merged evidence
+
+- Remove completed Omni fallback-font work and F1; retain dated closure evidence and archive
+  Windows history while keeping unfinished cache and QNN-device checks open. Retire the old
+  general registry decision using recorded published images and device-consumer execution.
+- Separate proved default-image Python/ORT and x64 GTK results from outstanding foreign-arch,
+  GPU and hardware checks. Keep the unresolved build-host Chrome HTTP stall distinct from
+  its repaired cleanup race. Correct the remaining file-size queue and advisory status.
+
 ## 2026-10-23 — preserve failure paths while reducing quality freezes
 
 - Share PowerShell fixture AST parsing for files and snippets; reject malformed inputs

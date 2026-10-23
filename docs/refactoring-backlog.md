@@ -10,13 +10,14 @@ observation journal live in the archives:
 [`…-archive-2026-09-03.md`](refactoring-backlog-archive-2026-09-03.md),
 [`…-archive-2026-09-07.md`](refactoring-backlog-archive-2026-09-07.md),
 [`…-archive-2026-09-09.md`](refactoring-backlog-archive-2026-09-09.md),
-[`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md).
+[`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md),
+[`…-archive-2026-10-23.md`](refactoring-backlog-archive-2026-10-23.md).
 This file shows OPEN work only + CHANGELOG.md + memory — do not resurrect
 without re-verifying.
 
 Legend — effort: S(mall)/M(edium)/L(arge); impact: ★ … ★★★.
-Prefix glossary (only the prefixes this OPEN file still uses): **F#**=the size and
-duplication registers. Image gaps (**CON7** onwards) live in the root
+Prefix glossary (only the prefixes this OPEN file still uses): **RV#**=the chain review,
+**F2**=the remaining file-size register. Image gaps (**CON7** onwards) live in the root
 [`BACKLOG.md`](../BACKLOG.md).
 Everything else is archive-only: **CON1–CON6** closed 2026-09-17/18 (the consumer
 issues, the last one measured and aligned at Flutter 3.47.4), **EX** closed on
@@ -25,13 +26,9 @@ issues, the last one measured and aligned at Flutter 3.47.4), **EX** closed on
 **HT/GH** before them, **QW/TC/SMK** in the 2026-09-04 waves, and the rest long
 before that.
 
-Last groomed: **2026-09-18, after CON4's Windows half was measured, the
-dependency wave landed and the two owner questions were answered** — every closed
-narrative moved to
-[`…-archive-2026-09-17.md`](refactoring-backlog-archive-2026-09-17.md) and the
-CHANGELOG. What stays here is **two registers**. Every
-earlier grooming's warning still applies: **re-derive; do not trust a number
-here, including these.**
+Last groomed: **2026-10-23**, against merged source `657f2803` and its recorded gates.
+F1 is complete and archived; the chain review and file-size work remain open.
+Earlier grooming's warning still applies: **re-derive; do not trust a number here.**
 
 ## OPEN
 
@@ -71,35 +68,16 @@ usage default; see CHANGELOG 2026-10-22.
   The `masked-assignments.allow` and `trailing-conditional.allow` gates cover single classes only.
   Audit per site with a verdict.
 
-Not taken: the wrapper pair `runtime_build_wrapper_image` / `_rootfs` repeats the build, gate and
-ship order. About three lines each; the overlap test pins the order, so leave it until the wrapper
-changes again.
-
-### F1. The extent queues — what is left after every row got a verdict [M each]
-
-**`function-size.allow` and `code-complexity.allow` are empty.** Both branch and nesting
-limits now hold without exceptions. Keep these lists empty and preserve gate coverage.
-
-The completed refactors separate shell orchestration from Python probes, metadata extraction,
-Meson emission, UV extras and dependency dispatch. GStreamer configuration separates host
-and target settings. Runtime checks separate row dispatch, version comparisons and tree
-verdicts. Storage admission, pressure recovery and archive enumeration retain their refusal
-paths. Vulkan installation separates download verification from archive placement and target
-builds. Regression and mutation suites exercise these boundaries.
-
-The comment walker keeps its independent scan: importing `verify_code_size.scan` would omit
-patch directories and narrow comment coverage. Function extraction changes no scan scope.
-
 ### F2. Files over ~800 lines [L each]
 
 **`file-size.allow` is the authority; re-run the gate before choosing a target.** The wheelhouse,
 Vulkan driver, chain driver and runtime test driver now fit below the limit. Their libraries
 remain in the scan. Explicit sourcing, SDK COPY wiring and behavioral suites cover the splits.
 
-The remaining rows are the version updater, media Dockerfile and runtime smoke driver. Earlier
+The remaining rows are the media Dockerfile and runtime smoke driver. Earlier
 KEEP verdicts record the constraints a split must preserve; they do not prohibit improvements.
-The smoke must still call every assertion, version specs must keep their offline test seams,
-and Dockerfile changes must preserve narrow build-input closures and cache order.
+The smoke must still call every assertion, and Dockerfile changes must preserve narrow
+build-input closures and cache order.
 
 **Standing context, not a block:** `git push` is the agent's (2026-09-06) via
 `gh auth setup-git` + HTTPS remotes, and twelve of the fifteen `*.sh` files in

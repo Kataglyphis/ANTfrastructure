@@ -63,6 +63,38 @@ clang-tidy step sets `ModuleImportPattern` to `'(?!)'` (93dd496).
 still guards a host whose own environment names an unreachable one.
 `:winamd64-rocm` still bakes `VOLUME C:\workspace` until its next build (CON34).
 
+## Checked 2026-10-23 — closures from the merged review
+
+These records use the immutable Linux index observed on 2026-10-22,
+`sha256:3c558d8828553ea2e3feedb97c99e15bb89a0820c6a056813876da4cd968d92c`
+(image hub revision `c819278171c47b9c6462dcc239377808b324476e`). They do not assert
+the present value of `:latest` or the state of a later GPU image.
+
+- **CON149, Omni's local fallback fonts: closed.** `web/flutter_bootstrap.js` sets
+  `fontFallbackBaseUrl`, and the web lane stages the locked fonts and requires
+  `CHECK_FALLBACK_FONTS=1`. The actual Rust-Wasm/Flutter-WASM release check proved
+  all 18 local fonts, 36 browser checks and 127 file requests. The changes are merged
+  in [OmniAccelerANT PR48](https://github.com/Kataglyphis/OmniAccelerANT/pull/48).
+  This closes the visitor's fallback-font download gap; image preloading without
+  build-time font downloads remains CON147.
+- **CON90/CON95, the old default-image baseline: superseded.** The recorded default
+  image and x64 consumer runs use source-built Python 3.15 and chain ORT 1.31.0.
+  WebDavClient and OrchestrANT have standalone sdist-to-wheel installation proofs;
+  AccelerANTgine's binding checks and the real OrchestrANT bundle also pass there.
+  The latter proves the chain wheel's DirectURL, CPU import and model self-tests.
+  These packaging proofs do not establish every consumer's free-threaded leg.
+  ROCm, per-ABI foreign-wheel verdicts, ARM PGO and the four-core timing remain open.
+- **CON129, the x64 consumer blocker: closed.** OxidANT's mandatory GTK feature is
+  enabled. Source run `39865676735` on `920ca1b7` passed 728 normal and 728 instrumented
+  tests, none ignored, with real Xvfb/GTK and all unchanged coverage floors.
+  Foreign arches and GPU-variant image verdicts remain CON129.
+- **CON144's cleanup defects: closed separately from its host investigation.** Chrome
+  startup failures and normal shutdown reap the process group before bounded profile
+  removal; all callers await cleanup and failures remain fatal. The startup, cleanup
+  and caller regressions passed in the full Hub suites and registered mutations.
+  This does not explain the other build host's earlier HTTP-network-service stall.
+  The mechanism is in [docs-sites.md](docs-sites.md#the-sidebar-toggle-check).
+
 ## Deliberate — not gaps
 
 These are recorded so nobody files them as gaps:
