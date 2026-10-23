@@ -83,7 +83,9 @@ Options:
   --architectures LIST     Alias for --target-arches
   --cross-targets LIST     Compiler target list baked into the compiler image
                            (default: amd64,arm64,riscv64; must cover --target-arches)
-  --image-repo REPO        Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
+EOF
+  runtime_usage_row '--image-repo REPO' 27
+  cat <<'EOF'
   --final-image REF        Final multi-arch manifest ref (default: REPO:latest)
   --from-stage STAGE       First stage to run: base|compiler|sdk|[gpu|]media|android|runtime
                            (a variant chain defaults to, and must start at or after, gpu)
@@ -188,7 +190,7 @@ _cross_per_arch_build() {
 
 _chain_extra_arg() {
   case "$1" in
-    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    --cross-targets) orchestrator_set_cross_targets "$2" ;;
     --final-image) FINAL_IMAGE="$2"; FINAL_IMAGE_SET=1; _OARG_SHIFT=2 ;;
     --from-stage) FROM_STAGE="$2"; _OARG_SHIFT=2 ;;
     --to-stage) TO_STAGE="$2"; _OARG_SHIFT=2 ;;

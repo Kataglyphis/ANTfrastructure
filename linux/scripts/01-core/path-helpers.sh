@@ -26,3 +26,15 @@ _path_prepend_unique() {
     export "${__varname}=${!__varname}"
   fi
 }
+
+# Roots are lexical boundaries; callers retain their original trailing-slash policy.
+path_under_roots() {
+  local policy="$1" path="$2" root
+  shift 2
+  for root in "$@"; do
+    if [ "$policy" = trim-one ]; then root="${root%/}"; fi
+    [ -n "$root" ] || continue
+    case "$path" in "$root" | "$root"/*) return 0 ;; esac
+  done
+  return 1
+}

@@ -674,16 +674,16 @@ ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
 }
 
-# The public help layouts differ, so callers supply the original description column.
 runtime_usage_description() {
-  local key="$1" profile="${2:-runtime}" description
+  local key="$1" description
   case "$key" in
+    '--image-repo REPO') description='Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)' ;;
     '--target-arches LIST') description='Comma-separated target list (default: amd64,arm64,riscv64)' ;;
     '--architectures LIST') description='Alias for --target-arches' ;;
     --parallel-archs) description='Build per-architecture images in parallel' ;;
-    '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc, 4 if unknown)' ; [ "$profile" != sdk ] || description='Max concurrent arch builds (default: nproc)' ;;
+    '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc, 4 if unknown)' ;;
     NERDCTL_BIN) description='nerdctl executable to use' ;;
-    TARGET_ARCHES) description='Comma-separated architecture list' ; [ "$profile" != sdk ] || description='Comma-separated target list' ;;
+    TARGET_ARCHES) description='Comma-separated architecture list' ;;
     TARGET_ARCH) description='Alias for TARGET_ARCHES' ;;
     ARCHITECTURES) description='Alias for TARGET_ARCHES' ;;
     USE_FAST_UBUNTU_MIRROR) description='Set to true to replace archive/security/ports Ubuntu mirrors' ;;
@@ -694,12 +694,34 @@ runtime_usage_description() {
   printf '%s' "$description"
 }
 
+# The public help layouts differ, so callers supply the original description column.
 runtime_usage_row() {
   local key="$1" column="$2" description padding
   description="$(runtime_usage_description "$key" "${3:-runtime}")" || return 1
+  if [ "${3:-runtime}" = sdk ]; then
+    case "$key" in
+      '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc)' ;;
+      TARGET_ARCHES) description='Comma-separated target list' ;;
+    esac
+  fi
   padding=$((column - 2 - ${#key}))
   [ "$padding" -gt 0 ] || padding=1
   printf '  %s%*s%s\n' "$key" "$padding" '' "$description"
+}
+
+# A shared description keeps both entrypoints aligned with the build flow.
+runtime_usage_build_steps() {
+  cat <<'EOF'
+1. clean per-architecture base images
+2. package images that layer target-built payload from cross-android-${arch}
+EOF
+  printf '3. final wrapper images (includes torch venv + app + runtime scripts)%s\n' "$1"
+}
+
+runtime_usage_shared_sections() {
+  runtime_shared_usage_options
+  cat
+  runtime_shared_usage_env_overrides
 }
 
 # Options both runtime orchestrators document; they live here because this library handles them.

@@ -10262,8 +10262,8 @@
  {
   "id": "ort-chain.g2-genai-fetch-uv",
   "target": "linux/Dockerfile.media",
-  "find": "ort-provenance.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
-  "replace": "ort-provenance.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+  "find": "ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/uv,id=uv-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
+  "replace": "ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n    --mount=type=cache,target=/root/.cache/pip,id=pip-cache-${TARGETARCH} \\\n    set -euo pipefail; \\\n    if [ \"${BUILD_GENAI:-true}\"",
   "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
   "why": "GenAI's G2 RUN grades the uv cache the GenAI build RUN fetched into"
  },
@@ -21529,5 +21529,285 @@
   "replace": "    :",
   "test": "bash linux/scripts/tests/test-apt-list-cleanup.sh",
   "why": "the package main must retain the shared list cleanup after its separate archive-cache cleanup"
+ },
+ {
+  "id": "lib.path-containment-root-boundary",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "case \"$path\" in \"$root\" | \"$root\"/*) return 0 ;; esac",
+  "replace": "case \"$path\" in \"$root\"*) return 0 ;; esac",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "A lexical root must not authorize its prefix siblings."
+ },
+ {
+  "id": "lib.path-containment-trim-one",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "if [ \"$policy\" = trim-one ]; then root=\"${root%/}\"; fi",
+  "replace": "if false; then root=\"${root%/}\"; fi",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "Provenance removes exactly one slash while GST preserves verbatim roots."
+ },
+ {
+  "id": "lib.path-containment-empty-root",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "    [ -n \"$root\" ] || continue",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "Empty roots never authorize arbitrary absolute paths."
+ },
+ {
+  "id": "lib.path-containment-gst-policy",
+  "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+  "find": "path_under_roots verbatim \"$@\"",
+  "replace": "path_under_roots trim-one \"$@\"",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "GST must retain verbatim root matching even for trailing slashes."
+ },
+ {
+  "id": "lib.path-containment-provenance-policy",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "path_under_roots trim-one \"$@\"",
+  "replace": "path_under_roots verbatim \"$@\"",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "Provenance retains its historical trim-one matching policy."
+ },
+ {
+  "id": "lib.path-containment-gst-companion",
+  "target": "linux/scripts/03-media/build/gstreamer/common/gst-onnx-ort.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/../../../../01-core/path-helpers.sh\" || return $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/../../../../01-core/path-helpers.sh\" || true",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "A missing companion must stop GST loading before its gate API is declared."
+ },
+ {
+  "id": "lib.path-containment-provenance-companion",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/../01-core/path-helpers.sh\" || return $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/../01-core/path-helpers.sh\" || true",
+  "test": "bash linux/scripts/tests/test-path-containment.sh",
+  "why": "A missing companion must stop provenance loading before its gate API is declared."
+ },
+ {
+  "id": "lib.path-containment-genai-mount",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/03-media/verify-genai-ort.sh,target=/opt/scripts/03-media/verify-genai-ort.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/03-media/verify-genai-ort.sh,target=/opt/scripts/03-media/verify-genai-ort.sh,readonly \\\n    --mount=type=bind,source=linux/scripts/03-media/ort-provenance.sh,target=/opt/scripts/03-media/ort-provenance.sh,readonly \\\n",
+  "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+  "why": "The isolated GenAI verification RUN mounts the same path owner required by provenance."
+ },
+ {
+  "id": "lib.image-ref-default",
+  "target": "linux/scripts/01-core/image-ref-args.sh",
+  "find": "_irca_tool=\"${NERDCTL_BIN:-nerdctl}\"",
+  "replace": "_irca_tool=\"nerdctl\"",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "one-reference calls honor the configured tool as one executable path"
+ },
+ {
+  "id": "lib.image-ref-explicit",
+  "target": "linux/scripts/01-core/image-ref-args.sh",
+  "find": "    _irca_tool=\"$1\"\n",
+  "replace": "    _irca_tool=\"${NERDCTL_BIN:-nerdctl}\"\n",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "explicit tool overrides the environment"
+ },
+ {
+  "id": "lib.image-ref-extras",
+  "target": "linux/scripts/01-core/image-ref-args.sh",
+  "find": "    _irca_ref=\"$2\"\n",
+  "replace": "    _irca_ref=\"${3:-$2}\"\n",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "extra arguments remain ignored"
+ },
+ {
+  "id": "lib.image-ref-arity",
+  "target": "linux/scripts/01-core/image-ref-args.sh",
+  "find": "if [ \"$#\" -eq 1 ]; then",
+  "replace": "if [ \"$#\" -le 1 ]; then",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "zero argument nounset and relaxed policies remain distinct"
+ },
+ {
+  "id": "lib.image-ref-build-helpers-import",
+  "target": "linux/scripts/01-core/build-helpers.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/image-ref-args.sh\" || exit 1",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/image-ref-args.sh\" || return 1",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "missing companions fail closed even inside conditional imports"
+ },
+ {
+  "id": "lib.image-ref-digest-pinning-import",
+  "target": "linux/scripts/01-core/digest-pinning.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/image-ref-args.sh\" || exit 1",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/image-ref-args.sh\" || return 1",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "missing companions fail closed even inside conditional imports"
+ },
+ {
+  "id": "lib.image-ref-toolchain-closure",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
+  "why": "both minimal compiler mount closures carry the mandatory leaf"
+ },
+ {
+  "id": "lib.image-ref-copied-bundle",
+  "target": "linux/scripts/tests/test-arg-consistency.sh",
+  "find": " \"${CORE}/image-ref-args.sh\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "the isolated argument gate sources a complete core bundle"
+ },
+ {
+  "id": "lib.ffmpeg-runtime-bin-depth",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "    find \"${FFMPEG_PREFIX}/bin\" -maxdepth 1 -type f 2>/dev/null",
+  "replace": "    find \"${FFMPEG_PREFIX}/bin\" -maxdepth 2 -type f 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-ffmpeg-runtime-artifacts.sh",
+  "why": "Only immediate installed binaries are runtime enumeration roots; nested files must not introduce SDK or apt dependencies."
+ },
+ {
+  "id": "lib.ffmpeg-runtime-library-glob",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "    find \"${FFMPEG_PREFIX}/lib\" -maxdepth 2 -name '*.so*' -type f 2>/dev/null",
+  "replace": "    find \"${FFMPEG_PREFIX}/lib\" -maxdepth 2 -type f 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-ffmpeg-runtime-artifacts.sh",
+  "why": "Non-library metadata must not introduce SDK or apt dependencies."
+ },
+ {
+  "id": "lib.ffmpeg-runtime-producer-failure",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "    find \"${FFMPEG_PREFIX}/bin\" -maxdepth 1 -type f 2>/dev/null",
+  "replace": "    find \"${FFMPEG_PREFIX}/bin\" -maxdepth 1 -type f 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-ffmpeg-runtime-artifacts.sh",
+  "why": "Strict direct manifest failures and advisory process-substitution partial output must preserve first-producer failure behavior."
+ },
+ {
+  "id": "lib.ffmpeg-runtime-manifest-enumeration",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "    _ffmpeg_runtime_artifacts | while IFS= read -r _f; do",
+  "replace": "    : | while IFS= read -r _f; do",
+  "test": "bash linux/scripts/tests/test-ffmpeg-runtime-artifacts.sh",
+  "why": "The runtime apt manifest must inspect the installed runtime roots rather than quietly publishing no package map."
+ },
+ {
+  "id": "lib.ffmpeg-runtime-library-symlink",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "    find \"${FFMPEG_PREFIX}/lib\" -maxdepth 2 -name '*.so*' -type f 2>/dev/null",
+  "replace": "    find \"${FFMPEG_PREFIX}/lib\" -maxdepth 2 -name '*.so*' \\( -type f -o -type l \\) 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-ffmpeg-runtime-artifacts.sh",
+  "why": "Runtime roots retain regular-library-only traversal: symlinks must not introduce an otherwise excluded dependency."
+ },
+ {
+  "id": "lib.runtime-flow-help-base-step",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "1. clean per-architecture base images",
+  "replace": "1. reuse stale per-architecture base images",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Both runtime help pages retain the independently frozen clean-base stage description."
+ },
+ {
+  "id": "lib.runtime-flow-help-wrapper-suffix",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "scripts)%s\\n' \"$1\"",
+  "replace": "scripts)\\n'",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "The artifact help keeps its literal Dockerfile suffix while manifest help keeps its shorter third step."
+ },
+ {
+  "id": "lib.runtime-flow-help-section-order",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  runtime_shared_usage_options\n  cat\n  runtime_shared_usage_env_overrides",
+  "replace": "  runtime_shared_usage_env_overrides\n  cat\n  runtime_shared_usage_options",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Shared options, caller footer and shared environment rows retain their complete original output order."
+ },
+ {
+  "id": "lib.runtime-flow-help-artifacts-stages",
+  "target": "linux/scripts/build-runtime-artifacts.sh",
+  "find": "  runtime_usage_build_steps ' from linux/Dockerfile.torch'",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each runtime entrypoint includes the shared stage description in its complete help receipt."
+ },
+ {
+  "id": "lib.runtime-flow-help-artifacts-sections",
+  "target": "linux/scripts/build-runtime-artifacts.sh",
+  "find": "  runtime_usage_shared_sections <<'EOF'",
+  "replace": "  cat <<'EOF'",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each runtime entrypoint includes the common options and environment sections around its own footer."
+ },
+ {
+  "id": "lib.runtime-flow-help-manifest-stages",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_usage_build_steps ''",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each runtime entrypoint includes the shared stage description in its complete help receipt."
+ },
+ {
+  "id": "lib.runtime-flow-help-manifest-sections",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_usage_shared_sections <<'EOF'",
+  "replace": "  cat <<'EOF'",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each runtime entrypoint includes the common options and environment sections around its own footer."
+ },
+ {
+  "id": "lib.cross-cli-image-repo-help",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "description='Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)'",
+  "replace": "description='Image repository (default: invalid)'",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Both cross-lane help pages keep their independently frozen repository description and original padding."
+ },
+ {
+  "id": "lib.cross-cli-raw-targets",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  _oct_targets=\"$1\"",
+  "replace": "  _oct_targets=\"${1%%,*}\"",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "The common callback preserves complete raw cross-target values, including commas, spaces, newlines and literal shell text."
+ },
+ {
+  "id": "lib.cross-cli-consumed-target-value",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  _OARG_SHIFT=2",
+  "replace": "  _OARG_SHIFT=1",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Both callbacks consume the option and its value while retaining dynamic caller locals."
+ },
+ {
+  "id": "lib.cross-cli-chain-targets",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "    --cross-targets) orchestrator_set_cross_targets \"$2\" ;;",
+  "replace": "    --cross-targets) : ;;",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each cross-lane callback retains target assignment and consumed-argument count."
+ },
+ {
+  "id": "lib.cross-cli-chain-help",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  runtime_usage_row '--image-repo REPO' 27",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each cross-lane entrypoint emits the canonical repository row in its complete independently frozen help output."
+ },
+ {
+  "id": "lib.cross-cli-compiler-targets",
+  "target": "linux/scripts/build-cross-compiler.sh",
+  "find": "    --cross-targets) orchestrator_set_cross_targets \"$2\" ;;",
+  "replace": "    --cross-targets) : ;;",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each cross-lane callback retains target assignment and consumed-argument count."
+ },
+ {
+  "id": "lib.cross-cli-compiler-help",
+  "target": "linux/scripts/build-cross-compiler.sh",
+  "find": "  runtime_usage_row '--image-repo REPO' 25",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Each cross-lane entrypoint emits the canonical repository row in its complete independently frozen help output."
  }
 ]
