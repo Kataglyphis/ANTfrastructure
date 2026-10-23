@@ -4,6 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
+GATE_SOURCE="${1:-${CORE}/verify-arg-consistency.sh}"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
@@ -13,7 +14,7 @@ _tree() {
   local d; d="$(mktemp -d "${_work}/tree.XXXXXX")"
   mkdir -p "${d}/linux/scripts/01-core" "${d}/linux/scripts/02-toolchain" \
            "${d}/linux/scripts/tests" "${d}/linux/scripts/03-media/build"
-  install -m 0755 "${CORE}/verify-arg-consistency.sh" "${d}/linux/scripts/01-core/"
+  install -m 0755 "${GATE_SOURCE}" "${d}/linux/scripts/01-core/verify-arg-consistency.sh"
   install -m 0644 "${CORE}/version-forwarding.sh" "${CORE}/build-helpers.sh" "${CORE}/elf-strip.sh" \
     "${d}/linux/scripts/01-core/"
   printf 'GCC_VERSION=16.2.0\nLLVM_RELEASE=22.1.8\nFOO_VERSION=1.2.3\n# noforward\nHOST_ONLY=7\n' \
@@ -39,6 +40,16 @@ _gcc_sites() {
 }
 
 _gate() { bash "$1/linux/scripts/01-core/verify-arg-consistency.sh"; }
+
+_assert_gate_verdict() {
+  local tree="$1" expected_status="$2" message
+  shift 2
+  _out="$(t_out _gate "${tree}")"
+  t_assert_eq "${expected_status}" "$(t_rc _gate "${tree}")"
+  for message in "$@"; do
+    t_assert_contains "${_out}" "${message}"
+  done
+}
 
 t_case "a consistent tree passes every section"
 fix="$(_tree)"
@@ -139,6 +150,48 @@ t_case "tests/ is excluded from the hand-forward scan"
 fix="$(_tree)"
 printf 'assert "--build-arg FOO_VERSION=x"\n' > "${fix}/linux/scripts/tests/test-thing.sh"
 t_assert_eq "0" "$(t_rc _gate "${fix}")"
+
+t_case "unknown and empty pins are excluded from literal and presence checks"
+fix="$(_tree)"
+printf 'EMPTY_PIN=\n' >> "${fix}/linux/scripts/01-core/versions.env"
+printf 'ARG UNKNOWN_PIN=anything\nARG EMPTY_PIN=anything\nARG UNKNOWN_PIN\nARG EMPTY_PIN\n' >> "${fix}/linux/Dockerfile.media"
+t_assert_eq 0 "$(t_rc _gate "${fix}")"
+
+t_case "quoted defaults retain their literal value"
+fix="$(_tree)"
+printf 'ARG FOO_VERSION="1.2.3"\n' > "${fix}/linux/Dockerfile.media"
+t_assert_eq 0 "$(t_rc _gate "${fix}")"
+
+t_case "every literal drift is counted across files and repeated declarations"
+fix="$(_tree)"
+printf 'ARG FOO_VERSION=wrong-toolchain\n' > "${fix}/linux/Dockerfile.toolchain"
+printf 'ARG FOO_VERSION=wrong-media\nARG FOO_VERSION="wrong-again"\n' > "${fix}/linux/Dockerfile.media"
+_assert_gate_verdict "${fix}" 1 \
+  'ERROR: 3 ARG default(s) differ from versions.env' \
+  'DRIFT: linux/Dockerfile.toolchain ARG FOO_VERSION=wrong-toolchain' \
+  'DRIFT: linux/Dockerfile.media ARG FOO_VERSION=wrong-again'
+t_assert_fails grep -q '=== ARG safety-net' <<< "${_out}"
+
+t_case "repeated defaultless declarations count once per file and cannot inherit another file's default"
+fix="$(_tree)"
+printf 'ARG FOO_VERSION\nARG FOO_VERSION\n' > "${fix}/linux/Dockerfile.media"
+_assert_gate_verdict "${fix}" 1 'ERROR: 1 versions.env-named ARG(s) lack a safety-net default'
+
+t_case "forwarding warnings count all declarations while derived defaults remain exempt"
+fix="$(_tree)"
+printf 'ARG HOST_ONLY=7\n' >> "${fix}/linux/Dockerfile.base"
+printf 'ARG HOST_ONLY=7\nARG HOST_ONLY=7\nARG HOST_ONLY=${GCC_VERSION}\n' > "${fix}/linux/Dockerfile.media"
+_assert_gate_verdict "${fix}" 0 'WARNING: 3 ARG(s) may not be auto-forwarded to builds'
+
+t_case "Android guarded pins retain both named and positional consumer exemptions"
+fix="$(_tree)"
+printf 'ONNXRUNTIME_VERSION=1\nLITERT_VERSION=2\nIREE_VERSION=3\n' >> "${fix}/linux/scripts/01-core/versions.env"
+printf 'ARG ONNXRUNTIME_VERSION\nARG LITERT_VERSION\nARG IREE_VERSION\n' > "${fix}/linux/Dockerfile.android"
+printf ': "${ONNXRUNTIME_VERSION:?required}"\n: "${1:?LITERT_VERSION required}"\n' > "${fix}/linux/scripts/03-media/build/guarded.sh"
+_assert_gate_verdict "${fix}" 1 'ERROR: 1 versions.env-named ARG(s) lack a safety-net default'
+t_assert_contains "${_out}" 'declares ARG IREE_VERSION with no default'
+printf ': "${IREE_VERSION:?required}"\n' >> "${fix}/linux/scripts/03-media/build/guarded.sh"
+t_assert_eq 0 "$(t_rc _gate "${fix}")"
 
 t_case "the REAL tree is consistent today"
 t_assert_eq "0" "$(t_rc bash "${CORE}/verify-arg-consistency.sh")"

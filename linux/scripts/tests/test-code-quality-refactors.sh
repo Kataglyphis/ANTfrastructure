@@ -81,7 +81,8 @@ declare -a feature_flags=()
 _ffmpeg_probe_core_codecs feature_flags
 t_assert_eq '--enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libmp3lame --enable-libopus --enable-libvorbis --enable-libvpx --enable-libx264 --enable-gnutls --enable-libaom --enable-libdav1d --enable-libsvtav1 --enable-libwebp --enable-libvmaf' "${feature_flags[*]}"
 
-eval "$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-android.sh" _check_ndk_compiler)"
+t_source_functions "${TESTS_DIR}/../06-packaging/smoke-common.sh" smoke_with_compiled_object
+t_source_functions "${TESTS_DIR}/../06-packaging/smoke-android.sh" _check_ndk_object _check_ndk_compiler
 pass() { printf 'PASS:%s\n' "$*"; }
 fail() { printf 'FAIL:%s\n' "$*"; }
 smoke_elf_machine_of() { printf '%s' "${OBJECT_MACHINE}"; }

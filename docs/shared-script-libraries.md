@@ -1449,3 +1449,32 @@ Parallel-loop fixtures share child-shell setup while retaining the strict
 caller-return scenario and separate fail-fast and keep-going expectations.
 They still invoke the actual loop library; mutations that omit it or invert
 its fixture predicate must fail. These tests launch only local stub workers.
+
+### Shared object smoke lifecycle and ONNX probing
+
+Android NDK and generic compiler object probes share temporary-directory
+allocation, compilation, verification dispatch and cleanup in `smoke-common.sh`.
+Each caller retains its original C program, artifact name, ELF policy and
+messages. NDK rejects an empty architecture mapping; the generic probe retains
+its readelf/file-presence guards. Failed or invalid temporary allocation never
+invokes the compiler, and failed cleanup cannot report success. The existing
+smoke companion must accompany both entry points; no new runtime companion is
+introduced. Fake-compiler fixtures exercise successful and failed compilation,
+wrong or unreadable ELF metadata, verifier failures and cleanup errors without
+running SDK compilers or target binaries.
+
+The media smoke shares native-import versus cross-library probing for ONNX
+modules. ONNX Runtime remains required and checks the CPU execution provider;
+GenAI remains optional. Cross probes never import target modules. Native library
+fallbacks keep their deferred-runtime diagnostic and original search roots.
+
+Argument-consistency checks share declaration traversal and fatal reporting.
+Callbacks retain the distinct forwarding, default-drift and defaultless policies,
+per-file deduplication, Android exemptions and aggregate counts. Expanded fixtures
+run against both the original and refactored checker; mutations guard callbacks,
+counting and fatal exits. These are source checks, not container-build proofs.
+
+Disk-guard and Renovate-audit fixtures share cache setup, audit command capture
+and rollback verdicts. Independent sizes, modification times, JSON errors and
+failure inputs remain explicit. The fixtures perform no real cache pruning,
+registry access or build-daemon operations.

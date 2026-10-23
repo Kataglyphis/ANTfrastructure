@@ -4658,8 +4658,8 @@
  {
   "id": "arg-consistency.derived-arg-skipped",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    case \"$val_raw\" in '${'*) continue ;; esac\n    # Strip surrounding double quotes from Dockerfile value",
-  "replace": "    # Strip surrounding double quotes from Dockerfile value",
+  "find": "      case \"$val_raw\" in '${'*) continue ;; esac",
+  "replace": "      :",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "an ARG computed from another ARG has no literal to compare; reporting it is a permanent false red nobody can fix"
  },
@@ -18426,5 +18426,149 @@
   "replace": "local TVM_QNN_HOME=\"$(resolve_qnn_sdk)\"",
   "test": "bash linux/scripts/tests/test-tvm-cmake-args.sh",
   "why": "Shared fixtures retain complete ordered argv and global state assertions, including independent opt-outs and ambient precedence."
+ },
+ {
+  "id": "lib.smoke-object-cleanup",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  rm -rf \"${temporary}\" || cleanup_status=$?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-smoke-object-lifecycle.sh",
+  "why": "Compiler and verifier failures must not leave their temporary object directories behind."
+ },
+ {
+  "id": "lib.smoke-object-compile-failure",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    status=1\n  fi\n  rm -rf \"${temporary}\" || cleanup_status=$?",
+  "replace": "    status=0\n  fi\n  rm -rf \"${temporary}\" || cleanup_status=$?",
+  "test": "bash linux/scripts/tests/test-smoke-object-lifecycle.sh",
+  "why": "A compiler failure must fail its object probe and retain caller-owned diagnostic accounting."
+ },
+ {
+  "id": "lib.smoke-object-verifier-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "\"${verifier}\" \"${temporary}/${name}\" \"$@\" || status=$?",
+  "replace": "\"${verifier}\" \"${temporary}/${name}\" \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-smoke-object-lifecycle.sh",
+  "why": "A failed verifier must return its actual status after cleanup."
+ },
+ {
+  "id": "lib.smoke-object-cleanup-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  [ \"${status}\" -ne 0 ] || status=\"${cleanup_status}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-smoke-object-lifecycle.sh",
+  "why": "Failed object-directory cleanup must not report a successful probe or leave its caller green."
+ },
+ {
+  "id": "lib.smoke-media-cross-import-skip",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "if cross_build_is_active 2>/dev/null; then\n    mode=cross",
+  "replace": "if false; then\n    mode=cross",
+  "test": "bash linux/scripts/tests/test-media-onnx-policy.sh",
+  "why": "cross media probes must not execute foreign Python modules"
+ },
+ {
+  "id": "lib.smoke-media-library-presence",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "if find \"$@\" -name \"${pattern}\" -type f 2>/dev/null | grep -q .; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-media-onnx-policy.sh",
+  "why": "native import failures defer only when a real library exists; cross required ORT needs presence"
+ },
+ {
+  "id": "lib.smoke-media-required-ort-missing",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "cross:missing) fail \"onnxruntime library not found at $3\"",
+  "replace": "cross:missing) echo \"onnxruntime library not found at $3\"",
+  "test": "bash linux/scripts/tests/test-media-onnx-policy.sh",
+  "why": "missing required cross ORT must increment smoke failures while GenAI stays optional"
+ },
+ {
+  "id": "lib.fixture-sharing-disk-oldest-first",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "ls -1tr \"${bc_dir}\"",
+  "replace": "ls -1t \"${bc_dir}\"",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "Shared fixtures retain oldest-first and in-flight safety checks and parser refusal and rollback assertions."
+ },
+ {
+  "id": "lib.fixture-sharing-disk-in-flight",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "if [ \"${in_flight}\" = \"1\" ]; then",
+  "replace": "if [ \"${in_flight}\" = \"9\" ]; then",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "Shared fixtures retain oldest-first and in-flight safety checks and parser refusal and rollback assertions."
+ },
+ {
+  "id": "lib.fixture-sharing-audit-json-duplicates",
+  "target": "linux/scripts/renovate_audit.py",
+  "find": "raise Unreadable(_duplicate(\"object\", key))",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+  "why": "Shared fixtures retain oldest-first and in-flight safety checks and parser refusal and rollback assertions."
+ },
+ {
+  "id": "lib.fixture-sharing-audit-rollback-mtime",
+  "target": "linux/scripts/renovate_planner.py",
+  "find": "os.utime(target[\"path\"], ns=(was.st_atime_ns, was.st_mtime_ns))",
+  "replace": "pass",
+  "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+  "why": "Shared fixtures retain oldest-first and in-flight safety checks and parser refusal and rollback assertions."
+ },
+ {
+  "id": "arg-consistency.shared-declaration-callback",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "      \"$checker\" \"$df\" \"$df_path\" \"$var\" \"$val_raw\" \"${_version_values[$var]}\"",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "both defaulted and defaultless declaration traversals must execute the requested verifier"
+ },
+ {
+  "id": "arg-consistency.shared-empty-pins-skipped",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "      [ -n \"${_version_values[$var]:-}\" ] || continue",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "unrecognized and empty versions.env pins remain outside all declaration checks"
+ },
+ {
+  "id": "arg-consistency.defaultless-per-file-unique",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "grep -oP \"$pattern\" \"$df_path\" | sort -u || true",
+  "replace": "grep -oP \"$pattern\" \"$df_path\" || true",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "repeated defaultless declarations count once within each Dockerfile"
+ },
+ {
+  "id": "arg-consistency.forwarding-warning-count",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "    MISSING=$((MISSING + 1))",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "every unforwarded literal declaration contributes to the advisory summary count"
+ },
+ {
+  "id": "arg-consistency.default-drift-count",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "    VALUE_ERRORS=$((VALUE_ERRORS + 1))",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "all literal drifts contribute to the fatal total including repeated declarations and separate Dockerfiles"
+ },
+ {
+  "id": "arg-consistency.defaultless-error-count",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "    DEFAULTLESS_ERRORS=$((DEFAULTLESS_ERRORS + 1))",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "missing safety-net defaults increment the fatal count while Android guarded consumers remain exempt"
+ },
+ {
+  "id": "arg-consistency.fatal-summary-exits",
+  "target": "linux/scripts/01-core/verify-arg-consistency.sh",
+  "find": "_fail_arg_consistency() {\n  printf '%s\\n' \"$@\"\n  exit 1",
+  "replace": "_fail_arg_consistency() {\n  printf '%s\\n' \"$@\"\n  return 0",
+  "test": "bash linux/scripts/tests/test-arg-consistency.sh",
+  "why": "fatal default, GCC-literal and hand-forward verdicts must terminate before subsequent sections"
  }
 ]

@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux smoke and verification behavior
+
+- Share Android/compiler object probe lifecycle while preserving C programs and ELF verdict policies; reject allocation and cleanup failures.
+- Share ONNX media probe dispatch while retaining required Runtime, optional GenAI and CPU-provider checks.
+- Share argument declaration traversal and fatal reporting, retaining exact counts, pin exemptions and diagnostics.
+- Share disk-guard and audit fixtures with independent inputs and rollback assertions; add regressions and mutation proofs.
+- Remove resolved duplication exemptions and lower remaining budgets without editing Windows source or changing thresholds.
+
 ## 2026-10-23 — continue Linux duplication cleanup
 
 - Share named-option dispatch across Linux build parsers while preserving aliases, raw values, nameref destinations, consumption and diagnostics.

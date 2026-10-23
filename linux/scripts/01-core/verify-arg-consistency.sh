@@ -22,27 +22,59 @@ while IFS='=' read -r key val; do
   [ -n "$key" ] && _version_values["$key"]="$val"
 done < <(grep -E '^[A-Z][A-Z0-9_]*=' "${VERSIONS_ENV}" || true)
 
+_verify_dockerfile_args() {
+  local checker="$1" declaration="$2" name df df_path var val_raw pattern
+  for name in "${DOCKERFILES[@]}"; do
+    df="linux/Dockerfile.${name}"
+    df_path="${REPO_ROOT}/${df}"
+    [ -f "$df_path" ] || continue
+    while IFS='=' read -r var val_raw; do
+      [ -n "$var" ] || continue
+      case "$val_raw" in '${'*) continue ;; esac
+      [ -n "${_version_values[$var]:-}" ] || continue
+      "$checker" "$df" "$df_path" "$var" "$val_raw" "${_version_values[$var]}"
+    done < <(
+      if [ "$declaration" = defaulted ]; then
+        pattern='^\s*ARG\s+\K[A-Z_]+=("[^"]*"|\S+)'
+        grep -oP "$pattern" "$df_path" || true
+      else
+        pattern='^\s*ARG\s+\K[A-Z][A-Z0-9_]*\s*$'
+        grep -oP "$pattern" "$df_path" | sort -u || true
+      fi
+    )
+  done
+}
+
+_verify_arg_forwarding() {
+  local df="$1" var="$3" found=0 v
+  for v in "${_VERSION_BUILD_ARG_VARS[@]}"; do
+    [ "$v" = "$var" ] && { found=1; break; }
+  done
+  if [ "$found" -eq 0 ]; then
+    echo "WARNING: ${df} ARG '${var}' consumes a versions.env value that is not forwarded (marked # noforward?)"
+    MISSING=$((MISSING + 1))
+  fi
+  return 0
+}
+
+_verify_arg_default_value() {
+  local df="$1" var="$3" val="$4" env_val="$5"
+  val="${val%\"}"
+  val="${val#\"}"
+  if [ "$val" != "$env_val" ]; then
+    echo "  DRIFT: ${df} ARG ${var}=${val}  ≠  versions.env ${var}=${env_val}"
+    VALUE_ERRORS=$((VALUE_ERRORS + 1))
+  fi
+  return 0
+}
+
+_fail_arg_consistency() {
+  printf '%s\n' "$@"
+  exit 1
+}
+
 MISSING=0
-for name in "${DOCKERFILES[@]}"; do
-  df="linux/Dockerfile.${name}"
-  df_path="${REPO_ROOT}/${df}"
-  [ -f "$df_path" ] || continue
-  while IFS='=' read -r var val_raw; do
-    [ -n "$var" ] || continue
-    # ARGs derived from another ARG are computed in the Dockerfile and need no forwarding.
-    case "$val_raw" in '${'*) continue ;; esac
-    # Only ARGs whose name exists in versions.env are expected to be forwarded.
-    [ -n "${_version_values[$var]:-}" ] || continue
-    found=0
-    for v in "${_VERSION_BUILD_ARG_VARS[@]}"; do
-      [ "$v" = "$var" ] && { found=1; break; }
-    done
-    if [ "$found" -eq 0 ]; then
-      echo "WARNING: ${df} ARG '${var}' consumes a versions.env value that is not forwarded (marked # noforward?)"
-      MISSING=$((MISSING + 1))
-    fi
-  done < <(grep -oP '^\s*ARG\s+\K[A-Z_]+=("[^"]*"|\S+)' "$df_path" || true)
-done
+_verify_dockerfile_args _verify_arg_forwarding defaulted
 
 if [ "$MISSING" -gt 0 ]; then
   echo "WARNING: ${MISSING} ARG(s) may not be auto-forwarded to builds"
@@ -55,30 +87,11 @@ echo ""
 echo "=== ARG default value check ==="
 
 VALUE_ERRORS=0
-for name in "${DOCKERFILES[@]}"; do
-  df="linux/Dockerfile.${name}"
-  df_path="${REPO_ROOT}/${df}"
-  [ -f "$df_path" ] || continue
-  while IFS='=' read -r var val_raw; do
-    [ -z "$var" ] && continue
-    env_val="${_version_values[$var]:-}"
-    [ -z "$env_val" ] && continue
-    # Derived ARGs (default computed from another ARG) have no literal to compare.
-    case "$val_raw" in '${'*) continue ;; esac
-    # Strip surrounding double quotes from Dockerfile value
-    val="${val_raw%\"}"
-    val="${val#\"}"
-    if [ "$val" != "$env_val" ]; then
-      echo "  DRIFT: ${df} ARG ${var}=${val}  ≠  versions.env ${var}=${env_val}"
-      VALUE_ERRORS=$((VALUE_ERRORS + 1))
-    fi
-  done < <(grep -oP '^\s*ARG\s+\K[A-Z_]+=("[^"]*"|\S+)' "$df_path" || true)
-done
+_verify_dockerfile_args _verify_arg_default_value defaulted
 
 if [ "$VALUE_ERRORS" -gt 0 ]; then
-  echo "ERROR: ${VALUE_ERRORS} ARG default(s) differ from versions.env"
-  echo "Run: python3 docs/scripts/sync_versions.py --write"
-  exit 1
+  _fail_arg_consistency "ERROR: ${VALUE_ERRORS} ARG default(s) differ from versions.env" \
+    "Run: python3 docs/scripts/sync_versions.py --write"
 else
   echo "All ARG defaults match versions.env"
 fi
@@ -86,32 +99,29 @@ fi
 echo ""
 echo "=== ARG safety-net default presence check ==="
 # A default-less versions.env ARG needs a defaulted declaration in the same file, or a plain docker build gets "".
+_verify_arg_default_presence() {
+  local df="$1" df_path="$2" var="$3"
+  # Exempt: a :?-guarded consumer fails loudly, which beats a default that silently builds the wrong pin.
+  case "${df}:${var}" in
+    linux/Dockerfile.android:ONNXRUNTIME_VERSION|\
+    linux/Dockerfile.android:LITERT_VERSION|\
+    linux/Dockerfile.android:IREE_VERSION)
+      if grep -rqF "\${${var}:?" "${REPO_ROOT}/linux/scripts/03-media/build/" 2>/dev/null \
+         || grep -rqF "\${1:?${var}" "${REPO_ROOT}/linux/scripts/03-media/build/" 2>/dev/null; then
+        return 0
+      fi
+      ;;
+  esac
+  if ! grep -qP "^\s*ARG\s+${var}=" "$df_path"; then
+    echo "  ERROR: ${df} declares ARG ${var} with no default anywhere in the file"
+    echo "         (a plain 'docker build' silently gets an empty value; add ARG ${var}=<versions.env value>)"
+    DEFAULTLESS_ERRORS=$((DEFAULTLESS_ERRORS + 1))
+  fi
+  return 0
+}
+
 DEFAULTLESS_ERRORS=0
-for name in "${DOCKERFILES[@]}"; do
-  df="linux/Dockerfile.${name}"
-  df_path="${REPO_ROOT}/${df}"
-  [ -f "$df_path" ] || continue
-  while IFS= read -r var; do
-    [ -n "$var" ] || continue
-    [ -n "${_version_values[$var]:-}" ] || continue
-    # Exempt: a :?-guarded consumer fails loudly, which beats a default that silently builds the wrong pin.
-    case "${df}:${var}" in
-      linux/Dockerfile.android:ONNXRUNTIME_VERSION|\
-      linux/Dockerfile.android:LITERT_VERSION|\
-      linux/Dockerfile.android:IREE_VERSION)
-        if grep -rqF "\${${var}:?" "${REPO_ROOT}/linux/scripts/03-media/build/" 2>/dev/null \
-           || grep -rqF "\${1:?${var}" "${REPO_ROOT}/linux/scripts/03-media/build/" 2>/dev/null; then
-          continue  # :?-guarded consumer exists — deliberate, loud-by-design
-        fi
-        ;;
-    esac
-    if ! grep -qP "^\s*ARG\s+${var}=" "$df_path"; then
-      echo "  ERROR: ${df} declares ARG ${var} with no default anywhere in the file"
-      echo "         (a plain 'docker build' silently gets an empty value; add ARG ${var}=<versions.env value>)"
-      DEFAULTLESS_ERRORS=$((DEFAULTLESS_ERRORS + 1))
-    fi
-  done < <(grep -oP '^\s*ARG\s+\K[A-Z][A-Z0-9_]*\s*$' "$df_path" | sort -u || true)
-done
+_verify_dockerfile_args _verify_arg_default_presence defaultless
 
 if [ "$DEFAULTLESS_ERRORS" -gt 0 ]; then
   echo "ERROR: ${DEFAULTLESS_ERRORS} versions.env-named ARG(s) lack a safety-net default"
@@ -220,9 +230,8 @@ else
   echo "Scanned ${_gcc_sites} inline GCC version default(s) under linux/"
 fi
 if [ "${GCC_LITERAL_ERRORS}" -gt 0 ]; then
-  echo "ERROR: ${GCC_LITERAL_ERRORS} inline GCC toolchain default(s) drifted from versions.env"
-  echo "Update every listed site to versions.env GCC_VERSION=${_gcc_env_full} (they all name /opt/gcc-<ver>)"
-  exit 1
+  _fail_arg_consistency "ERROR: ${GCC_LITERAL_ERRORS} inline GCC toolchain default(s) drifted from versions.env" \
+    "Update every listed site to versions.env GCC_VERSION=${_gcc_env_full} (they all name /opt/gcc-<ver>)"
 else
   echo "All inline GCC toolchain defaults match versions.env"
 fi
@@ -239,9 +248,8 @@ while IFS= read -r hit; do
 done < <(grep -rnP --include='*.sh' --exclude-dir=tests \
            -e "--build-arg\s+\"?(${_vars_alt})=" "${REPO_ROOT}/linux/scripts" 2>/dev/null || true)
 if [ "$HANDFWD_ERRORS" -gt 0 ]; then
-  echo "ERROR: ${HANDFWD_ERRORS} literal --build-arg line(s) hand-forward an auto-forwarded versions.env variable"
-  echo "Delete the hand-forward; append_version_build_args already forwards it"
-  exit 1
+  _fail_arg_consistency "ERROR: ${HANDFWD_ERRORS} literal --build-arg line(s) hand-forward an auto-forwarded versions.env variable" \
+    "Delete the hand-forward; append_version_build_args already forwards it"
 else
   echo "No hand-forwards of auto-forwarded versions.env variables"
 fi

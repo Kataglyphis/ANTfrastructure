@@ -8,22 +8,32 @@ echo "=== Media Library Functional Smoke Tests ==="
 echo ""
 
 # ONNX Runtime: import and inference
-echo "--- ONNX Runtime ---"
-_ort_lib_dir="${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}"
-if cross_build_is_active 2>/dev/null; then
-  if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
-    # Called for its message; `|| fail` makes an impossible decline loud instead of a silent set -e exit.
-    smoke_cross_presence_gate "onnxruntime" "${_ort_lib_dir}" "library" "import" \
-      || fail "onnxruntime presence gate declined inside the cross branch (BUILD_MODE/TARGET_ARCH changed mid-script?)"
+_smoke_media_python_library() {
+  local module="$1" pattern="$2" imported="$3" presence="$4" mode
+  shift 4
+  if cross_build_is_active 2>/dev/null; then
+    mode=cross
+  elif command -v python3 >/dev/null 2>&1; then
+    if python3 -c "import ${module}" 2>/dev/null; then
+      "${imported}"
+      return 0
+    fi
+    mode=native
   else
-    fail "onnxruntime library not found at ${_ort_lib_dir}"
+    return 0
   fi
-elif command -v python3 >/dev/null 2>&1; then
-  if python3 -c "import onnxruntime" 2>/dev/null; then
-    onnx_ver="$(python3 -c "import onnxruntime; print(onnxruntime.__version__)" 2>/dev/null || echo '?')"
-    pass "onnxruntime Python module imports (v${onnx_ver})"
-    # A check that can both pass and fail.
-    if python3 -c "
+  if find "$@" -name "${pattern}" -type f 2>/dev/null | grep -q .; then
+    "${presence}" "${mode}" present "$1"
+  else
+    "${presence}" "${mode}" missing "$1"
+  fi
+}
+
+_smoke_ort_imported() {
+  local onnx_ver
+  onnx_ver="$(python3 -c "import onnxruntime; print(onnxruntime.__version__)" 2>/dev/null || echo '?')"
+  pass "onnxruntime Python module imports (v${onnx_ver})"
+  if python3 -c "
 import sys
 import onnxruntime as ort
 providers = ort.get_available_providers()
@@ -31,41 +41,44 @@ if 'CPUExecutionProvider' not in providers:
     print('CPUExecutionProvider missing, got:', providers, file=sys.stderr)
     sys.exit(1)
 " 2>/dev/null; then
-      pass "onnxruntime CPUExecutionProvider available"
-    else
-      fail "onnxruntime CPUExecutionProvider not available (get_available_providers failed or lacks CPU EP)"
-    fi
+    pass "onnxruntime CPUExecutionProvider available"
   else
-    # Import may fail in the build sandbox, but the library must exist.
-    if find "${_ort_lib_dir}" -name "libonnxruntime.so*" -type f 2>/dev/null | grep -q .; then
-      echo "  INFO: onnxruntime present but import fails in build sandbox — functional gate is the runtime smoke"
-    else
-      fail "onnxruntime import fails AND no libonnxruntime.so under ${_ort_lib_dir}"
-    fi
+    fail "onnxruntime CPUExecutionProvider not available (get_available_providers failed or lacks CPU EP)"
   fi
-fi
+}
 
-# ONNX Runtime GenAI: import check
+_smoke_ort_presence() {
+  case "$1:$2" in
+    cross:present)
+      smoke_cross_presence_gate onnxruntime "$3" library import \
+        || fail "onnxruntime presence gate declined inside the cross branch (BUILD_MODE/TARGET_ARCH changed mid-script?)" ;;
+    cross:missing) fail "onnxruntime library not found at $3" ;;
+    native:present)
+      echo "  INFO: onnxruntime present but import fails in build sandbox — functional gate is the runtime smoke" ;;
+    native:missing) fail "onnxruntime import fails AND no libonnxruntime.so under $3" ;;
+  esac
+}
+
+_smoke_genai_imported() {
+  pass "onnxruntime_genai Python module imports"
+}
+
+_smoke_genai_presence() {
+  case "$1:$2" in
+    cross:present) pass "onnxruntime_genai library present (cross build — import skipped)" ;;
+    cross:missing) echo "  INFO: onnxruntime_genai not built for this target (optional)" ;;
+    native:present)
+      echo "  INFO: onnxruntime_genai lib present but import fails in build sandbox (wheel installs into /opt/venv at packaging) — functional gate is the runtime torch-venv smoke" ;;
+    native:missing) echo "  INFO: onnxruntime_genai not installed (optional)" ;;
+  esac
+}
+
+echo "--- ONNX Runtime ---"
+_smoke_media_python_library onnxruntime 'libonnxruntime.so*' _smoke_ort_imported _smoke_ort_presence \
+  "${ONNXRUNTIME_OUTPUT_DIR:-/usr/local/lib/onnxruntime-cpu}"
 echo "--- ONNX Runtime GenAI ---"
-if cross_build_is_active 2>/dev/null; then
-  # The producer creates its dirs on every path, so require a real file.
-  if find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
-       -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
-    pass "onnxruntime_genai library present (cross build — import skipped)"
-  else
-    echo "  INFO: onnxruntime_genai not built for this target (optional)"
-  fi
-elif command -v python3 >/dev/null 2>&1; then
-  if python3 -c "import onnxruntime_genai" 2>/dev/null; then
-    pass "onnxruntime_genai Python module imports"
-  elif find "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib \
-         -name "libonnxruntime*genai*" -type f 2>/dev/null | grep -q .; then
-    # The wheel reaches /opt/venv only at packaging; smoke-torch-venv.sh gates the import there.
-    echo "  INFO: onnxruntime_genai lib present but import fails in build sandbox (wheel installs into /opt/venv at packaging) — functional gate is the runtime torch-venv smoke"
-  else
-    echo "  INFO: onnxruntime_genai not installed (optional)"
-  fi
-fi
+_smoke_media_python_library onnxruntime_genai 'libonnxruntime*genai*' _smoke_genai_imported _smoke_genai_presence \
+  "${ONNXRUNTIME_GENAI_OUTPUT_DIR:-/usr/local/lib/onnxruntime-genai}" /usr/local/lib
 
 # LiteRT: C API shared library check
 echo "--- LiteRT ---"

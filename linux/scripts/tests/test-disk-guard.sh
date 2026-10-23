@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 01-core/disk-guard.sh: the LRU victim picker, slug protection and the reclaim levers.
+# Local cache and stubbed store fixtures cover reclaim decisions, not real daemon pruning.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -82,16 +82,24 @@ _stub_free() { printf '%s\n' "$@" > "${seqfile}"; }
 
 # touch after writing: adding a file bumps the directory mtime and would flatten the ordering.
 BC="${workdir}/trim"
-_mk_bc() {
-  local s
-  rm -rf "${BC}"; mkdir -p "${BC}"
-  for s in slug-a slug-b slug-c; do
-    mkdir -p "${BC}/${s}"
-    dd if=/dev/zero of="${BC}/${s}/blob" bs=1024 count=2048 status=none
+_make_cache_slugs() {
+  local root="$1" size_kb="$2" slug age
+  shift 2
+  age="$#"
+  rm -rf "$root"
+  mkdir -p "$root"
+  for slug in "$@"; do
+    mkdir -p "$root/$slug"
+    dd if=/dev/zero of="$root/$slug/blob" bs=1024 count="$size_kb" status=none
+    touch -d "$age days ago" "$root/$slug"
+    age=$((age - 1))
   done
-  touch -d '3 days ago' "${BC}/slug-a"
-  touch -d '2 days ago' "${BC}/slug-b"
-  touch -d '1 day ago'  "${BC}/slug-c"
+}
+_mk_bc() { _make_cache_slugs "${BC}" 2048 slug-a slug-b slug-c; }
+_assert_log_contains() {
+  local log="$1"
+  shift
+  t_assert_contains "$(cat "$log")" "$@"
 }
 _present() { [ -d "${BC}/$1" ] && printf 'yes' || printf 'no'; }
 
@@ -118,8 +126,8 @@ t_assert_eq "slug-a slug-b" \
   "removal order must be oldest-first"
 
 t_case "trim LOGS every removal and the total it freed"
-t_assert_contains "$(cat "${workdir}/out.txt")" "removed slug-a"
-t_assert_contains "$(cat "${workdir}/out.txt")" "removed 2 slug(s), freed"
+_assert_log_contains "${workdir}/out.txt" "removed slug-a"
+_assert_log_contains "${workdir}/out.txt" "removed 2 slug(s), freed"
 
 t_case "trim stops as soon as free space reaches the target"
 # Budget is 100 MiB (would take all three); the second df says 50G >= 40G.
@@ -172,22 +180,13 @@ rm -rf "${_kf}"
 
 # In-stage sampling: the runtime lane is one long stage, where the between-stage guard never fires.
 _wd="$(mktemp -d)"
-_mkwd() {
-  local s
-  rm -rf "${_wd}/bc"; mkdir -p "${_wd}/bc"
-  for s in w-a w-b w-c w-d; do
-    mkdir -p "${_wd}/bc/${s}"
-    dd if=/dev/zero of="${_wd}/bc/${s}/blob" bs=1024 count=1024 status=none
-  done
-  touch -d '4 days ago' "${_wd}/bc/w-a"; touch -d '3 days ago' "${_wd}/bc/w-b"
-  touch -d '2 days ago' "${_wd}/bc/w-c"; touch -d '1 day ago'  "${_wd}/bc/w-d"
-}
+_mkwd() { _make_cache_slugs "${_wd}/bc" 1024 w-a w-b w-c w-d; }
 
 t_case "watch_once SAMPLES on every call — the silent drain is the whole bug"
 _mkwd; _disk_guard_free_gb() { echo 500; }
 _DISK_GUARD_TRIM_REMOVED=99
 _disk_guard_watch_once "${_wd}/bc" 40 "" 3 > "${_wd}/o.txt" 2>&1
-t_assert_contains "$(cat "${_wd}/o.txt")" "[disk-watch] 500G free" "an in-stage sample must always be logged"
+_assert_log_contains "${_wd}/o.txt" "[disk-watch] 500G free" "an in-stage sample must always be logged"
 t_assert_eq "99" "${_DISK_GUARD_TRIM_REMOVED}" "ample disk must not even enter the trim"
 
 t_case "watch_once reclaims and RECORDS the reclaim when below threshold"
@@ -195,14 +194,14 @@ _mkwd; _disk_guard_free_gb() { echo 10; }
 _disk_guard_watch_once "${_wd}/bc" 40 "" 3 > "${_wd}/o.txt" 2>&1
 t_assert_eq "1" "${_DISK_GUARD_TRIM_REMOVED}" "keep-floor 3 of 4 slugs leaves exactly one removal"
 t_assert_eq "no" "$( [ -d "${_wd}/bc/w-a" ] && echo yes || echo no )" "oldest slug must go first"
-t_assert_contains "$(cat "${_wd}/o.txt")" "[disk-reclaim] in-stage: removed 1 cache-export slug(s), freed" \
+_assert_log_contains "${_wd}/o.txt" "[disk-reclaim] in-stage: removed 1 cache-export slug(s), freed" \
   "every reclaim the chain performs must leave ONE greppable record"
 
 t_case "a reclaim that frees nothing still WARNS — the case an operator must see"
 _mkwd; rm -rf "${_wd}/bc"; mkdir -p "${_wd}/bc"     # nothing prunable at all
 _disk_guard_free_gb() { echo 4; }
 _disk_guard_watch_once "${_wd}/bc" 40 "" 3 > "${_wd}/o.txt" 2>&1
-t_assert_contains "$(cat "${_wd}/o.txt")" "[disk-reclaim] in-stage: NOTHING was reclaimable" \
+_assert_log_contains "${_wd}/o.txt" "[disk-reclaim] in-stage: NOTHING was reclaimable" \
   "a silent no-op reclaim is what made the 2026-09-01 drain unreconstructible"
 
 t_case "watch_once never aborts the stage it samples (set -euo pipefail)"
@@ -311,7 +310,7 @@ t_assert_eq "0" "${_DISK_GUARD_TRIM_REMOVED}" "there is nothing for the trim to 
 t_assert_eq "1" "$(_bk_prunes)" "the guard must reach the buildkit store instead of giving up"
 
 t_case "the prune is FILTERED and carries a keep-storage value"
-t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular --keep-storage 120000" \
+_assert_log_contains "${BUILDCTL_LOG}" "prune --filter type==regular --keep-storage 120000" \
   "an unfiltered prune eats the exec.cachemount records — 1.5-2h of cold LLVM"
 
 # Banned are the forms that delete exec.cachemount records; `nerdctl image prune` and `rmi` spare them.
@@ -327,13 +326,13 @@ t_assert_eq "0" "$(grep -c -e 'image prune -a' "${_dg}" || true)" \
   "-a removes every unreferenced image, including the parents this run pinned"
 
 t_case "a human reading the log sees HOW MUCH was reclaimed, and from where"
-t_assert_contains "$(cat "${_bk}/o.txt")" "[disk-buildkit] 4G free < 40G after the cache-export trim"
-t_assert_contains "$(cat "${_bk}/o.txt")" "reclaimed 223G of layer cache" \
+_assert_log_contains "${_bk}/o.txt" "[disk-buildkit] 4G free < 40G after the cache-export trim"
+_assert_log_contains "${_bk}/o.txt" "reclaimed 223G of layer cache" \
   "a reclaim nobody can quantify from the log is what made 2026-09-03 unreconstructible"
-t_assert_contains "$(cat "${_bk}/o.txt")" "all 97 cache-mount record(s) survived"
+_assert_log_contains "${_bk}/o.txt" "all 97 cache-mount record(s) survived"
 
 t_case "the reclaim record CREDITS the buildkit prune instead of crying defeat"
-t_assert_contains "$(cat "${_bk}/o.txt")" "+ 223G of buildkit layer cache"
+_assert_log_contains "${_bk}/o.txt" "+ 223G of buildkit layer cache"
 t_assert_eq "0" "$(grep -c -e 'NOTHING was reclaimable' "${_bk}/o.txt" || true)" \
   "223G were reclaimed; the give-up warning would now be a lie"
 
@@ -341,18 +340,18 @@ t_case "the fallback runs ONCE, not once per sample"
 # After the first prune the store is at keep-storage; a repeat walk only costs I/O.
 BK_FREE_AFTER=10 _disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o2.txt" 2>&1
 t_assert_eq "1" "$(_bk_prunes)" "a second sample must not re-prune"
-t_assert_contains "$(cat "${_bk}/o2.txt")" "already pruned once here"
+_assert_log_contains "${_bk}/o2.txt" "already pruned once here"
 
 t_case "keep-storage never drops below the 100G recompile-churn floor"
 _bk_reset
 CROSS_BUILDKIT_KEEP_GB=40 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
-t_assert_contains "$(cat "${BUILDCTL_LOG}")" "--keep-storage 100000" \
+_assert_log_contains "${BUILDCTL_LOG}" "--keep-storage 100000" \
   "keeping under 100G mid-run costs recompile churn (rebuild-disk-management)"
 _bk_reset
 CROSS_BUILDKIT_KEEP_GB=0 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
 t_assert_eq "0" "$(grep -c -e 'keep-storage' "${BUILDCTL_LOG}" || true)" \
   "0 is the explicit 'reclaim all layer cache' escape hatch"
-t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular"
+_assert_log_contains "${BUILDCTL_LOG}" "prune --filter type==regular"
 
 t_case "keep-storage adds the records the type==regular filter can never free"
 # --keep-storage bounds the WHOLE store; 196 GB of cache mounts against a bare 120000 emptied the layer cache (CON53).
@@ -363,7 +362,7 @@ if command -v jq >/dev/null 2>&1; then
     {"id":"c","recordType":"exec.cachemount","size":9000000000,"shared":true},
     {"id":"d","recordType":"regular","size":110000000000,"shared":false}]' \
     _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
-  t_assert_contains "$(cat "${BUILDCTL_LOG}")" "prune --filter type==regular --keep-storage 318500" \
+  _assert_log_contains "${BUILDCTL_LOG}" "prune --filter type==regular --keep-storage 318500" \
     "120G of layers on top of 198500 MB of cache mounts and sources; shared and regular records do not count"
 else
   echo "  (skipped: jq not installed)"
@@ -374,7 +373,7 @@ t_case "a garbage keep value falls back to the default instead of reaching build
 for _bad in "" "abc" "12G" "-5" "10.5"; do
   _bk_reset
   CROSS_BUILDKIT_KEEP_GB="${_bad}" _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
-  t_assert_contains "$(cat "${BUILDCTL_LOG}")" "--keep-storage 120000" \
+  _assert_log_contains "${BUILDCTL_LOG}" "--keep-storage 120000" \
     "CROSS_BUILDKIT_KEEP_GB='${_bad}' must land on the 120G default"
 done
 
@@ -393,7 +392,7 @@ _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
 rm -f "${BUILDCTL_PRUNED}"
 _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
 t_assert_eq "1" "$(_bk_prunes)" "without a new episode the latch still holds"
-t_assert_contains "$(cat "${_bk}/o.txt")" "already pruned once here"
+_assert_log_contains "${_bk}/o.txt" "already pruned once here"
 _disk_guard_reclaim_begin
 _disk_guard_buildkit_fallback "${_bk}/bc" 40 >/dev/null 2>&1
 t_assert_eq "2" "$(_bk_prunes)" "a new episode must be able to reach the store again"
@@ -401,12 +400,12 @@ t_assert_eq "2" "$(_bk_prunes)" "a new episode must be able to reach the store a
 t_case "a cache-mount record that did NOT survive is reported loudly"
 _bk_reset
 BUILDCTL_MOUNTS_AFTER=90 _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
-t_assert_contains "$(cat "${_bk}/o.txt")" "cache-mount records dropped 97 -> 90"
+_assert_log_contains "${_bk}/o.txt" "cache-mount records dropped 97 -> 90"
 
 t_case "a missing buildctl degrades to the old behaviour, it does not die"
 _bk_reset
 PATH="${_bk}/empty" _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
-t_assert_contains "$(cat "${_bk}/o.txt")" "SKIP: no buildctl on PATH"
+_assert_log_contains "${_bk}/o.txt" "SKIP: no buildctl on PATH"
 t_assert_eq "0" "$(_bk_prunes)"
 t_assert_ok bash -c 'set -euo pipefail
   source "'"${TESTS_DIR}"'/../01-core/disk-guard.sh"
@@ -417,15 +416,15 @@ t_assert_ok bash -c 'set -euo pipefail
 t_case "an unreachable buildkit socket SKIPs — it must not prune blind"
 _bk_reset
 BUILDCTL_UNREACHABLE=1 _disk_guard_buildkit_fallback "${_bk}/bc" 40 > "${_bk}/o.txt" 2>&1
-t_assert_contains "$(cat "${_bk}/o.txt")" "SKIP: buildkit store unreachable"
+_assert_log_contains "${_bk}/o.txt" "SKIP: buildkit store unreachable"
 t_assert_eq "0" "$(_bk_prunes)" "a store that will not answer du must not be pruned"
 
 t_case "CROSS_BUILDKIT_PRUNE=0 keeps the pre-DISK1 behaviour, and says so"
 _bk_reset
 CROSS_BUILDKIT_PRUNE=0 _disk_guard_watch_once "${_bk}/bc" 40 "" 3 > "${_bk}/o.txt" 2>&1
 t_assert_eq "0" "$(_bk_prunes)"
-t_assert_contains "$(cat "${_bk}/o.txt")" "disabled (CROSS_BUILDKIT_PRUNE=0)"
-t_assert_contains "$(cat "${_bk}/o.txt")" "NOTHING was reclaimable" \
+_assert_log_contains "${_bk}/o.txt" "disabled (CROSS_BUILDKIT_PRUNE=0)"
+_assert_log_contains "${_bk}/o.txt" "NOTHING was reclaimable" \
   "with the fallback off the operator must still get the give-up warning"
 
 t_case "the fallback never aborts the stage it is called from"
@@ -472,19 +471,19 @@ t_case "a stage IN FLIGHT is refused BY NAME -- the ordering rule, not a prefere
 _im_reset
 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 1 > "${_im}/o.txt" 2>&1
 t_assert_eq "0" "$(_im_rmi)" "removing an image mid-unpack killed the arm64 runtime lane on 2026-09-06"
-t_assert_contains "$(cat "${_im}/o.txt")" "a stage is IN FLIGHT"
-t_assert_contains "$(cat "${_im}/o.txt")" "Stop the lane, then reclaim."
+_assert_log_contains "${_im}/o.txt" "a stage is IN FLIGHT"
+_assert_log_contains "${_im}/o.txt" "Stop the lane, then reclaim."
 
 t_case "the in-stage sampler can never pull this lever"
 _im_reset
 _disk_guard_watch_once "${_im}/bc" 40 "" 3 > "${_im}/o.txt" 2>&1
 t_assert_eq "0" "$(_im_rmi)" "the sampler runs DURING a stage by definition"
-t_assert_contains "$(cat "${_im}/o.txt")" "a stage is IN FLIGHT"
+_assert_log_contains "${_im}/o.txt" "a stage is IN FLIGHT"
 
 t_case "dangling images go first: zero risk, and 20G in the run that found this"
 _im_reset
 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
-t_assert_contains "$(cat "${NERDCTL_LOG}")" "image prune -f"
+_assert_log_contains "${NERDCTL_LOG}" "image prune -f"
 t_assert_eq "0" "$(grep -c -e 'image prune -a' "${NERDCTL_LOG}" || true)" \
   "-a would take the parents this run pinned"
 
@@ -493,7 +492,7 @@ _im_reset
 _disk_guard_image_store_fallback "${_im}/bc" 120 \
   'ghcr.io/x/y:cross-runtime-arm64
 ghcr.io/x/y:cross-media-arm64' 0 > "${_im}/o.txt" 2>&1
-t_assert_contains "$(cat "${NERDCTL_LOG}")" "rmi ghcr.io/x/y:cross-android-arm64"
+_assert_log_contains "${NERDCTL_LOG}" "rmi ghcr.io/x/y:cross-android-arm64"
 t_assert_eq "0" "$(grep -c -e 'rmi ghcr.io/x/y:cross-runtime-arm64' "${NERDCTL_LOG}" || true)" \
   "the stages still to build, and the one just completed, are the next parents"
 t_assert_eq "0" "$(grep -c -e 'rmi ubuntu:24.04' "${NERDCTL_LOG}" || true)" \
@@ -519,7 +518,7 @@ _im_reset
 _disk_guard_nerdctl() { _IM_FREE=$(( _IM_FREE + 50 )); command nerdctl "$@"; }
 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
 t_assert_eq "1" "$(_im_rmi)" "the dangling prune plus ONE removal already cleared 120G"
-t_assert_contains "$(cat "${_im}/o.txt")" "freed 50G of unique layers"
+_assert_log_contains "${_im}/o.txt" "freed 50G of unique layers"
 _disk_guard_nerdctl() { command nerdctl "$@"; }
 
 t_case "ample free space never reaches nerdctl at all"
@@ -532,22 +531,22 @@ t_case "CROSS_IMAGE_PRUNE=0 keeps the pre-DISK3 behaviour, and says so"
 _im_reset
 CROSS_IMAGE_PRUNE=0 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
 t_assert_eq "" "$(cat "${NERDCTL_LOG}")"
-t_assert_contains "$(cat "${_im}/o.txt")" "disabled (CROSS_IMAGE_PRUNE=0)"
+_assert_log_contains "${_im}/o.txt" "disabled (CROSS_IMAGE_PRUNE=0)"
 
 t_case "the give-up warning names the store it did not look in"
 _im_reset
 _disk_guard_reclaim_record "in-stage" 28 "${_im}/bc" > "${_im}/o.txt" 2>&1
-t_assert_contains "$(cat "${_im}/o.txt")" "NOTHING was reclaimable"
-t_assert_contains "$(cat "${_im}/o.txt")" "The IMAGE STORE still holds 5 tagged image(s)" \
+_assert_log_contains "${_im}/o.txt" "NOTHING was reclaimable"
+_assert_log_contains "${_im}/o.txt" "The IMAGE STORE still holds 5 tagged image(s)" \
   "a guard that gives up loudly reads like an environment limit; this one was a coverage gap"
-t_assert_contains "$(cat "${_im}/o.txt")" "stop the lane, then reclaim"
+_assert_log_contains "${_im}/o.txt" "stop the lane, then reclaim"
 
 t_case "a reclaim that DID free image bytes credits them instead of crying defeat"
 _im_reset
 _DISK_GUARD_IMAGE_FREED_GB=113
 _DISK_GUARD_IMAGE_REMOVED=3
 _disk_guard_reclaim_record "between-stages" 28 "${_im}/bc" > "${_im}/o.txt" 2>&1
-t_assert_contains "$(cat "${_im}/o.txt")" "+ 113G of image store (3 stage image(s))"
+_assert_log_contains "${_im}/o.txt" "+ 113G of image store (3 stage image(s))"
 t_assert_eq "0" "$(grep -c -e 'NOTHING was reclaimable' "${_im}/o.txt" || true)"
 
 t_case "the lever runs once per episode, and a new episode re-opens it"
@@ -556,10 +555,10 @@ _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 >/dev/null 2>&1
 : > "${NERDCTL_LOG}"
 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 > "${_im}/o.txt" 2>&1
 t_assert_eq "" "$(cat "${NERDCTL_LOG}")" "nothing new has been unreferenced since"
-t_assert_contains "$(cat "${_im}/o.txt")" "already reclaimed once in this episode"
+_assert_log_contains "${_im}/o.txt" "already reclaimed once in this episode"
 _disk_guard_reclaim_begin
 _disk_guard_image_store_fallback "${_im}/bc" 120 "" 0 >/dev/null 2>&1
-t_assert_contains "$(cat "${NERDCTL_LOG}")" "image prune -f" "a fresh episode must be able to reclaim again"
+_assert_log_contains "${NERDCTL_LOG}" "image prune -f" "a fresh episode must be able to reclaim again"
 
 t_case "the lever never aborts the stage it is called from"
 t_assert_ok bash -c 'set -euo pipefail

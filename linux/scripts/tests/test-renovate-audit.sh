@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# renovate_audit.py, the half that does not trust the locator; test-renovate-local.sh grades the locator.
+# Local parser fixtures cover refusals and rollback, not registry access or lock-tool execution.
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 # Read from linux/scripts, so the locator and the planner's apply half can each run alone.
@@ -8,14 +8,17 @@ SCRIPTS_DIR="${TESTS_DIR}/.."
 # Each case asserts the refusal AND that the locator alone still errs; see docs/dependency-updates.md#the-edit-is-audited-by-a-real-parser
 
 # _locator_says <manager> <file> <dep> <old> <new>: "<line> <rewritten>" per line the locator alone would write.
+_run_audit_python() {
+  PYTHONPATH="${SCRIPTS_DIR}${PYTHONPATH:+:${PYTHONPATH}}" "${PY_ABS}" - "$@"
+}
+
 _locator_says() {
-  "${PY_ABS}" - "${SCRIPTS_DIR}" "$@" <<'PY'
+  _run_audit_python "$@" <<'PY'
 import sys
 
-sys.path.insert(0, sys.argv[1])
 import renovate_locator
 
-mgr, path, dep, old, new = sys.argv[2:7]
+mgr, path, dep, old, new = sys.argv[1:6]
 with open(path, encoding="utf-8", newline="") as fh:
     lines = fh.read().split("\n")
 kind, found, why = renovate_locator.resolve(mgr, lines, dep, old, new, 1)
@@ -34,6 +37,38 @@ _parser_refuses() {
   t_assert_contains "${OUT}" "$4" "the refusal is the parser's, and it says why"
 }
 
+_npm_repo() {
+  _plant "$1" package.json \
+    '{\n  "name": "fixture",\n  "dependencies": {\n    "left-pad": "1.1.0"\n  }\n}\n'
+}
+
+_assert_npm_unchanged() {
+  t_assert_eq '    "left-pad": "1.1.0"' "$(_line "$1/package.json" 4)" "$2"
+  t_assert_ok git -C "$1" diff --quiet HEAD
+}
+
+_audit_parse_verdict() {
+  _run_audit_python "$@" <<'PY'
+import sys
+
+import renovate_audit
+
+try:
+    renovate_audit.parse(sys.argv[1], sys.argv[2])
+    print("(PARSED)", end="")
+except renovate_audit.Unreadable as exc:
+    print(exc, end="")
+PY
+}
+
+_assert_workflow_refused() {
+  local repo="$1" locator_expected="$2" locator_reason="$3" refusal="$4" line="$5" untouched="$6" untouched_reason="$7"
+  t_assert_eq "$locator_expected" \
+    "$(_locator_says github-actions "$repo/.github/workflows/ci.yml" actions/checkout v4 v5)" "$locator_reason"
+  _parser_refuses "$repo" "${B_REPORT}" github-actions "$refusal"
+  t_assert_eq "$untouched" "$(_step "$repo" "$line")" "$untouched_reason"
+}
+
 # (H1) `dependencies: &deps` hides the mapping from the line reader, which then rewrites dependency_overrides.
 t_case "(H1) a YAML anchor: the locator still writes the WRONG entry, the run refuses"
 H1="$(_plant h1 pubspec.yaml 'name: fixture\ndependencies: &deps\n  http: 1.1.0\ndependency_overrides:\n  http: 1.1.0\n')"
@@ -50,13 +85,9 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${H1}" 5)" "and so is the override the loca
 # An alias shares one node's bytes between two paths, so paths are counted, not nodes.
 t_case "(H1b) an ALIAS puts one node at two paths, and that counts as two"
 H1B="$(_plant h1b .github/workflows/ci.yml 'name: ci\njobs:\n  b:\n    steps:\n      - &s\n        uses: actions/checkout@v4\n  c:\n    steps:\n      - *s\n')"
-t_assert_eq "6         uses: actions/checkout@v5" \
-  "$(_locator_says github-actions "${H1B}/.github/workflows/ci.yml" \
-     actions/checkout v4 v5)" \
-  "the locator sees ONE line, because the alias is not a line"
-_parser_refuses "${H1B}" "${B_REPORT}" github-actions \
-  "jobs.b.steps[0].uses=v4, jobs.c.steps[0].uses=v4"
-t_assert_eq "        uses: actions/checkout@v4" "$(_step "${H1B}" 6)" \
+_assert_workflow_refused "${H1B}" "6         uses: actions/checkout@v5" \
+  "the locator sees ONE line, because the alias is not a line" \
+  "jobs.b.steps[0].uses=v4, jobs.c.steps[0].uses=v4" 6 "        uses: actions/checkout@v4" \
   "nothing written: a text edit cannot move one alias without moving the other"
 
 # (H2) The audit strips a BOM for tomllib, but the BOM defeats the locator's `[project]` match.
@@ -77,14 +108,10 @@ t_assert_eq '  "ruff==0.9.0",' "$(_line "${H2}/pyproject.toml" 9)" \
 # (H3) YAML allows `|2-` as well as `|-2`; the locator knows one and edits a workflow that is only printed.
 t_case "(H3) the block header |2-: the locator still writes inside the run: block"
 H3="$(_plant h3 .github/workflows/ci.yml 'name: ci\njobs:\n  b:\n    steps:\n      - name: print a workflow\n        run: |2-\n            steps:\n              - uses: actions/checkout@v4\n')"
-t_assert_eq "8               - uses: actions/checkout@v5" \
-  "$(_locator_says github-actions "${H3}/.github/workflows/ci.yml" \
-     actions/checkout v4 v5)" \
-  "the locator ALONE still picks line 8, a line inside the block scalar"
-_parser_refuses "${H3}" "${B_REPORT}" github-actions \
-  "a real parser finds no declaration of 'actions/checkout' in this file at all"
-t_assert_eq "              - uses: actions/checkout@v4" "$(_step "${H3}" 8)" \
-  "the printed workflow is untouched"
+_assert_workflow_refused "${H3}" "8               - uses: actions/checkout@v5" \
+  "the locator ALONE still picks line 8, a line inside the block scalar" \
+  "a real parser finds no declaration of 'actions/checkout' in this file at all" \
+  8 "              - uses: actions/checkout@v4" "the printed workflow is untouched"
 
 # (H4) Every pre-flight passes, so only parsing the written file back catches where the edit landed.
 t_case "(H4) a plan naming the wrong line is WRITTEN, caught on read-back, put back"
@@ -128,7 +155,7 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${H4C}" 3)" "nothing written"
 
 # (H5) newValue is another program's text; a `"` in it injects a key no pre-flight can see.
 t_case "(H5) a newValue carrying a quote injects a key, and the audit undoes it"
-H5="$(_plant h5 package.json '{\n  "name": "fixture",\n  "dependencies": {\n    "left-pad": "1.1.0"\n  }\n}\n')"
+H5="$(_npm_repo h5)"
 H5_REPORT="${WORK}/h5.json"
 # JSON-escaped, so _report's printf carries the string `1.6.0", "evil": "yes` through.
 _report "${H5_REPORT}" npm package.json left-pad 1.1.0 '1.6.0\", \"evil\": \"yes'
@@ -136,9 +163,7 @@ _run "${H5}" "${H5_REPORT}" --apply --managers npm
 t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_contains "${OUT}" "changed the SHAPE of the file" "the audit says what it saw"
 t_assert_contains "${OUT}" "1 appeared (dependencies.evil)" "and names the injected key"
-t_assert_eq '    "left-pad": "1.1.0"' "$(_line "${H5}/package.json" 4)" \
-  "the manifest is back at the bytes it had"
-t_assert_ok git -C "${H5}" diff --quiet HEAD
+_assert_npm_unchanged "${H5}" "the manifest is back at the bytes it had"
 
 # (H6) A manifest that does not parse before the edit cannot be audited, so it is not written into.
 t_case "(H6) a manifest that does not parse is refused, not written into"
@@ -253,10 +278,6 @@ with open(out, "w", encoding="utf-8") as fh:
 PY
 }
 
-_npm_repo() {
-  _plant "$1" package.json \
-    '{\n  "name": "fixture",\n  "dependencies": {\n    "left-pad": "1.1.0"\n  }\n}\n'
-}
 
 # (H10) Deep nesting must be a bounded refusal, not a RecursionError that skips the rollback.
 t_case "(H10) a newValue nesting 1200 arrays is a REFUSAL, not a stack overflow"
@@ -268,9 +289,7 @@ t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_contains "${OUT}" "nests past 200 levels" "and refuse by the declared ceiling"
 t_assert_eq "0" "$(printf '%s' "${OUT}" | grep -c RecursionError)" \
   "no traceback: an exception here is what took the rollback with it"
-t_assert_eq '    "left-pad": "1.1.0"' "$(_line "${H10}/package.json" 4)" \
-  "the hostile write is gone"
-t_assert_ok git -C "${H10}" diff --quiet HEAD
+_assert_npm_unchanged "${H10}" "the hostile write is gone"
 
 # (H11) The rollback must not rest on the audit finishing: a copied auditor that raises is injected.
 t_case "(H11) an auditor that RAISES still puts every file back"
@@ -294,9 +313,7 @@ RC=$?
 t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_contains "${OUT}" "the audit itself raised MemoryError" "and name what raised"
 t_assert_contains "${OUT}" "back at the bytes it had" "and say the file went back"
-t_assert_eq '    "left-pad": "1.1.0"' "$(_line "${H11}/package.json" 4)" \
-  "the write is undone even though no verdict was ever reached"
-t_assert_ok git -C "${H11}" diff --quiet HEAD
+_assert_npm_unchanged "${H11}" "the write is undone even though no verdict was ever reached"
 
 # (H12) A key written twice resolves last-wins for both readers, so the duplicate itself must be refused.
 t_case "(H12) a pubspec declaring one dep twice: both readers agree, and it is refused"
@@ -311,34 +328,11 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${H12}" 4)" "and so is the one both readers
 
 # Asserted at the module: through the script the locator refuses json and cargo earlier, on a count mismatch.
 t_case "(H12b) json and toml refuse a repeated key too, each by its own parser"
-t_assert_contains "$("${PY_ABS}" - "${SCRIPTS_DIR}" <<'PY'
-import sys
-
-sys.path.insert(0, sys.argv[1])
-import renovate_audit
-
-TEXT = '{"name":"f","dependencies":{"left-pad":"1.1.0","left-pad":"1.2.0"}}'
-try:
-    renovate_audit.parse("npm", TEXT)
-    print("(PARSED)", end="")
-except renovate_audit.Unreadable as exc:
-    print(exc, end="")
-PY
-)" "declares 'left-pad' twice" "json takes last-wins as silently as PyYAML does"
-t_assert_contains "$("${PY_ABS}" - "${SCRIPTS_DIR}" <<'PY'
-import sys
-
-sys.path.insert(0, sys.argv[1])
-import renovate_audit
-
-TEXT = '[dependencies]\nserde = "1.0"\nserde = "1.1"\n'
-try:
-    renovate_audit.parse("cargo", TEXT)
-    print("(PARSED)", end="")
-except renovate_audit.Unreadable as exc:
-    print(exc, end="")
-PY
-)" "does not read as toml" "tomllib refuses one on its own, and is left to"
+t_assert_contains "$(_audit_parse_verdict npm '{"name":"f","dependencies":{"left-pad":"1.1.0","left-pad":"1.2.0"}}')" "declares 'left-pad' twice" "json takes last-wins as silently as PyYAML does"
+t_assert_contains "$(_audit_parse_verdict cargo '[dependencies]
+serde = "1.0"
+serde = "1.1"
+')" "does not read as toml" "tomllib refuses one on its own, and is left to"
 
 # (H13) --dry-run audits the text it would write, so its reason must match --apply's word for word.
 t_case "(H13) --dry-run predicts the post-write refusal, in the same words"
@@ -355,9 +349,7 @@ t_assert_eq "$(printf '%s\n' "${OUT}" | grep 'changed the SHAPE')" "${H13_DRY}" 
   "and gives the same reason, word for word"
 t_assert_contains "${H13_DRY}" "1 appeared (dependencies.evil)" \
   "which names the key the newValue would have injected"
-t_assert_eq '    "left-pad": "1.1.0"' "$(_line "${H13}/package.json" 4)" \
-  "and neither run wrote anything"
-t_assert_ok git -C "${H13}" diff --quiet HEAD
+_assert_npm_unchanged "${H13}" "and neither run wrote anything"
 
 # (H14) Put back includes the mtime, since make and ninja read a fresh one as a change; asserted on the planner alone.
 t_case "(H14) a rolled-back file keeps its mtime, not just its bytes"

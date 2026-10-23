@@ -246,26 +246,38 @@ _cc_check_binary_elf() {
   fi
 }
 
-# cc1 compile-to-object smoke + object ELF-machine assertion.
-_cc_check_object() {
-  local cc_path="$1" label="$2" expected_machine="$3"
-  local tmpdir cc_obj
-  tmpdir="$(mktemp -d)"
-  cc_obj="${tmpdir}/smoke.o"
-  if printf 'int answer(void){return 42;}\n' | "${cc_path}" -x c - -c -o "${cc_obj}" 2>/dev/null; then
-    pass "${label}: cc1 compile-to-object smoke OK"
-    if command -v readelf >/dev/null 2>&1 && [ -f "${cc_obj}" ]; then
-      local obj_machine
-      obj_machine="$(smoke_elf_machine_of "${cc_obj}" 2>/dev/null || true)"
-      case "${obj_machine}" in
-        *"${expected_machine}"*) pass "${label}: object ELF machine=${obj_machine}" ;;
-        *) fail "${label}: object ELF machine=${obj_machine} != expected ${expected_machine}" ;;
-      esac
-    fi
+smoke_with_compiled_object() {
+  local compiler="$1" program="$2" name="$3" verifier="$4" temporary status=0 cleanup_status=0
+  shift 4
+  temporary="$(mktemp -d)" || return 1
+  [ -n "${temporary}" ] && [ -d "${temporary}" ] || return 1
+  if printf '%s\n' "${program}" | "${compiler}" -x c - -c -o "${temporary}/${name}" 2>/dev/null; then
+    "${verifier}" "${temporary}/${name}" "$@" || status=$?
   else
-    fail "${label}: cc1 compile-to-object smoke FAILED"
+    status=1
   fi
-  rm -rf "${tmpdir}"
+  rm -rf "${temporary}" || cleanup_status=$?
+  [ "${status}" -ne 0 ] || status="${cleanup_status}"
+  return "${status}"
+}
+
+_cc_check_object_result() {
+  local object="$1" label="$2" expected_machine="$3" obj_machine
+  pass "${label}: cc1 compile-to-object smoke OK"
+  if command -v readelf >/dev/null 2>&1 && [ -f "${object}" ]; then
+    obj_machine="$(smoke_elf_machine_of "${object}" 2>/dev/null || true)"
+    case "${obj_machine}" in
+      *"${expected_machine}"*) pass "${label}: object ELF machine=${obj_machine}" ;;
+      *) fail "${label}: object ELF machine=${obj_machine} != expected ${expected_machine}" ;;
+    esac
+  fi
+  return 0
+}
+
+_cc_check_object() {
+  if ! smoke_with_compiled_object "$1" 'int answer(void){return 42;}' smoke.o _cc_check_object_result "$2" "$3"; then
+    fail "${2}: cc1 compile-to-object smoke FAILED"
+  fi
 }
 
 # A wrong sysroot still links cleanly; the requested ELF interpreter shows it without running anything.
