@@ -29,30 +29,36 @@ Expected result:
   out/linux-sdk/riscv64/rootfs/
 
 Options:
-  --target-arches LIST   Comma-separated target list (default: amd64,arm64,riscv64)
-  --architectures LIST   Alias for --target-arches
+EOF
+  runtime_usage_row '--target-arches LIST' 25 sdk
+  runtime_usage_row '--architectures LIST' 25 sdk
+  cat <<'EOF'
   --output-root DIR      Export directory root (default: out/linux-sdk)
 EOF
   orchestrator_usage_mirror_options
   cat <<'EOF'
   --vulkan-version VER   Vulkan SDK version to build
   --push                 Push each built SDK artifact image after export
-  --parallel-archs       Build per-architecture images in parallel
-  --max-parallel-archs N Max concurrent arch builds (default: nproc)
+EOF
+  runtime_usage_row --parallel-archs 25 sdk
+  runtime_usage_row '--max-parallel-archs N' 25 sdk
+  cat <<'EOF'
   -h, --help             Show this help text
 
 Environment overrides:
-  NERDCTL_BIN            nerdctl executable to use
-  TARGET_ARCHES          Comma-separated target list
-  TARGET_ARCH            Alias for TARGET_ARCHES
-  ARCHITECTURES          Alias for TARGET_ARCHES
+EOF
+  runtime_usage_row NERDCTL_BIN 25 sdk
+  runtime_usage_row TARGET_ARCHES 25 sdk
+  runtime_usage_row TARGET_ARCH 25 sdk
+  runtime_usage_row ARCHITECTURES 25 sdk
+  cat <<'EOF'
   OUTPUT_ROOT            Root directory for exported rootfs artifacts
   VULKAN_VERSION         Vulkan SDK version
   IMAGE_REPO             Registry prefix for image tags
-  USE_FAST_UBUNTU_MIRROR Set to true to replace archive/security/ports Ubuntu mirrors
-  FAST_UBUNTU_MIRROR_URL Mirror URL used when the fast mirror is enabled
-  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
 EOF
+  runtime_usage_row USE_FAST_UBUNTU_MIRROR 25 sdk
+  runtime_usage_row FAST_UBUNTU_MIRROR_URL 25 sdk
+  runtime_usage_row FAST_UBUNTU_PORTS_MIRROR_URL 31 sdk
 }
 
 _sdk_extra_arg() {

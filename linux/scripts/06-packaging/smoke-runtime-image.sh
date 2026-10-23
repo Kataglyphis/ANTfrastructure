@@ -709,12 +709,11 @@ _consumer_exempt_verdict() {
 
 # Executable-but-unreadable runs for root only; the probe answers as the shipped image user.
 _consumer_tool_verdict() {
-  local row="$1" path readable
-  path="$(_consumer_contract_fact "$2" ENV appimagetool)"
-  readable="$(_consumer_contract_fact "$2" FACT appimagetool-readable)"
-  if [ -z "${readable}" ]; then
-    printf 'NOFACT %s no FACT appimagetool-readable line' "${row}"
-  elif [ -z "${path}" ]; then
+  local row="$1" path readable required_verdict
+  _consumer_collect_required_facts "$2" required_verdict "${row}" 'no FACT appimagetool-readable line' \
+    path ENV appimagetool optional readable FACT appimagetool-readable required
+  if [ "${required_verdict}" != continue ]; then return "${required_verdict}"; fi
+  if [ -z "${path}" ]; then
     printf 'BAD %s appimagetool is not on PATH at all' "${row}"
   elif [ "${readable}" != yes ]; then
     printf 'BAD %s %s is not readable by the image user' "${row}" "${path}"
@@ -724,13 +723,11 @@ _consumer_tool_verdict() {
 }
 
 _consumer_jdk_verdict() {
-  local row="$1" home onpath javac
-  home="$(_consumer_contract_fact "$2" ENV java-home)"
-  onpath="$(_consumer_contract_fact "$2" FACT java-on-path)"
-  javac="$(_consumer_contract_fact "$2" FACT javac)"
-  if [ -z "${onpath}" ] || [ -z "${javac}" ]; then
-    printf 'NOFACT %s no FACT java-on-path / FACT javac line' "${row}"
-  elif [ "${onpath}" != yes ]; then
+  local row="$1" home onpath javac required_verdict
+  _consumer_collect_required_facts "$2" required_verdict "${row}" 'no FACT java-on-path / FACT javac line' \
+    home ENV java-home optional onpath FACT java-on-path required javac FACT javac required
+  if [ "${required_verdict}" != continue ]; then return "${required_verdict}"; fi
+  if [ "${onpath}" != yes ]; then
     printf 'BAD %s no java on PATH' "${row}"
   elif [ -z "${home}" ]; then
     printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' "${row}"
@@ -742,15 +739,13 @@ _consumer_jdk_verdict() {
 }
 
 _consumer_android_verdict() {
-  local row="$1" val root dir onpath off
+  local row="$1" val root dir onpath off required_verdict
   # The NDK is linux-x86_64 only; prune-host-payload.sh (or android-sdk.sh on a foreign host) writes the marker.
-  off="$(_consumer_contract_fact "$2" FACT android-payload-off)"
-  if [ -z "${off}" ]; then
-    printf 'NOFACT %s no FACT android-payload-off line' "${row}"
-    return 0
-  fi
-  val="$(_consumer_contract_fact "$2" ENV android-home)"
-  root="$(_consumer_contract_fact "$2" ENV android-sdk-root)"
+  _consumer_collect_required_facts "$2" required_verdict "${row}" 'no FACT android-payload-off line' \
+    off FACT android-payload-off required
+  if [ "${required_verdict}" != continue ]; then return 0; fi
+  _consumer_collect_required_facts "$2" required_verdict "${row}" '' \
+    val ENV android-home optional root ENV android-sdk-root optional
   if [ "${off}" = yes ]; then
     # An empty /opt/android-sdk behind ANDROID_HOME is the same "No Android SDK found", one probe later.
     if [ -n "${val}" ] || [ -n "${root}" ]; then
@@ -761,11 +756,10 @@ _consumer_android_verdict() {
     fi
     return 0
   fi
-  dir="$(_consumer_contract_fact "$2" DIR android-platform-tools)"
-  onpath="$(_consumer_contract_fact "$2" FACT android-path)"
-  if [ -z "${dir}" ] || [ -z "${onpath}" ]; then
-    printf 'NOFACT %s no DIR android-platform-tools / FACT android-path line' "${row}"
-  elif [ -z "${val}" ] || [ -z "${root}" ]; then
+  _consumer_collect_required_facts "$2" required_verdict "${row}" 'no DIR android-platform-tools / FACT android-path line' \
+    dir DIR android-platform-tools required onpath FACT android-path required
+  if [ "${required_verdict}" != continue ]; then return "${required_verdict}"; fi
+  if [ -z "${val}" ] || [ -z "${root}" ]; then
     printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while the SDK ships in the image' "${row}" "${val:-<unset>}" "${root:-<unset>}"
   elif [ "${dir}" != yes ]; then
     printf 'BAD %s %s/platform-tools does not exist' "${row}" "${val}"

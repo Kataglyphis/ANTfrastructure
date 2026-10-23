@@ -78,6 +78,25 @@ known_so_packages_load || {
   echo "WARNING: so-package-map.txt not found; continuing with an empty known-so map (dpkg-query/apt-cache lookups only)" >&2
 }
 
+_vmr_collect_missing() {
+  local -n needed_names="$1"
+  local binary="$2" diagnostics="$3" so_name
+  # Process-substitution failure stays advisory; every complete emitted name still contributes.
+  while IFS= read -r so_name; do
+    [ -n "${so_name}" ] || continue
+    if [ "${diagnostics}" = yes ]; then echo "  MISSING: ${so_name}" >&2; fi
+    needed_names+=("${so_name}")
+  done < <(elf_unresolved_needed "${binary}" "${LIB_DIRS[@]}")
+}
+
+_vmr_report_missing() {
+  local severity="$1" description="$2"
+  shift 2
+  echo ""
+  echo "=== ${severity}: $# ${description} ==="
+  printf '  %s\n' "$@"
+}
+
 find_missing_needed() {
   local binary="$1"
   local missing=()
@@ -86,12 +105,7 @@ find_missing_needed() {
 
   echo "Checking: ${binary}" >&2
 
-  local so_name
-  while IFS= read -r so_name; do
-    [ -n "${so_name}" ] || continue
-    echo "  MISSING: ${so_name}" >&2
-    missing+=("${so_name}")
-  done < <(elf_unresolved_needed "${binary}" "${LIB_DIRS[@]}")
+  _vmr_collect_missing missing "${binary}" yes
 
   if [ ${#missing[@]} -gt 0 ]; then
     printf '%s\n' "${missing[@]}"
@@ -155,11 +169,7 @@ scan_plugin_directory() {
   for p in "${plugin_dir}"/*.so; do
     [ -f "${p}" ] || continue
 
-    local so_name
-    while IFS= read -r so_name; do
-      [ -n "${so_name}" ] || continue
-      missing_all+=("${so_name}")
-    done < <(elf_unresolved_needed "${p}" "${LIB_DIRS[@]}")
+    _vmr_collect_missing missing_all "${p}" no
   done
 
   if [ ${#missing_all[@]} -gt 0 ]; then
@@ -259,9 +269,7 @@ if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
   mapfile -t UNIQ_REMAINING < <(printf '%s\n' "${REMAINING[@]}" | uniq_nonempty_lines)
 
   if [ ${#UNIQ_REMAINING[@]} -gt 0 ]; then
-    echo ""
-    echo "=== WARNING: ${#UNIQ_REMAINING[@]} dependencies still unresolved ==="
-    printf '  %s\n' "${UNIQ_REMAINING[@]}"
+    _vmr_report_missing WARNING 'dependencies still unresolved' "${UNIQ_REMAINING[@]}"
     echo ""
     echo "These libraries could not be found in any apt package. The artifacts"
     echo "that depend on them (and the plugins that load them) will fail at"
@@ -273,16 +281,12 @@ if [ ${#UNIQ_PKGS[@]} -gt 0 ]; then
 fi
 
 if [ ${#STILL_MISSING[@]} -gt 0 ]; then
-  echo ""
-  echo "=== WARNING: ${#STILL_MISSING[@]} dependencies have no known apt package ==="
-  printf '  %s\n' "${STILL_MISSING[@]}"
+  _vmr_report_missing WARNING 'dependencies have no known apt package' "${STILL_MISSING[@]}"
   echo "Add entries to so-package-map.txt (next to validate-media-runtime.sh)."
 fi
 
 if [ ${#DENIED_MISSING[@]} -gt 0 ]; then
-  echo ""
-  echo "=== FAIL: ${#DENIED_MISSING[@]} source-built dependencies unresolved (apt repair denied) ==="
-  printf '  %s\n' "${DENIED_MISSING[@]}"
+  _vmr_report_missing FAIL 'source-built dependencies unresolved (apt repair denied)' "${DENIED_MISSING[@]}"
   echo "These ship from this repo's own build; a miss means the builder did not"
   echo "install the SONAME link. Fix the builder — do NOT map them to a distro"
   echo "package, which is what silently downgraded ONNX Runtime before 2026-08-28."

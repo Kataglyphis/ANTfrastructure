@@ -43,6 +43,15 @@
 - Resolve CUDA and TensorRT image installer modules through the shared container-image bootstrap, passing the flat BuildKit module root explicitly.
 - Share `SCCACHE_MAX_JOBS` defaulting across host-cache and CMake setup while preserving each caller's activation point and logging.
 
+## 2026-10-23 — share fetch and runtime validation lifecycles
+
+- Share missing-checkout clone preparation while preserving exact ORT and GenAI retry, submodule, cwd and Python requirement policies.
+- Share unresolved-library collection and summaries without changing artifact selection, partial resolver output, repair advice or fatal denial gates.
+- Share ordered consumer fact guards in the existing consumer-contract library while preserving lazy Android checks and caller-specific verdicts.
+- Render common runtime/SDK help rows centrally with exact caller formatting and runtime-only environment-consumption checks.
+- Share best-effort Torch-missing marker writes and cache-aware apt-list cleanup with unchanged import, fallback and failure policies.
+- Compare original outputs, statuses and lookup order against independent fixtures; remove resolved duplication exceptions without increasing limits.
+
 ## 2026-10-23 — remove another Windows duplication wave
 
 - Scope FFmpeg codec and Vulkan Validation Layers compiler variables with the shared environment helper, route GPU diagnostics through shared Docker discovery, and build wheel/sccache fakes with the shared batch-tool fixture.
