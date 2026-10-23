@@ -83,6 +83,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
+   Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
+   Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
+   Stateful Windows fixtures use the harness binding APIs; preserve collection identity, fake argv and nested-function restoration.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.

@@ -79,43 +79,26 @@ function Compare-BenchmarkTimeMap {
         $hasBase = $BaselineMap.ContainsKey($name)
         $hasCandidate = $CandidateMap.ContainsKey($name)
 
+        $row = [pscustomobject]@{
+            Name = $name; Baseline = $null; Candidate = $null; Delta = $null
+            Status = ''; IsRegression = $false
+        }
+        if ($hasBase) { $row.Baseline = [double]$BaselineMap[$name] }
+        if ($hasCandidate) { $row.Candidate = [double]$CandidateMap[$name] }
         if ($hasBase -and $hasCandidate) {
-            $base = [double]$BaselineMap[$name]
-            $candidate = [double]$CandidateMap[$name]
             # A zero baseline cannot express a relative change.
-            $delta = if ($base -ne 0) { ($candidate - $base) / $base } else { 0.0 }
-            $isRegression = $delta -gt $ToleranceFraction
-            $row = [pscustomobject]@{
-                Name         = $name
-                Baseline     = $base
-                Candidate    = $candidate
-                Delta        = $delta
-                Status       = 'compared'
-                IsRegression = $isRegression
-            }
-            $rows += $row
-            if ($isRegression) { $regressions += $row }
+            $row.Delta = if ($row.Baseline -ne 0) { ($row.Candidate - $row.Baseline) / $row.Baseline } else { 0.0 }
+            $row.Status = 'compared'
+            $row.IsRegression = $row.Delta -gt $ToleranceFraction
+            if ($row.IsRegression) { $regressions += $row }
         } elseif ($hasBase) {
-            $rows += [pscustomobject]@{
-                Name         = $name
-                Baseline     = [double]$BaselineMap[$name]
-                Candidate    = $null
-                Delta        = $null
-                Status       = 'only-base'
-                IsRegression = $false
-            }
+            $row.Status = 'only-base'
             $onlyInBaseline += $name
         } else {
-            $rows += [pscustomobject]@{
-                Name         = $name
-                Baseline     = $null
-                Candidate    = [double]$CandidateMap[$name]
-                Delta        = $null
-                Status       = 'only-cand'
-                IsRegression = $false
-            }
+            $row.Status = 'only-cand'
             $onlyInCandidate += $name
         }
+        $rows += $row
     }
 
     return [pscustomobject]@{
@@ -136,6 +119,12 @@ function Format-BenchmarkTolerance {
     return [math]::Round($ToleranceFraction * 100, 1).ToString($script:Invariant)
 }
 
+function Format-ComparedBenchmarkValues {
+    param([psobject]$Row, [string]$Pattern)
+    return [string]::Format($script:Invariant, $Pattern,
+        $Row.Name, $Row.Baseline, $Row.Candidate, (Format-BenchmarkDelta -Delta $Row.Delta))
+}
+
 # Pure, so the column layout is testable without capturing host output.
 function Format-BenchmarkRow {
     param(
@@ -145,8 +134,7 @@ function Format-BenchmarkRow {
 
     switch ($Row.Status) {
         'compared' {
-            [string]::Format($script:Invariant, '{0,-42} {1,14:N1} {2,14:N1} {3,10}',
-                $Row.Name, $Row.Baseline, $Row.Candidate, (Format-BenchmarkDelta -Delta $Row.Delta))
+            Format-ComparedBenchmarkValues -Row $Row -Pattern '{0,-42} {1,14:N1} {2,14:N1} {3,10}'
         }
         'only-base' {
             [string]::Format($script:Invariant, '{0,-42} {1,14:N1} {2,14} {3,10}',
@@ -200,9 +188,7 @@ function Write-BenchmarkComparisonReport {
         Write-Host ''
         Write-Host "REGRESSIONS (beyond +$tolerance%):" -ForegroundColor Red
         foreach ($regression in $Comparison.Regressions) {
-            Write-Host ([string]::Format($script:Invariant, '  {0}: {1:N1} ns -> {2:N1} ns ({3})',
-                $regression.Name, $regression.Baseline, $regression.Candidate,
-                (Format-BenchmarkDelta -Delta $regression.Delta))) -ForegroundColor Red
+            Write-Host (Format-ComparedBenchmarkValues -Row $regression -Pattern '  {0}: {1:N1} ns -> {2:N1} ns ({3})') -ForegroundColor Red
         }
     }
 

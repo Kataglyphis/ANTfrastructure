@@ -11,6 +11,10 @@
 #>
 
 Set-StrictMode -Version Latest
+
+$nativeRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
+Import-Module (Join-Path $nativeRoot 'modules\WindowsNative.Common.psm1')
+
 $ErrorActionPreference = 'Stop'
 
 function Get-OpenClIcdRegistryEntry {
@@ -175,21 +179,9 @@ function Invoke-GpuLoaderProbe {
         [Parameter(Mandatory)][string]$IcdPath,
         [int]$TimeoutSeconds = 120
     )
-    $info = [System.Diagnostics.ProcessStartInfo]@{ FileName = (Get-Process -Id $PID).Path; UseShellExecute = $false; RedirectStandardOutput = $true }
-    foreach ($a in '-NoProfile', '-NonInteractive', '-EncodedCommand', [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($script:GpuLoaderProbeSource))) {
-        $info.ArgumentList.Add($a)
-    }
-    $info.Environment['GPU_LOADER_PROBE_ICD'] = $IcdPath
-    $child = [System.Diagnostics.Process]::Start($info)
-    try {
-        $text = $child.StandardOutput.ReadToEndAsync()
-        if (-not $child.WaitForExit($TimeoutSeconds * 1000)) {
-            $child.Kill($true)
-            return [pscustomobject]@{ ExitCode = $null; Line = @() }
-        }
-        $child.WaitForExit()
-        return [pscustomobject]@{ ExitCode = $child.ExitCode; Line = @($text.Result -split '\r?\n' | Where-Object { $_ }) }
-    } finally { $child.Dispose() }
+    $run = Invoke-PwshProbeProcess -Source $script:GpuLoaderProbeSource `
+        -ProcessOptions @{ Environment = @{ GPU_LOADER_PROBE_ICD = $IcdPath }; TimeoutSeconds = $TimeoutSeconds; InheritStandardError = $true; PreserveOutput = $true }
+    return [pscustomobject]@{ ExitCode = $run.ExitCode; Line = @($run.Text -split '\r?\n' | Where-Object { $_ }) }
 }
 
 if (-not $env:HIP_PATH) { return 'GPU loaders: HIP_PATH is not set, so TheRock''s OpenCL ICD cannot be located' }

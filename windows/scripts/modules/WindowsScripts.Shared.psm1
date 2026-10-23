@@ -863,3 +863,34 @@ function Resolve-BuildExecutable {
 }
 
 Export-ModuleMember -Function Resolve-BuildExecutable
+
+function ConvertTo-MsixSigningPassword {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'Caller-supplied passwords protect throwaway development signing certificates.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'Development certificate scripts receive the password through their public CLI.')]
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Password)
+    return ConvertTo-SecureString -String $Password -AsPlainText -Force
+}
+
+Export-ModuleMember -Function ConvertTo-MsixSigningPassword
+
+function Resolve-PathFromRoot {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][AllowEmptyString()][string]$Path)
+    if ([IO.Path]::IsPathRooted($Path)) { return $Path }
+    return Join-Path $Root $Path
+}
+
+Export-ModuleMember -Function Resolve-PathFromRoot
+
+function Find-ChildDirectoryFile {
+    param(
+        [Parameter(Mandatory)][string]$Parent,
+        [string]$DirectoryFilter = '*',
+        [Parameter(Mandatory)][string]$RelativePath
+    )
+    Get-ChildItem -Path $Parent -Directory -Filter $DirectoryFilter -ErrorAction SilentlyContinue |
+        ForEach-Object { Join-Path $_.FullName $RelativePath } |
+        Where-Object { Test-Path $_ } |
+        Select-Object -First 1
+}
+
+Export-ModuleMember -Function Find-ChildDirectoryFile

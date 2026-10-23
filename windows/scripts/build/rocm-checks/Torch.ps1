@@ -14,6 +14,11 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$nativeRoot = Split-Path $PSScriptRoot -Parent
+if (-not (Test-Path (Join-Path $nativeRoot 'modules'))) { $nativeRoot = Split-Path $nativeRoot -Parent }
+Import-Module (Join-Path $nativeRoot 'modules\WindowsNative.Common.psm1')
+
+
 # Import errors go into the JSON line, never raised; "venv" is read first because Install-TorchRocm.ps1 checks pins on it.
 function Get-TorchRocmProbeSource {
     return @'
@@ -163,17 +168,7 @@ function Get-TorchRocmImageFinding {
 # The one runner of the probe (Install-TorchRocm.ps1 dot-sources this file for it); throws without a report.
 function Get-TorchRocmVenvReport {
     param([Parameter(Mandatory)][string]$Python)
-    $probe = Join-Path ([System.IO.Path]::GetTempPath()) "rocm-check-torch-$([guid]::NewGuid().ToString('N')).py"
-    try {
-        [System.IO.File]::WriteAllText($probe, (Get-TorchRocmProbeSource))
-        $lines = @(& $Python $probe 2>$null)
-        $rc = $LASTEXITCODE
-    } finally {
-        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
-    }
-    $json = $lines | Where-Object { "$_".StartsWith('{') } | Select-Object -Last 1
-    if ($rc -ne 0 -or -not $json) { throw "the venv probe exited $rc without a report" }
-    return ($json | ConvertFrom-Json -AsHashtable)
+    Invoke-PythonJsonProbe -Python $Python -Source (Get-TorchRocmProbeSource) -Prefix rocm-check-torch -DiscardStandardError -FailurePrefix 'the venv probe exited'
 }
 
 # Dot-sourced = definitions only; Test-RocmImage.ps1 runs it with &.

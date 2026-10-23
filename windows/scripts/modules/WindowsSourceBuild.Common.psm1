@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+Import-Module $sharedPath
 
 $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
 $cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
@@ -780,6 +780,19 @@ function Initialize-SourceBuildEnvironment {
     # Keeps Windows Update from dropping an .msu into the image layer.
     Disable-ContainerWindowsUpdate
     return $InstallDir
+}
+
+function Resolve-SourceBuildLeafModule {
+    param(
+        [Parameter(Mandatory)][string]$AssetRoot,
+        [Parameter(Mandatory)][string]$Name,
+        [string[]]$Directory = @('modules', 'ortmods')
+    )
+    foreach ($folder in $Directory) {
+        $path = Join-Path $AssetRoot $folder $Name
+        if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
+    }
+    throw "$Name is not mounted under $AssetRoot (searched $($Directory -join ', '))"
 }
 
 function Initialize-SourceBuildScript {
@@ -2550,6 +2563,7 @@ Export-ModuleMember -Function @(
     'Get-LlvmMasmCmakeArg',
     'Initialize-SourceBuildEnvironment',
     'Initialize-SourceBuildScript',
+    'Resolve-SourceBuildLeafModule',
     'Initialize-ToolchainPythonEnvironment',
     'Initialize-PythonPlatformTag',
     'Install-StagedPythonWheel',
@@ -2615,6 +2629,7 @@ Export-ModuleMember -Function @(
     'Get-CMakeCrossArgs',
     # Called directly by Build-GstreamerFromSource.ps1; Modules.ScriptCallClosure.Tests.ps1 gates it.
     'Resolve-BuildMachineMsvcTool',
+    'Find-ChildDirectoryFile',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

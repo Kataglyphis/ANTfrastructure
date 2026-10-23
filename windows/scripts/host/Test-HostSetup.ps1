@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Continue'
 
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildKit.Common.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $script:Fail = 0
@@ -37,16 +38,6 @@ function Write-Check {
     if ($Fix -and $Status -ne 'PASS') { Write-Host ('       fix: ' + $Fix) -ForegroundColor Cyan }
     if ($Status -eq 'FAIL') { $script:Fail++ }
     if ($Status -eq 'WARN') { $script:Warn++ }
-}
-
-function Test-IpInCidr {
-    param([string]$Ip, [string]$Cidr)
-    if (-not $Ip -or $Cidr -notmatch '^(.+)/(\d+)$') { return $false }
-    $net = [Net.IPAddress]::Parse($Matches[1]); $bits = [int]$Matches[2]
-    $a = [BitConverter]::ToUInt32(($net.GetAddressBytes()[3..0]), 0)
-    $b = [BitConverter]::ToUInt32(([Net.IPAddress]::Parse($Ip).GetAddressBytes()[3..0]), 0)
-    $mask = if ($bits -eq 0) { 0 } else { [uint32]((0xFFFFFFFFL -shl (32 - $bits)) -band 0xFFFFFFFFL) }
-    return ($a -band $mask) -eq ($b -band $mask)
 }
 
 Write-Host ''
@@ -125,10 +116,9 @@ if ($haveConf -and $haveList) {
 
 if ($confText) {
     $subnet = ([regex]::Match($confText, '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
-    $adapter = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-        Where-Object { $_.InterfaceAlias -match '^vEthernet \(nat\)$' } | Select-Object -First 1 -ExpandProperty IPAddress)
+    $adapter = Get-CniNatAdapterIp
     if (-not $adapter) { Write-Check WARN 'no vEthernet (nat) adapter - cannot judge subnet drift' }
-    elseif (Test-IpInCidr -Ip $adapter -Cidr $subnet) { Write-Check PASS "CNI subnet matches the live nat adapter ($subnet <- $adapter)" }
+    elseif ($subnet -and (Test-IpInSubnet -Ip $adapter -Cidr $subnet -InvalidReturnsFalse)) { Write-Check PASS "CNI subnet matches the live nat adapter ($subnet <- $adapter)" }
     else {
         Write-Check FAIL "CNI subnet drift: conf pins $subnet, adapter is $adapter" `
             'containers get unroutable IPs - the first downloading RUN dies with "remote name could not be resolved"' `

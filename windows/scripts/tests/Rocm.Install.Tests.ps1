@@ -1,4 +1,6 @@
 #requires -Version 7.0
+
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # The Windows ROCm sdk layer: guards, layout, ICD and loader install, env and PATH contract; no real downloads or hipcc.
 
 Describe 'Install-Rocm: tarball URL' {

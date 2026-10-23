@@ -31,7 +31,7 @@ Describe 'TVM assembled-wheel helpers' {
     It 'Build-TvmFromSource tags the GIL wheel with the pin and the twin cpXY-cpXYt (CON91)' {
         $tvm = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TvmFromSource.ps1'))
         Assert-Match '(?s)New-TvmFfiCrossWheel -Python \$tvmTargetPy .*?-AbiTag \(Get-PinnedPythonVersion\)\.AbiTag' $tvm 'the GIL wheel carries the pin''s cpXY, not a default'
-        Assert-Match "-PythonTag \(\`$AbiTag -replace 't\$', ''\) -AbiTag \`$AbiTag" $tvm 'the python tag drops the free-threaded t'
+        Assert-Match "PythonTag = \(\`$AbiTag -replace 't\$', ''\); AbiTag = \`$AbiTag" $tvm 'the python tag drops the free-threaded t'
         Assert-False ($tvm -match "AbiTag = 'cp3") 'no literal tag default'
     }
 

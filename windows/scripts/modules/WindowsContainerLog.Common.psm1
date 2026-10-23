@@ -61,12 +61,7 @@ function Invoke-ContainerLoggedCommand {
     [OutputType([int])]
     param([Parameter(Mandatory)][string]$CommandLine)
 
-    cmd /c "$CommandLine 2>&1" | ForEach-Object {
-        Write-Host $_
-        if ($script:ContainerLogPath) {
-            Add-Content -Path $script:ContainerLogPath -Value $_
-        }
-    }
+    cmd /c "$CommandLine 2>&1" | Write-ContainerLog
     return $LASTEXITCODE
 }
 

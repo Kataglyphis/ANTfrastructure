@@ -32,6 +32,7 @@ $ProgressPreference = 'SilentlyContinue'
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsSmokeTest.Common.psm1') -Force
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsNative.Common.psm1')
 
 # Imported directly, as this script loads no WindowsSourceBuild.Common; unset WINDOWS_TARGET_ARCH means amd64.
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1') -Force
@@ -200,18 +201,8 @@ function Get-TorchAppOrtFinding {
 function Invoke-TorchAppOrtProbe {
     param([Parameter(Mandatory)][string]$Python, [AllowEmptyString()][string]$WheelPath = '')
     if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw "venv python missing at $Python" }
-    $probe = Join-Path ([System.IO.Path]::GetTempPath()) "smoke-venv-ort-$([guid]::NewGuid().ToString('N')).py"
-    try {
-        [System.IO.File]::WriteAllText($probe, (Get-TorchAppOrtProbeSource))
-        $probeArgs = @('-I', $probe) + @(@($WheelPath) | Where-Object { $_ })
-        $lines = @(& $Python @probeArgs 2>&1 | ForEach-Object { "$_" })
-        $rc = $LASTEXITCODE
-    } finally {
-        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
-    }
-    $json = $lines | Where-Object { $_.StartsWith('{') } | Select-Object -Last 1
-    if ($rc -ne 0 -or -not $json) { throw "exit $rc without a report: $(($lines | Select-Object -Last 3) -join ' | ')" }
-    return ($json | ConvertFrom-Json -AsHashtable)
+    $arguments = @(@($WheelPath) | Where-Object { $_ })
+    Invoke-PythonJsonProbe -Python $Python -Source (Get-TorchAppOrtProbeSource) -Prefix smoke-venv-ort -InterpreterArgument @('-I') -ArgumentList $arguments -DiagnosticTail
 }
 
 # §19: the ort-sys crate env windows/Dockerfile bakes must name the chain ORT under ONNX_ROOT.
@@ -472,15 +463,8 @@ Assert-EnvVarSet -Name 'VULKAN_SDK'
 
 # Needs no GPU or ICD, unlike vulkaninfo, which is deliberately not run headless.
 Assert-Test -Name 'glslc compiles a shader to SPIR-V' -Condition {
-    $d = Join-Path $env:TEMP 'kataglyphis-smoke-glslc'
-    Initialize-SmokeScratch -Path $d
-    $src = Join-Path $d 'smoke.vert'
-    "#version 450`nvoid main() { gl_Position = vec4(0.0); }" | Set-Content -Path $src -Encoding ASCII
-    $spv = Join-Path $d 'smoke.spv'
-    & glslc $src -o $spv 2>&1 | Out-Null
-    $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $spv) -and ((Get-Item $spv).Length -gt 0)
-    Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
-    return $ok
+    Invoke-SmokeCompilation -WorkName glslc -SourceName smoke.vert -OutputName smoke.spv -Compiler glslc `
+        -Source "#version 450`nvoid main() { gl_Position = vec4(0.0); }"
 } -FailMessage 'glslc failed to compile a trivial shader to SPIR-V'
 
 # The lavapipe ICD makes vulkaninfo runnable headless; the amd64 image registers it in HKLM at install time.
@@ -539,17 +523,9 @@ if ($script:gpuNvidia) {
     # PTX only, as there is no GPU here; -ccbin names the MSVC host compiler, which is not on PATH.
     $nvccCcbin = if ($env:VCToolsInstallDir) { Join-Path $env:VCToolsInstallDir 'bin\Hostx64\x64' } else { $null }
     Assert-Test -Name 'nvcc compiles a CUDA kernel to PTX' -Condition {
-        $d = Join-Path $env:TEMP 'kataglyphis-smoke-cuda'
-        Initialize-SmokeScratch -Path $d
-        $src = Join-Path $d 'k.cu'
-        "__global__ void k(float* a) { a[threadIdx.x] *= 2.0f; }`nint main() { return 0; }" | Set-Content -Path $src -Encoding ASCII
-        $ptx = Join-Path $d 'k.ptx'
-        $nvccArgs = @('-std=c++17', '-ptx', $src, '-o', $ptx)
-        if ($nvccCcbin) { $nvccArgs += @('-ccbin', $nvccCcbin) }
-        & nvcc @nvccArgs 2>&1 | Out-Null
-        $ok = ($LASTEXITCODE -eq 0) -and (Test-Path $ptx) -and ((Get-Item $ptx).Length -gt 0)
-        Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
-        return $ok
+        $after = @(if ($nvccCcbin) { '-ccbin'; $nvccCcbin })
+        Invoke-SmokeCompilation -WorkName cuda -SourceName k.cu -OutputName k.ptx -Compiler nvcc -ArgumentList @('-std=c++17', '-ptx') -AfterArgument $after `
+            -Source "__global__ void k(float* a) { a[threadIdx.x] *= 2.0f; }`nint main() { return 0; }"
     }.GetNewClosure() -FailMessage 'nvcc could not compile a trivial kernel to PTX (host_config/nv-target/cl.exe integration?)'
 
     # A host-only cuDNN call needs no GPU; on cross the run half becomes a PE-machine assert, as in §14.
@@ -585,15 +561,12 @@ int main() { std::printf("cudnn %zu\n", (size_t)cudnnGetVersion()); return 0; }
 }
 # Every image, owner 2026-10-21: the SLA lets only runtime DLLs ship; Dockerfile.nvidia's trt-extract keeps the SDK.
 $trtNotRuntime = @(Get-TensorRtShipViolation)
-Assert-Test -Name 'TensorRT ships only its runtime DLLs (no headers, import libs, trtexec, samples or wheels)' -Condition { $trtNotRuntime.Count -eq 0 }.GetNewClosure() -FailMessage "TENSORRT_ROOT carries $($trtNotRuntime.Count) SDK files: $(($trtNotRuntime | Select-Object -First 8) -join ', ')"
+Assert-Test -Name 'TensorRT ships only its runtime DLLs (no headers, import libs, trtexec, samples or wheels)' -Finding $trtNotRuntime -FailMessage "TENSORRT_ROOT carries $($trtNotRuntime.Count) SDK files: $(($trtNotRuntime | Select-Object -First 8) -join ', ')"
 
 Write-TestHeader '8. ONNX Runtime (source-built)'
-if ($smokeCross) {
-    Skip-Test "section 8 (ONNX Runtime (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
-$onnxRoot = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
+if (Test-SmokeNativeSection -Name '8 (ONNX Runtime (source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
+$onnxRoot = Get-SmokeInstallRoot -Name ONNX_ROOT
 if ($onnxRoot) {
-    Assert-DirectoryExists -Path $onnxRoot -Description "ONNX_ROOT"
     # Recursive search: ORT installs headers nested (include\onnxruntime\...), not flat
     Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Description 'ONNX C++ API header'
     Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_c_api.h' -Description 'ONNX C API header'
@@ -601,9 +574,9 @@ if ($onnxRoot) {
     Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime*.dll' -Description 'ONNX DLL files'
 
     # Existence is not loadability: compile, link and run against the ORT C API.
-    $onnxCApiHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_c_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    $onnxMainLib = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    $onnxDll     = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $onnxCApiHdr = Find-SmokeArtifact -Root $onnxRoot -Filter 'onnxruntime_c_api.h'
+    $onnxMainLib = Find-SmokeArtifact -Root $onnxRoot -Filter 'onnxruntime.lib'
+    $onnxDll     = Find-SmokeArtifact -Root $onnxRoot -Filter 'onnxruntime.dll'
     if ($onnxCApiHdr -and $onnxMainLib -and $onnxDll) {
         # Shared link inputs for every ORT probe below (same header/lib/DLL triple).
         $onnxLink = @{
@@ -628,14 +601,10 @@ int main() {
         $ortModelDir = Join-Path $env:TEMP 'kataglyphis-smoke-ort-model'
         Initialize-SmokeScratch -Path $ortModelDir
         [IO.File]::WriteAllBytes((Join-Path $ortModelDir 'identity.onnx'), $script:identityOnnxBytes)
-        $onnxCxxHdr = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_cxx_api.h' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        $onnxCxxHdr = Find-SmokeArtifact -Root $onnxRoot -Filter 'onnxruntime_cxx_api.h'
         if ($onnxCxxHdr) {
-            $onnxInferLink = @{
-                IncludeDirs = @(@($onnxCApiHdr.DirectoryName, $onnxCxxHdr.DirectoryName) | Select-Object -Unique)
-                LibDir      = $onnxMainLib.DirectoryName
-                LibName     = $onnxMainLib.Name
-                DllDir      = $onnxDll.DirectoryName
-            }
+            $onnxInferLink = $onnxLink.Clone()
+            $onnxInferLink.IncludeDirs = @(@($onnxCApiHdr.DirectoryName, $onnxCxxHdr.DirectoryName) | Select-Object -Unique)
             Assert-NativeLinkRun @onnxInferLink -Name 'ONNX Runtime CPU inference end-to-end (session create + Run)' -WorkName 'onnx-infer' -Source @'
 #include <onnxruntime_cxx_api.h>
 #include <cstdio>
@@ -693,9 +662,9 @@ int main() {
             if ($script:tensorRtStaged) {
                 Assert-ArtifactPresent -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Description 'ONNX TensorRT provider DLL (onnxruntime_providers_tensorrt.dll)'
                 # The runtime subset must hold what the EP imports and LoadLibrary()s, or the EP fails only at session creation.
-                $trtEp = Get-ChildItem -Path $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+                $trtEp = Find-SmokeArtifact -Root $onnxRoot -Filter 'onnxruntime_providers_tensorrt.dll'
                 $trtGap = if ($trtEp) { @(Get-TensorRtEpGap -EpImports @(Get-PeImportNames -Path $trtEp.FullName -IncludeDelayLoad) -BinDir (Join-Path $env:TENSORRT_ROOT 'current\bin')) } else { @('onnxruntime_providers_tensorrt.dll') }
-                Assert-Test -Name 'ORT TensorRT EP finds every TensorRT DLL it loads in TENSORRT_ROOT\current\bin' -Condition { $trtGap.Count -eq 0 }.GetNewClosure() -FailMessage "missing from the shipped TensorRT runtime: $($trtGap -join ', ')"
+                Assert-Test -Name 'ORT TensorRT EP finds every TensorRT DLL it loads in TENSORRT_ROOT\current\bin' -Finding $trtGap -FailMessage "missing from the shipped TensorRT runtime: $($trtGap -join ', ')"
                 # The real gate: enumerate compiled-in EPs and require CUDA + TensorRT to be present.
                 Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime CUDA + TensorRT EPs available (GetAvailableProviders)' -WorkName 'onnx-eps' -Source $onnxEpProbeSource -ExpectMatch 'cuda=1 trt=1' -FailMessage 'ONNX Runtime does not expose CUDAExecutionProvider + TensorrtExecutionProvider (GPU EPs missing -- build fell back to CPU?)'
             } else {
@@ -707,7 +676,7 @@ int main() {
         }
 
         # USE_DML=ON builds via the "[clang-cl DML fix]" header patch (llvm #57700); a shipped redist must register the EP.
-        $dmlRedist = Get-ChildItem -Path $onnxRoot -Filter 'DirectML.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        $dmlRedist = Find-SmokeArtifact -Root $onnxRoot -Filter 'DirectML.dll'
         if ($dmlRedist) {
             Assert-NativeLinkRun @onnxLink -Name 'ONNX Runtime DirectML EP available (GetAvailableProviders)' -WorkName 'onnx-dml' -Source $onnxEpProbeSource -ExpectMatch 'dml=1' -FailMessage 'ONNX Runtime shipped DirectML.dll but does not expose DmlExecutionProvider'
         } else {
@@ -721,18 +690,13 @@ int main() {
         Assert-Test -Name 'ONNX Runtime link+run prerequisites present' -Condition { $false } `
             -FailMessage 'ONNX_ROOT exists but onnxruntime.lib/.dll/c_api.h are not all found — the install shrank'
     }
-} else {
-    Skip-Test 'ONNX_ROOT not set'
 }
 
 }
 Write-TestHeader '9. ONNX Runtime GenAI (source-built)'
-if ($smokeCross) {
-    Skip-Test "section 9 (ONNX Runtime GenAI (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
-$genaiRoot = [Environment]::GetEnvironmentVariable('ONNX_GENAI_ROOT')
+if (Test-SmokeNativeSection -Name '9 (ONNX Runtime GenAI (source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
+$genaiRoot = Get-SmokeInstallRoot -Name ONNX_GENAI_ROOT
 if ($genaiRoot) {
-    Assert-DirectoryExists -Path $genaiRoot -Description "ONNX_GENAI_ROOT"
     # @(...) so a single-FileInfo result still exposes .Count (scalar trap).
     $genaiHdr = @(Get-ChildItem -Path $genaiRoot -Filter 'ort_genai*.h' -Recurse -ErrorAction SilentlyContinue)
     if ($genaiHdr.Count -eq 0) { $genaiHdr = @(Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.h' -Recurse -ErrorAction SilentlyContinue) }
@@ -741,14 +705,8 @@ if ($genaiRoot) {
     Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai*.dll' -Description 'ONNX GenAI DLL files'
 
     # Loading it and resolving an export catches a mismatched dependency no file check can see.
-    $genaiDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    $onnxRootForGenai = [Environment]::GetEnvironmentVariable('ONNX_ROOT')
-    # Captured first: .DirectoryName on an empty result throws under StrictMode.
-    $onnxDepDir = $null
-    if ($onnxRootForGenai) {
-        $onnxDllForGenai = Get-ChildItem -Path $onnxRootForGenai -Filter 'onnxruntime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($onnxDllForGenai) { $onnxDepDir = $onnxDllForGenai.DirectoryName }
-    }
+    $genaiDll = Find-SmokeArtifact -Root $genaiRoot -Filter 'onnxruntime-genai.dll'
+    $onnxDepDir = Get-SmokeArtifactDirectory -EnvironmentName ONNX_ROOT -Filter 'onnxruntime.dll'
     if ($genaiDll) {
         $genaiDepDirs = if ($onnxDepDir) { @($onnxDepDir) } else { @() }
         Assert-DllLoads -Name 'ONNX GenAI DLL loads + C API resolves (OgaConfigClearProviders)' -DllPath $genaiDll.FullName -DependencyDirs $genaiDepDirs -Export 'OgaConfigClearProviders' -FailMessage 'onnxruntime-genai.dll failed to load or its C API symbol is missing (dependent onnxruntime.dll not resolved?)'
@@ -756,15 +714,10 @@ if ($genaiRoot) {
         # The nvidia lane also emits onnxruntime-genai-cuda.dll, whose CUDA and ORT dependencies must resolve.
         if ($script:gpuNvidia) {
             Assert-ArtifactPresent -Root $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Description 'ONNX GenAI CUDA DLL (onnxruntime-genai-cuda.dll)'
-            $genaiCudaDll = Get-ChildItem -Path $genaiRoot -Filter 'onnxruntime-genai-cuda.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            $genaiCudaDll = Find-SmokeArtifact -Root $genaiRoot -Filter 'onnxruntime-genai-cuda.dll'
             if ($genaiCudaDll) {
                 $cudaBin  = if ($env:CUDA_ROOT) { Join-Path $env:CUDA_ROOT 'bin' } else { $null }
-                # Capture-then-guard (same null-deref trap as $onnxDepDir above).
-                $cudnnBin = $null
-                if ($env:CUDNN_ROOT) {
-                    $cudnnDepDll = Get-ChildItem -Path $env:CUDNN_ROOT -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-                    if ($cudnnDepDll) { $cudnnBin = $cudnnDepDll.DirectoryName }
-                }
+                $cudnnBin = Get-SmokeArtifactDirectory -EnvironmentName CUDNN_ROOT -Filter 'cudnn*.dll'
                 $genaiCudaDeps = @($onnxDepDir, $cudaBin, $cudnnBin) | Where-Object { $_ }
                 Assert-DllLoads -Name 'ONNX GenAI CUDA DLL loads (CUDA runtime + onnxruntime chain resolves)' -DllPath $genaiCudaDll.FullName -DependencyDirs $genaiCudaDeps -FailMessage 'onnxruntime-genai-cuda.dll failed to load -- a dependent DLL (cudart/cublas/cudnn/onnxruntime) did not resolve'
             }
@@ -772,7 +725,7 @@ if ($genaiRoot) {
 
         # DML lives in the main genai DLL; the evidence is D3D12Core.dll beside it, where the DML device loads it from.
         $genaiDir = $genaiDll.DirectoryName
-        $d3d12Core = Get-ChildItem -Path $genaiRoot -Filter 'D3D12Core.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+        $d3d12Core = Find-SmokeArtifact -Root $genaiRoot -Filter 'D3D12Core.dll'
         if ($d3d12Core) {
             Assert-Test -Name 'ONNX GenAI DirectML: D3D12Core.dll staged beside onnxruntime-genai.dll' `
                 -Condition { $d3d12Core.DirectoryName -eq $genaiDir } `
@@ -790,15 +743,11 @@ if ($genaiRoot) {
         Assert-Test -Name 'GenAI load-probe prerequisite present' -Condition { $false } `
             -FailMessage 'ONNX_GENAI_ROOT exists but onnxruntime-genai.dll is missing (a -cuda.dll alone satisfies the glob above — this is the CPU-EP DLL vanishing)'
     }
-} else {
-    Skip-Test 'ONNX_GENAI_ROOT not set'
 }
 
 }
 Write-TestHeader '10. OpenCV 5 (source-built)'
-if ($smokeCross) {
-    Skip-Test "section 10 (OpenCV 5 (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '10 (OpenCV 5 (source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 $opencvInclude = [Environment]::GetEnvironmentVariable('OPENCV_INCLUDE')
 $opencvRoot = [Environment]::GetEnvironmentVariable('OPENCV_ROOT')
 # Per-module libs sit under <root>\<arch>\vc18, not where OPENCV_BIN/OPENCV_LIB point, so search the whole root.
@@ -826,8 +775,8 @@ if ($opencvSearchRoot) {
 
 # Existence is not loadability: compile, link and run against opencv_core.
 $cvHpp = if ($opencvInclude -and (Test-Path $opencvInclude)) { Get-ChildItem -Path $opencvInclude -Filter 'core.hpp' -Recurse -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\opencv2\\' } | Select-Object -First 1 } else { $null }
-$cvCoreLib = if ($opencvSearchRoot) { Get-ChildItem -Path $opencvSearchRoot -Filter 'opencv_core*.lib' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
-$cvCoreDll = if ($opencvSearchRoot) { Get-ChildItem -Path $opencvSearchRoot -Filter 'opencv_core*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 } else { $null }
+$cvCoreLib = if ($opencvSearchRoot) { Find-SmokeArtifact -Root $opencvSearchRoot -Filter 'opencv_core*.lib' } else { $null }
+$cvCoreDll = if ($opencvSearchRoot) { Find-SmokeArtifact -Root $opencvSearchRoot -Filter 'opencv_core*.dll' } else { $null }
 if ($cvHpp -and $cvCoreLib -and $cvCoreDll) {
     # <opencv2/core.hpp> resolves from the dir containing opencv2\, core.hpp's grandparent.
     $cvIncDir = Split-Path $cvHpp.DirectoryName -Parent
@@ -861,9 +810,7 @@ int main() { std::printf("%s\n", cv::getBuildInformation().c_str()); return 0; }
 
 }
 Write-TestHeader '11. GStreamer (source-built)'
-if ($smokeCross) {
-    Skip-Test "section 11 (GStreamer (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '11 (GStreamer (source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 Assert-CommandExists 'gst-launch-1.0'
 Assert-CommandExists 'gst-inspect-1.0'
 Assert-Test -Name "GStreamer core plugin available" -Condition {
@@ -929,9 +876,7 @@ if (Test-Path $requiredGstModule) {
 
 }
 Write-TestHeader '12. LiteRT (AI Edge runtime, source-built)'
-if ($smokeCross) {
-    Skip-Test "section 12 (LiteRT (AI Edge runtime, source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '12 (LiteRT (AI Edge runtime, source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { 'C:\runtime\lib\litert' }
 $litertInclude = Join-Path $litertRoot 'include'
 $litertLibDir = Join-Path $litertRoot 'lib'
@@ -953,7 +898,7 @@ Assert-DirectoryExists -Path $litertLibDir -Description 'LiteRT lib dir'
 if (Test-Path $litertLibDir) {
     Assert-ArtifactPresent -Root $litertLibDir -Filter '*.lib' -Description 'LiteRT lib files'
     # Exports, not just the import lib: an import lib can exist while the DLL exports no C-API symbol.
-    $tfliteDll = Get-ChildItem -Path (Split-Path $litertLibDir -Parent) -Filter 'tensorflowlite_c.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+    $tfliteDll = Find-SmokeArtifact -Root (Split-Path $litertLibDir -Parent) -Filter 'tensorflowlite_c.dll'
     if ($tfliteDll) {
         foreach ($sym in @('TfLiteInterpreterCreate', 'TfLiteXNNPackDelegateCreate', 'TfLiteXNNPackDelegateOptionsDefault')) {
             Assert-DllLoads -Name "tensorflowlite_c.dll exports $sym" -DllPath $tfliteDll.FullName -Export $sym `
@@ -973,9 +918,7 @@ if (Test-Path $litertBinDir) {
 
 }
 Write-TestHeader '13. LiteRT-LM (on-device LLM inference, source-built)'
-if ($smokeCross) {
-    Skip-Test "section 13 (LiteRT-LM (on-device LLM inference, source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '13 (LiteRT-LM (on-device LLM inference, source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 $litertLmRoot = if ($env:LITERT_LM_ROOT) { $env:LITERT_LM_ROOT } else { 'C:\runtime\lib\litert-lm' }
 $litertLmInclude = Join-Path $litertLmRoot 'include'
 
@@ -1065,9 +1008,7 @@ if ($smokeCross) {
     Skip-Test 'ASAN probe skipped on the cross lane (the probe must execute the instrumented exe; the bundle ships VS''s aarch64 ASan runtime for the device - Test-Arm64Bundle.ps1 asserts it)'
 } else {
 Assert-Test -Name "AddressSanitizer compile + runtime works (clang-cl /fsanitize=address)" -Condition {
-    $d = Join-Path $env:TEMP 'kataglyphis-smoke-asan'
-    Initialize-SmokeScratch -Path $d
-    try {
+    Invoke-WithSmokeScratch -Name asan -Body { param($d)
         $src = Join-Path $d 'main.cpp'
         Set-Content -Path $src -Encoding ASCII -Value @'
 #include <cstdio>
@@ -1085,7 +1026,7 @@ int main() {
         $out = & $exe 2>&1 | Out-String
         # ASAN aborts the process (non-zero exit) and prints its report.
         return ($LASTEXITCODE -ne 0) -and ($out -match 'AddressSanitizer: heap-buffer-overflow')
-    } finally { Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue }
+    }
 } -FailMessage "ASAN probe failed: /fsanitize=address did not compile, or the runtime did not detect the intentional overflow (ASAN runtime DLLs missing?)"
 }
 
@@ -1105,8 +1046,7 @@ $cppSource2 = @"
 int main() { std::cout << "cmake+clangcl ok" << std::endl; return 0; }
 "@
 
-Set-Content -Path (Join-Path $tmpDir2 'CMakeLists.txt') -Value $cmakeLists -Encoding ASCII
-Set-Content -Path (Join-Path $tmpDir2 'smoke_cmake.cpp') -Value $cppSource2 -Encoding ASCII
+Set-SmokeSourceFiles -Directory $tmpDir2 -Files @{ 'CMakeLists.txt' = $cmakeLists; 'smoke_cmake.cpp' = $cppSource2 }
 
 $buildDir2 = Join-Path $tmpDir2 'build'
 # Cross: the configure carries the target triple, as in §14; amd64 stays byte-identical.
@@ -1168,8 +1108,7 @@ $cppSource3 = @"
 int main() { return 0; }
 "@
 
-Set-Content -Path (Join-Path $tmpDir3 'smoke_msbuild.vcxproj') -Value $vcxproj -Encoding ASCII
-Set-Content -Path (Join-Path $tmpDir3 'smoke_msbuild.cpp') -Value $cppSource3 -Encoding ASCII
+Set-SmokeSourceFiles -Directory $tmpDir3 -Files @{ 'smoke_msbuild.vcxproj' = $vcxproj; 'smoke_msbuild.cpp' = $cppSource3 }
 
 Assert-Test -Name "MSBuild+ClangCL builds" -Condition {
     & msbuild (Join-Path $tmpDir3 'smoke_msbuild.vcxproj') /p:Configuration=Release /p:Platform=x64 /nologo 2>&1 | Out-Null
@@ -1179,9 +1118,7 @@ Assert-Test -Name "MSBuild+ClangCL builds" -Condition {
 Remove-Item $tmpDir3 -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-TestHeader '17. TVM (source-built)'
-if ($smokeCross) {
-    Skip-Test "section 17 (TVM (source-built)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '17 (TVM (source-built))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 $tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { Join-Path 'C:\runtime\lib' 'tvm' }
 if (Test-Path $tvmRoot) {
     Assert-DirectoryExists -Path $tvmRoot -Description "TVM install root ($tvmRoot)"
@@ -1196,8 +1133,8 @@ if (Test-Path $tvmRoot) {
     Assert-ArtifactPresent -Root $tvmRoot -Filter 'tvm*.dll' -Description 'TVM DLL files'
 
     # Loading the runtime DLL proves its dependent chain resolves; TVM's C API names churn, so no link probe.
-    $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm_runtime.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $tvmRuntimeDll) { $tvmRuntimeDll = Get-ChildItem -Path $tvmRoot -Filter 'tvm*runtime*.dll' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 }
+    $tvmRuntimeDll = Find-SmokeArtifact -Root $tvmRoot -Filter 'tvm_runtime.dll'
+    if (-not $tvmRuntimeDll) { $tvmRuntimeDll = Find-SmokeArtifact -Root $tvmRoot -Filter 'tvm*runtime*.dll' }
     if ($tvmRuntimeDll) {
         Assert-DllLoads -Name 'TVM runtime DLL loads (dependent chain resolves)' -DllPath $tvmRuntimeDll.FullName -FailMessage 'tvm_runtime.dll failed to load -- a dependent DLL (LLVM/CUDA/Vulkan runtime) did not resolve'
     } else {
@@ -1210,9 +1147,7 @@ if (Test-Path $tvmRoot) {
 
 }
 Write-TestHeader '18. FFmpeg (source-built with DNN/ONNX)'
-if ($smokeCross) {
-    Skip-Test "section 18 (FFmpeg (source-built with DNN/ONNX)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '18 (FFmpeg (source-built with DNN/ONNX))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 $ffmpegBin = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
 if (Test-Path $ffmpegBin) {
     $ffmpegExe = Join-Path $ffmpegBin 'ffmpeg.exe'
@@ -1242,24 +1177,9 @@ if (Test-Path $ffmpegBin) {
         $LASTEXITCODE -eq 0
     } -FailMessage "ffmpeg failed a trivial lavfi->null graph (runtime codec/filter chain broken)"
 
-    # Listing codecs needs no GPU; every native amd64 lane but rocm (EXPECT_ROCM) carries NVENC, and all carry AMF.
-    $ffNativeAmd64 = -not $smokeCross
-    if ($script:gpuNvidia -or ($ffNativeAmd64 -and $env:EXPECT_ROCM -ne '1')) {
-        Assert-Test -Name "ffmpeg NVENC encoders present (h264_nvenc + hevc_nvenc)" -Condition {
-            $enc = & $ffmpegExe -hide_banner -encoders 2>&1 | Out-String
-            return ($enc -match 'h264_nvenc') -and ($enc -match 'hevc_nvenc')
-        } -FailMessage "ffmpeg -encoders did not list h264_nvenc/hevc_nvenc (NVENC not built -- nv-codec-headers step skipped?)"
-
-        Assert-Test -Name "ffmpeg CUVID/NVDEC decoders present (h264_cuvid)" -Condition {
-            $dec = & $ffmpegExe -hide_banner -decoders 2>&1 | Out-String
-            return ($dec -match 'h264_cuvid')
-        } -FailMessage "ffmpeg -decoders did not list h264_cuvid (NVDEC/CUVID not built)"
-    }
-    if ($ffNativeAmd64 -and $env:EXPECT_ROCM -ne '1') {
-        Assert-Test -Name "ffmpeg AMF encoders present (h264_amf + hevc_amf)" -Condition {
-            $enc = & $ffmpegExe -hide_banner -encoders 2>&1 | Out-String
-            return ($enc -match 'h264_amf') -and ($enc -match 'hevc_amf')
-        } -FailMessage "ffmpeg -encoders did not list h264_amf/hevc_amf (AMF headers not fetched, or --enable-amf dropped)"
+    # Listing codecs needs no GPU; the shared plan retains the lane's required codec tables.
+    foreach ($feature in @(Get-FfmpegSmokeListingCheck -Nvidia:$script:gpuNvidia -CrossTarget:$smokeCross -Rocm:($env:EXPECT_ROCM -eq '1'))) {
+        Assert-SmokeCommandOutput -Name $feature.Name -Command $ffmpegExe -ArgumentList @('-hide_banner', $feature.Listing) -ExpectMatch $feature.Expect -FailMessage $feature.Failure
     }
 } else {
     Skip-Test 'FFmpeg not installed (C:\runtime\ffmpeg\bin not found)'
@@ -1321,7 +1241,7 @@ if ($script:gpuNvidia) {
 # Every lane (static; the arm64 bundle's chain ORT is what an aarch64 Rust target must link).
 $ortCrateFindings = @(Get-OrtCrateEnvFinding -OnnxRoot $env:ONNX_ROOT)
 Assert-Test -Name 'ort crate env names the chain ORT (ORT_LIB_LOCATION, ORT_DYLIB_PATH, dynamic link, no download)' `
-    -Condition { $ortCrateFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortCrateFindings -join '; ')
+    -Finding $ortCrateFindings -FailMessage ($ortCrateFindings -join '; ')
 
 # Images built before 2026-08-08 lack SCOOP_GLOBAL_SHIMS, so skip rather than fail.
 $globalShims = $env:SCOOP_GLOBAL_SHIMS
@@ -1349,12 +1269,10 @@ Assert-Test -Name "vcpkg zlib present (media-build dependency)" -Condition {
 } -FailMessage "no vcpkg zlib import lib (z.lib/zlib.lib) under $vcpkgRoot\installed\$(Get-VcpkgTriplet)\lib — vcpkg install genuinely broken"
 
 Write-TestHeader '20. Python bindings (wheels + imports + inference)'
-if ($smokeCross) {
-    Skip-Test "section 20 (Python bindings (wheels + imports + inference)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '20 (Python bindings (wheels + imports + inference))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 # cv2 ships installed in place only; ai-edge-litert is a bazel wheel for the pinned Python (CON91).
-$wheelStore = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS')
-if ($wheelStore -and (Test-Path $wheelStore)) {
+$wheelStore = Get-SmokeExistingInstallRoot -Name PYTHON_WHEELS
+if ($wheelStore) {
 
     foreach ($wheelPattern in @('onnxruntime-*.whl', '*genai*.whl', '*tvm*.whl', 'av-*.whl', '*iree*compiler*.whl', '*iree*runtime*.whl', 'ai_edge_litert-*.whl')) {
         $wp = $wheelPattern
@@ -1376,13 +1294,11 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
 
     # onnxruntime: real python-side inference over the shared 63-byte Identity model.
     Assert-Test -Name "python onnxruntime inference end-to-end (CPU EP)" -Condition {
-        $mdir = Join-Path $env:TEMP 'kataglyphis-smoke-pyort'
-        Initialize-SmokeScratch -Path $mdir
-        try {
+        Invoke-WithSmokeScratch -Name pyort -Body { param($mdir)
             [IO.File]::WriteAllBytes((Join-Path $mdir 'identity.onnx'), $script:identityOnnxBytes)
-            $out = & python -c "import os, numpy, onnxruntime as ort; s = ort.InferenceSession(os.path.join(os.environ['TEMP'], 'kataglyphis-smoke-pyort', 'identity.onnx'), providers=['CPUExecutionProvider']); y = s.run(['y'], {'x': numpy.array([42.0], numpy.float32)})[0]; print('py-ort', ort.__version__, float(y[0]))" 2>&1 | Out-String
+            $out = & python -c "import sys, numpy, onnxruntime as ort; s = ort.InferenceSession(sys.argv[1], providers=['CPUExecutionProvider']); y = s.run(['y'], {'x': numpy.array([42.0], numpy.float32)})[0]; print('py-ort', ort.__version__, float(y[0]))" (Join-Path $mdir 'identity.onnx') 2>&1 | Out-String
             ($LASTEXITCODE -eq 0) -and ($out -match 'py-ort .*42\.0')
-        } finally { Remove-Item $mdir -Recurse -Force -ErrorAction SilentlyContinue }
+        }
     } -FailMessage "onnxruntime python inference failed (pyd, dependent DLLs, or numpy broken)"
 
     # PyPI's onnxruntime-gpu has no DML EP, so DML exposes a same-version PyPI variant shadowing ours.
@@ -1416,18 +1332,12 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
     $cvBuildInfo = & python -c "import cv2; print(cv2.getBuildInformation())" 2>&1 | Out-String
 
     # The standalone plugin leaves getBuildInformation() at `GStreamer: NO`; hasBackend attempts the plugin load.
-    Assert-Test -Name "cv::VideoCapture has a working GStreamer backend (plugin, #93)" -Condition {
-        $out = & python -c "import cv2; print('gst-backend', cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'gst-backend True')
-    } -FailMessage ("cv2.videoio_registry.hasBackend(CAP_GSTREAMER) is False -- the opencv_videoio_gstreamer plugin " +
+    Assert-PythonSnippet -Name "cv::VideoCapture has a working GStreamer backend (plugin, #93)" -Code "import cv2; print('gst-backend', cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" -ExpectMatch 'gst-backend True' -FailMessage ("cv2.videoio_registry.hasBackend(CAP_GSTREAMER) is False -- the opencv_videoio_gstreamer plugin " +
         "DLL is missing next to opencv_videoio*.dll, or it failed to load (GStreamer DLLs not resolvable). " +
         "Built by Build-OpencvGstreamerPlugin.ps1 in the merge stage -- backlog #93.")
 
     # Capability, not just loadability: open a real (synthetic) pipeline and read one frame.
-    Assert-Test -Name "cv::VideoCapture opens a GStreamer pipeline and reads a frame (#93)" -Condition {
-        $out = & python -c "import cv2; cap = cv2.VideoCapture('videotestsrc num-buffers=1 ! videoconvert ! appsink', cv2.CAP_GSTREAMER); ok, frame = cap.read(); print('gst-read', bool(ok) and frame is not None and frame.size > 0)" 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'gst-read True')
-    } -FailMessage ("VideoCapture(CAP_GSTREAMER) could not read a frame from a videotestsrc pipeline -- the plugin " +
+    Assert-PythonSnippet -Name "cv::VideoCapture opens a GStreamer pipeline and reads a frame (#93)" -Code "import cv2; cap = cv2.VideoCapture('videotestsrc num-buffers=1 ! videoconvert ! appsink', cv2.CAP_GSTREAMER); ok, frame = cap.read(); print('gst-read', bool(ok) and frame is not None and frame.size > 0)" -ExpectMatch 'gst-read True' -FailMessage ("VideoCapture(CAP_GSTREAMER) could not read a frame from a videotestsrc pipeline -- the plugin " +
         "loads but the GStreamer runtime underneath it is broken (core plugins missing from the plugin dir, or " +
         "GST_PLUGIN_PATH/PATH not set by the entrypoint). Backlog #93.")
 
@@ -1503,7 +1413,7 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
         $ftWheels = @(Get-ChildItem -Path $ftStore -Filter '*.whl' -File)
         # The image's own copy of the twin table, as for the helper below: the gate mounts windows/scripts alone.
-        $ftTable = @((Join-Path $scriptAssetRoot 'free-threaded-twins.txt'), 'C:\temp\scripts\free-threaded-twins.txt') | Where-Object { Test-Path $_ } | Select-Object -First 1
+        $ftTable = Resolve-SmokeCompanion -ScriptRoot $scriptAssetRoot -Name 'free-threaded-twins.txt'
         Assert-Test -Name 'the twin table is baked beside the helper (free-threaded-twins.txt)' -Condition { [bool]$ftTable }.GetNewClosure() `
             -FailMessage 'free-threaded-twins.txt is in neither the script mount nor C:\temp\scripts'
         $ftTwins = @(if ($ftTable) { Get-FreeThreadedTwinTable -Path $ftTable | Where-Object Verdict -ceq 'twin' | ForEach-Object Distribution | Sort-Object })
@@ -1511,16 +1421,16 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
         Assert-Test -Name "free-threaded store holds one wheel per twin: $($ftTwins -join ', ')" -Condition { ($ftHeld -join ',') -ceq ($ftTwins -join ',') }.GetNewClosure() `
             -FailMessage "$ftStore holds [$($ftHeld -join ', ')], the twin table names [$($ftTwins -join ', ')]"
         $ftTagFindings = @($ftWheels | ForEach-Object { Get-FreeThreadedWheelFinding -Path $_.FullName -PlatformTag (Get-PythonWheelTag) })
-        Assert-Test -Name "every free-threaded-store wheel is cp3XY-cp3XYt $(Get-PythonWheelTag), no GIL or abi3 module inside" -Condition { $ftTagFindings.Count -eq 0 }.GetNewClosure() `
+        Assert-Test -Name "every free-threaded-store wheel is cp3XY-cp3XYt $(Get-PythonWheelTag), no GIL or abi3 module inside" -Finding $ftTagFindings `
             -FailMessage ($ftTagFindings -join '; ')
         $ftLeaked = @(Get-ChildItem -Path $wheelStore -Filter '*.whl' -File | Where-Object { $_.Name -match '-cp\d+-cp\d+t-' } | ForEach-Object Name)
-        Assert-Test -Name 'no free-threaded wheel in the GIL store (PYTHON_WHEELS)' -Condition { $ftLeaked.Count -eq 0 }.GetNewClosure() `
+        Assert-Test -Name 'no free-threaded wheel in the GIL store (PYTHON_WHEELS)' -Finding $ftLeaked `
             -FailMessage "$($ftLeaked -join ', ') in $wheelStore, where every GIL install would see it"
         $ftSite = @(Get-ChildItem -LiteralPath (Join-Path (Split-Path $ftExe -Parent) 'Lib\site-packages') -Force -ErrorAction SilentlyContinue | Where-Object Name -ne 'README.txt' | ForEach-Object Name)
-        Assert-Test -Name 'the free-threaded interpreter''s site-packages stays empty (twins install into venvs)' -Condition { $ftSite.Count -eq 0 }.GetNewClosure() `
+        Assert-Test -Name 'the free-threaded interpreter''s site-packages stays empty (twins install into venvs)' -Finding $ftSite `
             -FailMessage "it holds $($ftSite -join ', ')"
         # The image's own copy of the helper; this script may run from a mount that lacks it.
-        $ftHelper = @((Join-Path $scriptAssetRoot 'free-threaded-wheel.py'), 'C:\temp\scripts\free-threaded-wheel.py') | Where-Object { Test-Path $_ } | Select-Object -First 1
+        $ftHelper = Resolve-SmokeCompanion -ScriptRoot $scriptAssetRoot -Name 'free-threaded-wheel.py'
         $ftDllHomes = @($env:PATH -split ';' | Where-Object { $_ -like 'C:\runtime\*' })
         foreach ($ftWheel in $ftWheels) {
             $ftDist = ConvertTo-PythonDistributionName -Name ($ftWheel.Name -split '-')[0]
@@ -1541,16 +1451,11 @@ if ($wheelStore -and (Test-Path $wheelStore)) {
 
 }
 Write-TestHeader '21. OrchestrANT app environment (torch step)'
-if ($smokeCross) {
-    Skip-Test "section 21 (OrchestrANT app environment (torch step)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '21 (OrchestrANT app environment (torch step))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 # Re-runs Build-TorchApp.ps1's verify mode offline against the baked venv.
 $torchAppDir = [Environment]::GetEnvironmentVariable('TORCH_APP_DIR')
 # A set TORCH_APP_DIR without a resolvable verifier is a gate wiring bug, not an optional feature.
-$torchAppScript = @(
-    (Join-Path $PSScriptRoot 'Build-TorchApp.ps1'),
-    'C:\temp\scripts\Build-TorchApp.ps1'
-) | Where-Object { Test-Path $_ } | Select-Object -First 1
+$torchAppScript = Resolve-SmokeCompanion -ScriptRoot $PSScriptRoot -Name 'Build-TorchApp.ps1'
 if ($torchAppDir -and (Test-Path $torchAppDir) -and -not $torchAppScript) {
     Assert-Test -Name 'torch-app verifier reachable (gate wiring)' -Condition { $false } `
         -FailMessage 'TORCH_APP_DIR is baked but Build-TorchApp.ps1 is neither beside the smoke script nor at C:\temp\scripts — the gate mount lost the verifier'
@@ -1573,23 +1478,21 @@ if ($torchAppDir -and (Test-Path $torchAppDir) -and $torchAppScript) {
     } catch { $ortProbeError = $_.Exception.Message }
     $ortDmlFindings = @(Get-TorchAppOrtFinding -Report $ortReport -Aspect Dml -ProbeError $ortProbeError)
     Assert-Test -Name 'torch-app venv: onnxruntime + GenAI built with DirectML (every amd64 lane, no device)' `
-        -Condition { $ortDmlFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortDmlFindings -join '; ')
+        -Finding $ortDmlFindings -FailMessage ($ortDmlFindings -join '; ')
     $ortWheelFindings = @(Get-TorchAppOrtFinding -Report $ortReport -Aspect Provenance -Wheel $ortWheel -ProbeError $ortProbeError `
             -VenvSitePackages (Join-Path $torchAppDir '.venv\Lib\site-packages'))
     Assert-Test -Name 'torch-app venv: onnxruntime is the chain wheel (sole owner, same version, same binaries)' `
-        -Condition { $ortWheelFindings.Count -eq 0 }.GetNewClosure() -FailMessage ($ortWheelFindings -join '; ')
+        -Finding $ortWheelFindings -FailMessage ($ortWheelFindings -join '; ')
 } else {
     Skip-Test 'OrchestrANT app env (TORCH_APP_DIR unset or missing -- image predates the torch step)'
 }
 
 }
 Write-TestHeader '22. IREE (source-built ML compiler + runtime)'
-if ($smokeCross) {
-    Skip-Test "section 22 (IREE (source-built ML compiler + runtime)) skipped on the $(Get-WindowsTargetArch) cross lane: it executes the aarch64 payload, impossible on an x64 host"
-} else {
+if (Test-SmokeNativeSection -Name '22 (IREE (source-built ML compiler + runtime))' -CrossTarget:$smokeCross -TargetArch (Get-WindowsTargetArch)) {
 # Real work, not existence checks: compile MLIR to a vmfb and execute it.
-$ireeBin = [Environment]::GetEnvironmentVariable('IREE_BIN')
-if ($ireeBin -and (Test-Path $ireeBin)) {
+$ireeBin = Get-SmokeExistingInstallRoot -Name IREE_BIN
+if ($ireeBin) {
     Assert-CommandExists 'iree-compile'
     Assert-CommandExists 'iree-run-module'
 
@@ -1615,21 +1518,16 @@ if ($ireeBin -and (Test-Path $ireeBin)) {
     Set-Content -Path $ireeMlir -Encoding ascii -Value $script:ireeGateMlir
 
     Assert-Test -Name "iree-compile: MLIR -> vmfb (llvm-cpu)" -Condition {
-        & iree-compile --iree-hal-target-backends=llvm-cpu $ireeMlir -o $ireeVmfb 2>&1 | Out-Null
-        ($LASTEXITCODE -eq 0) -and (Test-Path $ireeVmfb) -and ((Get-Item $ireeVmfb).Length -gt 0)
+        Test-SmokeCompiledArtifact -Compiler iree-compile -ArgumentList @('--iree-hal-target-backends=llvm-cpu', $ireeMlir, '-o', $ireeVmfb) -OutputPath $ireeVmfb
     } -FailMessage "iree-compile failed to lower MLIR for llvm-cpu"
 
-    Assert-Test -Name "iree-run-module: local-task executes abs(-5)=5" -Condition {
-        $out = & iree-run-module --module=$ireeVmfb --device=local-task --function=abs --input=f32=-5 2>&1 | Out-String
-        ($LASTEXITCODE -eq 0) -and ($out -match 'f32=5')
-    } -FailMessage "iree-run-module failed or returned wrong result (runtime/HAL broken)"
+    Assert-SmokeCommandOutput -Name "iree-run-module: local-task executes abs(-5)=5" -Command iree-run-module -ArgumentList @("--module=$ireeVmfb", '--device=local-task', '--function=abs', '--input=f32=-5') -ExpectMatch 'f32=5'  -FailMessage "iree-run-module failed or returned wrong result (runtime/HAL broken)"
 
     if ($script:gpuNvidia) {
         # Compile-only: execution needs a CUDA device, which containers on this host cannot see.
         Assert-Test -Name "iree-compile: MLIR -> vmfb (cuda target, compile-only)" -Condition {
             $cudaVmfb = Join-Path $ireeDir 'abs-cuda.vmfb'
-            & iree-compile --iree-hal-target-backends=cuda $ireeMlir -o $cudaVmfb 2>&1 | Out-Null
-            ($LASTEXITCODE -eq 0) -and (Test-Path $cudaVmfb) -and ((Get-Item $cudaVmfb).Length -gt 0)
+            Test-SmokeCompiledArtifact -Compiler iree-compile -ArgumentList @('--iree-hal-target-backends=cuda', $ireeMlir, '-o', $cudaVmfb) -OutputPath $cudaVmfb
         } -FailMessage "iree-compile cuda target failed (NVPTX backend broken)"
     }
 
@@ -1730,19 +1628,19 @@ foreach ($a in @(
         @{ G = 'placement'; Name = 'ORT placement: chain copies only in their homes, every importer resolves to the chain' }
         @{ G = 'consumers'; Name = 'ORT consumers: every one registered, one onnxruntime distribution per interpreter' })) {
     $ortLines = @($ortFail[$a.G])
-    Assert-Test -Name $a.Name -Condition { $ortLines.Count -eq 0 }.GetNewClosure() -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
+    Assert-Test -Name $a.Name -Finding $ortLines -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
 }
 # An in-box ORT would beat PATH for every importer; see docs/onnxruntime-single-source.md#the-in-box-onnx-runtime-windows-ml
 $ortLines = @($ortFail['inbox'])
 if (-not $smokeCross) {
-    Assert-Test -Name 'ORT in-box: the Windows dir holds no ONNX Runtime or Windows ML (servercore ships none)' -Condition { $ortLines.Count -eq 0 }.GetNewClosure() `
+    Assert-Test -Name 'ORT in-box: the Windows dir holds no ONNX Runtime or Windows ML (servercore ships none)' -Finding $ortLines `
         -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
 } else {
     Skip-Test 'ORT in-box (cross lane: the base image''s Windows dir is not the device''s; Test-OrtProvenanceTree assumes a client System32 ORT)'
 }
 if ($ortStampArmed) {
     $ortLines = @($ortFail['stamp'])
-    Assert-Test -Name 'ORT stamps: every present consumer was gated against this chain ORT (G2)' -Condition { $ortLines.Count -eq 0 }.GetNewClosure() `
+    Assert-Test -Name 'ORT stamps: every present consumer was gated against this chain ORT (G2)' -Finding $ortLines `
         -FailMessage (@($ortLines | Select-Object -First 25) -join ' | ')
 } else {
     Skip-Test 'ORT stamps (unarmed: no Assert-ChainOrtOnly in this hub, so no consumer writes one yet)'

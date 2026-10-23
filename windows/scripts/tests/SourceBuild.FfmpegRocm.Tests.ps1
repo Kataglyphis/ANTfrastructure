@@ -146,9 +146,8 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
     }
 
     It 'the plan is computed once from the real GPU environment; no other script-level code reads HasRocm' {
-        $assigns = @(Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$ffAmfPlan' })
-        Assert-Equal 1 $assigns.Count 'assigned exactly once'
-        Assert-Equal 'Get-FfmpegAmfPlan -GpuEnvironment $ffGpu -IsCross $ffCross -SourceDir $srcDir' $assigns[0].Right.Extent.Text 'from Get-GpuEnvironment'
+        $assignment = Get-MediaTestAssignment -Ast $script:ffAst -Variable '$ffAmfPlan' -ScriptLevel -Single
+        Assert-Equal 'Get-FfmpegAmfPlan -GpuEnvironment $ffGpu -IsCross $ffCross -SourceDir $srcDir' $assignment.Right.Extent.Text 'from Get-GpuEnvironment'
         $hasRocm = Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.MemberExpressionAst] -and $n.Member.Extent.Text -eq 'HasRocm' }
         Assert-Equal '' (($hasRocm | ForEach-Object { "line $($_.Extent.StartLineNumber)" }) -join ', ') 'a second lane decision'
         $vk = @(Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$ffVulkanPlan' })
@@ -418,7 +417,7 @@ Describe 'Install-FfmpegAmfHeader / Copy-FfmpegAmfHeaderTree (SHA-pinned header 
 }
 
 Describe 'rocm-checks/FFmpeg.ps1 (smoke findings)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:ffCheck -FunctionName 'Test-FfmpegListingRow', 'Get-FfmpegAmfExpectation',
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:ffCheck -FunctionName 'Test-FfmpegListingRow', 'Get-FfmpegFeatureListingFinding', 'Get-FfmpegAmfExpectation',
         'Get-FfmpegAmfListingFinding', 'Get-FfmpegAmfInstallFinding', 'Get-FfmpegVulkanExpectation', 'Get-FfmpegVulkanListingFinding',
         'Get-FfmpegVulkanImportFinding')
 
@@ -553,12 +552,24 @@ Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input 
 }
 
 Describe 'Media fixture mutation coverage' {
+    It 'detects dropping the shared FFmpeg configuration-line verdict' {
+        $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:ffCheck))
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:ffCheck -FunctionName Get-FfmpegFeatureListingFinding)
+        Assert-Equal 1 @(Get-FfmpegFeatureListingFinding -Listing @{ version = '' } -Expected ([ordered]@{}) -Backend amf).Count
+        Invoke-WithFunctionModule -Text $text -FunctionName Get-FfmpegFeatureListingFinding `
+            -Find 'if ([string]$Listing[''version''] -notmatch "--enable-$Backend\b")' -Replace 'if ($false)' -Body {
+                Assert-Throws {
+                    Assert-Equal 1 @(Get-MutFfmpegFeatureListingFinding -Listing @{ version = '' } -Expected ([ordered]@{}) -Backend amf).Count
+                } -MessagePattern 'expected \[1\] but got \[0\]'
+            }
+    }
+
     It 'detects a nested function mistakenly included in script-level wiring and mismatched smoke symbols' {
         $tree = ConvertTo-TestScriptAst -Text 'Get-FixtureCall; function Nested { Get-FixtureCall }'
         $query = { param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Get-FixtureCall' }
         Assert-Equal 1 @(Get-MediaTestAstNode -Ast $tree -Predicate $query -ScriptLevel).Count 'only the script call'
         $text = (Get-ScriptFunctionDefinition -ScriptPath (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -FunctionName Get-MediaTestAstNode).ToString()
-        Invoke-WithFunctionModule -Text $text -Find '$parent -is [Management.Automation.Language.FunctionDefinitionAst]' -Replace '$false' -Body {
+        Invoke-WithFunctionModule -Text $text -Find 'Get-TestAstAncestor -Node $node -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First' -Replace '$false' -Body {
             Assert-Throws {
                 Assert-Equal 1 @(Get-MutMediaTestAstNode -Ast $tree -Predicate $query -ScriptLevel).Count 'only the script call'
             } -MessagePattern 'only the script call'

@@ -2,6 +2,28 @@
 # A wrong mask in the CNI nat subnet-drift guard passes a drifted config into a silent no-network build.
 
 Describe 'Test-IpInSubnet' {
+    It 'lets diagnostics classify invalid notation and prefixes as false while strict callers still throw' {
+        foreach ($cidr in @('10.0.0.0', '10.0.0.0/33', '10.0.0.0/oops', '10.0.0.0/-1', '10.0.0.0/999999999999999999')) {
+            Assert-False (Test-IpInSubnet -Ip '10.0.0.1' -Cidr $cidr -InvalidReturnsFalse)
+            Assert-Throws { Test-IpInSubnet -Ip '10.0.0.1' -Cidr $cidr }
+        }
+        Assert-True (Test-IpInSubnet -Ip '10.0.0.1' -Cidr '10.0.0.0/24' -InvalidReturnsFalse)
+        Assert-False (Test-IpInSubnet -Ip '10.1.0.1' -Cidr '10.0.0.0/24' -InvalidReturnsFalse)
+    }
+
+    It 'selects the first exact nat adapter and retains absence as no result' {
+        $state = [pscustomobject]@{ Results = @(
+            [pscustomobject]@{ InterfaceAlias = 'vEthernet (nat)-other'; IPAddress = '192.0.2.1' },
+            [pscustomobject]@{ InterfaceAlias = 'vEthernet (nat)'; IPAddress = '192.0.2.2' },
+            [pscustomobject]@{ InterfaceAlias = 'vEthernet (nat)'; IPAddress = '192.0.2.3' }
+        ) }
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsBuildKit.Common.psm1' -FunctionName Get-CniNatAdapterIp -Prelude 'function Get-NetIPAddress { $State.Results }' -FixtureState $state -Body { param($state)
+            Assert-Equal '192.0.2.2' (Get-MutCniNatAdapterIp)
+            $state.Results = @()
+            Assert-Null (Get-MutCniNatAdapterIp)
+        }
+    }
+
 
     It 'accepts addresses inside the subnet across prefix widths' {
         $cases = @(

@@ -119,11 +119,7 @@ function New-UvProjectEnvironment {
         [scriptblock]$PythonFinder = { param($request) & uv python find $request *> $null; return $LASTEXITCODE -eq 0 }
     )
 
-    if ([System.IO.Path]::IsPathRooted($EnvName)) {
-        $envPath = $EnvName
-    } else {
-        $envPath = Join-Path $Workspace $EnvName
-    }
+    $envPath = Resolve-PathFromRoot -Root $Workspace -Path $EnvName
 
     $envParent = Split-Path -Path $envPath -Parent
     if (-not [string]::IsNullOrWhiteSpace($envParent)) {
@@ -196,11 +192,7 @@ function Initialize-UvVenv {
     )
 
     if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
-    if ([System.IO.Path]::IsPathRooted($EnvName)) {
-        $venvPath = $EnvName
-    } else {
-        $venvPath = Join-Path $Workspace $EnvName
-    }
+    $venvPath = Resolve-PathFromRoot -Root $Workspace -Path $EnvName
     $venvPython = Join-Path $venvPath 'Scripts\python.exe'
 
     if (Test-UvVenvHealthy -VenvPath $venvPath -PythonVersion $PythonVersion -LogWarning $LogWarning) {

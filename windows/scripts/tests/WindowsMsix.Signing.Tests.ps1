@@ -16,6 +16,14 @@ Describe 'WindowsMsix.Signing' {
     $script:ctx = New-BuildContext -Workspace $script:workspace `
       -LogDir (Join-Path $script:workspace 'logs')
     $script:msixOut = Join-Path $script:workspace 'out.msix'
+
+    function Invoke-MsixSigningFixture {
+      $calls = [System.Collections.Generic.List[object]]::new()
+      $invoker = { param($Context, $File, $Parameters) $calls.Add($Parameters); return 0 }.GetNewClosure()
+      Invoke-MsixSign -Context $script:ctx -WorkspacePath $script:workspace `
+        -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker
+      return , $calls
+    }
   }
 
   AfterAll {
@@ -34,42 +42,30 @@ Describe 'WindowsMsix.Signing' {
       Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return $null }
       New-Item -Path (Join-Path $script:workspace 'test.pfx') -ItemType File -Force | Out-Null
 
-      $script:calls = [System.Collections.Generic.List[object]]::new()
-      $invoker = { param($Context, $File, $Parameters) $script:calls.Add($Parameters); return 0 }
+      $calls = Invoke-MsixSigningFixture
 
-      Invoke-MsixSign -Context $script:ctx -WorkspacePath $script:workspace `
-        -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker
-
-      $script:calls.Count | Should -Be 0
+      $calls.Count | Should -Be 0
     }
 
     It 'does not invoke signtool when the workspace holds no .pfx' {
       Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return 'C:\signtool.exe' }
 
-      $script:calls = [System.Collections.Generic.List[object]]::new()
-      $invoker = { param($Context, $File, $Parameters) $script:calls.Add($Parameters); return 0 }
+      $calls = Invoke-MsixSigningFixture
 
-      Invoke-MsixSign -Context $script:ctx -WorkspacePath $script:workspace `
-        -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker
-
-      $script:calls.Count | Should -Be 0
+      $calls.Count | Should -Be 0
     }
 
     It 'signs and then verifies when a .pfx is present' {
       Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return 'C:\signtool.exe' }
       New-Item -Path (Join-Path $script:workspace 'test.pfx') -ItemType File -Force | Out-Null
 
-      $script:calls = [System.Collections.Generic.List[object]]::new()
-      $invoker = { param($Context, $File, $Parameters) $script:calls.Add($Parameters); return 0 }
+      $calls = Invoke-MsixSigningFixture
 
-      Invoke-MsixSign -Context $script:ctx -WorkspacePath $script:workspace `
-        -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker
-
-      $script:calls.Count | Should -Be 2
-      $script:calls[0][0] | Should -Be 'sign'
-      $script:calls[0] | Should -Contain $script:msixOut
-      $script:calls[1][0] | Should -Be 'verify'
-      $script:calls[1] | Should -Contain $script:msixOut
+      $calls.Count | Should -Be 2
+      $calls[0][0] | Should -Be 'sign'
+      $calls[0] | Should -Contain $script:msixOut
+      $calls[1][0] | Should -Be 'verify'
+      $calls[1] | Should -Contain $script:msixOut
     }
   }
 }

@@ -3261,6 +3261,16 @@ transport and fake-tool fixtures. Their [contracts and coverage limits](windows-
 separate stubbed regressions from image-build and runtime validation. Existing
 exceptions shrink to the measured remainder; no threshold or scope changes apply.
 
+The wider Windows sweep shares native probes, smoke operations, source-module
+lookup, TVM packaging, bundle environment models, host maintenance, diagnostics
+and consumer helpers. Scoped function fakes, call state, fixture trees and AST
+ancestry also use the harness. Existing suites retain their independent inputs
+and expected results. Cold nested imports check visibility, and deliberate faults
+check failed exits, empty artifacts, cleanup, counters and guards. The
+[Windows helper contract](windows-builds.md#shared-windows-behavior) lists companion
+requirements and the limits of stubbed coverage. Resolved rows are removed and
+remaining budgets follow measured reductions; no exceptions are added.
+
 ### Workflow fixture builders
 
 The workflow-lint suite shares repository initialization, job headers and

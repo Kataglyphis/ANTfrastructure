@@ -31,13 +31,11 @@ function Invoke-FlutterReadOnlyPatch {
 
 function Invoke-FlutterSyncFixture {
     param([int[]]$Codes, [scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
-    $state = [pscustomobject]@{
-        Calls = [Collections.Generic.List[object]]::new()
+    $state = New-TestCallState -Properties @{
         Warnings = [Collections.Generic.List[string]]::new()
         Codes = [Collections.Generic.Queue[int]]::new([int[]]$Codes)
     }
     $prelude = @'
-param($State)
 $script:fixtureState = $State
 function Write-BuildLog { param($Context, $Message) }
 function Write-BuildLogWarning { param($Context, $Message) $script:fixtureState.Warnings.Add($Message) }
@@ -48,7 +46,7 @@ function robocopy.exe {
 '@
     Invoke-WithFunctionModule -Text $flutterSource `
         -FunctionName @('Sync-FlutterArtifactTree', 'Sync-FastLocalArtifactsToHost') `
-        -Prelude $prelude -ArgumentList @($state) -BodyArgumentList @($state) -Body $Body -Find $Find -Replace $Replace
+        -Prelude $prelude -FixtureState $state -Body $Body -Find $Find -Replace $Replace
 }
 
 function Invoke-FlutterFullSyncCase {

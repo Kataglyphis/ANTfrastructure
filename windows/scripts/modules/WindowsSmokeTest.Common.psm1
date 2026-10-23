@@ -85,12 +85,13 @@ function Assert-Test {
     param(
         [string]$Name,
         [scriptblock]$Condition,
-        [string]$FailMessage = 'Assertion failed'
+        [string]$FailMessage = 'Assertion failed',
+        [AllowEmptyCollection()][object[]]$Finding
     )
 
     if ($script:abortRun) { return }
     try {
-        $result = & $Condition
+        $result = if ($PSBoundParameters.ContainsKey('Finding')) { @($Finding).Count -eq 0 } else { & $Condition }
         if ($result) {
             Write-Host "  [PASS] $Name" -ForegroundColor Green
             $script:passed++
@@ -131,12 +132,7 @@ function Assert-PythonSnippet {
         # The free-threaded twin is reached by path, not as `python`.
         [string]$Python = 'python'
     )
-    Assert-Test -Name $Name -FailMessage $FailMessage -Condition {
-        $out = & $Python -c $Code 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) { return $false }
-        foreach ($m in $ExpectMatch) { if ($out -notmatch $m) { return $false } }
-        return $true
-    }.GetNewClosure()
+    Assert-SmokeCommandOutput -Name $Name -Command $Python -ArgumentList @('-c', $Code) -ExpectMatch $ExpectMatch -FailMessage $FailMessage
 }
 
 function Request-SmokeAbort {
@@ -217,6 +213,119 @@ function Get-TensorRtEpGap {
     }
     if (-not @($present | Where-Object { $_ -like "nvinfer_builder_resource*_$major.dll" })) { $gap.Add("nvinfer_builder_resource*_$major.dll") }
     return $gap.ToArray()
+}
+
+function Get-FfmpegSmokeListingCheck {
+    param([switch]$Nvidia, [switch]$CrossTarget, [switch]$Rocm)
+    $nativeDefault = -not $CrossTarget -and -not $Rocm
+    if ($Nvidia -or $nativeDefault) {
+        @{ Listing = '-encoders'; Expect = @('h264_nvenc', 'hevc_nvenc'); Name = 'ffmpeg NVENC encoders present (h264_nvenc + hevc_nvenc)'; Failure = 'ffmpeg -encoders did not list h264_nvenc/hevc_nvenc (NVENC not built -- nv-codec-headers step skipped?)' }
+        @{ Listing = '-decoders'; Expect = @('h264_cuvid'); Name = 'ffmpeg CUVID/NVDEC decoders present (h264_cuvid)'; Failure = 'ffmpeg -decoders did not list h264_cuvid (NVDEC/CUVID not built)' }
+    }
+    if ($nativeDefault) {
+        @{ Listing = '-encoders'; Expect = @('h264_amf', 'hevc_amf'); Name = 'ffmpeg AMF encoders present (h264_amf + hevc_amf)'; Failure = 'ffmpeg -encoders did not list h264_amf/hevc_amf (AMF headers not fetched, or --enable-amf dropped)' }
+    }
+}
+
+function Get-SmokeInstallRoot {
+    param([Parameter(Mandatory)][string]$Name)
+    $root = [Environment]::GetEnvironmentVariable($Name)
+    if ($root) { Assert-DirectoryExists -Path $root -Description $Name }
+    else { Skip-Test "$Name not set" }
+    return $root
+}
+
+function Get-SmokeExistingInstallRoot {
+    param([Parameter(Mandatory)][string]$Name)
+    $root = [Environment]::GetEnvironmentVariable($Name)
+    if ($root -and (Test-Path $root)) { return $root }
+    return $null
+}
+
+function Set-SmokeSourceFiles {
+    param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][System.Collections.IDictionary]$Files)
+    foreach ($name in $Files.Keys) { Set-Content -LiteralPath (Join-Path $Directory $name) -Value $Files[$name] -Encoding ASCII }
+}
+
+function Find-SmokeArtifact {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Filter)
+    Get-ChildItem -Path $Root -Filter $Filter -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+}
+
+function Get-SmokeArtifactDirectory {
+    param([Parameter(Mandatory)][string]$EnvironmentName, [Parameter(Mandatory)][string]$Filter)
+    $root = [Environment]::GetEnvironmentVariable($EnvironmentName)
+    if (-not $root) { return $null }
+    $artifact = Find-SmokeArtifact -Root $root -Filter $Filter
+    if ($artifact) { return $artifact.DirectoryName }
+    return $null
+}
+
+function Resolve-SmokeCompanion {
+    param([Parameter(Mandatory)][string]$ScriptRoot, [Parameter(Mandatory)][string]$Name)
+    @((Join-Path $ScriptRoot $Name), (Join-Path 'C:\temp\scripts' $Name)) | Where-Object { Test-Path $_ } | Select-Object -First 1
+}
+
+function Invoke-WithSmokeScratch {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Body)
+    $directory = [IO.Directory]::CreateTempSubdirectory("kataglyphis-smoke-$Name-").FullName
+    try { & $Body $directory } finally { Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction Stop }
+}
+
+function Test-SmokeNativeSection {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$TargetArch, [switch]$CrossTarget)
+    if (-not $CrossTarget) { return $true }
+    Skip-Test "section $Name skipped on the $TargetArch cross lane: it executes the aarch64 payload, impossible on an x64 host"
+    return $false
+}
+
+function Assert-SmokeCommandOutput {
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Command,
+        [string[]]$ArgumentList = @(),
+        [string[]]$ExpectMatch = @(),
+        [Parameter(Mandatory)][string]$FailMessage
+    )
+    $outputTest = Get-Command Test-SmokeCommandOutput
+    Assert-Test -Name $Name -FailMessage $FailMessage -Condition {
+        & $outputTest -Command $Command -ArgumentList $ArgumentList -ExpectMatch $ExpectMatch
+    }.GetNewClosure()
+}
+
+function Test-SmokeCommandOutput {
+    param([Parameter(Mandatory)][string]$Command, [string[]]$ArgumentList = @(), [string[]]$ExpectMatch = @())
+    $output = & $Command @ArgumentList 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { return $false }
+    foreach ($pattern in $ExpectMatch) { if ($output -notmatch $pattern) { return $false } }
+    return $true
+}
+
+function Test-SmokeCompiledArtifact {
+    param([Parameter(Mandatory)][string]$Compiler, [string[]]$ArgumentList = @(), [Parameter(Mandatory)][string]$OutputPath)
+    & $Compiler @ArgumentList 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $OutputPath -PathType Leaf)) { return $false }
+    return (Get-Item -LiteralPath $OutputPath).Length -gt 0
+}
+
+function Invoke-SmokeCompilation {
+    param(
+        [Parameter(Mandatory)][string]$WorkName,
+        [Parameter(Mandatory)][string]$SourceName,
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$OutputName,
+        [Parameter(Mandatory)][string]$Compiler,
+        [string[]]$ArgumentList = @(),
+        [string[]]$AfterArgument = @()
+    )
+    $artifactTest = Get-Command Test-SmokeCompiledArtifact
+    Invoke-WithSmokeScratch -Name $WorkName -Body { param($directory)
+        $sourcePath = Join-Path $directory $SourceName
+        $outputPath = Join-Path $directory $OutputName
+        [IO.File]::WriteAllText($sourcePath, $Source, [Text.Encoding]::ASCII)
+        $compileArgs = @($ArgumentList) + @($sourcePath, '-o', $outputPath) + @($AfterArgument)
+        return & $artifactTest -Compiler $Compiler -ArgumentList $compileArgs -OutputPath $outputPath
+    }.GetNewClosure()
 }
 
 function Assert-NativeLinkRun {
@@ -382,6 +491,19 @@ Export-ModuleMember -Function @(
     'Test-TensorRtTreeStaged'
     'Get-TensorRtShipViolation'
     'Get-TensorRtEpGap'
+    'Get-FfmpegSmokeListingCheck'
+    'Get-SmokeInstallRoot'
+    'Get-SmokeExistingInstallRoot'
+    'Set-SmokeSourceFiles'
+    'Find-SmokeArtifact'
+    'Get-SmokeArtifactDirectory'
+    'Resolve-SmokeCompanion'
+    'Invoke-WithSmokeScratch'
+    'Test-SmokeNativeSection'
+    'Assert-SmokeCommandOutput'
+    'Test-SmokeCommandOutput'
+    'Test-SmokeCompiledArtifact'
+    'Invoke-SmokeCompilation'
     'Assert-NativeLinkRun'
     'Assert-DllLoads'
     'Assert-EnvVarSet'

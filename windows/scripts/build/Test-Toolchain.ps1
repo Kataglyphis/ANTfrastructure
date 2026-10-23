@@ -15,6 +15,7 @@ if (-not (Test-Path $sharedModulePath)) {
 }
 
 Import-Module $sharedModulePath -Force
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1')
 
 # Whether -Banner names -Expected, or a hub build's id in semver's build-metadata spelling (0.18.0-1bd7432-pr2809 reports 0.18.0+1bd7432.pr2809).
 function Test-PinnedBanner([string]$Banner, [string]$Expected) {
@@ -99,7 +100,7 @@ Import-Module $archModulePath -Force
 $armTriple  = Get-ClangTargetTriple -Arch 'arm64'
 $armMachine = Get-PeMachineType -Arch 'arm64'
 
-# File-local helpers: moving them into a module would widen the base stage's build closure.
+# The strict ARM64 verdict stays local so the shared base remains usable on amd64.
 
 function Invoke-Arm64StrictPolicy {
     param([Parameter(Mandatory)][string]$Shortfall)
@@ -115,10 +116,7 @@ function Assert-Arm64ComponentLib {
         [Parameter(Mandatory)][string]$RelativePath,
         [Parameter(Mandatory)][string]$Remedy
     )
-    $found = Get-ChildItem -Path $Root -Directory -ErrorAction SilentlyContinue |
-        ForEach-Object { Join-Path $_.FullName $RelativePath } |
-        Where-Object { Test-Path $_ } |
-        Select-Object -First 1
+    $found = Find-ChildDirectoryFile -Parent $Root -RelativePath $RelativePath
     if ($found) {
         Write-Host "$Label OK: $found"
         return

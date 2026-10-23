@@ -20,13 +20,11 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-foreach ($m in 'WindowsSourceBuild.Common', 'WindowsSourceBuild.Patches', 'WindowsTargetArch.Common') {
-    Import-Module (Join-Path $ScriptDir "modules\$m.psm1") -Force -DisableNameChecking
+foreach ($m in 'WindowsSourceBuild.Common.psm1', 'WindowsSourceBuild.Patches.psm1', 'WindowsTargetArch.Common.psm1') {
+    Import-Module (Join-Path $ScriptDir "modules\$m") -Force -DisableNameChecking
 }
 # The stage mounts WindowsBazel.Common beside the shared closure, a checkout keeps it in modules\.
-$bazelModule = @('bazelmods', 'modules', '..\modules') | ForEach-Object { Join-Path $ScriptDir "$_\WindowsBazel.Common.psm1" } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $bazelModule) { throw "WindowsBazel.Common.psm1 is neither in $ScriptDir\bazelmods nor in $ScriptDir\modules" }
-Import-Module $bazelModule -Force -DisableNameChecking
+Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $ScriptDir -Name 'WindowsBazel.Common.psm1' -Directory @('bazelmods', 'modules', '..\modules')) -Force -DisableNameChecking
 
 
 function Get-LitertWheelPin {

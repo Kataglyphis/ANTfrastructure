@@ -19,6 +19,10 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$nativeRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
+Import-Module (Join-Path $nativeRoot 'modules\WindowsNative.Common.psm1')
+
+
 <#
 .SYNOPSIS
     File offset of an RVA, over the section table the BCL parsed; throws when no section holds it.
@@ -324,35 +328,7 @@ function Get-PathDirectory {
     return @($PathValue -split ';' | ForEach-Object { $_.Trim().Trim('"') } | Where-Object { $_ })
 }
 
-<#
-.SYNOPSIS
-    Runs a program with a timeout; ExitCode is $null when it hung and was killed. Output is stdout + stderr.
-#>
-function Invoke-LlamaCppProcess {
-    param(
-        [Parameter(Mandatory)][string]$FilePath,
-        [string[]]$ArgumentList = @(),
-        [hashtable]$Environment = @{},
-        [int]$TimeoutSeconds = 120
-    )
-    $start = [System.Diagnostics.ProcessStartInfo]::new($FilePath)
-    foreach ($a in $ArgumentList) { $start.ArgumentList.Add($a) }
-    foreach ($k in $Environment.Keys) { $start.Environment[$k] = $Environment[$k] }
-    $start.UseShellExecute = $false
-    $start.RedirectStandardOutput = $true
-    $start.RedirectStandardError = $true
-    $process = [System.Diagnostics.Process]::Start($start)
-    try {
-        $stdout = $process.StandardOutput.ReadToEndAsync()
-        $stderr = $process.StandardError.ReadToEndAsync()
-        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
-            $process.Kill($true)
-            return [pscustomobject]@{ ExitCode = $null; Text = '' }
-        }
-        $process.WaitForExit()
-        return [pscustomobject]@{ ExitCode = $process.ExitCode; Text = ($stdout.Result + $stderr.Result).Trim() }
-    } finally { $process.Dispose() }
-}
+Set-Alias -Name Invoke-LlamaCppProcess -Value Invoke-NativeProbeProcess
 
 <#
 .SYNOPSIS
@@ -487,9 +463,8 @@ function Invoke-LlamaCppLoadProbe {
         [switch]$Vulkan,
         [int]$TimeoutSeconds = 120
     )
-    $run = Invoke-LlamaCppProcess -FilePath (Get-Process -Id $PID).Path -ArgumentList '-NoProfile', '-NonInteractive', '-Command', (Get-LlamaCppProbeScript) `
-        -Environment @{ LLAMA_CPP_PROBE_DLL = $Path; LLAMA_CPP_PROBE_MODULES = ($Module -join ','); LLAMA_CPP_PROBE_VULKAN = $(if ($Vulkan) { '1' } else { '0' }) } `
-        -TimeoutSeconds $TimeoutSeconds
+    $run = Invoke-PwshProbeProcess -Source (Get-LlamaCppProbeScript) `
+        -ProcessOptions @{ Environment = @{ LLAMA_CPP_PROBE_DLL = $Path; LLAMA_CPP_PROBE_MODULES = ($Module -join ','); LLAMA_CPP_PROBE_VULKAN = $(if ($Vulkan) { '1' } else { '0' }) }; TimeoutSeconds = $TimeoutSeconds }
     $leaf = [System.IO.Path]::GetFileName($Path)
     $finding = if ($null -eq $run.ExitCode) { "loading $leaf did not finish within $TimeoutSeconds s" }
     elseif ($run.ExitCode -ne 0) { "$leaf does not load from $([System.IO.Path]::GetDirectoryName($Path)): $($run.Text)" }

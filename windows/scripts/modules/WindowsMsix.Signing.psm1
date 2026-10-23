@@ -20,8 +20,13 @@ function Test-Administrator {
   return (Test-Elevated)
 }
 
+function Invoke-MsixSigningCommand {
+  param([pscustomobject]$Context, [string]$File, [string[]]$Parameters, [scriptblock]$Invoker)
+  if ($Invoker) { & $Invoker -Context $Context -File $File -Parameters $Parameters | Out-Null }
+  else { Invoke-BuildExternal -Context $Context -File $File -Parameters $Parameters | Out-Null }
+}
+
 function Invoke-MsixSign {
-  [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert')]
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
     [Parameter(Mandatory)] [string]$WorkspacePath,
@@ -56,11 +61,7 @@ function Invoke-MsixSign {
       $sigArgs += @('/tr', $timestampUrl, '/td', 'SHA256', $MsixOutPath)
 
       Write-BuildLog -Context $Context -Message "Signing MSIX: $MsixOutPath"
-      if ($InvokerScriptBlock) {
-        & $InvokerScriptBlock -Context $Context -File $signtoolPath -Parameters $sigArgs | Out-Null
-      } else {
-        Invoke-BuildExternal -Context $Context -File $signtoolPath -Parameters $sigArgs | Out-Null
-      }
+      Invoke-MsixSigningCommand -Context $Context -File $signtoolPath -Parameters $sigArgs -Invoker $InvokerScriptBlock
 
       # Warn, not throw: the package is already signed, and unelevated consumer dev loops must still get it.
       try {
@@ -69,7 +70,7 @@ function Invoke-MsixSign {
         } else {
           Write-BuildLog -Context $Context -Message 'Importing PFX into Cert:\\LocalMachine\\Root to trust the signing chain for verification.'
           if (-not [string]::IsNullOrWhiteSpace($pfxPassword)) {
-            $securePassword = ConvertTo-SecureString -String $pfxPassword -AsPlainText -Force
+            $securePassword = ConvertTo-MsixSigningPassword -Password $pfxPassword
             $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -Password $securePassword -ErrorAction Stop
           } else {
             $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -ErrorAction Stop
@@ -87,11 +88,7 @@ function Invoke-MsixSign {
       }
 
       Write-BuildLog -Context $Context -Message "Verifying MSIX signature: $MsixOutPath"
-      if ($InvokerScriptBlock) {
-        & $InvokerScriptBlock -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
-      } else {
-        Invoke-BuildExternal -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) | Out-Null
-      }
+      Invoke-MsixSigningCommand -Context $Context -File $signtoolPath -Parameters @('verify', '/pa', '/v', $MsixOutPath) -Invoker $InvokerScriptBlock
       Write-BuildLog -Context $Context -Message 'MSIX signing/verification completed.'
     } else {
       Write-BuildLogWarning -Context $Context -Message "No .pfx found in $WorkspacePath; MSIX will not be signed."

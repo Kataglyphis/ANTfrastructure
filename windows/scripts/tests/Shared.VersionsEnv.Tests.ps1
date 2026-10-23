@@ -11,40 +11,20 @@ Describe 'ConvertFrom-VersionsEnv' {
         return (ConvertFrom-VersionsEnv -Path $f)
     }
 
-    It 'parses key=value pairs, trimming surrounding whitespace' {
-        Invoke-InTestDir { param($dir)
-            $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('  A = 1 ', 'B=two')
-            Assert-Equal '1' $v['A']
-            Assert-Equal 'two' $v['B']
-        }
-    }
-
-    It 'skips comments and blank lines' {
-        Invoke-InTestDir { param($dir)
-            $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('# comment', '', 'A=1', '  # indented comment')
-            Assert-Equal 1 $v.Count
-        }
-    }
-
-    It 'splits on the FIRST = only (values may contain =)' {
-        Invoke-InTestDir { param($dir)
-            $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('FLAGS=-DFOO=1;-DBAR=2')
-            Assert-Equal '-DFOO=1;-DBAR=2' $v['FLAGS']
-        }
-    }
-
-    It 'strips surrounding double and single quotes from values' {
-        Invoke-InTestDir { param($dir)
-            $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('A="quoted"', "B='single'")
-            Assert-Equal 'quoted' $v['A']
-            Assert-Equal 'single' $v['B']
-        }
-    }
-
-    It 'preserves file order (ordered-dictionary contract)' {
-        Invoke-InTestDir { param($dir)
-            $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('Z=1', 'A=2', 'M=3')
-            Assert-Equal 'Z,A,M' (@($v.Keys) -join ',')
+    foreach ($parseCase in @(
+        @{ Name = 'parses key=value pairs, trimming surrounding whitespace'; Lines = @('  A = 1 ', 'B=two'); Expected = [ordered]@{ A = '1'; B = 'two' } },
+        @{ Name = 'skips comments and blank lines'; Lines = @('# comment', '', 'A=1', '  # indented comment'); Expected = [ordered]@{ A = '1' } },
+        @{ Name = 'splits on the FIRST = only (values may contain =)'; Lines = @('FLAGS=-DFOO=1;-DBAR=2'); Expected = [ordered]@{ FLAGS = '-DFOO=1;-DBAR=2' } },
+        @{ Name = 'strips surrounding double and single quotes from values'; Lines = @('A="quoted"', "B='single'"); Expected = [ordered]@{ A = 'quoted'; B = 'single' } },
+        @{ Name = 'preserves file order (ordered-dictionary contract)'; Lines = @('Z=1', 'A=2', 'M=3'); Expected = [ordered]@{ Z = '1'; A = '2'; M = '3' } },
+        @{ Name = 'returns an empty dictionary for a comments-only file'; Lines = @('# only', '# comments'); Expected = [ordered]@{} }
+    )) {
+        It $parseCase.Name {
+            Invoke-InTestDir { param($dir)
+                $versions = ConvertFrom-TestEnvFile -Dir $dir -Lines $parseCase.Lines
+                Assert-Equal ($parseCase.Expected.Keys -join ',') ($versions.Keys -join ',') 'exact keys and file order'
+                foreach ($key in $parseCase.Expected.Keys) { Assert-Equal $parseCase.Expected[$key] $versions[$key] }
+            }
         }
     }
 
@@ -56,43 +36,25 @@ Describe 'ConvertFrom-VersionsEnv' {
         }
     }
 
-    It 'returns an empty dictionary for a comments-only file' {
-        Invoke-InTestDir { param($dir)
-            $v = ConvertFrom-TestEnvFile -Dir $dir -Lines @('# only', '# comments')
-            Assert-Equal 0 $v.Count
-        }
-    }
+
 }
 
 Describe 'Get-ANTfrastructurePin' {
 
-    It 'takes the environment first, so an image build-arg beats a stale file' {
-        Invoke-InTestDir { param($dir)
-            $f = Join-Path $dir 'versions.env'
-            Set-Content -Path $f -Value 'WBT_TOOL_VERSION=1.0.0' -Encoding ASCII
-            Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = '2.0.0' } -Body {
-                Assert-Equal '2.0.0' (Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $f)
-            }
-        }
-    }
-
-    It 'falls back to versions.env when the environment does not set it' {
-        Invoke-InTestDir { param($dir)
-            $f = Join-Path $dir 'versions.env'
-            Set-Content -Path $f -Value 'WBT_TOOL_VERSION=1.0.0' -Encoding ASCII
-            Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = $null } -Body {
-                Assert-Equal '1.0.0' (Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $f)
-            }
-        }
-    }
-
-    It 'throws on a key nowhere to be found, rather than letting the newest release win' {
-        Invoke-InTestDir { param($dir)
-            $f = Join-Path $dir 'versions.env'
-            Set-Content -Path $f -Value 'OTHER=1' -Encoding ASCII
-            Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = $null } -Body {
-                Assert-Throws -Body { Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $f } `
-                    -MessagePattern 'WBT_TOOL_VERSION is not set'
+    foreach ($pinCase in @(
+        @{ Name = 'takes the environment first, so an image build-arg beats a stale file'; Lines = 'WBT_TOOL_VERSION=1.0.0'; Environment = '2.0.0'; Expected = '2.0.0'; Error = '' },
+        @{ Name = 'falls back to versions.env when the environment does not set it'; Lines = 'WBT_TOOL_VERSION=1.0.0'; Environment = $null; Expected = '1.0.0'; Error = '' },
+        @{ Name = 'throws on a key nowhere to be found, rather than letting the newest release win'; Lines = 'OTHER=1'; Environment = $null; Expected = ''; Error = 'WBT_TOOL_VERSION is not set' }
+    )) {
+        It $pinCase.Name {
+            Invoke-InTestDir { param($dir)
+                $path = Join-Path $dir 'versions.env'
+                Set-Content -LiteralPath $path -Value $pinCase.Lines -Encoding ASCII
+                Invoke-WithEnv -Vars @{ WBT_TOOL_VERSION = $pinCase.Environment } -Body {
+                    $readPin = { Get-ANTfrastructurePin -Name 'WBT_TOOL_VERSION' -VersionsEnvPath $path }
+                    if ($pinCase.Error) { Assert-Throws -Body $readPin -MessagePattern $pinCase.Error }
+                    else { Assert-Equal $pinCase.Expected (& $readPin) }
+                }
             }
         }
     }
@@ -109,8 +71,7 @@ Describe 'Save-PythonWheel' {
     It 'returns exactly the staged path for a single wheel (callers MUST @()-wrap: unwrap made [0] the first CHAR -> pip installed PyPI package "c")' {
         Invoke-InTestDir { param($dir)
             $src = Join-Path $dir 'dist'
-            New-Item -ItemType Directory -Force -Path $src | Out-Null
-            Set-Content -Path (Join-Path $src 'pkg-1.0-py3-none-any.whl') -Value 'x' -NoNewline
+            Write-TestFileTree -Root $src -Files @{ 'pkg-1.0-py3-none-any.whl' = 'x' }
             $store = Join-Path $dir 'wheels'
             $r = @(Save-PythonWheel -SourceDir $src -WheelDir $store -Required)
             Assert-Equal 1 $r.Count
@@ -132,8 +93,7 @@ Describe 'Expand-ArchiveSubdirectory' {
     function New-TestZip {
         param([string]$Dir, [string]$Name)
         $payload = Join-Path $Dir $Name
-        New-Item -ItemType Directory -Force -Path $payload | Out-Null
-        Set-Content -Path (Join-Path $payload 'inner.txt') -Value 'x' -NoNewline
+        Write-TestFileTree -Root $payload -Files @{ 'inner.txt' = 'x' }
         $zip = Join-Path $Dir "$Name.zip"
         Compress-Archive -Path $payload -DestinationPath $zip
         return $zip
@@ -175,15 +135,22 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
 
     # These maps are the only channel for versions: a missing key silently falls back to the base image's value.
 
-    It 'passes every key the media-core scripts consume' {
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
-        $args_ = Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $v
-        foreach ($k in 'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_SOURCE_VERSION',
-                       'OPENCV_VERSION', 'FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF',
-                       'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
-                       'CUDA_ARCHITECTURES', 'PYTHON_VERSION') {
-            Assert-True ($args_.ContainsKey($k)) "media-core must forward $k"
-            Assert-True ([bool]$args_[$k]) "$k must not be empty"
+    $branchPinCases = @(
+        @{ Name = 'passes every key the media-core scripts consume'; Branch = 'media-core'; Keys = @(
+            'ONNXRUNTIME_VERSION', 'ONNXRUNTIME_GENAI_VERSION', 'OPENCV_SOURCE_VERSION', 'OPENCV_VERSION',
+            'FFMPEG_VERSION', 'PYAV_VERSION', 'NV_CODEC_HEADERS_REF', 'AMF_HEADERS_VERSION', 'AMF_HEADERS_SHA256',
+            'CUDA_ARCHITECTURES', 'PYTHON_VERSION') },
+        @{ Name = 'passes the litert keys INCLUDING the protoc/JRE pins'; Branch = 'media-litert'; Keys = @(
+            'LITERT_VERSION', 'LITERT_LM_VERSION', 'PROTOC_VERSION', 'JRE_VERSION') }
+    )
+    foreach ($pinCase in $branchPinCases) {
+        It $pinCase.Name {
+            $versions = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
+            $forwarded = Get-MediaBranchVersionArg -Branch $pinCase.Branch -VersionTable $versions
+            foreach ($key in $pinCase.Keys) {
+                Assert-True ($forwarded.ContainsKey($key)) "$($pinCase.Branch) must forward $key"
+                Assert-True ([bool]$forwarded[$key]) "$key must not be empty"
+            }
         }
     }
 
@@ -192,16 +159,6 @@ Describe 'Get-MediaBranchVersionArg completeness (versions.env COPY removed 2026
         $args_ = Get-MediaBranchVersionArg -Branch 'media-core' -VersionTable $v
         Assert-True ($args_.ContainsKey('QNN_SDK_ZIP_SHA256')) 'media-core must forward QNN_SDK_ZIP_SHA256 (Build-OnnxFromSource.ps1 reads it)'
         Assert-True ($v.Contains('QNN_SDK_ZIP_SHA256')) 'versions.env must declare QNN_SDK_ZIP_SHA256 (may be empty)'
-    }
-
-    It 'passes the litert keys INCLUDING the protoc/JRE pins' {
-        # PROTOC_VERSION must match LiteRT-LM's protobuf, or the gencode trips the pinned headers' #error.
-        $v = ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env')
-        $args_ = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
-        foreach ($k in 'LITERT_VERSION', 'LITERT_LM_VERSION', 'PROTOC_VERSION', 'JRE_VERSION') {
-            Assert-True ($args_.ContainsKey($k)) "media-litert must forward $k"
-            Assert-True ([bool]$args_[$k]) "$k must not be empty"
-        }
     }
 
     It 'forwards values that actually match versions.env' {

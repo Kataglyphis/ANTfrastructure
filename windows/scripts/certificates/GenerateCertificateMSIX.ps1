@@ -5,7 +5,6 @@
 
 
 # Suppressed: a throwaway dev certificate whose password the caller supplies.
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert; manual utility')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'dev/test signing cert; manual utility')]
 param(
     [Parameter(Mandatory)][string]$Password,
@@ -15,6 +14,9 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$sharedPath = Join-Path $PSScriptRoot '..\modules\WindowsScripts.Shared.psm1'
+if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
 
 $cert = New-SelfSignedCertificate `
     -Type Custom `
@@ -28,7 +30,7 @@ $cert = New-SelfSignedCertificate `
     -Provider "Microsoft Software Key Storage Provider" `
     -HashAlgorithm SHA256
 
-$securePassword = ConvertTo-SecureString -String $Password -Force -AsPlainText
+$securePassword = ConvertTo-MsixSigningPassword -Password $Password
 
 Export-PfxCertificate `
     -Cert $cert `

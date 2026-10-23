@@ -29,6 +29,7 @@ $ErrorActionPreference = 'Stop'
 
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1')
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
@@ -126,12 +127,8 @@ if ($ReportOnly) {
 
 if (-not $isAdmin) { throw 'Run from an elevated (admin) shell: service configuration and Defender exclusions need it.' }
 
-$live = @(Get-Process -Name $BlockingProcess -ErrorAction SilentlyContinue)
-if ($live.Count -gt 0 -and -not $Force) {
-    throw ('{0} live build process(es) ({1}) - applying restarts containerd and kills every in-flight solve. ' -f
-        $live.Count, (($live | ForEach-Object ProcessName | Sort-Object -Unique) -join ', ')) +
-        'Wait for the build to finish, or pass -Force.'
-}
+$null = Get-HostMaintenanceProcess -Name $BlockingProcess -Force:$Force `
+    -FailureTemplate '{0} live build process(es) ({1}) - applying restarts containerd and kills every in-flight solve. Wait for the build to finish, or pass -Force.'
 
 if (-not $SkipDefenderExclusions) {
     foreach ($p in $ExclusionPath) {

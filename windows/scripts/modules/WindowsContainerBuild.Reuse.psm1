@@ -8,6 +8,16 @@ if (-not (Get-Command Get-SccacheS3Level -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking
 }
 
+function Invoke-ContainerClientAttempt {
+    param([string]$DockerExe, [string[]]$Arguments)
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $output = @(& $DockerExe @Arguments 2>$null)
+        return [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
+    } finally { $ErrorActionPreference = $previous }
+}
+
 <#
 .SYNOPSIS
   Returns a reusable build container, creating or recreating it as needed.
@@ -31,14 +41,7 @@ function Get-ReusableBuildContainer {
         & $DockerExe rm -f $Name 2>&1 | Out-Null
 
         # The wcifs teardown lock can fail the removal silently; a survivor gets a unique name so fresh means fresh.
-        $previous = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        try {
-            & $DockerExe inspect $Name 2>&1 | Out-Null
-            $survived = ($LASTEXITCODE -eq 0)
-        } finally {
-            $ErrorActionPreference = $previous
-        }
+        $survived = (Invoke-ContainerClientAttempt -DockerExe $DockerExe -Arguments @('inspect', $Name)).ExitCode -eq 0
 
         if ($survived) {
             $unique = "$Name-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
@@ -48,14 +51,10 @@ function Get-ReusableBuildContainer {
         }
     }
 
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $imageId = (& $DockerExe inspect -f '{{.Id}}' $Image 2>$null | Select-Object -First 1)
-        $state = (& $DockerExe inspect -f '{{.State.Running}}|{{.Image}}' $Name 2>$null | Select-Object -First 1)
-    } finally {
-        $ErrorActionPreference = $previousPreference
-    }
+    $imageProbe = Invoke-ContainerClientAttempt -DockerExe $DockerExe -Arguments @('inspect', '-f', '{{.Id}}', $Image)
+    $running = Invoke-ContainerClientAttempt -DockerExe $DockerExe -Arguments @('inspect', '-f', '{{.State.Running}}|{{.Image}}', $Name)
+    $imageId = $imageProbe.Output | Select-Object -First 1
+    $state = $running.Output | Select-Object -First 1
 
     if ($state) {
         $parts = $state -split '\|'
@@ -83,6 +82,18 @@ function Get-ReusableBuildContainer {
     return [pscustomobject]@{ Reused = $false; Name = $Name }
 }
 
+function Get-ContainerTarExcludeArgs {
+    param([string[]]$Exclude)
+    return ($Exclude | ForEach-Object { "--exclude `"$_`"" }) -join ' '
+}
+
+function Invoke-ContainerTarPipe {
+    param([string]$PackCommand, [string]$UnpackCommand)
+    # cmd preserves the byte stream on every supported PowerShell version.
+    cmd /c "$PackCommand | $UnpackCommand"
+    return ($LASTEXITCODE -eq 0)
+}
+
 <#
 .SYNOPSIS
   Streams a host directory into a running container via a tar pipe.
@@ -100,12 +111,11 @@ function Copy-IntoBuildContainer {
         [string[]]$Exclude = @()
     )
 
-    $excludeArgs = ($Exclude | ForEach-Object { "--exclude `"$_`"" }) -join ' '
+    $excludeArgs = Get-ContainerTarExcludeArgs -Exclude $Exclude
     $itemArgs = ($Items | ForEach-Object { "`"$_`"" }) -join ' '
-    # cmd /c keeps the pipe a raw byte stream regardless of PowerShell version.
-    $command = "tar -cf - $excludeArgs -C `"$SourceRoot`" $itemArgs | `"$DockerExe`" exec -i $Container tar -xf - -C $TargetPath"
-    cmd /c $command
-    return ($LASTEXITCODE -eq 0)
+    $pack = "tar -cf - $excludeArgs -C `"$SourceRoot`" $itemArgs"
+    $unpack = "`"$DockerExe`" exec -i $Container tar -xf - -C $TargetPath"
+    return Invoke-ContainerTarPipe -PackCommand $pack -UnpackCommand $unpack
 }
 
 <#
@@ -125,12 +135,12 @@ function Copy-FromBuildContainer {
         [string[]]$Exclude = @()
     )
 
-    $excludeArgs = ($Exclude | ForEach-Object { "--exclude `"$_`"" }) -join ' '
+    $excludeArgs = Get-ContainerTarExcludeArgs -Exclude $Exclude
     $itemArgs = ($Items -join ' ')
-    # tar -C avoids a nested cmd /c, which would need quote-in-quote escaping for the excludes.
-    $command = "`"$DockerExe`" exec $Container tar -cf - $excludeArgs -C $SourcePath $itemArgs | tar -xf - -C `"$TargetRoot`""
-    cmd /c $command
-    return ($LASTEXITCODE -eq 0)
+    # tar -C avoids nested cmd quoting for the excludes.
+    $pack = "`"$DockerExe`" exec $Container tar -cf - $excludeArgs -C $SourcePath $itemArgs"
+    $unpack = "tar -xf - -C `"$TargetRoot`""
+    return Invoke-ContainerTarPipe -PackCommand $pack -UnpackCommand $unpack
 }
 
 
@@ -339,16 +349,11 @@ function Test-ContainerBindMount {
         [string[]]$RunArgs = @()
     )
 
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & $DockerExe run --rm @RunArgs `
-            --mount "type=bind,source=$SourcePath,target=$TargetPath" `
-            --entrypoint cmd $Image /c "dir $TargetPath\$ProbeFile > nul" 2>&1 | Out-Null
-    } finally {
-        $ErrorActionPreference = $previousPreference
-    }
-    return ($LASTEXITCODE -eq 0)
+    $probeArgs = @('run', '--rm') + $RunArgs + @(
+        '--mount', "type=bind,source=$SourcePath,target=$TargetPath", '--entrypoint', 'cmd',
+        $Image, '/c', "dir $TargetPath\$ProbeFile > nul"
+    )
+    return (Invoke-ContainerClientAttempt -DockerExe $DockerExe -Arguments $probeArgs).ExitCode -eq 0
 }
 
 <#
@@ -364,18 +369,12 @@ function Remove-BuildContainerSafe {
         [Parameter(Mandatory)][string]$Name
     )
 
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & $DockerExe rm -f $Name 2>&1 | Out-Null
-        & $DockerExe inspect $Name 2>&1 | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            Write-Warning ("Container '$Name' could not be removed yet (wcifs teardown lock?). " +
-                "Remove it later with: docker rm -f $Name")
-            return $false
-        }
-    } finally {
-        $ErrorActionPreference = $previousPreference
+    $null = Invoke-ContainerClientAttempt -DockerExe $DockerExe -Arguments @('rm', '-f', $Name)
+    $remaining = Invoke-ContainerClientAttempt -DockerExe $DockerExe -Arguments @('inspect', $Name)
+    if ($remaining.ExitCode -eq 0) {
+        Write-Warning ("Container '$Name' could not be removed yet (wcifs teardown lock?). " +
+            "Remove it later with: docker rm -f $Name")
+        return $false
     }
     return $true
 }

@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # The rocm lane's LiteRT-LM GPU backend leaves cpu/nvidia's bazel command untouched; no bazel build, real DLLs or GPU.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -DisableNameChecking
+
 $script:LlmBazel = 'windows\scripts\build\Build-LitertLmBazel.ps1'
 $script:LlmCheck = 'windows\scripts\build\rocm-checks\LiteRtLm.ps1'
 $script:PreRocmCmd = 'build //runtime/engine:litert_lm_main --config=windows --repo_env=ANDROID_NDK_VERSION='
@@ -51,10 +53,7 @@ Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
 
     function Get-LlmBodyNode {
         param([scriptblock]$Where)
-        @($script:LlmAst.FindAll({ param($n)
-                    for ($p = $n.Parent; $p; $p = $p.Parent) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $false } }
-                    return [bool](& $Where $n)
-                }, $true))
+        @(Get-MediaTestAstNode -Ast $script:LlmAst -Predicate $Where -ScriptLevel)
     }
     function Get-LlmCall {
         param([string]$Name)
@@ -62,45 +61,50 @@ Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
     }
     function Get-LlmAncestor {
         param($Node, [type]$Type)
-        for ($p = $Node.Parent; $p; $p = $p.Parent) { if ($p -is $Type) { return $p } }
+        Get-TestAstAncestor -Node $Node -Type $Type -First
     }
     function Test-LlmWithin { param($Inner, $Outer) $Outer.Extent.StartOffset -le $Inner.Extent.StartOffset -and $Inner.Extent.EndOffset -le $Outer.Extent.EndOffset }
     function Get-LlmIfChain {
         # Conditions of every if-clause holding $Node below $Stop, innermost first, joined by ' && '.
         param($Node, $Stop)
-        $conds = @(for ($p = $Node.Parent; $p -and -not [object]::ReferenceEquals($p, $Stop); $p = $p.Parent) {
-                if ($p -is [System.Management.Automation.Language.IfStatementAst]) {
-                    foreach ($c in $p.Clauses) { if (Test-LlmWithin $Node $c.Item2) { $c.Item1.Extent.Text } }
-                }
+        $conds = @(foreach ($p in @(Get-TestAstAncestor -Node $Node -Stop $Stop -Type ([System.Management.Automation.Language.IfStatementAst]))) {
+                foreach ($c in $p.Clauses) { if (Test-LlmWithin $Node $c.Item2) { $c.Item1.Extent.Text } }
             })
         $conds -join ' && '
+    }
+    function Get-LlmWiredCall {
+        param([Management.Automation.Language.CommandAst[]]$Command, [string]$Text,
+            [string]$Assignment = '', [string]$Condition = '', [ValidateSet('', 'Before', 'After')][string]$BazelPosition = '')
+        Assert-TestAstCommand -Command $Command -Text $Text -Assignment $Assignment
+        if ($Condition) { Assert-Equal $Condition (Get-LlmIfChain $Command[0] $script:LlmTry.Body) 'lane condition' }
+        if ($BazelPosition) {
+            $nodes = if ($BazelPosition -eq 'Before') { @($Command[0], $script:LlmBazelCall[0]) } else { @($script:LlmBazelCall[0], $Command[0]) }
+            Assert-True ($nodes[0].Extent.EndOffset -lt $nodes[1].Extent.StartOffset) "$BazelPosition bazel"
+        }
+        return $Command[0]
     }
     $script:LlmBazelCall = @(Get-LlmCall 'Invoke-BazelLogged')
     $script:LlmTry = Get-LlmAncestor $script:LlmBazelCall[0] ([System.Management.Automation.Language.TryStatementAst])
 
     It 'reads GPU_TYPE once, from the lane env' {
-        $a = @(Get-LlmBodyNode { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$gpuType' })
-        Assert-Equal 1 $a.Count 'one $gpuType assignment'
-        Assert-Equal '[string]$env:GPU_TYPE' $a[0].Right.Extent.Text 'its source'
+        $assignment = Get-MediaTestAssignment -Ast $script:LlmAst -Variable '$gpuType' -ScriptLevel -Single
+        Assert-Equal '[string]$env:GPU_TYPE' $assignment.Right.Extent.Text 'its source'
         Assert-Equal 1 $script:LlmBazelCall.Count 'one bazelisk call'
         Assert-NotNull $script:LlmTry 'bazelisk runs inside a try'
     }
 
     It 'hides the ROCm tree before the bazel server starts, and restores it in finally' {
         $scrub = @(Get-LlmCall 'Get-BazelRocmEnvScrub')
-        Assert-Equal 1 $scrub.Count 'one scrub computation'
-        Assert-Equal 'Get-BazelRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())' $scrub[0].Extent.Text 'over the live env, gated on the lane'
-        Assert-Equal '$envScrub' (Get-LlmAncestor $scrub[0] ([System.Management.Automation.Language.AssignmentStatementAst])).Left.Extent.Text 'kept in $envScrub'
+        Assert-TestAstCommand -Command $scrub -Text 'Get-BazelRocmEnvScrub -GpuType $gpuType -Environment ([Environment]::GetEnvironmentVariables())' -Assignment '$envScrub'
         $set = @(Get-LlmCall 'Set-BazelProcessEnv')
         $apply = @($set | Where-Object { $_.Extent.Text -ceq 'Set-BazelProcessEnv -Values $envScrub' })
-        Assert-Equal 1 $apply.Count 'the scrub is applied'
-        Assert-Equal '$restoreEnv' (Get-LlmAncestor $apply[0] ([System.Management.Automation.Language.AssignmentStatementAst])).Left.Extent.Text 'its previous values kept'
+        Assert-TestAstCommand -Command $apply -Text 'Set-BazelProcessEnv -Values $envScrub' -Assignment '$restoreEnv'
         Assert-Equal '$envScrub.Count -gt 0' (Get-LlmIfChain $apply[0] $script:LlmTry.Body) 'applied whenever there is something to hide'
         Assert-True ($scrub[0].Extent.EndOffset -lt $apply[0].Extent.StartOffset) 'computed, then applied'
         Assert-True ($apply[0].Extent.EndOffset -lt $script:LlmBazelCall[0].Extent.StartOffset) 'before the first bazelisk call'
         Assert-True (Test-LlmWithin $apply[0] $script:LlmTry.Body) 'inside the try that restores it'
         $restore = @($set | Where-Object { $_.Extent.Text -ceq 'Set-BazelProcessEnv -Values $restoreEnv' })
-        Assert-Equal 1 $restore.Count 'one restore'
+        Assert-TestAstCommand -Command $restore -Text 'Set-BazelProcessEnv -Values $restoreEnv'
         Assert-True (Test-LlmWithin $restore[0] $script:LlmTry.Finally) 'in the finally block'
         Assert-Equal '$restoreEnv' (Get-LlmIfChain $restore[0] $script:LlmTry.Finally) 'only when something was hidden'
         $init = @(Get-LlmBodyNode { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Extent.Text -ceq '$restoreEnv = $null' })
@@ -108,24 +112,13 @@ Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
     }
 
     It 'checks the DXC pin on the rocm lane only, before bazel fetches the zip' {
-        $pin = @(Get-LlmCall 'Assert-LitertLmDxcPin')
-        Assert-Equal 1 $pin.Count 'one pin check'
-        Assert-Equal 'Assert-LitertLmDxcPin -Workspace $ws -Expected $env:LITERT_LM_DXC_ZIP_SHA256' $pin[0].Extent.Text 'against versions.env'
-        Assert-Equal "`$gpuType -eq 'rocm'" (Get-LlmIfChain $pin[0] $script:LlmTry.Body) 'rocm lane only'
-        Assert-True ($pin[0].Extent.EndOffset -lt $script:LlmBazelCall[0].Extent.StartOffset) 'before bazel'
+        $null = Get-LlmWiredCall -Command @(Get-LlmCall 'Assert-LitertLmDxcPin') -Text 'Assert-LitertLmDxcPin -Workspace $ws -Expected $env:LITERT_LM_DXC_ZIP_SHA256' -Condition "`$gpuType -eq 'rocm'" -BazelPosition Before
     }
 
     It 'installs the lane''s GPU payload after the build' {
-        $get = @(Get-LlmCall 'Get-LitertLmGpuPayload')
-        Assert-Equal 1 $get.Count 'one payload lookup'
-        Assert-Equal "Get-LitertLmGpuPayload -GpuType `$gpuType -PrebuiltDir 'C:\llm\prebuilt\windows_x86_64' -DxcDir (Join-Path `$outputBase 'external\directx_shader_compiler')" `
-            ($get[0].Extent.Text -replace '\s*`\r?\n\s*', ' ') 'gated on the lane, DXC from the output base'
-        Assert-Equal '$gpuPayload' (Get-LlmAncestor $get[0] ([System.Management.Automation.Language.AssignmentStatementAst])).Left.Extent.Text 'kept in $gpuPayload'
-        $inst = @(Get-LlmCall 'Install-LitertLmGpuPayload')
-        Assert-Equal 1 $inst.Count 'one install'
-        Assert-Equal "Install-LitertLmGpuPayload -Payload `$gpuPayload -Root (Join-Path `$InstallDir 'lib\litert-lm')" $inst[0].Extent.Text 'into the tree the smoke check reads'
-        Assert-Equal '$gpuPayload.Count -gt 0' (Get-LlmIfChain $inst[0] $script:LlmTry.Body) 'whenever the lane has one'
-        Assert-True ($script:LlmBazelCall[0].Extent.EndOffset -lt $get[0].Extent.StartOffset) 'after bazel'
+        $null = Get-LlmWiredCall -Command @(Get-LlmCall 'Get-LitertLmGpuPayload') -Text "Get-LitertLmGpuPayload -GpuType `$gpuType -PrebuiltDir 'C:\llm\prebuilt\windows_x86_64' -DxcDir (Join-Path `$outputBase 'external\directx_shader_compiler')" -Assignment '$gpuPayload' -BazelPosition After
+        $null = Get-LlmWiredCall -Command @(Get-LlmCall 'Install-LitertLmGpuPayload') -Text "Install-LitertLmGpuPayload -Payload `$gpuPayload -Root (Join-Path `$InstallDir 'lib\litert-lm')" -Condition '$gpuPayload.Count -gt 0'
+
     }
 }
 
@@ -215,18 +208,25 @@ Describe 'Build-LitertLmBazel: the GPU payload' {
         }
     }
 
+    function Get-LlmPayloadFixture {
+        $entries = @(Get-LitertLmGpuPayload -GpuType 'rocm' -PrebuiltDir 'C:\p' -DxcDir 'C:\d')
+        return @{ Entries = $entries
+            Dlls = @($entries | Where-Object { $_.Dir -eq 'bin' } | ForEach-Object { Split-Path -Leaf $_.Source })
+            PinKeys = @($entries | Where-Object { $_.PinKey } | ForEach-Object { $_.PinKey }) }
+    }
+
     It 'ships exactly the DLLs the smoke check probes, next to the exe' {
-        $p = @(Get-LitertLmGpuPayload -GpuType 'rocm' -PrebuiltDir 'C:\p' -DxcDir 'C:\d')
-        $bin = @($p | Where-Object { $_.Dir -eq 'bin' } | ForEach-Object { Split-Path -Leaf $_.Source } | Sort-Object) -join ','
+        $payload = Get-LlmPayloadFixture
+        $bin = @($payload.Dlls | Sort-Object) -join ','
         Assert-Equal (@((Get-LiteRtLmGpuExport).Keys | Sort-Object) -join ',') $bin 'payload bin DLLs == smoke-check DLLs'
-        Assert-Equal 3 @($p | Where-Object { $_.Dir -eq 'licenses\directx-shader-compiler' }).Count 'the three DXC licence texts'
+        Assert-Equal 3 @($payload.Entries | Where-Object { $_.Dir -eq 'licenses\directx-shader-compiler' }).Count 'the three DXC licence texts'
     }
 
     It 'names every shipped DLL in a Windows deps.json row, which the licence page and SBOM render' {
         $deps = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'docs\deps\deps.json') -Raw | ConvertFrom-Json
         $rows = @(@($deps.sections | Where-Object { $_.title -eq 'Windows Image' }).subsections.entries | Where-Object { $_.spdx })
         $names = @($rows | ForEach-Object { $_.name }) -join "`n"
-        $dlls = @(Get-LitertLmGpuPayload -GpuType 'rocm' -PrebuiltDir 'C:\p' -DxcDir 'C:\d' | Where-Object { $_.Dir -eq 'bin' } | ForEach-Object { Split-Path -Leaf $_.Source })
+        $dlls = (Get-LlmPayloadFixture).Dlls
         Assert-Equal 5 $dlls.Count 'the payload DLLs'
         foreach ($dll in $dlls) { Assert-True $names.Contains($dll) "$dll has a deps.json row with an spdx id" }
     }
@@ -236,7 +236,7 @@ Describe 'Build-LitertLmBazel: the GPU payload' {
         $branch = Get-MediaBranchVersionArg -Branch 'media-litert' -VersionTable $v
         $merge = Get-MediaMergeVersionArg -VersionTable $v
         $dockerfile = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder') -Raw
-        $keys = @(@(Get-LitertLmGpuPayload -GpuType 'rocm' -PrebuiltDir 'C:\p' -DxcDir 'C:\d') | Where-Object { $_.PinKey } | ForEach-Object { $_.PinKey }) + 'LITERT_LM_DXC_ZIP_SHA256'
+        $keys = (Get-LlmPayloadFixture).PinKeys + 'LITERT_LM_DXC_ZIP_SHA256'
         Assert-Equal 4 $keys.Count 'three DLL pins + the DXC zip pin'
         foreach ($k in $keys) {
             Assert-Match '^[0-9a-f]{64}$' $v[$k] "versions.env $k"
@@ -247,17 +247,20 @@ Describe 'Build-LitertLmBazel: the GPU payload' {
         }
     }
 
+    function New-LlmPayloadEntry {
+        param([string]$Directory, [string]$Name, [string]$Content, [string]$Destination = 'bin', [string]$PinKey = 'OA_TEST_LLM_PIN')
+        Write-TestFileTree -Root $Directory -Files @{ $Name = $Content }
+        return @{ Source = Join-Path $Directory $Name; Dir = $Destination; PinKey = $PinKey }
+    }
+
     It 'installs pinned files that match, and lays out bin + licences' {
         Invoke-InTestDir { param($dir)
             $src = Join-Path $dir 'src'; $root = Join-Path $dir 'root'
-            New-Item -ItemType Directory -Force -Path $src | Out-Null
-            $a = Join-Path $src 'libLiteRtWebGpuAccelerator.dll'; Set-Content -LiteralPath $a -Value 'acc' -NoNewline
-            $l = Join-Path $src 'LICENSE-MS.txt'; Set-Content -LiteralPath $l -Value 'terms' -NoNewline
             $payload = @(
-                @{ Source = $a; Dir = 'bin'; PinKey = 'OA_TEST_LLM_PIN' }
-                @{ Source = $l; Dir = 'licenses\directx-shader-compiler'; PinKey = '' }
+                New-LlmPayloadEntry -Directory $src -Name 'libLiteRtWebGpuAccelerator.dll' -Content 'acc'
+                New-LlmPayloadEntry -Directory $src -Name 'LICENSE-MS.txt' -Content 'terms' -Destination 'licenses\directx-shader-compiler' -PinKey ''
             )
-            Invoke-WithEnv @{ OA_TEST_LLM_PIN = (Get-FileHash -LiteralPath $a -Algorithm SHA256).Hash.ToLowerInvariant() } {
+            Invoke-WithEnv @{ OA_TEST_LLM_PIN = (Get-FileHash -LiteralPath $payload[0].Source -Algorithm SHA256).Hash.ToLowerInvariant() } {
                 Install-LitertLmGpuPayload -Payload $payload -Root $root
             }
             Assert-True (Test-Path (Join-Path $root 'bin\libLiteRtWebGpuAccelerator.dll')) 'DLL next to the exe'
@@ -267,9 +270,8 @@ Describe 'Build-LitertLmBazel: the GPU payload' {
 
     It 'refuses a hash mismatch, an unset pin and a missing file, before copying' {
         Invoke-InTestDir { param($dir)
-            $a = Join-Path $dir 'libwebgpu_dawn.dll'; Set-Content -LiteralPath $a -Value 'dawn' -NoNewline
             $root = Join-Path $dir 'root'
-            $payload = @(@{ Source = $a; Dir = 'bin'; PinKey = 'OA_TEST_LLM_PIN' })
+            $payload = @(New-LlmPayloadEntry -Directory $dir -Name 'libwebgpu_dawn.dll' -Content 'dawn')
             Invoke-WithEnv @{ OA_TEST_LLM_PIN = ('0' * 64) } {
                 Assert-Throws { Install-LitertLmGpuPayload -Payload $payload -Root $root } 'mismatch' -MessagePattern 'pins 0{64}'
             }
@@ -305,11 +307,9 @@ Describe 'rocm-checks\LiteRtLm.ps1' {
     It 'passes a complete layout on file presence' {
         Invoke-InTestDir { param($dir)
             $dll = @('libLiteRtWebGpuAccelerator.dll', 'dxil.dll')
-            foreach ($rel in @('bin\litert_lm_main.exe', 'licenses\directx-shader-compiler\LICENSE-MS.txt') + @($dll | ForEach-Object { "bin\$_" })) {
-                $p = Join-Path $dir $rel
-                New-Item -ItemType Directory -Force -Path (Split-Path $p) | Out-Null
-                Set-Content -LiteralPath $p -Value 'x'
-            }
+            $files = @{}
+            foreach ($rel in @('bin\litert_lm_main.exe', 'licenses\directx-shader-compiler\LICENSE-MS.txt') + @($dll | ForEach-Object { "bin\$_" })) { $files[$rel] = "x`r`n" }
+            Write-TestFileTree -Root $dir -Files $files
             Assert-Equal 0 @(Get-LiteRtLmFileFinding -Root $dir -Dll $dll).Count 'complete'
         }
     }

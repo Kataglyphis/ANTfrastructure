@@ -2,9 +2,12 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# A dependency-free leaf with one consumer: see docs/windows-build-resources.md § The Windows cache, tier by tier
+# TVM wheel metadata and assembly: see docs/windows-build-resources.md § The Windows cache, tier by tier
 
 Set-StrictMode -Version Latest
+
+if (-not (Get-Module -Name 'WindowsNative.Common')) { Import-Module (Join-Path $PSScriptRoot 'WindowsNative.Common.psm1') }
+
 
 # The submodule's nearest v* tag, else TVM's apache-tvm-ffi>= bound: the version both assembled wheels resolve against.
 function Get-VendoredTvmFfiVersion {
@@ -66,3 +69,38 @@ function Get-PyprojectDependencies {
 }
 
 Export-ModuleMember -Function Get-VendoredTvmFfiVersion, Write-AssembledWheelDistInfo, Get-PyprojectDependencies
+
+function New-AssembledPythonWheel {
+    param(
+        [Parameter(Mandatory)][hashtable]$Metadata,
+        [Parameter(Mandatory)][string]$PackExe,
+        [Parameter(Mandatory)][string]$OutDir
+    )
+    [void](Write-AssembledWheelDistInfo @Metadata)
+    $packageRoot = $Metadata.PackageRoot
+    $null = New-Item -Path $OutDir -ItemType Directory -Force
+    $before = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | ForEach-Object FullName)
+    $commandLine = '"{0}" -m wheel pack "{1}" --dest-dir "{2}"' -f $PackExe, $packageRoot, $OutDir
+    [void](Invoke-ShieldedNative -Label "wheel pack $(Split-Path $packageRoot -Leaf)" -CommandLine $commandLine)
+    $packed = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | Where-Object { $_.FullName -notin $before })
+    if ($packed.Count -ne 1) { throw "TVM cross: wheel pack left $($packed.Count) new wheel(s) in $OutDir, not one" }
+    return $packed[0].FullName
+}
+
+Export-ModuleMember -Function New-AssembledPythonWheel
+
+function Initialize-AssembledPythonPackage {
+    param(
+        [Parameter(Mandatory)][string]$SourcePackage,
+        [Parameter(Mandatory)][string]$PackageRoot,
+        [Parameter(Mandatory)][string]$PackageName,
+        [Parameter(Mandatory)][string[]]$Library
+    )
+    $package = Join-Path $PackageRoot $PackageName
+    $libraryRoot = Join-Path $package 'lib'
+    $null = New-Item -Path $libraryRoot -ItemType Directory -Force
+    Copy-Item -Path (Join-Path $SourcePackage '*') -Destination $package -Recurse -Force
+    foreach ($file in $Library) { Copy-Item -LiteralPath $file -Destination $libraryRoot -Force }
+}
+
+Export-ModuleMember -Function Initialize-AssembledPythonPackage

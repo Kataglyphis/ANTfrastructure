@@ -37,15 +37,7 @@ function Get-FfmpegAmfExpectation {
 # $Listing maps encoders/decoders/filters/hwaccels/version to ffmpeg's output text.
 function Get-FfmpegAmfListingFinding {
     param([Parameter(Mandatory)][hashtable]$Listing)
-    $expected = Get-FfmpegAmfExpectation
-    foreach ($kind in $expected.Keys) {
-        foreach ($name in $expected[$kind]) {
-            if (-not (Test-FfmpegListingRow -Kind $kind -Name $name -Text ([string]$Listing[$kind]))) { "FFmpeg: ffmpeg -$kind does not list $name" }
-        }
-    }
-    if ([string]$Listing['version'] -notmatch '--enable-amf\b') {
-        'FFmpeg: the -version configuration line lacks --enable-amf'
-    }
+    Get-FfmpegFeatureListingFinding -Listing $Listing -Expected (Get-FfmpegAmfExpectation) -Backend amf
 }
 
 # Names at n9.0.2, twin of Get-FfmpegVulkanConfigSymbol; hwdecoders' `-h decoder=` must list the vulkan device.
@@ -63,21 +55,28 @@ function Get-FfmpegVulkanExpectation {
 # $Listing as for AMF, plus 'decoder=<name>' keys holding `ffmpeg -h decoder=<name>` output.
 function Get-FfmpegVulkanListingFinding {
     param([Parameter(Mandatory)][hashtable]$Listing)
-    $expected = Get-FfmpegVulkanExpectation
-    foreach ($kind in 'encoders', 'filters', 'hwaccels') {
-        foreach ($name in $expected[$kind]) {
+    Get-FfmpegFeatureListingFinding -Listing $Listing -Expected (Get-FfmpegVulkanExpectation) -Backend vulkan
+}
+
+function Get-FfmpegFeatureListingFinding {
+    param(
+        [Parameter(Mandatory)][hashtable]$Listing,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Expected,
+        [Parameter(Mandatory)][ValidateSet('amf', 'vulkan')][string]$Backend
+    )
+    foreach ($kind in @($Expected.Keys | Where-Object { $_ -ne 'hwdecoders' })) {
+        foreach ($name in $Expected[$kind]) {
             if (-not (Test-FfmpegListingRow -Kind $kind -Name $name -Text ([string]$Listing[$kind]))) { "FFmpeg: ffmpeg -$kind does not list $name" }
         }
     }
-    # print_codec's hw-config line; HWACCEL_VULKAN(x) is in it only when x_vulkan_hwaccel was built.
-    foreach ($decoder in $expected.hwdecoders) {
-        if ([string]$Listing["decoder=$decoder"] -notmatch '(?m)^[ \t]*Supported hardware devices:[^\r\n]*[ \t]vulkan(?=[ \t\r]|$)') {
-            "FFmpeg: ffmpeg -h decoder=$decoder does not list the vulkan device (no ${decoder}_vulkan hwaccel)"
+    if ($Expected.Contains('hwdecoders')) {
+        foreach ($decoder in $Expected['hwdecoders']) {
+            if ([string]$Listing["decoder=$decoder"] -notmatch '(?m)^[ \t]*Supported hardware devices:[^\r\n]*[ \t]vulkan(?=[ \t\r]|$)') {
+                "FFmpeg: ffmpeg -h decoder=$decoder does not list the vulkan device (no ${decoder}_vulkan hwaccel)"
+            }
         }
     }
-    if ([string]$Listing['version'] -notmatch '--enable-vulkan\b') {
-        'FFmpeg: the -version configuration line lacks --enable-vulkan'
-    }
+    if ([string]$Listing['version'] -notmatch "--enable-$Backend\b") { "FFmpeg: the -version configuration line lacks --enable-$Backend" }
 }
 
 # A static vulkan-1.dll import would stop every FFmpeg consumer on a host without a loader (Server Core ships none).
@@ -132,7 +131,7 @@ Get-FfmpegAmfInstallFinding -Prefix (Split-Path $ffBin -Parent)
 $archModule = @((Join-Path $PSScriptRoot '..\..\modules\WindowsTargetArch.Common.psm1'),
     (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1')) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $archModule) { return "FFmpeg: WindowsTargetArch.Common.psm1 not found beside $PSScriptRoot, so no PE import was read" }
-if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $archModule }
+Import-Module $archModule
 $imports = [ordered]@{}
 foreach ($pe in @(Get-ChildItem -LiteralPath $ffBin -File | Where-Object { $_.Extension -in '.dll', '.exe' })) {
     $imports[$pe.Name] = @(Get-PeImportNames -Path $pe.FullName -IncludeDelayLoad)

@@ -24,6 +24,58 @@ Write-Host "=== ONNX TU replay probe ($Tu @ $OrtRef) nonce=$Nonce ==="
 Import-Module 'C:\bkmnt\modules\WindowsSourceBuild.Common.psm1' -Force
 Enter-VsDevCmdEnvironment
 
+function Get-ReplayFileMatchCount {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Pattern,
+        [switch]$SimpleMatch, [Management.Automation.ActionPreference]$ReadErrorAction = 'SilentlyContinue')
+    $total = Select-String -Path $Path -Pattern $Pattern -SimpleMatch:$SimpleMatch -AllMatches -ErrorAction $ReadErrorAction |
+        ForEach-Object {
+            if ($SimpleMatch) { [regex]::Matches($_.Line, [regex]::Escape($Pattern), [Text.RegularExpressions.RegexOptions]::IgnoreCase).Count }
+            else { $_.Matches.Count }
+        } | Measure-Object -Sum
+    if ($null -eq $total) { return 0 }
+    return [int]$total.Sum
+}
+
+function Write-ReplayDifference {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Reference,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Difference,
+        [Parameter(Mandatory)][string]$OnlyReferenceLabel, [Parameter(Mandatory)][string]$OnlyDifferenceLabel)
+    Compare-Object $Reference $Difference | ForEach-Object {
+        $tag = if ($_.SideIndicator -eq '<=') { $OnlyReferenceLabel } else { $OnlyDifferenceLabel }
+        Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
+    }
+}
+
+function Get-ReplayStepFacts {
+    param([Parameter(Mandatory)][string]$Line, [Parameter(Mandatory)][Collections.IDictionary]$Rules,
+        [Parameter(Mandatory)][string]$DefaultKind, [Parameter(Mandatory)][string]$DefinePattern)
+    $kind = $DefaultKind
+    foreach ($rule in $Rules.GetEnumerator()) {
+        if ($Line -match $rule.Key) { $kind = $rule.Value; break }
+    }
+    return [pscustomobject]@{ Kind = $kind; Defines = [regex]::Matches($Line, $DefinePattern).Count }
+}
+
+function Measure-ReplayIntermediate {
+    param([Parameter(Mandatory)][string]$BareDirectory, [Parameter(Mandatory)][string]$WrappedDirectory,
+        [Parameter(Mandatory)][string[]]$Patterns, [switch]$SimpleMatch, [switch]$Sort)
+    foreach ($pair in @(@('bare', $BareDirectory), @('wrap', $WrappedDirectory))) {
+        $files = @(Get-ChildItem $pair[1] -File -ErrorAction SilentlyContinue)
+        if ($Sort) { $files = @($files | Sort-Object Name) }
+        foreach ($file in $files) {
+            $counts = @(foreach ($pattern in $Patterns) {
+                Get-ReplayFileMatchCount -Path $file.FullName -Pattern $pattern -SimpleMatch:$SimpleMatch
+            })
+            [pscustomobject]@{ Side = $pair[0]; File = $file; Counts = $counts }
+        }
+    }
+}
+
+function Get-ReplaySymbols {
+    param([Parameter(Mandatory)][string]$Path)
+    (& llvm-nm --defined-only $Path 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
+}
+
 $null = New-Item -ItemType Directory -Force -Path $WorkDir
 Set-Location $WorkDir
 
@@ -91,8 +143,8 @@ if ($wrappedExit -ne 0) { throw "wrapped compile failed ($wrappedExit)" }
 Copy-Item $obj "$WorkDir\wrapped.obj" -Force
 
 # 5. Verdict
-$bareSyms = (& llvm-nm --defined-only "$WorkDir\bare.obj" 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
-$wrapSyms = (& llvm-nm --defined-only "$WorkDir\wrapped.obj" 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
+$bareSyms = Get-ReplaySymbols -Path "$WorkDir\bare.obj"
+$wrapSyms = Get-ReplaySymbols -Path "$WorkDir\wrapped.obj"
 $missing = @(Compare-Object $bareSyms $wrapSyms | Where-Object SideIndicator -eq '<=' | ForEach-Object InputObject |
     # ??_C@ string literals embed cudafe's randomized module id, so only code/data symbols count as a miss.
     Where-Object { $_ -notmatch '^\?\?_C@' })
@@ -113,10 +165,7 @@ $execTokens = @([regex]::Matches($execLine, '"((?:[^"\\]|\\.)*)"') | ForEach-Obj
 $planD = @($planTokens | Where-Object { $_ -match '^[-/](D|FI|I)' } | Sort-Object -Unique)
 $execD = @($execTokens | Where-Object { $_ -match '^[-/](D|FI|I)' } | Sort-Object -Unique)
 Write-Host ("plan host-step -D/-FI/-I tokens: {0}; sccache host-step: {1}" -f $planD.Count, $execD.Count)
-Compare-Object $planD $execD | ForEach-Object {
-    $tag = if ($_.SideIndicator -eq '<=') { 'ONLY-IN-PLAN' } else { 'ONLY-IN-EXEC' }
-    Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
-}
+Write-ReplayDifference -Reference $planD -Difference $execD -OnlyReferenceLabel 'ONLY-IN-PLAN' -OnlyDifferenceLabel 'ONLY-IN-EXEC'
 
 # 6e. Preprocess define delta: sccache preprocesses cudafe++'s input itself, so its define set picks the #ifdef branches.
 $planPPLine = ($planLines | Select-String ' -E |\-EP |/EP ' | Select-Object -Last 1).Line
@@ -129,10 +178,7 @@ if ($planPPLine -and $execPPLine) {
         $execDefs = @([regex]::Matches($execPPLine, '-D([^"\\]+)') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
     }
     Write-Host ("define delta: plan={0} exec={1}" -f $planDefs.Count, $execDefs.Count)
-    Compare-Object $planDefs $execDefs | ForEach-Object {
-        $tag = if ($_.SideIndicator -eq '<=') { 'LOST-BY-SCCACHE' } else { 'ADDED-BY-SCCACHE' }
-        Write-Host ("  {0}: {1}" -f $tag, $_.InputObject)
-    }
+    Write-ReplayDifference -Reference $planDefs -Difference $execDefs -OnlyReferenceLabel 'LOST-BY-SCCACHE' -OnlyDifferenceLabel 'ADDED-BY-SCCACHE'
 } else {
     Write-Host ("define delta: line capture failed (plan={0} exec={1})" -f [bool]$planPPLine, [bool]$execPPLine)
 }
@@ -158,16 +204,14 @@ Write-Chunked 'execFE|' $execFE
 Write-Host '--- per-step USE_CUDA accounting (plan) ---'
 $planLines | Select-String 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' | ForEach-Object {
     $l = $_.Line
-    $label = if ($l -match 'cudafe\+\+') { 'cudafe++' } elseif ($l -match 'cicc') { 'cicc' }
-             elseif ($l -match '-EP|/EP|-E |/E ') { 'preprocess' } else { 'host-cl' }
-    Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $label, ([regex]::Matches($l, '[-/]D')).Count, ($l -match 'DUSE_CUDA'))
+    $facts = Get-ReplayStepFacts -Line $l -Rules ([ordered]@{ 'cudafe\+\+' = 'cudafe++'; 'cicc' = 'cicc'; '-EP|/EP|-E |/E ' = 'preprocess' }) -DefaultKind host-cl -DefinePattern '[-/]D'
+    Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $facts.Kind, $facts.Defines, ($l -match 'DUSE_CUDA'))
 }
 Write-Host '--- per-step USE_CUDA accounting (sccache executed) ---'
 Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'get_cached_or_compile|msvc\] preprocess|creating.*command' | ForEach-Object {
     $l = $_.Line
-    $label = if ($l -match 'module_id') { 'cudafe++' } elseif ($l -match 'compute_\d+\.ptx') { 'cicc' }
-             elseif ($l -match 'preprocess') { 'preprocess' } elseif ($l -match '\.cu\.obj') { 'host-cl' } else { 'other' }
-    Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $label, ([regex]::Matches($l, '"-D|\\"-D|[-/]D')).Count, ($l -match 'USE_CUDA'))
+    $facts = Get-ReplayStepFacts -Line $l -Rules ([ordered]@{ 'module_id' = 'cudafe++'; 'compute_\d+\.ptx' = 'cicc'; 'preprocess' = 'preprocess'; '\.cu\.obj' = 'host-cl' }) -DefaultKind other -DefinePattern '"-D|\\"-D|[-/]D'
+    Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $facts.Kind, $facts.Defines, ($l -match 'USE_CUDA'))
 }
 
 # 6. nvcc's plan vs sccache's executed steps, on stdout since the container fs dies with the RUN.
@@ -199,30 +243,19 @@ $keepExit = $LASTEXITCODE
 & $sccache --stop-server 2>&1 | Out-Null
 if ($keepExit -ne 0) { throw "wrapped --keep compile failed ($keepExit)" }
 
-foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
-    $side = $pair[0]; $dir = $pair[1]
-    Get-ChildItem $dir -File -ErrorAction SilentlyContinue | ForEach-Object {
-        $ddd = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxWarpForwardIddd' -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
-        $fff = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxWarpForwardIfff' -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
-        if ($ddd -or $fff) {
-            Write-Host ("stub-count {0,-4} {1,-40} ddd={2,-5} fff={3}" -f $side, $_.Name, [int]$ddd, [int]$fff)
-        }
+Measure-ReplayIntermediate -BareDirectory $keepBare -WrappedDirectory $keepWrap -Patterns @('BiasSoftmaxWarpForwardIddd', 'BiasSoftmaxWarpForwardIfff') | ForEach-Object {
+    if ($_.Counts[0] -or $_.Counts[1]) {
+        Write-Host ("stub-count {0,-4} {1,-40} ddd={2,-5} fff={3}" -f $_.Side, $_.File.Name, $_.Counts[0], $_.Counts[1])
     }
 }
 
-# 8. .ii files carry unmangled names, so count the instantiations textually and check the defines across all legs.
-foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
-    $side = $pair[0]; $dir = $pair[1]
-    Get-ChildItem $dir -File -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object {
-        $dbl = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxImpl<double' -SimpleMatch -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
-        $flt = (Select-String -Path $_.FullName -Pattern 'BiasSoftmaxImpl<float' -SimpleMatch -AllMatches -ErrorAction SilentlyContinue | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
-        Write-Host ("ii-scan {0,-4} {1,-44} {2,10:N0} B  dbl={3,-4} flt={4}" -f $side, $_.Name, $_.Length, [int]$dbl, [int]$flt)
-    }
+Measure-ReplayIntermediate -BareDirectory $keepBare -WrappedDirectory $keepWrap -Patterns @('BiasSoftmaxImpl<double', 'BiasSoftmaxImpl<float') -SimpleMatch -Sort | ForEach-Object {
+    Write-Host ("ii-scan {0,-4} {1,-44} {2,10:N0} B  dbl={3,-4} flt={4}" -f $_.Side, $_.File.Name, $_.File.Length, $_.Counts[0], $_.Counts[1])
 }
 $keepLog = Join-Path $WorkDir 'sccache-keep.log'
 if (Test-Path $keepLog) {
     foreach ($needle in @('CUDA_DOUBLE_MATH_FUNCTIONS', '__CUDACC__', '__CUDACC_VER_MAJOR__')) {
-        $n = (Select-String -Path $keepLog -Pattern $needle -SimpleMatch -AllMatches | ForEach-Object { $_.Matches.Count } | Measure-Object -Sum).Sum
+        $n = Get-ReplayFileMatchCount -Path $keepLog -Pattern $needle -SimpleMatch -ReadErrorAction Stop
         Write-Host ("define-presence in sccache debug log: {0} = {1}" -f $needle, [int]$n)
     }
 }
@@ -231,10 +264,8 @@ if (Test-Path $keepLog) {
 if (Test-Path $keepLog) {
     Get-Content $keepLog | Select-String 'transformed nvcc command' | ForEach-Object {
         $l = $_.Line
-        $kind = if ($l -match 'cudafe') { 'cudafe++' } elseif ($l -match 'cicc') { 'cicc' }
-                elseif ($l -match 'ptxas') { 'ptxas' } elseif ($l -match 'fatbinary') { 'fatbin' }
-                elseif ($l -match 'cl\.exe|cl ') { 'cl' } else { '?' }
-        Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $kind, ([regex]::Matches($l, '-D')).Count, ($l -match 'CUDA_DOUBLE_MATH'), ($l -match '__CUDACC__'), $l.Length)
+        $facts = Get-ReplayStepFacts -Line $l -Rules ([ordered]@{ 'cudafe' = 'cudafe++'; 'cicc' = 'cicc'; 'ptxas' = 'ptxas'; 'fatbinary' = 'fatbin'; 'cl\.exe|cl ' = 'cl' }) -DefaultKind '?' -DefinePattern '-D'
+        Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $facts.Kind, $facts.Defines, ($l -match 'CUDA_DOUBLE_MATH'), ($l -match '__CUDACC__'), $l.Length)
     }
     $clLine = (Get-Content $keepLog | Select-String 'transformed nvcc command' | Where-Object { $_.Line -match 'cpp1\.ii|cpp4\.ii' } | Select-Object -First 1).Line
     if ($clLine) { for ($i = 0; $i -lt [Math]::Min($clLine.Length, 4600); $i += 230) { Write-Host ("xformPP| " + $clLine.Substring($i, [Math]::Min(230, $clLine.Length - $i))) } }

@@ -292,6 +292,12 @@ function Invoke-BuildExternal {
     }
 }
 
+function Set-BuildOperationDuration {
+    param([pscustomobject]$Context, [string]$Name, [System.Diagnostics.Stopwatch]$Stopwatch)
+    if ($null -eq $Context.Results.Durations) { $Context.Results.Durations = [ordered]@{} }
+    $Context.Results.Durations[$Name] = $Stopwatch.Elapsed.TotalSeconds
+}
+
 function Invoke-BuildOptional {
     param(
         [Parameter(Mandatory)]
@@ -315,10 +321,7 @@ function Invoke-BuildOptional {
         Write-BuildLogWarning -Context $Context -Message "$Name failed, continuing. Details: $($_.Exception.Message)"
     }
 
-    if ($null -eq $Context.Results.Durations) {
-        $Context.Results.Durations = [ordered]@{}
-    }
-    $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
+    Set-BuildOperationDuration -Context $Context -Name $Name -Stopwatch $stopwatch
 }
 
 # All three buckets at once, so an all-skip batch reaches the no-gate-ran arm instead of a null reference.
@@ -490,19 +493,13 @@ function Invoke-BuildStep {
         $Context.Results.Succeeded.Add($StepName) | Out-Null
         Write-BuildLogSuccess -Context $Context -Message "<<< Completed: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
         
-        if ($null -eq $Context.Results.Durations) {
-            $Context.Results.Durations = [ordered]@{}
-        }
-        $Context.Results.Durations[$StepName] = $stopwatch.Elapsed.TotalSeconds
+        Set-BuildOperationDuration -Context $Context -Name $StepName -Stopwatch $stopwatch
         
         return $true
     } catch {
         $stopwatch.Stop()
         $errorMessage = $_.Exception.Message
-        if ($null -eq $Context.Results.Durations) {
-            $Context.Results.Durations = [ordered]@{}
-        }
-        $Context.Results.Durations[$StepName] = $stopwatch.Elapsed.TotalSeconds
+        Set-BuildOperationDuration -Context $Context -Name $StepName -Stopwatch $stopwatch
         $Context.Results.Errors[$StepName] = $errorMessage
 
         if ($AllowFailure) {

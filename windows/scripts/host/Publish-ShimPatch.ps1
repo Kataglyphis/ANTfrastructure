@@ -43,16 +43,9 @@ $ErrorActionPreference = 'Stop'
 
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
-# Two lines, not Optimize-HostVhdx's one: a verbatim copy would grow the reviewed code-dupes block.
-$sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
-Import-Module $sharedModulePath -Force
-$hostLog = New-HostMaintenanceLog -Name 'deploy-shim-patch' -RepoRoot $repoRoot -LogPath $LogPath
+$hostLog = New-HostMaintenanceLog -Name 'deploy-shim-patch' -LogPath $LogPath
 $LogPath = $hostLog.LogPath
-# Script-scope wrappers: they close over $hostLog, which a module function could not see.
-function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
-function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$EnvironmentService"
 
@@ -61,48 +54,46 @@ $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$EnvironmentService"
 function Show-State {
     if (Test-Path $InstallPath) {
         $item = Get-Item $InstallPath
-        Write-Step ('installed : {0:N0} bytes, {1}' -f $item.Length, $item.LastWriteTime)
+        Write-HostStep -Log $hostLog ('installed : {0:N0} bytes, {1}' -f $item.Length, $item.LastWriteTime)
     } else {
-        Write-Step "installed : MISSING at $InstallPath" 'Red'
+        Write-HostStep -Log $hostLog "installed : MISSING at $InstallPath" 'Red'
     }
 
     $backups = @(Get-ChildItem "$InstallPath.*" -ErrorAction SilentlyContinue)
     if ($backups.Count -gt 0) {
         foreach ($b in $backups) {
-            Write-Step ('backup    : {0,-12} {1,14:N0} bytes, {2}' -f $b.Extension, $b.Length, $b.LastWriteTime)
+            Write-HostStep -Log $hostLog ('backup    : {0,-12} {1,14:N0} bytes, {2}' -f $b.Extension, $b.Length, $b.LastWriteTime)
         }
     } else {
-        Write-Step 'backup    : none'
+        Write-HostStep -Log $hostLog 'backup    : none'
     }
 
     # Whether the live binary still matches the hash Assert-ShimPatch checks.
-    try {
-        Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+    Invoke-HostMaintenanceTask -Log $hostLog -FailureTemplate "gate hash : cannot read ({0})" -Operation {
+        Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1')
         $statePath = Get-ShimPatchStatePath
         if (Test-Path $statePath) {
             $state = Get-Content $statePath -Raw | ConvertFrom-Json
             $live = if (Test-Path $InstallPath) { (Get-FileHash -Algorithm SHA256 -Path $InstallPath).Hash } else { '' }
             $verdict = if ($live -eq $state.sha256) { 'MATCHES live binary' } else { 'DOES NOT MATCH live binary' }
             $color = if ($live -eq $state.sha256) { 'Green' } else { 'Red' }
-            Write-Step ('gate hash : {0} ({1}, recorded {2}, variant {3})' -f
+            Write-HostStep -Log $hostLog ('gate hash : {0} ({1}, recorded {2}, variant {3})' -f
                 $state.sha256.Substring(0, 12), $verdict, $state.deployedAt, $state.variant) $color
         } else {
-            Write-Step "gate hash : none recorded ($statePath) - Assert-ShimPatch falls back to the size heuristic" 'Yellow'
+            Write-HostStep -Log $hostLog "gate hash : none recorded ($statePath) - Assert-ShimPatch falls back to the size heuristic" 'Yellow'
         }
-    } catch {
-        Write-Step ("gate hash : cannot read ({0})" -f $_.Exception.Message) 'Yellow'
-    }
+    }.GetNewClosure()
 
     try {
         # Stock containerd has no Environment value, and a bare .Environment read throws under StrictMode.
         $current = (Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue)
         if ($current -and $current.Environment) {
-            foreach ($e in $current.Environment) { Write-Step "env       : $e" }
+            foreach ($e in $current.Environment) { Write-HostStep -Log $hostLog "env       : $e" }
         } else {
-            Write-Step "env       : $EnvironmentService has no Environment value"
+            Write-HostStep -Log $hostLog "env       : $EnvironmentService has no Environment value"
         }
     } catch {
-        Write-Step ("env       : cannot read {0} ({1})" -f $svcKey, $_.Exception.Message) 'Yellow'
+        Write-HostStep -Log $hostLog ("env       : cannot read {0} ({1})" -f $svcKey, $_.Exception.Message) 'Yellow'
     }
 }
 
@@ -111,10 +102,10 @@ function Show-State {
 $isAdmin = Test-Elevated
 
 if ($ReportOnly) {
-    Write-Step 'ReportOnly - nothing will be changed'
-    if (-not $isAdmin) { Write-Step 'not elevated: the service environment may read as unavailable' 'Yellow' }
+    Write-HostStep -Log $hostLog 'ReportOnly - nothing will be changed'
+    if (-not $isAdmin) { Write-HostStep -Log $hostLog 'not elevated: the service environment may read as unavailable' 'Yellow' }
     Show-State
-    Save-Transcript
+    Save-HostMaintenanceLog -Log $hostLog
     return
 }
 
@@ -126,18 +117,18 @@ if ($RecordCurrent) {
     if ((Test-Path $stockBackup) -and -not $Force) {
         $liveHash = (Get-FileHash -Algorithm SHA256 -Path $InstallPath).Hash
         if ($liveHash -eq (Get-FileHash -Algorithm SHA256 -Path $stockBackup).Hash) {
-            Save-Transcript
+            Save-HostMaintenanceLog -Log $hostLog
             throw ("the installed binary is IDENTICAL to the stock backup $stockBackup - recording it would teach the " +
                 'build gate that an unpatched shim is acceptable. Deploy the patched build first (-ShimPath), or pass ' +
                 '-Force if you are certain the .orig backup is not actually stock.')
         }
     }
     $statePath = Write-ShimPatchState -ShimPath $InstallPath -Variant 'recorded-in-place' -StockBackupPath $stockBackup
-    Write-Step "recorded the installed shim's hash for the build gate: $statePath" 'Green'
+    Write-HostStep -Log $hostLog "recorded the installed shim's hash for the build gate: $statePath" 'Green'
     Show-State
-    Write-Step 'NOT a verification that the binary is actually patched - it records what is there.' 'Yellow'
-    Write-Step 'Only use this when you know the installed shim IS the patched build.' 'Yellow'
-    Save-Transcript
+    Write-HostStep -Log $hostLog 'NOT a verification that the binary is actually patched - it records what is there.' 'Yellow'
+    Write-HostStep -Log $hostLog 'Only use this when you know the installed shim IS the patched build.' 'Yellow'
+    Save-HostMaintenanceLog -Log $hostLog
     return
 }
 
@@ -155,23 +146,15 @@ if ($Restore) {
     throw "shim binary not found: $source"
 }
 
-Write-Step '--- before ---'
+Write-HostStep -Log $hostLog '--- before ---'
 Show-State
-Write-Step ('source    : {0:N0} bytes  {1}' -f (Get-Item $source).Length, $source)
+Write-HostStep -Log $hostLog ('source    : {0:N0} bytes  {1}' -f (Get-Item $source).Length, $source)
 
 if (-not $Force) {
-    $live = @(Get-Process -Name $BlockingProcess -ErrorAction SilentlyContinue)
-    if ($live.Count -gt 0) {
-        Save-Transcript
-        throw ("{0} live process(es) ({1}) - stopping the build services kills their solves. Wait, or pass -Force." -f
-            $live.Count, (($live | ForEach-Object ProcessName | Sort-Object -Unique) -join ', '))
-    }
-    $shims = @(Get-Process -Name ([System.IO.Path]::GetFileNameWithoutExtension($InstallPath)) -ErrorAction SilentlyContinue)
-    if ($shims.Count -gt 0) {
-        Save-Transcript
-        throw ("{0} shim process(es) alive (pids: {1}) - containers are still running and the binary is locked." -f
-            $shims.Count, (($shims | ForEach-Object Id) -join ', '))
-    }
+    $null = Get-HostMaintenanceProcess -Name $BlockingProcess -Log $hostLog `
+        -FailureTemplate '{0} live process(es) ({1}) - stopping the build services kills their solves. Wait, or pass -Force.'
+    $null = Get-HostMaintenanceProcess -Name ([IO.Path]::GetFileNameWithoutExtension($InstallPath)) -Log $hostLog `
+        -FailureTemplate '{0} shim process(es) alive (pids: {2}) - containers are still running and the binary is locked.'
 }
 
 if (-not $PSCmdlet.ShouldProcess($InstallPath, "stop [$($Service -join ', ')], replace binary, restart")) { return }
@@ -188,23 +171,23 @@ try {
         $stockBackup = "$InstallPath.orig"
         if (-not (Test-Path $stockBackup)) {
             Copy-Item $InstallPath $stockBackup -Force -ErrorAction Stop
-            Write-Step "stock binary preserved as $stockBackup"
+            Write-HostStep -Log $hostLog "stock binary preserved as $stockBackup"
         }
         $stamp = "$InstallPath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Copy-Item $InstallPath $stamp -Force -ErrorAction Stop
-        Write-Step "previous binary preserved as $stamp"
+        Write-HostStep -Log $hostLog "previous binary preserved as $stamp"
     }
     Copy-Item $source $InstallPath -Force -ErrorAction Stop
     $swapped = $true
-    Write-Step ('installed {0:N0} bytes' -f (Get-Item $InstallPath).Length) 'Green'
+    Write-HostStep -Log $hostLog ('installed {0:N0} bytes' -f (Get-Item $InstallPath).Length) 'Green'
 } catch {
-    Write-Step ('SWAP ERROR: {0}' -f $_.Exception.Message) 'Red'
+    Write-HostMaintenanceError -Log $hostLog -ErrorRecord $_ -Template 'SWAP ERROR: {0}' -Color 'Red'
 }
 
 # --- record the hash Assert-ShimPatch checks (best-effort: it must never fail a swap that succeeded) ---
 if ($swapped) {
-    try {
-        Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+    Invoke-HostMaintenanceTask -Log $hostLog -FailureTemplate 'STATE ERROR (gate falls back to the size check): {0}' -Operation {
+        Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1')
         $stockBackup = "$InstallPath.orig"
         # Recording a restored stock binary would teach the gate to pass it; clearing falls back to the size check.
         $isStock = (Test-Path $stockBackup) -and
@@ -212,45 +195,41 @@ if ($swapped) {
         if ($isStock) {
             $statePath = Get-ShimPatchStatePath
             if (Test-Path $statePath) { Remove-Item $statePath -Force }
-            Write-Step "installed binary IS the stock shim - cleared the gate's recorded hash ($statePath)" 'Yellow'
+            Write-HostStep -Log $hostLog "installed binary IS the stock shim - cleared the gate's recorded hash ($statePath)" 'Yellow'
         } else {
             $variant = if ($Restore) { "restored$Restore" }
                 elseif ($ServiceEnvironment.Count -gt 0) { 'upstream-env' }
                 else { 'local-constant' }
             $statePath = Write-ShimPatchState -ShimPath $InstallPath -Variant $variant -StockBackupPath $stockBackup
-            Write-Step "recorded deployed hash for the build gate: $statePath" 'Green'
+            Write-HostStep -Log $hostLog "recorded deployed hash for the build gate: $statePath" 'Green'
         }
-    } catch {
-        Write-Step ('STATE ERROR (gate falls back to the size check): {0}' -f $_.Exception.Message) 'Yellow'
-    }
+    }.GetNewClosure()
 }
 
 # --- service environment -----------------------------------------------------
 
 if ($swapped -and $ServiceEnvironment.Count -gt 0) {
-    Write-Step "--- setting environment on $EnvironmentService ---"
-    try {
+    Write-HostStep -Log $hostLog "--- setting environment on $EnvironmentService ---"
+    Invoke-HostMaintenanceTask -Log $hostLog -FailureTemplate 'ENV ERROR: {0}' -FailureColor 'Red' -Operation {
         # Absent Environment reads as an empty list; not an if-expression, whose @() branch assigns $null.
         $prop = Get-ItemProperty -Path $svcKey -Name Environment -ErrorAction SilentlyContinue
         $existing = @()
         if ($prop) { $existing = @($prop.Environment) }
         $names = $ServiceEnvironment | ForEach-Object { ($_ -split '=', 2)[0] }
         $kept = @($existing | Where-Object { $_ -and (($_ -split '=', 2)[0]) -notin $names })
-        if ($kept.Count -gt 0) { Write-Step ('preserved: ' + ($kept -join ' | ')) }
+        if ($kept.Count -gt 0) { Write-HostStep -Log $hostLog ('preserved: ' + ($kept -join ' | ')) }
         $merged = $kept + $ServiceEnvironment
         Set-ItemProperty -Path $svcKey -Name Environment -Type MultiString -Value $merged -ErrorAction Stop
-        Write-Step ('environment now: ' + ((Get-ItemProperty $svcKey).Environment -join ' | ')) 'Green'
-    } catch {
-        Write-Step ('ENV ERROR: {0}' -f $_.Exception.Message) 'Red'
-    }
+        Write-HostStep -Log $hostLog ('environment now: ' + ((Get-ItemProperty $svcKey).Environment -join ' | ')) 'Green'
+    }.GetNewClosure()
 }
 
 # --- start -------------------------------------------------------------------
 
 Start-HostServices -Log $hostLog -Service $stopped
 
-Write-Step '--- after ---'
+Write-HostStep -Log $hostLog '--- after ---'
 Show-State
-Write-Step 'NOT YET PROVEN: a quiet log does not confirm the deployment took effect.' 'Yellow'
-Write-Step 'Verify behaviourally with the OpenCV canary (docs/windows-builds.md).' 'Yellow'
-Save-Transcript
+Write-HostStep -Log $hostLog 'NOT YET PROVEN: a quiet log does not confirm the deployment took effect.' 'Yellow'
+Write-HostStep -Log $hostLog 'Verify behaviourally with the OpenCV canary (docs/windows-builds.md).' 'Yellow'
+Save-HostMaintenanceLog -Log $hostLog

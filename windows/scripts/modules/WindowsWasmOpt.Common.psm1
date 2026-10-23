@@ -105,10 +105,11 @@ function Install-WasmOpt {
 
         $archivePath = Join-Path $CacheRoot $pin.Asset
         Invoke-DownloadWithRetry -Url $pin.Url -DestinationPath $archivePath
-        $actualSha = (Get-FileHash -Algorithm SHA256 $archivePath).Hash.ToLowerInvariant()
-        if ($actualSha -ne $pin.Sha256) {
+        try {
+            Assert-FileSha256 -Path $archivePath -Expected $pin.Sha256 -Label 'binaryen download checksum'
+        } catch {
             Remove-Item $archivePath -Force -ErrorAction SilentlyContinue
-            throw "binaryen download checksum mismatch: expected $($pin.Sha256), got $actualSha"
+            throw
         }
         # The tarball's top-level directory is already binaryen-<version>, so extract into the cache root.
         tar -xzf $archivePath -C $CacheRoot

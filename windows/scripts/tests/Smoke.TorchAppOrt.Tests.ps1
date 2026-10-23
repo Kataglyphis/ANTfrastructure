@@ -1,4 +1,6 @@
 #requires -Version 7.0
+
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
@@ -260,7 +262,7 @@ Describe 'Smoke §21: wiring in Test-Container.ps1' {
                         $n.GetCommandName() -eq 'Assert-Test' -and $n.Extent.Text -match [regex]::Escape($case.Name) }, $true))
             Assert-Equal 1 $a.Count "one Assert-Test '$($case.Name)'"
             $els = $a[0].CommandElements
-            foreach ($param in 'Condition', 'FailMessage') {
+            foreach ($param in 'Finding', 'FailMessage') {
                 $arg = $null
                 for ($i = 0; $i -lt $els.Count; $i++) {
                     if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -eq $param) {
@@ -271,8 +273,8 @@ Describe 'Smoke §21: wiring in Test-Container.ps1' {
                 $read = @($arg.FindAll({ param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
                         ForEach-Object { $_.VariablePath.UserPath } | Where-Object { $aspectOf.ContainsKey($_) } | Sort-Object -Unique)
                 Assert-Equal $case.Aspect (($read | ForEach-Object { $aspectOf[$_] }) -join ',') "-$param of '$($case.Name)' reads: $($read -join ',')"
-                if ($param -eq 'Condition') {
-                    Assert-Match '^\{\s*\$\w+\.Count -eq 0\s*\}(\.GetNewClosure\(\))?$' $arg.Extent.Text "'$($case.Name)' passes on zero findings only"
+                if ($param -eq 'Finding') {
+                    Assert-Match '^\$\w+$' $arg.Extent.Text "'$($case.Name)' passes on zero findings only"
                 }
             }
         }

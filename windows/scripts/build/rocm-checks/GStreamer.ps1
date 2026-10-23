@@ -162,7 +162,7 @@ function Get-GstPluginFinding {
 $archModule = @((Join-Path $PSScriptRoot '..\..\modules\WindowsTargetArch.Common.psm1'),
     (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1')) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 if (-not $archModule) { return "WindowsTargetArch.Common.psm1 not found beside $PSScriptRoot, so no import closure could be walked" }
-if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $archModule }
+Import-Module $archModule
 
 $searchDir = @(@("$env:SystemRoot\System32") + @($env:PATH -split ';') | ForEach-Object { "$_".Trim().Trim('"') } |
     Where-Object { $_ -and (Test-Path -LiteralPath $_ -PathType Container) } | Select-Object -Unique)

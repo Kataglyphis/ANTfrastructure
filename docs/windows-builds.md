@@ -2362,3 +2362,67 @@ The harness file-tree writer joins relative fixture paths with `Join-Path` so
 Windows separators retain their directory meaning when structural suites run on
 Linux. `Harness.Fixtures.Tests.ps1` keeps its nested path, bracket and content
 checks; all cases remain included in the lifted-module mutation baselines.
+
+Native GPU probes share process capture, timeout and process-tree cleanup in
+`WindowsNative.Common.psm1`. Callers retain trimmed or exact output and inherited
+or captured stderr; environment overrides affect the child only. JSON probes
+share temporary-source cleanup and last-report parsing while preserving Python
+arguments, stderr handling and failure diagnostics. A valid JSON report cannot
+excuse a failed interpreter. Smoke compilation shares scratch and artifact
+verdicts; required assertions still reach the aggregate and cross-target skips
+remain visible. Cold nested-consumer tests cover module helper visibility.
+
+Source builders share modules-before-ortmods leaf lookup without importing a
+larger dependency tree. Shared child-directory discovery retains provider order,
+caller filters and relative marker paths for GStreamer and Visual Studio; the
+source-build module reexports it without forcing a reload. The same directory
+lookup serves the ARM64 toolchain prerequisite check without changing warning
+or strict-failure policy. TVM package staging, dist-info creation and wheel packing
+share one owner; absent or multiple wheel outputs still fail. Bundle environment
+renderers share their ordered input model while retaining batch and PowerShell
+syntax. FFmpeg AMF and Vulkan listings share missing-entry verdicts and keep their
+backend-specific symbol sets. Compiler, GPU and installed-image behavior still
+requires the real chain and mandatory smoke gate. FFmpeg table queries must exit
+successfully even when partial output matches; scratch allocation or cleanup
+failures also fail the smoke operation.
+
+Consumer helpers share build duration accounting, container-client attempts,
+raw-byte tar transport, log pipelines, benchmark rows and delta rendering. Callers
+keep fatal versus optional results, tar quoting, benchmark locale handling and
+cross-runtime file masks. `Resolve-PathFromRoot` and
+`ConvertTo-MsixSigningPassword` are exported by `WindowsScripts.Shared.psm1`;
+Python app wrappers retain their public names and signing callers retain their
+empty or whitespace password policies. WasmOpt uses the shared SHA256 assertion;
+a mismatch still deletes the archive and fails before extraction.
+
+Isolation diagnostics carry `WindowsDiagnostics.Common.psm1` and
+`WindowsScripts.Shared.psm1`. They share Docker lookup, native transport, control
+checks and host evidence while retaining distinct verdicts. Host cleanup and
+repair scripts carry `WindowsHostMaintenance.Common.psm1` with Shared; its logger,
+filtered probes and live-build guards preserve each caller's protected operations
+and fatal or advisory policy. `Test-HostSetup.ps1` also carries
+`WindowsBuildKit.Common.psm1` for subnet checks. Malformed CIDR values fail the
+host check; the shared subnet API keeps throwing by default. ONNX replay literal
+counters now count all case-insensitive occurrences instead of always returning
+zero; regex counters and classifier precedence retain their separate policies.
+LLVM diagnostic modes share command parsing while keeping each mode's arguments.
+
+The harness also owns scoped fake-function restoration and recorded call state.
+`Invoke-WithFunctionModule -ScriptPath` loads selected functions without running
+top-level source; `-FixtureState` passes one object to initialization and the body,
+including empty collections. `Invoke-WithTestFunction -FixtureState` binds the
+same object as `$State` in the fake and passes it to the body without changing the
+fake's arguments. Both reject mixed state and explicit argument arrays.
+`Invoke-WithTestNativeCommand` shares argv recording and exit-code publication,
+then restores the parent's exit state even when the fixture body throws.
+`Invoke-InTestDir -Files` initializes a tree inside its cleanup scope. AST ancestry
+supports nearest-first filtering and an exclusive stop; command assertions reject
+missing, repeated, altered and unassigned sites. Suites using media wiring helpers
+carry `WindowsMedia.WiringFixture.psm1` beside the harness. Regression and mutation
+fixtures exercise these policies with independent expectations; they do not
+replace container, compiler, certificate or GPU acceptance.
+
+
+The Windows unit runner's discovery floor is 2,252 after a complete 2,275-test
+run. Keep that floor close to the measured suite count as coverage grows;
+missing or skipped suites fail rather than yielding a partial green result.

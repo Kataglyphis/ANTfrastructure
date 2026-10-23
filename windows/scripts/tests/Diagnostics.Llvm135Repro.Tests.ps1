@@ -11,7 +11,7 @@ if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue
 
 $script:Target = 'aarch64-pc-windows-msvc'
 . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\diagnostics\Invoke-LlvmAarch64Layout.ps1' `
-        -FunctionName 'Split-CommandLine', 'Get-CodegenFlags')
+        -FunctionName 'Split-CommandLine', 'Get-LlvmCompilePlan', 'Get-CodegenFlags')
 
 # Get-CodegenFlags reads $Target from its enclosing scope, as it does in the script.
 $Target = $script:Target
@@ -112,5 +112,29 @@ Describe 'llvm135 repro harness: what must be KEPT, because it shapes the layout
         foreach ($flag in @('/Gy', '/bigobj', '/Oi', '-std:c++17', '-MD', '-TP')) {
             Assert-True ($script:Flags -ccontains $flag) "$flag dropped"
         }
+    }
+}
+
+Describe 'llvm135 shared capture and codegen argument selection' {
+    It 'shares artifact filtering while retaining mode-specific preprocessing, codegen and operand policies' {
+        $tokens = @('sccache.exe', 'clang-cl.exe', '/O2', '/Ob2', '/D', 'NAME.cpp', '/I', 'include path',
+            '-imsvc', 'sdk path', '/FI', 'forced header', '/Fiold.i', '/Fpold.pch', '/Foout.obj', '/Fdout.pdb',
+            '-clang:-MFold.d', '/fp:precise', '-mllvm', '-inline-threshold=1', '/c', '--', 'source.cpp')
+        $codegen = Get-LlvmCompilePlan -Tokens $tokens
+        Assert-Equal '/fp:precise' ($codegen.Flags -join ',')
+        Assert-Equal 'source.cpp' $codegen.Source
+        $capture = Get-LlvmCompilePlan -Tokens $tokens -Preprocess
+        Assert-Equal 'source.cpp' $capture.Source
+        Assert-True ($capture.Flags -contains '/O2')
+        Assert-True ($capture.Flags -contains '/Ob2')
+        Assert-True ($capture.Flags -contains '/D')
+        Assert-True ($capture.Flags -contains 'include path')
+        Assert-True ($capture.Flags -contains '/Fiold.i')
+        Assert-True ($capture.Flags -contains '/Fpold.pch')
+        Assert-True ($capture.Flags -contains '-inline-threshold=1')
+        Assert-False ([bool]($capture.Flags -cmatch '^[-/]F[od]'))
+        Assert-False ([bool]($capture.Flags -match '^-clang:-M'))
+        Assert-False ($capture.Flags -contains '/c')
+        Assert-False ($capture.Flags -contains '--')
     }
 }

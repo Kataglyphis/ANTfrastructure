@@ -6,6 +6,7 @@ Import-Module (Join-Path $modDir 'WindowsWasmOpt.Common.psm1') -Force -DisableNa
 Import-Module (Join-Path $modDir 'WindowsContainerBuild.Reuse.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsSlang.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path $modDir 'WindowsVulkanValidation.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') -Force -DisableNameChecking
 
 Describe 'Invoke-WasmOpt (orchestrator)' {
 
@@ -24,164 +25,143 @@ Describe 'Invoke-WasmOpt (orchestrator)' {
         Set-Content -LiteralPath (Join-Path $dir 'wasm-opt.bat') -Value ($lines -join "`r`n") -Encoding ASCII
     }
 
+    function Invoke-WasmOptCase {
+        param([string]$Mode, [switch]$ExpectFailure)
+        Invoke-RecordedRetryFixture -Tool wasmopt -ToolSetup $newFakeWasmOpt -Mode $Mode -Body {
+            param($fixture)
+            if ($ExpectFailure) {
+                Assert-Throws { Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm' } 'both attempts failing must throw'
+            } else { Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm' }
+        }.GetNewClosure()
+    }
+
     It 'succeeds first try with exactly one invocation carrying input and output' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeWasmOpt $dir
-            $log = Join-Path $dir 'wasmopt.log'
-            Invoke-WithEnv @{ PATH = "$dir;$env:PATH"; WBT_WASMOPT_LOG = $log; WBT_WASMOPT_MODE = 'ok' } {
-                Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm'
-            }
-            $calls = @(Get-Content $log)
-            Assert-Equal 1 $calls.Count 'exactly one wasm-opt invocation'
-            Assert-Match 'in\.wasm' $calls[0] 'input forwarded'
-            Assert-Match 'out\.wasm' $calls[0] 'output forwarded'
-        }
+        $calls = (Invoke-WasmOptCase -Mode ok).Calls
+        Assert-Equal 1 $calls.Count 'exactly one wasm-opt invocation'
+        Assert-Match 'in\.wasm' $calls[0] 'input forwarded'
+        Assert-Match 'out\.wasm' $calls[0] 'output forwarded'
     }
 
     It 'retries ONCE with --all-features when the flagged run fails' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeWasmOpt $dir
-            $log = Join-Path $dir 'wasmopt.log'
-            Invoke-WithEnv @{ PATH = "$dir;$env:PATH"; WBT_WASMOPT_LOG = $log; WBT_WASMOPT_MODE = 'failfirst' } {
-                Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm'
-            }
-            $calls = @(Get-Content $log)
-            Assert-Equal 2 $calls.Count 'first attempt + one retry'
-            Assert-False ($calls[0] -match '--all-features') 'first attempt uses explicit feature flags'
-            Assert-Match '--all-features' $calls[1] 'retry escalates to --all-features'
-        }
+        $calls = (Invoke-WasmOptCase -Mode failfirst).Calls
+        Assert-Equal 2 $calls.Count 'first attempt + one retry'
+        Assert-False ($calls[0] -match '--all-features') 'first attempt uses explicit feature flags'
+        Assert-Match '--all-features' $calls[1] 'retry escalates to --all-features'
     }
 
-    It 'throws when both attempts fail' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeWasmOpt $dir
-            $log = Join-Path $dir 'wasmopt.log'
-            Invoke-WithEnv @{ PATH = "$dir;$env:PATH"; WBT_WASMOPT_LOG = $log; WBT_WASMOPT_MODE = 'fail' } {
-                Assert-Throws { Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm' } 'both attempts failing must throw'
-            }
-        }
-    }
+    It 'throws when both attempts fail' { $null = Invoke-WasmOptCase -Mode fail -ExpectFailure }
+
 }
 
 Describe 'Get-ReusableBuildContainer (orchestrator)' {
 
     # A function fake: a .bat routes '{{.State.Running}}|{{.Image}}' through cmd.exe, which eats the `|`.
-    $newFakeDocker = {
-        Set-Item function:global:WbtDockerFake {
-            $joined = $args -join ' '
-            Add-Content -LiteralPath $env:WBT_DOCKER_LOG -Value ("DOCKER " + $joined)
-            if ($joined -match '\{\{\.Id\}\}') {
-                if ($env:WBT_D_IMGID) { $global:LASTEXITCODE = 0; return $env:WBT_D_IMGID }
-                $global:LASTEXITCODE = 1; return
-            }
-            if ($joined -match 'State\.Running') {
-                if ($env:WBT_D_STATE) { $global:LASTEXITCODE = 0; return $env:WBT_D_STATE }
-                $global:LASTEXITCODE = 1; return
-            }
-            if ($args.Count -gt 0 -and $args[0] -eq 'inspect') {
-                $global:LASTEXITCODE = [int]$env:WBT_D_INSPECT_EXIT; return
-            }
-            $global:LASTEXITCODE = 0
+    $dockerDefinition = {
+        $joined = $args -join ' '
+        Add-Content -LiteralPath $env:WBT_DOCKER_LOG -Value ("DOCKER " + $joined)
+        if ($joined -match '\{\{\.Id\}\}') {
+            if ($env:WBT_D_IMGID) { $global:LASTEXITCODE = 0; return $env:WBT_D_IMGID }
+            $global:LASTEXITCODE = 1; return
         }
+        if ($joined -match 'State\.Running') {
+            if ($env:WBT_D_STATE) { $global:LASTEXITCODE = 0; return $env:WBT_D_STATE }
+            $global:LASTEXITCODE = 1; return
+        }
+        if ($args.Count -gt 0 -and $args[0] -eq 'inspect') {
+            $global:LASTEXITCODE = [int]$env:WBT_D_INSPECT_EXIT; return
+        }
+        $global:LASTEXITCODE = 0
     }
-    $removeFakeDocker = { Remove-Item function:global:WbtDockerFake -ErrorAction SilentlyContinue }
+
+    function Invoke-ReusableContainerCase {
+        param([scriptblock]$Body, [string]$ImageId = '', [string]$State = '', [string]$InspectExit = '1', [switch]$Fresh)
+        $caseAction = $Body
+        $definition = $dockerDefinition
+        Invoke-InTestDir { param($dir)
+            Invoke-WithTestFunction -Name WbtDockerFake -Definition $definition -Body {
+                $log = Join-Path $dir 'docker.log'
+                $result = Invoke-WithEnv @{ WBT_DOCKER_LOG = $log; WBT_D_IMGID = $ImageId; WBT_D_STATE = $State; WBT_D_INSPECT_EXIT = $InspectExit } {
+                    Get-ReusableBuildContainer -DockerExe 'WbtDockerFake' -Name 'wbt-cont' -Image 'img:tag' -Fresh:$Fresh 3>$null
+                }
+                & $caseAction $result $log
+            }
+        }.GetNewClosure()
+    }
 
     It 'creates a fresh container when nothing exists (Reused=false, docker run invoked)' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeDocker
-            try {
-                $log = Join-Path $dir 'docker.log'
-                $r = Invoke-WithEnv @{ WBT_DOCKER_LOG = $log; WBT_D_IMGID = ''; WBT_D_STATE = ''; WBT_D_INSPECT_EXIT = '1' } {
-                    Get-ReusableBuildContainer -DockerExe 'WbtDockerFake' -Name 'wbt-cont' -Image 'img:tag'
-                }
-                Assert-Equal $false $r.Reused 'nothing existed - not a reuse'
-                Assert-Equal 'wbt-cont' $r.Name 'name unchanged'
-                Assert-Match 'run -d --name wbt-cont' ((Get-Content $log) -join "`n") 'docker run created it'
-            } finally { & $removeFakeDocker }
+        Invoke-ReusableContainerCase -Body {
+            param($result, $log)
+            Assert-Equal $false $result.Reused 'nothing existed - not a reuse'
+            Assert-Equal 'wbt-cont' $result.Name 'name unchanged'
+            Assert-Match 'run -d --name wbt-cont' ((Get-Content $log) -join "`n") 'docker run created it'
         }
     }
 
     It 'reuses a RUNNING container on the same image without touching docker run' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeDocker
-            try {
-                $log = Join-Path $dir 'docker.log'
-                $r = Invoke-WithEnv @{ WBT_DOCKER_LOG = $log; WBT_D_IMGID = 'sha256:abc'; WBT_D_STATE = 'true|sha256:abc'; WBT_D_INSPECT_EXIT = '0' } {
-                    Get-ReusableBuildContainer -DockerExe 'WbtDockerFake' -Name 'wbt-cont' -Image 'img:tag'
-                }
-                Assert-Equal $true $r.Reused 'running same-image container is reused'
-                Assert-False ((Get-Content $log) -join "`n" -match ' run -d') 'no new container created'
-            } finally { & $removeFakeDocker }
+        Invoke-ReusableContainerCase -ImageId 'sha256:abc' -State 'true|sha256:abc' -InspectExit '0' -Body {
+            param($result, $log)
+            Assert-Equal $true $result.Reused 'running same-image container is reused'
+            Assert-False ((Get-Content $log) -join "`n" -match ' run -d') 'no new container created'
         }
     }
 
     It '-Fresh falls back to a UNIQUE name when the old container survives rm (wcifs lock)' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeDocker
-            try {
-                $log = Join-Path $dir 'docker.log'
-                # bare inspect exit 0 = the survivor probe finds the old container alive
-                $r = Invoke-WithEnv @{ WBT_DOCKER_LOG = $log; WBT_D_IMGID = ''; WBT_D_STATE = ''; WBT_D_INSPECT_EXIT = '0' } {
-                    Get-ReusableBuildContainer -DockerExe 'WbtDockerFake' -Name 'wbt-cont' -Image 'img:tag' -Fresh 3>$null
-                }
-                Assert-True ($r.Name -ne 'wbt-cont') 'survivor forces a unique fallback name'
-                Assert-Match '^wbt-cont-' $r.Name 'fallback keeps the base name as prefix'
-            } finally { & $removeFakeDocker }
+        Invoke-ReusableContainerCase -InspectExit '0' -Fresh -Body {
+            param($result)
+            Assert-True ($result.Name -ne 'wbt-cont') 'survivor forces a unique fallback name'
+            Assert-Match '^wbt-cont-' $result.Name 'fallback keeps the base name as prefix'
         }
     }
+
 }
 
 Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
 
     # WBT_W_STATUS is a comma-separated script of answers, the last repeating; 'ERR:<text>' exits 1 with <text> on stderr.
-    $newFakeDocker = {
-        Set-Item function:global:WbtWaitDockerFake {
-            $joined = $args -join ' '
-            if ($joined -match 'State\.Status') {
-                $seq = @($env:WBT_W_STATUS -split ',')
-                $i = [int]$env:WBT_W_CALL
-                $env:WBT_W_CALL = "$($i + 1)"
-                $answer = if ($i -lt $seq.Count) { $seq[$i] } else { $seq[-1] }
-                if ($answer -like 'ERR:*') {
-                    $global:LASTEXITCODE = 1
-                    Write-Error $answer.Substring(4) -ErrorAction Continue
-                    return
-                }
-                # 'NOISY:<answer>' prints a stderr notice first, as docker does with client warnings.
-                if ($answer -like 'NOISY:*') {
-                    Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
-                    $global:LASTEXITCODE = 0
-                    return $answer.Substring(6)
-                }
-                $global:LASTEXITCODE = 0
-                return $answer
+    $dockerDefinition = {
+        $joined = $args -join ' '
+        if ($joined -match 'State\.Status') {
+            $seq = @($env:WBT_W_STATUS -split ',')
+            $i = [int]$env:WBT_W_CALL
+            $env:WBT_W_CALL = "$($i + 1)"
+            $answer = if ($i -lt $seq.Count) { $seq[$i] } else { $seq[-1] }
+            if ($answer -like 'ERR:*') {
+                $global:LASTEXITCODE = 1
+                Write-Error $answer.Substring(4) -ErrorAction Continue
+                return
             }
-            if ($joined -match 'State\.ExitCode') {
-                if ($env:WBT_W_EXIT -like 'ERR:*') {
-                    $global:LASTEXITCODE = 1
-                    Write-Error $env:WBT_W_EXIT.Substring(4) -ErrorAction Continue
-                    return
-                }
-                if ($env:WBT_W_EXIT -like 'NOISY:*') {
-                    Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
-                    $global:LASTEXITCODE = 0
-                    return $env:WBT_W_EXIT.Substring(6)
-                }
+            # 'NOISY:<answer>' prints a stderr notice first, as docker does with client warnings.
+            if ($answer -like 'NOISY:*') {
+                Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
                 $global:LASTEXITCODE = 0
-                return $env:WBT_W_EXIT
+                return $answer.Substring(6)
             }
             $global:LASTEXITCODE = 0
+            return $answer
         }
+        if ($joined -match 'State\.ExitCode') {
+            if ($env:WBT_W_EXIT -like 'ERR:*') {
+                $global:LASTEXITCODE = 1
+                Write-Error $env:WBT_W_EXIT.Substring(4) -ErrorAction Continue
+                return
+            }
+            if ($env:WBT_W_EXIT -like 'NOISY:*') {
+                Write-Error 'WARNING: DOCKER_HOST env var is deprecated' -ErrorAction Continue
+                $global:LASTEXITCODE = 0
+                return $env:WBT_W_EXIT.Substring(6)
+            }
+            $global:LASTEXITCODE = 0
+            return $env:WBT_W_EXIT
+        }
+        $global:LASTEXITCODE = 0
     }
-    $removeFakeDocker = { Remove-Item function:global:WbtWaitDockerFake }
 
     # Always removes the fake, so a failing case cannot leak state into the next.
     $withFake = {
         param([string]$Status, [string]$ExitCode, [scriptblock]$Body)
-        & $newFakeDocker
-        try {
+        Invoke-WithTestFunction -Name WbtWaitDockerFake -Definition $dockerDefinition -Body {
             Invoke-WithEnv @{ WBT_W_CALL = '0'; WBT_W_STATUS = $Status; WBT_W_EXIT = $ExitCode } $Body
-        } finally { & $removeFakeDocker }
+        }.GetNewClosure()
     }
 
     It 'returns the real exit code of a container that has already stopped' {
@@ -281,48 +261,44 @@ Describe 'Wait-ContainerExit (the client exit code is not evidence)' {
 Describe 'Invoke-ContainerBuild bind-mount transport (client vs container)' {
 
     # The container's verdict wins; the run avoids --rm (loses the exit code) and the reusable name (loses the tree).
-    $newFakeDocker = {
-        Set-Item function:global:WbtBindDockerFake {
-            $joined = $args -join ' '
-            Add-Content -LiteralPath $env:WBT_B_LOG -Value ("DOCKER " + $joined)
-            if ($joined -match 'State\.Status') {
-                # 'MISSING' = docker run failed before a container existed.
-                if ($env:WBT_B_STATUS -eq 'MISSING') {
-                    $global:LASTEXITCODE = 1
-                    Write-Error 'Error: No such object: wbt-reusable-bindmount' -ErrorAction Continue
-                    return
-                }
-                $global:LASTEXITCODE = 0
-                return $env:WBT_B_STATUS
-            }
-            if ($joined -match 'State\.ExitCode') { $global:LASTEXITCODE = 0; return $env:WBT_B_EXIT }
-            # A bare 'inspect <name>' is the survivor probe; WBT_B_SURVIVE=1 fakes the wcifs lock.
-            if ($args[0] -eq 'inspect') {
-                $global:LASTEXITCODE = if ($env:WBT_B_SURVIVE -eq '1') { 0 } else { 1 }
+    $dockerDefinition = {
+        $joined = $args -join ' '
+        Add-Content -LiteralPath $env:WBT_B_LOG -Value ("DOCKER " + $joined)
+        if ($joined -match 'State\.Status') {
+            # 'MISSING' = docker run failed before a container existed.
+            if ($env:WBT_B_STATUS -eq 'MISSING') {
+                $global:LASTEXITCODE = 1
+                Write-Error 'Error: No such object: wbt-reusable-bindmount' -ErrorAction Continue
                 return
             }
-            # --rm marks the bind-mount probe run, which inspects nothing afterwards.
-            if ($args[0] -eq 'run' -and $joined -match '--rm') { $global:LASTEXITCODE = 0; return }
-            # The build's own stdout, which must reach the host and never the result.
-            if ($args[0] -eq 'run') { 'BUILD-STDOUT'; $global:LASTEXITCODE = [int]$env:WBT_B_RUN_EXIT; return }
             $global:LASTEXITCODE = 0
+            return $env:WBT_B_STATUS
         }
+        if ($joined -match 'State\.ExitCode') { $global:LASTEXITCODE = 0; return $env:WBT_B_EXIT }
+        # A bare 'inspect <name>' is the survivor probe; WBT_B_SURVIVE=1 fakes the wcifs lock.
+        if ($args[0] -eq 'inspect') {
+            $global:LASTEXITCODE = if ($env:WBT_B_SURVIVE -eq '1') { 0 } else { 1 }
+            return
+        }
+        # --rm marks the bind-mount probe run, which inspects nothing afterwards.
+        if ($args[0] -eq 'run' -and $joined -match '--rm') { $global:LASTEXITCODE = 0; return }
+        # The build's own stdout, which must reach the host and never the result.
+        if ($args[0] -eq 'run') { 'BUILD-STDOUT'; $global:LASTEXITCODE = [int]$env:WBT_B_RUN_EXIT; return }
+        $global:LASTEXITCODE = 0
     }
-    $removeFakeDocker = { Remove-Item function:global:WbtBindDockerFake }
 
     # $Body receives the docker log path and the build's return value.
     $build = {
         param([string]$ClientExit, [string]$Status, [string]$ContainerExit, [scriptblock]$Body)
         Invoke-InTestDir { param($dir)
-            & $newFakeDocker
-            try {
+            Invoke-WithTestFunction -Name WbtBindDockerFake -Definition $dockerDefinition -Body {
                 $log = Join-Path $dir 'docker.log'
                 Invoke-WithEnv @{ WBT_B_LOG = $log; WBT_B_STATUS = $Status; WBT_B_EXIT = $ContainerExit
                     WBT_B_RUN_EXIT = $ClientExit; WBT_B_SURVIVE = '0'
                 } {
                     & $Body $log $dir
                 }
-            } finally { & $removeFakeDocker }
+            }
         }
     }
 

@@ -167,9 +167,8 @@ function Find-DriverCall {
 }
 function Get-EnclosingFunctionName {
     param([Parameter(Mandatory)]$Node)
-    for ($p = $Node.Parent; $p; $p = $p.Parent) {
-        if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $p.Name }
-    }
+    $parent = Get-TestAstAncestor -Node $Node -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
+    if ($parent) { return $parent.Name }
     ''
 }
 
@@ -195,12 +194,9 @@ function Get-PublishGateWiringProblem {
         if ($export.Count -eq 0) { return "no $label solve found (scanner rot?)" }
         if ($export[0].Extent.StartOffset -lt $g.Extent.StartOffset) { return "$label runs before the publish gate" }
     }
-    for ($p = $g.Parent; $p; $p = $p.Parent) {
-        if ($p -is [System.Management.Automation.Language.IfStatementAst] -and
-            @($p.Clauses | Where-Object { $_.Item1.Extent.Text -match 'SkipSmokeGate' }).Count -gt 0) {
-            return 'the publish gate sits in a -SkipSmokeGate branch'
-        }
-    }
+    if (Get-TestAstAncestor -Node $g -Type ([Management.Automation.Language.IfStatementAst]) -First -Predicate {
+        param($branch) @($branch.Clauses | Where-Object { $_.Item1.Extent.Text -match 'SkipSmokeGate' }).Count -gt 0
+    }) { return 'the publish gate sits in a -SkipSmokeGate branch' }
 
     $tcSolve = @($stages | Where-Object { $_.Extent.Text -match 'Dockerfile\.toolchain-builder' })
     $tcGate = @($gates | Where-Object { $_.Extent.Text -match "-Image \(Get-BkTag 'windows-toolchain'\)" })

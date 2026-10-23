@@ -197,10 +197,7 @@ try {
         Write-Host "MSVC x64 component registered ($x64Registered)."
 
         # Checks lib\arm64, not the arm64 cl.exe: the libraries are what a clang-cl cross link needs.
-        $msvcLibArm64 = Get-ChildItem -Path (Join-Path $vsBuildToolsRoot 'VC\Tools\MSVC') -Directory -ErrorAction SilentlyContinue |
-            ForEach-Object { Join-Path $_.FullName 'lib\arm64\libcmt.lib' } |
-            Where-Object { Test-Path $_ } |
-            Select-Object -First 1
+        $msvcLibArm64 = Find-ChildDirectoryFile -Parent (Join-Path $vsBuildToolsRoot 'VC\Tools\MSVC') -RelativePath 'lib\arm64\libcmt.lib'
         if (-not $msvcLibArm64) {
             # Warn, not throw: the base image is shared, so an arm64-only prerequisite must not block amd64.
             $msg = ('MSVC ARM64 libraries missing (no VC\Tools\MSVC\<ver>\lib\arm64\libcmt.lib under ' +

@@ -31,9 +31,10 @@ Describe 'Harness fixture lifecycle' {
         try {
             $global:LASTEXITCODE = 17
             Assert-Throws {
-                Invoke-InTestDir { param($dir)
+                Invoke-InTestDir -Files @{ 'nested/file.txt' = 'fixture bytes' } -Body { param($dir)
                     $state.Path = $dir
                     $state.Exit = $global:LASTEXITCODE
+                    Assert-Equal 'fixture bytes' ([IO.File]::ReadAllText((Join-Path $dir 'nested/file.txt')))
                     throw 'fixture body failed'
                 }
             } -MessagePattern 'fixture body failed'
@@ -76,6 +77,60 @@ Describe 'Lifted module fixture arguments' {
         Assert-False (Test-Path -LiteralPath $state.ModulePath)
         Assert-Null (Get-Command Get-FixtureFixtureValue -ErrorAction SilentlyContinue)
     }
+
+    It 'shares one state object between module initialization and the body' {
+        $state = [pscustomobject]@{ Value = 'before'; ModulePath = '' }
+        Invoke-WithFunctionModule -Text 'function Get-FixtureState { $script:State }' -FixtureState $state -Body {
+            param($record)
+            $record.ModulePath = (Get-Command Get-MutFixtureState).Module.Path
+            Assert-True ([object]::ReferenceEquals($record, (Get-MutFixtureState))) 'constructor and body receive the same object'
+            $record.Value = 'after'
+        }
+        Assert-Equal 'after' $state.Value
+        Assert-False (Test-Path -LiteralPath $state.ModulePath)
+        foreach ($arguments in @(@{ ArgumentList = @('conflict') }, @{ BodyArgumentList = @('conflict') })) {
+            Assert-Throws { Invoke-WithFunctionModule -Text 'function Get-Value { 1 }' -FixtureState $state @arguments -Body { } } -MessagePattern 'cannot be mixed'
+        }
+    }
+
+    It 'loads source from a path without executing unselected script code' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'source with spaces.ps1'
+            [IO.File]::WriteAllText($path, "throw 'must not execute'`nfunction Get-FixtureValue { 42 }")
+            Invoke-WithFunctionModule -ScriptPath $path -FunctionName Get-FixtureValue -Body {
+                Assert-Equal 42 (Get-MutFixtureValue)
+            }
+            Assert-Throws { Invoke-WithFunctionModule -ScriptPath $path -Text 'conflict' -Body { } } -MessagePattern 'exactly one'
+            Assert-Throws { Invoke-WithFunctionModule -Body { } } -MessagePattern 'exactly one'
+            Assert-Throws { Invoke-WithFunctionModule -Text '' -Body { } } -MessagePattern 'must not be empty'
+            Assert-Throws { Invoke-WithFunctionModule -ScriptPath (Join-Path $dir 'missing.ps1') -Body { } } -MessagePattern 'missing.ps1'
+        }
+    }
+
+    It 'preserves empty and populated enumerable state as one shared argument' {
+        foreach ($count in 0, 2) {
+            $state = [Collections.Generic.List[object]]::new()
+            for ($index = 0; $index -lt $count; $index++) { $state.Add($index) }
+            Invoke-WithFunctionModule -Text 'function Get-FixtureState { ,$script:State }' -FixtureState $state -Body {
+                param($received)
+                Assert-True ([object]::ReferenceEquals($state, $received)) 'body argument identity'
+                Assert-True ([object]::ReferenceEquals($state, (Get-MutFixtureState))) 'constructor argument identity'
+                Assert-Equal $count $received.Count
+            }
+            Invoke-WithTestFunction -Name Invoke-StateBoundFixture -FixtureState $state -Definition {
+                $State.Add(@($args))
+            } -Body { param($received)
+                Assert-True ([object]::ReferenceEquals($state, $received)) 'fake body argument identity'
+                Invoke-StateBoundFixture 'a b' 'c;d'
+                Assert-Equal ($count + 1) $received.Count
+                Assert-Equal 'a b|c;d' ($received[-1] -join '|')
+            }
+            Assert-Null (Get-Command Invoke-StateBoundFixture -ErrorAction SilentlyContinue)
+            Assert-Throws {
+                Invoke-WithTestFunction -Name Invoke-StateBoundFixture -FixtureState $state -BodyArgumentList 1 -Definition {} -Body {}
+            } -MessagePattern 'cannot be combined'
+        }
+    }
 }
 
 Describe 'Harness exception assertions' {
@@ -83,6 +138,60 @@ Describe 'Harness exception assertions' {
         Assert-Throws { throw 'expected failure' } -MessagePattern '^expected failure$'
         Assert-Throws { Assert-Throws { } } -MessagePattern 'expected an exception but none was thrown'
         Assert-Throws { Assert-Throws { throw 'other failure' } -MessagePattern '^expected failure$' } -MessagePattern 'does not match'
+    }
+}
+
+Describe 'Scoped fake function lifetime' {
+    It 'forwards body arguments and removes a newly installed function after a failure' {
+        Assert-Throws {
+            Invoke-WithTestFunction -Name Get-WbtFixtureStub -Definition { 'stub result' } -BodyArgumentList @('body value') -Body {
+                param($argument)
+                Assert-Equal 'body value' $argument
+                Assert-Equal 'stub result' (Get-WbtFixtureStub)
+                throw 'fixture body failed'
+            }
+        } -MessagePattern '^fixture body failed$'
+        Assert-Null (Get-Command Get-WbtFixtureStub -ErrorAction SilentlyContinue)
+    }
+
+    It 'restores the original function through nested replacements' {
+        function global:Get-WbtFixtureStub { 'original' }
+        try {
+            Invoke-WithTestFunction -Name Get-WbtFixtureStub -Definition { 'outer' } -Body {
+                Invoke-WithTestFunction -Name Get-WbtFixtureStub -Definition { 'inner' } -Body {
+                    Assert-Equal 'inner' (Get-WbtFixtureStub)
+                }
+                Assert-Equal 'outer' (Get-WbtFixtureStub)
+            }
+            Assert-Equal 'original' (Get-WbtFixtureStub)
+        } finally { Remove-Item Function:Get-WbtFixtureStub -ErrorAction SilentlyContinue }
+    }
+
+    It 'rejects a cleanup mutant that leaks the installed function' {
+        $text = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'TestHarness.psm1'))
+        Invoke-WithFunctionModule -Text $text -FunctionName Invoke-WithTestFunction `
+            -Find 'else { Remove-Item -LiteralPath "Function:$Name" -ErrorAction SilentlyContinue }' -Replace 'else { }' -Body {
+                try {
+                    Invoke-MutWithTestFunction -Name Get-WbtFixtureStub -Definition { 'leak' } -Body { }
+                    Assert-Throws { Assert-Null (Get-Command Get-WbtFixtureStub -ErrorAction SilentlyContinue) } -MessagePattern 'Assert-Null'
+                } finally { Remove-Item Function:Get-WbtFixtureStub -ErrorAction SilentlyContinue }
+            }
+    }
+}
+
+Describe 'Recorded fixture state' {
+    It 'allocates isolated call lists and retains caller properties without mutating their dictionary' {
+        $properties = @{ Code = 7; Empty = $null }
+        $first = New-TestCallState -Properties $properties
+        $second = New-TestCallState
+        $first.Calls.Add(@('one', 'two'))
+        Assert-Equal 1 $first.Calls.Count
+        Assert-Equal 'one|two' ($first.Calls[0] -join '|')
+        Assert-Equal 0 $second.Calls.Count
+        Assert-Equal 7 $first.Code
+        Assert-Null $first.Empty
+        Assert-False $properties.ContainsKey('Calls')
+        Assert-Throws { New-TestCallState -Properties @{ Calls = 'overridden' } } -MessagePattern 'Calls is reserved'
     }
 }
 
@@ -119,5 +228,26 @@ Describe 'Checkout parent creation' {
             }
             Assert-Equal 'fixture source' (Get-Content -LiteralPath (Join-Path $destination 'source.txt'))
         }
+    }
+}
+
+Describe 'Recorded native command fixtures' {
+    It 'records native arguments, forwards fixture output and restores parent exit state on failure' {
+        $originalExit = Get-Variable LASTEXITCODE -Scope Global -ValueOnly -ErrorAction SilentlyContinue
+        $state = New-TestCallState @{ Code = [int]$originalExit + 1 }
+        Assert-Throws {
+            Invoke-WithTestNativeCommand -Name Invoke-RecordedNativeFixture -FixtureState $state -Implementation {
+                param($record, $argv)
+                Assert-True ([object]::ReferenceEquals($state, $record))
+                $argv -join '|'
+            } -Body { param($record)
+                Assert-Equal 'a b|c;d' (Invoke-RecordedNativeFixture 'a b' 'c;d')
+                Assert-Equal $record.Code $global:LASTEXITCODE
+                Assert-Equal 'a b|c;d' ($record.Calls[0] -join '|')
+                throw 'native fixture failed'
+            }
+        } -MessagePattern 'native fixture failed'
+        Assert-Equal $originalExit (Get-Variable LASTEXITCODE -Scope Global -ValueOnly -ErrorAction SilentlyContinue)
+        Assert-Null (Get-Command Invoke-RecordedNativeFixture -ErrorAction SilentlyContinue)
     }
 }

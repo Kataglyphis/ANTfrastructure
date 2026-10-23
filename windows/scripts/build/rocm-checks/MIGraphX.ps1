@@ -118,21 +118,8 @@ $hip = @([Diagnostics.Process]::GetCurrentProcess().Modules | Where-Object { $_.
 if ($hip.Count -gt 0) { $hip[0].FileName; exit 5 }
 exit 0
 '@
-    $log = Join-Path ([System.IO.Path]::GetTempPath()) "migraphx-load-probe-$PID.txt"
-    $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($probe))
-    $env:MGX_PROBE_DLL = $Dll
-    try {
-        $child = Start-Process -FilePath (Get-Process -Id $PID).Path -NoNewWindow -PassThru -RedirectStandardOutput $log `
-            -ArgumentList '-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded
-        $null = $child.Handle   # without a held handle Start-Process's ExitCode reads $null
-        $done = $child.WaitForExit($TimeoutSeconds * 1000)
-        if (-not $done) { $child.Kill($true) }
-        $text = if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log -Raw } else { '' }
-        return [pscustomobject]@{ ExitCode = $(if ($done) { $child.ExitCode } else { $null }); Output = "$text" }
-    } finally {
-        Remove-Item Env:MGX_PROBE_DLL -ErrorAction SilentlyContinue
-        Remove-Item -LiteralPath $log -Force -ErrorAction SilentlyContinue
-    }
+    $run = Invoke-PwshProbeProcess -Source $probe -ProcessOptions @{ Environment = @{ MGX_PROBE_DLL = $Dll }; TimeoutSeconds = $TimeoutSeconds; InheritStandardError = $true; PreserveOutput = $true }
+    return [pscustomobject]@{ ExitCode = $run.ExitCode; Output = $run.Text }
 }
 
 if (-not $env:MIGRAPHX_ROOT) {
@@ -145,6 +132,7 @@ $moduleDir = @((Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'), (Join-P
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'WindowsMigraphx.Common.psm1') } | Select-Object -First 1
 if (-not $moduleDir) { return "MIGraphX: no modules directory with WindowsMigraphx.Common.psm1 near $PSScriptRoot" }
 # Unguarded on purpose: without -Force an already-loaded module is left as it is.
+Import-Module (Join-Path $moduleDir 'WindowsNative.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $moduleDir 'WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $moduleDir 'WindowsMigraphx.Common.psm1') -DisableNameChecking
 if (-not $env:HIP_PATH) { return 'MIGraphX: HIP_PATH is not set, so the HIP runtime set cannot be located' }

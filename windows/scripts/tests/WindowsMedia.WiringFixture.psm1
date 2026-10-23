@@ -15,9 +15,7 @@ function Get-MediaTestAstNode {
         if ($DirectChildren -and -not [object]::ReferenceEquals($node.Parent, $Ast)) { return $false }
         if (-not (& $Predicate $node)) { return $false }
         if ($ScriptLevel) {
-            for ($parent = $node.Parent; $parent; $parent = $parent.Parent) {
-                if ($parent -is [Management.Automation.Language.FunctionDefinitionAst]) { return $false }
-            }
+            if (Get-TestAstAncestor -Node $node -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First) { return $false }
         }
         return $true
     }, $true)
@@ -25,16 +23,15 @@ function Get-MediaTestAstNode {
 
 function Get-MediaTestEnclosingIf {
     param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Node, [string]$ConditionPattern = '')
-    for ($parent = $Node.Parent; $parent; $parent = $parent.Parent) {
-        if ($parent -is [Management.Automation.Language.IfStatementAst] -and
-            (-not $ConditionPattern -or $parent.Clauses.Item1.Extent.Text -match $ConditionPattern)) { return $parent }
-    }
+    Get-TestAstAncestor -Node $Node -Type ([Management.Automation.Language.IfStatementAst]) -First -Predicate {
+        param($branch) -not $ConditionPattern -or $branch.Clauses.Item1.Extent.Text -match $ConditionPattern
+    }.GetNewClosure()
 }
 
 function Get-MediaTestAssignment {
     param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Ast, [Parameter(Mandatory)][string]$Variable,
-        [string]$Operator = '', [string]$Value = '', [Management.Automation.Language.Ast]$Contains, [switch]$Single)
-    $assignments = @(Get-MediaTestAstNode -Ast $Ast -Predicate { param($node)
+        [string]$Operator = '', [string]$Value = '', [Management.Automation.Language.Ast]$Contains, [switch]$Single, [switch]$ScriptLevel)
+    $assignments = @(Get-MediaTestAstNode -Ast $Ast -ScriptLevel:$ScriptLevel -Predicate { param($node)
         $node -is [Management.Automation.Language.AssignmentStatementAst] -and $node.Left.Extent.Text -eq $Variable -and
         (-not $Operator -or $node.Operator -eq $Operator) -and (-not $Value -or $node.Right.Extent.Text -eq $Value)
     })

@@ -112,7 +112,7 @@ Describe 'Smoke §19: ort crate env wiring' {
     It 'asserts zero findings from the process env, inside section 19, under no lane condition (mutation)' {
         Assert-Equal 0 @($parseErrors).Count 'Test-Container.ps1 parses'
         Assert-Equal '1/1' "$($check.Count)/$($source.Count)" 'one ort crate env assertion, fed by one findings assignment'
-        Assert-Match '-Condition \{ \$ortCrateFindings\.Count -eq 0 \}' $check[0].Extent.Text 'passes on zero findings only'
+        Assert-Match '-Finding \$ortCrateFindings(?: |$)' $check[0].Extent.Text 'passes on zero findings only'
         Assert-Match '^@\(Get-OrtCrateEnvFinding -OnnxRoot \$env:ONNX_ROOT\)$' $source[0].Right.Extent.Text 'the image env, not a fixture'
         Assert-Equal '' ((@(Get-OrtCrateGuard $check[0]) + @(Get-OrtCrateGuard $source[0])) -join ' ; ') 'every lane: no enclosing if'
         $at = $check[0].Extent.StartOffset

@@ -9,7 +9,6 @@
 #>
 
 # Dev/test signing: a plain-text password parameter by design (CI secret injection, PFX in the same workspace).
-[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingConvertToSecureStringWithPlainText', '', Justification = 'dev/test signing cert; see comment above')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingPlainTextForPassword', '', Justification = 'dev/test signing cert; see comment above')]
 param(
     [Parameter(Mandatory)][string]$Workspace,
@@ -53,7 +52,7 @@ Open-BuildLog -Context $Context
 
 function New-PasswordSecureString([string]$Password) {
     if ([string]::IsNullOrWhiteSpace($Password)) { throw "A non-empty -CertificatePassword is required" }
-    return ConvertTo-SecureString -String $Password -AsPlainText -Force
+    return ConvertTo-MsixSigningPassword -Password $Password
 }
 
 # NOTE: Scripting.FileSystemObject COM object may not be available in minimal Windows containers

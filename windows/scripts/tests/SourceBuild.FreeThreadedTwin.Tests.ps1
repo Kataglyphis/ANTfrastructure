@@ -318,7 +318,7 @@ Describe 'Free-threaded twin wiring' {
         Assert-Match "Get-FreeThreadedTwinPlan -Distribution 'apache-tvm-ffi'" $tvm 'the cross tvm-ffi twin asks the plan'
         Assert-Match '(?s)New-TvmFfiCrossWheel -Python \$ftPy .*?-AbiTag \$ftAbi' $tvm 'one assembly for both wheels, the twin tagged cp3XYt'
         Assert-Match "Save-FreeThreadedWheel -Wheel \`$twin -Distribution 'apache-tvm-ffi'" $tvm 'gated and stored apart'
-        Assert-Match "Name 'apache-tvm' .*-PythonTag 'py3' -AbiTag 'none'" $tvm 'apache-tvm is py3-none, which a 3.14t venv installs'
+        Assert-Match "Name = 'apache-tvm'; .*PythonTag = 'py3'; AbiTag = 'none'" $tvm 'apache-tvm is py3-none, which a 3.14t venv installs'
         Assert-Match "if \(\`$Python\['FreeThreaded'\]\) \{ \[void\]\(Assert-NinjaFreeThreadedDefine" $tvm 'the twin core compiles with Py_GIL_DISABLED'
         $iree = Get-TwinWiringText 'windows\scripts\build\Build-IreeFromSource.ps1'
         Assert-Match "if \(\`$ireeCross -and \`$pkg\.Dir -eq 'compiler'\) \{ continue \}" $iree 'cross twins the runtime only'

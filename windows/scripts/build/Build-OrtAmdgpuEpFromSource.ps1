@@ -29,8 +29,7 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 $migraphxModulePath = Join-Path $scriptAssetRoot 'modules\WindowsMigraphx.Common.psm1'
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($migraphxModulePath)))) { Import-Module $migraphxModulePath }
 # G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
-$ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
+Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsOrtProvenance.Build.psm1') -DisableNameChecking
 
 function Get-OrtAmdgpuEpCmakeArgs {
     # USE_MIGRAPHX alone; the no-fetch pair and the seeds make every download a pinned, verified one.

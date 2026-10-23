@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — broaden Windows duplication cleanup
+
+- Share GPU and Python probe transport, smoke scratch and verdicts, source-module lookup, TVM wheel packaging, bundle environment models and FFmpeg listing checks.
+- Share host maintenance, isolation diagnostics, LLVM command plans and ONNX replay parsing; correct literal match counts and reject malformed host CIDR values.
+- Share consumer timing, container transport, logging, benchmark rendering, runtime copies, path resolution and signing conversion; keep caller failure, quoting and password policies.
+- Share fixture state, fake-function lifetime, populated temporary directories and AST ancestry; retain independent expectations and add cold-import, regression and mutation proofs.
+- Remove resolved Windows duplication exceptions and lower remaining budgets without changing scan scope or thresholds.
+- Raise the Windows test-discovery minimum to 2,252 after measuring 2,275 passing tests.
+
 ## 2026-10-23 — share Linux provenance and verification fixtures
 
 - Share ORT and GenAI byte-verdict logic through the existing provenance owner, retaining distinct archive and exemption policies.
@@ -48,7 +57,7 @@
 - Share Flutter HTTP and size probes while preserving diagnostics, strict thresholds and curl exit codes; add baseline characterization and mutations.
 - Remove resolved Linux duplication exemptions and two obsolete ShellCheck warning freezes without increasing budgets or changing Windows source.
 
-## 2026-10-23 ? reduce Windows behavior duplication
+## 2026-10-23 — reduce Windows behavior duplication
 
 - Share source-archive extraction while keeping strict failures, pinned dangerous-link checks and optional tar cleanup.
 - Share ORT chain file indexing while preserving each gate's recursion, filename and unreadable-file policies.

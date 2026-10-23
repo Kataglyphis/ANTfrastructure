@@ -164,7 +164,7 @@ function Get-PackageVersion {
   $text = ''
   $read = @()
   if ($VersionFile) {
-    $path = if ([IO.Path]::IsPathRooted($VersionFile)) { $VersionFile } else { Join-Path $WorkspacePath $VersionFile }
+    $path = Resolve-PathFromRoot -Root $WorkspacePath -Path $VersionFile
     $text = (Get-VersionFileText $path).Trim()
     $read = @($path)
   } else {

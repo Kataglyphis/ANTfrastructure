@@ -15,17 +15,14 @@ $ErrorActionPreference = 'Stop'
 
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 Assert-Elevated -Reason 'service re-registration needs it'
 $src = Join-Path (Split-Path $scriptAssetRoot -Parent) 'buildkitd.toml'
 if (-not (Test-Path $src)) { throw "repo config not found: $src" }
 
 if (-not $Force) {
-    $live = @(Get-Process buildctl -ErrorAction SilentlyContinue)
-    if ($live.Count -gt 0) {
-        throw ("{0} live buildctl process(es) found (pids: {1}) — a service restart kills their solves. " -f $live.Count, (($live | ForEach-Object Id) -join ', ')) +
-            'Wait for the build to finish, or pass -Force if they are stale.'
-    }
+    $null = Get-HostMaintenanceProcess -Name buildctl `
+        -FailureTemplate '{0} live buildctl process(es) found (pids: {2}) — a service restart kills their solves. Wait for the build to finish, or pass -Force if they are stale.'
 }
 
 $svc = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd' -ErrorAction Stop
@@ -57,8 +54,6 @@ Write-Host 'buildkitd restarted.' -ForegroundColor Green
 # The effective GC rules must show reservedSpace, not the computed defaults that once evicted the VS layer.
 $buildctl = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe') |
     Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($buildctl) {
-    & $buildctl debug workers -v 2>&1 | Select-String -Pattern 'GC Policy|reserved|maxUsedSpace|minFreeSpace|keepDuration|all=|filters' | ForEach-Object { $_.Line } | Write-Host
-} else {
-    Write-Host 'buildctl not found for verification — run: buildctl debug workers -v' -ForegroundColor Yellow
-}
+Write-HostMaintenanceProbe -Command $buildctl -ArgumentList @('debug', 'workers', '-v') `
+    -Pattern 'GC Policy|reserved|maxUsedSpace|minFreeSpace|keepDuration|all=|filters' `
+    -UnavailableMessage 'buildctl not found for verification — run: buildctl debug workers -v'

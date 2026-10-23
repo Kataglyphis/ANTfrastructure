@@ -109,52 +109,55 @@ function Split-CommandLine {
     return $tokens.ToArray()
 }
 
-function Get-CodegenFlags {
-    param([Parameter(Mandatory)][string[]]$Tokens)
-
+function Get-LlvmCompilePlan {
+    param([Parameter(Mandatory)][string[]]$Tokens, [switch]$Preprocess)
     $out = [System.Collections.Generic.List[string]]::new()
+    $source = ''
+    $outputPattern = if ($Preprocess) { '^[-/]F[od]' } else { '^[-/]F[odip]' }
     $i = 0
-    # The caller supplies the compiler, so skip every leading executable.
     while ($i -lt $Tokens.Count -and $Tokens[$i] -match '\.exe$') { $i++ }
-
     while ($i -lt $Tokens.Count) {
         $t = $Tokens[$i]
         $i++
+        if (-not $Preprocess) {
+            # The workaround spellings, the separated -mllvm form included.
+            if ($t -eq '-mllvm') {
+                if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'compress-jump-tables') { $i++; continue }
+                if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'inline-threshold') { $i++; continue }
+                [void]$out.Add($t); continue
+            }
+            if ($t -match 'aarch64-enable-compress-jump-tables') { continue }
+            # -Xclang -target-feature -Xclang +force-32bit-jump-tables : four tokens.
+            if ($t -eq '-Xclang' -and ($i + 2) -lt $Tokens.Count -and
+                $Tokens[$i] -eq '-target-feature' -and $Tokens[$i + 2] -match 'force-32bit-jump-tables') {
+                $i += 3; continue
+            }
 
-        # The workaround spellings, the separated -mllvm form included.
-        if ($t -eq '-mllvm') {
-            if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'compress-jump-tables') { $i++; continue }
-            if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'inline-threshold') { $i++; continue }
-            [void]$out.Add($t); continue
+            # Optimisation and inlining are set per-arm.
+            if ($t -match '^[-/]O[0-9dxs]') { continue }
+            if ($t -match '^[-/]Ob[0-3]$') { continue }
+
+            # Baked into the .i; the separated /D NAME form must drop both tokens, or clang-cl reads NAME as an input.
+            if ($t -cmatch '^[-/](I|D)$') { $i++; continue }
+            if ($t -cmatch '^[-/](I|D)') { continue }
+            if ($t -match '^-imsvc') { if ($t -ceq '-imsvc') { $i++ }; continue }
+            if ($t -cmatch '^[-/]FI') { if ($t -ceq '/FI' -or $t -ceq '-FI') { $i++ }; continue }
+
         }
-        if ($t -match 'aarch64-enable-compress-jump-tables') { continue }
-        # -Xclang -target-feature -Xclang +force-32bit-jump-tables : four tokens.
-        if ($t -eq '-Xclang' -and ($i + 2) -lt $Tokens.Count -and
-            $Tokens[$i] -eq '-target-feature' -and $Tokens[$i + 2] -match 'force-32bit-jump-tables') {
-            $i += 3; continue
-        }
-
-        # Optimisation and inlining are set per-arm.
-        if ($t -match '^[-/]O[0-9dxs]') { continue }
-        if ($t -match '^[-/]Ob[0-3]$') { continue }
-
-        # Baked into the .i; the separated /D NAME form must drop both tokens, or clang-cl reads NAME as an input.
-        if ($t -cmatch '^[-/](I|D)$') { $i++; continue }
-        if ($t -cmatch '^[-/](I|D)') { continue }
-        if ($t -match '^-imsvc') { if ($t -ceq '-imsvc') { $i++ }; continue }
-        if ($t -cmatch '^[-/]FI') { if ($t -ceq '/FI' -or $t -ceq '-FI') { $i++ }; continue }
-
-        # -cmatch: case-insensitive -match would also swallow /fp:precise, a real codegen flag.
         if ($t -match '^-clang:-M') { continue }
-        if ($t -cmatch '^[-/]F[odip]') { continue }
+        # Case distinguishes output names from /fp:precise, which changes code generation.
+        if ($t -cmatch $outputPattern) { continue }
         if ($t -ceq '-c' -or $t -ceq '/c' -or $t -ceq '--') { continue }
-        if ($t -match '\.(cpp|cc|cxx|c)$') { continue }
-
+        if ($t -match '\.(cpp|cc|cxx|c)$') { $source = $t; continue }
         [void]$out.Add($t)
     }
+    return [pscustomobject]@{ Flags = $out.ToArray(); Source = $source }
+}
 
-    # Pin the target; a plain return, since `return ,$x` leaves the caller's @() one Object[] instead of flags.
-    $flags = @($out | Where-Object { $_ -notmatch '^--target=' })
+function Get-CodegenFlags {
+    param([Parameter(Mandatory)][string[]]$Tokens)
+    $plan = Get-LlvmCompilePlan -Tokens $Tokens
+    $flags = @($plan.Flags | Where-Object { $_ -notmatch '^--target=' })
     return @('--target=' + $Target) + $flags
 }
 
@@ -202,19 +205,9 @@ function Invoke-Capture {
         $tokens = Split-CommandLine -Line $resolved.Command
 
         # Preprocess with the original command, so every -I/-D/-FI the lane passes applies exactly once, here.
-        $ppArgs = [System.Collections.Generic.List[string]]::new()
-        $source = ''
-        $i = 0
-        while ($i -lt $tokens.Count -and $tokens[$i] -match '\.exe$') { $i++ }
-        while ($i -lt $tokens.Count) {
-            $t = $tokens[$i]; $i++
-            # -cmatch so /fp:precise survives; -I, -D and /FI stay, since preprocessing is where they belong.
-            if ($t -cmatch '^[-/]F[od]') { continue }
-            if ($t -match '^-clang:-M') { continue }
-            if ($t -ceq '-c' -or $t -ceq '/c' -or $t -ceq '--') { continue }
-            if ($t -match '\.(cpp|cc|cxx|c)$') { $source = $t; continue }
-            [void]$ppArgs.Add($t)
-        }
+        $plan = Get-LlvmCompilePlan -Tokens $tokens -Preprocess
+        $ppArgs = [System.Collections.Generic.List[string]]::new([string[]]$plan.Flags)
+        $source = $plan.Source
         if (-not $source) { throw "could not find the source path in the ninja command for $($resolved.Target)" }
 
         $iPath = Join-Path $CorpusDir ("$($case.Id).i")

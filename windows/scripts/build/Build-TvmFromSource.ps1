@@ -199,10 +199,8 @@ function New-TvmFfiCrossWheel {
     }
     [void](Assert-DirectoryTargetArch -Path $corePyd[0].DirectoryName -Include @('core*.pyd') -MinCount 1 -Context 'tvm_ffi core module')
     if (Test-Path $StageDir) { Remove-Item -Path $StageDir -Recurse -Force }
-    New-Item -Path (Join-Path $StageDir 'tvm_ffi\lib') -ItemType Directory -Force | Out-Null
-    Copy-Item -Path (Join-Path $TvmFfiSrc 'python\tvm_ffi\*') -Destination (Join-Path $StageDir 'tvm_ffi') -Recurse -Force
+    Initialize-AssembledPythonPackage -SourcePackage (Join-Path $TvmFfiSrc 'python\tvm_ffi') -PackageRoot $StageDir -PackageName tvm_ffi -Library @($tvmFfiLibs.FullName)
     Copy-Item -Path $corePyd[0].FullName -Destination (Join-Path $StageDir 'tvm_ffi') -Force
-    foreach ($l in $tvmFfiLibs) { Copy-Item -Path $l.FullName -Destination (Join-Path $StageDir 'tvm_ffi\lib') -Force }
     foreach ($inc in @(@{ Src = 'include'; Dest = 'include' }, @{ Src = '3rdparty\dlpack\include'; Dest = '3rdparty\dlpack\include' })) {
         $srcDir = Join-Path $TvmFfiSrc $inc.Src
         if (Test-Path $srcDir) {
@@ -212,14 +210,9 @@ function New-TvmFfiCrossWheel {
         }
     }
     # The twin is cpXY-cpXYt: the python tag drops the ABI's 't'.
-    [void](Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version $Version -PackageRoot $StageDir -PythonTag ($AbiTag -replace 't$', '') -AbiTag $AbiTag -PlatformTag $wantExt `
-        -RequiresDist $RequiresDist -RequiresPython '>=3.9' -Summary $Summary)
-    New-Item -Path $OutDir -ItemType Directory -Force | Out-Null
-    $before = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | ForEach-Object FullName)
-    [void](Invoke-ShieldedNative -Label "wheel pack $(Split-Path $StageDir -Leaf)" -CommandLine """$PackExe"" -m wheel pack ""$StageDir"" --dest-dir ""$OutDir""")
-    $packed = @(Get-ChildItem -LiteralPath $OutDir -Filter '*.whl' -File | Where-Object { $_.FullName -notin $before })
-    if ($packed.Count -ne 1) { throw "TVM cross: wheel pack left $($packed.Count) new wheel(s) in $OutDir, not one" }
-    return $packed[0].FullName
+    $metadata = @{ Name = 'apache-tvm-ffi'; Version = $Version; PackageRoot = $StageDir; PythonTag = ($AbiTag -replace 't$', ''); AbiTag = $AbiTag
+        PlatformTag = $wantExt; RequiresDist = $RequiresDist; RequiresPython = '>=3.9'; Summary = $Summary }
+    New-AssembledPythonWheel -Metadata $metadata -PackExe $PackExe -OutDir $OutDir
 }
 
 # TVM_COMMIT wins over TVM_REF: a branch shadows the tag; see versions.env § TVM_COMMIT.
@@ -475,14 +468,12 @@ if ($tvmCross) {
                 -OutDir $wheelOut -Version $ffiVersion -PackExe $py.Exe -RequiresDist $ffiDeps -AbiTag (Get-PinnedPythonVersion).AbiTag -BuildType $BuildType -Summary $ffiSummary)
         # apache-tvm (runtime-only): no CPython module of its own, so py3-none like upstream's wheel.py-api, which an X.Yt venv installs too.
         $tvmRoot = Join-Path $stage 'tvm'
-        New-Item -Path (Join-Path $tvmRoot 'tvm\lib') -ItemType Directory -Force | Out-Null
-        Copy-Item -Path (Join-Path $SourceDir 'python\tvm\*') -Destination (Join-Path $tvmRoot 'tvm') -Recurse -Force
+        Initialize-AssembledPythonPackage -SourcePackage (Join-Path $SourceDir 'python\tvm') -PackageRoot $tvmRoot -PackageName tvm -Library @((Join-Path $tvmLibOut 'tvm_runtime.dll'))
         [System.IO.File]::WriteAllText((Join-Path $tvmRoot 'tvm\_version.py'), "__version__ = `"$tvmPyVersion`"`n__version_tuple__ = ($($tvmPyVersion -replace '\.', ', '))`n")
-        Copy-Item -Path (Join-Path $tvmLibOut 'tvm_runtime.dll') -Destination (Join-Path $tvmRoot 'tvm\lib') -Force
-        [void](Write-AssembledWheelDistInfo -Name 'apache-tvm' -Version $tvmPyVersion -PackageRoot $tvmRoot -PythonTag 'py3' -AbiTag 'none' -PlatformTag $wantExt `
-            -RequiresDist (Get-PyprojectDependencies -PyprojectText $tvmPyproject) -RequiresPython '>=3.10' `
-            -Summary "Apache TVM $TvmVersion RUNTIME-ONLY python package for $wantExt (no tvm_compiler; Kataglyphis cross build)")
-        [void](Invoke-ShieldedNative -Label 'wheel pack tvm' -CommandLine """$($py.Exe)"" -m wheel pack ""$tvmRoot"" --dest-dir ""$wheelOut""")
+        $metadata = @{ Name = 'apache-tvm'; Version = $tvmPyVersion; PackageRoot = $tvmRoot; PythonTag = 'py3'; AbiTag = 'none'; PlatformTag = $wantExt
+            RequiresDist = (Get-PyprojectDependencies -PyprojectText $tvmPyproject); RequiresPython = '>=3.10'
+            Summary = "Apache TVM $TvmVersion RUNTIME-ONLY python package for $wantExt (no tvm_compiler; Kataglyphis cross build)" }
+        [void](New-AssembledPythonWheel -Metadata $metadata -PackExe $py.Exe -OutDir $wheelOut)
         $stagedWheels = @(Save-PythonWheel -SourceDir $wheelOut -WheelDir $wheelStore -Required)
         if ($stagedWheels.Count -ne 2) { throw "TVM cross: expected 2 assembled wheels staged into $wheelStore, got $($stagedWheels.Count)" }
         foreach ($w in $stagedWheels) { Assert-WheelTargetArch -WheelPath $w }

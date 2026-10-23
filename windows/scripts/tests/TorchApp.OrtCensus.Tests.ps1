@@ -229,7 +229,7 @@ Describe 'Build-TorchApp.ps1: the census gates install and verify' {
                 $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Command -and $n.Extent.Text -match $Like }, $true)
     }
     # $Node's ancestors inside function $In, innermost first; and the assignment statement $Node sits in.
-    function Get-TorchAppAncestor($Node, [string]$In) { for ($p = $Node.Parent; $p -and $p -ne $script:TorchAppFns[$In]; $p = $p.Parent) { $p } }
+    function Get-TorchAppAncestor($Node, [string]$In) { Get-TestAstAncestor -Node $Node -Stop $script:TorchAppFns[$In] }
     function Get-TorchAppAssignment($Node) { @($Node) + @(Get-TorchAppAncestor $Node 'Install-TorchAppEnvironment') | Where-Object { $_ -is [System.Management.Automation.Language.AssignmentStatementAst] } | Select-Object -First 1 }
     # Every whole-word mention of $Word in function $In outside comments, as file offset and line.
     function Find-TorchAppMention([string]$In, [string]$Word) {

@@ -6,6 +6,9 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1')
+
 $principal = [Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     throw 'This must run ELEVATED (service restart + process kill need admin).'
@@ -32,13 +35,9 @@ Get-Service containerd, buildkitd | Select-Object Name, Status | Format-Table -A
 
 Write-Host ''
 Write-Host '== Step 3: buildctl reaches the worker? ==' -ForegroundColor Cyan
-# Inline, no module: a repair tool must not depend on an import that may be broken when it is needed.
 $bt = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'C:\Program Files\Stevedore\bin\buildctl.exe', 'D:\Stevedore\bin\buildctl.exe') | Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($bt) {
-    & $bt --addr npipe:////./pipe/buildkitd debug workers 2>&1 | Select-String -Pattern 'windows/amd64|worker' | ForEach-Object { $_.Line } | Write-Host
-} else {
-    Write-Host 'buildctl.exe not found on the usual paths' -ForegroundColor Yellow
-}
+Write-HostMaintenanceProbe -Command $bt -ArgumentList @('--addr', 'npipe:////./pipe/buildkitd', 'debug', 'workers') `
+    -Pattern 'windows/amd64|worker' -UnavailableMessage 'buildctl.exe not found on the usual paths'
 
 Write-Host ''
 Write-Host 'Done. Tell the agent to relaunch the build.' -ForegroundColor Green

@@ -17,9 +17,10 @@ Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
 # The stage mounts WindowsBazel.Common beside the shared closure, a checkout keeps it in modules\.
-$bazelModule = @('bazelmods', 'modules', '..\modules') | ForEach-Object { Join-Path $PSScriptRoot "$_\WindowsBazel.Common.psm1" } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-if (-not $bazelModule) { throw "WindowsBazel.Common.psm1 is neither in $PSScriptRoot\bazelmods nor in $PSScriptRoot\modules" }
-Import-Module $bazelModule -DisableNameChecking
+$assetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+$sourceModule = Join-Path $assetRoot 'modules\WindowsSourceBuild.Common.psm1'
+if (-not (Get-Module -Name 'WindowsSourceBuild.Common')) { Import-Module $sourceModule }
+Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $PSScriptRoot -Name 'WindowsBazel.Common.psm1' -Directory @('bazelmods', 'modules', '..\modules')) -DisableNameChecking
 
 if ([string]::IsNullOrWhiteSpace($LitertLmVersion)) {
     $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.18.0' }

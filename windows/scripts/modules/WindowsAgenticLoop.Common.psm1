@@ -159,6 +159,12 @@ function Get-AgenticBuildConfigs {
     return $null
 }
 
+function Resolve-AgenticPromptAsset {
+    param($Path, [string]$RepoRoot)
+    if ($Path -and -not [System.IO.Path]::IsPathRooted($Path)) { return Join-Path $RepoRoot $Path }
+    return $Path
+}
+
 function Resolve-AgenticEngine {
     <#
     .SYNOPSIS
@@ -192,18 +198,10 @@ function Resolve-AgenticEngine {
     $plannerOverlay = Get-AgenticPromptOverlayPath -Config $Config -EngineConfig $engineCfg -Key 'plannerPromptOverlayFile'
     $executorOverlay = Get-AgenticPromptOverlayPath -Config $Config -EngineConfig $engineCfg -Key 'executorPromptOverlayFile'
 
-    if ($plannerPromptFile -and -not [System.IO.Path]::IsPathRooted($plannerPromptFile)) {
-        $plannerPromptFile = Join-Path $RepoRoot $plannerPromptFile
-    }
-    if ($executorPromptFile -and -not [System.IO.Path]::IsPathRooted($executorPromptFile)) {
-        $executorPromptFile = Join-Path $RepoRoot $executorPromptFile
-    }
-    if ($plannerOverlay -and -not [System.IO.Path]::IsPathRooted($plannerOverlay)) {
-        $plannerOverlay = Join-Path $RepoRoot $plannerOverlay
-    }
-    if ($executorOverlay -and -not [System.IO.Path]::IsPathRooted($executorOverlay)) {
-        $executorOverlay = Join-Path $RepoRoot $executorOverlay
-    }
+    $plannerPromptFile = Resolve-AgenticPromptAsset -Path $plannerPromptFile -RepoRoot $RepoRoot
+    $executorPromptFile = Resolve-AgenticPromptAsset -Path $executorPromptFile -RepoRoot $RepoRoot
+    $plannerOverlay = Resolve-AgenticPromptAsset -Path $plannerOverlay -RepoRoot $RepoRoot
+    $executorOverlay = Resolve-AgenticPromptAsset -Path $executorOverlay -RepoRoot $RepoRoot
 
     # For every engine: the generated .opencode/agents/<role>.md is opencode's only prompt channel.
     $plannerPromptFile = Resolve-AgenticRolePromptFile -Role 'planner' `

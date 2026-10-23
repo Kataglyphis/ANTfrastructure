@@ -40,8 +40,7 @@ function Resolve-PythonAppPath {
         [Parameter(Mandatory, Position = 1)][string]$Path
     )
 
-    if ([IO.Path]::IsPathRooted($Path)) { return $Path }
-    return Join-Path $RepoRoot $Path
+    return Resolve-PathFromRoot -Root $RepoRoot -Path $Path
 }
 
 function New-PythonAppRuntime {
@@ -195,8 +194,13 @@ function New-PythonAppCrossRuntime {
     $flat = Join-Path $WorkDir "pcbuild-$Arch"
     if (Test-Path -LiteralPath $flat) { Remove-Item -LiteralPath $flat -Recurse -Force }
     $null = New-Item -ItemType Directory -Force -Path $flat
-    Get-ChildItem -LiteralPath $TargetPython -File | Where-Object { $_.Extension -in '.exe', '.dll' } | Copy-Item -Destination $flat
-    Get-ChildItem -LiteralPath (Join-Path $TargetPython 'DLLs') -File | Where-Object { $_.Extension -in '.pyd', '.dll' } | Copy-Item -Destination $flat
+    $layoutParts = @(
+        @{ Root = $TargetPython; Extensions = @('.exe', '.dll') }
+        @{ Root = (Join-Path $TargetPython 'DLLs'); Extensions = @('.pyd', '.dll') }
+    )
+    foreach ($part in $layoutParts) {
+        Get-ChildItem -LiteralPath $part.Root -File | Where-Object { $_.Extension -in $part.Extensions } | Copy-Item -Destination $flat
+    }
     Copy-Item -LiteralPath (Join-Path $SourceDir 'LICENSE') -Destination (Join-Path $flat 'LICENSE.txt')
     return Invoke-PythonAppLayout -HostPython $HostPython -SourceDir $SourceDir -Destination $Destination -Arguments @('--build', $flat, '--arch', $Arch)
 }
@@ -607,13 +611,13 @@ function Add-WxsTree {
     param([Text.StringBuilder]$Tree, [Text.StringBuilder]$Files, [IO.DirectoryInfo]$Directory, [string]$DirectoryId, [int]$Depth, [hashtable]$Counter)
     foreach ($file in @(Get-ChildItem -LiteralPath $Directory.FullName -File | Sort-Object Name)) {
         $Counter.n++
-        $null = $Files.AppendLine("      <Component Id=`"c$($Counter.n)`" Directory=`"$DirectoryId`"><File Id=`"f$($Counter.n)`" Source=`"$([Security.SecurityElement]::Escape($file.FullName))`" /></Component>")
+        $null = $Files.AppendLine("      <Component Id=`"c$($Counter.n)`" Directory=`"$DirectoryId`"><File Id=`"f$($Counter.n)`" Source=`"$(Protect-PythonAppXml $file.FullName)`" /></Component>")
     }
     $pad = ' ' * (2 * $Depth)
     foreach ($sub in @(Get-ChildItem -LiteralPath $Directory.FullName -Directory | Sort-Object Name)) {
         $Counter.n++
         $id = "d$($Counter.n)"
-        $null = $Tree.AppendLine("$pad<Directory Id=`"$id`" Name=`"$([Security.SecurityElement]::Escape($sub.Name))`">")
+        $null = $Tree.AppendLine("$pad<Directory Id=`"$id`" Name=`"$(Protect-PythonAppXml $sub.Name)`">")
         Add-WxsTree -Tree $Tree -Files $Files -Directory $sub -DirectoryId $id -Depth ($Depth + 1) -Counter $Counter
         $null = $Tree.AppendLine("$pad</Directory>")
     }

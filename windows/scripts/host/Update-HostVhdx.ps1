@@ -51,18 +51,12 @@ $ErrorActionPreference = 'Stop'
 
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
-if (-not $LogPath) { $LogPath = Join-Path $repoRoot 'out\rebuild-host-vhdx.log' }
 if (-not $NewVhdxPath) { $NewVhdxPath = [IO.Path]::ChangeExtension($VhdxPath, $null) + 'new.vhdx' }
 $oldVhdxPath = "$VhdxPath.old"
 
-Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
-$hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
+$hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -LogPath $LogPath
 $LogPath = $hostLog.LogPath
-# Script-scope wrappers: they close over $hostLog, which a module function could not see.
-function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
-function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
 # Access errors are counted, not swallowed: an unreadable file is a different problem than a short copy.
 function Measure-Tree {
@@ -116,13 +110,13 @@ $physicalBefore = (Get-Item $VhdxPath).Length
 $usedBytes = $sourceVolume.Size - $sourceVolume.SizeRemaining
 $freeBefore = (Get-PSDrive $hostDrive).Free
 
-Write-Step ('source VHDX : {0}' -f $VhdxPath)
-Write-Step ('physical    : {0:N1} GB' -f ($physicalBefore / 1GB))
-Write-Step ('guest       : {0}: {1} ({2}), {3:N1} GB used of {4:N1} GB' -f
+Write-HostStep -Log $hostLog ('source VHDX : {0}' -f $VhdxPath)
+Write-HostStep -Log $hostLog ('physical    : {0:N1} GB' -f ($physicalBefore / 1GB))
+Write-HostStep -Log $hostLog ('guest       : {0}: {1} ({2}), {3:N1} GB used of {4:N1} GB' -f
     $sourceLetter, $sourceVolume.FileSystem, $sourceVolume.FileSystemLabel,
     ($usedBytes / 1GB), ($sourceVolume.Size / 1GB))
-Write-Step ('host {0}: free : {1:N1} GB' -f $hostDrive, ($freeBefore / 1GB))
-Write-Step ('reclaimable : ~{0:N1} GB by rebuilding' -f (($physicalBefore - $usedBytes) / 1GB))
+Write-HostStep -Log $hostLog ('host {0}: free : {1:N1} GB' -f $hostDrive, ($freeBefore / 1GB))
+Write-HostStep -Log $hostLog ('reclaimable : ~{0:N1} GB by rebuilding' -f (($physicalBefore - $usedBytes) / 1GB))
 
 # The dead blocks are not copied, so this is far less than the source's physical size.
 $needed = $usedBytes * 1.15
@@ -132,17 +126,13 @@ if (-not $SwapOnly -and $freeBefore -lt $needed) {
 }
 
 if ($ReportOnly) {
-    Write-Step 'ReportOnly: nothing changed.' 'Cyan'
-    Save-Transcript
+    Write-HostStep -Log $hostLog 'ReportOnly: nothing changed.' 'Cyan'
+    Save-HostMaintenanceLog -Log $hostLog
     return
 }
 
-$live = @(Get-Process -Name $BlockingProcess -ErrorAction SilentlyContinue)
-if ($live.Count -gt 0 -and -not $Force) {
-    Save-Transcript
-    throw ('{0} live build process(es) ({1}) — finish the build first, or pass -Force if they are stale.' -f
-        $live.Count, (($live | ForEach-Object Id) -join ', '))
-}
+$null = Get-HostMaintenanceProcess -Name $BlockingProcess -Force:$Force -Log $hostLog `
+    -FailureTemplate '{0} live build process(es) ({2}) — finish the build first, or pass -Force if they are stale.'
 
 if (-not $PSCmdlet.ShouldProcess($VhdxPath, 'rebuild around live data')) { return }
 
@@ -154,7 +144,7 @@ if (-not $SwapOnly) {
     }
 
     $sizeBytes = if ($NewSizeGB -gt 0) { [long]$NewSizeGB * 1GB } else { $image.Size }
-    Write-Step ('--- creating replacement: {0} ({1:N0} GB max, dynamic) ---' -f $NewVhdxPath, ($sizeBytes / 1GB))
+    Write-HostStep -Log $hostLog ('--- creating replacement: {0} ({1:N0} GB max, dynamic) ---' -f $NewVhdxPath, ($sizeBytes / 1GB))
     New-VHD -Path $NewVhdxPath -SizeBytes $sizeBytes -Dynamic | Out-Null
 
     $stageLetter = Get-FreeDriveLetter
@@ -164,7 +154,7 @@ if (-not $SwapOnly) {
         Initialize-Disk -Number $newDisk.Number -PartitionStyle $sourceDisk.PartitionStyle -ErrorAction Stop | Out-Null
 
         $newPart = New-Partition -DiskNumber $newDisk.Number -UseMaximumSize -DriveLetter $stageLetter -ErrorAction Stop
-        Write-Step ('staged as {0}: — formatting {1} ({2})' -f
+        Write-HostStep -Log $hostLog ('staged as {0}: — formatting {1} ({2})' -f
             $stageLetter, $sourceVolume.FileSystem, $sourceVolume.FileSystemLabel)
 
         # A Dev Drive is ReFS plus a trust flag; Format-Volume -DevDrive exists only on some builds.
@@ -181,53 +171,54 @@ if (-not $SwapOnly) {
             $isDevDrive = $probe -match 'ist ein Dev Drive|is a Dev Drive'
             if ($isDevDrive -and (Get-Command Format-Volume).Parameters.ContainsKey('DevDrive')) {
                 $fmt['DevDrive'] = $true
-                Write-Step 'source is a Dev Drive — formatting the replacement as one too'
+                Write-HostStep -Log $hostLog 'source is a Dev Drive — formatting the replacement as one too'
             } elseif ($isDevDrive) {
-                Write-Step 'source is a Dev Drive but Format-Volume has no -DevDrive here;' 'Yellow'
-                Write-Step 'the copy will be plain ReFS — re-flag it with: fsutil devdrv trust' 'Yellow'
+                Write-HostStep -Log $hostLog 'source is a Dev Drive but Format-Volume has no -DevDrive here;' 'Yellow'
+                Write-HostStep -Log $hostLog 'the copy will be plain ReFS — re-flag it with: fsutil devdrv trust' 'Yellow'
             }
         }
         $newPart | Format-Volume @fmt | Out-Null
 
-        Write-Step ('--- mirroring {0} -> {1}:\ (this is the long part) ---' -f $sourceRoot, $stageLetter)
+        Write-HostStep -Log $hostLog ('--- mirroring {0} -> {1}:\ (this is the long part) ---' -f $sourceRoot, $stageLetter)
         $xd = @(); foreach ($d in $ExcludeDir) { $xd += Join-Path $sourceRoot $d }
         $rc = @(
             $sourceRoot, "${stageLetter}:\", '/MIR', '/COPYALL', '/DCOPY:DAT',
             '/XJ', '/R:1', '/W:1', '/MT:8', '/NFL', '/NDL', '/NP', '/NJH'
         )
         if ($xd.Count -gt 0) { $rc += '/XD'; $rc += $xd }
-        & robocopy @rc | ForEach-Object { if ($_.Trim()) { Write-Step "  $_" } }
+        & robocopy @rc | ForEach-Object { if ($_.Trim()) { Write-HostStep -Log $hostLog "  $_" } }
 
         # robocopy exits 0-7 on success; 8+ means files were skipped or failed.
         $rcExit = $LASTEXITCODE
-        Write-Step ('robocopy exit {0} ({1})' -f $rcExit, $(if ($rcExit -lt 8) { 'ok' } else { 'FAILURES' }))
+        Write-HostStep -Log $hostLog ('robocopy exit {0} ({1})' -f $rcExit, $(if ($rcExit -lt 8) { 'ok' } else { 'FAILURES' }))
         if ($rcExit -ge 8) { throw "robocopy reported failures (exit $rcExit) — the copy is not trustworthy." }
 
-        Write-Step '--- verifying the copy ---'
+        Write-HostStep -Log $hostLog '--- verifying the copy ---'
         $srcStats = Measure-Tree -Root $sourceRoot -ExcludeDir $ExcludeDir
         $dstStats = Measure-Tree -Root "${stageLetter}:\" -ExcludeDir $ExcludeDir
-        Write-Step ('source : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $srcStats.Files, ($srcStats.Bytes / 1GB), $srcStats.Errors)
-        Write-Step ('copy   : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $dstStats.Files, ($dstStats.Bytes / 1GB), $dstStats.Errors)
+        Write-HostStep -Log $hostLog ('source : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $srcStats.Files, ($srcStats.Bytes / 1GB), $srcStats.Errors)
+        Write-HostStep -Log $hostLog ('copy   : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $dstStats.Files, ($dstStats.Bytes / 1GB), $dstStats.Errors)
         if ($dstStats.Files -ne $srcStats.Files -or $dstStats.Bytes -ne $srcStats.Bytes) {
             throw 'copy does not match the source — refusing to go any further. The source is untouched.'
         }
-        Write-Step 'copy matches the source exactly' 'Green'
+        Write-HostStep -Log $hostLog 'copy matches the source exactly' 'Green'
     } catch {
-        Write-Step ('COPY FAILED: {0}' -f $_.Exception.Message) 'Red'
-        Write-Step 'discarding the incomplete replacement; the source is untouched.' 'Yellow'
+        Write-HostMaintenanceFailure -Log $hostLog -Phase COPY -Message $_.Exception.Message -Advice @(
+            'discarding the incomplete replacement; the source is untouched.'
+        )
         Dismount-DiskImage -ImagePath $NewVhdxPath -ErrorAction SilentlyContinue | Out-Null
         Remove-Item $NewVhdxPath -Force -ErrorAction SilentlyContinue
-        Save-Transcript
+        Save-HostMaintenanceLog -Log $hostLog
         throw
     }
 
     Dismount-DiskImage -ImagePath $NewVhdxPath -ErrorAction SilentlyContinue | Out-Null
-    Write-Step 'replacement built and detached' 'Green'
+    Write-HostStep -Log $hostLog 'replacement built and detached' 'Green'
 
     if ($CopyOnly) {
-        Write-Step 'CopyOnly: stopping here. Nothing on the live volume was touched.' 'Cyan'
-        Write-Step ('Run the swap once nothing holds {0}: -SwapOnly' -f $sourceRoot) 'Cyan'
-        Save-Transcript
+        Write-HostStep -Log $hostLog 'CopyOnly: stopping here. Nothing on the live volume was touched.' 'Cyan'
+        Write-HostStep -Log $hostLog ('Run the swap once nothing holds {0}: -SwapOnly' -f $sourceRoot) 'Cyan'
+        Save-HostMaintenanceLog -Log $hostLog
         return
     }
 }
@@ -238,27 +229,28 @@ if (-not (Test-Path $NewVhdxPath)) { throw "no replacement to swap in: $NewVhdxP
 
 $stopped = Stop-HostServices -Log $hostLog -Service $Service
 
-Write-Step ('--- detaching the source ({0}:) ---' -f $sourceLetter)
+Write-HostStep -Log $hostLog ('--- detaching the source ({0}:) ---' -f $sourceLetter)
 try {
     Dismount-DiskImage -ImagePath $VhdxPath -ErrorAction Stop | Out-Null
-    Write-Step 'source detached'
+    Write-HostStep -Log $hostLog 'source detached'
 } catch {
-    Write-Step ('DETACH FAILED: {0}' -f $_.Exception.Message) 'Red'
-    Write-Step 'Something still holds the volume — a shell whose current directory is on it,' 'Yellow'
-    Write-Step 'an editor with the checkout open, or a background agent. Close them and re-run' 'Yellow'
-    Write-Step 'with -SwapOnly; the verified replacement is kept and costs nothing to reuse.' 'Yellow'
+    Write-HostMaintenanceFailure -Log $hostLog -Phase DETACH -Message $_.Exception.Message -Advice @(
+        'Something still holds the volume — a shell whose current directory is on it,'
+        'an editor with the checkout open, or a background agent. Close them and re-run'
+        'with -SwapOnly; the verified replacement is kept and costs nothing to reuse.'
+    )
     Start-HostServices -Log $hostLog -Service $stopped
-    Save-Transcript
+    Save-HostMaintenanceLog -Log $hostLog
     throw
 }
 
 try {
-    Write-Step '--- renaming: source -> .old, replacement -> source ---'
+    Write-HostStep -Log $hostLog '--- renaming: source -> .old, replacement -> source ---'
     if (Test-Path $oldVhdxPath) { throw "a previous backup is in the way: $oldVhdxPath" }
     Rename-Item -LiteralPath $VhdxPath -NewName (Split-Path $oldVhdxPath -Leaf) -ErrorAction Stop
     Rename-Item -LiteralPath $NewVhdxPath -NewName (Split-Path $VhdxPath -Leaf) -ErrorAction Stop
 
-    Write-Step '--- attaching the replacement ---'
+    Write-HostStep -Log $hostLog '--- attaching the replacement ---'
     Mount-DiskImage -ImagePath $VhdxPath -ErrorAction Stop | Out-Null
     $disk = Get-DiskImage -ImagePath $VhdxPath | Get-Disk
     $part = Get-Partition -DiskNumber $disk.Number | Where-Object { $_.Type -ne 'Reserved' } | Select-Object -First 1
@@ -266,10 +258,11 @@ try {
         Set-Partition -DiskNumber $disk.Number -PartitionNumber $part.PartitionNumber -NewDriveLetter $sourceLetter -ErrorAction Stop
     }
     Start-Sleep -Seconds 3
-    Write-Step ('attached as {0}:' -f $sourceLetter) 'Green'
+    Write-HostStep -Log $hostLog ('attached as {0}:' -f $sourceLetter) 'Green'
 } catch {
-    Write-Step ('SWAP FAILED: {0}' -f $_.Exception.Message) 'Red'
-    Write-Step '--- rolling back to the original disk ---' 'Yellow'
+    Write-HostMaintenanceFailure -Log $hostLog -Phase SWAP -Message $_.Exception.Message -Advice @(
+        '--- rolling back to the original disk ---'
+    )
     Dismount-DiskImage -ImagePath $VhdxPath -ErrorAction SilentlyContinue | Out-Null
     if ((Test-Path $oldVhdxPath) -and -not (Test-Path $NewVhdxPath)) {
         Rename-Item -LiteralPath $VhdxPath -NewName (Split-Path $NewVhdxPath -Leaf) -ErrorAction SilentlyContinue
@@ -277,7 +270,7 @@ try {
     }
     Mount-DiskImage -ImagePath $VhdxPath -ErrorAction SilentlyContinue | Out-Null
     Start-HostServices -Log $hostLog -Service $stopped
-    Save-Transcript
+    Save-HostMaintenanceLog -Log $hostLog
     throw
 }
 
@@ -286,26 +279,26 @@ try {
 $verified = $true
 if ($VerifyPath) {
     $verified = Test-Path $VerifyPath
-    Write-Step ('verify path {0}: {1}' -f $VerifyPath, $verified) $(if ($verified) { 'Green' } else { 'Red' })
+    Write-HostStep -Log $hostLog ('verify path {0}: {1}' -f $VerifyPath, $verified) $(if ($verified) { 'Green' } else { 'Red' })
 }
 
 $physicalAfter = (Get-Item $VhdxPath).Length
 $freeAfter = (Get-PSDrive $hostDrive).Free
-Write-Step ('replacement : {0:N1} GB physical (was {1:N1} GB)' -f ($physicalAfter / 1GB), ($physicalBefore / 1GB))
-Write-Step ('host {0}: free : {1:N1} GB (was {2:N1} GB)' -f $hostDrive, ($freeAfter / 1GB), ($freeBefore / 1GB))
+Write-HostStep -Log $hostLog ('replacement : {0:N1} GB physical (was {1:N1} GB)' -f ($physicalAfter / 1GB), ($physicalBefore / 1GB))
+Write-HostStep -Log $hostLog ('host {0}: free : {1:N1} GB (was {2:N1} GB)' -f $hostDrive, ($freeAfter / 1GB), ($freeBefore / 1GB))
 
 if ($RetireOld -and $verified) {
-    Write-Step ('--- deleting the old disk: {0} ---' -f $oldVhdxPath)
+    Write-HostStep -Log $hostLog ('--- deleting the old disk: {0} ---' -f $oldVhdxPath)
     Remove-Item -LiteralPath $oldVhdxPath -Force -ErrorAction Stop
-    Write-Step ('host {0}: free : {1:N1} GB after retiring the old disk' -f $hostDrive, ((Get-PSDrive $hostDrive).Free / 1GB)) 'Green'
+    Write-HostStep -Log $hostLog ('host {0}: free : {1:N1} GB after retiring the old disk' -f $hostDrive, ((Get-PSDrive $hostDrive).Free / 1GB)) 'Green'
 } else {
-    Write-Step ('old disk kept: {0} ({1:N1} GB)' -f $oldVhdxPath, ($physicalBefore / 1GB)) 'Cyan'
-    Write-Step 'The space is NOT reclaimed until it is deleted. Check the volume, then:' 'Cyan'
-    Write-Step ('  Remove-Item -LiteralPath "{0}" -Force' -f $oldVhdxPath) 'Cyan'
-    if (-not $verified) { Write-Step 'verification FAILED — do not delete it, roll back instead.' 'Red' }
+    Write-HostStep -Log $hostLog ('old disk kept: {0} ({1:N1} GB)' -f $oldVhdxPath, ($physicalBefore / 1GB)) 'Cyan'
+    Write-HostStep -Log $hostLog 'The space is NOT reclaimed until it is deleted. Check the volume, then:' 'Cyan'
+    Write-HostStep -Log $hostLog ('  Remove-Item -LiteralPath "{0}" -Force' -f $oldVhdxPath) 'Cyan'
+    if (-not $verified) { Write-HostStep -Log $hostLog 'verification FAILED — do not delete it, roll back instead.' 'Red' }
 }
 
 Start-HostServices -Log $hostLog -Service $stopped
 
-Write-Step 'done' 'Green'
-Save-Transcript
+Write-HostStep -Log $hostLog 'done' 'Green'
+Save-HostMaintenanceLog -Log $hostLog

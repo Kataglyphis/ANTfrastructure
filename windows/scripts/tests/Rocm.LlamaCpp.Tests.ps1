@@ -1,4 +1,7 @@
 #requires -Version 7.0
+
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
+Set-Alias -Name Invoke-LlamaCppProcess -Value Invoke-NativeProbeProcess
 # llama.cpp HIP (source-built ggml-hip) + Vulkan on the rocm lane with downloads stubbed: gate, pins, layout, PE walk, loaders and wiring.
 
 $script:LlamaInstall = 'windows\scripts\build\Install-LlamaCpp.ps1'
@@ -505,7 +508,7 @@ Describe 'LlamaCpp check: nothing of ROCm''s beside llama-server, and the PATH r
 }
 
 Describe 'LlamaCpp check: llama-server --version and llama-cli --list-devices' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaCheck -FunctionName 'Invoke-LlamaCppProcess', 'Get-LlamaCppRunFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaCheck -FunctionName 'Get-LlamaCppRunFinding')
     function New-VersionStub {
         param([string]$Dir, [string]$Body, [string]$Name = 'llama-server.cmd')
         $p = Join-Path $Dir $Name
@@ -631,7 +634,7 @@ Describe 'LlamaCpp check: grading the load probes' {
 }
 
 Describe 'LlamaCpp check: the load probes run in a child pwsh' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaCheck -FunctionName 'Invoke-LlamaCppProcess', 'Get-LlamaCppProbeScript', 'Invoke-LlamaCppLoadProbe',
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaCheck -FunctionName 'Get-LlamaCppProbeScript', 'Invoke-LlamaCppLoadProbe',
         'Get-LlamaCppProbeModuleFinding', 'Get-LlamaCppVulkanProbeFinding', 'Get-LlamaCppVulkanLoadFinding', 'Get-LlamaCppHipLoadFinding',
         'Invoke-PeReader', 'ConvertTo-PeFileOffset', 'Read-PeString', 'Get-PeSymbolTable')
 

@@ -52,31 +52,21 @@ Describe 'WindowsBuildSweep.Common' {
   }
 
   Context 'Write-SweepSummary' {
-    It 'returns 0 when every step passed' {
-      $results = @(
+    It '<Name>' -ForEach @(
+      @{ Name = 'returns 0 when every step passed'; Expected = 0; Result = @(
         [pscustomobject]@{ Name = 'a'; Ok = $true; Skipped = $false; ExitCode = 0; Message = '' }
         [pscustomobject]@{ Name = 'b'; Ok = $true; Skipped = $true; ExitCode = 0; Message = 'skipped' }
-      )
-
-      Write-SweepSummary -Result $results | Should -Be 0
-    }
-
-    It 'returns the first non-zero exit code rather than a synthesised 1' {
-      $results = @(
+      ) }
+      @{ Name = 'returns the first non-zero exit code rather than a synthesised 1'; Expected = 7; Result = @(
         [pscustomobject]@{ Name = 'a'; Ok = $true; Skipped = $false; ExitCode = 0; Message = '' }
         [pscustomobject]@{ Name = 'b'; Ok = $false; Skipped = $false; ExitCode = 7; Message = 'exit code 7' }
         [pscustomobject]@{ Name = 'c'; Ok = $false; Skipped = $false; ExitCode = 5; Message = 'exit code 5' }
-      )
-
-      Write-SweepSummary -Result $results | Should -Be 7
-    }
-
-    It 'returns 1 when a step failed by throwing with no exit code' {
-      $results = @(
+      ) }
+      @{ Name = 'returns 1 when a step failed by throwing with no exit code'; Expected = 1; Result = @(
         [pscustomobject]@{ Name = 'a'; Ok = $false; Skipped = $false; ExitCode = 0; Message = 'boom' }
-      )
-
-      Write-SweepSummary -Result $results | Should -Be 1
+      ) }
+    ) {
+      Write-SweepSummary -Result $Result | Should -Be $Expected
     }
 
     It 'accepts an empty result set' {
@@ -93,17 +83,12 @@ Describe 'WindowsBuildSweep.Common' {
   Context 'Invoke-InLinuxContainerBuild' {
     # A fake engine that records its arguments, resolved by the tested code in a child scope; only the global scope survives it.
     function script:Invoke-WithFakeEngine {
-        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake engine runs in a child scope the tested code resolves; only the global scope survives it')]
-        param([Parameter(Mandatory)][scriptblock]$Body)
-        $global:FakeEngineArgs = $null
-        Set-Item function:global:FakeEngineRun { $global:FakeEngineArgs = @($args) }
-        try {
-            $null = & $Body
-            return $global:FakeEngineArgs
-        } finally {
-            Remove-Item function:global:FakeEngineRun
-            Remove-Variable -Name FakeEngineArgs -Scope Global
-        }
+        param([Parameter(Mandatory)][scriptblock]$Body, [switch]$AllCalls)
+        $calls = [Collections.Generic.List[object]]::new()
+        $definition = { $calls.Add(@($args)) }.GetNewClosure()
+        $null = Invoke-WithTestFunction -Name FakeEngineRun -Definition $definition -Body $Body
+        if ($AllCalls) { foreach ($call in $calls) { $call -join ' ' } }
+        elseif ($calls.Count) { return $calls[-1] }
     }
 
     It 'hands bash LF-only lines when the command came from a CRLF file' {
@@ -114,19 +99,9 @@ Describe 'WindowsBuildSweep.Common' {
       $args_seen[-3..-1] -join '|' | Should -BeExactly "bash|-c|set -e`necho a`necho b`n"
     }
 
-    # Every engine call, one line each, so the volume steps before the run are visible too.
     function script:Get-FakeEngineCall {
-        [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidGlobalVars', '', Justification = 'the fake engine runs in a child scope the tested code resolves; only the global scope survives it')]
         param([Parameter(Mandatory)][scriptblock]$Body)
-        $global:FakeEngineCalls = [System.Collections.Generic.List[string]]::new()
-        Set-Item function:global:FakeEngineRun { $global:FakeEngineCalls.Add("$args") }
-        try {
-            $null = & $Body
-            return @($global:FakeEngineCalls)
-        } finally {
-            Remove-Item function:global:FakeEngineRun
-            Remove-Variable -Name FakeEngineCalls -Scope Global
-        }
+        Invoke-WithFakeEngine -Body $Body -AllCalls
     }
 
     It 'chowns each named volume with the image it runs, on its platform, never a stock image' {

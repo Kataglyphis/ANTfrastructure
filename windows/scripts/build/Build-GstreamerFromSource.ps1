@@ -74,8 +74,7 @@ $sourceBuildModule = Join-Path $scriptAssetRoot 'modules\WindowsSourceBuild.Comm
 if (-not (Test-Path $sourceBuildModule)) { throw "Required module not found: $sourceBuildModule" }
 if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($sourceBuildModule)))) { Import-Module $sourceBuildModule }
 # G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
-$ortGateModule = @('modules', 'ortmods') | ForEach-Object { Join-Path $scriptAssetRoot $_ 'WindowsOrtProvenance.Build.psm1' } | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-Import-Module ($ortGateModule ?? $(throw 'WindowsOrtProvenance.Build.psm1 (the G2 ORT gate) is not mounted')) -DisableNameChecking
+Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsOrtProvenance.Build.psm1') -DisableNameChecking
 
 # Merge-lane leaf modules: do not fold them into WindowsSourceBuild.Common, which every media RUN mounts.
 foreach ($leafModule in @('WindowsMeson.Common.psm1', 'WindowsRustToolchain.Common.psm1')) {
@@ -1148,8 +1147,7 @@ cpp_link_args = [$buildLinkArgs]
     }
 
     # graphene appends -Werror=undef after our c_args, so its bare `#if __GNUC__` dies under clang-cl.
-    $grapheneMeson = Get-ChildItem -Path (Join-Path $gstSrcDir 'subprojects') -Directory -Filter 'graphene-*' -ErrorAction SilentlyContinue |
-        ForEach-Object { Join-Path $_.FullName 'meson.build' } | Where-Object { Test-Path $_ } | Select-Object -First 1
+    $grapheneMeson = Find-ChildDirectoryFile -Parent (Join-Path $gstSrcDir 'subprojects') -DirectoryFilter 'graphene-*' -RelativePath 'meson.build'
     if ($grapheneMeson) {
         [void](Edit-SourceFile -Path $grapheneMeson `
                 -Description 'graphene meson.build: drop -Werror=undef (clang-cl has no __GNUC__)' `

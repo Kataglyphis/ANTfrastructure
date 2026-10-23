@@ -158,20 +158,20 @@ Describe 'Edit-SourceFile' {
 
 Describe 'Invoke-SourcePatchWithFallback' {
 
-    # A tiny git repo, so the check runs through `git apply` whatever patch.exe the host has.
-    $newPatchRepo = {
-        param($dir)
-        $null = & git -C $dir init 2>&1
-        [System.IO.File]::WriteAllText((Join-Path $dir 't.txt'), "old`n")
+    function Invoke-SourcePatchFallbackFixture {
+        param([Parameter(Mandatory)][scriptblock]$Body, [switch]$Unmatched)
+        $action = $Body
+        Invoke-InTestDir { param($dir)
+            $null = & git -C $dir init 2>&1
+            $patch = Join-Path $dir 'p.patch'
+            $anchor = if ($Unmatched) { 'DOES NOT MATCH' } else { 'old' }
+            Write-TestFileTree -Root $dir -Files @{ 't.txt' = "old`n"; 'p.patch' = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-$anchor`n+new`n" }
+            & $action $dir $patch
+        }.GetNewClosure()
     }
-    $goodPatch = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-old`n+new`n"
-    $badPatch = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-DOES NOT MATCH`n+whatever`n"
 
     It 'applies rung 1 and never invokes the fallback' {
-        Invoke-InTestDir { param($dir)
-            & $newPatchRepo $dir
-            $patch = Join-Path $dir 'p.patch'
-            [System.IO.File]::WriteAllText($patch, $goodPatch)
+        Invoke-SourcePatchFallbackFixture { param($dir, $patch)
             $flag = Join-Path $dir 'fallback-ran.flag'
             $r = Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback { Set-Content -Path $flag -Value 'x'; $true }
             Assert-True $r 'rung 1 applied must report $true'
@@ -182,10 +182,7 @@ Describe 'Invoke-SourcePatchWithFallback' {
     }
 
     It 'falls back when the .patch does not apply and reports the fallback verdict' {
-        Invoke-InTestDir { param($dir)
-            & $newPatchRepo $dir
-            $patch = Join-Path $dir 'p.patch'
-            [System.IO.File]::WriteAllText($patch, $badPatch)
+        Invoke-SourcePatchFallbackFixture -Unmatched -Body { param($dir, $patch)
             $target = Join-Path $dir 't.txt'
             $r = Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback {
                 Invoke-InlineRegexPatch -Path $target -Pattern 'old' -Replacement 'inline' -Description 't'
@@ -196,20 +193,14 @@ Describe 'Invoke-SourcePatchWithFallback' {
     }
 
     It 'returns $false (no throw) when both rungs miss without -Fatal' {
-        Invoke-InTestDir { param($dir)
-            & $newPatchRepo $dir
-            $patch = Join-Path $dir 'p.patch'
-            [System.IO.File]::WriteAllText($patch, $badPatch)
+        Invoke-SourcePatchFallbackFixture -Unmatched -Body { param($dir, $patch)
             $r = & { Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fallback { $false } } 3>$null
             Assert-False $r 'double miss without -Fatal stays a warning-level verdict'
         }
     }
 
     It 'throws on a double miss with -Fatal (backlog #19: load-bearing patches must not rot silently)' {
-        Invoke-InTestDir { param($dir)
-            & $newPatchRepo $dir
-            $patch = Join-Path $dir 'p.patch'
-            [System.IO.File]::WriteAllText($patch, $badPatch)
+        Invoke-SourcePatchFallbackFixture -Unmatched -Body { param($dir, $patch)
             Assert-Throws { Invoke-SourcePatchWithFallback -PatchFile $patch -SourceDir $dir -Fatal -Fallback { $false } } `
                 -MessagePattern 'BOTH the \.patch and the inline fallback' `
                 'a rotted load-bearing patch must fail the build at patch time'

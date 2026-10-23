@@ -28,9 +28,9 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-function Say([string]$m, [string]$c = 'Gray') {
-    Write-Host ('[{0}] {1}' -f (Get-Date -Format HH:mm:ss), $m) -ForegroundColor $c
-}
+$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1')
+
 
 # The allowlist, root plus leaf pattern per rule, is the whole security boundary: adding a rule is a reviewed change.
 function Get-ReclaimRules {
@@ -149,21 +149,21 @@ function Get-ReclaimPlan {
 
 # Main
 function Invoke-FreeDiskSpace {
-    Say '== resolving the allowlist ==' 'Cyan'
+    Write-HostMaintenanceMessage '== resolving the allowlist ==' 'Cyan'
     $daemonPrune = -not ($NoDaemonPrune -or $StoreHusksOnly)
     $plan = @(Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays -StoreHusksOnly:$StoreHusksOnly))
 
     # Fail closed: one target on a protected root means the resolution is wrong, so nothing runs.
     foreach ($t in $plan) {
         if (Test-Protected $t.Path) {
-            Say ('REFUSING THE WHOLE RUN: a resolved target lands on a protected root -> ' + $t.Path) 'Red'
-            Say 'The allowlist resolution is wrong. Fix the rule; do not bypass this.' 'Red'
+            Write-HostMaintenanceMessage ('REFUSING THE WHOLE RUN: a resolved target lands on a protected root -> ' + $t.Path) 'Red'
+            Write-HostMaintenanceMessage 'The allowlist resolution is wrong. Fix the rule; do not bypass this.' 'Red'
             return 2
         }
     }
 
     if ($plan.Count -eq 0) {
-        Say 'no allow-listed candidates on this host - nothing for the file half to do.' 'Green'
+        Write-HostMaintenanceMessage 'no allow-listed candidates on this host - nothing for the file half to do.' 'Green'
     } else {
         $plan | Sort-Object SizeGB -Descending | Select-Object -First 40 | Format-Table -AutoSize @(
             @{ n = 'GB'; e = { $_.SizeGB } }
@@ -172,76 +172,76 @@ function Invoke-FreeDiskSpace {
             @{ n = 'path'; e = { $_.Path } }
             @{ n = 'what'; e = { $_.What } }
         ) | Out-String | Write-Host
-        if ($plan.Count -gt 40) { Say ('... and {0} more (not truncated at delete time)' -f ($plan.Count - 40)) 'DarkGray' }
+        if ($plan.Count -gt 40) { Write-HostMaintenanceMessage ('... and {0} more (not truncated at delete time)' -f ($plan.Count - 40)) 'DarkGray' }
 
         foreach ($l in ($plan | Where-Object { $_.Linked })) {
-            Say ('SKIP - junction/symlink or unreadable tree: ' + $l.Path) 'Yellow'
+            Write-HostMaintenanceMessage ('SKIP - junction/symlink or unreadable tree: ' + $l.Path) 'Yellow'
         }
         $deletable = @($plan | Where-Object { -not $_.Linked })
-        Say ('total allow-listed: {0} GB across {1} entries ({2} skipped as unsafe)' -f
+        Write-HostMaintenanceMessage ('total allow-listed: {0} GB across {1} entries ({2} skipped as unsafe)' -f
             [math]::Round((($deletable | ForEach-Object { $_.SizeGB } | Measure-Object -Sum).Sum), 2), $deletable.Count,
             ($plan.Count - $deletable.Count)) 'Yellow'
     }
 
     # ----------------------------------------------------- daemon levers ----
     if ($daemonPrune) {
-        Say '== unused container layers (the big lever) ==' 'Cyan'
+        Write-HostMaintenanceMessage '== unused container layers (the big lever) ==' 'Cyan'
         try {
             $df = & docker system df 2>&1
             if ($LASTEXITCODE -eq 0) { $df | ForEach-Object { Write-Host ('  ' + $_) } }
-            else { Say '  docker reachable but `system df` failed - run it in an elevated shell for the layer report.' 'DarkGray' }
-        } catch { Say '  docker not on PATH in this shell - no layer report (the prune levers below still apply).' 'DarkGray' }
-        Say ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f ($KeepGB * 1024))
-        Say 'Both leave in-use and freshly-referenced records alone. See docs\windows-builds.md § Store GC.'
-        Say 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
+            else { Write-HostMaintenanceMessage '  docker reachable but `system df` failed - run it in an elevated shell for the layer report.' 'DarkGray' }
+        } catch { Write-HostMaintenanceMessage '  docker not on PATH in this shell - no layer report (the prune levers below still apply).' 'DarkGray' }
+        Write-HostMaintenanceMessage ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f ($KeepGB * 1024))
+        Write-HostMaintenanceMessage 'Both leave in-use and freshly-referenced records alone. See docs\windows-builds.md § Store GC.'
+        Write-HostMaintenanceMessage 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
     }
 
     # ------------------------------------------------------- the delete -----
     if (-not $Apply) {
         Write-Host ''
-        Say 'REPORT ONLY. Re-run with -Apply to delete the entries listed above.' 'Green'
-        Say 'Nothing outside that list will EVER be touched by this script.' 'Green'
+        Write-HostMaintenanceMessage 'REPORT ONLY. Re-run with -Apply to delete the entries listed above.' 'Green'
+        Write-HostMaintenanceMessage 'Nothing outside that list will EVER be touched by this script.' 'Green'
         return 0
     }
 
     $buildLive = $false
     try { $buildLive = [bool](Get-Process -Name 'buildctl', 'docker' -ErrorAction SilentlyContinue) } catch { $buildLive = $false }
     if ($buildLive -and -not $AllowDuringBuild) {
-        Say 'a build looks live (buildctl/docker running) - refusing the destructive half.' 'Red'
-        Say 'Re-run with -AllowDuringBuild once the chain is idle.' 'Red'
+        Write-HostMaintenanceMessage 'a build looks live (buildctl/docker running) - refusing the destructive half.' 'Red'
+        Write-HostMaintenanceMessage 'Re-run with -AllowDuringBuild once the chain is idle.' 'Red'
         return 1
     }
 
     if ($daemonPrune) {
-        Say '== pruning unused container layers ==' 'Cyan'
+        Write-HostMaintenanceMessage '== pruning unused container layers ==' 'Cyan'
         $freeTargetMB = $KeepGB * 1024
         try {
             & buildctl prune --free-storage $freeTargetMB
-            Say ('  buildctl exit: ' + $LASTEXITCODE)
-        } catch { Say ('  buildctl unavailable: ' + $_.Exception.Message) 'Yellow' }
+            Write-HostMaintenanceMessage ('  buildctl exit: ' + $LASTEXITCODE)
+        } catch { Write-HostMaintenanceMessage ('  buildctl unavailable: ' + $_.Exception.Message) 'Yellow' }
         try {
             & docker image prune -f
-            Say ('  docker image prune exit: ' + $LASTEXITCODE)
-        } catch { Say ('  docker unavailable: ' + $_.Exception.Message) 'Yellow' }
+            Write-HostMaintenanceMessage ('  docker image prune exit: ' + $LASTEXITCODE)
+        } catch { Write-HostMaintenanceMessage ('  docker unavailable: ' + $_.Exception.Message) 'Yellow' }
     }
 
-    Say '== deleting allow-listed entries ==' 'Cyan'
+    Write-HostMaintenanceMessage '== deleting allow-listed entries ==' 'Cyan'
     $freed = 0.0
     foreach ($t in $plan) {
-        if (Test-Protected $t.Path) { Say ('SKIP (protected): ' + $t.Path) 'Red'; continue }
-        if ($t.Linked -or (Test-HasReparsePoint $t.Path)) { Say ('SKIP (junction/symlink or unreadable tree): ' + $t.Path) 'Yellow'; continue }
+        if (Test-Protected $t.Path) { Write-HostMaintenanceMessage ('SKIP (protected): ' + $t.Path) 'Red'; continue }
+        if ($t.Linked -or (Test-HasReparsePoint $t.Path)) { Write-HostMaintenanceMessage ('SKIP (junction/symlink or unreadable tree): ' + $t.Path) 'Yellow'; continue }
         try {
             Remove-Item -LiteralPath $t.Path -Recurse -Force -ErrorAction Stop
             $freed += $t.SizeGB
         } catch {
-            Say ('locked or in use, left in place: {0}' -f $t.Path) 'DarkGray'
+            Write-HostMaintenanceMessage ('locked or in use, left in place: {0}' -f $t.Path) 'DarkGray'
         }
     }
 
     Write-Host ''
-    Say ('done - {0} GB returned from allow-listed entries.' -f [math]::Round($freed, 2)) 'Green'
+    Write-HostMaintenanceMessage ('done - {0} GB returned from allow-listed entries.' -f [math]::Round($freed, 2)) 'Green'
     Get-PSDrive C, D -ErrorAction SilentlyContinue |
-        ForEach-Object { Say ('{0}: {1} GB free' -f $_.Name, [int]($_.Free / 1GB)) }
+        ForEach-Object { Write-HostMaintenanceMessage ('{0}: {1} GB free' -f $_.Name, [int]($_.Free / 1GB)) }
     return 0
 }
 

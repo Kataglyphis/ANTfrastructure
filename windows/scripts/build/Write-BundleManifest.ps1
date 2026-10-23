@@ -24,6 +24,50 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 $gstModule = Join-Path $scriptAssetRoot 'modules\WindowsGstPlugins.Common.psm1'
 if ((Test-Path $gstModule) -and -not (Get-Module -Name 'WindowsGstPlugins.Common')) { Import-Module $gstModule }
 
+function Get-BundleEnvironmentAction {
+    param([string]$InstallDir, [string]$Arch, [object[]]$Environment, [string[]]$DllHome,
+        [string]$PythonRoot, [string]$FreeThreadedExe, [string]$FreeThreadedRoot, [string]$WheelDir)
+    $set = { param($Name, $Value, $Mode = 'Set') [pscustomobject]@{ Name = $Name; Value = $Value; Mode = $Mode } }
+    & $set KATA_BUNDLE_ROOT $InstallDir
+    & $set KATA_BUNDLE_ARCH $Arch
+    foreach ($row in @($Environment | Where-Object { $_.Exists })) { & $set $row.Name $row.Value }
+    & $set PATH ($DllHome -join ';') Prepend
+    if ($PythonRoot) {
+        & $set KATA_PYTHON "$PythonRoot\python.exe"
+        & $set PATH $PythonRoot Prepend
+    }
+    if ($FreeThreadedExe) {
+        & $set KATA_PYTHON_FREETHREADED $FreeThreadedExe
+        & $set PATH $FreeThreadedRoot Append
+    }
+    & $set KATA_WHEELS $WheelDir
+}
+
+function ConvertTo-BundleEnvironmentScript {
+    param([ValidateSet('Cmd', 'PowerShell')][string]$Syntax, [object[]]$Action, [string]$Header)
+    if ($Syntax -eq 'Cmd') {
+        '@echo off'
+        "rem $Header"
+        'rem Registers every DLL home of this bundle. Run once per shell (or from a script) before using anything below.'
+    } else {
+        "# $Header"
+        '# Dot-source this file: . C:\runtime\BUNDLE-ENV.ps1'
+    }
+    foreach ($item in $Action) {
+        $value = [string]$item.Value
+        if ($Syntax -eq 'Cmd') {
+            if ($item.Mode -eq 'Append') { $value = "%PATH%;$value" }
+            elseif ($item.Mode -eq 'Prepend') { $value += ';%PATH%' }
+            'set "{0}={1}"' -f $item.Name, $value
+        } else {
+            $expression = "'" + $value.Replace("'", "''") + "'"
+            if ($item.Mode -eq 'Append') { $expression = '$env:PATH + ' + "';" + $value.Replace("'", "''") + "'" }
+            elseif ($item.Mode -eq 'Prepend') { $expression = "'" + $value.Replace("'", "''") + ";' + " + '$env:PATH' }
+            '$env:{0} = {1}' -f $item.Name, $expression
+        }
+    }
+}
+
 if (-not (Test-Path $InstallDir)) { throw "write-bundle-manifest: $InstallDir does not exist -- nothing to describe" }
 
 $arch  = Get-WindowsTargetArch
@@ -75,42 +119,11 @@ $plugins = @(if (Get-Command Get-RequiredGstPlugin -ErrorAction SilentlyContinue
 
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + 'Z'
 
-# BUNDLE-ENV.cmd
-$cmd = [System.Collections.Generic.List[string]]::new()
-$cmd.Add('@echo off')
-$cmd.Add("rem Kataglyphis Windows media bundle -- $arch ($($info.PeMachineName)), written $stamp by Write-BundleManifest.ps1 (#130)")
-$cmd.Add('rem Registers every DLL home of this bundle. Run once per shell (or from a script) before using anything below.')
-$cmd.Add("set ""KATA_BUNDLE_ROOT=$InstallDir""")
-$cmd.Add("set ""KATA_BUNDLE_ARCH=$arch""")
-foreach ($r in ($envRows | Where-Object { $_.Exists })) { $cmd.Add("set ""$($r.Name)=$($r.Value)""") }
-$cmd.Add("set ""PATH=$($dllHomes -join ';');%PATH%""")
-if ($pythonRoot) {
-    $cmd.Add("set ""KATA_PYTHON=$pythonRoot\python.exe""")
-    $cmd.Add("set ""PATH=$pythonRoot;%PATH%""")
-}
-if ($ftPythonExe) {
-    $cmd.Add("set ""KATA_PYTHON_FREETHREADED=$ftPythonExe""")
-    $cmd.Add("set ""PATH=%PATH%;$ftPythonRoot""")
-}
-$cmd.Add("set ""KATA_WHEELS=$wheelDir""")
-
-# BUNDLE-ENV.ps1
-$ps = [System.Collections.Generic.List[string]]::new()
-$ps.Add("# Kataglyphis Windows media bundle -- $arch ($($info.PeMachineName)), written $stamp by Write-BundleManifest.ps1 (#130)")
-$ps.Add('# Dot-source this file: . C:\runtime\BUNDLE-ENV.ps1')
-$ps.Add("`$env:KATA_BUNDLE_ROOT = '$InstallDir'")
-$ps.Add("`$env:KATA_BUNDLE_ARCH = '$arch'")
-foreach ($r in ($envRows | Where-Object { $_.Exists })) { $ps.Add("`$env:$($r.Name) = '$($r.Value)'") }
-$ps.Add("`$env:PATH = '$($dllHomes -join ';');' + `$env:PATH")
-if ($pythonRoot) {
-    $ps.Add("`$env:KATA_PYTHON = '$pythonRoot\python.exe'")
-    $ps.Add("`$env:PATH = '$pythonRoot;' + `$env:PATH")
-}
-if ($ftPythonExe) {
-    $ps.Add("`$env:KATA_PYTHON_FREETHREADED = '$ftPythonExe'")
-    $ps.Add("`$env:PATH = `$env:PATH + ';$ftPythonRoot'")
-}
-$ps.Add("`$env:KATA_WHEELS = '$wheelDir'")
+$environmentAction = @(Get-BundleEnvironmentAction -InstallDir $InstallDir -Arch $arch -Environment $envRows -DllHome $dllHomes `
+    -PythonRoot $pythonRoot -FreeThreadedExe $ftPythonExe -FreeThreadedRoot $ftPythonRoot -WheelDir $wheelDir)
+$environmentHeader = "Kataglyphis Windows media bundle -- $arch ($($info.PeMachineName)), written $stamp by Write-BundleManifest.ps1 (#130)"
+$cmd = @(ConvertTo-BundleEnvironmentScript -Syntax Cmd -Action $environmentAction -Header $environmentHeader)
+$ps = @(ConvertTo-BundleEnvironmentScript -Syntax PowerShell -Action $environmentAction -Header $environmentHeader)
 
 # BUNDLE-README.md
 $md = [System.Collections.Generic.List[string]]::new()

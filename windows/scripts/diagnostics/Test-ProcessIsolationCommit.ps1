@@ -25,10 +25,8 @@ param(
     [int]$Count    = 50
 )
 
-# Resolve docker.exe
-Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsScripts.Shared.psm1')
-if (-not $Docker) { $Docker = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe") }
-if (-not $Docker) { throw 'docker.exe not found. Pass -Docker <path>.' }
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsDiagnostics.Common.psm1')
+$Docker = Resolve-DiagnosticDocker -Docker $Docker
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dockerfile = Join-Path $scriptDir 'Dockerfile.isolation-probe'
@@ -38,51 +36,28 @@ $probeTag = 'local/isolation-probe:test'
 # Continue, so docker's stderr never throws; the exit code decides.
 $ErrorActionPreference = 'Continue'
 
-function Write-Head($t) { Write-Host "`n==== $t ====" -ForegroundColor Cyan }
-
-# --- Record the versions this result belongs to ---
-Write-Head 'Environment (record these against the verdict)'
-$hostBuild = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion')
-Write-Host ("Host           : {0} (build {1}.{2})" -f $hostBuild.ProductName, $hostBuild.CurrentBuildNumber, $hostBuild.UBR)
-Write-Host ("Probe base img : {0}" -f $Base)
-& $Docker version --format 'Docker Engine  : {{.Server.Version}} (API {{.Server.APIVersion}})' 2>&1 | Write-Host
-& $Docker info --format 'containerd     : {{.ContainerdCommit.ID}}   default-isolation: {{.Isolation}}' 2>&1 | Write-Host
+Write-DiagnosticHostEnvironment -Docker $Docker -Base $Base -ImageLabel 'Probe base img '
 
 # --- 1. CONTROL: process-isolation RUN (should always pass) ---
-Write-Head 'CONTROL: docker run --isolation process (expected: PASS)'
-$runOut = & $Docker run --rm --isolation process $Base cmd /c "echo run-ok & echo NPROC=%NUMBER_OF_PROCESSORS%" 2>&1
-$runExit = $LASTEXITCODE
-$runOut | Write-Host
-$controlPass = ($runExit -eq 0 -and ($runOut -join "`n") -match 'run-ok')
-Write-Host ("CONTROL: {0}" -f $(if ($controlPass) { 'PASS (process isolation runs)' } else { 'FAIL (process isolation cannot even RUN here)' })) `
-    -ForegroundColor $(if ($controlPass) { 'Green' } else { 'Red' })
+Write-DiagnosticHeading 'CONTROL: docker run --isolation process (expected: PASS)'
+$null = Invoke-DiagnosticControl -Docker $Docker -Base $Base -Command @('cmd', '/c', 'echo run-ok & echo NPROC=%NUMBER_OF_PROCESSORS%') `
+    -Marker 'run-ok' -SuccessDetail 'process isolation runs' -FailureDetail 'process isolation cannot even RUN here'
 
 # --- 2. VERDICT: process-isolation BUILD+COMMIT (the operation that fails today) ---
-Write-Head 'VERDICT: docker build --isolation process (SUCCESS => bug is GONE)'
+Write-DiagnosticHeading 'VERDICT: docker build --isolation process (SUCCESS => bug is GONE)'
 & $Docker image rm -f $probeTag 2>&1 | Out-Null
-$buildOut = & $Docker build --isolation process --no-cache `
-    --build-arg "BASE=$Base" --build-arg "COUNT=$Count" `
-    -t $probeTag -f $dockerfile $scriptDir 2>&1
-$buildExit = $LASTEXITCODE
-$buildOut | Write-Host
-$joined = ($buildOut -join "`n")
+$result = Invoke-DiagnosticDocker -Docker $Docker -Arguments @(
+    'build', '--isolation', 'process', '--no-cache', '--build-arg', "BASE=$Base", '--build-arg', "COUNT=$Count",
+    '-t', $probeTag, '-f', $dockerfile, $scriptDir)
+$buildExit = $result.Code
+$joined = $result.Text
 $hitKnownBug = $joined -match 'ActivateLayer|0x20|DO_NOT_DETACH|0x801f0010|file used by another process'
 
-Write-Head 'RESULT'
-if ($buildExit -eq 0) {
-    Write-Host 'BUG GONE: `docker build --isolation process` committed a layer successfully!' -ForegroundColor Green
-    Write-Host 'This host can commit process-isolated layers — the shape the BuildKit lane needs.' -ForegroundColor Green
-    Write-Host '      The classic run+commit workaround this probe used to gate is gone with build.ps1.' -ForegroundColor Green
-    & $Docker image rm -f $probeTag 2>&1 | Out-Null
-    exit 0
-}
-elseif ($hitKnownBug) {
-    Write-Host 'BUG PRESENT: the known wcifs/ActivateLayer commit failure still occurs on this version.' -ForegroundColor Yellow
-    Write-Host 'Keep using the run+commit workaround (docker run --isolation hyperv --cpu-count N + docker commit).' -ForegroundColor Yellow
-    exit 1
-}
-else {
-    Write-Host ("BUILD FAILED (exit {0}) but NOT with the known signature -- investigate; do not assume the bug is fixed." -f $buildExit) -ForegroundColor Red
-    exit 2
-}
-
+$verdict = Write-DiagnosticVerdict -Passed ($buildExit -eq 0) -KnownBug $hitKnownBug -Success @(
+    'BUG GONE: `docker build --isolation process` committed a layer successfully!'
+    'This host can commit process-isolated layers — the shape the BuildKit lane needs.'
+    '      The classic run+commit workaround this probe used to gate is gone with build.ps1.') -Present @(
+    'BUG PRESENT: the known wcifs/ActivateLayer commit failure still occurs on this version.'
+    'Keep using the run+commit workaround (docker run --isolation hyperv --cpu-count N + docker commit).') -Failure ("BUILD FAILED (exit {0}) but NOT with the known signature -- investigate; do not assume the bug is fixed." -f $buildExit)
+if ($verdict -eq 0) { & $Docker image rm -f $probeTag 2>&1 | Out-Null }
+exit $verdict

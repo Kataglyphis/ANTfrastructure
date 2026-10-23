@@ -12,17 +12,33 @@ function Test-IpInSubnet {
     #>
     param(
         [Parameter(Mandatory)][string]$Ip,
-        [Parameter(Mandatory)][string]$Cidr
+        [Parameter(Mandatory)][string]$Cidr,
+        [switch]$InvalidReturnsFalse
     )
     $parts = $Cidr -split '/'
-    if ($parts.Count -ne 2) { throw "Test-IpInSubnet: '$Cidr' is not CIDR notation" }
-    $prefix = [int]$parts[1]
-    if ($prefix -lt 0 -or $prefix -gt 32) { throw "Test-IpInSubnet: prefix /$prefix out of range" }
+    if ($parts.Count -ne 2) {
+        if ($InvalidReturnsFalse) { return $false }
+        throw "Test-IpInSubnet: '$Cidr' is not CIDR notation"
+    }
+    $prefix = 0
+    if ($InvalidReturnsFalse) {
+        if ($parts[1] -notmatch '^\d+$' -or -not [int]::TryParse($parts[1], [ref]$prefix)) { return $false }
+    } else { $prefix = [int]$parts[1] }
+    if ($prefix -lt 0 -or $prefix -gt 32) {
+        if ($InvalidReturnsFalse) { return $false }
+        throw "Test-IpInSubnet: prefix /$prefix out of range"
+    }
     # Reverse byte order: GetAddressBytes is big-endian, ToUInt32 wants little.
     $ipBits  = [BitConverter]::ToUInt32(([System.Net.IPAddress]::Parse($Ip).GetAddressBytes()[3..0]), 0)
     $netBits = [BitConverter]::ToUInt32(([System.Net.IPAddress]::Parse($parts[0]).GetAddressBytes()[3..0]), 0)
     $mask = if ($prefix -eq 0) { [uint32]0 } else { [uint32](([long]4294967295 -shl (32 - $prefix)) -band [long]4294967295) }
     return (($ipBits -band $mask) -eq ($netBits -band $mask))
+}
+
+function Get-CniNatAdapterIp {
+    Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+        Where-Object { $_.InterfaceAlias -match '^vEthernet \(nat\)$' } |
+        Select-Object -First 1 -ExpandProperty IPAddress
 }
 
 function Get-CniNatSubnetDrift {
@@ -50,9 +66,7 @@ function Get-CniNatSubnetDrift {
     }
     # An explicitly bound empty -AdapterIp means "adapter absent" and must not fall through to the live adapter.
     if (-not $AdapterIp -and -not $PSBoundParameters.ContainsKey('AdapterIp')) {
-        $AdapterIp = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
-            Where-Object { $_.InterfaceAlias -match '^vEthernet \(nat\)$' } |
-            Select-Object -First 1 -ExpandProperty IPAddress)
+        $AdapterIp = Get-CniNatAdapterIp
     }
     $confSubnet = ([regex]::Match($ConfText, '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
     if (-not $AdapterIp -or -not $confSubnet) { return $null }
@@ -161,5 +175,5 @@ function Get-CniConfFormIssue {
     return $null
 }
 
-Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatSubnetDrift, Get-CniConfFormIssue,
+Export-ModuleMember -Function Test-IpInSubnet, Get-CniNatAdapterIp, Get-CniNatSubnetDrift, Get-CniConfFormIssue,
     ConvertFrom-CniConfList, ConvertTo-CanonicalJson

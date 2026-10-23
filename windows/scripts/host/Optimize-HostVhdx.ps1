@@ -37,14 +37,9 @@ $ErrorActionPreference = 'Stop'
 
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$repoRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
-Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
-$hostLog = New-HostMaintenanceLog -Name 'compact-host-vhdx' -RepoRoot $repoRoot -LogPath $LogPath
+$hostLog = New-HostMaintenanceLog -Name 'compact-host-vhdx' -LogPath $LogPath
 $LogPath = $hostLog.LogPath
-# Script-scope wrappers: they close over $hostLog, which a module function could not see.
-function Write-Step { param([string]$Message, [string]$Color = 'Gray') Write-HostStep $hostLog $Message $Color }
-function Save-Transcript { Save-HostMaintenanceLog $hostLog }
 
 # --- guards ------------------------------------------------------------------
 
@@ -72,41 +67,35 @@ function Get-GuestVolumeInfo {
 $physicalBefore = (Get-Item $VhdxPath).Length
 $freeBefore = (Get-PSDrive (Split-Path $VhdxPath -Qualifier).TrimEnd(':')).Free
 
-Write-Step ('VHDX      : {0}' -f $VhdxPath)
-Write-Step ('physical  : {0:N1} GB' -f ($physicalBefore / 1GB))
-Write-Step ('host free : {0:N1} GB' -f ($freeBefore / 1GB))
+Write-HostStep -Log $hostLog ('VHDX      : {0}' -f $VhdxPath)
+Write-HostStep -Log $hostLog ('physical  : {0:N1} GB' -f ($physicalBefore / 1GB))
+Write-HostStep -Log $hostLog ('host free : {0:N1} GB' -f ($freeBefore / 1GB))
 
 $volume = Get-GuestVolumeInfo -Path $VhdxPath
 if ($volume) {
     $used = $volume.Size - $volume.SizeRemaining
-    Write-Step ('guest fs  : {0} ({1}), {2:N1} GB used of {3:N1} GB' -f
+    Write-HostStep -Log $hostLog ('guest fs  : {0} ({1}), {2:N1} GB used of {3:N1} GB' -f
         $volume.FileSystem, $volume.FileSystemLabel, ($used / 1GB), ($volume.Size / 1GB))
-    Write-Step ('potential : ~{0:N1} GB of dead blocks' -f (($physicalBefore - $used) / 1GB))
+    Write-HostStep -Log $hostLog ('potential : ~{0:N1} GB of dead blocks' -f (($physicalBefore - $used) / 1GB))
 
     if ($volume.FileSystem -eq 'ReFS') {
-        Write-Step 'WARNING: ReFS guest — Optimize-VHD usually reclaims ~nothing here.' 'Yellow'
-        Write-Step '         ReFS does not report free blocks via UNMAP the way NTFS does;' 'Yellow'
-        Write-Step '         expect "Optimize-VHD OK" with a near-zero delta. The reliable' 'Yellow'
-        Write-Step '         reclaim on ReFS is rebuilding the VHDX around its live data.' 'Yellow'
+        Write-HostStep -Log $hostLog 'WARNING: ReFS guest — Optimize-VHD usually reclaims ~nothing here.' 'Yellow'
+        Write-HostStep -Log $hostLog '         ReFS does not report free blocks via UNMAP the way NTFS does;' 'Yellow'
+        Write-HostStep -Log $hostLog '         expect "Optimize-VHD OK" with a near-zero delta. The reliable' 'Yellow'
+        Write-HostStep -Log $hostLog '         reclaim on ReFS is rebuilding the VHDX around its live data.' 'Yellow'
     }
 } else {
-    Write-Step 'guest fs  : not attached (or unreadable) — skipping the potential estimate.'
+    Write-HostStep -Log $hostLog 'guest fs  : not attached (or unreadable) — skipping the potential estimate.'
 }
 
 if ($ReportOnly) {
-    Write-Step 'ReportOnly: nothing changed.' 'Cyan'
-    Save-Transcript
+    Write-HostStep -Log $hostLog 'ReportOnly: nothing changed.' 'Cyan'
+    Save-HostMaintenanceLog -Log $hostLog
     return
 }
 
-$live = @(Get-Process -Name $BlockingProcess -ErrorAction SilentlyContinue)
-if ($live.Count -gt 0 -and -not $Force) {
-    Save-Transcript
-    throw ("{0} live process(es) found ({1}; pids: {2}) — stopping the build services kills their solves. " -f
-        $live.Count, (($live | ForEach-Object ProcessName | Sort-Object -Unique) -join ', '),
-        (($live | ForEach-Object Id) -join ', ')) +
-        'Wait for the build to finish, or pass -Force if they are stale.'
-}
+$live = @(Get-HostMaintenanceProcess -Name $BlockingProcess -Force:$Force -Log $hostLog `
+    -FailureTemplate '{0} live process(es) found ({1}; pids: {2}) — stopping the build services kills their solves. Wait for the build to finish, or pass -Force if they are stale.')
 
 if (-not $PSCmdlet.ShouldProcess($VhdxPath, "stop [$($Service -join ', ')], detach, compact ($Mode), reattach")) {
     return
@@ -114,14 +103,14 @@ if (-not $PSCmdlet.ShouldProcess($VhdxPath, "stop [$($Service -join ', ')], deta
 
 # --- 1) stale build clients ---------------------------------------------------
 
-Write-Step '--- stale build clients ---'
+Write-HostStep -Log $hostLog '--- stale build clients ---'
 if ($live.Count -gt 0) {
     foreach ($p in $live) {
-        Write-Step ('killing {0} PID {1} (CPU {2}s)' -f $p.ProcessName, $p.Id, [math]::Round($p.CPU, 1))
+        Write-HostStep -Log $hostLog ('killing {0} PID {1} (CPU {2}s)' -f $p.ProcessName, $p.Id, [math]::Round($p.CPU, 1))
         Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
     }
 } else {
-    Write-Step 'none running'
+    Write-HostStep -Log $hostLog 'none running'
 }
 
 # --- 2) services down ---------------------------------------------------------
@@ -131,32 +120,32 @@ $stopped = Stop-HostServices -Log $hostLog -Service $Service
 # --- 3) compact (read-only attach; the finally always restores read-write so the volume is never stranded) ---
 
 try {
-    Write-Step '--- detach ---'
+    Write-HostStep -Log $hostLog '--- detach ---'
     Dismount-DiskImage -ImagePath $VhdxPath -ErrorAction Stop | Out-Null
-    Write-Step 'detached'
+    Write-HostStep -Log $hostLog 'detached'
 
-    Write-Step '--- attach read-only ---'
+    Write-HostStep -Log $hostLog '--- attach read-only ---'
     Mount-DiskImage -ImagePath $VhdxPath -Access ReadOnly -NoDriveLetter -ErrorAction Stop | Out-Null
-    Write-Step 'read-only attached'
+    Write-HostStep -Log $hostLog 'read-only attached'
 
-    Write-Step "--- compact (mode $Mode; can take a while, the console looks idle) ---"
+    Write-HostStep -Log $hostLog "--- compact (mode $Mode; can take a while, the console looks idle) ---"
     if (-not (Get-Command Optimize-VHD -ErrorAction SilentlyContinue)) {
         throw 'Optimize-VHD not available — install the Hyper-V PowerShell module: ' +
               'Enable-WindowsOptionalFeature -Online -FeatureName Microsoft-Hyper-V-Management-PowerShell'
     }
     Optimize-VHD -Path $VhdxPath -Mode $Mode -ErrorAction Stop
-    Write-Step 'Optimize-VHD reported success'
+    Write-HostStep -Log $hostLog 'Optimize-VHD reported success'
 } catch {
-    Write-Step ('COMPACT ERROR: {0}' -f $_.Exception.Message) 'Red'
+    Write-HostMaintenanceError -Log $hostLog -ErrorRecord $_ -Template 'COMPACT ERROR: {0}' -Color 'Red'
 } finally {
-    Write-Step '--- reattach read-write ---'
+    Write-HostStep -Log $hostLog '--- reattach read-write ---'
     Dismount-DiskImage -ImagePath $VhdxPath -ErrorAction SilentlyContinue | Out-Null
     try {
         Mount-DiskImage -ImagePath $VhdxPath -ErrorAction Stop | Out-Null
-        Write-Step 'reattached'
+        Write-HostStep -Log $hostLog 'reattached'
     } catch {
-        Write-Step ('REATTACH ERROR: {0}' -f $_.Exception.Message) 'Red'
-        Write-Step ('Recover manually: Mount-DiskImage -ImagePath {0}' -f $VhdxPath) 'Red'
+        Write-HostMaintenanceError -Log $hostLog -ErrorRecord $_ -Template 'REATTACH ERROR: {0}' -Color 'Red'
+        Write-HostStep -Log $hostLog ('Recover manually: Mount-DiskImage -ImagePath {0}' -f $VhdxPath) 'Red'
     }
     Start-Sleep -Seconds 3
 }
@@ -167,23 +156,23 @@ $physicalAfter = (Get-Item $VhdxPath).Length
 $freeAfter = (Get-PSDrive (Split-Path $VhdxPath -Qualifier).TrimEnd(':')).Free
 $reclaimed = ($physicalBefore - $physicalAfter) / 1GB
 
-Write-Step ('--- after: VHDX {0:N1} GB physical | host free {1:N1} GB' -f ($physicalAfter / 1GB), ($freeAfter / 1GB))
-Write-Step ('reclaimed from the VHDX : {0:N1} GB' -f $reclaimed)
-Write-Step ('host free delta (all causes): {0:N1} GB' -f (($freeAfter - $freeBefore) / 1GB))
+Write-HostStep -Log $hostLog ('--- after: VHDX {0:N1} GB physical | host free {1:N1} GB' -f ($physicalAfter / 1GB), ($freeAfter / 1GB))
+Write-HostStep -Log $hostLog ('reclaimed from the VHDX : {0:N1} GB' -f $reclaimed)
+Write-HostStep -Log $hostLog ('host free delta (all causes): {0:N1} GB' -f (($freeAfter - $freeBefore) / 1GB))
 
 if ($reclaimed -lt 1 -and $volume -and $volume.FileSystem -eq 'ReFS') {
-    Write-Step 'As predicted for ReFS: compaction returned ~nothing. Rebuild the VHDX to reclaim.' 'Yellow'
+    Write-HostStep -Log $hostLog 'As predicted for ReFS: compaction returned ~nothing. Rebuild the VHDX to reclaim.' 'Yellow'
 }
 
 if ($VerifyPath) {
     $ok = Test-Path $VerifyPath
-    Write-Step ("verify path {0}: {1}" -f $VerifyPath, $ok) $(if ($ok) { 'Green' } else { 'Red' })
-    if (-not $ok) { Write-Step 'the volume did not come back with its drive letter — check Disk Management.' 'Red' }
+    Write-HostStep -Log $hostLog ("verify path {0}: {1}" -f $VerifyPath, $ok) $(if ($ok) { 'Green' } else { 'Red' })
+    if (-not $ok) { Write-HostStep -Log $hostLog 'the volume did not come back with its drive letter — check Disk Management.' 'Red' }
 }
 
 # --- 5) services up -----------------------------------------------------------
 
 Start-HostServices -Log $hostLog -Service $stopped
 
-Write-Step 'done' 'Green'
-Save-Transcript
+Write-HostStep -Log $hostLog 'done' 'Green'
+Save-HostMaintenanceLog -Log $hostLog

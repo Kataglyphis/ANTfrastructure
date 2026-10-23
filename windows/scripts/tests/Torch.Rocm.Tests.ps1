@@ -1,4 +1,6 @@
 #requires -Version 7.0
+
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 # NOT covered: the probe on the image's CPython, and the source build (Torch.RocmSourceBuild.Tests.ps1).

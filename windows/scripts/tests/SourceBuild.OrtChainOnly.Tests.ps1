@@ -416,7 +416,10 @@ Describe 'ORT gate (G2): wiring' {
         foreach ($consumer in $script:GateConsumerScript.Keys) {
             $rel = "windows\scripts\build\$($script:GateConsumerScript[$consumer])"
             $text = & $read $rel
-            Assert-Match "@\('modules', 'ortmods'\) \| ForEach-Object \{ Join-Path \`$scriptAssetRoot \`$_ 'WindowsOrtProvenance\.Build\.psm1' \}" $text "$consumer imports the gate"
+            $resolve = @(Get-OrtGateCommandAst -Text $text -Name 'Resolve-SourceBuildLeafModule')
+            Assert-Equal 1 $resolve.Count "$consumer resolves the gate once"
+            Assert-Equal '$scriptAssetRoot' (Get-OrtGateCallArg -Call $resolve[0] -Parameter '-AssetRoot') "$consumer uses its mounted asset root"
+            Assert-Equal "'WindowsOrtProvenance.Build.psm1'" (Get-OrtGateCallArg -Call $resolve[0] -Parameter '-Name') "$consumer resolves the G2 gate"
             $call = @(Get-OrtGateCommandAst -Text $text -Name 'Assert-ChainOrtOnly')[0]
             $stops = @(Get-OrtGateCommandAst -Text $text -Name $end[$consumer] | Where-Object { $consumer -ne 'gstreamer' -or "$($_.CommandElements[1])" -match '10\. cleanup' })
             Assert-True ($stops.Count -gt 0) "$consumer has a '$($end[$consumer])'"

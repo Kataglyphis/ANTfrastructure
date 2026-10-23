@@ -113,10 +113,13 @@ function New-TestDir {
 
 # Zeroes $LASTEXITCODE so cases that inspect native exit codes are isolated from earlier runs.
 function Invoke-InTestDir {
-    param([Parameter(Mandatory)][scriptblock]$Body)
+    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files)
     $d = New-TestDir
     $global:LASTEXITCODE = 0
-    try { & $Body $d }
+    try {
+        if ($null -ne $Files) { Write-TestFileTree -Root $d -Files $Files }
+        & $Body $d
+    }
     finally { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
@@ -130,6 +133,60 @@ function Write-TestFileTree {
 }
 
 Export-ModuleMember -Function Write-TestFileTree
+
+function Invoke-WithTestFunction {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Definition,
+        [Parameter(Mandatory)][scriptblock]$Body, [object[]]$BodyArgumentList = @(), [object]$FixtureState)
+    if ($PSBoundParameters.ContainsKey('FixtureState')) {
+        if ($BodyArgumentList.Count) { throw 'FixtureState cannot be combined with BodyArgumentList' }
+        $State = $FixtureState
+        $Definition = $Definition.GetNewClosure()
+        $BodyArgumentList = ,$State
+    }
+    $path = "Function:global:$Name"
+    $previous = Get-Item -LiteralPath "Function:$Name" -ErrorAction SilentlyContinue
+    $previousDefinition = if ($previous) { $previous.ScriptBlock }
+    Set-Item -LiteralPath $path -Value $Definition
+    try { & $Body @BodyArgumentList } finally {
+        if ($previous) { Set-Item -LiteralPath $path -Value $previousDefinition }
+        else { Remove-Item -LiteralPath "Function:$Name" -ErrorAction SilentlyContinue }
+    }
+}
+
+Export-ModuleMember -Function Invoke-WithTestFunction
+
+function Invoke-WithTestNativeCommand {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][object]$FixtureState,
+        [Parameter(Mandatory)][scriptblock]$Implementation, [Parameter(Mandatory)][scriptblock]$Body)
+    $State = $FixtureState
+    $definition = {
+        $State.Calls.Add(@($args))
+        & $Implementation $State $args
+        $global:LASTEXITCODE = $State.Code
+    }.GetNewClosure()
+    $previous = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+    $previousValue = if ($previous) { $previous.Value }
+    try {
+        Invoke-WithTestFunction -Name $Name -Definition $definition -Body $Body -BodyArgumentList (,$FixtureState)
+    } finally {
+        if ($previous) { $global:LASTEXITCODE = $previousValue }
+        else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+    }
+}
+
+Export-ModuleMember -Function Invoke-WithTestNativeCommand
+
+function New-TestCallState {
+    param([System.Collections.IDictionary]$Properties = @{})
+    $state = [ordered]@{ Calls = [Collections.Generic.List[object]]::new() }
+    foreach ($key in $Properties.Keys) {
+        if ($key -eq 'Calls') { throw 'Calls is reserved for the fixture call collection' }
+        $state[$key] = $Properties[$key]
+    }
+    return [pscustomobject]$state
+}
+
+Export-ModuleMember -Function New-TestCallState
 
 # The smallest file Get-PeFileMachine accepts (MZ, e_lfanew, 'PE', machine), plus a tag so no two fixtures share bytes.
 function New-TestPeFile {
@@ -379,10 +436,22 @@ function Import-FunctionModule {
 
 # Runs $Body with Import-FunctionModule's *-Mut* copy imported from a fresh test directory, then removes it.
 function Invoke-WithFunctionModule {
-    param([Parameter(Mandatory)][string]$Text, [string[]]$FunctionName = @(), [string]$Find = '',
+    param([string]$Text, [string[]]$FunctionName = @(), [string]$Find = '',
         [AllowEmptyString()][string]$Replace = '', [Parameter(Mandatory)][scriptblock]$Body,
         [string]$Prelude = '', [string]$Prefix = 'Mut', [object[]]$ArgumentList = @(),
-        [object[]]$BodyArgumentList = @())
+        [object[]]$BodyArgumentList = @(), [object]$FixtureState, [string]$ScriptPath)
+    if ($PSBoundParameters.ContainsKey('Text') -eq $PSBoundParameters.ContainsKey('ScriptPath')) { throw 'Provide exactly one of Text or ScriptPath' }
+    if ($PSBoundParameters.ContainsKey('ScriptPath')) {
+        $fullPath = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
+        $Text = [IO.File]::ReadAllText($fullPath)
+    }
+    if (-not $Text) { throw 'Fixture source text must not be empty' }
+    if ($PSBoundParameters.ContainsKey('FixtureState')) {
+        if ($ArgumentList.Count -or $BodyArgumentList.Count) { throw 'FixtureState cannot be mixed with explicit fixture arguments' }
+        $ArgumentList = ,$FixtureState
+        $BodyArgumentList = ,$FixtureState
+        $Prelude = "param(`$State)`n" + $Prelude
+    }
     # Renamed: inside Invoke-InTestDir, $Body is that function's own parameter.
     $mutantBody = $Body
     Invoke-InTestDir { param($dir)
@@ -454,3 +523,29 @@ function Get-TestFunctionNames {
 }
 
 Export-ModuleMember -Function Get-TestFunctionNames
+
+function Get-TestAstAncestor {
+    param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Node,
+        [type]$Type = [Management.Automation.Language.Ast],
+        [Management.Automation.Language.Ast]$Stop, [switch]$First, [scriptblock]$Predicate)
+    for ($parent = $Node.Parent; $parent -and -not [object]::ReferenceEquals($parent, $Stop); $parent = $parent.Parent) {
+        if ($parent -is $Type -and (-not $Predicate -or (& $Predicate $parent))) {
+            $parent
+            if ($First) { return }
+        }
+    }
+}
+
+function Assert-TestAstCommand {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][Management.Automation.Language.CommandAst[]]$Command,
+        [Parameter(Mandatory)][string]$Text, [string]$Assignment = '')
+    Assert-Equal 1 $Command.Count "one call matching $Text"
+    Assert-Equal $Text ($Command[0].Extent.Text -replace '\s*`\r?\n\s*', ' ') 'literal command wiring'
+    if ($Assignment) {
+        $parent = Get-TestAstAncestor -Node $Command[0] -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
+        Assert-NotNull $parent 'the call result must be assigned'
+        Assert-Equal $Assignment $parent.Left.Extent.Text 'assignment destination'
+    }
+}
+
+Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand
