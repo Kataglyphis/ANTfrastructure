@@ -84,6 +84,16 @@ download_verified_file() {
   }
 }
 
+download_optional_verified_file() {
+  local url="$1" sha="$2" destination="$3" warning="$4"
+  if [ -z "${sha}" ]; then
+    echo "${warning}" >&2
+    download_file "${url}" "${destination}" 3
+    return $?
+  fi
+  download_verified_file "${url}" "${sha}" "${destination}"
+}
+
 # download_verified_cached <url> <sha256> <dest> [cache_dir]: a cached copy is re-verified before every reuse.
 download_verified_cached() {
   local url="$1" sha="$2" dest="$3" cache_dir="${4:-}" cached=""

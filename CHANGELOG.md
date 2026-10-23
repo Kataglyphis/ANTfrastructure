@@ -67,6 +67,15 @@
 - Correct PowerShell function-boundary scanning for braces in strings, comments and here-strings; add a regression fixture without removing literal tokens from comparison.
 - Remove 16 stale Windows duplication exceptions and lower 12 measured budgets without widening thresholds or narrowing scan coverage.
 
+## 2026-10-23 — share Python paths, GPU repositories and runtime preparation
+
+- Remove six resolved Linux duplication exceptions without changing scanner limits or coverage.
+- Share executable venv selection and workspace overrides; copied UV and WebDAV modules carry the pure Python probe companion.
+- Share optional-checksum repository-key downloads and ROCm source rendering while preserving warnings, retries, status and exact repository bytes.
+- Share media development-link eligibility while keeping link actions, logging order and failure handling with their callers.
+- Share runtime preparation with unchanged architecture binding, exported dry-run state and validation failures.
+- Preserve independent behavioral receipts and add 44 mutation checks; remove the exercised WebDAV dead-function exception.
+
 ## 2026-10-23 — share logger fallbacks, ELF checks and media probes
 
 - Share standalone logging fallback registration while retaining plain/ANSI bytes, command/function lookup, streams, fatal errors and caller state.

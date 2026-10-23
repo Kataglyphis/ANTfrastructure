@@ -17,3 +17,11 @@ preflight_python_require() {
   printf 'Set PREFLIGHT_PYTHON, e.g. PREFLIGHT_PYTHON="uv run --no-project python"\n' >&2
   return 1
 }
+
+python_venv_executable() {
+  local venv="$1" candidate
+  for candidate in "$venv/bin/python" "$venv/Scripts/python.exe"; do
+    if [ -x "$candidate" ]; then printf '%s' "$candidate"; return 0; fi
+  done
+  return 1
+}

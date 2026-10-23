@@ -107,6 +107,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
+   Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.

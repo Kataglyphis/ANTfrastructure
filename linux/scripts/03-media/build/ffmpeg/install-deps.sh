@@ -113,7 +113,7 @@ _ffmpeg_ensure_vidstab_linkable() {
     [ -n "${_tri}" ] || return 0
     _libdir="/usr/lib/${_tri}"
     [ -d "${_libdir}" ] || return 0
-    if [ ! -e "${_libdir}/libgomp.so" ] && [ -e "${_libdir}/libgomp.so.1" ]; then
+    if media_missing_dev_symlink "${_libdir}/libgomp.so" libgomp.so.1; then
         echo "Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink; the cross toolchain has no target libgomp)"
         ln -sf libgomp.so.1 "${_libdir}/libgomp.so"
     fi

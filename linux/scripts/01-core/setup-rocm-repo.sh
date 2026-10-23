@@ -53,43 +53,28 @@ if [ -z "${_rocm_key_sha}" ] && [ -f "${_SETUP_ROCM_DIR}/versions.env" ]; then
   _rocm_key_sha="$(sed -n 's/^ROCM_GPG_KEY_SHA256=//p' "${_SETUP_ROCM_DIR}/versions.env")"
 fi
 _rocm_key_tmp="$(mktemp)"
-if [ -n "${_rocm_key_sha}" ]; then
-  download_verified_file "https://stable.repo.amd.com/rocm/gpg/packages.gpg" "${_rocm_key_sha}" "${_rocm_key_tmp}"
-else
-  echo "WARNING: ROCM_GPG_KEY_SHA256 unset — fetching the ROCm apt key UNVERIFIED" >&2
-  download_file "https://stable.repo.amd.com/rocm/gpg/packages.gpg" "${_rocm_key_tmp}" 3
-fi
+download_optional_verified_file "https://stable.repo.amd.com/rocm/gpg/packages.gpg" "${_rocm_key_sha}" "${_rocm_key_tmp}" \
+  "WARNING: ROCM_GPG_KEY_SHA256 unset — fetching the ROCm apt key UNVERIFIED"
 gpg --dearmor < "${_rocm_key_tmp}" > /etc/apt/keyrings/rocm.gpg
 rm -f "${_rocm_key_tmp}"
 
-# Both stanzas pin amd64 on purpose: AMD publishes no arm64 ROCm packages, so never substitute ${TARGETARCH}.
-cat > /etc/apt/sources.list.d/rocm.sources <<'SOURCES'
-Types: deb
-URIs: https://stable.repo.amd.com/rocm/core/packages/ubuntu2604/
-Suites: stable
-Components: main
-Architectures: amd64
-Signed-By: /etc/apt/keyrings/rocm.gpg
+_rocm_repo_stanza() {
+  # AMD publishes no arm64 packages for this repository layout.
+  printf 'Types: deb\nURIs: %s\nSuites: stable\nComponents: main\nArchitectures: amd64\nSigned-By: /etc/apt/keyrings/rocm.gpg\n' "$1"
+}
 
-Types: deb
-URIs: https://stable.repo.amd.com/rocm/migraphx/packages/ubuntu2604/
-Suites: stable
-Components: main
-Architectures: amd64
-Signed-By: /etc/apt/keyrings/rocm.gpg
-SOURCES
+{
+  _rocm_repo_stanza https://stable.repo.amd.com/rocm/core/packages/ubuntu2604/
+  printf '\n'
+  _rocm_repo_stanza https://stable.repo.amd.com/rocm/migraphx/packages/ubuntu2604/
+} > /etc/apt/sources.list.d/rocm.sources
 
 # The ASAN repo is off by default for its size. docs/linux-accelerator-images.md#asan-a-separate-image-never-latest-rocm
 if [ "${ENABLE_ROCM_ASAN:-false}" = "true" ]; then
-  cat >> /etc/apt/sources.list.d/rocm.sources <<'ASAN_SOURCES'
-
-Types: deb
-URIs: https://stable.repo.amd.com/rocm/core/packages-asan/ubuntu2604/
-Suites: stable
-Components: main
-Architectures: amd64
-Signed-By: /etc/apt/keyrings/rocm.gpg
-ASAN_SOURCES
+  {
+    printf '\n'
+    _rocm_repo_stanza https://stable.repo.amd.com/rocm/core/packages-asan/ubuntu2604/
+  } >> /etc/apt/sources.list.d/rocm.sources
 fi
 
 # Pin: give the AMD repo priority over Ubuntu for its packages.

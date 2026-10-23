@@ -47,6 +47,7 @@ _entry() (
   eval "$(t_fn_src "${SUBJECT}" _manifest_extra_arg)"
   eval "$(t_fn_src "${SUBJECT}" _manifest_exit_after_gates_if_requested)"
   eval "$(t_fn_src "${SUBJECT}" main)"
+  eval "$(t_fn_src "${TESTS_DIR}/../01-core/runtime-flow-common.sh" runtime_prepare_flow)"
   GATES_ONLY=0 BUILD_IMAGES=1 CREATE_MANIFEST=1 PUSH_MANIFEST=0 PUSH_IMAGES=0 DRY_RUN=0
   IMAGE_NAME=ghcr.io/kataglyphis/example:latest REPO_ROOT=/repo ARTIFACT_BUILD_MODE=image
   TARGET_ARCHES=amd64 CROSS_VCS_REF=fixture CROSS_BUILD_DATE=fixture CROSS_RUN_ID=fixture

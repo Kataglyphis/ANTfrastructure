@@ -11277,7 +11277,7 @@
  },
  {
   "id": "wheels-source.manifest-lane-setup",
-  "target": "linux/scripts/build-runtime-manifest.sh",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
   "find": "  runtime_wheels_setup || exit $?",
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
@@ -11285,7 +11285,7 @@
  },
  {
   "id": "wheels-source.artifacts-lane-setup",
-  "target": "linux/scripts/build-runtime-artifacts.sh",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
   "find": "  runtime_wheels_setup || exit $?",
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
@@ -11613,7 +11613,7 @@
  },
  {
   "id": "hailo.manifest-lane-check",
-  "target": "linux/scripts/build-runtime-manifest.sh",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
   "find": "  runtime_wheels_setup || exit $?\n  hailo_validate_knobs || exit 2",
   "replace": "  runtime_wheels_setup || exit $?",
   "test": "bash linux/scripts/tests/test-hailo-build.sh",
@@ -11621,7 +11621,7 @@
  },
  {
   "id": "hailo.artifacts-lane-check",
-  "target": "linux/scripts/build-runtime-artifacts.sh",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
   "find": "  runtime_wheels_setup || exit $?\n  hailo_validate_knobs || exit 2",
   "replace": "  runtime_wheels_setup || exit $?",
   "test": "bash linux/scripts/tests/test-hailo-build.sh",
@@ -20738,5 +20738,357 @@
   "replace": "if [ \"${_LOG_BOOTSTRAP_REGISTRAR_ONLY:-0}\" = 1 ]; then err() { :; }; return 0; fi",
   "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
   "why": "Registrar-only imports must not install public loggers the caller did not request."
+ },
+ {
+  "id": "lib.venv-probe-bin-precedes-scripts",
+  "target": "linux/scripts/01-core/python-probe.sh",
+  "find": "\"$venv/bin/python\" \"$venv/Scripts/python.exe\"",
+  "replace": "\"$venv/Scripts/python.exe\" \"$venv/bin/python\"",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "the POSIX interpreter wins when both executable layouts exist"
+ },
+ {
+  "id": "lib.venv-probe-requires-executable",
+  "target": "linux/scripts/01-core/python-probe.sh",
+  "find": "if [ -x \"$candidate\" ]",
+  "replace": "if [ -f \"$candidate\" ]",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a regular nonexecutable interpreter must fall through rather than reach uv"
+ },
+ {
+  "id": "lib.venv-probe-broken-status",
+  "target": "linux/scripts/01-core/python-probe.sh",
+  "find": "  done\n  return 1\n}",
+  "replace": "  done\n  return 0\n}",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a missing interpreter must return failure without handing callers a broken path"
+ },
+ {
+  "id": "lib.uv-probe-companion-required",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "source \"$_MODULE_DIR/python-probe.sh\" || return 1",
+  "replace": "source \"$_MODULE_DIR/python-probe.sh\" || true",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "copied uv modules must fail loading when their shared interpreter resolver is missing"
+ },
+ {
+  "id": "lib.webdav-probe-companion-required",
+  "target": "linux/scripts/01-core/webdav-download.sh",
+  "find": "source \"${_webdav_core_dir}/python-probe.sh\" || return 1",
+  "replace": "source \"${_webdav_core_dir}/python-probe.sh\" || true",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "copied WebDAV modules must fail loading when their shared resolver is missing"
+ },
+ {
+  "id": "lib.python-workspace-pyproject-required",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "[ -d \"$mount\" ] && [ -f \"$mount/pyproject.toml\" ]",
+  "replace": "[ -d \"$mount\" ]",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a directory that is not the mounted Python project must not override the caller workspace"
+ },
+ {
+  "id": "lib.python-workspace-marker-is-file",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "[ -f \"$mount/pyproject.toml\" ]",
+  "replace": "[ -e \"$mount/pyproject.toml\" ]",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a directory named pyproject.toml must not qualify as a Python workspace"
+ },
+ {
+  "id": "lib.python-detect-prefers-bind-mount",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "  python_workspace_prefer_mount\n  export WORKSPACE_ROOT",
+  "replace": "  :\n  export WORKSPACE_ROOT",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "workspace detection applies the container bind mount after its ordinary caller fallback"
+ },
+ {
+  "id": "lib.python-ci-prefers-bind-mount",
+  "target": "linux/scripts/02-toolchain/python/ci-common.sh",
+  "find": "prepare_ci_workspace() {\n  python_workspace_prefer_mount",
+  "replace": "prepare_ci_workspace() {\n  :",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "CI must select the bind mount before changing directory and configuring Flutter and git"
+ },
+ {
+  "id": "lib.webdav-install-failure-is-fatal",
+  "target": "linux/scripts/01-core/webdav-download.sh",
+  "find": "${WEBDAVCLIENT_REF}.tar.gz\" || return 1",
+  "replace": "${WEBDAVCLIENT_REF}.tar.gz\" || true",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a failed client installation must not execute the downloader using an incomplete environment"
+ },
+ {
+  "id": "lib.webdav-credentials-precede-venv",
+  "target": "linux/scripts/01-core/webdav-download.sh",
+  "find": "  : \"${WEBDAV_HOSTNAME:?WEBDAV_HOSTNAME is not set}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "missing credentials must fail by their original name before any venv or package operation"
+ },
+ {
+  "id": "lib.python-ci-fixture-carries-probe",
+  "target": "linux/scripts/tests/python-ci-fixture.sh",
+  "find": " 01-core/python-probe.sh ",
+  "replace": " ",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "the canonical copied CI fixture must include the mandatory uv companion instead of producing missing-module failures"
+ },
+ {
+  "id": "lib.uv-venv-validation-before-requirements",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "  local venv_python\n  if ! venv_python=\"$(python_venv_executable \"$venv_path\")\"; then\n    die \"No usable venv at $venv_path (neither bin/python nor Scripts/python.exe) - create it first with uv_venv_create\"\n  fi\n  if [ ! -f \"$requirements_file\" ]; then\n    die \"Requirements file not found: $requirements_file\"\n  fi",
+  "replace": "  if [ ! -f \"$requirements_file\" ]; then\n    die \"Requirements file not found: $requirements_file\"\n  fi\n  local venv_python\n  if ! venv_python=\"$(python_venv_executable \"$venv_path\")\"; then\n    die \"No usable venv at $venv_path (neither bin/python nor Scripts/python.exe) - create it first with uv_venv_create\"\n  fi",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a missing venv must retain priority over a missing requirements file and its named error"
+ },
+ {
+  "id": "lib.python-ci-companion-import-status",
+  "target": "linux/scripts/02-toolchain/python/ci-common.sh",
+  "find": "source \"$_CI_COMMON_DIR/../../01-core/python_uv.sh\" || return $?",
+  "replace": "source \"$_CI_COMMON_DIR/../../01-core/python_uv.sh\"",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "a conditional CI import must propagate its missing uv companion rather than continue defining unrelated functions and return success"
+ },
+ {
+  "id": "lib.gpu-repo-signed-stanza",
+  "target": "linux/scripts/01-core/setup-rocm-repo.sh",
+  "find": "Architectures: amd64\\nSigned-By: /etc/apt/keyrings/rocm.gpg",
+  "replace": "Architectures: arm64\\nSigned-By: /etc/apt/keyrings/rocm.gpg",
+  "test": "bash linux/scripts/tests/test-gpu-repo-setup.sh",
+  "why": "All AMD repository records retain their independent literal amd64/signed-by golden bytes, including ASAN."
+ },
+ {
+  "id": "lib.gpu-repo-missing-pin-warning",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "echo \"${warning}\" >&2",
+  "replace": "echo \"${warning}\"",
+  "test": "bash linux/scripts/tests/test-gpu-repo-setup.sh",
+  "why": "A missing trust-anchor pin warns on stderr while forwarding complete download stdout unchanged."
+ },
+ {
+  "id": "lib.gpu-repo-unverified-retries",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "download_file \"${url}\" \"${destination}\" 3",
+  "replace": "download_file \"${url}\" \"${destination}\" 1",
+  "test": "bash linux/scripts/tests/test-gpu-repo-setup.sh",
+  "why": "Both missing-pin callers retain exactly three download retries."
+ },
+ {
+  "id": "lib.gpu-repo-verified-status",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "download_verified_file \"${url}\" \"${sha}\" \"${destination}\"",
+  "replace": "download_verified_file \"${url}\" \"${sha}\" \"${destination}\" || true",
+  "test": "bash linux/scripts/tests/test-gpu-repo-setup.sh",
+  "why": "Failed verified trust-anchor fetches must stop install and preserve their status in direct and conditional calls."
+ },
+ {
+  "id": "lib.gpu-repo-unverified-status",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "    return $?\n  fi\n  download_verified_file \"${url}\" \"${sha}\" \"${destination}\"",
+  "replace": "    return 0\n  fi\n  download_verified_file \"${url}\" \"${sha}\" \"${destination}\"",
+  "test": "bash linux/scripts/tests/test-gpu-repo-setup.sh",
+  "why": "Missing-pin fetch failures must retain their exact status when a caller disables errexit conditionally."
+ },
+ {
+  "id": "lib.media-dev-symlink-live-destination",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if [ ! -e \"${destination}\" ] && [ -e \"${source_file}\" ]; then",
+  "replace": "if [ -e \"${source_file}\" ]; then",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Existing files and live development links must not be replaced."
+ },
+ {
+  "id": "lib.media-dev-symlink-source-required",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if [ ! -e \"${destination}\" ] && [ -e \"${source_file}\" ]; then",
+  "replace": "if [ ! -e \"${destination}\" ]; then",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "A missing or dangling runtime library must not create a development symlink."
+ },
+ {
+  "id": "lib.media-dev-symlink-dangling-destination",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if [ ! -e \"${destination}\" ] && [ -e \"${source_file}\" ]; then",
+  "replace": "if [ ! -L \"${destination}\" ] && [ ! -e \"${destination}\" ] && [ -e \"${source_file}\" ]; then",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "A dangling development link remains missing under the original -e policy and must be repaired."
+ },
+ {
+  "id": "lib.media-dev-symlink-relative-source",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "*) source_file=\"${destination%/*}/${source_file}\" ;;",
+  "replace": "*) : ;;",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Relative runtime libraries are checked beside the destination, while original relative ln arguments stay intact."
+ },
+ {
+  "id": "lib.media-dev-symlink-build-delegation",
+  "target": "linux/scripts/03-media/build/armnn/build-armnn.sh",
+  "find": "media_missing_dev_symlink \"${destination}\" \"${source}\"",
+  "replace": "false",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Every caller must retain the shared eligibility check without losing its own link operation."
+ },
+ {
+  "id": "lib.media-dev-symlink-arm-install-delegation",
+  "target": "linux/scripts/03-media/build/armnn/install-deps.sh",
+  "find": "media_missing_dev_symlink \"${_libdir}/libgomp.so\" libgomp.so.1",
+  "replace": "false",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Every caller must retain the shared eligibility check without losing its own link operation."
+ },
+ {
+  "id": "lib.media-dev-symlink-ffmpeg-delegation",
+  "target": "linux/scripts/03-media/build/ffmpeg/install-deps.sh",
+  "find": "media_missing_dev_symlink \"${_libdir}/libgomp.so\" libgomp.so.1",
+  "replace": "false",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Every caller must retain the shared eligibility check without losing its own link operation."
+ },
+ {
+  "id": "lib.media-dev-symlink-build-message-order",
+  "target": "linux/scripts/03-media/build/armnn/build-armnn.sh",
+  "find": "    ln -sf \"${source}\" \"${destination}\"\n    info \"${message}\"",
+  "replace": "    info \"${message}\"\n    ln -sf \"${source}\" \"${destination}\"",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Build diagnostics follow ln and must not run when a strict direct link operation fails."
+ },
+ {
+  "id": "lib.media-dev-symlink-arm-install-message-order",
+  "target": "linux/scripts/03-media/build/armnn/install-deps.sh",
+  "find": "    echo \"Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink)\"\n    ln -sf libgomp.so.1 \"${_libdir}/libgomp.so\"",
+  "replace": "    ln -sf libgomp.so.1 \"${_libdir}/libgomp.so\"\n    echo \"Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink)\"",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Installer diagnostics precede ln even when the link operation subsequently fails."
+ },
+ {
+  "id": "lib.media-dev-symlink-ffmpeg-message-order",
+  "target": "linux/scripts/03-media/build/ffmpeg/install-deps.sh",
+  "find": "        echo \"Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink; the cross toolchain has no target libgomp)\"\n        ln -sf libgomp.so.1 \"${_libdir}/libgomp.so\"",
+  "replace": "        ln -sf libgomp.so.1 \"${_libdir}/libgomp.so\"\n        echo \"Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink; the cross toolchain has no target libgomp)\"",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Installer diagnostics precede ln even when the link operation subsequently fails."
+ },
+ {
+  "id": "lib.shell-context-conditional-status",
+  "target": "linux/scripts/tests/shell-context-fixture.sh",
+  "find": "conditional) if \"$@\"; then _sfrc_status=0; else _sfrc_status=$?; fi ;;",
+  "replace": "conditional) if \"$@\"; then _sfrc_status=0; else _sfrc_status=0; fi ;;",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Conditional fixtures must retain the raw operation failure for caller verdicts."
+ },
+ {
+  "id": "lib.shell-context-direct-errexit",
+  "target": "linux/scripts/tests/shell-context-fixture.sh",
+  "find": "direct) \"$@\"; _sfrc_status=$? ;;",
+  "replace": "direct) if \"$@\"; then _sfrc_status=0; else _sfrc_status=$?; fi ;;",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Direct strict fixtures must not suppress errexit by moving the operation under if."
+ },
+ {
+  "id": "lib.shell-context-direct-relaxed-status",
+  "target": "linux/scripts/tests/shell-context-fixture.sh",
+  "find": "direct) \"$@\"; _sfrc_status=$? ;;",
+  "replace": "direct) \"$@\"; _sfrc_status=0 ;;",
+  "test": "bash linux/scripts/tests/test-media-dev-symlinks.sh",
+  "why": "Relaxed direct fixtures continue after an operation while retaining its failure status."
+ },
+ {
+  "id": "lib.runtime-prep-artifacts-delegates",
+  "target": "linux/scripts/build-runtime-artifacts.sh",
+  "find": "  runtime_prepare_flow \"${IMAGE_PREFIX}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Artifacts must execute the preparation lifecycle before resolving and building."
+ },
+ {
+  "id": "lib.runtime-prep-manifest-delegates",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_prepare_flow \"${IMAGE_NAME}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Manifest preparation must retain its own prefix and all validation steps."
+ },
+ {
+  "id": "lib.runtime-prep-artifacts-errexit",
+  "target": "linux/scripts/build-runtime-artifacts.sh",
+  "find": "  runtime_prepare_flow \"${IMAGE_PREFIX}\"",
+  "replace": "  if runtime_prepare_flow \"${IMAGE_PREFIX}\"; then :; fi",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Wrapping preparation in a condition must not disable the original direct-call errexit behavior."
+ },
+ {
+  "id": "lib.runtime-prep-manifest-errexit",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  runtime_prepare_flow \"${IMAGE_NAME}\"",
+  "replace": "  if runtime_prepare_flow \"${IMAGE_NAME}\"; then :; fi",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Manifest post-parse failures must still abort under direct active errexit."
+ },
+ {
+  "id": "lib.runtime-prep-dry-export",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "  export DRY_RUN\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "DRY_RUN is exported before the first preparation operation, including unset and empty values."
+ },
+ {
+  "id": "lib.runtime-prep-prefix-quoted",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "runtime_post_parse_setup TARGET_ARCHES \"$1\"",
+  "replace": "runtime_post_parse_setup TARGET_ARCHES $1",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "The caller prefix is a single raw argument even when it contains spaces."
+ },
+ {
+  "id": "lib.runtime-prep-target-binding",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "runtime_post_parse_setup TARGET_ARCHES \"$1\"",
+  "replace": "runtime_post_parse_setup \"${TARGET_ARCHES}\" \"$1\"",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Post-parse setup receives the target variable name and mutates the caller binding."
+ },
+ {
+  "id": "lib.runtime-prep-wheels-status",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "runtime_wheels_setup || exit $?",
+  "replace": "runtime_wheels_setup || exit 2",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Wheel setup retains its raw failure code rather than the validation code."
+ },
+ {
+  "id": "lib.runtime-prep-hailo-fatal",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "hailo_validate_knobs || exit 2",
+  "replace": "hailo_validate_knobs || true",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Hailo validation still stops before payload validation and provenance resolution."
+ },
+ {
+  "id": "lib.runtime-prep-payload-fatal",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "runtime_host_payload_arches >/dev/null || exit 2",
+  "replace": "runtime_host_payload_arches >/dev/null || true",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Payload validation failure remains fatal with code2 in both error contexts."
+ },
+ {
+  "id": "lib.runtime-prep-payload-quiet",
+  "target": "linux/scripts/01-core/runtime-flow-common.sh",
+  "find": "runtime_host_payload_arches >/dev/null || exit 2",
+  "replace": "runtime_host_payload_arches || exit 2",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "Payload validation stdout stays out of the orchestrator output."
+ },
+ {
+  "id": "lib.runtime-prep-fixture-verdict",
+  "target": "linux/scripts/tests/runtime-flow-fixtures.sh",
+  "find": "    t_assert_eq \"${expected}\" \"$(grep -F -A1 \"${anchor}\" \"${scripts}/01-core/runtime-flow-common.sh\" | sed -n 2p)\" \"${entry} preparation order\"",
+  "replace": "    t_assert_eq \"${expected}\" \"${expected}\" \"${entry} preparation order\"",
+  "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
+  "why": "The shared wiring assertion rejects a missing step rather than merely counting assertions."
  }
 ]

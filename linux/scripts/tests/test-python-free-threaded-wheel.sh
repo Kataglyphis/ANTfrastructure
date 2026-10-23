@@ -3,13 +3,15 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/python-ci-fixture.sh
+source "${TESTS_DIR}/python-ci-fixture.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 HELPER="${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py"
 
 t_skip_unless "a POSIX python3 (the helper reads the fixture's paths)" t_posix_python
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-t_python_ci_fixture "${_work}" "${SCRIPTS}" \
+python_ci_fixture "${_work}" "${SCRIPTS}" \
   02-toolchain/python/ci_packaging.sh 02-toolchain/python/free-threaded-wheel.py || exit 1
 # The venv and sync glue is not this suite's subject.
 cat >> "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'

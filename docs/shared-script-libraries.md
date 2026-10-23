@@ -237,6 +237,13 @@ caller, and its in-image consumers load it via `source_module`.
 
 `runtime-flow-common.sh` is sourced by `lib-orchestrator.sh` inside `runtime_flow_preamble()`; `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`.
 
+Both runtime mains call `runtime_prepare_flow` unconditionally so Bash retains
+the existing errexit behavior. It exports `DRY_RUN`, binds `TARGET_ARCHES` by
+name, resolves wheel delivery, then validates Hailo and host payloads. Wheel
+failures keep their status; validation failures exit 2 and payload validation
+stdout stays quiet. Image prefixes and provenance placement remain caller policy.
+
+
 `lib-runtime-wheels.sh` (`RUNTIME_WHEELS_SOURCE`) is sourced by `lib-orchestrator.sh` at top level, right after `artifact-common.sh`. It sits beside `01-core`, not in it, because `01-core` is in the compiler image's closure and this file is host-only. `append_wrapper_build_args` calls into it only while `RUNTIME_WHEELS_EXPORT_ROOT` is set, which only its own `runtime_wheels_setup` does ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
 
 `03-media/build/hailo/hailo-build-lib.sh` is sourced there too, right after it, for one function: `hailo_validate_knobs`, which the chain and both runtime orchestrators call before they build anything. The same file is the Hailo build's own library inside the wrapper image, so it sets no shell options and runs nothing at load, and a change to it re-keys only the wrapper's Hailo RUN ([two switches](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches)).
@@ -920,6 +927,12 @@ the inline fallbacks in `lib/code-quality.sh` and `lib/coverage.sh` were, and
 those two now source this instead of carrying a copy each.
 
 ### Python interpreter probe (`01-core/python-probe.sh`)
+
+`python_venv_executable` selects an executable `bin/python`, then
+`Scripts/python.exe`, preserving the raw venv path. UV and WebDAV retain their
+own named errors and checks. Copies of either module require the pure probe
+beside it. UV and Python CI also share the `/workspace/pyproject.toml` override;
+caller defaults, cwd changes and PATH setup remain caller policy.
 
 `preflight_python_require <caller>` returns 0 with `PREFLIGHT_PYTHON` exported
 when that value (or, unset, `python3`) runs `-c pass`, and 1 naming the caller
@@ -1773,3 +1786,21 @@ fixtures share document and job construction while preserving malformed YAML and
 line-sensitive findings. Flatpak failure fixtures forward every per-case tool
 and payload override. Offline characterization and mutation proofs validate these
 contracts without starting container engines, builds, pruning or disk watchers.
+
+### Repository keys and media development links
+
+`download_optional_verified_file` shares the existing repository-key policy:
+a supplied checksum uses verified fetching; an empty checksum prints the caller's
+warning and uses three download attempts. CUDA installation and ROCm dearmoring
+retain their own cleanup and failure context. ROCm's private stanza renderer
+preserves URI order, amd64, keyring paths and optional ASAN separators; independent
+golden files check complete source bytes.
+
+`media_missing_dev_symlink` only decides whether a destination is absent and its
+source exists, resolving relative sources beside the destination. ArmNN and FFmpeg
+retain their own `ln` flags, output order and direct/conditional failure handling.
+
+Test companions share fixture construction and shell invocation context, while
+expected output, exit statuses and filesystem receipts remain independent of the
+production helpers. `runtime-flow-fixtures.sh` checks shared preparation wiring;
+its own positive and negative fixtures ensure a missing step fails the assertion.

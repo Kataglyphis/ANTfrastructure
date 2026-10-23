@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/runtime-flow-fixtures.sh"
 source "${TESTS_DIR}/runtime-wheels-fixtures.sh"
 rw_hermetic_env
 SCRIPTS="${TESTS_DIR}/.."
@@ -263,8 +264,8 @@ t_assert_contains "$(grep -A2 -F 'from=wheels-source,source=/opt/wheels,target=/
   'echo "[torch-run] start epoch=$(date -u +%s) arch=${TARGETARCH}"' "the torch RUN's first statement stamps its start"
 
 t_case "the lanes: both runtime orchestrators set up and loop through the lib, the chain checks the knob first"
+runtime_test_preparation_step "${SCRIPTS}" 'runtime_post_parse_setup TARGET_ARCHES' '  runtime_wheels_setup || exit $?'
 for _o in build-runtime-manifest.sh build-runtime-artifacts.sh; do
-  t_assert_eq "  runtime_wheels_setup || exit \$?" "$(grep -A1 'runtime_post_parse_setup TARGET_ARCHES' "${SCRIPTS}/${_o}" | sed -n 2p)" "${_o} sets up after parsing"
   t_assert_eq "" "$(grep -n 'runtime_build_chain' "${SCRIPTS}/${_o}" || true)" "${_o} never calls runtime_build_chain around the lib"
 done
 t_assert_contains "$(cat "${SCRIPTS}/build-runtime-manifest.sh")" "run_parallel_arch_loop runtime_wheels_arch_chain "
