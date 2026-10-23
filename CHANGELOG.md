@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — restore library baselines and bound runtime heartbeats
+
+- Load shared logging from `project-env.sh` when sourced standalone, restoring the
+  library census and its mutation baselines without weakening their assertions.
+- Start no heartbeat for runtime dry runs. Terminate and reap the current sleep
+  child directly, closing the signal window before a separate PID assignment.
+- Isolate GPU graph fixtures from runner caches and registry lookups; reject any
+  container CLI execution and reproduce the heartbeat race with bounded processes.
+
 ## 2026-10-23 — isolate old container-store husks during host cleanup
 
 - Add `Clear-DiskSpace.ps1 -StoreHusksOnly`: exactly the three existing renamed-store

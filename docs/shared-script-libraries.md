@@ -1139,6 +1139,9 @@ refusal. The fallback for core-only consumers remains owned by `01-core/common.s
 ## Shared CMake and CTest project environment
 
 `lib/project-env.sh` owns Git safe-directory setup and project Vulkan initialization.
+It loads `log-bootstrap.sh` directly, so standalone sourcing supplies the same real
+logging module as the launchers. The whole-library census includes this companion;
+new libraries must pass it before any library mutation has a valid baseline.
 Both launchers source it, so copies must carry it and `01-core/vulkan-env.sh`.
 An empty safe-directory setting opts out; Git configuration failures stay advisory.
 The caller's `source_vulkan_env` hook takes precedence over an explicit setup script,

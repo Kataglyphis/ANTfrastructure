@@ -2,6 +2,8 @@
 # Host-owned workspaces and SDK hooks need the same setup in build and test launchers.
 [ -n "${_PROJECT_ENV_LOADED:-}" ] && return 0
 _PROJECT_ENV_LOADED=1
+# shellcheck source=./log-bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh" || return 1
 # shellcheck source=../01-core/vulkan-env.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../01-core/vulkan-env.sh"
 

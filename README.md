@@ -74,7 +74,7 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | Build the Windows image, and its arm64 bundle | [docs/windows-builds.md](docs/windows-builds.md) · [docs/windows-build-lanes.md](docs/windows-build-lanes.md) · [docs/windows-cross-builds.md](docs/windows-cross-builds.md) |
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
 | Know which workflow runs when | [docs/ci-build-triggers.md](docs/ci-build-triggers.md) |
-| Know every quality gate and the [exception policy](docs/code-quality-tooling.md#the-allowlist-contract), including shared runtime, CLI, Renovate discovery, ELF strip and Windows AST helpers, duplication cleanup and the four empty allowlists | [docs/code-quality-tooling.md](docs/code-quality-tooling.md) · [docs/code-quality-gates.md](docs/code-quality-gates.md) |
+| Know every quality gate and the [exception policy](docs/code-quality-tooling.md#the-allowlist-contract), including shared runtime, CLI, Renovate discovery, ELF strip, timer cleanup and Windows AST helpers, duplication cleanup and the four empty allowlists | [docs/code-quality-tooling.md](docs/code-quality-tooling.md) · [docs/code-quality-gates.md](docs/code-quality-gates.md) |
 | Know what is inside an image, and under which licence | [docs/third-party-licenses.md](docs/third-party-licenses.md) · [docs/sbom.md](docs/sbom.md) · [docs/vulnerability-scanning.md](docs/vulnerability-scanning.md) |
 | Serve LLMs on the family's reference server | [linux/llm-stack/README.md](linux/llm-stack/README.md) |
 | Run a coding agent on-device on a Snapdragon (GenieX) | [docs/geniex-local-ai-setup.md](docs/geniex-local-ai-setup.md) |

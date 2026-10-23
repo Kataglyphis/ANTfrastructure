@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# _runtime_timed's heartbeat: silent under the first threshold, periodic while a step runs, and stopped when it ends (CON157).
+# Timer fixtures cover heartbeat lifecycle and dry runs; they do not build or smoke-test images.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -8,6 +8,7 @@ FNT="$(t_fn_src "${TESTS_DIR}/../01-core/runtime-build-fns.sh" _runtime_timed)" 
 _LOG="$(mktemp)"
 trap 'rm -f "${_LOG}"' EXIT
 log() { echo "$*" >> "${_LOG}"; }
+is_dry_run() { if [ "${DRY_RUN:-0}" = 1 ]; then return 0; fi; return 1; }
 eval "${FNS}"
 eval "${FNT}"
 
@@ -24,5 +25,57 @@ t_assert_contains "$(tail -n 1 "${_LOG}")" "[runtime-timing] arch=riscv64 step=l
 before="$(wc -l < "${_LOG}")"
 sleep 2.5
 t_assert_eq "${before}" "$(wc -l < "${_LOG}")"
+
+t_case "dry runs keep command status and timing without starting a heartbeat"
+dry_run_probe() (
+  _runtime_heartbeat() { printf 'unexpected heartbeat\n' >> "${_LOG}"; }
+  kill() { printf 'unexpected heartbeat cleanup\n' >> "${_LOG}"; builtin kill "$@"; }
+  DRY_RUN=1 _runtime_timed dry arm64 bash -c 'exit 23'
+)
+: > "${_LOG}"
+t_assert_eq 23 "$(t_rc dry_run_probe)"
+t_assert_contains "$(cat "${_LOG}")" 'step=dry secs='
+t_assert_eq 0 "$(grep -c 'unexpected heartbeat' "${_LOG}")"
+t_case "termination during heartbeat child startup closes inherited output pipes"
+t_assert_ok env HEARTBEAT_FNS="${FNS}" python3 - <<'PYTHON'
+import os
+import signal
+import subprocess
+import tempfile
+import time
+from pathlib import Path
+
+with tempfile.TemporaryDirectory() as work:
+    script = r'''
+set -uT
+log() { :; }
+sleep() { : > "$HEARTBEAT_READY"; exec /bin/sleep 20; }
+trap 'if [[ "${FUNCNAME[0]:-}" == _runtime_heartbeat && "$BASH_COMMAND" == *"=\$!" ]]; then kill -TERM "$BASHPID"; fi' DEBUG
+''' + os.environ["HEARTBEAT_FNS"] + r'''
+_runtime_heartbeat probe amd64 0 &
+printf '%s' "$!" > "$HEARTBEAT_PID"
+wait "$!"
+'''
+    ready = Path(work, "ready")
+    pidfile = Path(work, "pid")
+    env = dict(os.environ, HEARTBEAT_READY=str(ready), HEARTBEAT_PID=str(pidfile))
+    proc = subprocess.Popen(["bash", "-c", script], env=env, stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        deadline = time.monotonic() + 5
+        while not (ready.exists() and pidfile.exists()) and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert ready.exists() and pidfile.exists(), "heartbeat child did not start"
+        if proc.poll() is None:
+            os.kill(int(pidfile.read_text()), signal.SIGTERM)
+        stdout, stderr = proc.communicate(timeout=2)
+        assert proc.returncode == 0, stderr.decode()
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
+PYTHON
 
 t_summary

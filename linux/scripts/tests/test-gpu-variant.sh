@@ -1,9 +1,24 @@
 #!/usr/bin/env bash
-# stage-defs.sh decides the stage graph when sourced, so each case sources it in a fresh bash.
+# Graph and command fixtures use dry runs; they do not build images or test GPU execution.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
+_VARIANT_WORK="$(mktemp -d)"
+trap 'rm -rf "${_VARIANT_WORK}"' EXIT
+export RUNTIME_CONTEXT_ROOT="${_VARIANT_WORK}/runtime-contexts"
+mkdir -p "${_VARIANT_WORK}/bin"
+export VARIANT_CONTAINER_CALLS="${_VARIANT_WORK}/container-calls"
+: > "${VARIANT_CONTAINER_CALLS}"
+cat > "${_VARIANT_WORK}/bin/nerdctl" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${VARIANT_CONTAINER_CALLS}"
+exit 91
+STUB
+chmod +x "${_VARIANT_WORK}/bin/nerdctl"
+export PATH="${_VARIANT_WORK}/bin:${PATH}"
+# Runtime tag assertions use an immutable parent, so dry runs never need the registry.
+export RUNTIME_ANDROID_PIN_amd64=ghcr.io/kataglyphis/kataglyphis_beschleuniger-stages@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
 # Graph dry-runs need an immutable app identity; test-app-ref.sh owns ref resolution.
 export APP_REF=0123456789abcdef0123456789abcdef01234567
 
@@ -250,4 +265,7 @@ _pkg="$(sed -n '/^FROM \${BASE_IMAGE} AS package-image/,/^FROM /p' "${TESTS_DIR}
 t_assert_contains "${_pkg}" $'ARG ENABLE_AMD\n' "declared in the package-image stage, where the copy runs"
 t_assert_contains "${_pkg}" 'ENABLE_AMD="${ENABLE_AMD:-false}"' "and passed to copy-media-payloads.sh"
 
+t_case "dry runs use the fixture context and never invoke the container CLI"
+t_assert_ok test -d "${_VARIANT_WORK}/runtime-contexts"
+t_assert_eq '' "$(cat "${VARIANT_CONTAINER_CALLS}")"
 t_summary

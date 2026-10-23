@@ -17514,5 +17514,45 @@
   "replace": "[ -n \"${target}\" ] && [ \"${target}\" = \"${build}\" ]",
   "test": "bash linux/scripts/tests/test-cross-fallback-parity.sh",
   "why": "core-only cross detection must normalize OCI and uname spellings before comparing"
+ },
+ {
+  "id": "lib.project-env-standalone-logging",
+  "target": "linux/scripts/lib/project-env.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/log-bootstrap.sh\" || return 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-lib-modules.sh",
+  "why": "the project environment library must load shared logging when sourced without a launcher; a failing unmutated library invalidates every library mutation baseline"
+ },
+ {
+  "id": "probe.runtime-dry-run-no-heartbeat",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  if ! is_dry_run; then\n    _runtime_heartbeat",
+  "replace": "  if true; then\n    _runtime_heartbeat",
+  "test": "bash linux/scripts/tests/test-runtime-heartbeat.sh",
+  "why": "a dry-run timer must preserve command status without creating or cleaning up a background heartbeat"
+ },
+ {
+  "id": "probe.runtime-heartbeat-child-pid",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  trap 'kill \"${!:-}\" 2>/dev/null || true; wait \"${!:-}\" 2>/dev/null || true; exit 0' TERM INT\n  sleep \"${RUNTIME_HEARTBEAT_FIRST_SECS:-900}\" & wait \"$!\" || exit 0",
+  "replace": "  trap 'kill \"${s:-}\" 2>/dev/null; exit 0' TERM INT\n  sleep \"${RUNTIME_HEARTBEAT_FIRST_SECS:-900}\" & s=$!; wait \"${s}\" || exit 0",
+  "test": "bash linux/scripts/tests/test-runtime-heartbeat.sh",
+  "why": "termination between spawning sleep and assigning a PID must not leave an inherited output pipe open"
+ },
+ {
+  "id": "gate-fixture.gpu-variant-context-isolated",
+  "target": "linux/scripts/tests/test-gpu-variant.sh",
+  "find": "export RUNTIME_CONTEXT_ROOT=\"${_VARIANT_WORK}/runtime-contexts\"",
+  "replace": "export RUNTIME_CONTEXT_ROOT=\"${_VARIANT_WORK}/wrong-context\"",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "graph fixtures must use their disposable runtime context rather than a runner cache"
+ },
+ {
+  "id": "gate-fixture.gpu-variant-cli-refusal",
+  "target": "linux/scripts/tests/test-gpu-variant.sh",
+  "find": "t_assert_eq '' \"$(cat \"${VARIANT_CONTAINER_CALLS}\")\"",
+  "replace": "nerdctl forbidden-call >/dev/null 2>&1 || true\nt_assert_eq '' \"$(cat \"${VARIANT_CONTAINER_CALLS}\")\"",
+  "test": "bash linux/scripts/tests/test-gpu-variant.sh",
+  "why": "a container command hidden by an advisory exit status must still fail the dry-run fixture"
  }
 ]

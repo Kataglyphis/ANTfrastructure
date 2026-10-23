@@ -81,7 +81,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    variables, reformat copies or add suppressions to evade a duplication finding.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
-   CMake/CTest library copies include `project-env.sh` and its Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
+   CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
 
@@ -661,6 +661,7 @@ transcript. Each was a child that outlived whatever started it. So:
    `sleep 60`); a fixture that only a kill can end outlives every interrupted run.
    Fixtures unrelated to ref resolution use a synthetic immutable app identity;
    moving-ref resolution belongs to `test-app-ref.sh`, not a graph dry-run.
+   Graph/runtime fixtures also use disposable context directories and immutable parent pins.
 3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
    `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
    `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
@@ -670,6 +671,9 @@ transcript. Each was a child that outlived whatever started it. So:
    `test-mutation-gate.sh`).
 4. **A wait loop waits on a PID or a file, with a timeout.** `until ! pgrep -f <pattern>` matches
    its own `bash -c` and never ends; `pkill -f <pattern>` can kill the shell that runs it.
+
+Runtime dry runs start no heartbeat. A live heartbeat terminates and waits for its current
+child directly; a separate PID assignment leaves a signal window that leaks output pipes.
 
 Shared Chrome cleanup is asynchronous: callers await child exit and profile cleanup;
 an immediate process-exit hook only kills. Cleanup failures remain fatal, and every

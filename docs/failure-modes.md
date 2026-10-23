@@ -49,6 +49,7 @@ Two neighbours, so you land on the right page:
 - [A trailing conditional fails the whole script](#a-trailing-conditional-fails-the-whole-script)
 - [The copied Rust toolchain is the builder's arch](#the-copied-rust-toolchain-is-the-builders-arch)
 - [A packaging script dies with no message](#a-packaging-script-dies-with-no-message)
+- [A dry-run timer hangs after its command finished](#a-dry-run-timer-hangs-after-its-command-finished)
 - [A callee invoked in an `if !` condition runs with errexit off](#a-callee-invoked-in-an-if--condition-runs-with-errexit-off)
 - [A checksum probe that cannot reach the server reads as "nothing to verify"](#a-checksum-probe-that-cannot-reach-the-server-reads-as-nothing-to-verify)
 - [A soname with no map entry is resolved by an `apt-cache` prefix guess](#a-soname-with-no-map-entry-is-resolved-by-an-apt-cache-prefix-guess)
@@ -863,6 +864,24 @@ caller. Match it against the script in the image
 (`nerdctl run --rm <image> sed -n '<N>p' /opt/scripts/packaging/<script>`;
 `assemble-torch-app.sh` lives in `/opt/scripts/03-media/final/`), because the
 line numbers move with every edit to the file.
+
+### A dry-run timer hangs after its command finished
+
+**Symptom.** A runtime dry run prints its build command but a captured-output test
+never returns. Mutation baselines reach their timeout even though the graph suite
+passes elsewhere.
+
+**Cause.** The timer started a heartbeat even for dry runs. A termination signal
+between `sleep ... &` and a separate child-PID assignment could leave the sleep
+alive with stdout/stderr inherited. The parent command finished, but its output
+pipe remained open until the sleep ended.
+
+**Fix.** Dry runs start no heartbeat. Live heartbeat cleanup uses the shell's
+current background PID directly and waits for the child after terminating it.
+`test-runtime-heartbeat.sh` injects a signal at the old assignment boundary and
+kills its bounded test group on every exit. Graph fixtures isolate their context
+cache and use a synthetic immutable parent; no container CLI call is permitted.
+These fixtures prove lifecycle and command construction, not image execution.
 
 ### A callee invoked in an `if !` condition runs with errexit off
 

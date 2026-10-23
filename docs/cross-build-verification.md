@@ -1443,6 +1443,15 @@ What `RUNTIME_WHEELS_SOURCE=export` is meant to remove, and how to tell whether 
 did. The two deliveries are in
 [`linux-cross-builds.md`](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries).
 
+Runtime dry-run steps retain their timing line and command status but start no
+heartbeat. Live heartbeats kill and wait for the shell's current background sleep,
+so a signal between spawning it and assigning a separate PID cannot leave an output
+pipe open. `test-runtime-heartbeat.sh` injects that startup signal and bounds the
+process group; it also checks normal periodic output and dry-run status propagation.
+GPU graph fixtures supply an immutable parent and disposable runtime context, and
+a stub records any accidental container CLI execution. Neither suite builds images
+or proves GPU runtime support.
+
 **Lines every runtime lane prints since 2026-09-24**, in both modes:
 
 | Line | Printed by | Says |
