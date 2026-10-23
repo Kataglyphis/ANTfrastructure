@@ -211,21 +211,10 @@ fi
 
 run_preflight_checks
 
-# A truncated clone leaves a .git that passes a bare dir test, so require a valid HEAD and tree.
 _src_valid=0
-if [[ -d "${SRC_DIR}/.git" ]] \
-   && git -C "${SRC_DIR}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
-   && [[ -f "${SRC_DIR}/llvm/CMakeLists.txt" ]]; then
-    _src_valid=1
-fi
+llvm_prepare_source_checkout _src_valid "${WD}" "${SRC_DIR}" "${LLVM_TAG}" info \
+    || die "Could not prepare LLVM source checkout"
 if [[ "${_src_valid}" != "1" ]]; then
-    # Evict other LLVM checkouts first: each is ~2 GB on a mount shared across rebuilds.
-    for _old_src in "${WD}"/llvm-project-*; do
-        [[ -d "${_old_src}" && "${_old_src}" != "${SRC_DIR}" ]] || continue
-        info "Evicting stale llvm checkout $(basename "${_old_src}") (superseded by ${LLVM_TAG})"
-        rm -rf "${_old_src}"
-    done
-    rm -rf "${SRC_DIR}"
     info "Fetching llvm-project ${LLVM_TAG}..."
     git init -q "${SRC_DIR}"
     git -C "${SRC_DIR}" remote add origin https://github.com/llvm/llvm-project.git

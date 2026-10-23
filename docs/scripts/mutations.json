@@ -17626,5 +17626,37 @@
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-hailo-source-staging.sh",
   "why": "flat protobuf and libzmq sources retain their requested strip-components layout"
+ },
+ {
+  "id": "probe.llvm-source-cache-head",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "git -C \"${source_dir}\" rev-parse -q --verify HEAD >/dev/null 2>&1",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-llvm-source-cache.sh",
+  "why": "an interrupted git init without HEAD must not be reused"
+ },
+ {
+  "id": "probe.llvm-source-cache-tree",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "[ -f \"${source_dir}/llvm/CMakeLists.txt\" ]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-llvm-source-cache.sh",
+  "why": "a checkout without the LLVM build entry point must be rebuilt"
+ },
+ {
+  "id": "probe.llvm-source-cache-eviction",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "rm -rf \"${old_source}\" || return 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-llvm-source-cache.sh",
+  "why": "superseded LLVM generations must not accumulate on the shared mount"
+ },
+ {
+  "id": "probe.llvm-source-cache-eviction-failure",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "rm -rf \"${old_source}\" || return 1",
+  "replace": "rm -rf \"${old_source}\" || true",
+  "test": "bash linux/scripts/tests/test-llvm-source-cache.sh",
+  "why": "failed eviction must not be hidden by conditional caller errexit semantics"
  }
 ]

@@ -159,6 +159,15 @@ is the way to rebuild past a good entry; `off` neither reads nor writes.
 
 ### 1.3 Cache-mount ids and source checkouts
 
+Native and cross LLVM builds use `llvm_prepare_source_checkout` in `common.sh`.
+Reuse requires a `.git` directory, a valid HEAD and `llvm/CMakeLists.txt`. Only an
+invalid selected checkout triggers eviction of other `llvm-project-*` directories;
+unrelated paths and plain files remain. Eviction errors fail the caller. Native
+builds retain tag fetches and fresh-source build-directory cleanup; cross builds
+retain shallow clones and their existing build-directory policy. Local fixture
+tests cover readiness, eviction and failure propagation, without remote fetches.
+
+
 `Dockerfile.media` keys its cache ids three ways on purpose. `${TARGET_ARCH}`
 (one store per lane) serves the `sharing=locked` apt mounts and the arch-specific
 ffmpeg SDK store; `${TARGETARCH}` serves ccache, sccache, uv and pip, which are

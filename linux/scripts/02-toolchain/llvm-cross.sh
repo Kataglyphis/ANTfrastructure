@@ -101,20 +101,10 @@ _llvm_cross_retrieve_source() {
   local source_root="${_llvm_cross_retrieve_source_result[source_root]}" build_root="${_llvm_cross_retrieve_source_result[build_root]}" source_dir="${_llvm_cross_retrieve_source_result[source_dir]}" tag="${_llvm_cross_retrieve_source_result[tag]}" mode="${_llvm_cross_retrieve_source_result[mode]}" target_label="${_llvm_cross_retrieve_source_result[target_label]}"
 
   mkdir -p "${source_root}" "${build_root}"
-  # A truncated clone passes a bare .git test, so require HEAD and tree; evict other ~2 GB checkouts.
-  local _src_ok=0 _old_src
-  if [ -d "${source_dir}/.git" ] \
-     && git -C "${source_dir}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
-     && [ -f "${source_dir}/llvm/CMakeLists.txt" ]; then
-    _src_ok=1
-  fi
+  local _src_ok=0
+  llvm_prepare_source_checkout _src_ok "${source_root}" "${source_dir}" "${tag}" log \
+    || die "Could not prepare LLVM source checkout"
   if [ "${_src_ok}" != "1" ]; then
-    for _old_src in "${source_root}"/llvm-project-*; do
-      [ -d "${_old_src}" ] && [ "${_old_src}" != "${source_dir}" ] || continue
-      log "Evicting stale llvm checkout $(basename "${_old_src}") (superseded by ${tag})"
-      rm -rf "${_old_src}"
-    done
-    rm -rf "${source_dir}"
     log "Cloning llvm-project ${tag} for ${mode} ${target_label}"
     git clone --depth 1 --branch "${tag}" https://github.com/llvm/llvm-project.git "${source_dir}"
     llvm_assert_commit_pin "${source_dir}" "${tag}" || die "LLVM_COMMIT pin mismatch"

@@ -257,6 +257,25 @@ llvm_assert_commit_pin() {
   printf 'llvm-project %s verified against LLVM_COMMIT %s\n' "${tag}" "${LLVM_COMMIT}"
 }
 
+llvm_prepare_source_checkout() {
+  local -n _llvm_ready="$1"
+  local source_root="$2" source_dir="$3" tag="$4" logger="$5" old_source
+  _llvm_ready=0
+  # Interrupted clones can leave .git without either a usable HEAD or the LLVM tree.
+  if [ -d "${source_dir}/.git" ] \
+     && git -C "${source_dir}" rev-parse -q --verify HEAD >/dev/null 2>&1 \
+     && [ -f "${source_dir}/llvm/CMakeLists.txt" ]; then
+    _llvm_ready=1
+    return 0
+  fi
+  for old_source in "${source_root}"/llvm-project-*; do
+    [ -d "${old_source}" ] && [ "${old_source}" != "${source_dir}" ] || continue
+    "$logger" "Evicting stale llvm checkout $(basename "${old_source}") (superseded by ${tag})"
+    rm -rf "${old_source}" || return 1
+  done
+  rm -rf "${source_dir}"
+}
+
 cross_wheel_platform_tag() {
   if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
     return 1
