@@ -97,7 +97,7 @@ $script:TorchAppStageGolden = @(@'
 ARG APP_REF=<versions.env>
 ARG PYTORCH_EXTRA=pytorch-cpu
 SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; $PSNativeCommandUseErrorActionPreference = $false;"]
-COPY windows\scripts\modules\WindowsNative.Common.psm1 windows\scripts\modules\WindowsTargetArch.Common.psm1 C:\temp\scripts\modules\
+COPY windows\scripts\modules\WindowsNative.Common.psm1 windows\scripts\modules\WindowsTargetArch.Common.psm1 windows\scripts\modules\WindowsUvLock.Common.psm1 C:\temp\scripts\modules\
 COPY windows\scripts\build\Build-TorchApp.ps1 C:\temp\scripts\
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked $env:UV_CACHE_DIR = 'C:\uvcache'; $env:PIP_CACHE_DIR = 'C:\uvcache\pip'; & 'C:\temp\scripts\Build-TorchApp.ps1' -AppRef $env:APP_REF -PytorchExtra $env:PYTORCH_EXTRA -Mode all
 ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
@@ -767,6 +767,7 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
             @{ Why = 'the app RUN changes'; P = $appDiff; T = $text.Replace('-Mode all', '-Mode install') }
             @{ Why = 'the app ENV changes'; P = $appDiff; T = $text.Replace('ENV TORCH_APP_DIR="C:\opt\OrchestrANT"', 'ENV TORCH_APP_DIR="C:\opt\Other"') }
             @{ Why = 'an app COPY is dropped'; P = $appDiff; T = $text -replace '(?m)^COPY windows\\scripts\\build\\Build-TorchApp\.ps1 C:\\temp\\scripts\\\r?\n', '' }
+            @{ Why = 'the app COPY drops the ORT lock parser'; P = $appDiff; T = $text.Replace('windows\scripts\modules\WindowsUvLock.Common.psm1 ', '') }
             @{ Why = 'the app SHELL changes'; P = $appDiff; T = $text.Replace('"-ExecutionPolicy", "Bypass", ', '') }
             @{ Why = 'rocm-0 grows an instruction'; P = 'rocm-0 is not a bare alias'; T = $text.Replace('FROM app AS rocm-0', "FROM app AS rocm-0`nENV X=1") }
             @{ Why = 'rocm-1 reads TORCH_ROCM from the env'; P = '-TorchRocm 1 literally'; T = $text.Replace("-TorchRocm 1 ", '-TorchRocm $env:TORCH_ROCM ') }

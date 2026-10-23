@@ -23,6 +23,7 @@ _repo() {
   cp "${REPO_ROOT}/linux/scripts/lint-shell.sh" "${REPO}/linux/scripts/lint-shell.sh"
   # lint-shell.sh sources lint-root.sh; without it the guard falls to its failure sentinel.
   cp "${REPO_ROOT}/linux/scripts/01-core/lint-root.sh" "${REPO}/linux/scripts/01-core/lint-root.sh"
+  cp "${REPO_ROOT}/linux/scripts/01-core/lint-tool-release.sh" "${REPO}/linux/scripts/01-core/lint-tool-release.sh"
   printf 'echo hi\n' > "${REPO}/good.sh"
   printf 'echo bad\n' > "${REPO}/bad.sh"
   git -C "${REPO}" add good.sh bad.sh

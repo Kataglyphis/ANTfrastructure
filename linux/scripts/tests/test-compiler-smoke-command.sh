@@ -6,9 +6,8 @@ source "${TESTS_DIR}/test-harness.sh"
 VALIDATE="${TESTS_DIR}/../06-packaging/validate-compilers.sh"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
-for fn in _cc_target_run_smoke _cc_target_compile_smoke _cc_target_link_smoke; do
-  if rg -q "^${fn}\\(\\)" "${VALIDATE}"; then eval "$(t_fn_src "${VALIDATE}" "${fn}")"; fi
-done
+t_source_functions "${VALIDATE}" \
+  _cc_target_run_smoke _cc_target_compile_smoke _cc_target_link_smoke || exit 1
 run_smoke() {
   local kind="$1" mode="$2" compiler_rc="$3" status=0
   rm -rf "${WORK}/probe"

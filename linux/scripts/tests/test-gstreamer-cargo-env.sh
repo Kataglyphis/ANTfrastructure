@@ -6,11 +6,8 @@ source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/gstreamer-fixtures.sh"
 SETUP="${1:-${TESTS_DIR}/../03-media/build/gstreamer/common/setup-gstreamer.sh}"
 RUST="${2:-${TESTS_DIR}/../03-media/build/gstreamer/common/build-gst-plugins-rs.sh}"
-for spec in "${SETUP}:_gst_prepare_target_cargo_env" "${RUST}:_gst_rs_host_cargo_config" \
-  "${RUST}:_gst_rs_riscv_cargo_config" "${RUST}:_gst_rs_apply_exclusions"; do
-  file="${spec%:*}" fn="${spec##*:}"
-  if rg -q "^${fn}\(\)" "${file}"; then eval "$(t_fn_src "${file}" "${fn}")"; fi
-done
+t_source_functions "${SETUP}" _gst_prepare_target_cargo_env || exit 1
+t_source_functions "${RUST}" _gst_rs_host_cargo_config _gst_rs_riscv_cargo_config _gst_rs_apply_exclusions || exit 1
 gst_test_load_functions "${SETUP}" prepare_host_cargo_toolchain_env dump_debug_info || exit 1
 gst_test_load_functions "${RUST}" _gst_rs_cargo_config _gst_rs_build_plugins || exit 1
 WORK="$(mktemp -d)"
