@@ -63,7 +63,9 @@ _genai_ort_home_findings() {
 # _genai_ort_tree_findings <src_dir>: no FetchContent'd ORT dir, no ORT archive, chain bytes under every chain ORT name.
 _genai_ort_tree_findings() {
   local src="$1" f name
-  find "${src}" -type d -path '*/_deps/*' \( -name 'ortlib-*' -o -name 'onnxruntime-src' -o -name 'onnxruntime-subbuild' -o -name 'onnxruntime-build' \) \
+  local -a fetched_directory_names
+  _ortg_fetchcontent_directory_names fetched_directory_names 'ortlib-*'
+  find "${src}" -type d -path '*/_deps/*' \( "${fetched_directory_names[@]}" \) \
     -prune -printf 'FetchContent populated ONNX Runtime content at %p\n' 2>/dev/null || true
   while IFS= read -r -d '' f; do
     name="${f##*/}"

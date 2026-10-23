@@ -20218,5 +20218,245 @@
   "replace": "# shellcheck shell=bash\nsource /opt/scripts/core/common.sh",
   "test": "bash linux/scripts/tests/test-layer-order.sh",
   "why": "Classifying the utility as L0 must reject a future higher-layer dependency instead of exempting the utility from source-graph checks."
+ },
+ {
+  "id": "lib.renovate-listing-prefix",
+  "target": "linux/scripts/renovate-say.sh",
+  "find": "printf '%s%s\\n' \"${prefix}\" \"${item}\"",
+  "replace": "printf '%s%s\\n' '' \"${item}\"",
+  "test": "bash linux/scripts/tests/test-renovate-reporting.sh",
+  "why": "Shared listings must retain caller indentation and literal percent signs."
+ },
+ {
+  "id": "lib.renovate-listing-advice-conditional",
+  "target": "linux/scripts/renovate-say.sh",
+  "find": "if note_listing \"$@\"; then note \"${advice}\"; fi",
+  "replace": "note_listing \"$@\" || true; note \"${advice}\"",
+  "test": "bash linux/scripts/tests/test-renovate-reporting.sh",
+  "why": "An empty report must not emit advice or blank lines."
+ },
+ {
+  "id": "lib.renovate-listing-advice-content",
+  "target": "linux/scripts/renovate-say.sh",
+  "find": "then note \"${advice}\"; fi",
+  "replace": "then :; fi",
+  "test": "bash linux/scripts/tests/test-renovate-reporting.sh",
+  "why": "Populated refusal and collateral reports must retain their final advice."
+ },
+ {
+  "id": "lib.renovate-listing-empty-status",
+  "target": "linux/scripts/renovate-say.sh",
+  "find": "[ $# -gt 0 ] || return 1",
+  "replace": "[ $# -gt 0 ] || return 0",
+  "test": "bash linux/scripts/tests/test-renovate-reporting.sh",
+  "why": "Empty listing status must remain distinguishable from a populated report."
+ },
+ {
+  "id": "lib.renovate-lock-report-prefix",
+  "target": "linux/scripts/renovate-locks.sh",
+  "find": "note_listing_prefix ''",
+  "replace": "note_listing_prefix '  '",
+  "test": "bash linux/scripts/tests/test-renovate-reporting.sh",
+  "why": "Unreadable lock diagnostics retain their unindented bytes before rollback dispatch."
+ },
+ {
+  "id": "lib.onnx-cross-toolchain-argv",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "    CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER",
+  "replace": "    CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=ONLY",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "Runtime and GenAI must keep host tools executable while target libraries and headers stay root-only."
+ },
+ {
+  "id": "lib.onnx-cross-library-type",
+  "target": "linux/scripts/01-core/elf-strip.sh",
+  "find": "\"${depth_args[@]}\" -type f",
+  "replace": "\"${depth_args[@]}\"",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "Library actions must exclude symlinks and nested directories instead of copying link targets or stripping through links."
+ },
+ {
+  "id": "lib.onnx-cross-advisory-action",
+  "target": "linux/scripts/01-core/elf-strip.sh",
+  "find": "-exec \"$@\" {} + 2>/dev/null || true",
+  "replace": "-exec \"$@\" {} + 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "Both library staging and strip retain advisory find/action failure policies."
+ },
+ {
+  "id": "lib.onnx-cross-native-strip-depth",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native.sh",
+  "find": "apply_shared_library_action \"${NATIVE_CPU_OUTPUT_DIR}/lib\" 2 2",
+  "replace": "apply_shared_library_action \"${NATIVE_CPU_OUTPUT_DIR}/lib\" 1 2",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "Native strip must include nested regular libraries at its original depth2."
+ },
+ {
+  "id": "lib.onnx-cross-genai-selector",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/60-build-genai.sh",
+  "find": "'libonnxruntime-genai*.so*' '*.so'",
+  "replace": "'libonnxruntime*.so*' '*.so'",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "GenAI may stage all unversioned shared objects but only its own versioned libraries."
+ },
+ {
+  "id": "lib.elf-library-pattern-list",
+  "target": "linux/scripts/01-core/elf-strip.sh",
+  "find": "while [ \"${patterns}\" -gt 0 ]; do",
+  "replace": "while [ \"${patterns}\" -gt 1 ]; do",
+  "test": "bash linux/scripts/tests/test-onnx-cross-staging.sh",
+  "why": "Shared-prefix strips retain every supplied filename pattern, independently of batched action arguments."
+ },
+ {
+  "id": "lib.onnx-library-companion-required",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "stage_qnn_runtime apply_shared_library_action;",
+  "replace": "stage_qnn_runtime;",
+  "test": "bash linux/scripts/tests/test-onnx-library-companion.sh",
+  "why": "ORT bootstrap must reject a missing shared library traversal helper before a step can execute."
+ },
+ {
+  "id": "lib.copied-gate-freeze-truncates",
+  "target": "linux/scripts/tests/gate-tree.sh",
+  "find": "> \"$allow_file\"",
+  "replace": ">> \"$allow_file\"",
+  "test": "bash linux/scripts/tests/test-copied-gate-fixture.sh",
+  "why": "rewriting fixture freezes must drop old rows rather than retain stale exceptions"
+ },
+ {
+  "id": "lib.copied-gate-freeze-retains-all-rows",
+  "target": "linux/scripts/tests/gate-tree.sh",
+  "find": "printf '%s\\n' \"$@\" > \"$allow_file\"",
+  "replace": "printf '%s\\n' \"$1\" > \"$allow_file\"",
+  "test": "bash linux/scripts/tests/test-copied-gate-fixture.sh",
+  "why": "the shared freeze writer must preserve every requested row and its separators"
+ },
+ {
+  "id": "lib.copied-gate-argv-boundaries",
+  "target": "linux/scripts/tests/gate-tree.sh",
+  "find": "\"$tree/$relative_gate\" \"$@\"",
+  "replace": "\"$tree/$relative_gate\" $*",
+  "test": "bash linux/scripts/tests/test-copied-gate-fixture.sh",
+  "why": "copied-gate execution must retain whitespace inside one argument"
+ },
+ {
+  "id": "lib.copied-gate-stderr-capture",
+  "target": "linux/scripts/tests/gate-tree.sh",
+  "find": "  t_out \"$interpreter\" \"$tree/$relative_gate\" \"$@\"",
+  "replace": "  \"$interpreter\" \"$tree/$relative_gate\" \"$@\"",
+  "test": "bash linux/scripts/tests/test-copied-gate-fixture.sh",
+  "why": "gate diagnostics on stderr must stay in captured output"
+ },
+ {
+  "id": "lib.copied-gate-failure-verdict",
+  "target": "linux/scripts/tests/gate-tree.sh",
+  "find": "  t_out \"$interpreter\" \"$tree/$relative_gate\" \"$@\"",
+  "replace": "  t_out \"$interpreter\" \"$tree/$relative_gate\" \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-copied-gate-fixture.sh",
+  "why": "a copied gate failure must propagate rather than produce an advisory pass"
+ },
+ {
+  "id": "doc-links.fixture-retains-subject-type",
+  "target": "linux/scripts/tests/test-doc-links.sh",
+  "find": "\"${d}/linux/scripts/${2:-subject.sh}\"",
+  "replace": "\"${d}/linux/scripts/subject.sh\"",
+  "test": "bash linux/scripts/tests/test-doc-links.sh",
+  "why": "the non-source pointer fixture must retain its Makefile extension rather than enter the source header rule"
+ },
+ {
+  "id": "lib.vulkan-fixture-host-header",
+  "target": "linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "find": "  : > \"${SDK}/x86_64/include/vulkan/vulkan.h\"\n  local component",
+  "replace": "  :\n  local component",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "component fixtures must retain the host SDK header copied into target prefixes"
+ },
+ {
+  "id": "lib.vulkan-fixture-all-sources",
+  "target": "linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "find": "for component in \"$@\"; do mkdir",
+  "replace": "for component in \"${@:1:1}\"; do mkdir",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "multi-component fixtures must exercise every ordered source row rather than only their first dependency"
+ },
+ {
+  "id": "lib.vulkan-fixture-glslang-install-name",
+  "target": "linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "find": "  printf '#!/bin/sh\\n' > \"${SDK}/aarch64/bin/$1\"",
+  "replace": "  printf '#!/bin/sh\\n' > \"${SDK}/aarch64/bin/glslang\"",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "forward and reverse alias cases must start with their different installed tool names"
+ },
+ {
+  "id": "lib.uv-conflict-fixture-layout-selection",
+  "target": "linux/scripts/tests/test-uv-conflict-extras.sh",
+  "find": "_p=\"$(\"$1\" \"ml-ai ml-ai-cuda\"",
+  "replace": "_p=\"$( _pyproject \"ml-ai ml-ai-cuda\"",
+  "test": "bash linux/scripts/tests/test-uv-conflict-extras.sh",
+  "why": "the inline layout case must actually construct an inline group, independently of parser verdicts"
+ },
+ {
+  "id": "lib.uv-conflict-fixture-independent-families",
+  "target": "linux/scripts/tests/test-uv-conflict-extras.sh",
+  "find": "\"$1\" \"ml-ai ml-ai-cuda\" \"pytorch-cpu pytorch-cu130\"",
+  "replace": "\"$1\" \"ml-ai ml-ai-cuda\" \"pytorch-cpu pytorch-cpu\"",
+  "test": "bash linux/scripts/tests/test-uv-conflict-extras.sh",
+  "why": "each layout fixture must retain the same two independent conflict families being asserted"
+ },
+ {
+  "id": "lib.ort-fetchcontent-src",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "for _ofdn_name in \"$@\" onnxruntime-src onnxruntime-subbuild onnxruntime-build; do",
+  "replace": "for _ofdn_name in \"$@\" onnxruntime-subbuild onnxruntime-build; do",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "Both consumers must retain the exact fetched ONNX Runtime src directory name."
+ },
+ {
+  "id": "lib.ort-fetchcontent-subbuild",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "for _ofdn_name in \"$@\" onnxruntime-src onnxruntime-subbuild onnxruntime-build; do",
+  "replace": "for _ofdn_name in \"$@\" onnxruntime-src onnxruntime-build; do",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "Both consumers must retain the exact fetched ONNX Runtime subbuild directory name."
+ },
+ {
+  "id": "lib.ort-fetchcontent-build",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "for _ofdn_name in \"$@\" onnxruntime-src onnxruntime-subbuild onnxruntime-build; do",
+  "replace": "for _ofdn_name in \"$@\" onnxruntime-src onnxruntime-subbuild; do",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "Both consumers must retain the exact fetched ONNX Runtime build directory name."
+ },
+ {
+  "id": "lib.ort-fetchcontent-case-sensitive",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "    _ofdn_names+=(-name \"${_ofdn_name}\")",
+  "replace": "    _ofdn_names+=(-iname \"${_ofdn_name}\")",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "FetchContent names stay case-sensitive independently of release package matching."
+ },
+ {
+  "id": "lib.ort-fetchcontent-disjunction",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "then _ofdn_names+=(-o); fi",
+  "replace": "then :; fi",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "The shared predicate accepts each fetched name rather than requiring mutually exclusive names simultaneously."
+ },
+ {
+  "id": "lib.ort-fetchcontent-g2-exact-ortlib",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "_ortg_fetchcontent_directory_names fetched_directory_names ortlib-src ortlib-subbuild ortlib-build",
+  "replace": "_ortg_fetchcontent_directory_names fetched_directory_names ortlib-src ortlib-subbuild",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "Provenance retains all three exact ortlib fetched directory categories."
+ },
+ {
+  "id": "lib.ort-fetchcontent-genai-wildcard",
+  "target": "linux/scripts/03-media/verify-genai-ort.sh",
+  "find": "_ortg_fetchcontent_directory_names fetched_directory_names 'ortlib-*'",
+  "replace": "_ortg_fetchcontent_directory_names fetched_directory_names ortlib-src",
+  "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
+  "why": "GenAI retains its broader ortlib wildcard beneath _deps while provenance remains exact."
  }
 ]

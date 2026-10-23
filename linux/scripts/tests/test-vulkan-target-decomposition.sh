@@ -89,6 +89,27 @@ _fixture() {
   esac
 }
 
+_target_sources() {
+  _fixture empty
+  mkdir -p "${SDK}/x86_64/include/vulkan"
+  : > "${SDK}/x86_64/include/vulkan/vulkan.h"
+  local component
+  for component in "$@"; do mkdir -p "${SDK}/source/${component}"; done
+}
+
+_installed_glslang() {
+  _fixture full
+  mkdir -p "${SDK}/aarch64/bin"
+  printf '#!/bin/sh\n' > "${SDK}/aarch64/bin/$1"
+  chmod +x "${SDK}/aarch64/bin/$1"
+}
+
+t_case "component fixtures retain the host header and each requested source directory"
+_target_sources 'fixture source' nested/source
+t_assert_ok test -f "${SDK}/x86_64/include/vulkan/vulkan.h"
+t_assert_ok test -d "${SDK}/source/fixture source"
+t_assert_ok test -d "${SDK}/source/nested/source"
+
 # _trace <cmake rc> <record SUDO 0|1>: under errexit, an abort shows as a missing "EXIT 0".
 _trace() {
   local rc="$1" record_sudo="$2"
@@ -199,10 +220,7 @@ t_assert_contains "${_out}" "LOG Vulkan cross-targets aarch64: 1/1 component(s) 
 
 # ${SUDO} is recorded, not run: no host symlinks.
 t_case "glslang installed as 'glslang' also gets the glslangValidator alias"
-_fixture full
-mkdir -p "${SDK}/aarch64/bin"
-printf '#!/bin/sh\n' > "${SDK}/aarch64/bin/glslang"
-chmod +x "${SDK}/aarch64/bin/glslang"
+_installed_glslang glslang
 _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslang SDK/aarch64/bin/glslangValidator"
 t_assert_contains "${_out}" "SUDO ln -sf SDK/aarch64/bin/glslang /usr/local/bin/glslang"
@@ -211,10 +229,7 @@ t_assert_contains "${_out}" "EXIT 0" \
   "_vulkan_target_link_glslang_aliases must not leak a false [ -e ] test under set -e"
 
 t_case "glslang installed as 'glslangValidator' gets the reverse alias"
-_fixture full
-mkdir -p "${SDK}/aarch64/bin"
-printf '#!/bin/sh\n' > "${SDK}/aarch64/bin/glslangValidator"
-chmod +x "${SDK}/aarch64/bin/glslangValidator"
+_installed_glslang glslangValidator
 _out="$(_trace 0 1)"
 t_assert_contains "${_out}" "SUDO ln -s glslangValidator SDK/aarch64/bin/glslang"
 t_assert_contains "${_out}" "EXIT 0"
@@ -250,19 +265,14 @@ t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-B TMP/vulkan-validationlay
 
 # volk alone, an optional row: `rest` also carries shaderc, whose loss is fatal.
 t_case "a row that FAILS to build degrades the prefix, it does not fail the lane"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/volk"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources volk
 _out="$(_trace 1 0)"
 t_assert_contains "${_out}" "LOG volk unavailable on aarch64; the target SDK ships without it"
 t_assert_contains "${_out}" "EXIT 0" "an OPTIONAL component that will not cross-build is non-fatal by contract"
 
 # vulkan-profiles finds jsoncpp and valijson through find_package, so they need rows of their own.
 t_case "jsoncpp and valijson are cross-built BEFORE vulkan-profiles"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/jsoncpp" \
-         "${SDK}/source/valijson" "${SDK}/source/Vulkan-Profiles"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources jsoncpp valijson Vulkan-Profiles
 _out="$(_trace 0 0)"
 t_assert_eq "jsoncpp-aarch64 valijson-aarch64 vulkan-profiles-aarch64" \
   "$(printf '%s\n' "${_out}" | sed -n 's/^CMAKE -S .* -B TMP\/\([a-z-]*[0-9]*\) .*/\1/p' | tr '\n' ' ' | sed 's/ $//')" \
@@ -272,10 +282,7 @@ t_assert_contains "${_out}" "-Dvalijson_INSTALL_HEADERS=ON" "valijson is header-
 
 # Canadian-cross rows: a generator or moc that must run on the build host
 t_case "slang takes the host generators when ./vulkansdk left them behind"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang" \
-         "${SDK}/source/slang/build/generators/Release/bin"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources slang slang/build/generators/Release/bin
 printf '#!/bin/sh\n' > "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
 chmod +x "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
 _out="$(_trace 0 0)"
@@ -284,9 +291,7 @@ t_assert_contains "${_out}" "-DSLANG_GENERATORS_PATH=SDK/source/slang/build/gene
 t_assert_contains "${_out}" "-DSLANG_ENABLE_DXIL=OFF" "the DXC slang fetches is an x86_64 prebuilt"
 
 t_case "slang without host generators says so instead of passing an empty path"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources slang
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "LOG slang: no host generators at SDK/source/slang/build/generators/Release/bin"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DSLANG_GENERATORS_PATH' || true)"
@@ -326,9 +331,7 @@ for _c in vulkantools dxc cdl; do
 done
 
 t_case "vulkantools gets Qt6, the raw loader path and the config-package dirs"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/VulkanTools"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources VulkanTools
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "CMAKE -S SDK/source/VulkanTools -B TMP/vulkantools-aarch64"
 t_assert_contains "${_out}" "-DQT_HOST_PATH=/usr" "vkconfig-gui is Qt6, same split as the caps viewer"
@@ -339,19 +342,13 @@ t_assert_contains "${_out}" "-DJSONCPP_INSTALL_DIR=SDK/aarch64 -DVALIJSON_INSTAL
 t_assert_contains "${_out}" "-DSDK_VERSION=" "the vendor passes it; unset it labels the build wrongly"
 
 t_case "the crash diagnostic layer gets glslang and yaml-cpp from the target prefix"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/CrashDiagnosticLayer"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources CrashDiagnosticLayer
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "-DGLSLANG_INSTALL_DIR=SDK/aarch64 -DYAML_CPP_INSTALL_DIR=SDK/aarch64" \
   "yaml-cpp is CDL's own dependency and has its own row above it"
 
 t_case "dxc gets the vendor cache file and the HOST tblgens"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" \
-         "${SDK}/source/DirectXShaderCompiler/cmake/caches" \
-         "${SDK}/source/DirectXShaderCompiler/build/bin"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources DirectXShaderCompiler/cmake/caches DirectXShaderCompiler/build/bin
 : > "${SDK}/source/DirectXShaderCompiler/cmake/caches/PredefinedParams.cmake"
 for _g in llvm-tblgen clang-tblgen; do
   printf '#!/bin/sh\n' > "${SDK}/source/DirectXShaderCompiler/build/bin/${_g}"
@@ -367,9 +364,7 @@ t_assert_contains "${_out}" "-DSPIRV_WERROR=OFF" \
   "DXC vendors its OWN external/SPIRV-Tools, so it needs the same flag the standalone copy already carries: GCC 16 -Warray-bounds false-positives on timer.h, and 23/24 on riscv64 is what that cost"
 
 t_case "dxc without host tblgens says so instead of passing an empty path"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/DirectXShaderCompiler"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources DirectXShaderCompiler
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "LOG dxc: no host tblgen at SDK/source/DirectXShaderCompiler/build/bin"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -e '-DLLVM_TABLEGEN' || true)"
@@ -395,9 +390,7 @@ _dxc_installed() {
 _present() { test -e "${SDK}/aarch64/$1" && echo kept || echo gone; }
 
 t_case "the four DXC include trees and four libs the vendor prunes are dropped"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/DirectXShaderCompiler"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources DirectXShaderCompiler
 _dxc_installed
 _out="$(_trace 0 0)"
 t_assert_contains "${_out}" "LOG Pruning the DXC non-SDK files LunarG prunes from its own tarball under SDK/aarch64"
@@ -448,10 +441,7 @@ for _h in GL KHR EGL; do
 done
 
 t_case "slang gets the vendor's between-build-and-install copy step"
-_fixture empty
-mkdir -p "${SDK}/x86_64/include/vulkan" "${SDK}/source/slang" \
-         "${SDK}/source/slang/build/generators/Release/bin"
-: > "${SDK}/x86_64/include/vulkan/vulkan.h"
+_target_sources slang slang/build/generators/Release/bin
 printf '#!/bin/sh\n' > "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
 chmod +x "${SDK}/source/slang/build/generators/Release/bin/slang-embed"
 t_assert_contains "$(awk '/^_vulkan_target_dynamic_args\(\) \{/,/^\}/' "${VULKAN_SH}")" \

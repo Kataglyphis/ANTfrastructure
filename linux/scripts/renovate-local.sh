@@ -550,13 +550,11 @@ print_plan_notes() {
     "behind, and reported as a submodule that this repo does not declare --" \
     "--apply does not touch these:" \
     -- ${APPLY_UNMATCHED[@]+"${APPLY_UNMATCHED[@]}"} || true
-  if note_listing \
+  note_listing_advice "Move one of these by hand, deliberately, or give it a branch entry." \
       "REFUSED - behind, but no \`branch =\` in .gitmodules. A bare --remote would" \
       "walk these to the remote's DEFAULT branch, which is not the line the pin" \
       "was taken from (the FUZZTEST case):" \
-      -- ${APPLY_REFUSED[@]+"${APPLY_REFUSED[@]}"}; then
-    note "Move one of these by hand, deliberately, or give it a branch entry."
-  fi
+      -- ${APPLY_REFUSED[@]+"${APPLY_REFUSED[@]}"}
 }
 
 print_dry_run() {

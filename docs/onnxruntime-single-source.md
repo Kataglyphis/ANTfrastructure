@@ -133,6 +133,11 @@ rebuilt so it no longer exports `OrtGetApiBase`. That is deliberate evasion,
 not an accident this gate exists for. Archive members are still found by name
 and by fingerprint only, because nothing loads them from inside the archive.
 
+The Linux build-provenance and GenAI verifiers share the three ONNX Runtime
+FetchContent directory names through `ort-provenance.sh`. Build-provenance keeps
+its exact `ortlib` directory names and linked-root scans; GenAI keeps its `ortlib-*`
+selector and `_deps` pruning. Directory-name sharing does not widen exemptions.
+
 ## What was wrong before 2026-09-23
 
 - **Windows OpenCV** downloaded `onnxruntime-win-x64-1.25.1.zip` at configure

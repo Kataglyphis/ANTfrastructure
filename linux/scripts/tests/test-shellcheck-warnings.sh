@@ -48,9 +48,9 @@ _stub() {
   chmod +x "${d}/stub-shellcheck"
   printf '%s' "${d}/stub-shellcheck"
 }
-_freeze() { local d="$1"; shift; printf '%s\n' "$@" > "${d}/linux/scripts/shellcheck-warnings.allow"; }
-_run() { local d="$1"; shift; t_out env "SHELLCHECK_BIN=${SC_BIN}" "${PY}" "${d}/linux/scripts/verify_shellcheck_warnings.py" "$@"; }
-_rc()  { local d="$1"; shift; t_rc  env "SHELLCHECK_BIN=${SC_BIN}" "${PY}" "${d}/linux/scripts/verify_shellcheck_warnings.py" "$@"; }
+_freeze() { gate_tree_freeze "$1/linux/scripts/shellcheck-warnings.allow" "${@:2}"; }
+_run() { SHELLCHECK_BIN="${SC_BIN}" gate_tree_out "${PY}" "$1" linux/scripts/verify_shellcheck_warnings.py "${@:2}"; }
+_rc()  { t_rc _run "$@"; }
 _write() { _rc "$1" --write-baseline "${@:2}"; }
 _rows() { grep -v -e '^#' "$1/linux/scripts/shellcheck-warnings.allow"; }
 _head() { head -n "$2" "$1/linux/scripts/shellcheck-warnings.allow"; }

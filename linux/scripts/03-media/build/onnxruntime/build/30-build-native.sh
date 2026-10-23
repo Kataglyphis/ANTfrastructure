@@ -137,9 +137,8 @@ fi
 
 # ${STRIP} is the target's strip on cross builds, since the host strip skips foreign ELFs.
 if [ "${MEDIA_STRIP:-1}" = "1" ]; then
-  find "${NATIVE_CPU_OUTPUT_DIR}/lib" -maxdepth 2 -type f \
-    \( -name '*.so' -o -name '*.so.*' \) \
-    -exec "${STRIP:-strip}" --strip-all {} + 2>/dev/null || true
+  apply_shared_library_action "${NATIVE_CPU_OUTPUT_DIR}/lib" 2 2 \
+    '*.so' '*.so.*' "${STRIP:-strip}" --strip-all
 fi
 
 report_onnx_build_output "Build complete" "${NATIVE_CPU_OUTPUT_DIR}"

@@ -2,12 +2,12 @@
 # sync_versions.py --check ORs eight sub-checks, so each gets its own fixture; see docs/code-quality-tooling.md#the-two-that-stay-frozen-with-better-reasons
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare _roots REPO
+t_fixture_workspace_init _roots REPO || exit 1
 export REPO
 
-_roots="$(mktemp -d)"
-trap 'rm -rf "${_roots}"' EXIT
 
 # _farm <path>...: a symlink farm (a full copy is 8 GB) with the named paths, and sync_versions.py, as real copies.
 _farm() {

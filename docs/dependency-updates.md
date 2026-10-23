@@ -45,6 +45,11 @@ beside them. The CLI helper owns argument movement, value validation and common
 options. Local `--dry-run` preserves the selected mode; fleet `--dry-run` selects
 apply mode, so it prints the complete plan. A later `--report` still wins.
 
+Renovate reports share list rendering in `renovate-say.sh`. The caller selects
+indentation; unreadable lock reports keep their unindented lines. Advice appears
+only after a nonempty listing. Refusal and rollback decisions remain in callers,
+including their original messages, status and cleanup policy.
+
 The Git helper validates the root and enumerates declared submodule names and
 nonempty paths from one NUL-delimited Git query. Duplicate declarations retain
 Git's last-value path semantics. Callbacks retain the policies: local classifies explicit branches;

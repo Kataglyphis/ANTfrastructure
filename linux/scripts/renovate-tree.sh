@@ -314,13 +314,11 @@ report_collateral_outcome() {
   mapfile -t unsafe < <(tree_row_text ${TREE_UNSAFE[@]+"${TREE_UNSAFE[@]}"})
   note_listing "an ecosystem tool had also moved these, and they were put back:" \
     -- ${TREE_PUTBACK[@]+"${TREE_PUTBACK[@]}"} || true
-  if note_listing \
+  note_listing_advice "Decide those by hand -- \`git diff -- <path>\` says what is in them." \
       "these moved too and were NOT touched: they were ALREADY carrying local" \
       "changes when the run started, so putting them back would destroy work" \
       "this run never owned. The tree is NOT as it started in these paths:" \
-      -- ${unsafe[@]+"${unsafe[@]}"}; then
-    note "Decide those by hand -- \`git diff -- <path>\` says what is in them."
-  fi
+      -- ${unsafe[@]+"${unsafe[@]}"}
 }
 
 # Proven back from one set difference in a file; a grep inside a pipefail pipeline would read "none" as failure.
@@ -418,10 +416,9 @@ assert_manifests_unchanged() {
     moved+=("${rel}  (audited as ${was:0:12}, now ${now:0:12})")
   done
   [ "${#moved[@]}" -gt 0 ] || return 0
-  note ""
-  note "a lockfile tool REWROTE a manifest this run had already audited. The"
-  note "audit proved exactly one value moved; anything the tool then did to the"
-  note "file is covered by nothing:"
-  printf '  %s\n' "${moved[@]}"
+  note_listing \
+    "a lockfile tool REWROTE a manifest this run had already audited. The" \
+    "audit proved exactly one value moved; anything the tool then did to the" \
+    "file is covered by nothing:" -- "${moved[@]}"
   undo_run "a lockfile tool rewrote ${#moved[@]} audited manifest(s)"
 }

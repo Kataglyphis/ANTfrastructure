@@ -19,3 +19,19 @@ strip_elf_tree() {
     | awk -F': *' '/ELF/{print $1}')
   strip_elf_files "${jobs}" "${strip_bin}" "${files[@]}"
 }
+
+# The pattern count separates filename selectors from the caller's batched action argv.
+apply_shared_library_action() {
+  local source_dir="$1" depth="$2" patterns="$3"
+  shift 3
+  local -a name_expr=() depth_args=()
+  while [ "${patterns}" -gt 0 ]; do
+    [ "${#name_expr[@]}" -eq 0 ] || name_expr+=(-o)
+    name_expr+=(-name "$1")
+    shift
+    patterns=$((patterns - 1))
+  done
+  [ -z "${depth}" ] || depth_args=(-maxdepth "${depth}")
+  find "${source_dir}" "${depth_args[@]}" -type f \( "${name_expr[@]}" \) \
+    -exec "$@" {} + 2>/dev/null || true
+}

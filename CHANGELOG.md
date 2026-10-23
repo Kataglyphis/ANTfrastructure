@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share ONNX staging, Renovate reports and gate fixtures
+
+- Share ONNX cross-toolchain arguments and advisory filename-based library actions, retaining compiler order, copy/strip selectors, depths and repack decisions.
+- Share ONNX Runtime FetchContent names while keeping verifier traversal and caller-specific `ortlib` policies.
+- Share Renovate listing indentation and conditional advice; preserve output bytes, refusal status and rollback dispatch.
+- Share copied-gate, Vulkan and UV fixtures without dropping existing assertions; remove measured duplication exceptions without increasing budgets or limits.
+
 ## 2026-10-23 — share Windows acquisition, copy and probe operations
 
 - Share pinned lavapipe acquisition across host and image installers while retaining caller PE, ICD, registry and environment checks.

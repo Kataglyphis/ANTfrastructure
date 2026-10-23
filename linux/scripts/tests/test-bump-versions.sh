@@ -2,11 +2,11 @@
 # bump_versions.py's report/write machinery, in-process with fake specs. See docs/dependency-updates.md#version-bumping-as-agentsmd-carried-it
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare _WORK REPO
+t_fixture_workspace_init _WORK REPO || exit 1
 
-_WORK="$(mktemp -d)"
-trap 'rm -rf "${_WORK}"' EXIT
 
 # The real module on the fixture with one named fake scenario; prints rc, stdout and stderr as three blocks.
 _bv_prelude() {

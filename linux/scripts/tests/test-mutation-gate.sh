@@ -2,12 +2,14 @@
 # The pointed-at tree must stay byte-identical, since a build may be reading it; see docs/code-quality-tooling.md#the-mutation-gate-mutations
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare _work REPO
+t_fixture_workspace_init _work REPO || exit 1
 PY="${PREFLIGHT_PYTHON:-python3}"
 GATE="${REPO}/docs/scripts/verify_mutations.py"
 
-_work="$(mktemp -d)"; _tmp="$(mktemp -d)"
+_tmp="$(mktemp -d)"
 trap 'rm -rf "${_work}" "${_tmp}"' EXIT
 
 # _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.

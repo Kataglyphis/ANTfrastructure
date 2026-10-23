@@ -9,7 +9,7 @@ GATE="${REPO_ROOT}/docs/scripts/verify_doc_links.py"
 PY="${PREFLIGHT_PYTHON:-python3}"
 D='docs/'
 
-# _fixture <code>: one indexed page (heading + stable id) and a subject.sh holding <code>.
+# _fixture <code> [subject]: one indexed page and a source file keep pointer verdicts independent of the real tree.
 _fixture() {
   local d; d="$(mktemp -d)"
   mkdir -p "${d}/docs" "${d}/tools/gate" "${d}/linux/scripts"
@@ -18,13 +18,14 @@ _fixture() {
   printf '# Guide\n\n<a id="stable"></a>\n## Real Heading\n\ntext\n' > "${d}/docs/guide.md"
   printf '# Index\n\n- [guide](guide.md)\n' > "${d}/docs/INDEX.md"
   printf '.. toctree::\n\n   guide\n' > "${d}/docs/index.rst"
-  printf '%s\n' "$1" > "${d}/linux/scripts/subject.sh"
+  [ "${2:-subject.sh}" = subject.sh ] || printf ":\n" > "${d}/linux/scripts/subject.sh"
+  printf '%s\n' "$1" > "${d}/linux/scripts/${2:-subject.sh}"
   printf '%s' "${d}"
 }
 # _freeze <tree> <row>... — plant doc-header-pointers.allow beside the copied gate.
-_freeze() { local d="$1"; shift; printf '%s\n' "$@" > "${d}/tools/gate/doc-header-pointers.allow"; }
-_run() { t_out "${PY}" "$1/tools/gate/verify_doc_links.py"; }
-_rc()  { t_rc "${PY}" "$1/tools/gate/verify_doc_links.py"; }
+_freeze() { gate_tree_freeze "$1/tools/gate/doc-header-pointers.allow" "${@:2}"; }
+_run() { gate_tree_out "${PY}" "$1" tools/gate/verify_doc_links.py; }
+_rc()  { t_rc _run "$1"; }
 
 t_case "valid code pointers (page, heading slug, stable id) pass"
 fix="$(_fixture "# see ${D}guide.md and ${D}guide.md#real-heading and ${D}guide.md#stable")"
@@ -129,16 +130,14 @@ t_assert_contains "$(_run "${fix}")" "STALE doc-header-pointers.allow row" \
 rm -rf "${fix}"
 
 t_case "the header rule stops at the header, and a section reference is not bare"
-fix="$(_fixture ":")"
-printf '#\n#\n#\n#\n#\n#\n#\n#\n#\n#\n# see %sguide.md\n' "${D}" > "${fix}/linux/scripts/subject.sh"
+fix="$(_fixture "$(printf '#\n#\n#\n#\n#\n#\n#\n#\n#\n#\n# see %sguide.md\n' "${D}")")"
 t_assert_eq "0" "$(_rc "${fix}")" "line 11 is body, not header: the wider rule was declined"
 printf '# see %sguide.md Â§ Real Heading\n' "${D}" > "${fix}/linux/scripts/subject.sh"
 t_assert_eq "0" "$(_rc "${fix}")" "the section-sign form already says where it lands"
 rm -rf "${fix}"
 
 t_case "only .sh and .py carry a header pointer rule"
-fix="$(_fixture ":")"
-printf '# see %sguide.md\n' "${D}" > "${fix}/linux/scripts/subject.mk"
+fix="$(_fixture "$(printf '# see %sguide.md\n' "${D}")" subject.mk)"
 t_assert_eq "0" "$(_rc "${fix}")" "a Makefile fragment has no house header convention"
 rm -rf "${fix}"
 

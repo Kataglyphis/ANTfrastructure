@@ -328,11 +328,10 @@ assert_locks_sane() {
   note "rewritten wholesale, so this is a narrower claim than the manifest audit:"
   if [ "${#LOCK_SAID[@]}" -gt 0 ]; then printf '%s\n' "${LOCK_SAID[@]}"; fi
   [ "${#LOCK_UNREADABLE[@]}" -gt 0 ] || return 0
-  note ""
-  note "a lockfile this run refreshed cannot be read back. The SAME reading was"
-  note "taken before anything was written and passed, so this is what the tool"
-  note "did to it:"
-  printf '%s\n' "${LOCK_UNREADABLE[@]}"
+  note_listing_prefix '' \
+    "a lockfile this run refreshed cannot be read back. The SAME reading was" \
+    "taken before anything was written and passed, so this is what the tool" \
+    "did to it:" -- "${LOCK_UNREADABLE[@]}"
   undo_run "${#LOCK_UNREADABLE[@]} refreshed lockfile(s) cannot be read back"
 }
 

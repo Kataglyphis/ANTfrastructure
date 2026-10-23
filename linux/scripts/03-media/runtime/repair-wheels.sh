@@ -123,8 +123,7 @@ strip_cross_wheels() {
     tmp="$(mktemp -d)"
     if uv run python -m wheel unpack "${whl}" -d "${tmp}/u" >/dev/null 2>&1 \
        && find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) -print -quit 2>/dev/null | grep -q .; then
-      find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) \
-        -exec "${strip_bin}" --strip-all {} + 2>/dev/null || true
+      apply_shared_library_action "${tmp}/u" "" 2 '*.so' '*.so.*' "${strip_bin}" --strip-all
       unpacked="$(first_match "${tmp}/u" -mindepth 1 -maxdepth 1 -type d)"
       mkdir -p "${tmp}/p"   # `wheel pack -d` does NOT create its dest dir
       if [ -n "${unpacked}" ] && uv run python -m wheel pack "${unpacked}" -d "${tmp}/p" >/dev/null 2>&1; then

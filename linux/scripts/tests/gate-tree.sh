@@ -84,3 +84,15 @@ sys.exit(int(os.environ["HOOK_TEST_STALE_RC" if "--stale-check" in sys.argv
                         else "HOOK_TEST_GATE_RC"]))
 STUB
 }
+
+gate_tree_freeze() {
+  local allow_file="$1"
+  shift
+  printf '%s\n' "$@" > "$allow_file"
+}
+
+gate_tree_out() {
+  local interpreter="$1" tree="$2" relative_gate="$3"
+  shift 3
+  t_out "$interpreter" "$tree/$relative_gate" "$@"
+}

@@ -13,14 +13,26 @@ note() { printf '%s\n' "$*"; }
 
 # <explanation...> -- <items...>; returns 1 silently with no items, so callers write `if note_listing`.
 note_listing() {
+  note_listing_prefix '  ' "$@"
+}
+
+note_listing_prefix() {
+  local prefix="$1" item
+  shift
   local -a text=()
   while [ $# -gt 0 ] && [ "$1" != "--" ]; do text+=("$1"); shift; done
   [ $# -gt 0 ] && shift
   [ $# -gt 0 ] || return 1
   note ""
   if [ "${#text[@]}" -gt 0 ]; then printf '%s\n' "${text[@]}"; fi
-  printf '  %s\n' "$@"
+  for item in "$@"; do printf '%s%s\n' "${prefix}" "${item}"; done
   return 0
+}
+
+note_listing_advice() {
+  local advice="$1"
+  shift
+  if note_listing "$@"; then note "${advice}"; fi
 }
 
 # <summary> <advice|""> <explanation...> -- <items...>: ends the run unless nothing is listed.

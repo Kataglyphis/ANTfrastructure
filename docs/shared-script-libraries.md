@@ -31,6 +31,21 @@ The Slang twins accept additional pinned source roots and import an owner's
 WGSL manifest without a copied definition; their caller parameters and ownership
 rules are in [`slang-shader-compilation.md`](slang-shader-compilation.md#caller-variables).
 
+## Shared ONNX staging and report fixtures
+
+ONNX Runtime and GenAI append their shared cross-toolchain definitions from the
+existing ONNX build library. Python, Rust and test switches remain caller policy,
+as do the order and spelling of compiler arguments.
+
+`01-core/elf-strip.sh` also owns filename-based shared-library traversal and batched
+advisory actions. Callers supply depth, filename patterns and action arguments;
+this operation does not replace the content-based ELF probes in `strip_elf_tree`.
+Copied build helpers still carry this existing companion.
+
+Copied-gate fixtures share allow-row creation and gate invocation. Version and
+mutation suites reuse the common workspace lifecycle while retaining their distinct
+cleanup and input trees. Fixtures continue to execute the actual subject gates.
+
 ## Shared cache, dependency and packaging operations
 
 `01-core/compiler-cache-utils.sh` supplies launcher selection and start/health probes
@@ -1639,6 +1654,10 @@ own archive rules, exemptions, counters and diagnostic suffixes. Multiple valid
 chain files with the same name remain acceptable; missing or unreadable files
 retain their previous findings. Offline fixtures exercise byte identity and
 failure cases without downloading models or building ONNX Runtime.
+
+The two verifiers also share FetchContent directory-name expressions for
+`onnxruntime-src`, `onnxruntime-subbuild` and `onnxruntime-build`. Each caller
+retains its own `ortlib` patterns, traversal scope, link handling and pruning.
 
 TVM wheel fixtures share fake-builder invocation while retaining successful,
 failed and missing-pipefail paths, captured stderr and log assertions. Ancestry

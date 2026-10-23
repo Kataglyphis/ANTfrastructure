@@ -18,7 +18,7 @@ elif [ -f "${_ONNX_LIB_DIR}/../../../../core/common.sh" ]; then
 fi
 
 # A broken 01-core bootstrap must fail here, not later as a confusing "command not found".
-for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime; do
+for _req_fn in info warn err arch_oci cross_build_enabled host_python_bin host_python_major_minor resolve_qnn_sdk stage_qnn_runtime apply_shared_library_action; do
   if ! command -v "${_req_fn}" >/dev/null 2>&1; then
     printf '[ERROR] onnxruntime lib/common.sh: required helper %s is undefined after media_common_init (01-core framework not loaded)\n' "${_req_fn}" >&2
     exit 1
@@ -345,9 +345,8 @@ copy_onnx_libraries_to_output() {
   local output_dir="${3:?output dir required}"
 
   mkdir -p "${output_dir}/lib"
-  find "${build_dir}/${build_config}" -maxdepth 1 -type f \
-    \( -name "libonnxruntime*.so*" -o -name "libonnxruntime_providers_*.so*" \) \
-    -exec cp -t "${output_dir}/lib/" {} + 2>/dev/null || true
+  apply_shared_library_action "${build_dir}/${build_config}" 1 2 \
+    'libonnxruntime*.so*' 'libonnxruntime_providers_*.so*' cp -t "${output_dir}/lib/"
 }
 
 ensure_onnxruntime_symlink() {
@@ -479,19 +478,10 @@ report_onnx_build_output() {
   find "${output_dir}/lib" -maxdepth 1 -type f -name "*.so*" -printf '%f\n' 2>/dev/null | head -20 || true
 }
 
-append_onnx_cross_cmake_build_args() {
-  local build_args_name="$1"
-  # shellcheck disable=SC2178
-  local -n build_args_ref="${build_args_name}"
-
-  local enable_python="OFF"
-  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
-    enable_python="ON"
-    info "Target Python dev files available; enabling ONNX Runtime Python in cross mode"
-  fi
-
-  # Not append_cmake_cross_args: its CMAKE_LIBRARY_ARCHITECTURE breaks ORT's FindPython NumPy detection.
-  build_args_ref+=(
+append_onnx_cross_toolchain_args() {
+  local -n onnx_cross_args="$1"
+  # CMAKE_LIBRARY_ARCHITECTURE would break ORT's FindPython and GenAI's root-only target lookup.
+  onnx_cross_args+=(
     --cmake_extra_defines
     CMAKE_SYSTEM_NAME=Linux
     CMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}"
@@ -503,6 +493,22 @@ append_onnx_cross_cmake_build_args() {
     CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
     CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
+  )
+}
+
+append_onnx_cross_cmake_build_args() {
+  local build_args_name="$1"
+  # shellcheck disable=SC2178
+  local -n build_args_ref="${build_args_name}"
+
+  local enable_python="OFF"
+  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+    enable_python="ON"
+    info "Target Python dev files available; enabling ONNX Runtime Python in cross mode"
+  fi
+
+  append_onnx_cross_toolchain_args "${build_args_name}"
+  build_args_ref+=(
     "onnxruntime_ENABLE_PYTHON=${enable_python}"
     onnxruntime_BUILD_UNIT_TESTS=OFF
     onnxruntime_GENERATE_TEST_REPORTS=OFF

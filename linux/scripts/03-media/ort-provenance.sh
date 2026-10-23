@@ -85,8 +85,21 @@ _ortg_name_finding() {  # <path> [suffix]: an ORT archive, a chain name with oth
   return 0
 }
 
+_ortg_fetchcontent_directory_names() {
+  local -n _ofdn_names="$1"
+  local _ofdn_name
+  shift
+  _ofdn_names=()
+  for _ofdn_name in "$@" onnxruntime-src onnxruntime-subbuild onnxruntime-build; do
+    if [ "${#_ofdn_names[@]}" -gt 0 ]; then _ofdn_names+=(-o); fi
+    _ofdn_names+=(-name "${_ofdn_name}")
+  done
+}
+
 _ortg_scan_root() {  # <root> <via-link>: one root's fetched ORT dirs and ORT-named files; its dir links land in _ORTG_FOUND_LINKS
   local r="$1" sfx="" kind path err n
+  local -a fetched_directory_names
+  _ortg_fetchcontent_directory_names fetched_directory_names ortlib-src ortlib-subbuild ortlib-build
   if [ -n "$2" ]; then sfx=" (through the link $2)"; fi
   err="$(mktemp)" || { echo "cannot make a temp file to scan ${r}"; return 0; }
   n="$( { find -H "${r}" -type f -printf . 2>/dev/null || true; } | wc -c)"
@@ -97,8 +110,7 @@ _ortg_scan_root() {  # <root> <via-link>: one root's fetched ORT dirs and ORT-na
       D) echo "fetched ONNX Runtime content at ${path}${sfx}" ;;
       F) _ortg_name_finding "${path}" "${sfx}" ;;
     esac
-  done < <(find -H "${r}" \( -type l -xtype d -printf 'L\t%p\n' \) -o \( -type d \( -name 'ortlib-src' -o -name 'ortlib-subbuild' \
-        -o -name 'ortlib-build' -o -name 'onnxruntime-src' -o -name 'onnxruntime-subbuild' -o -name 'onnxruntime-build' -o -name 'ort.pyke.io' \
+  done < <(find -H "${r}" \( -type l -xtype d -printf 'L\t%p\n' \) -o \( -type d \( "${fetched_directory_names[@]}" -o -name 'ort.pyke.io' \
         -o -iname 'onnxruntime-linux-*' -o -iname 'onnxruntime-win-*' -o -iname 'onnxruntime-osx-*' -o -iname 'onnxruntime-android-*' \
         -o \( -iname 'microsoft.ml.onnxruntime*' ! -iname 'microsoft.ml.onnxruntimegenai*' \) \) -printf 'D\t%p\n' \) \
         -o \( \( -type f -o -type l \) \( -iname '*onnxruntime*' -o -name '*_provider_factory.h' -o -name '*.tar.lzma2' \) \

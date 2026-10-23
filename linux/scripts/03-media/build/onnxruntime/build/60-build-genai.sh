@@ -156,19 +156,8 @@ if [ "${GENAI_CROSS_BUILD}" = "true" ]; then
   _genai_py_mm="$(host_python_major_minor)" || err "cannot resolve host python major.minor"
   # Without the target's EXT_SUFFIX pybind11 names the module for the host, and the target Python cannot import it.
   _GENAI_MODULE_EXT=".cpython-${_genai_py_mm//./}-${CROSS_TARGET_TRIPLET}.so"
+  append_onnx_cross_toolchain_args GENAI_BASE_ARGS
   GENAI_BASE_ARGS+=(
-    --cmake_extra_defines
-    # No CMAKE_LIBRARY_ARCHITECTURE: /usr/local holds target-arch libs, so ONLY-mode finds against / resolve there.
-    CMAKE_SYSTEM_NAME=Linux
-    CMAKE_SYSTEM_PROCESSOR="${CROSS_TARGET_PROCESSOR}"
-    CMAKE_C_COMPILER="${CC}"
-    CMAKE_CXX_COMPILER="${CXX}"
-    CMAKE_ASM_COMPILER="${CC}"
-    CMAKE_SYSROOT=/
-    CMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER
-    CMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY
-    CMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY
-    CMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY
     # A cross build cannot run tests or benchmarks, so it does not compile them.
     ENABLE_TESTS=OFF
     ENABLE_MODEL_BENCHMARK=OFF
@@ -261,9 +250,8 @@ fi
 
 GENAI_LIB_DIR="${GENAI_SRC_DIR}/build/Linux/${GENAI_CONFIG}"
 if [[ -d "${GENAI_LIB_DIR}" ]]; then
-  find "${GENAI_LIB_DIR}" -maxdepth 1 -type f \
-    \( -name "libonnxruntime-genai*.so*" -o -name "*.so" \) \
-    -exec cp -t "${GENAI_OUTPUT_DIR}/lib/" {} + 2>/dev/null || true
+  apply_shared_library_action "${GENAI_LIB_DIR}" 1 2 \
+    'libonnxruntime-genai*.so*' '*.so' cp -t "${GENAI_OUTPUT_DIR}/lib/"
 fi
 
 # GenAI inherits ORT's QNN EP, so the QNN backend libs must sit beside the GenAI install too.

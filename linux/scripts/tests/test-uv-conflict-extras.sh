@@ -41,10 +41,15 @@ t_case "a missing pyproject is not an error"
 t_assert_eq "" "$(_uv_extras_to_exclude /nonexistent/pyproject.toml)"
 t_assert_eq "0" "$(t_rc _uv_extras_to_exclude /nonexistent/pyproject.toml)"
 
-t_case "each declared pair is read back as one group"
-_p="$(_pyproject "ml-ai ml-ai-cuda" "pytorch-cpu pytorch-cu130")"
-t_assert_eq "ml-ai ml-ai-cuda
+_paired_conflicts_read_back() {
+  _p="$("$1" "ml-ai ml-ai-cuda" "pytorch-cpu pytorch-cu130")"
+  t_assert_eq "ml-ai ml-ai-cuda
 pytorch-cpu pytorch-cu130" "$(_uv_conflict_groups "${_p}")"
+}
+
+t_case "each declared pair is read back as one group"
+_paired_conflicts_read_back _pyproject
+t_assert_ok grep -Fxq 'conflicts = [' "${_p}"
 
 t_case "the FIRST-declared member of each family survives (the CI choice)"
 t_assert_eq "ml-ai-cuda pytorch-cu130" "$(_uv_extras_to_exclude "${_p}")"
@@ -68,9 +73,8 @@ _inline_pyproject() {
 }
 
 t_case "a group written on ONE line is read exactly like the multi-line layout"
-_p="$(_inline_pyproject "ml-ai ml-ai-cuda" "pytorch-cpu pytorch-cu130")"
-t_assert_eq "ml-ai ml-ai-cuda
-pytorch-cpu pytorch-cu130" "$(_uv_conflict_groups "${_p}")"
+_paired_conflicts_read_back _inline_pyproject
+t_assert_ok grep -Fq 'conflicts = [ [ { extra = "ml-ai" },' "${_p}"
 t_assert_eq "ml-ai-cuda pytorch-cu130" "$(_uv_extras_to_exclude "${_p}")" \
   "no group means no exclusion, and --all-extras then dies on the conflict uv already declared"
 
