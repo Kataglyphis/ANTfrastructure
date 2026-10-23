@@ -1,10 +1,9 @@
 #requires -Version 7.0
 # A failed ninja -j<N> must retry once at -j<RetryJobs>; a fake ninja.bat logs each attempt, BUILD_JOBS pins the first.
 
-Describe 'Invoke-NinjaBuildWithRetry' {
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') -Force -DisableNameChecking
 
-    # Env knobs: WBT_NINJA_LOG, WBT_NINJA_MODE=fail, WBT_NINJA_FAILONCE[2] (single-shot fails), WBT_NINJA_STALLMARK (fake kill).
-    $newFakeNinja = {
+$script:NewFakeNinja = {
         param($dir)
         $lines = @(
             '@echo off',
@@ -17,137 +16,60 @@ Describe 'Invoke-NinjaBuildWithRetry' {
         Set-Content -LiteralPath (Join-Path $dir 'ninja.bat') -Value ($lines -join "`r`n") -Encoding ASCII
     }
 
+function script:Invoke-NinjaRetryFixture {
+    param([int]$RetryJobs = 1, [int]$Jobs = 4, [int]$Failures = 0, [string]$Mode = '',
+        [switch]$Stall, [int]$StallRetries = 3, [switch]$ExpectFailure)
+    $action = {
+        param($fixture)
+        $options = @{ BuildDir = $fixture.Dir; RetryJobs = $RetryJobs }
+        if ($Stall) { $options.StallMarkerPath = $fixture.StallMarker; $options.StallRetries = $StallRetries }
+        if ($ExpectFailure) {
+            Assert-Throws { Invoke-NinjaBuildWithRetry @options } -MessagePattern 'Build failed \(exit 1\)'
+        } else { Invoke-NinjaBuildWithRetry @options }
+    }.GetNewClosure()
+    Invoke-RecordedRetryFixture -Tool ninja -ToolSetup $script:NewFakeNinja -Body $action -Failures $Failures -Mode $Mode -Stall:$Stall `
+        -Environment @{ BUILD_JOBS = "$Jobs"; NINJA_KEEP_GOING = ''; NINJA_STATUS = '' }
+}
+
+function script:Assert-NinjaRetryJobs {
+    param([Parameter(Mandatory)]$Fixture, [Parameter(Mandatory)][int[]]$Jobs)
+    Assert-RecordedRetryCalls -Fixture $Fixture -Pattern @($Jobs | ForEach-Object { "^NINJA -j $_ " })
+}
+
+Describe 'Invoke-NinjaBuildWithRetry' {
     It 'succeeds first try at the full job count and never retries' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = ''
-                WBT_NINJA_FAILONCE = ''; BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 1
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 1 $calls.Count 'exactly one ninja invocation on a green build'
-            Assert-Match '^NINJA -j 4 ' $calls[0] 'first attempt uses the full BUILD_JOBS count'
-        }
+        $fixture = Invoke-NinjaRetryFixture
+        Assert-NinjaRetryJobs -Fixture $fixture -Jobs 4
     }
 
     It 'retries a failed build once with -j<RetryJobs> and succeeds' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            $failOnce = Join-Path $dir 'fail-once.marker'
-            Set-Content -LiteralPath $failOnce -Value 'x' -Encoding ASCII
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = ''
-                WBT_NINJA_FAILONCE = $failOnce; BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 2
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $calls.Count 'failed attempt + one incremental retry'
-            Assert-Match '^NINJA -j 4 ' $calls[0] 'first attempt at full parallelism'
-            Assert-Match '^NINJA -j 2 ' $calls[1] 'the retry used exactly -j<RetryJobs>'
-        }
+        $fixture = Invoke-NinjaRetryFixture -RetryJobs 2 -Failures 1
+        Assert-NinjaRetryJobs -Fixture $fixture -Jobs 4, 2
     }
 
     It 'throws after the reduced-job retry also fails (exit code in the message)' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = 'fail'
-                WBT_NINJA_FAILONCE = ''; BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Assert-Throws { Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 1 } `
-                    -MessagePattern 'Build failed \(exit 1\)' `
-                    'a fail-fail sequence must throw with the native exit code'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $calls.Count 'full attempt + reduced retry, then give up'
-            Assert-Match '^NINJA -j 1 ' $calls[1] 'the final attempt was the reduced one'
-        }
+        $fixture = Invoke-NinjaRetryFixture -Mode fail -ExpectFailure
+        Assert-NinjaRetryJobs -Fixture $fixture -Jobs 4, 1
     }
 
-    It 'retries a guard-kill failure at FULL -j, not -j<RetryJobs> (run-6 lesson)' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            $failOnce = Join-Path $dir 'fail-once.marker'
-            $stallMark = Join-Path $dir 'stall.marker'
-            Set-Content -LiteralPath $failOnce -Value 'x' -Encoding ASCII
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = ''
-                WBT_NINJA_FAILONCE = $failOnce; WBT_NINJA_STALLMARK = $stallMark
-                BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 2 -StallMarkerPath $stallMark
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $calls.Count 'guard-kill attempt + ONE full-speed retry'
-            Assert-Match '^NINJA -j 4 ' $calls[1] 'the stall retry must stay at full parallelism (L0 hits), never drop to -j<RetryJobs>'
-        }
-    }
-
-    It 'attributes kills per attempt: two consecutive guard-kill failures get two full-speed retries' {
-        # The marker is truncated per attempt, so a cumulative kill count must never stall the ladder.
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            $fail1 = Join-Path $dir 'fail-1.marker'
-            $fail2 = Join-Path $dir 'fail-2.marker'
-            $stallMark = Join-Path $dir 'stall.marker'
-            Set-Content -LiteralPath $fail1 -Value 'x' -Encoding ASCII
-            Set-Content -LiteralPath $fail2 -Value 'x' -Encoding ASCII
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = ''
-                WBT_NINJA_FAILONCE = $fail1; WBT_NINJA_FAILONCE2 = $fail2; WBT_NINJA_STALLMARK = $stallMark
-                BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 2 -StallMarkerPath $stallMark
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 3 $calls.Count 'two guard-kill attempts + the green third'
-            Assert-Match '^NINJA -j 4 ' $calls[1] 'first stall retry at full -j'
-            Assert-Match '^NINJA -j 4 ' $calls[2] 'second stall retry STILL at full -j (per-attempt kill attribution)'
+    foreach ($stallCase in @(
+            @{ Name = 'retries a guard-kill failure at FULL -j, not -j<RetryJobs> (run-6 lesson)'; Failures = 1; Jobs = @(4, 4) },
+            @{ Name = 'attributes kills per attempt: two consecutive guard-kill failures get two full-speed retries'; Failures = 2; Jobs = @(4, 4, 4) }
+        )) {
+        It $stallCase.Name {
+            $fixture = Invoke-NinjaRetryFixture -RetryJobs 2 -Failures $stallCase.Failures -Stall
+            Assert-NinjaRetryJobs -Fixture $fixture -Jobs $stallCase.Jobs
         }
     }
 
     It 'bounds stall retries, then falls through to the incremental attempt, then throws' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            $stallMark = Join-Path $dir 'stall.marker'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = 'fail'
-                WBT_NINJA_FAILONCE = ''; WBT_NINJA_STALLMARK = $stallMark
-                BUILD_JOBS = '4'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Assert-Throws { Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 1 -StallRetries 3 -StallMarkerPath $stallMark } `
-                    -MessagePattern 'Build failed \(exit 1\)'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 5 $calls.Count 'first attempt + 3 bounded stall retries + 1 incremental attempt'
-            Assert-Match '^NINJA -j 4 ' $calls[3] 'stall retries stay at full -j'
-            Assert-Match '^NINJA -j 1 ' $calls[4] 'the last resort is the incremental -j<RetryJobs> attempt'
-        }
+        $fixture = Invoke-NinjaRetryFixture -Mode fail -Stall -StallRetries 3 -ExpectFailure
+        Assert-NinjaRetryJobs -Fixture $fixture -Jobs 4, 4, 4, 4, 1
     }
 
     It 'does NOT retry when the job count is already <= RetryJobs' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeNinja $dir
-            $log = Join-Path $dir 'ninja.log'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_NINJA_LOG = $log; WBT_NINJA_MODE = 'fail'
-                WBT_NINJA_FAILONCE = ''; BUILD_JOBS = '2'; NINJA_KEEP_GOING = ''; NINJA_STATUS = ''
-            } {
-                Assert-Throws { Invoke-NinjaBuildWithRetry -BuildDir $dir -RetryJobs 2 } `
-                    -MessagePattern 'Build failed \(exit 1\)' `
-                    'jobs == RetryJobs must fail without a pointless identical retry'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 1 $calls.Count 'no retry: rerunning at the same -j cannot help an OOM'
-        }
+        $fixture = Invoke-NinjaRetryFixture -RetryJobs 2 -Jobs 2 -Mode fail -ExpectFailure
+        Assert-NinjaRetryJobs -Fixture $fixture -Jobs 2
     }
+
 }

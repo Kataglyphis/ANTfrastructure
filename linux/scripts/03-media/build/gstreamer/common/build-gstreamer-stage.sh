@@ -47,12 +47,7 @@ ensure_gstreamer_multiarch_layout() {
 
 ensure_gstreamer_multiarch_layout
 
-# setup_linux_cross_env may fail to export CXX.
-if [ "${BUILD_MODE:-native}" = "cross" ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}" ]; }; then
-  if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
-    resolve_cross_cc_cxx_for_arch || true
-  fi
-fi
+media_prepare_cross_compilers
 # The SDK image's apt packages can point /usr/lib/<triplet>/libstdc++.so at the host's libstdc++.
 if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
   if command -v fix_libstdcxx_symlink >/dev/null 2>&1; then

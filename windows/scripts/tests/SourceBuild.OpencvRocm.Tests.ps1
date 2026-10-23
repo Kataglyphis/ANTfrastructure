@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # OpenCV's rocm-lane CMake delta (empty on cpu/nvidia), its configure gate and wiring; no real build, cv2 or GPU.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -DisableNameChecking
+
 $script:OcvScript = 'windows\scripts\build\Build-OpencvFromSource.ps1'
 $script:OcvCheck = 'windows\scripts\build\rocm-checks\OpenCV.ps1'
 
@@ -17,13 +19,11 @@ General configuration for OpenCV 5.0.0 =====================================
     Include path:                C:/temp/opencv-src/opencv/3rdparty/include/opencl/1.2
     Link libraries:              Dynamic load
 
-  ONNX Runtime:                  YES (ver 1.25.1)
-    Include path:                C:/temp/opencv-src/build/3rdparty/onnxruntime/onnxruntime-win-x64-1.25.1/include
-    Link libraries:              C:/temp/opencv-src/build/3rdparty/onnxruntime/onnxruntime-win-x64-1.25.1/lib/onnxruntime.lib
+<ORT_DOWNLOAD_SUMMARY>
 
   Install to:                    C:/runtime/lib/opencv5
 -----------------------------------------------------------------
-'@
+'@.Replace('<ORT_DOWNLOAD_SUMMARY>', (Get-OpenCvTestDownloadedOrtSummary))
 # The same summary as opencv-configure.log carries it: '-- ' prefixed, then the trailing 'True'.
 $script:OcvConfigureLog = ((($script:OcvBuildInfo -split '\r?\n') | ForEach-Object { "-- $_" }) -join "`n") +
     "`n-- Configuring done (76.4s)`n-- Generating done (0.6s)`nTrue"
@@ -150,28 +150,19 @@ Describe 'OpenCV rocm lane: configure gate' {
 }
 
 Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
-    $L = 'System.Management.Automation.Language'
-    $tree = Get-TestScriptAst -ScriptPath $script:OcvScript
-    $all = @($tree.FindAll({ $true }, $true))
-    $cmakeEdits = @($all | Where-Object { $_ -is [type]"$L.AssignmentStatementAst" -and $_.Left.Extent.Text -eq '$cmakeExtra' })
+    $wiring = New-MediaTestAstView -ScriptPath $script:OcvScript
+    $cmakeEdits = @(Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra')
     # The nearest enclosing if/elseif whose condition matches $Pattern, else $null.
     $enclosingIf = {
         param($node, [string]$Pattern)
         $up = $node.Parent
-        while ($up -and -not ($up -is [type]"$L.IfStatementAst" -and ($up.Clauses.Item1.Extent.Text -match $Pattern))) { $up = $up.Parent }
+        while ($up -and -not ($up -is [Management.Automation.Language.IfStatementAst] -and ($up.Clauses.Item1.Extent.Text -match $Pattern))) { $up = $up.Parent }
         $up
     }
     $guardedBy = { param($node, [string]$Pattern) $null -ne (& $enclosingIf $node $Pattern) }
-    $ifsOn = { param([string]$Condition) @($all | Where-Object { $_ -is [type]"$L.IfStatementAst" -and $_.Clauses[0].Item1.Extent.Text -eq $Condition }) }
+    $ifsOn = { param([string]$Condition) @($wiring.Nodes | Where-Object { $_ -is [Management.Automation.Language.IfStatementAst] -and $_.Clauses[0].Item1.Extent.Text -eq $Condition }) }
     # Asserts $Var is assigned exactly once, from a value that contains $Node; returns that assignment.
-    $assertHolds = {
-        param([string]$Var, $Node)
-        $assign = @($all | Where-Object { $_ -is [type]"$L.AssignmentStatementAst" -and $_.Left.Extent.Text -eq $Var })
-        Assert-Equal 1 $assign.Count "one $Var assignment"
-        $right = $assign[0].Right.Extent
-        Assert-True ($Node.Extent.StartOffset -ge $right.StartOffset -and $Node.Extent.EndOffset -le $right.EndOffset) "$Var holds $($Node.Extent.Text)"
-        $assign[0]
-    }
+    $assertHolds = { param([string]$Var, $Node) Get-MediaTestAssignment -Ast $wiring.Ast -Variable $Var -Contains $Node -Single }
 
     It 'keeps WITH_OPENCL/WITH_OPENCL_SVM ON in the every-lane array (the rocm lane relies on it)' {
         $init = @($cmakeEdits | Where-Object { $_.Operator -eq 'Equals' })
@@ -183,18 +174,18 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     It 'appends no CMake arg under a HasRocm condition (the delta goes through the tested function)' {
         $gated = @($cmakeEdits | Where-Object { & $guardedBy $_ 'HasRocm' })
         Assert-Equal 0 $gated.Count "rocm-gated `$cmakeExtra edits: $(($gated | ForEach-Object { $_.Extent.Text }) -join '; ')"
-        Assert-Equal 1 @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmCmakeArgs').Count 'one call site'
+        Assert-Equal 1 @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Get-OpencvRocmCmakeArgs').Count 'one call site'
     }
 
     It 'feeds the delta the lane''s own Get-GpuEnvironment and cross flag, and appends its result' {
-        $gpuAssign = & $assertHolds '$gpuEnv' @(Get-TestAstCommands -Ast $tree -Name 'Get-GpuEnvironment')[0]
+        $gpuAssign = & $assertHolds '$gpuEnv' @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Get-GpuEnvironment')[0]
         Assert-Equal 'Get-GpuEnvironment' $gpuAssign.Right.Extent.Text '$gpuEnv is the bare probe'
-        $call = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmCmakeArgs')[0]
+        $call = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Get-OpencvRocmCmakeArgs')[0]
         $bound = Get-TestCommandArguments -Command $call
         Assert-Equal '$gpuEnv' $bound['GpuEnv'] '-GpuEnv binding'
         Assert-Equal '$ocvCross' $bound['Cross'] '-Cross binding'
         $null = & $assertHolds '$ocvRocmArgs' $call
-        Assert-Equal 1 @($cmakeEdits | Where-Object { $_.Operator -eq 'PlusEquals' -and $_.Right.Extent.Text -eq '$ocvRocmArgs' }).Count '$cmakeExtra += $ocvRocmArgs'
+        $null = Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value '$ocvRocmArgs' -Single
     }
 
     It 'still gives the CPU arm exactly -DWITH_CUDA=OFF' {
@@ -206,10 +197,10 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     }
 
     It 'runs the configure gate only on the rocm lane, after configure' {
-        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmConfigureFinding')
+        $gate = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Get-OpencvRocmConfigureFinding')
         Assert-Equal 1 $gate.Count 'one gate call'
         Assert-True (& $guardedBy $gate[0] '^\$gpuEnv\.HasRocm$') 'gate sits under if ($gpuEnv.HasRocm)'
-        Assert-True ($gate[0].Extent.StartOffset -gt @(Get-TestAstCommands -Ast $tree -Name 'Invoke-CmakeConfigure')[0].Extent.StartOffset) 'gate reads the log configure wrote'
+        Assert-True ($gate[0].Extent.StartOffset -gt @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Invoke-CmakeConfigure')[0].Extent.StartOffset) 'gate reads the log configure wrote'
         $bound = Get-TestCommandArguments -Command $gate[0]
         Assert-Equal '$gpuEnv.RocmRoot' $bound['RocmRoot'] '-RocmRoot binding'
         Assert-Match '^"\$\(Get-Content -LiteralPath \$cfgLog -Raw\)"$' $bound['ConfigureLog'] '-ConfigureLog reads the teed log'
@@ -217,16 +208,7 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     }
 
     It 'throws on any gate finding (fails closed, never only logs)' {
-        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmConfigureFinding')[0]
-        $null = & $assertHolds '$ocvRocmCfg' $gate
-        $rocmIf = & $enclosingIf $gate '^\$gpuEnv\.HasRocm$'
-        Assert-True ($null -ne $rocmIf) 'the enclosing if ($gpuEnv.HasRocm)'
-        $check = @(& $ifsOn '$ocvRocmCfg.Count -gt 0')
-        Assert-Equal 1 $check.Count 'one if ($ocvRocmCfg.Count -gt 0)'
-        Assert-True ([object]::ReferenceEquals($check[0].Parent, $rocmIf.Clauses[0].Item2)) 'it sits directly in the rocm block'
-        Assert-Equal 1 $check[0].Clauses.Count 'no elseif arm'
-        Assert-Null $check[0].ElseClause 'no else arm'
-        Assert-Equal 1 @($check[0].Clauses[0].Item2.Statements | Where-Object { $_ -is [type]"$L.ThrowStatementAst" }).Count 'a direct throw'
+        Assert-MediaTestFindingGuard -Command @(Get-TestAstCommands -Ast $wiring.Ast -Name Get-OpencvRocmConfigureFinding) -Variable '$ocvRocmCfg' -ParentCondition '^\$gpuEnv\.HasRocm$'
     }
 }
 

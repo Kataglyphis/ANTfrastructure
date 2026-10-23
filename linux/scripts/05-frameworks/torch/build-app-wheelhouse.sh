@@ -421,7 +421,7 @@ _torch_ensure_c_extension() {
     fi
 }
 
-# build_torch_wheel's phase helpers read its locals by dynamic scope; call them only from there.
+# Torch phases read component-local state through Bash dynamic scope.
 # shellcheck disable=SC2154
 
 # Bundled protobuf builds protoc for the target, which onnx codegen then runs on the host.
@@ -503,22 +503,43 @@ _torch_run_setup_py() {
     )
 }
 
+_wheelhouse_collect_component() {
+    local component="$1" label="$2"
+    local -n collected_wheels="$3"
+    retag_directory_wheels "${dist_dir}" "$component" "${wheel_platform}" "${BUILD_PYTHON}" || return 1
+    shopt -s nullglob
+    collected_wheels=("${dist_dir}"/"${component}"-*.whl)
+    shopt -u nullglob
+    if [ "${#collected_wheels[@]}" -eq 0 ]; then
+        warn "${label} cross build completed without producing a wheel"
+        return 1
+    fi
+    cp -a "${collected_wheels[@]}" "${APP_WHEELHOUSE_DIR}/" || return 1
+}
+
+_wheelhouse_prepare_torch_source() {
+    local label="$1" repository="$2" ref="$3"
+    shift 3
+    wheel_platform="$(wheel_platform_tag || true)"
+    if [ -z "${wheel_platform}" ]; then
+        warn "Could not determine the riscv64 wheel platform tag for ${label}"
+        return 1
+    fi
+    python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
+    local sysconfig_rc=$?
+    [ "$sysconfig_rc" -eq 0 ] || return "$sysconfig_rc"
+    git_clone_ref "$repository" "$ref" "${src_dir}" "$@" || {
+        warn "Failed to clone ${label} ${ref}"
+        return 1
+    }
+}
+
 # Sets the TARGET_TORCH_WHEEL/TARGET_TORCH_VERSION globals and extracts the wheel.
 _collect_torch_wheel() {
     local -a built_wheels=()
-    # Before the retag, so the repaired wheel takes the normal path.
-    _torch_ensure_c_extension "${dist_dir}"
-    retag_directory_wheels "${dist_dir}" torch "${wheel_platform}" "${BUILD_PYTHON}"
-
-    shopt -s nullglob
-    built_wheels=("${dist_dir}"/torch-*.whl)
-    shopt -u nullglob
-    if [ "${#built_wheels[@]}" -eq 0 ]; then
-        warn "PyTorch cross build completed without producing a wheel"
-        return 1
-    fi
-
-    cp -a "${built_wheels[@]}" "${APP_WHEELHOUSE_DIR}/"
+    # Repair before retagging so the repacked wheel takes the normal collection path.
+    _torch_ensure_c_extension "${dist_dir}" || return 1
+    _wheelhouse_collect_component torch PyTorch built_wheels || return 1
 
     TARGET_TORCH_WHEEL="${APP_WHEELHOUSE_DIR}/$(basename "${built_wheels[0]}")"
     TARGET_TORCH_VERSION="$(parse_wheel_version "${TARGET_TORCH_WHEEL}" torch)"
@@ -526,28 +547,32 @@ _collect_torch_wheel() {
     log "Built PyTorch cross wheel $(basename "${TARGET_TORCH_WHEEL}")"
 }
 
-build_torch_wheel() {
-    local wheel_platform=""
-    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/pytorch"
-    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-torch"
+_wheelhouse_build_component() {
+    local component="$1"
+    local wheel_platform="" src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/$2" dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/$3"
     local -a cmake_args=()
-    local cmake_args_string=""
-    local python_sysconfig_export=""
+    local cmake_args_string="" python_sysconfig_export=""
+    case "$component" in
+        torch) _build_torch_component ;;
+        torchvision) _build_torchvision_component ;;
+        *) return 2 ;;
+    esac
+}
+
+build_torch_wheel() {
+    _wheelhouse_build_component torch pytorch dist-torch
+}
+build_torchvision_wheel() {
+    _wheelhouse_build_component torchvision vision dist-vision
+}
+
+_build_torch_component() {
     local CROSS_HOST_PROTOC=""   # set by _torch_build_host_protoc; read by toolchain file
     local use_system_sleef=0     # set by _torch_detect_system_sleef
 
-    wheel_platform="$(wheel_platform_tag || true)"
-    if [ -z "${wheel_platform}" ]; then
-        warn "Could not determine the riscv64 wheel platform tag for PyTorch"
-        return 1
-    fi
-
-    python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
-
-    git_clone_ref https://github.com/pytorch/pytorch.git "${PYTORCH_REF}" "${src_dir}" --recursive --shallow-submodules || {
-        warn "Failed to clone PyTorch ${PYTORCH_REF}"
-        return 1
-    }
+    _wheelhouse_prepare_torch_source PyTorch https://github.com/pytorch/pytorch.git "${PYTORCH_REF}" --recursive --shallow-submodules
+    local prepare_rc=$?
+    [ "$prepare_rc" -eq 0 ] || return "$prepare_rc"
 
     rm -rf "${dist_dir}"
     mkdir -p "${dist_dir}"
@@ -637,7 +662,7 @@ patch_torchvision_setup() {
         "torchvision setup.py: TORCHVISION_TORCH_STAGING env var support"
 }
 
-# build_torchvision_wheel's phase helpers read its locals by dynamic scope; call them only from there.
+# Vision phases share component-local staging paths through Bash dynamic scope.
 # shellcheck disable=SC2154
 
 # -O3 -DNDEBUG explicitly: a set $CFLAGS replaces sysconfig's, which left every extension at -O0.
@@ -669,31 +694,13 @@ _torchvision_ninja_diagnostic() {
 # Retag, collect, install the built torchvision wheel. Reads dist_dir + wheel_platform.
 _collect_torchvision_wheel() {
     local -a built_wheels=()
-    retag_directory_wheels "${dist_dir}" torchvision "${wheel_platform}" "${BUILD_PYTHON}"
+    _wheelhouse_collect_component torchvision torchvision built_wheels || return 1
 
-    shopt -s nullglob
-    built_wheels=("${dist_dir}"/torchvision-*.whl)
-    shopt -u nullglob
-    if [ "${#built_wheels[@]}" -eq 0 ]; then
-        warn "torchvision cross build completed without producing a wheel"
-        return 1
-    fi
-
-    cp -a "${built_wheels[@]}" "${APP_WHEELHOUSE_DIR}/" || return 1
     log "Built torchvision cross wheel $(basename "${built_wheels[0]}")"
 }
 
-build_torchvision_wheel() {
-    local wheel_platform=""
-    local src_dir="${APP_WHEELHOUSE_BUILD_ROOT}/vision"
-    local dist_dir="${APP_WHEELHOUSE_BUILD_ROOT}/dist-vision"
-    local -a cmake_args=()
-    local cmake_args_string=""
-    local target_torch_include=""
-    local target_torch_csrc=""
-    local target_torch_lib=""
-    local python_sysconfig_export=""
-
+_build_torchvision_component() {
+    local target_torch_include="" target_torch_csrc="" target_torch_lib=""
     if [ -z "${TARGET_TORCH_WHEEL}" ] || [ -z "${TORCH_STAGING_DIR}" ]; then
         warn "Skipping torchvision cross wheel build because no target torch wheel is available"
         return 1
@@ -704,18 +711,9 @@ build_torchvision_wheel() {
         return 1
     fi
 
-    wheel_platform="$(wheel_platform_tag || true)"
-    if [ -z "${wheel_platform}" ]; then
-        warn "Could not determine the riscv64 wheel platform tag for torchvision"
-        return 1
-    fi
-
-    python_sysconfig_export="$(resolve_target_python_sysconfig_export)"
-
-    git_clone_ref https://github.com/pytorch/vision.git "${TORCHVISION_REF}" "${src_dir}" || {
-        warn "Failed to clone torchvision ${TORCHVISION_REF}"
-        return 1
-    }
+    _wheelhouse_prepare_torch_source torchvision https://github.com/pytorch/vision.git "${TORCHVISION_REF}"
+    local prepare_rc=$?
+    [ "$prepare_rc" -eq 0 ] || return "$prepare_rc"
 
     patch_torchvision_setup "${src_dir}/setup.py" || {
         warn "Failed to patch torchvision for staged libtorch cross paths"

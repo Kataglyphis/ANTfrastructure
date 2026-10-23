@@ -12,6 +12,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — expand parallel duplication cleanup
+
+- Share Torch wheelhouse preparation and collection; propagate previously swallowed sysconfig, wheel repair, retagging and copy failures.
+- Share GStreamer cross-compiler initialization while preserving stage-only libstdc++ repair, legacy fallback and pinning.
+- Share Windows formatting discovery and executable lookup, preserving distinct C/C++ and Dart policies; report missing clang-format correctly under strict mode.
+- Share Windows lint traversal and diagnostics, retry fixtures, FFmpeg listings and OpenCV AST wiring checks; preserve all existing cases and platform failures.
+- Share healthcheck tool probes, stage-log verdicts and warm-build fixtures; reuse directory creation for the CUDA cache diagnostic.
+- Group Python requirement hashes and share lifted-module lifecycle while preserving constructor/body arguments and cleanup on failure.
+- Add focused regressions and mutation proofs; remove resolved exemptions and lower remaining budgets without changing thresholds or scan coverage.
+
 ## 2026-10-23 — parallel duplication cleanup
 
 - Share cross-Python context, directory lookup and pkg-config suffix composition while preserving staged precedence, argument forwarding and failure paths; share the foreign-target guard without changing raw comparisons or errexit.

@@ -46,6 +46,23 @@ Describe 'Harness fixture lifecycle' {
     }
 }
 
+Describe 'Lifted module fixture arguments' {
+    It 'forwards module initialization and body arguments and removes the module after failure' {
+        $state = [pscustomobject]@{ ModulePath = ''; Seen = '' }
+        Assert-Throws {
+            Invoke-WithFunctionModule -Text 'function Get-FixtureValue { $script:Value }' -Prelude 'param($Initial); $script:Value = $Initial' -Prefix Fixture -ArgumentList @('initialized') -BodyArgumentList @($state, 'body argument') -Body {
+                param($record, $argument)
+                $record.ModulePath = (Get-Command Get-FixtureFixtureValue).Module.Path
+                $record.Seen = "$(Get-FixtureFixtureValue)|$argument"
+                throw 'lifted fixture failed'
+            }
+        } -MessagePattern 'lifted fixture failed'
+        Assert-Equal 'initialized|body argument' $state.Seen
+        Assert-False (Test-Path -LiteralPath $state.ModulePath)
+        Assert-Null (Get-Command Get-FixtureFixtureValue -ErrorAction SilentlyContinue)
+    }
+}
+
 Describe 'Harness exception assertions' {
     It 'requires an exception and matches its message without accepting a different error' {
         Assert-Throws { throw 'expected failure' } -MessagePattern '^expected failure$'

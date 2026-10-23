@@ -2266,3 +2266,11 @@ and calls its count-limited `Replace` overload. It inserts each required header
 once after the first OpenCV include, retains existing headers and remains
 idempotent. `SourceBuild.PatchQuiet.Tests.ps1` covers multi-include input and a
 replace-all mutant; it does not compile GStreamer or OpenCV.
+
+### clang-format rewrite reports an unset clangFormatSource
+
+When clang-format is absent from PATH and both common LLVM installation paths,
+older formatting helpers could report an uninitialized `clangFormatSource`
+variable under strict mode. Shared executable lookup now reports that
+clang-format is missing. Install the formatter or expose its executable on PATH;
+mandatory checks still fail, while advisory checks retain their skip diagnostic.

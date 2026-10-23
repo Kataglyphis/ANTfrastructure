@@ -18130,5 +18130,181 @@
   "replace": "  if [ \"$(arch_normalize \"$1\")\" != \"$(build_arch_oci 2>/dev/null || echo amd64)\" ]; then return 0; fi",
   "test": "bash linux/scripts/tests/test-compiler-foreign-target.sh",
   "why": "The existing guard compares raw target spelling rather than normalizing aliases."
+ },
+ {
+  "id": "wheels.torch-vision-clone-options",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "_wheelhouse_prepare_torch_source PyTorch https://github.com/pytorch/pytorch.git \"${PYTORCH_REF}\" --recursive --shallow-submodules",
+  "replace": "_wheelhouse_prepare_torch_source PyTorch https://github.com/pytorch/pytorch.git \"${PYTORCH_REF}\"",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Torch must retain recursive shallow-submodule cloning while vision does not gain those options."
+ },
+ {
+  "id": "wheels.torch-vision-vision-ref",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "_wheelhouse_prepare_torch_source torchvision https://github.com/pytorch/vision.git \"${TORCHVISION_REF}\"",
+  "replace": "_wheelhouse_prepare_torch_source torchvision https://github.com/pytorch/vision.git \"${PYTORCH_REF}\"",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Vision must clone its own ref rather than the torch source ref."
+ },
+ {
+  "id": "wheels.torch-vision-vision-host",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    if ! install_host_torch_for_vision; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Vision host installation remains before platform resolution and is a fatal precondition."
+ },
+ {
+  "id": "wheels.torch-vision-vision-patch",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    patch_torchvision_setup \"${src_dir}/setup.py\" || {",
+  "replace": "    true || {",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Vision must patch its own source before resetting dist or running setup."
+ },
+ {
+  "id": "wheels.torch-vision-repair-order",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    _torch_ensure_c_extension \"${dist_dir}\" || return 1\n    _wheelhouse_collect_component torch PyTorch built_wheels",
+  "replace": "    :\n    _wheelhouse_collect_component torch PyTorch built_wheels",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Torch C-extension repair must precede retagging and collection."
+ },
+ {
+  "id": "wheels.torch-vision-retag-failure",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    retag_directory_wheels \"${dist_dir}\" \"$component\" \"${wheel_platform}\" \"${BUILD_PYTHON}\" || return 1",
+  "replace": "    retag_directory_wheels \"${dist_dir}\" \"$component\" \"${wheel_platform}\" \"${BUILD_PYTHON}\" || true",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Retagging failures must stop before copying a wheel with the wrong platform tag."
+ },
+ {
+  "id": "wheels.torch-vision-copy-failure",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    cp -a \"${collected_wheels[@]}\" \"${APP_WHEELHOUSE_DIR}/\" || return 1",
+  "replace": "    cp -a \"${collected_wheels[@]}\" \"${APP_WHEELHOUSE_DIR}/\" || true",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Collection must not announce or extract a wheel after copying failed."
+ },
+ {
+  "id": "wheels.torch-vision-first-wheel",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    TARGET_TORCH_WHEEL=\"${APP_WHEELHOUSE_DIR}/$(basename \"${built_wheels[0]}\")\"",
+  "replace": "    TARGET_TORCH_WHEEL=\"${APP_WHEELHOUSE_DIR}/$(basename \"${built_wheels[1]}\")\"",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Torch globals retain selection of the first wheel in collection order."
+ },
+ {
+  "id": "wheels.torch-vision-sysconfig-failure",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    [ \"$sysconfig_rc\" -eq 0 ] || return \"$sysconfig_rc\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Failed target sysconfig resolution must not proceed to clone and build."
+ },
+ {
+  "id": "wheels.torch-vision-scope",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    local wheel_platform=\"\" src_dir=\"${APP_WHEELHOUSE_BUILD_ROOT}/$2\" dist_dir=\"${APP_WHEELHOUSE_BUILD_ROOT}/$3\"",
+  "replace": "    wheel_platform=\"\" src_dir=\"${APP_WHEELHOUSE_BUILD_ROOT}/$2\" dist_dir=\"${APP_WHEELHOUSE_BUILD_ROOT}/$3\"",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "Shared component state must remain local rather than overwrite the caller."
+ },
+ {
+  "id": "wheels.torch-vision-free-threaded-pass",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    _collect_torch_wheel || return 1\n    _torch_build_free_threaded_wheel",
+  "replace": "    _collect_torch_wheel || return 1\n    :",
+  "test": "bash linux/scripts/tests/test-torch-wheelhouse.sh",
+  "why": "The free-threaded pass still follows successful torch collection and propagates its failure."
+ },
+ {
+  "id": "gst.cross-prepare-native-guard",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "  if [ \"${BUILD_MODE:-native}\" = cross ] && { [ -z \"${CC:-}\" ] || [ -z \"${CXX:-}\" ]; }; then",
+  "replace": "  if [ \"${BUILD_MODE:-native}\" != cross ] && { [ -z \"${CC:-}\" ] || [ -z \"${CXX:-}\" ]; }; then",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "Native mode must not invoke the optional cross compiler resolver."
+ },
+ {
+  "id": "gst.cross-prepare-one-missing-compiler",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "{ [ -z \"${CC:-}\" ] || [ -z \"${CXX:-}\" ]; }",
+  "replace": "{ [ -z \"${CC:-}\" ] && [ -z \"${CXX:-}\" ]; }",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "Either missing compiler export is sufficient to require cross-compiler repair."
+ },
+ {
+  "id": "gst.cross-prepare-optional-resolver",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "    if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then",
+  "replace": "    if true; then",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "Older SDKs without the resolver must remain quiet and successful under errexit."
+ },
+ {
+  "id": "gst.cross-prepare-resolver-failure",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "      resolve_cross_cc_cxx_for_arch || true",
+  "replace": "      resolve_cross_cc_cxx_for_arch",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "Resolver failure remains advisory for the stage, including strict callers."
+ },
+ {
+  "id": "gst.cross-prepare-stage-wiring",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "\nmedia_prepare_cross_compilers\n",
+  "replace": "\n:\n",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "The stage must invoke shared compiler repair before its distinct runtime repairs."
+ },
+ {
+  "id": "gst.cross-prepare-monorepo-wiring",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "  media_prepare_cross_compilers\n",
+  "replace": "  :\n",
+  "test": "bash linux/scripts/tests/test-gstreamer-meson-flags.sh",
+  "why": "The monorepo must retain compiler repair between Python configuration and Meson cross flags."
+ },
+ {
+  "id": "gst.cross-prepare-legacy-fallback",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "  if command -v fix_libstdcxx_symlink >/dev/null 2>&1; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "An absent SDK repair helper must still reach the existing guarded libstdc++ fallback."
+ },
+ {
+  "id": "gst.cross-prepare-runtime-pin",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "    pin_target_libstdcxx \"${TARGET_ARCH:-${TARGETARCH:-}}\" || true",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
+  "why": "The existing stage-only runtime pin remains after compiler and link repair."
+ },
+ {
+  "id": "lib.harness-lifted-module-arguments",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "-ArgumentList $ArgumentList\n        try",
+  "replace": "-ArgumentList @()\n        try",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-module-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-module-arguments-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
+ },
+ {
+  "id": "lib.harness-lifted-body-arguments",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "& $mutantBody @BodyArgumentList",
+  "replace": "& $mutantBody",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-body-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-body-arguments-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
+ },
+ {
+  "id": "lib.harness-lifted-cleanup",
+  "target": "windows/scripts/tests/TestHarness.psm1",
+  "find": "finally { Remove-Module $m -Force }",
+  "replace": "finally { }",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-cleanup-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-cleanup-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  }
 ]

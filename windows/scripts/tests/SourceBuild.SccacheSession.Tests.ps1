@@ -33,19 +33,29 @@ $newFakeSccache = {
     return $path
 }
 
+function Invoke-SccacheLoggedSession {
+    param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$ErrorLog,
+        [Parameter(Mandatory)][ValidateSet('Start', 'Complete')][string]$Session, [string[]]$InitialLogLines)
+    $fake = & $newFakeSccache $Directory
+    $callLog = Join-Path $Directory 'calls.log'
+    if ($null -ne $InitialLogLines) {
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $ErrorLog)
+        Set-Content -LiteralPath $ErrorLog -Value $InitialLogLines -Encoding ASCII
+    }
+    $output = Invoke-WithEnv @{ WBT_SCC_LOG = $callLog; SCCACHE_ERROR_LOG = $ErrorLog } {
+        if ($Session -eq 'Start') { Start-SccacheServerSession -SccachePath $fake 6>$null }
+        else { Complete-SccacheServerSession -SccachePath $fake 6>&1 | Out-String }
+    }.GetNewClosure()
+    [pscustomobject]@{ Calls = @(Get-Content -LiteralPath $callLog); Output = $output }
+}
+
 Describe 'Start-SccacheServerSession' {
 
     It 'stops then starts the server, truncating the error log in between' {
         Invoke-InTestDir { param($dir)
-            $fake = & $newFakeSccache $dir
-            $callLog = Join-Path $dir 'calls.log'
             $errLog = Join-Path $dir 'logs\sccache-err.log'
-            $null = New-Item -ItemType Directory -Force -Path (Split-Path $errLog)
-            Set-Content -LiteralPath $errLog -Value 'STALE failure line from a previous run' -Encoding ASCII
-            Invoke-WithEnv @{ WBT_SCC_LOG = $callLog; SCCACHE_ERROR_LOG = $errLog } {
-                Start-SccacheServerSession -SccachePath $fake 6>$null
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $callLog)
+            $result = Invoke-SccacheLoggedSession -Directory $dir -ErrorLog $errLog -Session Start -InitialLogLines 'STALE failure line from a previous run'
+            $calls = $result.Calls
             Assert-Equal 2 $calls.Count 'exactly stop + start'
             Assert-Match '^SCCACHE --stop-server' $calls[0] 'stop comes first (fresh server wins)'
             Assert-Match '^SCCACHE --start-server' $calls[1] 'explicit start after the truncate'
@@ -107,16 +117,11 @@ Describe 'Complete-SccacheServerSession' {
 
     It 'stops the server and dumps error/warn lines failures-first' {
         Invoke-InTestDir { param($dir)
-            $fake = & $newFakeSccache $dir
-            $callLog = Join-Path $dir 'calls.log'
-            $errLog = Join-Path $dir 'err.log'
-            Set-Content -LiteralPath $errLog -Value @(
+            $result = Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir 'err.log') -Session Complete -InitialLogLines @(
                 'DEBUG chatter 1', 'ERROR L0 write failed', 'DEBUG chatter 2', 'WARN cache eviction'
-            ) -Encoding ASCII
-            $out = Invoke-WithEnv @{ WBT_SCC_LOG = $callLog; SCCACHE_ERROR_LOG = $errLog } {
-                Complete-SccacheServerSession -SccachePath $fake 6>&1 | Out-String
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $callLog)
+            )
+            $calls = $result.Calls
+            $out = $result.Output
             Assert-Equal 1 $calls.Count 'exactly one sccache invocation'
             Assert-Match '^SCCACHE --stop-server' $calls[0] 'the epilogue flushes via --stop-server'
             Assert-Match '2 error/warn line' $out 'failures are counted and surfaced first'

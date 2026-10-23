@@ -1,10 +1,9 @@
 #requires -Version 7.0
 # The driver does not retry script failures, so Invoke-GitClone must; a fake git.bat on PATH logs every attempt.
 
-Describe 'Invoke-GitClone retry' {
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') -Force -DisableNameChecking
 
-    # Env knobs: WBT_GIT_LOG, WBT_GIT_MODE=fail, WBT_GIT_FAILONCE (marker: one partial-tree drop), WBT_GIT_TARGET.
-    $newFakeGit = {
+$script:NewFakeGit = {
         param($dir)
         $lines = @(
             '@echo off',
@@ -18,77 +17,48 @@ Describe 'Invoke-GitClone retry' {
         Set-Content -LiteralPath (Join-Path $dir 'git.bat') -Value ($lines -join "`r`n") -Encoding ASCII
     }
 
-    It 'succeeds first try with exactly one git invocation' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeGit $dir
-            $log = Join-Path $dir 'git.log'
-            $target = Join-Path $dir 'src'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_GIT_LOG = $log; WBT_GIT_MODE = ''
-                WBT_GIT_FAILONCE = ''; WBT_GIT_TARGET = $target
-            } {
-                $r = Invoke-GitClone -RepoUrl 'https://example.invalid/repo.git' -SourceDir $target -Branch 'main' -InitialDelaySeconds 0
-                Assert-Equal $true $r 'green clone returns $true'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 1 $calls.Count 'exactly one git invocation on a green clone'
-            Assert-Match '^GIT clone --branch main ' $calls[0] 'ref and shape forwarded'
+function script:Invoke-GitCloneRetryFixture {
+    param([int]$Failures = 0, [string]$Mode = '', [int]$MaxAttempts = 3, [switch]$SkipOnFailure)
+    $action = {
+        param($fixture)
+        $options = @{ RepoUrl = 'https://example.invalid/repo.git'; SourceDir = $fixture.Target; Branch = 'main'
+            MaxAttempts = $MaxAttempts; InitialDelaySeconds = 0; SkipOnFailure = $SkipOnFailure }
+        if ($Mode -eq 'fail' -and -not $SkipOnFailure) {
+            Assert-Throws { Invoke-GitClone @options 3>$null } -MessagePattern "after $MaxAttempts attempts"
+        } else {
+            $result = Invoke-GitClone @options 3>$null
+            if ($Failures -gt 0) {
+                Assert-Equal $false (Test-Path (Join-Path $fixture.Target 'partial.txt')) 'partial tree was wiped before retry'
+                Assert-Equal $true (Test-Path (Join-Path $fixture.Target 'cloned.txt')) 'retry produced the clone'
+            }
+            return $result
         }
+    }.GetNewClosure()
+    Invoke-RecordedRetryFixture -Tool git -ToolSetup $script:NewFakeGit -Body $action -Failures $Failures -Mode $Mode
+}
+
+Describe 'Invoke-GitClone retry' {
+    It 'succeeds first try with exactly one git invocation' {
+        $fixture = Invoke-GitCloneRetryFixture
+        Assert-Equal $true $fixture.Result 'green clone returns $true'
+        Assert-RecordedRetryCalls -Fixture $fixture -Pattern '^GIT clone --branch main '
     }
 
     It 'retries a transient failure once and wipes the partial tree between attempts' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeGit $dir
-            $log = Join-Path $dir 'git.log'
-            $target = Join-Path $dir 'src'
-            $failOnce = Join-Path $dir 'fail-once.marker'
-            Set-Content -LiteralPath $failOnce -Value 'x' -Encoding ASCII
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_GIT_LOG = $log; WBT_GIT_MODE = ''
-                WBT_GIT_FAILONCE = $failOnce; WBT_GIT_TARGET = $target
-            } {
-                $r = Invoke-GitClone -RepoUrl 'https://example.invalid/repo.git' -SourceDir $target -Branch 'main' -InitialDelaySeconds 0 3>$null
-                Assert-Equal $true $r 'recovers on the second attempt'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $calls.Count 'failed attempt + one retry'
-            Assert-Equal $false (Test-Path (Join-Path $target 'partial.txt')) 'partial tree from the failed attempt was wiped before the retry'
-            Assert-Equal $true (Test-Path (Join-Path $target 'cloned.txt')) 'the retry produced the clone'
-        }
+        $fixture = Invoke-GitCloneRetryFixture -Failures 1
+        Assert-Equal $true $fixture.Result 'recovers on the second attempt'
+        Assert-RecordedRetryCalls -Fixture $fixture -Pattern '^GIT clone ', '^GIT clone '
     }
 
     It 'throws after MaxAttempts with the attempt count in the message' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeGit $dir
-            $log = Join-Path $dir 'git.log'
-            $target = Join-Path $dir 'src'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_GIT_LOG = $log; WBT_GIT_MODE = 'fail'
-                WBT_GIT_FAILONCE = ''; WBT_GIT_TARGET = $target
-            } {
-                Assert-Throws { Invoke-GitClone -RepoUrl 'https://example.invalid/repo.git' -SourceDir $target -Branch 'main' -MaxAttempts 3 -InitialDelaySeconds 0 3>$null } `
-                    -MessagePattern 'after 3 attempts' `
-                    'a persistent failure must throw, naming the attempt count'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 3 $calls.Count 'exactly MaxAttempts invocations'
-        }
+        $fixture = Invoke-GitCloneRetryFixture -Mode fail -MaxAttempts 3
+        Assert-RecordedRetryCalls -Fixture $fixture -Pattern '^GIT clone ', '^GIT clone ', '^GIT clone '
     }
 
     It 'returns $false (no throw) after MaxAttempts with -SkipOnFailure' {
-        Invoke-InTestDir { param($dir)
-            & $newFakeGit $dir
-            $log = Join-Path $dir 'git.log'
-            $target = Join-Path $dir 'src'
-            Invoke-WithEnv @{
-                PATH = "$dir;$env:PATH"; WBT_GIT_LOG = $log; WBT_GIT_MODE = 'fail'
-                WBT_GIT_FAILONCE = ''; WBT_GIT_TARGET = $target
-            } {
-                $r = Invoke-GitClone -RepoUrl 'https://example.invalid/repo.git' -SourceDir $target -Branch 'main' -MaxAttempts 2 -InitialDelaySeconds 0 -SkipOnFailure 3>$null
-                Assert-Equal $false $r 'SkipOnFailure degrades a persistent failure to $false'
-            }.GetNewClosure()
-            $calls = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $calls.Count 'SkipOnFailure still exhausts the attempts first'
-        }
+        $fixture = Invoke-GitCloneRetryFixture -Mode fail -MaxAttempts 2 -SkipOnFailure
+        Assert-Equal $false $fixture.Result 'SkipOnFailure degrades persistent failure to $false'
+        Assert-RecordedRetryCalls -Fixture $fixture -Pattern '^GIT clone ', '^GIT clone '
     }
+
 }

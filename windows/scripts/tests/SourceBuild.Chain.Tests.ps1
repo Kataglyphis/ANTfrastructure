@@ -11,6 +11,15 @@ $newStageTree = {
     return , @($letters | ForEach-Object { @{ Name = $_.ToUpperInvariant(); Script = "$_.ps1"; SourceDir = "src-$_" } })
 }
 
+function Assert-SourceBuildStageLog {
+    param([Parameter(Mandatory)][string]$Log, [Parameter(Mandatory)][string[]]$Expected)
+    $actual = @(Get-Content -LiteralPath $Log)
+    Assert-Equal $Expected.Count $actual.Count 'every expected stage ran exactly once'
+    for ($index = 0; $index -lt $Expected.Count; $index++) {
+        Assert-Equal $Expected[$index] $actual[$index] "stage log entry $index"
+    }
+}
+
 Describe 'Invoke-SourceBuildChain' {
 
     It 'runs every stage in order, forwarding its SourceDir and the shared InstallDir' {
@@ -27,10 +36,7 @@ Describe 'Invoke-SourceBuildChain' {
             )
             Invoke-SourceBuildChain -Label 'test' -Stages $stages -InstallDir 'C:\inst' -ScriptDir $dir
 
-            $lines = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $lines.Count 'both stages ran exactly once'
-            Assert-Equal 'C:\src\a|C:\inst' $lines[0] 'stage A: its own SourceDir + shared InstallDir'
-            Assert-Equal 'C:\src\b|C:\inst' $lines[1] 'stage B ran after A with its own SourceDir'
+            Assert-SourceBuildStageLog -Log $log -Expected 'C:\src\a|C:\inst', 'C:\src\b|C:\inst'
         }
     }
 
@@ -55,10 +61,7 @@ Describe 'Invoke-SourceBuildChain' {
             $stages = & $newStageTree $dir $log 3
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'B'
 
-            $ran = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $ran.Count 'exactly the resumed suffix ran'
-            Assert-Equal 'src-b' $ran[0] 'resume starts AT the named stage'
-            Assert-Equal 'src-c' $ran[1] 'later stages still run'
+            Assert-SourceBuildStageLog -Log $log -Expected 'src-b', 'src-c'
         }
     }
 
@@ -77,9 +80,7 @@ Describe 'Invoke-SourceBuildChain' {
             $stages = & $newStageTree $dir $log 3
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
 
-            $ran = @(Get-Content -LiteralPath $log)
-            Assert-Equal 2 $ran.Count 'exactly the prefix through -Until ran'
-            Assert-Equal 'src-b' $ran[1] 'the -Until stage itself DID run (inclusive)'
+            Assert-SourceBuildStageLog -Log $log -Expected 'src-a', 'src-b'
         }
     }
 
@@ -91,8 +92,7 @@ Describe 'Invoke-SourceBuildChain' {
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -Until 'B'
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt 'C'
 
-            $ran = @(Get-Content -LiteralPath $log)
-            Assert-Equal 'src-a src-b src-c src-d' ($ran -join ' ') 'every stage exactly once, in order'
+            Assert-SourceBuildStageLog -Log $log -Expected 'src-a', 'src-b', 'src-c', 'src-d'
         }
     }
 
@@ -111,6 +111,26 @@ Describe 'Invoke-SourceBuildChain' {
             $stages = & $newStageTree $dir $log 2
             Invoke-SourceBuildChain -Label 't' -Stages $stages -ScriptDir $dir -StartAt ''
             Assert-Equal 2 @(Get-Content -LiteralPath $log).Count 'all stages ran'
+        }
+    }
+}
+
+Describe 'Source build stage-log verifier' {
+    It 'rejects missing, extra and reordered stages without invoking a build chain' {
+        Invoke-InTestDir { param($dir)
+            $log = Join-Path $dir 'stage-verdict.log'
+            $expected = @('a', 'b')
+            Set-Content -LiteralPath $log -Value $expected
+            Assert-SourceBuildStageLog -Log $log -Expected $expected
+            foreach ($mutation in 'missing', 'extra', 'reordered') {
+                $mutant = switch ($mutation) {
+                    missing { $expected[0] }
+                    extra { $expected + 'unexpected' }
+                    reordered { $expected[1..0] }
+                }
+                Set-Content -LiteralPath $log -Value $mutant
+                Assert-Throws { Assert-SourceBuildStageLog -Log $log -Expected $expected } -MessagePattern 'every expected stage|stage log entry'
+            }
         }
     }
 }

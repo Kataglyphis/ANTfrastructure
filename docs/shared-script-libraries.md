@@ -1383,3 +1383,43 @@ The path and guard suites share module selection, scratch setup and cleanup in
 The artifact suite shares copy/recursion and invalid-pkgconfig fixtures while
 retaining each negative condition. Its forced-recursion mutant must fail the
 omitted-switch case. These are local test fixtures, not new build dependencies.
+
+### Wheelhouse and media compiler preparation
+
+Torch wheelhouse builds share source preparation and wheel collection while
+retaining component clone flags, host-install order and C-extension repair before
+retagging. Sysconfig, repair, retagging and copy failures propagate through the
+conditional orchestration; failed preparation cannot report success. Local fake
+builders cover these paths without downloading or building dependencies.
+
+GStreamer build paths share missing cross-compiler initialization through the
+existing media core companion. The stage build retains its additional libstdc++
+repair, legacy SDK fallback and runtime pinning in their original order. Fixtures
+stub compiler and linker operations; they do not change system libraries.
+
+### Windows formatting and source-build fixtures
+
+Formatting shares tracked-file filtering and clang-format lookup. C/C++ keeps its
+sorted, deduplicated Git results and filesystem fallback. Dart remains tracked-only
+with its own exclusions and preserves Git order and duplicates. Both formatting
+modes prefer PATH, then the two common LLVM installation locations. Missing-tool
+rewrite errors identify clang-format instead of an uninitialized local variable;
+check mode retains its advisory and mandatory policies.
+
+`WindowsSourceBuild.RetryFixtures.psm1` owns retry fixture environment, temporary
+logs and cleanup. Ninja and Git retain distinct retry policies and identical fake
+tool programs. `WindowsMedia.WiringFixture.psm1` shares FFmpeg listing and OpenCV
+AST wiring assertions. These companions stay beside copied suites; they add no
+image dependency. Local mutation proofs reject dropped attempts, nested-function
+matches and nonfatal finding guards. Windows-specific execution failures remain
+visible on Linux hosts.
+
+The CUDA cache diagnostic delegates context-directory creation to the existing
+`Resolve-DirectoryPath` helper. Its random temporary prefix and cleanup stay at
+the call site. Local path fixtures cover creation and reuse with payloads; they
+do not start BuildKit, access a remote cache or compile CUDA.
+
+Python application requirement hashing groups each requirement with its following
+hash lines. Only matching hashed groups gain the built wheel hash; other lines,
+repeated groups and continuation bytes retain their order. A local lost-final-group
+mutation guards against silently omitting the final requirement.

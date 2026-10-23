@@ -6,8 +6,7 @@ BeforeAll {
     Import-Module (Join-Path $modDir 'WindowsTesting.Common.psm1') -Force -DisableNameChecking
 
     function New-FakeBuildRoot {
-        $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("wtc-" + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        $dir = New-TestDir -Prefix 'wtc-'
         Set-Content -Path (Join-Path $dir 'x.exe') -Value 'x'
         return $dir
     }

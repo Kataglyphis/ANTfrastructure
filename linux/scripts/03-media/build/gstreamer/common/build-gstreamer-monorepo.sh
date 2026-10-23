@@ -305,12 +305,7 @@ _gst_monorepo_cross_flags() {
     fi
   fi
 
-  # setup_linux_cross_env can leave CXX unexported, and the meson cross file needs both.
-  if [ "${BUILD_MODE:-native}" = "cross" ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}" ]; }; then
-    if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
-      resolve_cross_cc_cxx_for_arch || true
-    fi
-  fi
+  media_prepare_cross_compilers
 
   if command -v append_meson_cross_flags >/dev/null 2>&1; then
     append_meson_cross_flags MESON_FLAGS

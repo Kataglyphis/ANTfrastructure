@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # OpenCV on the chain's ONNX Runtime, every lane: the -D set, header shim, configure gate and G-API hook; no real build.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -DisableNameChecking
+
 $script:OrtOcvScript = 'windows\scripts\build\Build-OpencvFromSource.ps1'
 $script:OrtOcvHooks = 'windows\scripts\patches\opencv\cmake-hooks'
 $script:OrtChain = 'C:/runtime/lib/onnxruntime-source'
@@ -34,11 +36,9 @@ $script:OrtCfgLogDownload = @'
 -- DNN: Extracting ONNX Runtime package to C:/temp/opencv-src/build/3rdparty/onnxruntime
 -- DNN: ONNX Runtime enabled
 --
---   ONNX Runtime:                  YES (ver 1.25.1)
---     Include path:                C:/temp/opencv-src/build/3rdparty/onnxruntime/onnxruntime-win-x64-1.25.1/include
---     Link libraries:              C:/temp/opencv-src/build/3rdparty/onnxruntime/onnxruntime-win-x64-1.25.1/lib/onnxruntime.lib
+<ORT_DOWNLOAD_SUMMARY>
 --
-'@
+'@.Replace('<ORT_DOWNLOAD_SUMMARY>', (Get-OpenCvTestDownloadedOrtSummary -ConfigureLog))
 $script:OrtCache = @'
 # This is the CMakeCache file.
 //ONNX Runtime install directory
@@ -314,50 +314,51 @@ Describe 'OpenCV ORT: the G-API delay-load hook' {
 }
 
 Describe 'OpenCV ORT: wiring in Build-OpencvFromSource.ps1' {
-    $L = 'System.Management.Automation.Language'
-    $tree = Get-TestScriptAst -ScriptPath $script:OrtOcvScript
-    $all = @($tree.FindAll({ $true }, $true))
-    $underIf = { param($node) $up = $node.Parent; while ($up -and $up -isnot [type]"$L.IfStatementAst") { $up = $up.Parent }; $null -ne $up }
-    $configure = @(Get-TestAstCommands -Ast $tree -Name 'Invoke-CmakeConfigure')[0]
+    $wiring = New-MediaTestAstView -ScriptPath $script:OrtOcvScript
+    $underIf = { param($node) $up = $node.Parent; while ($up -and $up -isnot [Management.Automation.Language.IfStatementAst]) { $up = $up.Parent }; $null -ne $up }
+    $configure = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Invoke-CmakeConfigure')[0]
 
     It 'wires the shim, the args and the gate once each, under no lane condition' {
         foreach ($fn in 'New-OpencvOrtNestedInclude', 'Get-OpencvOrtCmakeArgs', 'Get-OpencvOrtConfigureFinding') {
-            $calls = @(Get-TestAstCommands -Ast $tree -Name $fn)
+            $calls = @(Get-TestAstCommands -Ast $wiring.Ast -Name $fn)
             Assert-Equal 1 $calls.Count "$fn call sites"
             Assert-False (& $underIf $calls[0]) "$fn sits under an if; the ORT wiring is every-lane"
         }
     }
 
     It 'appends the args before configure, and nothing else names ONNXRT_ROOT_DIR' {
-        $edits = @($all | Where-Object { $_ -is [type]"$L.AssignmentStatementAst" -and $_.Left.Extent.Text -eq '$cmakeExtra' })
-        $append = @($edits | Where-Object { $_.Operator -eq 'PlusEquals' -and $_.Right.Extent.Text -eq '$ocvOrtArgs' })
-        Assert-Equal 1 $append.Count '$cmakeExtra += $ocvOrtArgs'
-        Assert-False (& $underIf $append[0]) 'the append is unconditional'
-        Assert-True ($append[0].Extent.StartOffset -lt $configure.Extent.StartOffset) 'before Invoke-CmakeConfigure'
+        $edits = @(Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra')
+        $append = Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value '$ocvOrtArgs' -Single
+        Assert-False (& $underIf $append) 'the append is unconditional'
+        Assert-True ($append.Extent.StartOffset -lt $configure.Extent.StartOffset) 'before Invoke-CmakeConfigure'
         Assert-Equal 0 @($edits | Where-Object { $_.Extent.Text -match 'ONNXRT_ROOT_DIR|DOWNLOAD_ONNXRUNTIME' }).Count 'no second ORT root or download switch'
     }
 
     It 'gates after configure on the teed log, the cache, build.ninja and the same roots the args got' {
-        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvOrtConfigureFinding')[0]
+        $gate = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Get-OpencvOrtConfigureFinding')[0]
         Assert-True ($gate.Extent.StartOffset -gt $configure.Extent.StartOffset) 'gate reads what configure wrote'
         $bound = Get-TestCommandArguments -Command $gate
         Assert-Match '^"\$\(Get-Content -LiteralPath \$cfgLog -Raw\)"$' $bound['ConfigureLog']
         Assert-Match "Join-Path \`$buildDir 'CMakeCache\.txt'" $bound['CMakeCache']
         Assert-Match "Join-Path \`$buildDir 'build\.ninja'" $bound['BuildNinja']
-        $argsCall = Get-TestCommandArguments -Command @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvOrtCmakeArgs')[0]
+        $argsCall = Get-TestCommandArguments -Command @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Get-OpencvOrtCmakeArgs')[0]
         foreach ($p in 'OrtRoot', 'ShimRoot', 'OrtVersion') { Assert-Equal $argsCall[$p] $bound[$p] "-$p is shared by args and gate" }
         Assert-Equal '$ortShimRoot' $bound['ShimRoot']
     }
 
     It 'throws on any gate finding, directly and unconditionally' {
-        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvOrtConfigureFinding')[0]
-        $assign = $gate.Parent
-        while ($assign -and $assign -isnot [type]"$L.AssignmentStatementAst") { $assign = $assign.Parent }
-        Assert-Equal '$ocvOrtCfg' $assign.Left.Extent.Text
-        $check = @($all | Where-Object { $_ -is [type]"$L.IfStatementAst" -and $_.Clauses[0].Item1.Extent.Text -eq '$ocvOrtCfg.Count -gt 0' })
-        Assert-Equal 1 $check.Count 'one if ($ocvOrtCfg.Count -gt 0)'
-        Assert-False (& $underIf $check[0]) 'the check is not nested in a lane condition'
-        Assert-Null $check[0].ElseClause 'no else arm'
-        Assert-Equal 1 @($check[0].Clauses[0].Item2.Statements | Where-Object { $_ -is [type]"$L.ThrowStatementAst" }).Count 'a direct throw'
+        Assert-MediaTestFindingGuard -Command @(Get-TestAstCommands -Ast $wiring.Ast -Name Get-OpencvOrtConfigureFinding) -Variable '$ocvOrtCfg' -Unconditional
+    }
+}
+
+Describe 'Media finding guard mutation coverage' {
+    It 'rejects a warning in place of the mandatory fatal finding branch' {
+        $source = '$findings = @(Get-FixtureFinding); if ($findings.Count -gt 0) { throw "fatal" }'
+        $clean = ConvertTo-TestScriptAst -Text $source
+        Assert-MediaTestFindingGuard -Command @(Get-TestAstCommands -Ast $clean -Name Get-FixtureFinding) -Variable '$findings' -Unconditional
+        $mutant = ConvertTo-TestScriptAst -Text ($source.Replace('throw "fatal"', 'Write-Warning "fatal"'))
+        Assert-Throws {
+            Assert-MediaTestFindingGuard -Command @(Get-TestAstCommands -Ast $mutant -Name Get-FixtureFinding) -Variable '$findings' -Unconditional
+        } -MessagePattern 'a direct throw'
     }
 }

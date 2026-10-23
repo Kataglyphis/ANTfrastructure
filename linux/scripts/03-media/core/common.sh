@@ -115,6 +115,16 @@ media_common_init() {
   fi
 }
 
+# Meson needs both compiler variables even when SDK setup exported only one.
+media_prepare_cross_compilers() {
+  if [ "${BUILD_MODE:-native}" = cross ] && { [ -z "${CC:-}" ] || [ -z "${CXX:-}" ]; }; then
+    if command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
+      resolve_cross_cc_cxx_for_arch || true
+    fi
+  fi
+  return 0
+}
+
 # install-deps.sh bootstrap. Usage: source this file, then media_install_deps_init "${SCRIPT_DIR}".
 media_install_deps_init() {
   local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"

@@ -369,12 +369,14 @@ function Import-FunctionModule {
 # Runs $Body with Import-FunctionModule's *-Mut* copy imported from a fresh test directory, then removes it.
 function Invoke-WithFunctionModule {
     param([Parameter(Mandatory)][string]$Text, [string[]]$FunctionName = @(), [string]$Find = '',
-        [AllowEmptyString()][string]$Replace = '', [Parameter(Mandatory)][scriptblock]$Body)
+        [AllowEmptyString()][string]$Replace = '', [Parameter(Mandatory)][scriptblock]$Body,
+        [string]$Prelude = '', [string]$Prefix = 'Mut', [object[]]$ArgumentList = @(),
+        [object[]]$BodyArgumentList = @())
     # Renamed: inside Invoke-InTestDir, $Body is that function's own parameter.
     $mutantBody = $Body
     Invoke-InTestDir { param($dir)
-        $m = Import-FunctionModule -Text $Text -Dir $dir -FunctionName $FunctionName -Find $Find -Replace $Replace
-        try { & $mutantBody } finally { Remove-Module $m -Force }
+        $m = Import-FunctionModule -Text $Text -Dir $dir -FunctionName $FunctionName -Find $Find -Replace $Replace -Prelude $Prelude -Prefix $Prefix -ArgumentList $ArgumentList
+        try { & $mutantBody @BodyArgumentList } finally { Remove-Module $m -Force }
     }
 }
 

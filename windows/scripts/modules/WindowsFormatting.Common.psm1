@@ -1,5 +1,5 @@
-Set-StrictMode -Version Latest
 #requires -Version 7.0
+Set-StrictMode -Version Latest
 
 
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
@@ -20,6 +20,20 @@ $script:CppExtensions = @('.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.ix
 # Dependency and output trees git never lists: a walk that enters them grades a dependency's own sources.
 $script:UntrackedTreePattern = '\\(node_modules|\.pub-cache|\.dart_tool|\.gradle|\.cxx|\.cargo)\\|\\flutter\\ephemeral\\'
 
+function Get-TrackedProjectFiles {
+  param($GitCommand, [string]$WorkspacePath, [string[]]$GitPathspec, [string[]]$ExcludePattern)
+  $tracked = & $GitCommand.Source -C $WorkspacePath ls-files -- @GitPathspec 2>$null
+  if ($LASTEXITCODE -ne 0 -or -not $tracked) { return [pscustomobject]@{ Found = $false; Files = @() } }
+  $paths = @($tracked |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    ForEach-Object { Join-Path $WorkspacePath $_ } |
+    Where-Object {
+      foreach ($pattern in $ExcludePattern) { if ($_.ToString() -match $pattern) { return $false } }
+      return $true
+    })
+  return [pscustomobject]@{ Found = $true; Files = $paths }
+}
+
 # git ls-files fast path, else a Get-ChildItem walk; the public wrappers pass pathspec and predicate.
 function Get-ProjectSourceFiles {
   param(
@@ -34,20 +48,9 @@ function Get-ProjectSourceFiles {
   $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
   if ($gitCommand) {
     try {
-      $tracked = & $gitCommand.Source -C $WorkspacePath ls-files -- @GitPathspec 2>$null
-      if ($LASTEXITCODE -eq 0 -and $tracked) {
-        $trackedPaths = @($tracked |
-          Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-          ForEach-Object { Join-Path $WorkspacePath $_ } |
-          Where-Object {
-            ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
-            ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
-            # -notmatch: -match here keeps only _deps and silently formats zero files.
-            ($_.ToString() -notmatch '\\_deps\\') -and
-            ($_.ToString() -notmatch '\\vcpkg_installed\\')
-          })
-        return @($trackedPaths | Sort-Object -Unique)
-      }
+      $tracked = Get-TrackedProjectFiles -GitCommand $gitCommand -WorkspacePath $WorkspacePath -GitPathspec $GitPathspec `
+        -ExcludePattern @('\\build([\\-]|\\)', '\\(ExternalLib|third_party)\\', '\\_deps\\', '\\vcpkg_installed\\')
+      if ($tracked.Found) { return @($tracked.Files | Sort-Object -Unique) }
     } catch {
       Write-Verbose "git ls-files enumeration failed: $($_.Exception.Message)"
     }
@@ -176,6 +179,25 @@ function Invoke-CmakeFormatStep {
   }
 }
 
+function Get-ClangFormatExecutable {
+  $command = Get-Command 'clang-format' -ErrorAction SilentlyContinue
+  if ($command) { return $command.Source }
+  foreach ($path in @('C:\Program Files\LLVM\bin\clang-format.exe', 'C:\Program Files (x86)\LLVM\bin\clang-format.exe')) {
+    if (Test-Path $path) { return $path }
+  }
+  return $null
+}
+
+function Get-ClangFormatInputs {
+  param($Context, [string]$WorkspacePath, [switch]$Check)
+  $files = @(Get-ProjectCppFiles -WorkspacePath $WorkspacePath)
+  if ($files.Count -eq 0) {
+    $purpose = if ($Check) { 'the clang-format check' } else { 'clang-format' }
+    Write-BuildLog -Context $Context -Message "No C/C++ files found for ${purpose}."
+  }
+  return $files
+}
+
 function Invoke-ClangFormatStep {
   param(
     [Parameter(Mandatory)]
@@ -184,31 +206,11 @@ function Invoke-ClangFormatStep {
     [string]$WorkspacePath
   )
 
-  $clangFormat = Get-Command 'clang-format' -ErrorAction SilentlyContinue
-  if (-not $clangFormat) {
-    $commonPaths = @(
-      'C:\Program Files\LLVM\bin\clang-format.exe',
-      'C:\Program Files (x86)\LLVM\bin\clang-format.exe'
-    )
-    foreach ($path in $commonPaths) {
-      if (Test-Path $path) {
-        $clangFormatSource = $path
-        break
-      }
-    }
+  $clangFormatSource = Get-ClangFormatExecutable
+  if (-not $clangFormatSource) { throw 'clang-format not found on PATH or in common installation locations.' }
 
-    if (-not $clangFormatSource) {
-      throw 'clang-format not found on PATH or in common installation locations.'
-    }
-  } else {
-    $clangFormatSource = $clangFormat.Source
-  }
-
-  $cppFiles = @(Get-ProjectCppFiles -WorkspacePath $WorkspacePath)
-  if ($cppFiles.Count -eq 0) {
-    Write-BuildLog -Context $Context -Message 'No C/C++ files found for clang-format.'
-    return
-  }
+  $cppFiles = @(Get-ClangFormatInputs -Context $Context -WorkspacePath $WorkspacePath)
+  if ($cppFiles.Count -eq 0) { return }
 
   foreach ($cppFile in $cppFiles) {
     Invoke-BuildExternal -Context $Context -File $clangFormatSource -Parameters @('-i', $cppFile) | Out-Null
@@ -232,20 +234,11 @@ function Invoke-ClangFormatCheck {
     [AllowEmptyString()][string]$ExpectedVersion
   )
 
-  $clangFormat = Get-Command 'clang-format' -ErrorAction SilentlyContinue
-  if (-not $clangFormat) {
-    $candidates = @(
-      'C:\Program Files\LLVM\bin\clang-format.exe',
-      'C:\Program Files (x86)\LLVM\bin\clang-format.exe'
-    )
-    $clangFormatSource = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if (-not $clangFormatSource) {
-      if ($FailOnDeviation) { throw 'clang-format not found; the format gate cannot run.' }
-      Write-BuildLog -Context $Context -Message 'clang-format not found; skipping format check.'
-      return
-    }
-  } else {
-    $clangFormatSource = $clangFormat.Source
+  $clangFormatSource = Get-ClangFormatExecutable
+  if (-not $clangFormatSource) {
+    if ($FailOnDeviation) { throw 'clang-format not found; the format gate cannot run.' }
+    Write-BuildLog -Context $Context -Message 'clang-format not found; skipping format check.'
+    return
   }
 
   # The image's clang-format is its LLVM, pinned by LLVM_WINDOWS_VERSION; read only once there is one to grade.
@@ -257,11 +250,8 @@ function Invoke-ClangFormatCheck {
     }
   }
 
-  $cppFiles = @(Get-ProjectCppFiles -WorkspacePath $WorkspacePath)
-  if ($cppFiles.Count -eq 0) {
-    Write-BuildLog -Context $Context -Message 'No C/C++ files found for the clang-format check.'
-    return
-  }
+  $cppFiles = @(Get-ClangFormatInputs -Context $Context -WorkspacePath $WorkspacePath -Check)
+  if ($cppFiles.Count -eq 0) { return }
 
   $deviating = New-Object System.Collections.Generic.List[string]
 
@@ -295,19 +285,9 @@ function Get-ProjectDartFiles {
   $gitCommand = Get-Command 'git' -ErrorAction SilentlyContinue
   if (-not $gitCommand) { return @() }
 
-  $tracked = & $gitCommand.Source -C $WorkspacePath ls-files -- '*.dart' 2>$null
-  if ($LASTEXITCODE -ne 0 -or -not $tracked) { return @() }
-
-  return @($tracked |
-    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-    ForEach-Object { Join-Path $WorkspacePath $_ } |
-    Where-Object {
-      ($_.ToString() -notmatch '\\build([\\-]|\\)') -and
-      ($_.ToString() -notmatch '\\(ExternalLib|third_party)\\') -and
-      ($_.ToString() -notmatch '\\.git\\modules\\') -and
-      ($_.ToString() -notmatch '\\flutter\\') -and
-      ($_.ToString() -notmatch '\\rust_builder\\')
-    })
+  $tracked = Get-TrackedProjectFiles -GitCommand $gitCommand -WorkspacePath $WorkspacePath -GitPathspec '*.dart' `
+    -ExcludePattern @('\\build([\\-]|\\)', '\\(ExternalLib|third_party)\\', '\\.git\\modules\\', '\\flutter\\', '\\rust_builder\\')
+  return @($tracked.Files)
 }
 
 Export-ModuleMember -Function Get-ProjectCmakeFiles, Get-ProjectCppFiles, Get-ProjectDartFiles, Initialize-UvVenvPython, Invoke-CmakeFormatStep, Invoke-ClangFormatStep, Invoke-ClangFormatCheck

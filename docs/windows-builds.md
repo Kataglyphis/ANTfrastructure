@@ -2321,3 +2321,8 @@ Target-architecture tests retain independent literal SIMD expectations and check
 that modifying a cloned record cannot change flags or MLAS floors. These fixtures
 provide no native Windows build or runtime proof; suites using Windows drives or
 command files also need a Windows run.
+
+`Invoke-WithFunctionModule` also accepts an optional prelude, import prefix,
+constructor argument array and body argument array. Defaults retain existing
+mutant imports. The helper owns module and temporary-directory cleanup even when
+the body throws; callers keep their fixture state and command policy.

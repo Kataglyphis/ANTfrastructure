@@ -19,8 +19,7 @@ Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent)
 if (-not $Endpoint) { throw 'no WebDAV endpoint: pass -Endpoint or set SCCACHE_WEBDAV_ENDPOINT (Machine scope)' }
 $BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
 
-$ctx = Join-Path ([System.IO.Path]::GetTempPath()) ("cudacache-" + [guid]::NewGuid().ToString('N'))
-New-Item -ItemType Directory -Force -Path $ctx | Out-Null
+$ctx = Resolve-DirectoryPath -Path (Join-Path ([System.IO.Path]::GetTempPath()) ("cudacache-" + [guid]::NewGuid().ToString('N')))
 try {
     # A COPY'd payload script, since the frontend strips double quotes from shell-form RUN lines.
     Copy-Item -Path (Join-Path $PSScriptRoot 'verify-cuda-cache\Test-Cache.ps1') -Destination (Join-Path $ctx 'Test-Cache.ps1')

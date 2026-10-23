@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # FFmpeg's AMF path: one plan keys every site, the config.mak gates and the pinned header fetch; no real configure.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -DisableNameChecking
+
 $script:ffScript = 'windows\scripts\build\Build-FfmpegFromSource.ps1'
 $script:ffCheck = 'windows\scripts\build\rocm-checks\FFmpeg.ps1'
 
@@ -40,33 +42,40 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
         }
     }
 
-    It 'cpu and nvidia lanes (real Get-GpuEnvironment): an AMF-only plan natively, none on the cross lane, never Vulkan' {
-        # AMF is header-only (the driver's amfrt64.dll loads at run time), so every native amd64 lane gets it.
+    function Invoke-NonRocmFfPlan([bool]$Cross, [scriptblock]$Body) {
+        $planBody = $Body
         foreach ($lane in @($null, 'cpu', 'nvidia')) {
             Invoke-OnGpuLane $lane { param($gpu, $src, $vk)
-                Assert-Equal ($lane -eq 'nvidia') $gpu.HasCuda "GPU_TYPE='$lane': fixture is the lane it claims"
-                $plan = Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $false -SourceDir $src
-                Assert-Equal (Join-Path $src 'compat\amf') $plan.CompatDir "GPU_TYPE='$lane': native amd64 -> an AMF plan"
-                Assert-False $plan.Rocm "GPU_TYPE='$lane': not the rocm lane"
-                Assert-True ([string]::IsNullOrWhiteSpace($plan.RocmRoot)) "GPU_TYPE='$lane': no ROCm root for the leak gate to check"
-                Assert-Null (Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $true -SourceDir $src) "GPU_TYPE='$lane': cross, no plan and no throw"
-                $vkPlan = Get-FfmpegVulkanPlan -AmfPlan $plan -VulkanSdk $env:VULKAN_SDK
-                Assert-Null $vkPlan "GPU_TYPE='$lane': a complete Vulkan SDK in VULKAN_SDK is not a Vulkan plan"
-                Assert-Null (Get-FfmpegVulkanPlan -AmfPlan $plan -VulkanSdk '') "GPU_TYPE='$lane': no SDK, no plan and no throw"
-                $withAmf = [string[]]($script:baseFlags + @(Get-FfmpegRocmConfigureArg -AmfPlan $plan -VulkanPlan $vkPlan))
-                Assert-Equal "$script:baseLine --enable-amf --extra-cflags=-I$($plan.IncludeDir)" ([string]::Join(' ', $withAmf)) "GPU_TYPE='$lane': AMF appended, nothing else, even with a HIP tree and a Vulkan SDK"
+                $plan = Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $Cross -SourceDir $src
+                & $planBody ([pscustomobject]@{ Lane = $lane; Gpu = $gpu; Plan = $plan; SourceDir = $src; VulkanSdk = $vk })
             }
         }
     }
 
+    function Get-FfTestConfigureLine($AmfPlan, $VulkanPlan = $null) {
+        $combined = [string[]]($script:baseFlags + @(Get-FfmpegRocmConfigureArg -AmfPlan $AmfPlan -VulkanPlan $VulkanPlan))
+        [string]::Join(' ', $combined)
+    }
+
+    It 'cpu and nvidia lanes (real Get-GpuEnvironment): an AMF-only plan natively, none on the cross lane, never Vulkan' {
+        # AMF is header-only (the driver's amfrt64.dll loads at run time), so every native amd64 lane gets it.
+        Invoke-NonRocmFfPlan -Cross $false -Body { param($scenario)
+                Assert-Equal ($scenario.Lane -eq 'nvidia') $scenario.Gpu.HasCuda "GPU_TYPE='$($scenario.Lane)': fixture is the lane it claims"
+                Assert-Equal (Join-Path $scenario.SourceDir 'compat\amf') $scenario.Plan.CompatDir "GPU_TYPE='$($scenario.Lane)': native amd64 -> an AMF plan"
+                Assert-False $scenario.Plan.Rocm "GPU_TYPE='$($scenario.Lane)': not the rocm lane"
+                Assert-True ([string]::IsNullOrWhiteSpace($scenario.Plan.RocmRoot)) "GPU_TYPE='$($scenario.Lane)': no ROCm root for the leak gate to check"
+                Assert-Null (Get-FfmpegAmfPlan -GpuEnvironment $scenario.Gpu -IsCross $true -SourceDir $scenario.SourceDir) "GPU_TYPE='$($scenario.Lane)': cross, no plan and no throw"
+                $vkPlan = Get-FfmpegVulkanPlan -AmfPlan $scenario.Plan -VulkanSdk $env:VULKAN_SDK
+                Assert-Null $vkPlan "GPU_TYPE='$($scenario.Lane)': a complete Vulkan SDK in VULKAN_SDK is not a Vulkan plan"
+                Assert-Null (Get-FfmpegVulkanPlan -AmfPlan $scenario.Plan -VulkanSdk '') "GPU_TYPE='$($scenario.Lane)': no SDK, no plan and no throw"
+                Assert-Equal "$script:baseLine --enable-amf --extra-cflags=-I$($scenario.Plan.IncludeDir)" (Get-FfTestConfigureLine $scenario.Plan $vkPlan) "GPU_TYPE='$($scenario.Lane)': AMF appended, nothing else, even with a HIP tree and a Vulkan SDK"
+        }
+    }
+
     It 'the cross lane gets no AMF plan, so its configure line is byte-identical' {
-        foreach ($lane in @($null, 'cpu', 'nvidia')) {
-            Invoke-OnGpuLane $lane { param($gpu, $src, $vk)
-                $plan = Get-FfmpegAmfPlan -GpuEnvironment $gpu -IsCross $true -SourceDir $src
-                Assert-Null $plan "GPU_TYPE='$lane': cross -> no plan, no fetch, no config.mak gates, no include\AMF"
-                $crossLine = [string[]]($script:baseFlags + @(Get-FfmpegRocmConfigureArg -AmfPlan $plan -VulkanPlan $null))
-                Assert-Equal $script:baseLine ([string]::Join(' ', $crossLine)) "GPU_TYPE='$lane': nothing appended on the cross lane"
-            }
+        Invoke-NonRocmFfPlan -Cross $true -Body { param($scenario)
+                Assert-Null $scenario.Plan "GPU_TYPE='$($scenario.Lane)': cross -> no plan, no fetch, no config.mak gates, no include\AMF"
+                Assert-Equal $script:baseLine (Get-FfTestConfigureLine $scenario.Plan) "GPU_TYPE='$($scenario.Lane)': nothing appended on the cross lane"
         }
     }
 
@@ -123,12 +132,7 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
     $script:ffAst = (Get-TestScriptAst -ScriptPath $script:ffScript)
 
     # Script-level AST nodes only: calls inside the extracted functions are their own tests' business.
-    function Find-FfScriptLevelNode([scriptblock]$Predicate) {
-        @($script:ffAst.FindAll({ param($n)
-            if (-not (& $Predicate $n)) { return $false }
-            for ($p = $n.Parent; $p; $p = $p.Parent) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $false } }
-            return $true }, $true))
-    }
+    function Find-FfScriptLevelNode([scriptblock]$Predicate) { Get-MediaTestAstNode -Ast $script:ffAst -Predicate $Predicate -ScriptLevel }
 
     # Condition of the innermost if/elseif clause whose BODY encloses $Node (an else body has none); '' when unguarded.
     function Get-FfEnclosingGuard([System.Management.Automation.Language.Ast]$Node) {
@@ -224,12 +228,7 @@ Describe 'Get-FfmpegAmfConfigGap (post-configure gate)' {
 
     It 'matches the smoke check''s listed names one to one' {
         . (Get-ScriptFunctionDefinition -ScriptPath $script:ffCheck -FunctionName 'Get-FfmpegAmfExpectation')
-        $exp = Get-FfmpegAmfExpectation
-        $fromSmoke = @($exp.encoders | ForEach-Object { "$($_)_ENCODER".ToUpperInvariant() }) +
-            @($exp.decoders | ForEach-Object { "$($_)_DECODER".ToUpperInvariant() }) +
-            @($exp.filters | ForEach-Object { if ($_ -eq 'vsrc_amf') { 'AMF_CAPTURE_FILTER' } else { "$($_)_FILTER".ToUpperInvariant() } }) +
-            @($exp.hwaccels | ForEach-Object { $_.ToUpperInvariant() })
-        Assert-Equal ((@(Get-FfmpegAmfConfigSymbol) | Sort-Object) -join ',') (($fromSmoke | Sort-Object) -join ',') 'build gate and smoke agree'
+        Assert-FfmpegTestConfigSymbols -Actual @(Get-FfmpegAmfConfigSymbol) -Expectation (Get-FfmpegAmfExpectation) -Backend amf
     }
 }
 
@@ -311,12 +310,7 @@ CONFIG_COLOR_VULKAN_FILTER=yes
 
     It 'matches the smoke check''s listed names one to one (VULKAN_1_4 and the SPIR-V header are build-only)' {
         . (Get-ScriptFunctionDefinition -ScriptPath $script:ffCheck -FunctionName 'Get-FfmpegVulkanExpectation')
-        $exp = Get-FfmpegVulkanExpectation
-        $fromSmoke = @($exp.encoders | ForEach-Object { "CONFIG_$($_)_ENCODER".ToUpperInvariant() }) +
-            @($exp.filters | ForEach-Object { "CONFIG_$($_)_FILTER".ToUpperInvariant() }) +
-            @($exp.hwdecoders | ForEach-Object { "CONFIG_$($_)_VULKAN_HWACCEL".ToUpperInvariant() }) +
-            @($exp.hwaccels | ForEach-Object { "CONFIG_$_".ToUpperInvariant() }) + @('CONFIG_VULKAN_1_4', 'HAVE_SPIRV_HEADERS_SPIRV_H')
-        Assert-Equal ((@(Get-FfmpegVulkanConfigSymbol) | Sort-Object) -join ',') (($fromSmoke | Sort-Object) -join ',') 'build gate and smoke agree'
+        Assert-FfmpegTestConfigSymbols -Actual @(Get-FfmpegVulkanConfigSymbol) -Expectation (Get-FfmpegVulkanExpectation) -Backend vulkan
     }
 }
 
@@ -430,15 +424,7 @@ Describe 'rocm-checks/FFmpeg.ps1 (smoke findings)' {
 
     # Rows shaped like ffmpeg n9.0.2's listings (opt_common.c print_codecs / show_filters).
     function New-Listing([string[]]$Drop = @(), [switch]$NoAmfHwaccel, [switch]$NoEnableAmf) {
-        $exp = Get-FfmpegAmfExpectation
-        $rows = { param($names, $flags) (@($names | Where-Object { $_ -notin $Drop }) | ForEach-Object { " $flags $($_.PadRight(20)) AMD AMF thing" }) -join "`n" }
-        return @{
-            encoders = "Encoders:`n V....D mpeg4                MPEG-4 part 2`n" + (& $rows $exp.encoders 'V....D')
-            decoders = "Decoders:`n" + (& $rows $exp.decoders 'V....D')
-            filters  = "Filters:`n  T.. = Timeline support`n" + (& $rows $exp.filters 'TC')
-            hwaccels = "Hardware acceleration methods:`ndxva2`nd3d11va`n" + $(if ($NoAmfHwaccel) { '' } else { "amf`n" })
-            version  = 'configuration: --enable-shared ' + $(if ($NoEnableAmf) { '' } else { '--enable-amf ' }) + '--enable-gpl'
-        }
+        New-FfmpegTestListing -Backend amf -Expectation (Get-FfmpegAmfExpectation) -Drop $Drop -NoHwaccel:$NoAmfHwaccel -NoEnable:$NoEnableAmf
     }
 
     It 'has no findings when every AMF entry is listed' {
@@ -463,19 +449,7 @@ Describe 'rocm-checks/FFmpeg.ps1 (smoke findings)' {
 
     # Vulkan rows plus `-h decoder=` pages shaped like n9.0.2's print_codec (opt_common.c).
     function New-VkListing([string[]]$Drop = @(), [string[]]$NoDevice = @(), [switch]$NoVulkanHwaccel, [switch]$NoEnableVulkan) {
-        $exp = Get-FfmpegVulkanExpectation
-        $rows = { param($names, $flags) (@($names | Where-Object { $_ -notin $Drop }) | ForEach-Object { " $flags $($_.PadRight(20)) Vulkan thing" }) -join "`r`n" }
-        $l = @{
-            encoders = "Encoders:`r`n V....D mpeg4                MPEG-4 part 2`r`n" + (& $rows $exp.encoders 'V....D')
-            filters  = "Filters:`r`n  T.. = Timeline support`r`n" + (& $rows $exp.filters 'TC')
-            hwaccels = "Hardware acceleration methods:`r`ndxva2`r`nd3d11va`r`n" + $(if ($NoVulkanHwaccel) { '' } else { "vulkan`r`n" })
-            version  = 'configuration: --enable-shared ' + $(if ($NoEnableVulkan) { '' } else { '--enable-vulkan ' }) + '--enable-gpl'
-        }
-        foreach ($d in $exp.hwdecoders) {
-            $devices = 'dxva2 d3d11va d3d11va d3d12va amf' + $(if ($d -in $NoDevice) { '' } else { ' vulkan' })
-            $l["decoder=$d"] = "Decoder $d [$d]:`r`n    General capabilities: dr1 delay threads `r`n    Supported hardware devices: $devices `r`n"
-        }
-        return $l
+        New-FfmpegTestListing -Backend vulkan -Expectation (Get-FfmpegVulkanExpectation) -Drop $Drop -NoDevice $NoDevice -NoHwaccel:$NoVulkanHwaccel -NoEnable:$NoEnableVulkan
     }
 
     It 'Vulkan: no findings when every encoder, filter, the hwdevice and every decoder''s vulkan hwaccel are listed' {
@@ -547,12 +521,7 @@ Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input 
     # A dropped call or input loop leaves the unit tests green and the smoke vacuous; no GPU-less run reaches this code.
     $script:ckAst = (Get-TestScriptAst -ScriptPath $script:ffCheck)
 
-    function Find-CkScriptLevelNode([scriptblock]$Predicate) {
-        @($script:ckAst.FindAll({ param($n)
-            if (-not (& $Predicate $n)) { return $false }
-            for ($p = $n.Parent; $p; $p = $p.Parent) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { return $false } }
-            return $true }, $true))
-    }
+    function Find-CkScriptLevelNode([scriptblock]$Predicate) { Get-MediaTestAstNode -Ast $script:ckAst -Predicate $Predicate -ScriptLevel }
 
     It 'each finder is called once, in order, as a bare top-level statement whose findings reach the pipeline (mutation)' {
         $finders = 'Get-FfmpegAmfListingFinding', 'Get-FfmpegVulkanListingFinding', 'Get-FfmpegAmfInstallFinding', 'Get-FfmpegVulkanImportFinding'
@@ -580,5 +549,20 @@ Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input 
             $fill = @($loop[0].Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) | ForEach-Object { $_.Extent.Text })
             Assert-True ($loops[$v][1] -in $fill) "`$$v body fills its map: got '$($fill -join ' | ')'"
         }
+    }
+}
+
+Describe 'Media fixture mutation coverage' {
+    It 'detects a nested function mistakenly included in script-level wiring and mismatched smoke symbols' {
+        $tree = ConvertTo-TestScriptAst -Text 'Get-FixtureCall; function Nested { Get-FixtureCall }'
+        $query = { param($node) $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Get-FixtureCall' }
+        Assert-Equal 1 @(Get-MediaTestAstNode -Ast $tree -Predicate $query -ScriptLevel).Count 'only the script call'
+        $text = (Get-ScriptFunctionDefinition -ScriptPath (Join-Path $PSScriptRoot 'WindowsMedia.WiringFixture.psm1') -FunctionName Get-MediaTestAstNode).ToString()
+        Invoke-WithFunctionModule -Text $text -Find '$parent -is [Management.Automation.Language.FunctionDefinitionAst]' -Replace '$false' -Body {
+            Assert-Throws {
+                Assert-Equal 1 @(Get-MutMediaTestAstNode -Ast $tree -Predicate $query -ScriptLevel).Count 'only the script call'
+            } -MessagePattern 'only the script call'
+        }.GetNewClosure()
+        Assert-Throws { Assert-FfmpegTestConfigSymbols -Actual CONFIG_A -Expectation @{ encoders = @('b'); hwaccels = @() } -Backend amf } -MessagePattern 'build gate and smoke agree'
     }
 }

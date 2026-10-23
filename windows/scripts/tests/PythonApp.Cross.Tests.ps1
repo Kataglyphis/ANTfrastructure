@@ -101,11 +101,49 @@ Describe 'Get-LockSdist and Add-RequirementHash' {
         }
     }
 
-    It 'adds the built wheel''s hash to its own requirement only, keeping the line continuations' {
-        $lines = @('pyyaml==6.0.3 \', '    --hash=sha256:111 \', '    --hash=sha256:222', '    # via app', 'rich==14.0 \', '    --hash=sha256:333')
-        $out = & (Get-Module WindowsPythonApp.Common) { Add-RequirementHash -Lines $args[0] -Name 'pyyaml' -Sha256 'fff' } $lines
-        Assert-Equal "pyyaml==6.0.3 \|    --hash=sha256:111 \|    --hash=sha256:222 \|    --hash=sha256:fff|    # via app|rich==14.0 \|    --hash=sha256:333" ($out -join '|') 'one more hash, continued'
-        Assert-Throws { & (Get-Module WindowsPythonApp.Common) { Add-RequirementHash -Lines @('pyyaml==6.0.3') -Name 'pyyaml' -Sha256 'f' } } -MessagePattern 'no hashed requirement for pyyaml'
+    foreach ($hashCase in @(
+        @{
+            Name = 'adds the built wheel''s hash to its own requirement only, keeping the line continuations'
+            Package = 'pyyaml'; Sha = 'fff'
+            Lines = @('pyyaml==6.0.3 \', '    --hash=sha256:111 \', '    --hash=sha256:222', '    # via app', 'rich==14.0 \', '    --hash=sha256:333')
+            Expected = 'pyyaml==6.0.3 \|    --hash=sha256:111 \|    --hash=sha256:222 \|    --hash=sha256:fff|    # via app|rich==14.0 \|    --hash=sha256:333'.Split('|')
+            Unhashed = ,@('pyyaml==6.0.3')
+        },
+        @{
+            Name = 'retains CRLF bytes, repeated groups and a final continued hash'
+            Package = 'pkg.name'; Sha = 'built'
+            Lines = @('other==1 \', '    --hash=sha256:other', 'pkg.name==2 \', '    --hash=sha256:first \\',
+                '    # via app', 'pkg.name==2 \', '    --hash=sha256:last \')
+            Expected = @('other==1 \', '    --hash=sha256:other', 'pkg.name==2 \', '    --hash=sha256:first \',
+                '    --hash=sha256:built', '    # via app', 'pkg.name==2 \', '    --hash=sha256:last \', '    --hash=sha256:built')
+            Unhashed = @(@('pkg.name==2', '    # via app'), @('pkgXname==2 \', '    --hash=sha256:other'))
+        }
+    )) {
+        It $hashCase.Name {
+            $out = & (Get-Module WindowsPythonApp.Common) {
+                Add-RequirementHash -Lines $args[0] -Name $args[1] -Sha256 $args[2]
+            } $hashCase.Lines $hashCase.Package $hashCase.Sha
+            Assert-Equal ($hashCase.Expected -join '|') ($out -join '|') 'one more hash, continued'
+            Assert-Equal ([Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($hashCase.Expected -join "`r`n"))) `
+                ([Convert]::ToHexString([Text.Encoding]::UTF8.GetBytes($out -join "`r`n"))) 'requirement bytes and continuation placement'
+            foreach ($unhashed in $hashCase.Unhashed) {
+                Assert-Throws {
+                    & (Get-Module WindowsPythonApp.Common) { Add-RequirementHash -Lines $args[0] -Name $args[1] -Sha256 $args[2] } `
+                        $unhashed $hashCase.Package $hashCase.Sha
+                } -MessagePattern "no hashed requirement for $([regex]::Escape($hashCase.Package))"
+            }
+        }
+    }
+
+    It 'detects a lost final requirement group' {
+        $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsPythonApp.Common.psm1'))
+        Invoke-WithFunctionModule -Text $text -FunctionName Get-RequirementLineGroup, Add-RequirementHash `
+            -Find 'if ($group.Count -gt 0) { Write-Output -NoEnumerate -InputObject $group.ToArray() }' -Replace '' -Body {
+                $lines = @('pkg==1 \', '    --hash=sha256:last')
+                $original = & (Get-Module WindowsPythonApp.Common) { Add-RequirementHash -Lines $args[0] -Name pkg -Sha256 built } $lines
+                Assert-Equal 'pkg==1 \|    --hash=sha256:last \|    --hash=sha256:built' ($original -join '|')
+                Assert-Throws { Add-MutRequirementHash -Lines $lines -Name pkg -Sha256 built } -MessagePattern 'no hashed requirement for pkg'
+            }
     }
 }
 

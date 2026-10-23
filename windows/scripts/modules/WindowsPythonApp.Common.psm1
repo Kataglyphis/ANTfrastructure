@@ -213,23 +213,32 @@ function Get-LockSdist {
     [pscustomobject]@{ Url = $sdist.Groups['url'].Value; Sha256 = $sdist.Groups['sha'].Value }
 }
 
-# -Lines with one more --hash on -Name's requirement, so a hash-checked install accepts the wheel built here.
+function Get-RequirementLineGroup {
+    param([Parameter(Mandatory)][string[]]$Lines)
+    $group = [Collections.Generic.List[string]]::new()
+    foreach ($line in $Lines) {
+        if ($group.Count -gt 0 -and $line -notmatch '^\s+--hash=') {
+            Write-Output -NoEnumerate -InputObject $group.ToArray()
+            $group.Clear()
+        }
+        $group.Add($line)
+    }
+    if ($group.Count -gt 0) { Write-Output -NoEnumerate -InputObject $group.ToArray() }
+}
+
+# Hash groups retain their original bytes except the continued final hash and the inserted wheel hash.
 function Add-RequirementHash {
     [OutputType([string[]])]
     param([Parameter(Mandatory)][string[]]$Lines, [Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$Sha256)
     $out = [Collections.Generic.List[string]]::new()
-    $inside = $false
     $added = $false
-    for ($i = 0; $i -lt $Lines.Count; $i++) {
-        $line = $Lines[$i]
-        if ($line -match "^$([regex]::Escape($Name))==") { $inside = $true }
-        elseif ($inside -and $line -notmatch '^\s+--hash=') { $inside = $false }
-        $last = $inside -and $line -match '^\s+--hash=' -and ($i + 1 -ge $Lines.Count -or $Lines[$i + 1] -notmatch '^\s+--hash=')
-        if ($last) {
-            $out.Add($line.TrimEnd(' ', '\') + ' \')
+    foreach ($group in @(Get-RequirementLineGroup -Lines $Lines)) {
+        if ($group.Count -gt 1 -and $group[0] -match "^$([regex]::Escape($Name))==") {
+            $group[-1] = $group[-1].TrimEnd(' ', '\') + ' \'
+            $out.AddRange([string[]]$group)
             $out.Add("    --hash=sha256:$Sha256")
             $added = $true
-        } else { $out.Add($line) }
+        } else { $out.AddRange([string[]]$group) }
     }
     if (-not $added) { throw "no hashed requirement for $Name to add the built wheel's hash to" }
     return [string[]]$out

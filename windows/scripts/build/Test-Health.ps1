@@ -58,33 +58,26 @@ Check "python --version" {
     if ($LASTEXITCODE -ne 0) { throw "python --version failed: $v" }
 }
 
-# FFmpeg -- prefer $env:FFMPEG_BIN, fall back to Get-Command (env-driven, no hardcoded C:\runtime\ffmpeg\bin).
-if ($hcCross) {
-    Write-Host '[SKIP] ffmpeg --version (payload execution; ffmpeg.exe is aarch64 on this lane)'
-} else {
-    Check "ffmpeg --version" {
-        $ffmpegExe = Resolve-ToolPath -BinEnvVar 'FFMPEG_BIN' -ExeName 'ffmpeg.exe'
-        if (-not $ffmpegExe) { throw 'ffmpeg.exe not found (FFMPEG_BIN env var unset and ffmpeg.exe not on PATH)' }
-        $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
-        $v = & $ffmpegExe -version 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "ffmpeg -version failed (exit code [$LASTEXITCODE]): $v" }
-        if (-not $v) { throw "ffmpeg not found or failed" }
+function Invoke-HealthToolVersion {
+    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][string]$BinEnvVar,
+        [Parameter(Mandatory)][string]$ExeName, [Parameter(Mandatory)][string]$VersionArgument, [switch]$Cross)
+    if ($Cross) {
+        Write-Host "[SKIP] $Label (payload execution; $ExeName is aarch64 on this lane)"
+        return
+    }
+    Check $Label {
+        $executable = Resolve-ToolPath -BinEnvVar $BinEnvVar -ExeName $ExeName
+        if (-not $executable) { throw "$ExeName not found ($BinEnvVar env var unset and $ExeName not on PATH)" }
+        $global:LASTEXITCODE = $null
+        $version = & $executable $VersionArgument 2>&1
+        $toolName = [IO.Path]::GetFileNameWithoutExtension($ExeName)
+        if ($LASTEXITCODE -ne 0) { throw "$toolName $VersionArgument failed (exit code [$LASTEXITCODE]): $version" }
+        if (-not $version) { throw "$toolName not found or failed" }
     }
 }
 
-# GStreamer -- prefer $env:GSTREAMER_BIN, fall back to Get-Command.
-if ($hcCross) {
-    Write-Host '[SKIP] gst-launch-1.0 --version (payload execution; gst-launch-1.0.exe is aarch64 on this lane)'
-} else {
-    Check "gst-launch-1.0 --version" {
-        $gstLaunch = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-launch-1.0.exe'
-        if (-not $gstLaunch) { throw 'gst-launch-1.0.exe not found (GSTREAMER_BIN env var unset and gst-launch-1.0.exe not on PATH)' }
-        $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop below
-        $v = & $gstLaunch --version 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "gst-launch-1.0 --version failed (exit code [$LASTEXITCODE]): $v" }
-        if (-not $v) { throw "gst-launch-1.0 not found or failed" }
-    }
-}
+Invoke-HealthToolVersion -Label 'ffmpeg --version' -BinEnvVar FFMPEG_BIN -ExeName ffmpeg.exe -VersionArgument '-version' -Cross:$hcCross
+Invoke-HealthToolVersion -Label 'gst-launch-1.0 --version' -BinEnvVar GSTREAMER_BIN -ExeName gst-launch-1.0.exe -VersionArgument '--version' -Cross:$hcCross
 
 # One plugin contract shared with the build gate and smoke test; a miss is reported but must not flap a running container.
 $gstInspect = Resolve-ToolPath -BinEnvVar 'GSTREAMER_BIN' -ExeName 'gst-inspect-1.0.exe'
@@ -115,20 +108,13 @@ foreach ($gstPlugin in $requiredGstPlugins) {
     else { Write-Host "[FAIL] gst-plugin $gstPlugin MISSING - this image is incomplete (mandatory integration)" }
 }
 
-# CMake
-Check "cmake --version" {
-    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop above
-    $v = & cmake --version 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "cmake --version failed (exit code [$LASTEXITCODE]): $v" }
-    if (-not $v) { throw "cmake not found" }
-}
-
-# clang-cl
-Check "clang-cl --version" {
-    $global:LASTEXITCODE = $null   # see stale-LASTEXITCODE note at the gst-plugin loop above
-    $v = & clang-cl --version 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "clang-cl --version failed (exit code [$LASTEXITCODE]): $v" }
-    if (-not $v) { throw "clang-cl not found" }
+foreach ($hostTool in 'cmake', 'clang-cl') {
+    Check "$hostTool --version" {
+        $global:LASTEXITCODE = $null
+        $version = & $hostTool --version 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "$hostTool --version failed (exit code [$LASTEXITCODE]): $version" }
+        if (-not $version) { throw "$hostTool not found" }
+    }
 }
 
 if ($failed) { exit 1 }
