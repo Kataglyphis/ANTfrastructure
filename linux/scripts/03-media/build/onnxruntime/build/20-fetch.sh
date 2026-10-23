@@ -6,14 +6,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/lib/common.sh"
 
+_fetch_clone_if_missing() {
+  local label="$1" version="$2" repository="$3" directory="$4" existing_message="${5:-}"
+  if [ -d "$directory" ]; then
+    [ -z "$existing_message" ] || info "$existing_message"
+    return 0
+  fi
+  info "Cloning $label $version into $directory"
+  retry 3 10 "$label git clone" git clone --branch "$version" --depth 1 "$repository" "$directory"
+}
+
 parse_common_args "$@"
 detect_jobs
 
 # ONNX Runtime source
-if [ ! -d "${ORT_SRC_DIR}" ]; then
-  info "Cloning ONNX Runtime ${ORT_VERSION} into ${ORT_SRC_DIR}"
-  retry 3 10 "ONNX Runtime git clone" git clone --branch "${ORT_VERSION}" --depth 1 "${ORT_REPO}" "${ORT_SRC_DIR}"
-fi
+_fetch_clone_if_missing "ONNX Runtime" "${ORT_VERSION}" "${ORT_REPO}" "${ORT_SRC_DIR}"
 
 cd "${ORT_SRC_DIR}"
 
@@ -22,13 +29,9 @@ retry 3 10 "ONNX Runtime submodule update" git submodule update --init --recursi
 
 # GenAI source
 if [[ "${BUILD_GENAI}" == "true" ]]; then
-  if [ ! -d "${GENAI_SRC_DIR}" ]; then
-    info "Cloning ONNX Runtime GenAI ${GENAI_VERSION} into ${GENAI_SRC_DIR}"
-    retry 3 10 "ONNX Runtime GenAI git clone" git clone --branch "${GENAI_VERSION}" --depth 1 "${GENAI_REPO}" "${GENAI_SRC_DIR}"
-  else
-    info "GenAI source directory exists at ${GENAI_SRC_DIR}"
-  fi
-  
+  _fetch_clone_if_missing "ONNX Runtime GenAI" "${GENAI_VERSION}" "${GENAI_REPO}" "${GENAI_SRC_DIR}" \
+    "GenAI source directory exists at ${GENAI_SRC_DIR}"
+
   cd "${GENAI_SRC_DIR}"
   git submodule sync --recursive || true
   git submodule update --init --recursive

@@ -674,15 +674,45 @@ ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
 }
 
+# The public help layouts differ, so callers supply the original description column.
+runtime_usage_description() {
+  local key="$1" profile="${2:-runtime}" description
+  case "$key" in
+    '--target-arches LIST') description='Comma-separated target list (default: amd64,arm64,riscv64)' ;;
+    '--architectures LIST') description='Alias for --target-arches' ;;
+    --parallel-archs) description='Build per-architecture images in parallel' ;;
+    '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc, 4 if unknown)' ; [ "$profile" != sdk ] || description='Max concurrent arch builds (default: nproc)' ;;
+    NERDCTL_BIN) description='nerdctl executable to use' ;;
+    TARGET_ARCHES) description='Comma-separated architecture list' ; [ "$profile" != sdk ] || description='Comma-separated target list' ;;
+    TARGET_ARCH) description='Alias for TARGET_ARCHES' ;;
+    ARCHITECTURES) description='Alias for TARGET_ARCHES' ;;
+    USE_FAST_UBUNTU_MIRROR) description='Set to true to replace archive/security/ports Ubuntu mirrors' ;;
+    FAST_UBUNTU_MIRROR_URL) description='Mirror URL used when the fast mirror is enabled' ;;
+    FAST_UBUNTU_PORTS_MIRROR_URL) description='Optional ports mirror URL used when the fast mirror is enabled' ;;
+    *) printf 'Unknown shared help row: %s\n' "$key" >&2; return 1 ;;
+  esac
+  printf '%s' "$description"
+}
+
+runtime_usage_row() {
+  local key="$1" column="$2" description padding
+  description="$(runtime_usage_description "$key" "${3:-runtime}")" || return 1
+  padding=$((column - 2 - ${#key}))
+  [ "$padding" -gt 0 ] || padding=1
+  printf '  %s%*s%s\n' "$key" "$padding" '' "$description"
+}
+
 # Options both runtime orchestrators document; they live here because this library handles them.
 runtime_shared_usage_options() {
   cat <<'EOF'
   --image-prefix TAG            Prefix for built wrapper image tags
   --dry-run                    Print build commands without executing them
-  --parallel-archs              Build per-architecture images in parallel
-  --max-parallel-archs N        Max concurrent arch builds (default: nproc, 4 if unknown)
-  --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
-  --architectures LIST          Alias for --target-arches
+EOF
+  runtime_usage_row --parallel-archs 32 runtime
+  runtime_usage_row '--max-parallel-archs N' 32 runtime
+  runtime_usage_row '--target-arches LIST' 32 runtime
+  runtime_usage_row '--architectures LIST' 32 runtime
+  cat <<'EOF'
   --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
   --artifact-build-mode MODE    Artifact source mode: cross or native (default: cross)
   --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
@@ -700,11 +730,15 @@ EOF
 runtime_shared_usage_env_overrides() {
   cat <<'EOF'
 Environment overrides:
-  NERDCTL_BIN                  nerdctl executable to use
+EOF
+  runtime_usage_row NERDCTL_BIN 31 runtime
+  cat <<'EOF'
   BUILDKIT_HOST                Optional BuildKit socket/address passed to nerdctl build
-  TARGET_ARCHES                Comma-separated architecture list
-  TARGET_ARCH                  Alias for TARGET_ARCHES
-  ARCHITECTURES                Alias for TARGET_ARCHES
+EOF
+  runtime_usage_row TARGET_ARCHES 31 runtime
+  runtime_usage_row TARGET_ARCH 31 runtime
+  runtime_usage_row ARCHITECTURES 31 runtime
+  cat <<'EOF'
   RUNTIME_USE_LOCAL_CONTEXT_CHAIN
                                 true/false/auto (default: auto)
   RUNTIME_CONTEXT_ROOT         Temporary directory root for local stage handoff
@@ -718,9 +752,11 @@ Environment overrides:
   ENABLE_AMD                   Optional accelerator flag passed to package/torch/wrapper builds
   ONNX_PACKAGE                 Optional torch ONNX package override
   PYTORCH_EXTRA                Optional torch PyTorch extra override
-  USE_FAST_UBUNTU_MIRROR       Set to true to replace archive/security/ports Ubuntu mirrors
-  FAST_UBUNTU_MIRROR_URL       Mirror URL used when the fast mirror is enabled
-  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
+EOF
+  runtime_usage_row USE_FAST_UBUNTU_MIRROR 31 runtime
+  runtime_usage_row FAST_UBUNTU_MIRROR_URL 31 runtime
+  runtime_usage_row FAST_UBUNTU_PORTS_MIRROR_URL 31 runtime
+  cat <<'EOF'
   WRAPPER_SMOKE_GATE          1 (default) = run the wrapper-smoke gate after
                                 package build; 0 = skip
   RUNTIME_WHEELS_SOURCE        Where the wrapper's /opt/wheels comes from: auto

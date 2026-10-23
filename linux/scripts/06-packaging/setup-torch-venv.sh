@@ -181,6 +181,16 @@ _assert_ffmpeg_so_closure() {
   fi
 }
 
+_torch_clear_unmounted_apt_lists() {
+  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+}
+
+_torch_write_missing_marker() {
+  local arch="$1" reason="$2"
+  mkdir -p "${VENV}" 2>/dev/null || true
+  printf '%s: %s\n' "${arch}" "${reason}" > "${VENV}/.torch-missing" 2>/dev/null || true
+}
+
 setup_torch_deps() {
   cross_skip "torch environment assembly" && return 0
 
@@ -193,7 +203,7 @@ setup_torch_deps() {
   _assert_ffmpeg_so_closure
 
   # A cache mount here: wiping it saves nothing and costs sibling arches a re-download.
-  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+  _torch_clear_unmounted_apt_lists
 }
 
 install_riscv64_runtime_libs() {
@@ -201,8 +211,7 @@ install_riscv64_runtime_libs() {
   # The riscv64 torch links libsleef.so.3 dynamically and is never auditwheel-repaired.
   apt-get install -y --no-install-recommends libsleef3 \
     || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
-  # Skip the wipe on a cache mount.
-  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+  _torch_clear_unmounted_apt_lists
 }
 
 torch_wheel_missing_fallback() {
@@ -227,9 +236,7 @@ torch_wheel_missing_fallback() {
     echo "WARNING: cv2 not available (cross-compiled OpenCV may lack Python bindings for riscv64)"
   fi
   # The sentinel smoke-runtime-image.sh surfaces, so a torch-less image cannot pass unnoticed.
-  mkdir -p "${VENV}" 2>/dev/null || true
-  printf '%s: no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped\n' \
-    "${arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
+  _torch_write_missing_marker "${arch}" 'no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped'
   {
     echo "############################################################"
     echo "WARNING: SHIPPING ${arch} RUNTIME IMAGE WITHOUT PYTORCH"
@@ -317,9 +324,7 @@ verify_torch_import_or_fail() {
   # Name the real import error, from the same neutral dir.
   _import_err="$(cd / && "${VENV}/bin/python" -c 'import torch' 2>&1 || true)"
   if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
-    mkdir -p "${VENV}" 2>/dev/null || true
-    printf '%s: torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1\n' \
-      "${host_arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
+    _torch_write_missing_marker "${host_arch}" 'torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1'
     echo "WARNING: torch not importable but ALLOW_TORCHLESS_RUNTIME=1 -- shipping torch-less (sentinel written)" >&2
     return 0
   fi

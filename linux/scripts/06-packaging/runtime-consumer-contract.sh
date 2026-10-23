@@ -1,6 +1,27 @@
 #!/usr/bin/env bash
 # Keep consumer failure symptoms together so diagnostics name the broken consumer workflow.
 
+# Calls stay unconditional so strict lookup/printf failures retain their original shell behavior.
+_consumer_collect_required_facts() {
+  local _ccrf_probe="$1"
+  local -n _ccrf_verdict="$2"
+  local _ccrf_row="$3" _ccrf_message="$4" _ccrf_destination _ccrf_kind _ccrf_key _ccrf_value _ccrf_policy _ccrf_missing=0
+  shift 4
+  _ccrf_verdict="continue"
+  while [ "$#" -gt 0 ]; do
+    _ccrf_destination="$1"; _ccrf_kind="$2"; _ccrf_key="$3"; _ccrf_policy="$4"
+    shift 4
+    _ccrf_value="$(_consumer_contract_fact "${_ccrf_probe}" "${_ccrf_kind}" "${_ccrf_key}")"
+    printf -v "${_ccrf_destination}" '%s' "${_ccrf_value}"
+    if [ "${_ccrf_policy}" = required ] && [ -z "${_ccrf_value}" ]; then _ccrf_missing=1; fi
+  done
+  if [ "${_ccrf_missing}" = 1 ]; then
+    printf 'NOFACT %s %s' "${_ccrf_row}" "${_ccrf_message}"
+    _ccrf_verdict=$?
+  fi
+  return 0
+}
+
 _consumer_contract_symptom() {
   local -A symptoms=(
     [ccache-dir]='the cache lands in the consumer checkout and flatpak-builder aborts: "Can'"'"'t initialize ccache use: Failed to set permissions of .../ccache.conf: Operation not permitted"'

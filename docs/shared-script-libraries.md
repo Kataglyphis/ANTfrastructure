@@ -1804,3 +1804,39 @@ Test companions share fixture construction and shell invocation context, while
 expected output, exit statuses and filesystem receipts remain independent of the
 production helpers. `runtime-flow-fixtures.sh` checks shared preparation wiring;
 its own positive and negative fixtures ensure a missing step fails the assertion.
+
+### Fetch and runtime validation lifecycles
+
+ONNX fetch uses a private clone-if-missing helper in `20-fetch.sh`. Both
+checkouts keep shallow branch cloning with three attempts and ten-second retry
+spacing. ORT retains retried submodule commands; GenAI retains one-shot commands
+and its existing-directory message. Every cwd change and requirements/emsdk step
+remains caller-owned. Frozen offline receipts compare command boundaries, output
+and failures; they do not execute Git, downloads or SDK setup.
+
+`validate-media-runtime.sh` shares complete-line unresolved-library collection
+and counted summary rendering. Binary scans still accept dangling symlinks while
+plugin scans select regular `*.so` paths and live links. Empty records are skipped;
+duplicates, whitespace and partial output before resolver failure are retained.
+The resolver's failure remains advisory. Repair advice, source-built denial
+counters and final fatal gates stay in their original callers.
+
+`runtime-consumer-contract.sh` owns the ordered required-fact guard used by
+appimagetool, JDK and Android verdicts. It uses the original first-match fact
+reader and preserves exact values. Callers retain their diagnostic priority and
+failure status; Android retains its environment reads but skips platform-tools
+and PATH fact checks after an explicit payload-off marker. The helper already travels with the smoke script; no new production
+companion or image closure is required.
+
+Runtime and SDK help share row descriptions and padding in
+`runtime-build-fns.sh`. Callers retain row order, description columns, wrapping
+and profile-specific wording. Complete output receipts cover both runtime
+entrypoints and SDK help. The environment contract renders runtime help before
+checking its names against runtime consumers; documentation functions and SDK-only
+references cannot make a dead runtime override appear live.
+
+Torch venv setup shares best-effort missing-marker writes and cache-aware apt-list
+cleanup inside `setup-torch-venv.sh`. Caller-specific marker reasons, neutral-cwd
+imports, OpenCV fallback, package choices and warning/fatal policies remain local.
+Offline lifecycle receipts cover failed marker operations and mounted, unmounted
+and failed mount probes without running apt or installing packages.

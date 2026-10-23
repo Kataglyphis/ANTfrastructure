@@ -21090,5 +21090,317 @@
   "replace": "    t_assert_eq \"${expected}\" \"${expected}\" \"${entry} preparation order\"",
   "test": "bash linux/scripts/tests/test-runtime-flow-preparation.sh",
   "why": "The shared wiring assertion rejects a missing step rather than merely counting assertions."
+ },
+ {
+  "id": "lib.onnx-fetch-existing-checkout",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "if [ -d \"$directory\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "existing source trees must not be cloned over and only GenAI reports that it already exists"
+ },
+ {
+  "id": "lib.onnx-fetch-clone-ref",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "--branch \"$version\"",
+  "replace": "--branch wrong-ref",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "each caller must retain its distinct requested source ref"
+ },
+ {
+  "id": "lib.onnx-fetch-clone-repository",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "--depth 1 \"$repository\" \"$directory\"",
+  "replace": "--depth 1 \"$directory\" \"$repository\"",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "the clone repository and destination must retain their argument positions"
+ },
+ {
+  "id": "lib.onnx-fetch-retry-policy",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "retry 3 10 \"$label git clone\"",
+  "replace": "retry 1 1 \"$label git clone\"",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "both clone operations retain three attempts, ten seconds and caller-specific diagnostics"
+ },
+ {
+  "id": "lib.onnx-fetch-optional-genai",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "if [[ \"${BUILD_GENAI}\" == \"true\" ]]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "disabled GenAI must not clone, synchronize or update a checkout"
+ },
+ {
+  "id": "lib.onnx-fetch-ort-sync-advisory",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "retry 3 10 \"ONNX Runtime submodule sync\" git submodule sync --recursive || true",
+  "replace": "retry 3 10 \"ONNX Runtime submodule sync\" git submodule sync --recursive",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "an ORT sync failure must not abort its required submodule update"
+ },
+ {
+  "id": "lib.onnx-fetch-genai-sync-advisory",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "  git submodule sync --recursive || true",
+  "replace": "  git submodule sync --recursive",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "GenAI sync failure remains advisory independently of ORT retry behavior"
+ },
+ {
+  "id": "lib.onnx-fetch-genai-update-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "  git submodule update --init --recursive",
+  "replace": "  git submodule update --init --recursive || true",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "a failed required GenAI submodule update must stop before returning to ORT"
+ },
+ {
+  "id": "lib.onnx-fetch-return-to-ort",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "  cd \"${ORT_SRC_DIR}\"\nfi",
+  "replace": "  :\nfi",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "post-GenAI requirements must execute from the ORT checkout"
+ },
+ {
+  "id": "lib.onnx-fetch-clone-failure-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/20-fetch.sh",
+  "find": "retry 3 10 \"$label git clone\" git clone --branch \"$version\" --depth 1 \"$repository\" \"$directory\"",
+  "replace": "retry 3 10 \"$label git clone\" git clone --branch \"$version\" --depth 1 \"$repository\" \"$directory\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-fetch-receipts.sh",
+  "why": "a failed clone must retain its status before any checkout-specific operation runs"
+ },
+ {
+  "id": "lib.runtime-needed-empty-lines",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "    [ -n \"${so_name}\" ] || continue\n    if [ \"${diagnostics}\"",
+  "replace": "    : \"${so_name}\"\n    if [ \"${diagnostics}\"",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "Only nonempty complete SONAME records contribute, while duplicates and whitespace remain intact."
+ },
+ {
+  "id": "lib.runtime-needed-diagnostics",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "if [ \"${diagnostics}\" = yes ]; then echo \"  MISSING:",
+  "replace": "if [ \"${diagnostics}\" = no ]; then echo \"  MISSING:",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "Binary scans retain individual missing-name stderr and plugin scans retain their aggregate-only diagnostics."
+ },
+ {
+  "id": "lib.runtime-needed-resolver-arguments",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "done < <(elf_unresolved_needed \"${binary}\" \"${LIB_DIRS[@]}\")",
+  "replace": "done < <(elf_unresolved_needed \"${binary}\")",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "Every selected binary retains all ordered search roots, including spaces and duplicates."
+ },
+ {
+  "id": "lib.runtime-needed-complete-lines",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "  while IFS= read -r so_name; do\n    [ -n \"${so_name}\" ] || continue\n    if [ \"${diagnostics}\"",
+  "replace": "  while IFS= read -r so_name || [ -n \"${so_name}\" ]; do\n    [ -n \"${so_name}\" ] || continue\n    if [ \"${diagnostics}\"",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "The shared collector preserves the original complete-line-only read contract."
+ },
+ {
+  "id": "lib.runtime-needed-advisory-resolver",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "  done < <(elf_unresolved_needed \"${binary}\" \"${LIB_DIRS[@]}\")\n}",
+  "replace": "  done < <(elf_unresolved_needed \"${binary}\" \"${LIB_DIRS[@]}\")\n  elf_unresolved_needed \"${binary}\" \"${LIB_DIRS[@]}\" >/dev/null\n}",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "A failing NEEDED resolver remains advisory after emitting useful partial records, even under active errexit."
+ },
+ {
+  "id": "lib.runtime-needed-summary-count",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "echo \"=== ${severity}: $# ${description} ===\"",
+  "replace": "echo \"=== ${severity}: $(( $# + 1 )) ${description} ===\"",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "Each summary count equals its complete emitted name list without changing duplicate-name semantics."
+ },
+ {
+  "id": "lib.runtime-needed-denied-severity",
+  "target": "linux/scripts/03-media/runtime/validate-media-runtime.sh",
+  "find": "_vmr_report_missing FAIL 'source-built dependencies unresolved (apt repair denied)'",
+  "replace": "_vmr_report_missing WARNING 'source-built dependencies unresolved (apt repair denied)'",
+  "test": "bash linux/scripts/tests/test-runtime-needed-verdicts.sh",
+  "why": "Source-built unresolved dependencies keep their distinct failing summary before the final denial gate."
+ },
+ {
+  "id": "lib.consumer-required-facts-missing-evidence",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "then _ccrf_missing=1; fi",
+  "replace": "then :; fi",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Missing required evidence must produce NOFACT before tool-specific BAD/OK verdicts."
+ },
+ {
+  "id": "lib.consumer-required-facts-value-binding",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "    printf -v \"${_ccrf_destination}\" '%s' \"${_ccrf_value}\"",
+  "replace": "    printf -v \"${_ccrf_destination}\" '%s' '' ",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Ordered collection must retain exact fact bytes in the caller-owned values."
+ },
+ {
+  "id": "lib.consumer-required-facts-print-status",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "    _ccrf_verdict=$?",
+  "replace": "    _ccrf_verdict=0",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Failed NOFACT output preserves its status except the original Android early-return policy."
+ },
+ {
+  "id": "lib.consumer-required-facts-continue-result",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "  _ccrf_verdict=\"continue\"",
+  "replace": "  _ccrf_verdict=0",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Complete evidence must continue to the actual consumer verdict rather than return silently."
+ },
+ {
+  "id": "lib.consumer-required-facts-optional-environment",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "path ENV appimagetool optional readable FACT appimagetool-readable required",
+  "replace": "path ENV appimagetool required readable FACT appimagetool-readable required",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "An absent executable location is BAD; optional environment absence must not become missing probe evidence."
+ },
+ {
+  "id": "lib.consumer-required-facts-android-lazy-evidence",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  if [ \"${required_verdict}\" != continue ]; then return 0; fi",
+  "replace": "  if false; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Missing payload-off evidence stops Android before any ENV or payload lookup."
+ },
+ {
+  "id": "lib.consumer-required-facts-jdk-complete-evidence",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "onpath FACT java-on-path required javac FACT javac required",
+  "replace": "onpath FACT java-on-path required",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Both JDK facts are mandatory and retain their ordered lookups before any verdict."
+ },
+ {
+  "id": "lib.consumer-required-facts-first-match",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  printf '%s\\n' \"$1\" | sed -n \"s/^$2 $3 //p\" | head -1",
+  "replace": "  printf '%s\\n' \"$1\" | sed -n \"s/^$2 $3 //p\" | tail -1",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "The first matching report line wins, including an empty first fact followed by a later value."
+ },
+ {
+  "id": "lib.consumer-required-facts-unconditional-collection",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  _consumer_collect_required_facts \"$2\" required_verdict \"${row}\" 'no FACT java-on-path / FACT javac line' \\\n    home ENV java-home optional onpath FACT java-on-path required javac FACT javac required",
+  "replace": "  if _consumer_collect_required_facts \"$2\" required_verdict \"${row}\" 'no FACT java-on-path / FACT javac line' \\\n    home ENV java-home optional onpath FACT java-on-path required javac FACT javac required; then :; fi",
+  "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
+  "why": "Collection remains unconditional so direct strict lookup failures are not suppressed by if."
+ },
+ {
+  "id": "lib.runtime-sdk-rendered-knob-collection",
+  "target": "linux/scripts/tests/test-env-contract.sh",
+  "find": "| tr -d ' ' | sort -u)",
+  "replace": "| tr -d ' ' | sort -u | grep -v '^DOC_ONLY_KNOB$')",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "knobs emitted through the catalog must enter the independent runtime consumption verdict"
+ },
+ {
+  "id": "lib.runtime-sdk-catalog-is-not-consumption",
+  "target": "linux/scripts/tests/test-env-contract.sh",
+  "find": "runtime_shared_usage_env_overrides|runtime_usage_row|runtime_usage_description",
+  "replace": "runtime_shared_usage_env_overrides|runtime_usage_row",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "documentation catalog references must not count as genuine runtime knob use"
+ },
+ {
+  "id": "lib.runtime-sdk-sdk-is-not-runtime-consumption",
+  "target": "linux/scripts/tests/test-env-contract.sh",
+  "find": "  cat \"${SCRIPTS}/lib-runtime-wheels.sh\"",
+  "replace": "  cat \"${SCRIPTS}/lib-runtime-wheels.sh\"\n  cat \"${SCRIPTS}/build-sdk-artifacts.sh\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "SDK-only use must not rescue an unconsumed runtime override"
+ },
+ {
+  "id": "lib.runtime-sdk-exact-help-padding",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "padding=$((column - 2 - ${#key}))",
+  "replace": "padding=$((column - 1 - ${#key}))",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "shared help keeps the exact original caller-specific columns"
+ },
+ {
+  "id": "lib.runtime-sdk-sdk-specific-wording",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "description='Max concurrent arch builds (default: nproc)'",
+  "replace": "description='Max concurrent arch builds (default: nproc, 4 if unknown)'",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "SDK help retains its own documented default wording instead of adopting runtime text"
+ },
+ {
+  "id": "lib.runtime-sdk-sdk-shared-delegation",
+  "target": "linux/scripts/build-sdk-artifacts.sh",
+  "find": "runtime_usage_row --parallel-archs 25 sdk",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "SDK help must actually render its shared parallel option"
+ },
+ {
+  "id": "lib.runtime-sdk-runtime-env-delegation",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "runtime_usage_row NERDCTL_BIN 31 runtime",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "runtime help must retain every shared environment row after catalog extraction"
+ },
+ {
+  "id": "lib.runtime-sdk-unknown-help-row-status",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "return 1 ;;\n  esac\n  printf '%s' \"$description\"",
+  "replace": "return 0 ;;\n  esac\n  printf '%s' \"$description\"",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "unknown catalog keys must fail rather than render an invented successful help row"
+ },
+ {
+  "id": "lib.torch-setup-marker-write-advisory",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "printf '%s: %s\\n' \"${arch}\" \"${reason}\" > \"${VENV}/.torch-missing\" 2>/dev/null || true",
+  "replace": "printf '%s: %s\\n' \"${arch}\" \"${reason}\" > \"${VENV}/.torch-missing\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
+  "why": "Marker writes retain their best-effort status for both absent-wheel and explicitly allowed import failures."
+ },
+ {
+  "id": "lib.torch-setup-marker-mkdir-advisory",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "  mkdir -p \"${VENV}\" 2>/dev/null || true\n  printf '%s: %s\\n' ",
+  "replace": "  mkdir -p \"${VENV}\" 2>/dev/null\n  printf '%s: %s\\n' ",
+  "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
+  "why": "An existing venv still receives the marker when mkdir returns a best-effort error."
+ },
+ {
+  "id": "lib.torch-setup-mounted-lists-preserved",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*",
+  "replace": "mountpoint -q /var/lib/apt && rm -rf /var/lib/apt/lists/*",
+  "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
+  "why": "Shared apt cache mounts retain lists and unmounted lists are cleaned in both setup paths."
+ },
+ {
+  "id": "lib.torch-setup-cleanup-status",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*",
+  "replace": "mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/* || true",
+  "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
+  "why": "Cleanup errors retain the existing fatal status under active errexit."
+ },
+ {
+  "id": "lib.torch-setup-marker-bytes",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "printf '%s: %s\\n' \"${arch}\" \"${reason}\"",
+  "replace": "printf '%s %s\\n' \"${arch}\" \"${reason}\"",
+  "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
+  "why": "The shared marker writer retains each caller exact architecture/reason payload and newline."
  }
 ]
