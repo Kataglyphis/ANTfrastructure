@@ -5,6 +5,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 errors=0
 
+# Detailed failures record their count after probe diagnostics so those probes retain their errexit behavior.
+_mirror_consistency_error() {
+  if [ "$#" -gt 0 ]; then printf 'ERROR: %s\n' "$1" >&2; fi
+  errors=$((errors + 1))
+}
+
 echo "=== Ubuntu mirror consistency check ==="
 
 DOCKERFILES=(
@@ -29,16 +35,14 @@ for df in "${DOCKERFILES[@]}"; do
 
   for arg in "${REQUIRED_ARGS[@]}"; do
     if ! grep -q "ARG ${arg}" "$df_path"; then
-      echo "ERROR: ${df} is missing ARG ${arg}" >&2
-      errors=$((errors + 1))
+      _mirror_consistency_error "${df} is missing ARG ${arg}"
     fi
   done
 
   # Mirror RUN is only required in Dockerfile.base (downstream images inherit it)
   if [ "${df}" = "linux/Dockerfile.base" ]; then
     if ! grep -q 'use-fast-ubuntu-mirror.sh' "$df_path"; then
-      echo "ERROR: ${df} is missing use-fast-ubuntu-mirror.sh RUN" >&2
-      errors=$((errors + 1))
+      _mirror_consistency_error "${df} is missing use-fast-ubuntu-mirror.sh RUN"
     fi
   fi
 done
@@ -52,11 +56,9 @@ bootstrap_body="$(awk '/^bootstrap_ca\(\)/,/^}/' "${BASE_IMAGE_SH}")"
 install_ln="$(printf '%s\n' "${bootstrap_body}" | { grep -n 'apt-get install -y --no-install-recommends ca-certificates' || true; } | head -1 | cut -d: -f1)"
 restore_ln="$(printf '%s\n' "${bootstrap_body}" | { grep -n '^  restore_mirror_https_scheme$' || true; } | head -1 | cut -d: -f1)"
 if [ -z "${restore_ln}" ]; then
-  echo "ERROR: bootstrap_ca does not call restore_mirror_https_scheme — the CA-bootstrap http downgrade is never undone" >&2
-  errors=$((errors + 1))
+  _mirror_consistency_error "bootstrap_ca does not call restore_mirror_https_scheme — the CA-bootstrap http downgrade is never undone"
 elif [ -z "${install_ln}" ] || [ "${restore_ln}" -le "${install_ln}" ]; then
-  echo "ERROR: restore_mirror_https_scheme must run AFTER the ca-certificates install in bootstrap_ca (restore@${restore_ln:-?} vs install@${install_ln:-?})" >&2
-  errors=$((errors + 1))
+  _mirror_consistency_error "restore_mirror_https_scheme must run AFTER the ca-certificates install in bootstrap_ca (restore@${restore_ln:-?} vs install@${install_ln:-?})"
 fi
 
 # Run the real downgrade and restore on a fixture; the sources must end on https.
@@ -72,20 +74,18 @@ UBUNTU_SOURCES_ROOT="${fixture_root}" \
   bash "${FAST_MIRROR_SH}" >/dev/null
 
 if ! grep -q '^URIs: http://mirror.invalid/ubuntu/$' "${fixture_root}/etc/apt/sources.list.d/ubuntu.sources"; then
-  echo "ERROR: fixture precondition failed — bootstrap-style downgrade did not land (use-fast-ubuntu-mirror.sh behavior changed?)" >&2
-  errors=$((errors + 1))
+  _mirror_consistency_error "fixture precondition failed — bootstrap-style downgrade did not land (use-fast-ubuntu-mirror.sh behavior changed?)"
 elif ! USE_FAST_UBUNTU_MIRROR=true \
        FAST_UBUNTU_MIRROR_URL=https://mirror.invalid/ubuntu/ \
        UBUNTU_SOURCES_ROOT="${fixture_root}" \
        bash "${BASE_IMAGE_SH}" restore-mirror-scheme >/dev/null; then
-  echo "ERROR: base-image.sh restore-mirror-scheme failed on the fixture" >&2
-  errors=$((errors + 1))
+  _mirror_consistency_error "base-image.sh restore-mirror-scheme failed on the fixture"
 else
   if ! grep -q '^URIs: https://mirror.invalid/ubuntu/$' "${fixture_root}/etc/apt/sources.list.d/ubuntu.sources" \
      || grep -q 'http://mirror.invalid' "${fixture_root}/etc/apt/sources.list.d/ubuntu.sources"; then
     echo "ERROR: mirror SCHEME not restored — after downgrade+restore the fixture sources are:" >&2
     sed 's/^/    /' "${fixture_root}/etc/apt/sources.list.d/ubuntu.sources" >&2
-    errors=$((errors + 1))
+    _mirror_consistency_error
   fi
 fi
 
@@ -103,7 +103,7 @@ if ! cmp -s "${fixture_root}/host.suites" "${fixture_root}/ports.suites" \
    || ! [ -s "${fixture_root}/host.suites" ]; then
   echo "ERROR: ubuntu_write_deb822_source is asymmetric for equal flags (host vs ports):" >&2
   diff -u "${fixture_root}/host.suites" "${fixture_root}/ports.suites" | sed 's/^/    /' >&2
-  errors=$((errors + 1))
+  _mirror_consistency_error
 fi
 
 # Shipped call sites must agree on the flag; tests and this file hold fixtures, free to skew.
@@ -173,8 +173,7 @@ if len(sites) > 1:
 print("OK " + next(iter(sites)))
 PYEOF
 )"; then
-  echo "ERROR: ubuntu_write_deb822_source call sites do not agree on the -security flag: ${_flag_report}" >&2
-  errors=$((errors + 1))
+  _mirror_consistency_error "ubuntu_write_deb822_source call sites do not agree on the -security flag: ${_flag_report}"
 fi
 
 if [ "$errors" -gt 0 ]; then

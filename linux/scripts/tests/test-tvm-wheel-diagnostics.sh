@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tvm-python.sh's wheel diagnostics, all of which hang on pipefail carrying the builder's rc past `| tee`.
+# Fake-builder fixtures cover pipefail, diagnostic parsing and runtime verdicts, not real TVM builds.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -79,10 +79,16 @@ chmod +x "${venv_python}"
 _bl="${_tmp}/run.log"
 _err="${_tmp}/run.err"
 
+_run_wheel_fixture() {
+  local builder_status="$1" pipefail_option="$2" stderr_file="$3"
+  _rc=0
+  ( export FAKE_RC="$builder_status"; set "$pipefail_option" pipefail; _tvm_run_wheel_build probe "${_bl}" ) \
+    >/dev/null 2>"$stderr_file" || _rc=$?
+}
+
 t_case "a FAILING wheel build propagates its own status through the tee"
 : > "${_bl}"
-_rc=0
-( export FAKE_RC=42; set -o pipefail; _tvm_run_wheel_build probe "${_bl}" ) >/dev/null 2>"${_err}" || _rc=$?
+_run_wheel_fixture 42 -o "${_err}"
 t_assert_eq "42" "${_rc}" \
   "THE regression assertion: pipefail must carry the builder's rc past tee. If this reads 0, either pipefail was dropped or the tee'd build grew an '|| true' — and every TVM diagnostic downstream is dead code"
 
@@ -91,14 +97,12 @@ t_assert_contains "$(cat "${_bl}")" "Missing dependencies" \
   "the log is the input to _tvm_wheel_missing_build_requires"
 
 t_case "a SUCCEEDING wheel build returns 0"
-_rc=0
-( export FAKE_RC=0; set -o pipefail; _tvm_run_wheel_build probe "${_bl}" ) >/dev/null 2>&1 || _rc=$?
+_run_wheel_fixture 0 -o /dev/null
 t_assert_eq "0" "${_rc}"
 
 t_case "running WITHOUT pipefail is refused loudly instead of silently lying"
 : > "${_err}"
-_rc=0
-( export FAKE_RC=42; set +o pipefail; _tvm_run_wheel_build probe "${_bl}" ) >/dev/null 2>"${_err}" || _rc=$?
+_run_wheel_fixture 42 +o "${_err}"
 t_assert_eq "97" "${_rc}" "the die stub's status — the guard must abort, not fall through"
 t_assert_contains "$(cat "${_err}")" "pipefail" \
   "the refusal must name the option, since the failure it prevents leaves no other trace"
@@ -120,20 +124,21 @@ case "${_out}" in *"NO python wheel staged"*) _v="wrong" ;; *) _v="right" ;; esa
 t_assert_eq "right" "${_v}"
 rm -f "${TVM_WHEEL_DIR}"/*.whl
 
+_runtime_verdict_fixture() {
+  prefix="${_tmp}/$1"
+  mkdir -p "${prefix}/$2"
+  : > "${prefix}/$2/$3"
+  _out="$(_verdict "${prefix}")"
+}
+
 t_case "no wheel + libtvm under lib/ -> the native-runtime claim is made and NAMES the file"
-prefix="${_tmp}/px-lib"
-mkdir -p "${prefix}/lib"
-: > "${prefix}/lib/libtvm.so"
-_out="$(_verdict "${prefix}")"
+_runtime_verdict_fixture px-lib lib libtvm.so
 t_assert_contains "${_out}" "NO python wheel staged"
 t_assert_contains "${_out}" "native runtime DOES still ship"
 t_assert_contains "${_out}" "${prefix}/lib/libtvm.so" "the claim must cite the file it verified"
 
 t_case "no wheel + libtvm under lib64/ -> still found (the lib64 layout)"
-prefix="${_tmp}/px-lib64"
-mkdir -p "${prefix}/lib64"
-: > "${prefix}/lib64/libtvm_runtime.so"
-_out="$(_verdict "${prefix}")"
+_runtime_verdict_fixture px-lib64 lib64 libtvm_runtime.so
 t_assert_contains "${_out}" "native runtime DOES still ship"
 t_assert_contains "${_out}" "${prefix}/lib64/libtvm_runtime.so"
 

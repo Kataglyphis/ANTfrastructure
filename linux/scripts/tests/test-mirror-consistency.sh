@@ -4,6 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../01-core"
+GATE_SOURCE="${1:-${CORE}/verify-ubuntu-mirror-consistency.sh}"
 DOCKERFILES="base toolchain sdk media android package torch"
 
 _work="$(mktemp -d)"
@@ -14,6 +15,7 @@ _tree() {
   local d name; d="$(mktemp -d "${_work}/tree.XXXXXX")"
   mkdir -p "${d}/linux/scripts" "${d}/linux"
   cp -r "${CORE}" "${d}/linux/scripts/01-core"
+  install -m 0755 "${GATE_SOURCE}" "${d}/linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh"
   # base-image.sh's module framework reaches outside 01-core for exactly one file.
   install -D -m 0644 "${CORE}/../02-toolchain/cmake.sh" "${d}/linux/scripts/02-toolchain/cmake.sh"
   for name in ${DOCKERFILES}; do
@@ -29,6 +31,25 @@ _tree() {
 
 _gate() { bash "$1/linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh"; }
 
+_capture_mirror_streams() {
+  local tree="$1"
+  _status=0
+  _gate "${tree}" > "${tree}/gate.stdout" 2> "${tree}/gate.stderr" || _status=$?
+  _stdout="$(cat "${tree}/gate.stdout")"
+  _stderr="$(cat "${tree}/gate.stderr")"
+}
+
+_remove_mirror_fixture_arg() {
+  sed -i "/^ARG $3$/d" "$1/linux/Dockerfile.$2"
+}
+
+_assert_mirror_failure() {
+  _capture_mirror_streams "$1"
+  t_assert_eq 1 "${_status}"
+  t_assert_contains "${_stderr}" "FAILED: $2 mirror consistency errors"
+  t_assert_eq 1 "$(t_rc grep -q '^ERROR:' <<< "${_stdout}")"
+}
+
 t_case "a consistent tree passes both halves"
 fix="$(_tree)"
 _out="$(t_out _gate "${fix}")"
@@ -37,7 +58,7 @@ t_assert_contains "${_out}" "CA-bootstrap downgrade provably restored to https"
 
 t_case "a Dockerfile missing one canonical mirror ARG fails, naming both"
 fix="$(_tree)"
-sed -i '/^ARG FAST_UBUNTU_PORTS_MIRROR_URL$/d' "${fix}/linux/Dockerfile.media"
+_remove_mirror_fixture_arg "${fix}" media FAST_UBUNTU_PORTS_MIRROR_URL
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "${_out}" "linux/Dockerfile.media is missing ARG FAST_UBUNTU_PORTS_MIRROR_URL"
@@ -110,8 +131,8 @@ t_assert_contains "${_out}" "fixture precondition failed"
 
 t_case "several errors are all reported, and the count reaches the exit code"
 fix="$(_tree)"
-sed -i '/^ARG FAST_UBUNTU_MIRROR_URL$/d' "${fix}/linux/Dockerfile.sdk"
-sed -i '/^ARG USE_FAST_UBUNTU_MIRROR$/d' "${fix}/linux/Dockerfile.package"
+_remove_mirror_fixture_arg "${fix}" sdk FAST_UBUNTU_MIRROR_URL
+_remove_mirror_fixture_arg "${fix}" package USE_FAST_UBUNTU_MIRROR
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "1" "$(t_rc _gate "${fix}")"
 t_assert_contains "${_out}" "FAILED: 2 mirror consistency errors" \
@@ -147,6 +168,8 @@ sed -i 's|  if \[ "${with_security}" = "1" \]; then|  if [ "${with_security}" = 
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "1" "$(t_rc _gate "${fix}")" "equal flags that yield unequal suite sets is the bug in the helper instead of the caller"
 t_assert_contains "${_out}" "asymmetric for equal flags"
+# A differing suite diff exits before the aggregate summary under the existing errexit policy.
+t_assert_eq 1 "$(t_rc grep -q '^FAILED:' <<< "${_out}")"
 
 t_case "a tree with no writer at all is reported, not silently green"
 fix="$(_tree)"
@@ -158,6 +181,27 @@ t_assert_ok grep -q 'command -v ubuntu_write_deb822_source' \
 _out="$(t_out _gate "${fix}")"
 t_assert_eq "1" "$(t_rc _gate "${fix}")" "a scan that finds nothing must not read as a pass"
 t_assert_contains "${_out}" "NOSITES"
+
+t_case "independent source and call-site errors accumulate on stderr"
+fix="$(_tree)"
+_remove_mirror_fixture_arg "${fix}" sdk FAST_UBUNTU_MIRROR_URL
+sed -i '/use-fast-ubuntu-mirror.sh/d' "${fix}/linux/Dockerfile.base"
+sed -i 's/^  restore_mirror_https_scheme$/  true/' "${fix}/linux/scripts/01-core/base-image.sh"
+_second_writer "${fix}" 0
+_assert_mirror_failure "${fix}" 4
+t_assert_contains "${_stderr}" 'linux/Dockerfile.sdk is missing ARG FAST_UBUNTU_MIRROR_URL'
+t_assert_contains "${_stderr}" 'missing use-fast-ubuntu-mirror.sh RUN'
+t_assert_contains "${_stderr}" 'bootstrap_ca does not call restore_mirror_https_scheme'
+t_assert_contains "${_stderr}" 'do not agree on the -security flag'
+
+t_case "detailed scheme diagnostics retain their count and stream alongside other failures"
+fix="$(_tree)"
+_remove_mirror_fixture_arg "${fix}" sdk FAST_UBUNTU_MIRROR_URL
+_remove_mirror_fixture_arg "${fix}" package USE_FAST_UBUNTU_MIRROR
+sed -i 's/^restore_mirror_https_scheme() {$/restore_mirror_https_scheme() {\n  return 0/' "${fix}/linux/scripts/01-core/base-image.sh"
+_assert_mirror_failure "${fix}" 3
+t_assert_contains "${_stderr}" 'mirror SCHEME not restored'
+t_assert_contains "${_stderr}" '    URIs: http://mirror.invalid/ubuntu/'
 
 t_case "the REAL tree is consistent today"
 t_assert_eq "0" "$(t_rc bash "${CORE}/verify-ubuntu-mirror-consistency.sh")"

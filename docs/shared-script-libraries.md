@@ -1603,3 +1603,22 @@ Lifecycle fixtures use production truthiness behavior instead of copied boolean
 tables. They track and reap their own children on exit. Offline fixtures and
 mutation checks cover these dispatch contracts; they do not prove compiler,
 container build, registry or real filesystem installation behavior.
+
+### Provenance verdicts and verification fixtures
+
+ORT and GenAI verification share hashing and indexed chain-byte comparison in
+`03-media/ort-provenance.sh`, which GenAI already sources. Each scan keeps its
+own archive rules, exemptions, counters and diagnostic suffixes. Multiple valid
+chain files with the same name remain acceptable; missing or unreadable files
+retain their previous findings. Offline fixtures exercise byte identity and
+failure cases without downloading models or building ONNX Runtime.
+
+TVM wheel fixtures share fake-builder invocation while retaining successful,
+failed and missing-pipefail paths, captured stderr and log assertions. Ancestry
+fixtures share requested-stamp execution while distinguishing missing labels,
+unreadable images and requests without a run id. No registry is contacted.
+
+The Ubuntu mirror verifier shares error emission and aggregate accounting.
+Every Dockerfile, bootstrap order, scheme and suite probe still runs, and any
+failed probe keeps the verifier red. These source checks do not test remote
+mirror availability or perform package installation.

@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux provenance and verification fixtures
+
+- Share ORT and GenAI byte-verdict logic through the existing provenance owner, retaining distinct archive and exemption policies.
+- Share TVM wheel and ancestry test execution while preserving failure statuses and every assertion.
+- Share Ubuntu mirror error aggregation; retain all probes and prove failure propagation with mutations.
+- Remove resolved duplication exemptions without changing scan coverage or frozen budgets.
+
 ## 2026-10-23 — share Linux cache, payload and lifecycle behavior
 
 - Share side-effect-free cache policy and statistics, with explicit companions in narrow compiler mounts and media copies.

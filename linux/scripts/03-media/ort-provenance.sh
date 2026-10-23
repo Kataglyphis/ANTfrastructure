@@ -16,6 +16,11 @@ _ortg_sha() {  # <file>: its sha256, or "unreadable" (a dangling link), which ma
   printf '%s\n' "${sum%% *}"
 }
 
+_ortg_chain_bytes_finding() {
+  local path="$1" hashes="$2" sfx="${3:-}" name="${1##*/}"
+  case "${hashes}" in *" $(_ortg_sha "${path}") "*) ;; *) echo "${path} is not the chain's ${name} (foreign ONNX Runtime bytes)${sfx}" ;; esac
+}
+
 _ortg_under() {  # <path> <root>...: 0 when path is a root or sits below one
   local p="$1" r
   shift
@@ -73,7 +78,7 @@ _ortg_name_finding() {  # <path> [suffix]: an ORT archive, a chain name with oth
   esac
   if [ -n "${_ORTG_SHA[${name}]:-}" ]; then
     _ORTG_COMPARED=$((_ORTG_COMPARED + 1))
-    case "${_ORTG_SHA[${name}]}" in *" $(_ortg_sha "${path}") "*) ;; *) echo "${path} is not the chain's ${name} (foreign ONNX Runtime bytes)${sfx}" ;; esac
+    _ortg_chain_bytes_finding "${path}" "${_ORTG_SHA[${name}]}" "${sfx}"
   elif _ortg_is_bin "${name}"; then
     echo "${path} is an ONNX Runtime binary the chain does not build${sfx}"
   fi

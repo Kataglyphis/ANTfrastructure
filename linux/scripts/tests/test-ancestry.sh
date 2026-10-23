@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests for the stale-ancestor guard; SC2218 off, as shellcheck 0.9.0 does not track the sourced ancestry_* functions.
+# Local ancestry fixtures cover provenance policy, not registry access or container execution.
 # shellcheck disable=SC2218
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -299,26 +299,27 @@ ancestry_recorded_annotation() { return 1; }
 ancestry_recorded_provenance repo:tag org.kataglyphis.run-id >/dev/null 2>&1
 t_assert_eq "1" "$?"
 
+_assert_requested_stamp() {
+  local expected="$1" reader_status="$2" reader_value="$3" requested="$4" status=0
+  (
+    ancestry_recorded_label() { printf '%s' "$reader_value"; return "$reader_status"; }
+    CROSS_RUN_ID="$requested" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
+  ) || status=$?
+  t_assert_eq "$expected" "$status"
+}
+
 # An inert stamp must fail the build; an unreadable image must not.
 t_case "runtime_assert_provenance_stamped FAILS when the requested label did not land"
-ancestry_recorded_label() { return 2; }
-CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
-t_assert_eq "1" "$?"
+_assert_requested_stamp 1 2 '' run-XYZ
 
 t_case "runtime_assert_provenance_stamped PASSES when the label is there"
-ancestry_recorded_label() { printf 'run-XYZ'; }
-CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
-t_assert_eq "0" "$?"
+_assert_requested_stamp 0 0 run-XYZ run-XYZ
 
 t_case "runtime_assert_provenance_stamped does NOT fail a build merely because inspect is unavailable"
-ancestry_recorded_label() { return 1; }
-CROSS_RUN_ID="run-XYZ" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
-t_assert_eq "0" "$?"
+_assert_requested_stamp 0 1 '' run-XYZ
 
 t_case "runtime_assert_provenance_stamped is inert when no run id was requested"
-ancestry_recorded_label() { return 2; }
-CROSS_RUN_ID="" runtime_assert_provenance_stamped repo:wrapper >/dev/null 2>&1
-t_assert_eq "0" "$?"
+_assert_requested_stamp 0 2 '' ''
 
 unset NERDCTL_BIN STUB_LABEL_VALUE STUB_LOCAL_DIGEST
 rm -f "${_stub_nerdctl}"

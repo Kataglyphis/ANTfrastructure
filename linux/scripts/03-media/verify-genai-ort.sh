@@ -22,19 +22,12 @@ EOF
 declare -A GENAI_ORT_CHAIN_SHA=()
 GENAI_ORT_NAMED=( \( -name '*onnxruntime*' -o -name '*_provider_factory.h' \) )
 
-# _genai_ort_sha <file>: its sha256, or "unreadable" (a dangling link), which matches no chain file.
-_genai_ort_sha() {
-  local sum
-  sum="$(sha256sum 2>/dev/null < "$1")" || sum="unreadable"
-  printf '%s\n' "${sum%% *}"
-}
-
 # _genai_ort_index_chain <ort_root>...: fills GENAI_ORT_CHAIN_SHA; a chain without its two anchors is a finding.
 _genai_ort_index_chain() {
   local root f sha
   for root in "$@"; do
     while IFS= read -r -d '' f; do
-      sha="$(_genai_ort_sha "${f}")"
+      sha="$(_ortg_sha "${f}")"
       if [ "${sha}" = unreadable ]; then echo "cannot hash chain file ${f}"; continue; fi
       GENAI_ORT_CHAIN_SHA["${f##*/}"]+=" ${sha}"
     done < <(find -L "${root}/include" "${root}/lib" -type f "${GENAI_ORT_NAMED[@]}" -print0 2>/dev/null || true)
@@ -81,10 +74,7 @@ _genai_ort_tree_findings() {
         continue ;;
     esac
     [ -n "${GENAI_ORT_CHAIN_SHA[${name}]:-}" ] || continue
-    case "${GENAI_ORT_CHAIN_SHA[${name}]} " in
-      *" $(_genai_ort_sha "${f}") "*) ;;
-      *) echo "${f} is not the chain's ${name} (foreign ONNX Runtime bytes)" ;;
-    esac
+    _ortg_chain_bytes_finding "${f}" "${GENAI_ORT_CHAIN_SHA[${name}]} "
   done < <(find "${src}" \( -type f -o -type l \) "${GENAI_ORT_NAMED[@]}" -print0 2>/dev/null || true)
   return 0
 }

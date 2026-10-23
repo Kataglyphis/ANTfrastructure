@@ -4546,7 +4546,7 @@
  {
   "id": "mirror-consistency.missing-arg-fails",
   "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
-  "find": "      echo \"ERROR: ${df} is missing ARG ${arg}\" >&2\n      errors=$((errors + 1))",
+  "find": "      _mirror_consistency_error \"${df} is missing ARG ${arg}\"",
   "replace": "      echo \"ERROR: ${df} is missing ARG ${arg}\" >&2",
   "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
   "why": "a Dockerfile that cannot receive the mirror ARGs silently builds against the upstream archive; the count has to reach the exit code"
@@ -7742,7 +7742,7 @@
  {
   "id": "mirror-consistency.helper-symmetry-is-asserted",
   "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
-  "find": "if ! cmp -s \"${fixture_root}/host.suites\" \"${fixture_root}/ports.suites\" \\\n   || ! [ -s \"${fixture_root}/host.suites\" ]; then\n  echo \"ERROR: ubuntu_write_deb822_source is asymmetric for equal flags (host vs ports):\" >&2\n  diff -u \"${fixture_root}/host.suites\" \"${fixture_root}/ports.suites\" | sed 's/^/    /' >&2\n  errors=$((errors + 1))\nfi",
+  "find": "if ! cmp -s \"${fixture_root}/host.suites\" \"${fixture_root}/ports.suites\" \\\n   || ! [ -s \"${fixture_root}/host.suites\" ]; then\n  echo \"ERROR: ubuntu_write_deb822_source is asymmetric for equal flags (host vs ports):\" >&2\n  diff -u \"${fixture_root}/host.suites\" \"${fixture_root}/ports.suites\" | sed 's/^/    /' >&2\n  _mirror_consistency_error\nfi",
   "replace": "true",
   "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
   "why": "equal flags must yield equal suite sets; a helper that special-cases the host arch defeats every call-site check above it"
@@ -9269,15 +9269,15 @@
  },
  {
   "id": "ort-chain.genai-byte-rule",
-  "target": "linux/scripts/03-media/verify-genai-ort.sh",
-  "find": "      *) echo \"${f} is not the chain's ${name} (foreign ONNX Runtime bytes)\" ;;",
-  "replace": "      *) ;;",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "*) echo \"${path} is not the chain's ${name} (foreign ONNX Runtime bytes)${sfx}\" ;;",
+  "replace": "*) : ;;",
   "test": "bash linux/scripts/tests/test-genai-ort.sh",
   "why": "a file named like a chain ORT file must carry the chain bytes"
  },
  {
   "id": "ort-chain.genai-unreadable",
-  "target": "linux/scripts/03-media/verify-genai-ort.sh",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
   "find": "|| sum=\"unreadable\"",
   "replace": "|| sum=\"${GENAI_ORT_CHAIN_SHA[${1##*/}]# }\"",
   "test": "bash linux/scripts/tests/test-genai-ort.sh",
@@ -19306,5 +19306,77 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
   "why": "the copied CMake helper carries its cache utility in a media-only rebuild"
+ },
+ {
+  "id": "lib.tvm-wheel-fixture-builder-status",
+  "target": "linux/scripts/tests/test-tvm-wheel-diagnostics.sh",
+  "find": "|| _rc=$?",
+  "replace": "|| _rc=0",
+  "test": "bash linux/scripts/tests/test-tvm-wheel-diagnostics.sh",
+  "why": "Shared fixtures preserve builder and reader statuses, selected pipefail mode, staged runtime bytes and explicit provenance requests."
+ },
+ {
+  "id": "lib.tvm-wheel-fixture-pipefail-mode",
+  "target": "linux/scripts/tests/test-tvm-wheel-diagnostics.sh",
+  "find": "set \"$pipefail_option\" pipefail",
+  "replace": "set -o pipefail",
+  "test": "bash linux/scripts/tests/test-tvm-wheel-diagnostics.sh",
+  "why": "Shared fixtures preserve builder and reader statuses, selected pipefail mode, staged runtime bytes and explicit provenance requests."
+ },
+ {
+  "id": "lib.tvm-wheel-fixture-runtime-bytes",
+  "target": "linux/scripts/tests/test-tvm-wheel-diagnostics.sh",
+  "find": ": > \"${prefix}/$2/$3\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-tvm-wheel-diagnostics.sh",
+  "why": "Shared fixtures preserve builder and reader statuses, selected pipefail mode, staged runtime bytes and explicit provenance requests."
+ },
+ {
+  "id": "lib.ancestry-fixture-reader-status",
+  "target": "linux/scripts/tests/test-ancestry.sh",
+  "find": "return \"$reader_status\"",
+  "replace": "return 0",
+  "test": "bash linux/scripts/tests/test-ancestry.sh",
+  "why": "Shared fixtures preserve builder and reader statuses, selected pipefail mode, staged runtime bytes and explicit provenance requests."
+ },
+ {
+  "id": "lib.ancestry-fixture-requested-run",
+  "target": "linux/scripts/tests/test-ancestry.sh",
+  "find": "CROSS_RUN_ID=\"$requested\" runtime_assert_provenance_stamped",
+  "replace": "CROSS_RUN_ID=\"\" runtime_assert_provenance_stamped",
+  "test": "bash linux/scripts/tests/test-ancestry.sh",
+  "why": "Shared fixtures preserve builder and reader statuses, selected pipefail mode, staged runtime bytes and explicit provenance requests."
+ },
+ {
+  "id": "mirror-consistency.shared-error-count",
+  "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+  "find": "  errors=$((errors + 1))",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+  "why": "every ordinary and detailed failure must contribute to the aggregate count and nonzero final verdict"
+ },
+ {
+  "id": "mirror-consistency.shared-error-stderr",
+  "target": "linux/scripts/01-core/verify-ubuntu-mirror-consistency.sh",
+  "find": "printf 'ERROR: %s\\n' \"$1\" >&2",
+  "replace": "printf 'ERROR: %s\\n' \"$1\"",
+  "test": "bash linux/scripts/tests/test-mirror-consistency.sh",
+  "why": "shared error diagnostics stay on stderr while progress headers remain on stdout"
+ },
+ {
+  "id": "lib.ort-chain-digest-boundaries",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "*\" $(_ortg_sha \"${path}\") \"*)",
+  "replace": "*\"$(_ortg_sha \"${path}\")\"*)",
+  "test": "bash linux/scripts/tests/test-ort-chain-digests.sh",
+  "why": "chain hash membership requires complete space-delimited tokens and preserves each consumer delimiter policy"
+ },
+ {
+  "id": "lib.ort-chain-digest-counter",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "_ORTG_COMPARED=$((_ORTG_COMPARED + 1))",
+  "replace": "_ORTG_COMPARED=$((_ORTG_COMPARED + 0))",
+  "test": "bash linux/scripts/tests/test-ort-chain-digests.sh",
+  "why": "G2 counts each chain-named comparison while GenAI and archive exemptions leave that counter unchanged"
  }
 ]
