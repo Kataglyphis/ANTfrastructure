@@ -18390,7 +18390,7 @@
  {
   "id": "lib.compiler-target-artifact-elf",
   "target": "linux/scripts/06-packaging/validate-compilers.sh",
-  "find": "if [ -n \"${expected_machine}\" ] && echo \"${machine}\" | grep -qi \"${expected_machine}\"; then",
+  "find": "if [ -n \"${expected_machine}\" ] && _vc_elf_header_matches \"${machine}\" \"${expected_machine}\"; then",
   "replace": "if true; then",
   "test": "bash linux/scripts/tests/test-compiler-target-verdicts.sh",
   "why": "version fallback must reject a wrong target-native GCC or LLVM ELF machine"
@@ -19158,8 +19158,8 @@
  {
   "id": "lib.media-payload-copy-companion",
   "target": "linux/Dockerfile.package",
-  "find": "COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh /tmp/",
-  "replace": "COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/",
+  "find": "linux/scripts/06-packaging/media-payloads.sh linux/scripts/lib/log-bootstrap.sh /tmp/",
+  "replace": "linux/scripts/lib/log-bootstrap.sh /tmp/",
   "test": "bash linux/scripts/tests/test-media-payload-inventory.sh",
   "why": "the isolated payload copier must ship the shared inventory it sources"
  },
@@ -20458,5 +20458,285 @@
   "replace": "_ortg_fetchcontent_directory_names fetched_directory_names ortlib-src",
   "test": "bash linux/scripts/tests/test-ort-fetchcontent-directories.sh",
   "why": "GenAI retains its broader ortlib wildcard beneath _deps while provenance remains exact."
+ },
+ {
+  "id": "lib.log-fallback-function-priority",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "function) probe=(declare -F)",
+  "replace": "function) probe=(command -v)",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Library fallbacks test for functions, so an external tool must not replace the library logger."
+ },
+ {
+  "id": "lib.log-fallback-command-priority",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "command) probe=(command -v)",
+  "replace": "command) probe=(declare -F)",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Standalone fallbacks preserve external logger commands as well as prebound functions."
+ },
+ {
+  "id": "lib.log-fallback-style",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "[ \"${style}\" = color ]",
+  "replace": "[ \"${style}\" = plain ]",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Colored library fallback bytes remain distinct from plain build-script logs."
+ },
+ {
+  "id": "lib.log-fallback-stderr",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "warn) label=WARN; color=33; redirect=' >&2'",
+  "replace": "warn) label=WARN; color=33; redirect=''",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Warnings must keep their stderr channel."
+ },
+ {
+  "id": "lib.log-fallback-fatal",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "fatal=' exit 1;'",
+  "replace": "fatal=''",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "The fallback error logger remains fatal with exit1."
+ },
+ {
+  "id": "lib.log-fallback-registrar-mode",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "\"${_LOG_BOOTSTRAP_REGISTRAR_ONLY:-0}\" = 1",
+  "replace": "\"${_LOG_BOOTSTRAP_REGISTRAR_ONLY:-0}\" = 0",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Registrar-only imports must not load real logging or set the bootstrap guard."
+ },
+ {
+  "id": "lib.log-fallback-mode-is-scoped",
+  "target": "linux/scripts/01-core/abseil-headers.sh",
+  "find": "_LOG_BOOTSTRAP_REGISTRAR_ONLY=1 source",
+  "replace": "_LOG_BOOTSTRAP_REGISTRAR_ONLY=1; source",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "The private import selector must not leak into the caller."
+ },
+ {
+  "id": "lib.log-fallback-toolchain-copy",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "COPY --chmod=755 linux/scripts/lib/log-bootstrap.sh /opt/scripts/lib/log-bootstrap.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "The shipped core tree must carry its actual logger companion."
+ },
+ {
+  "id": "lib.log-fallback-package-copy",
+  "target": "linux/Dockerfile.package",
+  "find": "linux/scripts/lib/log-bootstrap.sh /tmp/",
+  "replace": "/tmp/",
+  "test": "bash linux/scripts/tests/test-media-payload-inventory.sh",
+  "why": "The isolated payload entrypoint COPY carries the registrar alongside its inventory."
+ },
+ {
+  "id": "lib.log-fallback-definition-quoting",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "'%s() { printf %q \"$*\"%s;%s }' ",
+  "replace": "'%s() { printf %s \"$*\"%s;%s }' ",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Generated logger functions quote their literal format before evaluating the definition."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-owner-loaded",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    smoke_load_platform\n    command -v elf_machine_name",
+  "replace": "    :\n    command -v elf_machine_name",
+  "test": "bash linux/scripts/tests/test-smoke-elf-owner.sh",
+  "why": "Absent preloaded ELF helpers must resolve the canonical platform parser."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-owner-isolated",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  (\n    smoke_load_platform\n    command -v elf_machine_name >/dev/null 2>&1 || exit 1\n    elf_machine_name \"$1\"\n  )",
+  "replace": "  smoke_load_platform\n  command -v elf_machine_name >/dev/null 2>&1 || return 1\n  elf_machine_name \"$1\"",
+  "test": "bash linux/scripts/tests/test-smoke-elf-owner.sh",
+  "why": "Loading the canonical parser must not leak platform functions or guard state into standalone smoke callers."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-override-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    elf_machine_name \"$1\"\n    return",
+  "replace": "    elf_machine_name \"$1\"\n    return 0",
+  "test": "bash linux/scripts/tests/test-smoke-elf-owner.sh",
+  "why": "Preloaded helper output, side effects and failure status retain their existing direct-call policy."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-missing-owner-fails",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "command -v elf_machine_name >/dev/null 2>&1 || exit 1",
+  "replace": "command -v elf_machine_name >/dev/null 2>&1 || return 0",
+  "test": "bash linux/scripts/tests/test-smoke-arch-parity.sh",
+  "why": "A missing parser companion must not report a successful empty inspection."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-copy",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "COPY --chmod=755 linux/scripts/01-core/ /opt/scripts/core/\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-smoke-elf-owner.sh",
+  "why": "The first toolchain smoke image must ship its shared parser owner."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-header-status",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  LC_ALL=C readelf -h \"$1\" 2>/dev/null | grep 'Machine:' | head -1",
+  "replace": "  LC_ALL=C readelf -h \"$1\" 2>/dev/null | grep 'Machine:' | head -1 || true",
+  "test": "bash linux/scripts/tests/test-compiler-elf-policy.sh",
+  "why": "Host GCC retains readelf failures while target and swapped callers explicitly keep best-effort output."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-header-label",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  LC_ALL=C readelf -h \"$1\" 2>/dev/null | grep 'Machine:' | head -1",
+  "replace": "  LC_ALL=C readelf -h \"$1\" 2>/dev/null | grep 'Machine:' | head -1 | sed 's/.*Machine: *//' ",
+  "test": "bash linux/scripts/tests/test-compiler-elf-policy.sh",
+  "why": "Compiler verdicts retain complete readelf header labels and indentation."
+ },
+ {
+  "id": "lib.smoke-compiler-elf-case-insensitive",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  echo \"$1\" | grep -qi \"$2\"",
+  "replace": "  echo \"$1\" | grep -q \"$2\"",
+  "test": "bash linux/scripts/tests/test-compiler-elf-policy.sh",
+  "why": "The shared compiler header predicate retains case-insensitive regex matching."
+ },
+ {
+  "id": "lib.media-probe-python-order",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "for field in \"$@\"; do\n    probe=\"cross_target_python_${field}\"",
+  "replace": "for field in library include_dir pkgconfig_dir; do\n    probe=\"cross_target_python_${field}\"",
+  "test": "bash linux/scripts/tests/test-media-python-probes.sh",
+  "why": "Callers retain their own ordered target Python fields and optional pkg-config probe."
+ },
+ {
+  "id": "lib.media-probe-python-best-effort",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "python_paths[\"${field}\"]=\"$(\"${probe}\" 2>/dev/null || true)\"",
+  "replace": "python_paths[\"${field}\"]=\"$(\"${probe}\" 2>/dev/null)\"",
+  "test": "bash linux/scripts/tests/test-media-python-probes.sh",
+  "why": "A failed optional probe retains its partial stdout without aborting an unconditional build caller."
+ },
+ {
+  "id": "lib.media-probe-rust-field",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "probe=\"cross_target_${field}_rust\"",
+  "replace": "probe=\"cross_target_upper_rust\"",
+  "test": "bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh",
+  "why": "Upper and lower target Rust environment names remain independent ordered probes."
+ },
+ {
+  "id": "lib.media-probe-host-scope",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "[ \"${scope}\" != host ] || export HOST_CC=\"${compiler}\"",
+  "replace": "export HOST_CC=\"${compiler}\"",
+  "test": "bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh",
+  "why": "Standalone target-style bindings must not overwrite the host compiler override."
+ },
+ {
+  "id": "lib.media-probe-empty-wrapper",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "    c)\n      export \"CARGO_TARGET_${rust_env}_LINKER=${compiler}\"",
+  "replace": "    c)\n      [ -n \"${compiler}\" ] || return 0\n      export \"CARGO_TARGET_${rust_env}_LINKER=${compiler}\"",
+  "test": "bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh",
+  "why": "Existing empty host-wrapper outputs remain observable as explicitly empty bindings."
+ },
+ {
+  "id": "lib.media-probe-hidden-symbols",
+  "target": "linux/scripts/tests/media-probe-fixture.sh",
+  "find": "[ \"${2:-}\" != \"$hidden\" ] || return 1",
+  "replace": ": \"$hidden\"",
+  "test": "bash linux/scripts/tests/test-media-python-probes.sh && bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh",
+  "why": "Unavailable optional helper scenarios must hide the actual requested commands rather than exercising ready helpers."
+ },
+ {
+  "id": "lib.media-probe-partial-failure",
+  "target": "linux/scripts/tests/media-probe-fixture.sh",
+  "find": "[ \"$scenario\" != partial ] || return 8",
+  "replace": ": \"$scenario\"",
+  "test": "bash linux/scripts/tests/test-media-python-probes.sh",
+  "why": "Optional-probe fixtures must actually produce a nonzero status with partial stdout, so active-errexit protection is exercised."
+ },
+ {
+  "id": "lib.renovate-fixture-apply-verdict",
+  "target": "linux/scripts/tests/renovate-fixtures.sh",
+  "find": "t_assert_eq \"$expected\" \"${RC}\" \"$reason\"",
+  "replace": "t_assert_eq 0 \"${RC}\" \"$reason\"",
+  "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+  "why": "refusal cases must retain the expected nonzero apply result instead of treating only success as valid"
+ },
+ {
+  "id": "lib.renovate-fixture-refusal-reason",
+  "target": "linux/scripts/tests/renovate-fixtures.sh",
+  "find": "t_assert_contains \"${OUT}\" \"$4\"",
+  "replace": "t_assert_contains \"${OUT}\" \"missing parser verdict\"",
+  "test": "bash linux/scripts/tests/test-renovate-audit.sh",
+  "why": "shared refusal drivers must assert the actual parser diagnosis"
+ },
+ {
+  "id": "lib.renovate-fixture-temporary-mode",
+  "target": "linux/scripts/tests/renovate-fixtures.sh",
+  "find": "chmod \"$temporary_mode\" \"$path\"",
+  "replace": "chmod \"$restore_mode\" \"$path\"",
+  "test": "bash linux/scripts/tests/test-renovate-fixture-protocols.sh",
+  "why": "the isolated apply must observe the deliberately unwritable fixture mode"
+ },
+ {
+  "id": "lib.renovate-fixture-restores-mode",
+  "target": "linux/scripts/tests/renovate-fixtures.sh",
+  "find": "  chmod \"$restore_mode\" \"$path\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-renovate-fixture-protocols.sh",
+  "why": "cleanup must restore permissions after a failed run without overwriting its verdict"
+ },
+ {
+  "id": "lib.renovate-fixture-argv",
+  "target": "linux/scripts/tests/renovate-fixtures.sh",
+  "find": "  _run \"$repo\" \"$report\" \"$@\"",
+  "replace": "  _run \"$repo\" \"$report\" $*",
+  "test": "bash linux/scripts/tests/test-renovate-fixture-protocols.sh",
+  "why": "fixture command arguments containing spaces must stay separate from action flags"
+ },
+ {
+  "id": "lib.prevention-fixture-renders-lines",
+  "target": "linux/scripts/tests/test-prevention-gates.sh",
+  "find": "printf '%b' \"$escaped_subject\"",
+  "replace": "printf '%s' \"$escaped_subject\"",
+  "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+  "why": "each language fixture must contain real lines rather than escaped backslash-n text"
+ },
+ {
+  "id": "lib.prevention-fixture-language-path",
+  "target": "linux/scripts/tests/test-prevention-gates.sh",
+  "find": "_size_at \"$path\"",
+  "replace": "_size_at linux/scripts/subject.sh",
+  "test": "bash linux/scripts/tests/test-prevention-gates.sh",
+  "why": "string and comment semantics must be tested using each caller-selected file language"
+ },
+ {
+  "id": "lib.chain-stage-fixture-preserves-no-export",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "t_assert_eq \"0\" \"$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' \"${workdir}/sg.txt\" || true)\" \"${1:-}\"",
+  "replace": "t_assert_eq \"1\" \"$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' \"${workdir}/sg.txt\" || true)\" \"${1:-}\"",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "both rescue levers must retain cache exports after recovering disk space"
+ },
+ {
+  "id": "lib.log-fallback-media-copy",
+  "target": "linux/Dockerfile.media",
+  "find": "COPY --chmod=755 linux/scripts/lib/log-bootstrap.sh /opt/scripts/lib/log-bootstrap.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "A partial media rebuild must carry the actual logger companion independently of the pinned SDK parent."
+ },
+ {
+  "id": "lib.log-fallback-registrar-public-names",
+  "target": "linux/scripts/lib/log-bootstrap.sh",
+  "find": "if [ \"${_LOG_BOOTSTRAP_REGISTRAR_ONLY:-0}\" = 1 ]; then return 0; fi",
+  "replace": "if [ \"${_LOG_BOOTSTRAP_REGISTRAR_ONLY:-0}\" = 1 ]; then err() { :; }; return 0; fi",
+  "test": "bash linux/scripts/tests/test-log-fallbacks.sh",
+  "why": "Registrar-only imports must not install public loggers the caller did not request."
  }
 ]

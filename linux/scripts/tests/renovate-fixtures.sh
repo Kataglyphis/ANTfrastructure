@@ -255,3 +255,23 @@ cfg["packageRules"] = [{"description": sys.argv[3],
 with open(sys.argv[2], "w", encoding="utf-8") as fh:
     json.dump(cfg, fh)
 PY
+
+_run_apply_verdict() {
+  local repo="$1" report="$2" manager="$3" expected="$4" reason="$5"
+  _run "$repo" "$report" --apply --managers "$manager"
+  t_assert_eq "$expected" "${RC}" "$reason"
+}
+
+_parser_refuses() {
+  local refusal_reason="the refusal is the parser's, and it says why"
+  _run_apply_verdict "$1" "$2" "$3" 2 "${5:-the refusal is the RESULT, so the run exits 2}"
+  t_assert_contains "${OUT}" "$4" "${6:-$refusal_reason}"
+}
+
+_run_in_mode() {
+  local path="$1" temporary_mode="$2" restore_mode="$3" repo="$4" report="$5"
+  shift 5
+  chmod "$temporary_mode" "$path"
+  _run "$repo" "$report" "$@"
+  chmod "$restore_mode" "$path"
+}

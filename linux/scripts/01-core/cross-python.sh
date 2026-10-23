@@ -204,3 +204,15 @@ cross_target_python_dev_ready() {
   [ -f "${embed_pc_file}" ] || return 1
   cross_target_python_library >/dev/null
 }
+
+cross_collect_python_dev_paths() {
+  local -n python_paths="$1"
+  shift
+  local field probe
+  for field in "$@"; do
+    probe="cross_target_python_${field}"
+    if command -v "${probe}" >/dev/null 2>&1; then
+      python_paths["${field}"]="$("${probe}" 2>/dev/null || true)"
+    fi
+  done
+}

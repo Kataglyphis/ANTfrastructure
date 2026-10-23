@@ -224,13 +224,41 @@ cross_build_lower_rust() {
   cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
 }
 
+cross_collect_target_rust_env() {
+  local output="$1"
+  local field probe
+  for field in upper lower; do
+    probe="cross_target_${field}_rust"
+    if command -v "${probe}" >/dev/null 2>&1; then
+      printf -v "${output}[${field}]" '%s' "$("${probe}" 2>/dev/null || true)"
+    fi
+  done
+}
+
+export_cargo_compiler_binding() {
+  local rust_env="$1" rust_lower="$2" language="$3" compiler="$4" scope="${5:-target}"
+  case "${language}" in
+    c)
+      export "CARGO_TARGET_${rust_env}_LINKER=${compiler}"
+      [ -z "${rust_lower}" ] || export "CC_${rust_lower}=${compiler}"
+      [ "${scope}" != host ] || export HOST_CC="${compiler}"
+      ;;
+    cxx)
+      [ -z "${rust_lower}" ] || export "CXX_${rust_lower}=${compiler}"
+      [ "${scope}" != host ] || export HOST_CXX="${compiler}"
+      ;;
+  esac
+  return 0
+}
+
 # export_cargo_target_linker <RUST_ENV> [rust_lower] [cc] [cxx]: target linker only, host proc-macros stay native; 1 without a usable cc.
 export_cargo_target_linker() {
   local rust_env="$1" rust_lower="${2:-}" cc="${3:-}" cxx="${4:-}"
   [ -n "${rust_env}" ] && [ -n "${cc}" ] && [ -x "${cc}" ] || return 1
-  export "CARGO_TARGET_${rust_env}_LINKER=${cc}"
-  [ -n "${rust_lower}" ] && export "CC_${rust_lower}=${cc}"
-  [ -n "${rust_lower}" ] && [ -n "${cxx}" ] && [ -x "${cxx}" ] && export "CXX_${rust_lower}=${cxx}"
+  export_cargo_compiler_binding "${rust_env}" "${rust_lower}" c "${cc}"
+  if [ -n "${rust_lower}" ] && [ -n "${cxx}" ] && [ -x "${cxx}" ]; then
+    export_cargo_compiler_binding "${rust_env}" "${rust_lower}" cxx "${cxx}"
+  fi
   return 0
 }
 

@@ -2,8 +2,10 @@
 # An annotation the regex misses is silently invisible, so the shipped files are checked; see docs/dependency-updates.md#the-source-of-truth-has-to-be-visible-too
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-HUB="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare HUB
+t_fixture_workspace_init '' HUB || exit 1
 PY="${PREFLIGHT_PYTHON:-python3}"
 
 # versions.env holds the image pins, tool-pins.env the host-tool pins (CON59); Renovate must read both.

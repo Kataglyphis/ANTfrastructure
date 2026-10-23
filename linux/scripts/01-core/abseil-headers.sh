@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
 [ -n "${_ABSEIL_HEADERS_SH_LOADED:-}" ] && return 0
+# shellcheck source=../lib/log-bootstrap.sh
+_LOG_BOOTSTRAP_REGISTRAR_ONLY=1 source "$(dirname "${BASH_SOURCE[0]}")/../lib/log-bootstrap.sh" || return 1
+log_bootstrap_fallbacks command plain info warn
 _ABSEIL_HEADERS_SH_LOADED=1
-
-# Fallback loggers for a standalone source; logging.sh owns the real ones.
-if ! command -v info >/dev/null 2>&1; then
-  info() { printf '[INFO] %s\n' "$*"; }
-fi
-if ! command -v warn >/dev/null 2>&1; then
-  warn() { printf '[WARN] %s\n' "$*" >&2; }
-fi
 
 # Standalone source: load downloads.sh from beside this file.
 if ! command -v download_file >/dev/null 2>&1; then

@@ -8,10 +8,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/media-payloads.sh"
 
 SRCPREFIX="${SRCPREFIX:-}"
 
-# warn is undefined when this runs standalone.
-if ! command -v warn >/dev/null 2>&1; then
-  warn() { printf '[WARN] %s\n' "$*" >&2; }
-fi
+_payload_logger="$(dirname "${BASH_SOURCE[0]}")/log-bootstrap.sh"
+[ -f "${_payload_logger}" ] || _payload_logger="$(dirname "${BASH_SOURCE[0]}")/../lib/log-bootstrap.sh"
+# shellcheck source=../lib/log-bootstrap.sh
+_LOG_BOOTSTRAP_REGISTRAR_ONLY=1 source "${_payload_logger}"
+unset _payload_logger
+log_bootstrap_fallbacks command plain warn
 
 _dest() {
   local rel="${1:-}"

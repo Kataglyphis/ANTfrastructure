@@ -443,12 +443,22 @@ t_assert_contains "$(cat "${workdir}/lane.txt")" "+ 223G of buildkit layer cache
   "the reclaim record must credit the store, not cry defeat"
 _BK_FREED=0; _BK_RESCUE_TO=""
 
+_stage_guard() (
+  CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media
+)
+
+_assert_stage_rescue() {
+  _stage_guard > "${workdir}/sg.txt" 2>&1
+  t_assert_contains "$(cat "${workdir}/sg.txt")" "after pruning: 200G free"
+  t_assert_eq "0" "$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' "${workdir}/sg.txt" || true)" "${1:-}"
+}
+
 t_case "the between-stage guard reaches the store before giving up on cache exports"
 # Giving up costs every remaining stage its local cache export, so the store comes first.
 _chain_runtime_lane_is_next() { return 1; }
 _bk_reset_calls 10
 unset CROSS_NO_LOCAL_CACHE_EXPORT
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) > "${workdir}/sg.txt" 2>&1
+_stage_guard > "${workdir}/sg.txt" 2>&1
 t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 40 latch=0" "the guard must offer the store its own threshold"
 t_assert_contains "$(cat "${workdir}/sg.txt")" "CROSS_NO_LOCAL_CACHE_EXPORT=1" \
   "a store that frees nothing must still reach the give-up"
@@ -456,10 +466,7 @@ t_assert_contains "$(cat "${workdir}/sg.txt")" "CROSS_NO_LOCAL_CACHE_EXPORT=1" \
 t_case "a reclaimed store keeps the cache exports ON for the remaining stages"
 _bk_reset_calls 10
 _BK_RESCUE_TO=200
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) > "${workdir}/sg.txt" 2>&1
-t_assert_contains "$(cat "${workdir}/sg.txt")" "after pruning: 200G free"
-t_assert_eq "0" "$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' "${workdir}/sg.txt" || true)" \
-  "the give-up must not fire after the store rescued the stage"
+_assert_stage_rescue "the give-up must not fire after the store rescued the stage"
 _BK_RESCUE_TO=""
 
 t_case "each gate opens its OWN reclaim episode"
@@ -468,13 +475,13 @@ _bk_reset_calls 88
 _lane_run
 t_assert_contains "$(_bk_calls)" "latch=0" "the lane gate must clear a stale latch before pruning"
 _bk_reset_calls 10
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+_stage_guard >/dev/null 2>&1
 t_assert_contains "$(_bk_calls)" "CALL ${BUILDKIT_CACHE_DIR} 40 latch=0" \
   "a latch left set by an earlier stage must not silence this one"
 
 t_case "an ample-disk stage never reaches the store at all"
 _bk_reset_calls 500
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+_stage_guard >/dev/null 2>&1
 t_assert_eq "" "$(_bk_calls)" "40G threshold with 500G free must never touch buildkit"
 unset CROSS_NO_LOCAL_CACHE_EXPORT
 _lane_free=999
@@ -497,7 +504,7 @@ _im_calls() { cat "${_IM_LOG}"; }
 t_case "the between-stage guard reaches the image store, and only after buildkit"
 _im_reset 10
 _bk_reset_calls 10
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+_stage_guard >/dev/null 2>&1
 t_assert_contains "$(_im_calls)" "CALL ${BUILDKIT_CACHE_DIR} 40 in_flight=0" \
   "between stages nothing is unpacking, which is the only time images may go"
 
@@ -512,9 +519,7 @@ t_case "an image-store rescue keeps the cache exports ON for the remaining stage
 _im_reset 10
 _bk_reset_calls 10
 _IM_RESCUE_TO=200
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) > "${workdir}/sg.txt" 2>&1
-t_assert_contains "$(cat "${workdir}/sg.txt")" "after pruning: 200G free"
-t_assert_eq "0" "$(grep -c -e 'CROSS_NO_LOCAL_CACHE_EXPORT' "${workdir}/sg.txt" || true)"
+_assert_stage_rescue
 _IM_RESCUE_TO=""
 
 t_case "the lane-entry gate reaches it too, protecting every stage it can name"
@@ -528,7 +533,7 @@ t_assert_contains "$(_im_calls)" "ghcr.io/x/y:cross-runtime-arm64"
 t_case "an ample-disk stage never reaches the image store either"
 _im_reset 500
 _bk_reset_calls 500
-( CROSS_CACHE_MAX_GB=0 _chain_stage_disk_guard media ) >/dev/null 2>&1
+_stage_guard >/dev/null 2>&1
 t_assert_eq "" "$(_im_calls)"
 unset CROSS_NO_LOCAL_CACHE_EXPORT
 _lane_free=999

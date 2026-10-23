@@ -8,13 +8,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 # (a) the pubspec other_pkg cascade, with a commit between applies
 t_case "(a) pubspec: only the reported dep moves, and a second apply is a no-op"
 A="$(_plant a pubspec.yaml 'name: fixture\nenvironment:\n  sdk: ">=3.0.0 <4.0.0"\ndependencies:\n  http: 1.1.0\n  other_pkg: 1.1.0\n')"
-_run "${A}" "${A_REPORT}" --apply --managers pub
-t_assert_eq "0" "${RC}" "apply #1 must succeed"
+_run_apply_verdict "${A}" "${A_REPORT}" pub 0 "apply #1 must succeed"
 t_assert_eq "  http: 1.6.0" "$(_pub "${A}" 5)" "http moves"
 t_assert_eq "  other_pkg: 1.1.0" "$(_pub "${A}" 6)" "other_pkg must NOT move"
 _commit "${A}"
-_run "${A}" "${A_REPORT}" --apply --managers pub
-t_assert_eq "0" "${RC}" "apply #2 over the same report must succeed"
+_run_apply_verdict "${A}" "${A_REPORT}" pub 0 "apply #2 over the same report must succeed"
 t_assert_contains "${OUT}" "already applied" "apply #2 reports DONE, structurally"
 t_assert_eq "  other_pkg: 1.1.0" "$(_pub "${A}" 6)" \
   "apply #2 must still not touch other_pkg"
@@ -40,8 +38,7 @@ t_case "(c) pubspec: a longer name that starts with the dep is a different key"
 C="$(_plant c pubspec.yaml 'name: fixture\ndependencies:\n  http_parser: 1.1.0\n  http: 1.1.0\n')"
 # byte-identical to (a)'s report: same manager, file, dep and value pair.
 C_REPORT="${A_REPORT}"
-_run "${C}" "${C_REPORT}" --apply --managers pub
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${C}" "${C_REPORT}" pub 0 "apply must succeed"
 t_assert_eq "  http_parser: 1.1.0" "$(_pub "${C}" 3)" "http_parser untouched"
 t_assert_eq "  http: 1.6.0" "$(_pub "${C}" 4)" "http moved"
 
@@ -57,8 +54,7 @@ t_case "(d) workflow: checkout-extra is not checkout"
 D="$(_plant d .github/workflows/ci.yml 'name: ci\njobs:\n  b:\n    steps:\n      - uses: actions/checkout-extra@v4\n      - uses: actions/checkout@v4\n')"
 # byte-identical to (b)'s report: same manager, file, dep and value pair.
 D_REPORT="${B_REPORT}"
-_run "${D}" "${D_REPORT}" --apply --managers github-actions
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${D}" "${D_REPORT}" github-actions 0 "apply must succeed"
 t_assert_eq "      - uses: actions/checkout-extra@v4" "$(_step "${D}" 5)" "extra untouched"
 t_assert_eq "      - uses: actions/checkout@v5" "$(_step "${D}" 6)" "checkout moved"
 
@@ -88,8 +84,7 @@ t_case "(f) pre-commit: the rev belonging to the named repo, and only that one"
 F="$(_plant f .pre-commit-config.yaml 'repos:\n  - repo: https://github.com/astral-sh/ruff-pre-commit\n    rev: v0.9.0\n    hooks:\n      - id: ruff\n  - repo: https://github.com/other/thing\n    rev: v0.9.0\n    hooks:\n      - id: thing\n')"
 F_REPORT="${WORK}/f.json"
 _report "${F_REPORT}" pre-commit .pre-commit-config.yaml astral-sh/ruff-pre-commit v0.9.0 v0.16.6
-_run "${F}" "${F_REPORT}" --apply --managers pre-commit
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${F}" "${F_REPORT}" pre-commit 0 "apply must succeed"
 t_assert_eq "    rev: v0.16.6" "$(_line "${F}/.pre-commit-config.yaml" 3)" "ruff hook moved"
 t_assert_eq "    rev: v0.9.0" "$(_line "${F}/.pre-commit-config.yaml" 7)" "other hook untouched"
 
@@ -100,8 +95,7 @@ t_assert_eq "    rev: v0.16.6" "$(_line "${F2}/.pre-commit-config.yaml" 4)" "rev
 
 t_case "(f3) pre-commit: a rev: written AFTER the hooks: list still belongs to it"
 F3="$(_plant f3 .pre-commit-config.yaml 'repos:\n  - repo: https://github.com/astral-sh/ruff-pre-commit\n    hooks:\n      - id: ruff\n      - id: ruff-format\n    rev: v0.9.0\n')"
-_run "${F3}" "${F_REPORT}" --apply --managers pre-commit
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${F3}" "${F_REPORT}" pre-commit 0 "apply must succeed"
 t_assert_eq "    rev: v0.16.6" "$(_line "${F3}/.pre-commit-config.yaml" 6)" \
   "the nested hooks sequence does not end the repo item"
 t_assert_eq "      - id: ruff-format" "$(_line "${F3}/.pre-commit-config.yaml" 5)" \
@@ -111,10 +105,9 @@ t_assert_eq "      - id: ruff-format" "$(_line "${F3}/.pre-commit-config.yaml" 5
 t_case "(g) requirements: one reported update, two pins -- refused by name"
 G="$(_plant g requirements.txt 'ruff==0.9.0\nblack==1.0.0\nruff==0.9.0\n')"
 G_REPORT="${RUFF_REPORT}"
-_run "${G}" "${G_REPORT}" --apply --managers pip_requirements
-t_assert_eq "2" "${RC}" "the refusal is the RESULT, so the run exits 2 and never 0"
-t_assert_contains "${OUT}" "which one the report means is not knowable" \
-  "the refusal says why"
+_parser_refuses "${G}" "${G_REPORT}" pip_requirements \
+  "which one the report means is not knowable" \
+  "the refusal is the RESULT, so the run exits 2 and never 0" "the refusal says why"
 t_assert_contains "${OUT}" "line 1,3" "the refusal names BOTH lines"
 t_assert_eq "ruff==0.9.0" "$(_req "${G}" 1)" "line 1 untouched"
 t_assert_eq "ruff==0.9.0" "$(_req "${G}" 3)" "line 3 untouched"
@@ -123,8 +116,7 @@ t_case "(g2) two pins AND two reported occurrences: both move, no guess left"
 G2="$(_plant g2 requirements.txt 'ruff==0.9.0\nblack==1.0.0\nruff==0.9.0\n')"
 G2_REPORT="${WORK}/g2.json"
 _report "${G2_REPORT}" pip_requirements requirements.txt ruff ==0.9.0 ==0.16.6 2
-_run "${G2}" "${G2_REPORT}" --apply --managers pip_requirements
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${G2}" "${G2_REPORT}" pip_requirements 0 "apply must succeed"
 t_assert_eq "ruff==0.16.6" "$(_req "${G2}" 1)" "first pin moved"
 t_assert_eq "black==1.0.0" "$(_req "${G2}" 2)" "black untouched"
 t_assert_eq "ruff==0.16.6" "$(_req "${G2}" 3)" "second pin moved"
@@ -134,8 +126,7 @@ t_case "(h) requirements: foo-bar in the report is Foo_Bar in the file"
 H="$(_plant h requirements.txt 'Foo_Bar==1.0.0\nfoo==2.0.0\n')"
 H_REPORT="${WORK}/h.json"
 _report "${H_REPORT}" pip_requirements requirements.txt foo-bar ==1.0.0 ==1.4.0
-_run "${H}" "${H_REPORT}" --apply --managers pip_requirements
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${H}" "${H_REPORT}" pip_requirements 0 "apply must succeed"
 t_assert_eq "Foo_Bar==1.4.0" "$(_req "${H}" 1)" "Foo_Bar moved"
 t_assert_eq "foo==2.0.0" "$(_req "${H}" 2)" "foo untouched"
 
@@ -202,8 +193,7 @@ t_case "npm: the key in the right dependencies object, and in no other"
 M="$(_plant m package.json '{\n  "name": "fixture",\n  "scripts": {\n    "left-pad": "1.1.0"\n  },\n  "custom": [\n    {\n      "dependencies": {\n        "left-pad": "1.1.0"\n      }\n    }\n  ],\n  "dependencies": {\n    "left-pad": "1.1.0"\n  }\n}\n')"
 M_REPORT="${WORK}/m.json"
 _report "${M_REPORT}" npm package.json left-pad 1.1.0 1.6.0
-_run "${M}" "${M_REPORT}" --apply --managers npm
-t_assert_eq "0" "${RC}" "npm apply must succeed"
+_run_apply_verdict "${M}" "${M_REPORT}" npm 0 "npm apply must succeed"
 t_assert_eq '    "left-pad": "1.1.0"' "$(_line "${M}/package.json" 4)" \
   "the scripts entry is not a dependency"
 t_assert_eq '        "left-pad": "1.1.0"' "$(_line "${M}/package.json" 9)" \
@@ -214,8 +204,7 @@ t_case "pep621: a keyword that spells a package name is not a pin"
 Y="$(_plant y pyproject.toml '[project]\nname = "fixture"\nkeywords = ["ruff", "linting"]\ndependencies = [\n  "ruff==0.9.0",\n  "ruff-extra==0.9.0",\n]\n')"
 Y_REPORT="${WORK}/y.json"
 _report "${Y_REPORT}" pep621 pyproject.toml ruff ==0.9.0 ==0.16.6
-_run "${Y}" "${Y_REPORT}" --apply --managers pep621
-t_assert_eq "0" "${RC}" "pep621 apply must succeed"
+_run_apply_verdict "${Y}" "${Y_REPORT}" pep621 0 "pep621 apply must succeed"
 t_assert_eq 'keywords = ["ruff", "linting"]' "$(_line "${Y}/pyproject.toml" 3)" \
   "the keywords array untouched"
 t_assert_eq '  "ruff==0.16.6",' "$(_line "${Y}/pyproject.toml" 5)" "the pin moved"
@@ -224,8 +213,7 @@ t_assert_eq '  "ruff-extra==0.9.0",' "$(_line "${Y}/pyproject.toml" 6)" "ruff-ex
 # Line endings: a CRLF checkout stays CRLF, and only the value changes
 t_case "a CRLF manifest keeps its CRLF, and every other byte on the line"
 R="$(_plant r pubspec.yaml 'name: fixture\r\ndependencies:\r\n  http: 1.1.0  # pinned\r\n')"
-_run "${R}" "${A_REPORT}" --apply --managers pub
-t_assert_eq "0" "${RC}" "apply must succeed on a CRLF file"
+_run_apply_verdict "${R}" "${A_REPORT}" pub 0 "apply must succeed on a CRLF file"
 t_assert_eq '  http: 1.6.0  # pinned' "$(_pub "${R}" 3 | tr -d '\r')" \
   "the trailing comment survives"
 t_assert_eq "3" "$(tr -cd '\r' < "${R}/pubspec.yaml" | wc -c | tr -d ' ')" \
@@ -256,8 +244,7 @@ t_assert_eq "cargo | update -p serde@1.0.100 | l" "$(cat "${ARGV_LOG}")" \
 t_case "a manifest with no lockfile in the tree needs no tool"
 W="$(_plant w requirements.txt 'ruff==0.9.0\n')"
 W_REPORT="${RUFF_REPORT}"
-_run "${W}" "${W_REPORT}" --apply --managers pip_requirements
-t_assert_eq "0" "${RC}" "apply must succeed with no lock tool on PATH"
+_run_apply_verdict "${W}" "${W_REPORT}" pip_requirements 0 "apply must succeed with no lock tool on PATH"
 t_assert_contains "${OUT}" "none of the edited manifests has a lockfile" "and it says so"
 
 t_case "--dry-run names the lockfile that would be refreshed, and runs nothing"
@@ -299,8 +286,7 @@ printf '%s\n' '{"repositories":{"local":{"packageFiles":{"pub":[{"packageFile":"
 _run "${NI}" "${NI_REPORT}"
 t_assert_contains "${OUT}" "1.6.0" "the report shows the new version"
 t_assert_fails grep -q -e 'sha512-' <<<"${OUT}"
-_run "${NI}" "${NI_REPORT}" --apply --managers pub
-t_assert_eq "0" "${RC}" "the apply succeeds"
+_run_apply_verdict "${NI}" "${NI_REPORT}" pub 0 "the apply succeeds"
 t_assert_eq "  http: 1.6.0" "$(_pub "${NI}" 3)" "the version is written, not the hash"
 
 t_case "the report names every dependency Renovate skipped, and counts the by-design ones"
@@ -355,8 +341,7 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${AB}" 3)" "and the repo's own file too"
 t_case "(B) the manifest is REPLACED, so its mode survives and no temp is left"
 BM="$(_plant bm pubspec.yaml 'name: fixture\ndependencies:\n  http: 1.1.0\n')"
 chmod 640 "${BM}/pubspec.yaml"
-_run "${BM}" "${A_REPORT}" --apply --managers pub
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${BM}" "${A_REPORT}" pub 0 "apply must succeed"
 t_assert_eq "  http: 1.6.0" "$(_pub "${BM}" 3)" "the value moved"
 t_assert_eq "640" "$(stat -c '%a' "${BM}/pubspec.yaml")" "the file's own mode survived"
 t_assert_eq "" "$(find "${BM}" -maxdepth 1 -name '.renovate*')" "no temp file left behind"
@@ -368,9 +353,7 @@ printf 'name: fixture\ndependencies:\n  http: 1.1.0\n' > "${BD}/app/pubspec.yaml
 _commit "${BD}"
 BD_REPORT="${WORK}/bd.json"
 _report "${BD_REPORT}" pub app/pubspec.yaml http 1.1.0 1.6.0
-chmod 555 "${BD}/app"
-_run "${BD}" "${BD_REPORT}" --apply --managers pub
-chmod 755 "${BD}/app"
+_run_in_mode "${BD}/app" 555 755 "${BD}" "${BD_REPORT}" --apply --managers pub
 t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_contains "${OUT}" "cannot write in the directory holding app/pubspec.yaml" \
   "the refusal names the directory and the file"
@@ -391,18 +374,14 @@ CP_REPORT="${WORK}/cp.json"
 _report_pair "${CP_REPORT}" pub http 1.1.0 1.6.0 pubspec.yaml pkg/pubspec.yaml
 
 t_case "(C) two files in one plan, the second unwritable -- NEITHER is written"
-chmod 444 "${CP}/pkg/pubspec.yaml"
-_run "${CP}" "${CP_REPORT}" --apply --managers pub
-chmod 644 "${CP}/pkg/pubspec.yaml"
+_run_in_mode "${CP}/pkg/pubspec.yaml" 444 644 "${CP}" "${CP_REPORT}" --apply --managers pub
 t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_contains "${OUT}" "nothing written, in any file" "the guard is per-RUN"
 t_assert_eq "  http: 1.1.0" "$(_pub "${CP}" 3)" "the FIRST file of the plan is untouched"
 t_assert_eq "  http: 1.1.0" "$(_line "${CP}/pkg/pubspec.yaml" 3)" "and so is the second"
 
 t_case "(C2) --dry-run runs that pre-flight too, and PREDICTS the failure"
-chmod 444 "${CP}/pkg/pubspec.yaml"
-_run "${CP}" "${CP_REPORT}" --apply --dry-run --managers pub
-chmod 644 "${CP}/pkg/pubspec.yaml"
+_run_in_mode "${CP}/pkg/pubspec.yaml" 444 644 "${CP}" "${CP_REPORT}" --apply --dry-run --managers pub
 t_assert_eq "1" "${RC}" "--dry-run must fail where --apply would"
 t_assert_contains "${OUT}" "cannot write pkg/pubspec.yaml" "and name the file it cannot write"
 t_assert_eq "  http: 1.1.0" "$(_pub "${CP}" 3)" "--dry-run wrote nothing"
@@ -411,17 +390,14 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${CP}" 3)" "--dry-run wrote nothing"
 
 t_case "(C3) a plan spanning a gitlink and an unwritable manifest moves NO gitlink"
 CS="$(_sub_repo cs)"
-chmod 444 "${CS}/pubspec.yaml"
-_run "${CS}" "${SUB_REPORT}" --apply --managers pub,git-submodules
-chmod 644 "${CS}/pubspec.yaml"
+_run_in_mode "${CS}/pubspec.yaml" 444 644 "${CS}" "${SUB_REPORT}" --apply --managers pub,git-submodules
 t_assert_eq "1" "${RC}" "the run must FAIL"
 t_assert_eq "  http: 1.1.0" "$(_pub "${CS}" 3)" "the manifest is untouched"
 t_assert_ok git -C "${CS}" diff --quiet HEAD -- sub
 
 t_case "(C4) with that manifest writable the same plan does BOTH"
 CS2="$(_sub_repo cs2)"
-_run "${CS2}" "${SUB_REPORT}" --apply --managers pub,git-submodules
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${CS2}" "${SUB_REPORT}" pub,git-submodules 0 "apply must succeed"
 t_assert_eq "  http: 1.6.0" "$(_pub "${CS2}" 3)" "the manifest moved"
 t_assert_fails git -C "${CS2}" diff --quiet HEAD -- sub
 
@@ -507,8 +483,7 @@ t_assert_eq "      - uses: actions/other@v1" "$(_step "${FB}" 5)" "and the step 
 
 t_case "(F1c) and with both decoys beside the real step, only the step moves"
 FC="$(_plant fc .github/workflows/ci.yml 'name: ci\njobs:\n  b:\n    steps:\n      - uses: actions/checkout@v4\n      - name: print a workflow\n        run: |\n          - uses: actions/checkout@v4\n      - uses: actions/other@v1\n        with:\n          uses: actions/checkout@v4\n')"
-_run "${FC}" "${B_REPORT}" --apply --managers github-actions
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${FC}" "${B_REPORT}" github-actions 0 "apply must succeed"
 t_assert_eq "      - uses: actions/checkout@v5" "$(_step "${FC}" 5)" "the real step moved"
 t_assert_eq "          - uses: actions/checkout@v4" "$(_step "${FC}" 8)" "the run: block did not"
 t_assert_eq "          uses: actions/checkout@v4" "$(_step "${FC}" 11)" "nor did the with: input"
@@ -549,8 +524,7 @@ t_assert_eq 'serde = "=1.0.100"' "$(_cargo_line "${FF}" 5)" "the metadata key is
 # (F4) npm: the array-nested decoy lives in the npm case above, beside the `scripts` one.
 t_case "(F4b) npm: a manifest written on ONE line is read too"
 FH="$(_plant fh package.json '{"name":"fixture","scripts":{"left-pad":"1.1.0"},"dependencies":{"left-pad":"1.1.0"}}\n')"
-_run "${FH}" "${M_REPORT}" --apply --managers npm
-t_assert_eq "0" "${RC}" "apply must succeed"
+_run_apply_verdict "${FH}" "${M_REPORT}" npm 0 "apply must succeed"
 t_assert_eq '{"name":"fixture","scripts":{"left-pad":"1.1.0"},"dependencies":{"left-pad":"1.6.0"}}' \
   "$(_line "${FH}/package.json" 1)" "only the dependency moved"
 
@@ -626,8 +600,7 @@ t_case "(H4) the apply runs, and the nested submodule's uncommitted work survive
 H4="$(_deep_repo h4)"
 printf 'scribbled\n' >> "${H4}/sub/deep/d.txt"
 H4_BEFORE="$(_sub_at "${H4}")"
-_run "${H4}" "${H_REPORT}" --apply --managers git-submodules
-t_assert_eq "0" "${RC}" "the apply must succeed"
+_run_apply_verdict "${H4}" "${H_REPORT}" git-submodules 0 "the apply must succeed"
 t_assert_contains "$(cat "${H4}/sub/f.txt")" "two" "the gitlink actually moved"
 t_assert_fails test "${H4_BEFORE}" = "$(_sub_at "${H4}")"
 t_assert_contains "$(cat "${H4}/sub/deep/d.txt")" "scribbled" \

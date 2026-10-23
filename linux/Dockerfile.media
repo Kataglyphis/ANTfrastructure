@@ -75,10 +75,8 @@ COPY --chmod=755 linux/scripts/03-media/core/common.sh              /opt/scripts
 # Only this arch's flag file: copying all three re-keyed base on every lane when one arch's flags changed.
 COPY --chmod=644 linux/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env /opt/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
-COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
-COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/core/python-host.sh
-COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh linux/scripts/01-core/compiler-cache-utils.sh /opt/scripts/core/
-COPY --chmod=755 linux/scripts/01-core/modules.sh                /opt/scripts/core/modules.sh
+COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh linux/scripts/01-core/python-host.sh linux/scripts/01-core/cmake-cache-linker.sh linux/scripts/01-core/compiler-cache-utils.sh linux/scripts/01-core/modules.sh /opt/scripts/core/
+COPY --chmod=755 linux/scripts/lib/log-bootstrap.sh /opt/scripts/lib/log-bootstrap.sh
 
 # Fail fast: :sdk has no nvcc, and every CUDA consumer below would otherwise die deep in a build.
 RUN set -euo pipefail; \

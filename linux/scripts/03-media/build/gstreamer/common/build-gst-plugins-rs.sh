@@ -129,14 +129,13 @@ _gst_rs_host_cargo_config() {
     cargo_host_cc="$(resolve_host_gcc_for_cargo)"
     if [ -n "${cargo_host_cc}" ]; then
       cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
-      export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="${cargo_host_linker}"
-      export CC_x86_64_unknown_linux_gnu="${cargo_host_linker}"
+      export_cargo_compiler_binding X86_64_UNKNOWN_LINUX_GNU x86_64_unknown_linux_gnu c "${cargo_host_linker}"
     fi
 
     cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
     if [ -n "${cargo_host_cxx}" ]; then
       cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
-      export CXX_x86_64_unknown_linux_gnu="${cargo_host_cxx_wrapper}"
+      export_cargo_compiler_binding X86_64_UNKNOWN_LINUX_GNU x86_64_unknown_linux_gnu cxx "${cargo_host_cxx_wrapper}"
     fi
   fi
 
@@ -145,24 +144,21 @@ _gst_rs_host_cargo_config() {
 _gst_rs_riscv_cargo_config() {
   # bare/ stays off PATH so host build scripts keep native cc; target cc-rs builds reach it through -B.
   cargo_target_cross_bindir="$(cross_bare_bin_path 2>/dev/null || printf '%s' '/opt/cross-bin/bare')"
-  if command -v cross_target_upper_rust >/dev/null 2>&1; then
-    cargo_target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
-  fi
-  if command -v cross_target_lower_rust >/dev/null 2>&1; then
-    cargo_target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
-  fi
+  local -A gst_rs_rust_names=([upper]="${cargo_target_rust_env}" [lower]="${cargo_target_rust_lower}")
+  cross_collect_target_rust_env gst_rs_rust_names
+  cargo_target_rust_env="${gst_rs_rust_names[upper]}"
+  cargo_target_rust_lower="${gst_rs_rust_names[lower]}"
   [ -n "${cargo_target_rust_env}" ] || cargo_target_rust_env="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:lower:]-' '[:upper:]_')"
   [ -n "${cargo_target_rust_lower}" ] || cargo_target_rust_lower="$(printf '%s' "${CARGO_BUILD_TARGET}" | tr '[:upper:]-' '[:lower:]_')"
 
   if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CC:-}" ]; then
     cargo_target_cc_wrapper="$(prepare_cargo_target_compiler_wrapper "${CC}" "target-gcc-riscv64" "${cargo_target_cross_bindir}")"
-    export "CARGO_TARGET_${cargo_target_rust_env}_LINKER=${cargo_target_cc_wrapper}"
-    export "CC_${cargo_target_rust_lower}=${cargo_target_cc_wrapper}"
+    export_cargo_compiler_binding "${cargo_target_rust_env}" "${cargo_target_rust_lower}" c "${cargo_target_cc_wrapper}"
   fi
 
   if [ -d "${cargo_target_cross_bindir}" ] && [ -n "${CXX:-}" ]; then
     cargo_target_cxx_wrapper="$(prepare_cargo_target_compiler_wrapper "${CXX}" "target-g++-riscv64" "${cargo_target_cross_bindir}")"
-    export "CXX_${cargo_target_rust_lower}=${cargo_target_cxx_wrapper}"
+    export_cargo_compiler_binding "${cargo_target_rust_env}" "${cargo_target_rust_lower}" cxx "${cargo_target_cxx_wrapper}"
   fi
 
   # pkg-config would drop target system libdirs from link-search flags, which Rust needs for Vulkan and vvdec.

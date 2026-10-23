@@ -88,12 +88,9 @@ TARGET_TORCH_WHEEL=""
 TARGET_TORCH_VERSION=""
 TORCH_STAGING_DIR=""
 
-if ! command -v log >/dev/null 2>&1; then
-  log() { printf '[INFO] %s\n' "$*"; }
-fi
-if ! command -v warn >/dev/null 2>&1; then
-  warn() { printf '[WARN] %s\n' "$*" >&2; }
-fi
+# shellcheck source=../../lib/log-bootstrap.sh
+_LOG_BOOTSTRAP_REGISTRAR_ONLY=1 source "$(dirname "${BASH_SOURCE[0]}")/../../lib/log-bootstrap.sh"
+log_bootstrap_fallbacks command plain log warn
 
 require_host_python() {
     local python_bin=""
