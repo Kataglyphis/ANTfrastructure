@@ -41,21 +41,7 @@ function Get-GstDllClosure {
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][string[]]$SearchDir
     )
-    $known = @{}
-    $work = [System.Collections.Generic.List[string]]::new()
-    $work.Add($Path)
-    for ($i = 0; $i -lt $work.Count; $i++) {
-        foreach ($name in @(Get-PeImportNames -Path $work[$i] -IncludeDelayLoad)) {
-            if ($name -like 'api-ms-*' -or $name -like 'ext-ms-*' -or $known.ContainsKey($name)) { continue }
-            $known[$name] = $true
-            $hit = $null
-            foreach ($d in $SearchDir) {
-                if ([System.IO.File]::Exists([System.IO.Path]::Combine($d, $name))) { $hit = [System.IO.Path]::Combine($d, $name); break }
-            }
-            [pscustomobject]@{ From = [System.IO.Path]::GetFileName($work[$i]); Name = $name; Path = $hit }
-            if ($hit -and $hit -notmatch '\\(System32|SysWOW64|WinSxS)\\') { $work.Add($hit) }
-        }
-    }
+    Get-DllDependencyGraph -Path $Path -SearchDirectory $SearchDir
 }
 
 # gsthiprtc.cpp opens hiprtc%02d%02d.dll from the runtime's major/minor; .hipVersion carries the same pair.

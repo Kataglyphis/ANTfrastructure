@@ -8,7 +8,7 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsScripts.
 
 $script:OrtBuildScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
 $script:OrtWebGpuCheck = 'windows\scripts\build\rocm-checks\OrtWebGpu.ps1'
-$script:OrtWebGpuBuildFunction = @('Get-OrtWebGpuPlan', 'Get-OrtWebGpuPin', 'Get-OrtDepsRow', 'Get-OrtDawnDepsEntry', 'Get-OrtDawnPatchName',
+$script:OrtWebGpuBuildFunction = @('Get-OrtWebGpuPlan', 'Get-OrtWebGpuPin', 'Get-OrtDepsRow', 'Assert-OrtDependencyArchiveSha1', 'Get-OrtDawnDepsEntry', 'Get-OrtDawnPatchName',
     'Get-OrtDawnRequiredDep', 'Get-OrtDawnDepsProbeSource', 'Invoke-OrtDawnDepsProbe', 'ConvertTo-OrtDawnDepPin', 'Save-OrtDawnDep', 'Expand-OrtZipMember',
     'Expand-OrtWebGpuDxc', 'Expand-OrtDawnArchive', 'Invoke-DawnPrebuiltDxcPatch', 'Resolve-GnuPatchExe', 'Initialize-OrtWebGpuInput',
     'Get-OrtWebGpuCmakeArgs', 'Get-OrtWebGpuConfigureFinding', 'Install-OrtWebGpuRuntime', 'Get-OrtWebGpuWheelFinding',
@@ -228,11 +228,12 @@ Describe 'Build-OnnxFromSource WebGPU: the whole input chain, offline (downloads
         New-OrtWebGpuTestZip $dxcZip @{ 'bin\x64\dxcompiler.dll' = 'c'; 'bin\x64\dxil.dll' = 'i'; 'lib\x64\dxcompiler.lib' = 'l'
             'LICENSE-LLVM.txt' = 'L'; 'LICENSE-MS.txt' = 'M'; 'LICENCE-MIT.txt' = 'T' }
         $ort = Join-Path $Dir 'ort'
-        foreach ($d in 'cmake\external', 'cmake\patches\dawn') { [void](New-Item -ItemType Directory -Force -Path (Join-Path $ort $d)) }
         $sha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $dawnZip).Hash.ToLowerInvariant()
-        [System.IO.File]::WriteAllText((Join-Path $ort 'cmake\deps.txt'), "#Name;Url;SHA1`ndawn;https://github.com/google/dawn/archive/refs/tags/v20260818.211311.zip;$sha1`n")
-        [System.IO.File]::WriteAllText((Join-Path $ort 'cmake\external\onnxruntime_external_deps.cmake'), "`${Patch_EXECUTABLE} -p1 < `${PROJECT_SOURCE_DIR}/patches/dawn/p1.patch &&")
-        [System.IO.File]::WriteAllText((Join-Path $ort 'cmake\patches\dawn\p1.patch'), "--- a/$PatchTarget`n+++ b/$PatchTarget`n@@ -1 +1 @@`n-one`n+two`n")
+        Write-TestFileTree -Root $ort -Files @{
+            'cmake/deps.txt' = "#Name;Url;SHA1`ndawn;https://github.com/google/dawn/archive/refs/tags/v20260818.211311.zip;$sha1`n"
+            'cmake/external/onnxruntime_external_deps.cmake' = "`${Patch_EXECUTABLE} -p1 < `${PROJECT_SOURCE_DIR}/patches/dawn/p1.patch &&"
+            'cmake/patches/dawn/p1.patch' = "--- a/$PatchTarget`n+++ b/$PatchTarget`n@@ -1 +1 @@`n-one`n+two`n"
+        }
         $script:OrtFakeDownload = @{
             'https://github.com/google/dawn/archive/refs/tags/v20260818.211311.zip' = $dawnZip
             'https://github.com/microsoft/DirectXShaderCompiler/releases/download/v1.9.2607/dxc_2026_07_29.zip' = $dxcZip

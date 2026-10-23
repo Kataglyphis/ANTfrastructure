@@ -1,13 +1,21 @@
 #requires -Version 7.0
 # The warm/materialize handoff round trip, offline: curl.exe speaks file:// for PUT and GET, so a directory stands in for dufs.
 
+function Invoke-HandoffServerFixture {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $action = $Body
+    Invoke-InTestDir { param($dir)
+        $server = Join-Path $dir 'srv'
+        $null = [IO.Directory]::CreateDirectory((Join-Path $server 'bkhandoff'))
+        $endpoint = 'file:///' + ($server -replace '\\', '/')
+        & $action $dir $server $endpoint
+    }.GetNewClosure()
+}
+
 Describe 'Export/Import-BuildHandoff round trip' {
 
     It 'exports the CreationTime delta and imports it back after deletion' {
-        Invoke-InTestDir { param($dir)
-            $server = Join-Path $dir 'srv'
-            New-Item -ItemType Directory -Path (Join-Path $server 'bkhandoff') -Force | Out-Null
-            $endpoint = 'file:///' + ($server -replace '\\', '/')
+        Invoke-HandoffServerFixture { param($dir, $server, $endpoint)
 
             $root = Join-Path $dir 'rootA'
             New-Item -ItemType Directory -Path (Join-Path $root 'sub') -Force | Out-Null
@@ -38,11 +46,8 @@ Describe 'Export/Import-BuildHandoff round trip' {
     }
 
     It 'recreates the missing parent directory chain when the whole subtree is gone' {
-        Invoke-InTestDir { param($dir)
+        Invoke-HandoffServerFixture { param($dir, $server, $endpoint)
             # bsdtar's long-path mode does not create missing parents, so the import must pre-create every directory.
-            $server = Join-Path $dir 'srv'
-            New-Item -ItemType Directory -Path (Join-Path $server 'bkhandoff') -Force | Out-Null
-            $endpoint = 'file:///' + ($server -replace '\\', '/')
 
             $root = Join-Path $dir 'rootB'
             $deepFile    = Join-Path $root 'sub\deep\nested.txt'
@@ -76,21 +81,14 @@ Describe 'Export/Import-BuildHandoff round trip' {
     }
 
     It 'throws without an endpoint (env unset)' {
-        $prev = $env:SCCACHE_WEBDAV_ENDPOINT
-        try {
-            Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
+        Invoke-WithEnv @{ SCCACHE_WEBDAV_ENDPOINT = $null } {
             Assert-Throws { Export-BuildHandoff -Since (Get-Date) -Name 'wbt' } 'export must fail fast without a transport endpoint'
             Assert-Throws { Import-BuildHandoff -Name 'wbt' } 'import must fail fast without a transport endpoint'
-        } finally {
-            if ($null -ne $prev) { $env:SCCACHE_WEBDAV_ENDPOINT = $prev }
         }
     }
 
     It 'throws when the named handoff does not exist on the server' {
-        Invoke-InTestDir { param($dir)
-            $server = Join-Path $dir 'srv'
-            New-Item -ItemType Directory -Path (Join-Path $server 'bkhandoff') -Force | Out-Null
-            $endpoint = 'file:///' + ($server -replace '\\', '/')
+        Invoke-HandoffServerFixture { param($dir, $server, $endpoint)
             Assert-Throws {
                 Import-BuildHandoff -Name 'never-warmed' -Endpoint $endpoint
             } 'a missing warm-solve handoff must fail the materialize step loudly'

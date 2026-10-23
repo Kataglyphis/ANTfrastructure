@@ -58,6 +58,5 @@ foreach ($p in $svchosts) {
 if (-not $found) { Write-Warning 'No svchost showed lsm!CService::Start - the hang window may have passed; retry on the next container.' }
 
 # An elevated writer leaves these SYSTEM-owned; hand them back to the caller.
-$me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-& icacls.exe $OutDir /grant "${me}:(OI)(CI)R" /T | Out-Null
+$me = Grant-SiloProbeReadAccess -OutDir $OutDir
 Write-Host "Logs in $OutDir (readable by $me). Look for named Event objects beside the lsm! stack." -ForegroundColor Green

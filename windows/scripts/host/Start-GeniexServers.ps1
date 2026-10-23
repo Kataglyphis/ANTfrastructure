@@ -61,6 +61,7 @@ Set-StrictMode -Version Latest
 # Where this script's own probes connect: a wildcard bind is reached on loopback.
 $ProbeHost = if ($BindAddress -eq '0.0.0.0') { '127.0.0.1' } else { $BindAddress }
 $ErrorActionPreference = 'Stop'
+Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsScripts.Shared.psm1') -ErrorAction Stop -DisableNameChecking
 
 $exe = Join-Path $env:LOCALAPPDATA 'GenieX CLI\geniex.exe'
 if (-not (Test-Path $exe)) { throw "GenieX CLI not found at $exe -- install it from https://github.com/qualcomm/GenieX/releases" }
@@ -249,24 +250,25 @@ function Start-Lane {
     if ($LogLevel -and (Test-ServeFlag '--log')) { $argList += @('--log', $LogLevel) }
     if ($null -ne $Ngl -and (Test-ServeFlag '--ngl')) { $argList += @('--ngl', $Ngl) }
 
-    # Restored after Start-Process so one lane's env cannot leak into the next lane or the shell.
-    $savedEnv = @{}
-    foreach ($k in $ServerEnv.Keys) {
-        $savedEnv[$k] = [Environment]::GetEnvironmentVariable($k)
-        [Environment]::SetEnvironmentVariable($k, [string]$ServerEnv[$k])
-        Write-Host ("  {0,-6} :{1}  env {2}={3}" -f $Compute, $Port, $k, $ServerEnv[$k]) -ForegroundColor DarkGray
+    $laneEnvironment = @{}
+    foreach ($key in $ServerEnv.Keys) { $laneEnvironment[$key] = [string]$ServerEnv[$key] }
+    $logs = Invoke-WithProcessEnvironment -Environment $laneEnvironment -ScriptBlock {
+        foreach ($key in $ServerEnv.Keys) {
+            Write-Host ("  {0,-6} :{1}  env {2}={3}" -f $Compute, $Port, $key, $ServerEnv[$key]) -ForegroundColor DarkGray
+        }
+        # A hidden lane that dies on startup needs separate stdout and stderr files.
+        if (-not (Test-Path $LaneLogDir)) {
+            New-Item -ItemType Directory -Force -Path $LaneLogDir | Out-Null
+        }
+        $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+        $stdout = Join-Path $LaneLogDir "$Compute-$Port-$stamp.out.log"
+        $stderr = Join-Path $LaneLogDir "$Compute-$Port-$stamp.err.log"
+        Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $argList `
+            -RedirectStandardOutput $stdout -RedirectStandardError $stderr | Out-Null
+        [pscustomobject]@{ Out = $stdout; Error = $stderr }
     }
-
-    # Unredirected, a hidden lane that dies on startup leaves nothing to read; the two streams need separate files.
-    if (-not (Test-Path $LaneLogDir)) {
-        New-Item -ItemType Directory -Force -Path $LaneLogDir | Out-Null
-    }
-    $stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $outLog  = Join-Path $LaneLogDir "$Compute-$Port-$stamp.out.log"
-    $errLog  = Join-Path $LaneLogDir "$Compute-$Port-$stamp.err.log"
-    Start-Process -WindowStyle Hidden -FilePath $exe -ArgumentList $argList `
-        -RedirectStandardOutput $outLog -RedirectStandardError $errLog | Out-Null
-    foreach ($k in $savedEnv.Keys) { [Environment]::SetEnvironmentVariable($k, $savedEnv[$k]) }
+    $outLog = $logs.Out
+    $errLog = $logs.Error
 
     foreach ($i in 1..20) {
         Start-Sleep -Seconds 1

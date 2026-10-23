@@ -10,17 +10,14 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') 
 
 Describe 'Invoke-WasmOpt (orchestrator)' {
 
-    $newFakeWasmOpt = {
-        param($dir)
-        New-TestBatchTool -Directory $dir -Name 'wasm-opt.bat' -Line @(
-            'echo WASMOPT %* >> "%WBT_WASMOPT_LOG%"',
-            'if "%WBT_WASMOPT_MODE%"=="fail" exit /b 1',
-            'if "%WBT_WASMOPT_MODE%"=="failfirst" (',
-            '  echo %* | findstr /C:"--all-features" >nul && exit /b 0',
-            '  exit /b 1',
-            ')'
-        )
-    }
+    $newFakeWasmOpt = New-TestBatchToolSetup -Name 'wasm-opt.bat' -Line @(
+        'echo WASMOPT %* >> "%WBT_WASMOPT_LOG%"',
+        'if "%WBT_WASMOPT_MODE%"=="fail" exit /b 1',
+        'if "%WBT_WASMOPT_MODE%"=="failfirst" (',
+        '  echo %* | findstr /C:"--all-features" >nul && exit /b 0',
+        '  exit /b 1',
+        ')'
+    )
 
     function Invoke-WasmOptCase {
         param([string]$Mode, [switch]$ExpectFailure)

@@ -5,14 +5,14 @@
 
 Set-StrictMode -Version Latest
 
-Import-Module (Join-Path $PSScriptRoot 'WindowsUvLock.Common.psm1')
+Import-Module (Join-Path $PSScriptRoot 'WindowsUvLock.Common.psm1') -ErrorAction Stop
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+Import-Module $sharedPath -ErrorAction Stop
 # Get-PinnedPythonVersion, for the pinned defaults of Initialize-UvVenv and Test-ExperimentalPython.
 $pythonWheelPath = Join-Path $PSScriptRoot 'WindowsPythonWheel.Common.psm1'
-if (-not (Get-Module -Name 'WindowsPythonWheel.Common')) { Import-Module $pythonWheelPath }
+Import-Module $pythonWheelPath -ErrorAction Stop
 
 function Invoke-UvCommand {
     param(
@@ -451,11 +451,7 @@ function Get-UvOrtCensusPath {
     [OutputType([string])]
     param([string]$ModuleDir = $PSScriptRoot)
 
-    $candidates = @(
-        [IO.Path]::GetFullPath((Join-Path $ModuleDir '..\..\..\linux\scripts\03-media\runtime\ort-venv-census.py')),
-        [IO.Path]::GetFullPath((Join-Path $ModuleDir '..\ort-venv-census.py')))
-    foreach ($candidate in $candidates) { if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate } }
-    return $candidates[0]
+    return Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\03-media\runtime\ort-venv-census.py' -ModuleDir $ModuleDir
 }
 
 # `uv run` re-syncs to the lock and would restore PyPI ORT; release only a hold this module took.
@@ -475,12 +471,22 @@ function Set-UvChainOrtSyncHold {
 $script:ChainOrtAbiCode = 'import sys, sysconfig; print(''cp%d%d%s'' % (*sys.version_info[:2], ''t'' if sysconfig.get_config_var(''Py_GIL_DISABLED'') else ''''))'
 $script:ChainOrtFindCode = 'import importlib.util as u, sys; hits = [p for p in (''onnxruntime'', ''onnxruntime_genai'', ''onnxruntime_extensions'') if u.find_spec(p)]; print(*hits); sys.exit(1 if hits else 0)'
 
+function Get-UvChainOrtPythonAbi {
+    param([string]$Python, [scriptblock]$Runner)
+    $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
+    return [pscustomobject]@{
+        ExitCode = $probe.ExitCode
+        Result = $probe
+        Abi = $(if ($probe.ExitCode -eq 0) { "$(@($probe.Output) | Select-Object -Last 1)".Trim() } else { '' })
+    }
+}
+
 # Before uv: every store ORT wheel must fit the venv's ABI tag, or this leg cannot carry ORT inside our images.
 function Assert-UvChainOrtAbiFit {
     param([string]$VenvPath, [string]$Python, [string[]]$Wheels, [scriptblock]$Runner)
-    $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
-    if ($probe.ExitCode -ne 0) { throw "chain ORT: cannot read the ABI tag of ${Python}: $(@($probe.Output) -join ' | ')" }
-    $abi = "$(@($probe.Output) | Select-Object -Last 1)".Trim()
+    $probe = Get-UvChainOrtPythonAbi -Python $Python -Runner $Runner
+    if ($probe.ExitCode -ne 0) { throw "chain ORT: cannot read the ABI tag of ${Python}: $(@($probe.Result.Output) -join ' | ')" }
+    $abi = $probe.Abi
     $misfit = @($Wheels | ForEach-Object { Split-Path $_ -Leaf } | Where-Object { ($_ -replace '\.whl$', '').Split('-')[-2] -notin @($abi, 'abi3', 'none') })
     if ($misfit.Count -gt 0) {
         throw "chain ORT: $VenvPath is a $abi venv, and the chain wheels are built for the image interpreter: $($misfit -join ' '). An ORT project runs its in-image legs on that interpreter: drop this leg or list it in EXPERIMENTAL_PYTHON_VERSIONS."
@@ -493,8 +499,8 @@ function Select-UvChainOrtWheelStore {
     $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_FREE_THREADED')
     if (-not $twins) { $twins = [Environment]::GetEnvironmentVariable('PYTHON_WHEELS_CP314T') }
     if (-not $twins -or -not (Test-Path -LiteralPath $twins -PathType Container)) { return $WheelStore }
-    $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
-    if ($probe.ExitCode -eq 0 -and "$(@($probe.Output) | Select-Object -Last 1)".Trim() -match '^cp\d+t$') { return $twins }
+    $probe = Get-UvChainOrtPythonAbi -Python $Python -Runner $Runner
+    if ($probe.ExitCode -eq 0 -and $probe.Abi -match '^cp\d+t$') { return $twins }
     return $WheelStore
 }
 

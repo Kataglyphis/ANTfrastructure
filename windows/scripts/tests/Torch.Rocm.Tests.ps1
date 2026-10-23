@@ -847,7 +847,7 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
         Assert-Match "Build-TorchvisionRocmFromSource\.ps1' -OutputDir 'C:\\torch-rocm-wheels' -WorkDir 'C:\\b'$" $runs[1] 'same output and work dir'
         $torchRun = [array]::IndexOf($lines, $runs[0])
         foreach ($k in 'TORCHVISION_VERSION', 'TORCH_ROCM_WINDOWS_TORCHVISION_COMMIT') {
-            $at = @(for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match "^ARG $k=") { $i } })
+            $at = @($lines | Select-String -Pattern "^ARG $k=" | ForEach-Object { $_.LineNumber - 1 })
             Assert-Equal 1 $at.Count "one ARG $k"
             Assert-True ($at[0] -gt $torchRun) "ARG $k comes after the torch RUN, so a torchvision bump keeps its cache"
         }

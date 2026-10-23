@@ -93,7 +93,7 @@ if ($BuildWheelsInto) {
     $env:CL = "--target=$((Get-WindowsTargetArchInfo).ClangTriple)"
     $env:CYTHONIZE = 'True'
     $requires = (Get-PyprojectBuildInfo -Python $gil.Exe -PyprojectPath $pyproject).Requires
-    $null = New-Item -ItemType Directory -Force -Path $BuildWheelsInto
+    Initialize-PythonAppDirectory -Path $BuildWheelsInto
     foreach ($leg in $legs) {
         $ft = $leg.EndsWith('t')
         $build = Join-Path $work "build-$leg"
@@ -131,12 +131,12 @@ foreach ($leg in $legs) {
     Get-ChildItem -LiteralPath $site -Force | Where-Object Name -ne 'README.txt' | Remove-Item -Recurse -Force
     $exe = @(Get-ChildItem -LiteralPath $pyDir -File -Filter $(if ($ft) { 'python3.*t.exe' } else { 'python.exe' }))
     if ($exe.Count -ne 1) { throw "the target interpreter for $leg holds $($exe.Count) matching executables, not one" }
-    $wheel = @(Get-ChildItem -LiteralPath $wheels -File -Filter '*.whl' | Where-Object { $_.Name -match "-($abi|none)-[^-]+\.whl$" })[0]
+    $wheel = @(Get-PythonAppWheelFile -Directory $wheels | Where-Object { $_.Name -match "-($abi|none)-[^-]+\.whl$" })[0]
     if (-not $wheel) { throw "no $abi or pure wheel for Python $leg in $wheels" }
     $hostPython = if ($ft) { (Get-SourceBuildPython -FreeThreaded).Exe } else { $gil.Exe }
     $legExtras = @(Split-StageList $(if ($ft -and $FreeThreadedExtras) { $FreeThreadedExtras } else { $Extras }))
     $legWork = Join-Path $work "site-$leg"
-    $null = New-Item -ItemType Directory -Force -Path $legWork
+    Initialize-PythonAppDirectory -Path $legWork
     $stores = @(if ($ft) { Join-Path (Get-FreeThreadedWheelStore) 'deps' }) + $Store
     Install-PythonCrossSite -HostPython $hostPython -SitePackages $site -RepoRoot $repo -Wheel $wheel.FullName -Extras $legExtras -AllExtras:($legExtras.Count -eq 0) `
         -WorkDir $legWork -Platform $platform -PythonVersion ($leg -replace 't$', '') -Store $stores -StoreTag "$abi-$(Get-PythonWheelTag)"
@@ -169,7 +169,7 @@ foreach ($leg in $legs) {
 
 foreach ($rel in Get-StageTestFile -RepoRoot $repo -TestFiles $TestFiles) {
     $staged = Join-Path $out "run\$rel"
-    $null = New-Item -ItemType Directory -Force -Path (Split-Path $staged -Parent)
+    Initialize-PythonAppDirectory -Path (Split-Path $staged -Parent)
     Copy-Item -LiteralPath (Join-Path $repo $rel) -Destination $staged -Recurse
 }
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot '..\build\Invoke-StagedTests.ps1') -Destination $out

@@ -69,7 +69,7 @@ function Get-IreeCompilerRtCmakeArgs {
     $clang = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
     if (-not $clang) { throw 'IREE: clang-cl is not on PATH, so there are no compiler-rt builtins to link' }
     $want = (Get-ClangTargetTriple -Arch $Arch) -replace '-.*$', ''
-    $lib = @(Get-ChildItem -Path (Join-Path (Split-Path (Split-Path $clang.Source)) 'lib\clang') -Recurse -Filter "clang_rt.builtins-$want.lib" -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $lib = @(Find-InstalledCompilerRtLibrary -LlvmRoot (Split-Path (Split-Path $clang.Source)) -LibraryName "clang_rt.builtins-$want.lib")
     if ($lib.Count -eq 0) { throw "IREE: no clang_rt.builtins-$want.lib beside $($clang.Source); the runtime tools would fail to link on __udivti3" }
     $path = $lib[0].FullName -replace '\\', '/'
     return @("-DCMAKE_EXE_LINKER_FLAGS=$path", "-DCMAKE_SHARED_LINKER_FLAGS=$path", "-DCMAKE_MODULE_LINKER_FLAGS=$path")

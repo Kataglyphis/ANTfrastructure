@@ -5,9 +5,7 @@ function Invoke-RecordedRetryFixture {
         [Parameter(Mandatory)][scriptblock]$Body, [string]$Mode = '', [ValidateRange(0, 2)][int]$Failures = 0,
         [switch]$Stall, [hashtable]$Environment = @{})
     $action = $Body
-    $dir = New-TestDir
-    $global:LASTEXITCODE = 0
-    try {
+    Invoke-InTestDir { param($dir)
         $null = & $ToolSetup $dir
         $fixture = [pscustomobject]@{
             Dir = $dir; Log = Join-Path $dir "$Tool.log"; Target = Join-Path $dir 'src'
@@ -27,10 +25,10 @@ function Invoke-RecordedRetryFixture {
         }
         if ($Stall) { $vars["${prefix}_STALLMARK"] = $fixture.StallMarker }
         foreach ($key in $Environment.Keys) { $vars[$key] = $Environment[$key] }
-        Invoke-WithEnv $vars { $fixture.Result = & $action $fixture }.GetNewClosure()
+        Invoke-WithEnv $vars { $fixture.Result = & $action $fixture }
         $fixture.Calls = @(Get-Content -LiteralPath $fixture.Log)
         return $fixture
-    } finally { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }.GetNewClosure()
 }
 
 function Assert-RecordedRetryCalls {

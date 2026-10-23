@@ -200,9 +200,9 @@ $sccacheExtract = Join-Path $env:TEMP "sccache-v$sccacheVersion-extract"
 try {
     Expand-Archive -Path $sccacheZip -DestinationPath $sccacheExtract -Force
     # Search for the exe, never assume the archive's top-level directory name.
-    $sccacheExe = @(Get-ChildItem -Path $sccacheExtract -Recurse -Filter 'sccache.exe' -File | Select-Object -First 1)
-    if ($sccacheExe.Count -eq 0) { throw "sccache.exe not found inside $sccacheZip — the release asset layout changed." }
-    Copy-Item -Path $sccacheExe[0].FullName -Destination (Join-Path $cargoBin 'sccache.exe') -Force
+    $sccacheExe = Find-FirstTreeFile -Root $sccacheExtract -Filter 'sccache.exe' -ScanErrorAction Stop
+    if (-not $sccacheExe) { throw "sccache.exe not found inside $sccacheZip — the release asset layout changed." }
+    Copy-Item -Path $sccacheExe.FullName -Destination (Join-Path $cargoBin 'sccache.exe') -Force
 } finally {
     Remove-Item $sccacheZip -Force -ErrorAction SilentlyContinue
     Remove-Item $sccacheExtract -Recurse -Force -ErrorAction SilentlyContinue

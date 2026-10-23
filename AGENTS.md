@@ -124,6 +124,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Critical source-pattern checks share verdict handling; failed probes increment the aggregate and must reach the failing summary.
    Python CI driver tests use `t_python_ci_fixture` for isolated script trees and workspace detection; keep tool stubs in each suite.
    Verified downloads must propagate fetch failures even under conditional calls; a matching stale archive does not excuse a failed fetch.
+   Compiler-rt consumers share verified extraction and library discovery; keep base-stage advisory and source-build fatal policies distinct.
+   Temporary process environments restore absent, empty and existing values after setup or callback failure; sanitizer overrides belong to the test child.
+   Silo log grants share recursive read access without widening permissions or hiding command-lookup failures.
+   Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.

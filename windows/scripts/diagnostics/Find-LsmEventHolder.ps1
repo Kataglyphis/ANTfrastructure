@@ -165,6 +165,5 @@ foreach ($h in $holders) {
     $lines += ("  handle 0x{0:x}  {1}{2}" -f $h.Item2, (Get-ProcLabel $h.Item1), $tag)
 }
 $lines | Tee-Object -FilePath $report
-$me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-& icacls.exe $OutDir /grant "${me}:(OI)(CI)R" /T | Out-Null
+$null = Grant-SiloProbeReadAccess -OutDir $OutDir
 Write-Host "`nSaved: $report" -ForegroundColor Green

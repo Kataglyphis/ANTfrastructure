@@ -22,6 +22,15 @@ function Get-CdbPath {
     return $cdb.FullName
 }
 
+# Elevated probes can leave SYSTEM-owned logs that the calling user must still read.
+function Grant-SiloProbeReadAccess {
+    param([Parameter(Mandatory)][string]$OutDir,
+        [string]$Identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name)
+    $ErrorActionPreference = 'Stop'
+    & icacls.exe $OutDir /grant "${Identity}:(OI)(CI)R" /T | Out-Null
+    return $Identity
+}
+
 <#
 .SYNOPSIS
     Resolves and creates a probe's output directory.
@@ -153,6 +162,7 @@ function Get-SiloSvchost {
 
 Export-ModuleMember -Function @(
     'Get-CdbPath',
+    'Grant-SiloProbeReadAccess',
     'Initialize-LsmProbeOutDir',
     'Start-SiloBaitContainer',
     'Wait-ForNewSilo',

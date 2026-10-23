@@ -39,7 +39,7 @@ exit 0
     It 'hands meson the shim, never ''sccache clang-cl'', and fails a build sccache barely saw' {
         Assert-False ($script:GstText -match "\`$env:CC\s*=\s*'sccache clang-cl'") 'the prefix meson drops'
         Assert-Match "\`$env:CC  = \`$shim\s*\r?\n\s*\`$env:CXX = \`$shim\s*\r?\n\s*\`$script:GstSccacheShim = \`$shim" $script:GstText 'C and C++ through the shim'
-        Assert-Match "New-SccacheCompilerShim -Sccache \(Get-Command sccache\.exe\)\.Source -Compiler \`$clangCheck\.Source" $script:GstText 'the clang-cl PATH resolves, the patched one'
+        Assert-Match "New-SccacheCompilerShim -Sccache \`$gstSccache\.Source -Compiler \`$clangCheck\.Source" $script:GstText 'the clang-cl PATH resolves, the patched one'
         Assert-Match "\[int\]\`$requests\.Groups\[1\]\.Value -lt 100\) \{\s*\r?\n\s*throw `"sccache counted" $script:GstText 'a bypass fails the stage'
     }
 

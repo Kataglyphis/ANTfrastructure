@@ -141,18 +141,10 @@ if (Test-WindowsCrossTarget) {
 
     # Cross degrades codegen to protoc on PATH; it must match the vendored protobuf (tflite's protobuf.cmake), not PROTOC_VERSION.
     $protocVer = Get-SourceBuildVersion -EnvironmentVariables @('LITERT_TFLITE_PROTOC_VERSION') -DefaultValue '21.9'
-    $hostProtocDir = "C:\temp\protoc-$protocVer"
-    $hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
-    if (-not (Test-Path $hostProtoc)) {
-        $protocZip = "C:\temp\protoc-$protocVer-win64.zip"
-        Invoke-DownloadWithRetry -Url "https://github.com/protocolbuffers/protobuf/releases/download/v$protocVer/protoc-$protocVer-win64.zip" `
-            -DestinationPath $protocZip
-        Expand-Archive -Path $protocZip -DestinationPath $hostProtocDir -Force
-        Remove-Item $protocZip -Force -ErrorAction SilentlyContinue
-    }
-    if (-not (Test-Path $hostProtoc)) { throw "LiteRT cross: host protoc missing at $hostProtoc after fetch/extract" }
+    $hostProtoc = Install-ProtobufCompiler -Version $protocVer -WorkDir 'C:\temp' -Description '' `
+        -ExpectSignature '' -RemoveArchive -QuietDownload -FailureMessage { param($path) "LiteRT cross: host protoc missing at $path after fetch/extract" }
     Copy-Item $hostProtoc (Join-Path $flatc.DirectoryName 'protoc.exe') -Force
-    $env:PATH = "$hostProtocDir\bin;$env:PATH"
+    $env:PATH = "$(Split-Path $hostProtoc -Parent);$env:PATH"
     Write-Host "LiteRT cross: host protoc at $hostProtoc ($(& $hostProtoc --version)) - on PATH and beside flatc"
 }
 
@@ -229,8 +221,9 @@ Get-ChildItem -Path $tfliteSrc -Filter '*.h' -Recurse -ErrorAction SilentlyConti
 Write-Host "Copied $headerCount headers to $includeRoot"
 # Copy-BuildArtifact is silent by design; a hollow install would only fail hours later in litert-lm.
 if ($headerCount -eq 0) { throw "LiteRT manual install copied 0 headers to $includeRoot (source tree layout changed?)" }
-$installedLibs = @(Get-ChildItem -Path (Join-Path $litertInstallDir 'lib') -Filter '*.lib' -File -ErrorAction SilentlyContinue)
-if ($installedLibs.Count -lt 1) { throw "LiteRT manual install staged no .lib files into $(Join-Path $litertInstallDir 'lib') (build produced none under $buildDir?)" }
+$installedLibs = @(Get-RequiredBuildArtifact -Root (Join-Path $litertInstallDir 'lib') -Filter '*.lib' -FailureMessage {
+    "LiteRT manual install staged no .lib files into $(Join-Path $litertInstallDir 'lib') (build produced none under $buildDir?)"
+})
 # gst's tflite plugin needs it; fail here, not hours later in the merge's meson configure.
 if ('tensorflowlite_c.lib' -notin $installedLibs.Name) {
     throw ("LiteRT install is missing tensorflowlite_c.lib (the TFLite C API import lib) in $(Join-Path $litertInstallDir 'lib'). " +

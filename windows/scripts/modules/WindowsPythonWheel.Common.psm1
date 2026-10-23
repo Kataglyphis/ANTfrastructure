@@ -7,9 +7,9 @@ Set-StrictMode -Version Latest
 
 # A file the Linux lane reads too: the checkout's copy, else the one image mounts put one level above modules\; with neither, the checkout path so the error names it.
 function Resolve-SharedLinuxScriptFile {
-    param([Parameter(Mandatory)][string]$RepoPath)
-    $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\..\..\$RepoPath"))
-    foreach ($candidate in @($repo, [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\$(Split-Path $RepoPath -Leaf)")))) {
+    param([Parameter(Mandatory)][string]$RepoPath, [string]$ModuleDir = $PSScriptRoot)
+    $repo = [IO.Path]::GetFullPath((Join-Path $ModuleDir "..\..\..\$RepoPath"))
+    foreach ($candidate in @($repo, [IO.Path]::GetFullPath((Join-Path $ModuleDir "..\$(Split-Path $RepoPath -Leaf)")))) {
         if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
     }
     return $repo
@@ -410,7 +410,7 @@ function Get-WheelMemberDifference {
     }
 }
 
-Export-ModuleMember -Function Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Get-PyprojectBuildInfo, Find-UvPython,
+Export-ModuleMember -Function Resolve-SharedLinuxScriptFile, Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Get-PyprojectBuildInfo, Find-UvPython,
     Resolve-PythonLegList, Get-NativeWheelCheck,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
     Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,

@@ -165,6 +165,15 @@ function Get-CMakeRocmIsolationArgs {
     return @("-DCMAKE_IGNORE_PREFIX_PATH=$($root -replace '\\', '/')")
 }
 
+function Get-SourceBuildSccache {
+    param([bool]$RemoteConfigured = (Test-SccacheRemoteConfigured))
+    if (-not $RemoteConfigured) { return $null }
+    $command = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if (-not $command) { return $null }
+    if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+    return $command
+}
+
 function Invoke-CmakeConfigure {
     param(
         [Parameter(Mandatory)]
@@ -210,10 +219,10 @@ function Invoke-CmakeConfigure {
     if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
     if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
 
-    if (Test-SccacheRemoteConfigured) {
-        $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    $remoteCacheConfigured = Test-SccacheRemoteConfigured
+    if ($remoteCacheConfigured) {
+        $sccacheCmd = Get-SourceBuildSccache -RemoteConfigured $remoteCacheConfigured
         if ($sccacheCmd) {
-            if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
             $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
             # The CUDA launcher stays opt-in (mozilla/sccache#2811); C/CXX are unconditional.
@@ -335,23 +344,17 @@ function Invoke-WithHostArchLibraryEnvironment {
     $hostDir   = (Get-WindowsTargetArchInfo -Arch (Get-WindowsHostArch)).MsvcTargetLibDir
     $targetDir = (Get-WindowsTargetArchInfo).MsvcTargetLibDir
     if ($hostDir -eq $targetDir) { return (& $ScriptBlock) }
-    $saved = @{}
-    foreach ($name in 'LIB', 'LIBPATH') { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
-    try {
-        foreach ($name in 'LIB', 'LIBPATH') {
-            if ([string]::IsNullOrWhiteSpace($saved[$name])) { continue }
-            $swapped = @($saved[$name] -split ';' | ForEach-Object { $_ -replace "\\$targetDir(\\|$)", "\$hostDir`$1" }) -join ';'
-            [Environment]::SetEnvironmentVariable($name, $swapped, 'Process')
-        }
-        Write-Host "Host-arch library environment: LIB/LIBPATH \$targetDir -> \$hostDir for the duration of the host-tool pass"
-        & $ScriptBlock
-    } finally {
-        # Unset, not empty: an empty LIB makes lld-link skip its MSVC/SDK auto-detection.
-        foreach ($name in 'LIB', 'LIBPATH') {
-            if ($null -eq $saved[$name]) { Remove-Item -Path "Env:$name" -ErrorAction SilentlyContinue }
-            else { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') }
+    $environment = @{}
+    foreach ($name in 'LIB', 'LIBPATH') {
+        $value = [Environment]::GetEnvironmentVariable($name, 'Process')
+        $environment[$name] = if ([string]::IsNullOrWhiteSpace($value)) { $value } else {
+            @($value -split ';' | ForEach-Object { $_ -replace "\\$targetDir(\\|$)", "\$hostDir`$1" }) -join ';'
         }
     }
+    Invoke-WithProcessEnvironment -Environment $environment -ScriptBlock {
+        Write-Host "Host-arch library environment: LIB/LIBPATH \$targetDir -> \$hostDir for the duration of the host-tool pass"
+        & $ScriptBlock
+    }.GetNewClosure()
 }
 
 function Get-MsvcToolsRoot {
@@ -795,6 +798,52 @@ function Initialize-SourceBuildScript {
     return $resolved
 }
 
+function Install-PortableZipTool {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$ZipPath,
+        [Parameter(Mandatory)][string]$Destination,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Description,
+        # Returns the tool's path/item when present, $null/empty otherwise.
+        [Parameter(Mandatory)][scriptblock]$Probe,
+        [ValidateSet('', 'PK')][string]$ExpectSignature = 'PK',
+        [switch]$RemoveArchive,
+        [switch]$QuietDownload,
+        [string]$FailureMessage = ''
+    )
+    $found = & $Probe
+    if ($found) { return $found }
+    if (-not $QuietDownload) { Write-Host "Downloading $Description from $Url" }
+    Invoke-DownloadWithRetry -Url $Url -DestinationPath $ZipPath -Description $Description -ExpectSignature $ExpectSignature
+    Expand-Archive -Path $ZipPath -DestinationPath $Destination -Force
+    if ($RemoveArchive) { Remove-Item $ZipPath -Force -ErrorAction SilentlyContinue }
+    $found = & $Probe
+    if (-not $found) {
+        if ($FailureMessage) { throw $FailureMessage }
+        throw "Failed to obtain $Description under $Destination"
+    }
+    return $found
+}
+
+function Install-ProtobufCompiler {
+    param(
+        [Parameter(Mandatory)][string]$Version,
+        [Parameter(Mandatory)][string]$WorkDir,
+        [AllowEmptyString()][string]$Description = "version-matched protoc v$Version",
+        [ValidateSet('', 'PK')][string]$ExpectSignature = 'PK',
+        [switch]$RemoveArchive,
+        [switch]$QuietDownload,
+        [scriptblock]$FailureMessage
+    )
+    $destination = Join-Path $WorkDir "protoc-$Version"
+    $compiler = Join-Path $destination 'bin\protoc.exe'
+    $failure = if ($FailureMessage) { & $FailureMessage $compiler } else { '' }
+    Install-PortableZipTool -Url "https://github.com/protocolbuffers/protobuf/releases/download/v$Version/protoc-$Version-win64.zip" `
+        -ZipPath (Join-Path $WorkDir "protoc-$Version-win64.zip") -Destination $destination -Description $Description `
+        -Probe { if (Test-Path $compiler) { $compiler } } -ExpectSignature $ExpectSignature -RemoveArchive:$RemoveArchive `
+        -QuietDownload:$QuietDownload -FailureMessage $failure
+}
+
 function Install-CpythonPip {
     param(
         [hashtable]$Python = $null
@@ -850,6 +899,20 @@ function Invoke-CpythonPip {
         if ($Optional) { Write-Warning "$msg -- continuing"; return }
         throw $msg
     }
+}
+
+function Get-RequiredBuildArtifact {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string]$Filter,
+        [switch]$Recurse,
+        [int]$MinimumCount = 1,
+        [int]$MaximumCount = [int]::MaxValue,
+        [Parameter(Mandatory)][scriptblock]$FailureMessage
+    )
+    $files = @(Get-ChildItem -Path $Root -Filter $Filter -File -Recurse:$Recurse -ErrorAction SilentlyContinue)
+    if ($files.Count -lt $MinimumCount -or $files.Count -gt $MaximumCount) { throw (& $FailureMessage $files) }
+    return $files
 }
 
 function Copy-BuildArtifact {
@@ -1890,16 +1953,12 @@ function Install-AArch64CompilerRt {
     $extract = Join-Path $WorkDir 'llvm-aarch64-rt'
     try {
         Invoke-DownloadWithRetry -Url $Url -DestinationPath $archive -Description 'aarch64 compiler-rt archive'
-        Assert-FileSha256 -Path $archive -Expected $ExpectedSha256 -Label 'aarch64 compiler-rt archive' -PinName $PinName
-        # System32 bsdtar, never GNU tar: GNU parses `C:\...` as a remote-host spec.
-        $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-        if (-not $tarExe) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
-        New-Item -ItemType Directory -Force -Path $extract | Out-Null
-        & $tarExe -xf $archive -C $extract "*$LibName"
-        $found = @(Get-ChildItem -Path $extract -Recurse -Filter $LibName -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-        if ($found.Count -eq 0) { throw "$LibName not found inside $archive - upstream archive layout changed." }
+        $library = $null
+        Expand-CompilerRtLibrary -ArchivePath $archive -ExtractDirectory $extract -LibraryPath ([ref]$library) `
+            -LibraryName $LibName -ExpectedSha256 $ExpectedSha256 -PinName $PinName
+        if (-not $library) { throw "$LibName not found inside $archive - upstream archive layout changed." }
         $dest = Join-Path $DestinationDir $LibName
-        Copy-Item -Path $found[0].FullName -Destination $dest -Force
+        Copy-Item -LiteralPath $library -Destination $dest -Force
         return $dest
     } finally {
         Remove-Item -Path $archive -Force -ErrorAction SilentlyContinue
@@ -2527,6 +2586,7 @@ Export-ModuleMember -Function @(
     'Invoke-GitClone',
     'Reset-SourceBuildDirectory',
     'Invoke-CmakeConfigure',
+    'Get-SourceBuildSccache',
     'Get-CMakeRocmIsolationArgs',
     'Assert-CmakeArgsConsumed',
     'Test-SccacheRemoteConfigured',
@@ -2556,6 +2616,7 @@ Export-ModuleMember -Function @(
     'Get-PythonDllHome',
     'Write-PythonDllDirectoryShim',
     'Invoke-WithHostArchLibraryEnvironment',
+    'Invoke-WithProcessEnvironment',
     'Get-NinjaFeatureFlag',
     'Add-NinjaArmFeatureFlags',
     'Add-NinjaPerTuFlags',
@@ -2568,6 +2629,7 @@ Export-ModuleMember -Function @(
     'Assert-DirectoryTargetArch',
     'Assert-PythonExtensionTag',
     'Get-PeImportNames',
+    'Get-DllDependencyGraph',
     'Assert-WheelTargetArch',
     'Get-PeFileMachine',
     'Edit-CppKeywordAlternatives',
@@ -2597,6 +2659,9 @@ Export-ModuleMember -Function @(
     'Get-LlvmSourceTarball',
     # Called directly by Build-LlvmFromSource.ps1 and Build-GstreamerFromSource.ps1.
     'Install-AArch64CompilerRt',
+    'Find-FirstTreeFile',
+    'Initialize-BuildDirectory',
+    'Find-InstalledCompilerRtLibrary',
     'Resolve-LlvmMasm',
     'Get-LlvmMasmCmakeArg',
     'Initialize-SourceBuildEnvironment',
@@ -2631,10 +2696,13 @@ Export-ModuleMember -Function @(
     'Complete-BuildPhase',
     'Write-BuildPhaseSummary',
     'Install-CpythonPip',
+    'Install-PortableZipTool',
+    'Install-ProtobufCompiler',
     'Get-PipPin',
     'Install-CpythonPipPin',
     'Invoke-CpythonPip',
     'Copy-BuildArtifact',
+    'Get-RequiredBuildArtifact',
     'Copy-SidecarDll',
     'Get-NvccCudaCmakeArgs',
     'Get-WindowsTargetArch',

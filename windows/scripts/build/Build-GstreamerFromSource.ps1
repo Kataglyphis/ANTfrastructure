@@ -350,10 +350,10 @@ try {
 
     # Outside Invoke-SourceBuildChain, so start the server here; remote backend only, a local cache dies with the layer.
     Start-SccacheServerSession
-    if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
-        if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+    $gstSccache = Get-SourceBuildSccache
+    if ($gstSccache) {
         # 'sccache clang-cl' reached meson as a bare clang-cl: 16 sccache requests for 5,143 ninja steps (hub #182).
-        $shim = New-SccacheCompilerShim -Sccache (Get-Command sccache.exe).Source -Compiler $clangCheck.Source -OutDir 'C:\temp\gst-sccache-shim'
+        $shim = New-SccacheCompilerShim -Sccache $gstSccache.Source -Compiler $clangCheck.Source -OutDir 'C:\temp\gst-sccache-shim'
         $env:CC  = $shim
         $env:CXX = $shim
         $script:GstSccacheShim = $shim
@@ -549,7 +549,7 @@ int _isatty(int);
     if ($script:GstCross) {
         if ($rtCandidates.Count -eq 0) {
             # SELF-HEAL: the source-built toolchain ships host builtins only, when the toolchain stage has not staged them.
-            $rtHostLib = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+            $rtHostLib = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmRoot -LibraryName 'clang_rt.builtins-x86_64.lib')
             if ($rtHostLib.Count -gt 0) {
                 $rtVer = Get-SourceBuildVersion -EnvironmentVariables @('LLVM_WINDOWS_VERSION') -DefaultValue '23.1.3'
                 $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$rtVer/clang%2Bllvm-$rtVer-aarch64-pc-windows-msvc.tar.xz"
@@ -723,23 +723,23 @@ int _isatty(int);
         $sslPcDirs = @()
         if ($script:GstCross) {
             $sslRoot = 'C:\opt\openssl-arm64'
-            $sslLibHit = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-            if ($sslLibHit.Count -eq 0) {
+            $sslLibHit = Find-FirstTreeFile -Root $sslRoot -Filter 'libcrypto.lib'
+            if (-not $sslLibHit) {
                 throw ("OpenSSL for $($script:GstTargetArch) not found under $sslRoot (no libcrypto.lib). " +
                        'Install-ScoopTools.ps1 installs it warn-only, so a base built before that step will lack it. ' +
                        "Without it gst-plugins-bad's hls/dtls/aes and glib-networking's openssl backend link the x64 " +
                        'import library and fail with a machine-type conflict.')
             }
-            $sslLibDir = $sslLibHit[0].Directory.FullName
+            $sslLibDir = $sslLibHit.Directory.FullName
             # Found, not composed: innounp extracts under a literal {app} directory.
-            $sslIncHit = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'opensslv.h' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-            if ($sslIncHit.Count -eq 0) {
+            $sslIncHit = Find-FirstTreeFile -Root $sslRoot -Filter 'opensslv.h'
+            if (-not $sslIncHit) {
                 throw "OpenSSL headers for $($script:GstTargetArch) not found under $sslRoot (no opensslv.h). The extracted package layout changed."
             }
-            $sslInc = $sslIncHit[0].Directory.Parent.FullName
-            $sslOwnPc = @(Get-ChildItem -Path $sslRoot -Recurse -Filter 'openssl.pc' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-            if ($sslOwnPc.Count -gt 0) {
-                $sslPcDirs = @($sslOwnPc[0].Directory.FullName)
+            $sslInc = $sslIncHit.Directory.Parent.FullName
+            $sslOwnPc = Find-FirstTreeFile -Root $sslRoot -Filter 'openssl.pc'
+            if ($sslOwnPc) {
+                $sslPcDirs = @($sslOwnPc.Directory.FullName)
                 log "OpenSSL ($($script:GstTargetArch)): using upstream pkgconfig at $($sslPcDirs[0])"
             } else {
                 $sslPcDir = Join-Path $resolvedLogDir 'openssl-arm64-pkgconfig'
@@ -1224,12 +1224,7 @@ cpp_link_args = [$buildLinkArgs]
     # TLS stays verified for this fetch and cargo's: the no-verify above exists for meson's wrap fetches alone.
     $rsEnv = [ordered]@{ GIT_SSL_NO_VERIFY = $null }
     foreach ($k in $rsPlan.Env.Keys) { $rsEnv[$k] = $rsPlan.Env[$k] }
-    $rsSaved = @{}
-    foreach ($k in $rsEnv.Keys) {
-        $rsSaved[$k] = [Environment]::GetEnvironmentVariable($k)
-        if ($null -eq $rsEnv[$k]) { Remove-Item "Env:\$k" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($k, $rsEnv[$k]) }
-    }
-    try {
+    $cargoExit = Invoke-WithProcessEnvironment -Environment $rsEnv -ScriptBlock {
         [void](Invoke-GitClone -RepoUrl 'https://github.com/GStreamer/gst-plugins-rs.git' -Tag "gstreamer-$GstVersion" -SourceDir $rsSrcDir)
         $rsSources = Join-Path $resolvedBuildDir 'gst-plugins-rs-sources.toml'
         New-Item -ItemType Directory -Force -Path $resolvedBuildDir | Out-Null
@@ -1241,13 +1236,8 @@ cpp_link_args = [$buildLinkArgs]
         try {
             $global:LASTEXITCODE = 0
             & cargo @rsArgs 2>&1 | ForEach-Object { if ($_) { log "  cargo| $_" } }
-            $cargoExit = $LASTEXITCODE
+            $LASTEXITCODE
         } finally { Pop-Location }
-    } finally {
-        # A $null restore must remove: see docs/windows-build-invariants.md § Four more pwsh traps (d).
-        foreach ($k in $rsSaved.Keys) {
-            if ($null -eq $rsSaved[$k]) { Remove-Item "Env:\$k" -ErrorAction SilentlyContinue } else { [Environment]::SetEnvironmentVariable($k, $rsSaved[$k]) }
-        }
     }
     $rsMissing = @()
     if ($cargoExit -ne 0) {
@@ -1278,8 +1268,10 @@ cpp_link_args = [$buildLinkArgs]
     }
 
     # A static read, so it holds on the cross lane too, where nothing that uses libffi can run.
-    $ffiDll = @(Get-ChildItem -Path (Join-Path $resolvedInstallDir 'bin') -Filter 'ffi-*.dll' -File -ErrorAction SilentlyContinue)
-    if ($ffiDll.Count -ne 1) { throw "expected exactly one ffi-*.dll in $resolvedInstallDir\bin (gobject imports it), found $($ffiDll.Count)" }
+    $ffiDll = @(Get-RequiredBuildArtifact -Root (Join-Path $resolvedInstallDir 'bin') -Filter 'ffi-*.dll' -MaximumCount 1 -FailureMessage {
+        param($files)
+        "expected exactly one ffi-*.dll in $resolvedInstallDir\bin (gobject imports it), found $($files.Count)"
+    })
     log (Assert-LibffiTypeExport -Path $ffiDll[0].FullName)
 
     # Mandatory plugin gate, fatal: `enabled` proves configure found a dependency, gst-inspect that the plugin loads.
@@ -1306,20 +1298,16 @@ cpp_link_args = [$buildLinkArgs]
     # The names in a DLL's dependency tree that resolve nowhere.
     function Get-UnresolvedDeps {
         param($DllPath, $Dumpbin, $SearchDirs, $Seen)
-        $missing = [System.Collections.Generic.List[string]]::new()
-        $deps = @(& $Dumpbin /dependents $DllPath 2>&1 | Select-String '^\s{4,}(\S+\.dll)' | ForEach-Object { $_.Matches.Groups[1].Value })
-        foreach ($dep in $deps) {
-            if ($dep -match '^(api|ext)-ms-') { continue }   # virtual API sets (loader-resolved)
-            if ($Seen.Contains($dep.ToLower())) { continue }
-            [void]$Seen.Add($dep.ToLower())
-            $hit = $SearchDirs | Where-Object { $_ -and (Test-Path (Join-Path $_ $dep)) } | Select-Object -First 1
-            if (-not $hit) { $missing.Add($dep) }
-            # Not into OS DLLs: their OneCore deps are absent on Server Core but loader-tolerated.
-            elseif ($hit -notmatch '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)') {
-                foreach ($m in (Get-UnresolvedDeps (Join-Path $hit $dep) $Dumpbin $SearchDirs $Seen)) { $missing.Add($m) }
-            }
-        }
-        return $missing
+        $readImports = {
+            param($path)
+            & $Dumpbin /dependents $path 2>&1 | Select-String '^\s{4,}(\S+\.dll)' | ForEach-Object { $_.Matches.Groups[1].Value }
+        }.GetNewClosure()
+        Get-DllDependencyGraph -Path $DllPath -SearchDirectory $SearchDirs -ReadImports $readImports -DepthFirst -Seen $Seen `
+            -SystemDirectoryPattern '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)' -ResolveImport {
+                param($name, $directories)
+                $hit = $directories | Where-Object { $_ -and (Test-Path (Join-Path $_ $name)) } | Select-Object -First 1
+                if ($hit) { Join-Path $hit $name }
+            } | Where-Object { -not $_.Path } | ForEach-Object Name
     }
     # Cross cannot run gst-inspect, so check statically: dependency tree walk and export marker (machine: Test-TargetArch.ps1).
     if ($script:GstCross) {

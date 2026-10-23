@@ -27,8 +27,7 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
             }, $true)
         foreach ($call in $closureCalls) {
             # At script top level param() variables are locals, so flagging them would be a false positive.
-            $fn = $call.Parent
-            while ($fn -and $fn -isnot [System.Management.Automation.Language.FunctionDefinitionAst]) { $fn = $fn.Parent }
+            $fn = Get-TestAstAncestor -Node $call -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
             if (-not $fn) { continue }
 
             # A same-named local assignment (names are case-insensitive) shadows the script param and is captured fine.
@@ -75,29 +74,25 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
 
     It 'still detects the defect when it is reintroduced (the test is not vacuous)' {
         # Prove the detector fires, or a file with no closures would pass tautologically.
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("closure-probe-" + [guid]::NewGuid().ToString('N') + '.ps1')
-        @'
+        Invoke-InTestDir -Prefix 'closure-probe-' -Files @{ 'control.ps1' = @'
 param([string]$Docker, [int]$MediaCoreCpus)
 function Invoke-Thing {
     $container = 'c1'
     $action = { & $Docker run --cpu-count $MediaCoreCpus --name $container }.GetNewClosure()
     & $action
 }
-'@ | Set-Content -Path $tmp -Encoding utf8
-        try {
+'@ } -Body { param($dir)
+            $tmp = Join-Path $dir control.ps1
             $bad = Get-ClosureViolation -Path $tmp
             $names = @($bad.Variable | Sort-Object -Unique)
             Assert-Equal 2 $names.Count "the detector must flag both script params, got: $($names -join ',')"
             Assert-True ($names -contains 'Docker') 'must flag $Docker'
             Assert-True ($names -contains 'MediaCoreCpus') 'must flag $MediaCoreCpus'
-        } finally {
-            Remove-Item $tmp -Force -ErrorAction SilentlyContinue
         }
     }
 
     It 'does NOT flag function parameters or block params (no false positives)' {
-        $tmp = Join-Path ([IO.Path]::GetTempPath()) ("closure-ok-" + [guid]::NewGuid().ToString('N') + '.ps1')
-        @'
+        Invoke-InTestDir -Prefix 'closure-ok-' -Files @{ 'control.ps1' = @'
 param([string]$Docker)
 function Invoke-Thing {
     param([string]$ContainerName, [int]$Cpus)
@@ -108,13 +103,11 @@ function Invoke-Thing {
     }.GetNewClosure()
     & $action 1
 }
-'@ | Set-Content -Path $tmp -Encoding utf8
-        try {
+'@ } -Body { param($dir)
+            $tmp = Join-Path $dir control.ps1
             $bad = Get-ClosureViolation -Path $tmp
             $got = @($bad | ForEach-Object { $_.Variable }) -join ','
             Assert-Equal 0 $bad.Count "the sibling's correct pattern must not be flagged, got: $got"
-        } finally {
-            Remove-Item $tmp -Force -ErrorAction SilentlyContinue
         }
     }
 }

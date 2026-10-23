@@ -236,6 +236,39 @@ function Assert-FileSha256 {
     Write-Host "$what SHA256 verified$pinRef."
 }
 
+function Find-FirstTreeFile {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Filter,
+        [Management.Automation.ActionPreference]$ScanErrorAction = 'SilentlyContinue')
+    Get-ChildItem -LiteralPath $Root -Recurse -Filter $Filter -File -ErrorAction $ScanErrorAction | Select-Object -First 1
+}
+
+Export-ModuleMember -Function Find-FirstTreeFile
+
+function Find-InstalledCompilerRtLibrary {
+    param([Parameter(Mandatory)][string]$LlvmRoot, [string]$LibraryName = 'clang_rt.builtins-aarch64.lib')
+    Find-FirstTreeFile -Root (Join-Path $LlvmRoot 'lib\clang') -Filter $LibraryName
+}
+
+Export-ModuleMember -Function Find-InstalledCompilerRtLibrary
+
+# A reference keeps native tar output separate from the selected library path.
+function Expand-CompilerRtLibrary {
+    param([Parameter(Mandatory)][string]$ArchivePath, [Parameter(Mandatory)][string]$ExtractDirectory,
+        [Parameter(Mandatory)][ref]$LibraryPath, [string]$LibraryName = 'clang_rt.builtins-aarch64.lib',
+        [string]$ExpectedSha256 = '', [string]$PinName = 'LLVM_WINDOWS_AARCH64_RT_SHA256')
+    $LibraryPath.Value = $null
+    Assert-FileSha256 -Path $ArchivePath -Expected $ExpectedSha256 -Label 'aarch64 compiler-rt archive' -PinName $PinName
+    # System32 bsdtar treats drive letters as paths; GNU tar can interpret them as remote hosts.
+    $tarExe = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
+    if (-not $tarExe) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
+    New-Item -ItemType Directory -Force -Path $ExtractDirectory | Out-Null
+    & $tarExe -xf $ArchivePath -C $ExtractDirectory "*$LibraryName"
+    $found = @(Find-FirstTreeFile -Root $ExtractDirectory -Filter $LibraryName)
+    if ($found.Count -gt 0) { $LibraryPath.Value = $found[0].FullName }
+}
+
+Export-ModuleMember -Function Expand-CompilerRtLibrary
+
 <#
 .SYNOPSIS
     A pin from the environment, else from this hub's versions.env; throws rather than let the newest release win.
@@ -341,12 +374,27 @@ function Test-UrlPortOpen {
     return [bool](Test-Connection -TargetName $uri.Host -TcpPort $uri.Port -Quiet -TimeoutSeconds $TimeoutSeconds)
 }
 
+function Initialize-BuildDirectory {
+    param([Parameter(Mandatory)][string[]]$Path, [switch]$Empty, [string[]]$ChildDirectory = @())
+    if ($Empty) {
+        foreach ($directory in $Path) {
+            if (Test-Path -LiteralPath $directory) { Remove-Item -LiteralPath $directory -Recurse -Force -ErrorAction Stop }
+        }
+    }
+    $create = if ($ChildDirectory.Count) {
+        foreach ($directory in $Path) { foreach ($child in $ChildDirectory) { Join-Path $directory $child } }
+    } else { $Path }
+    $null = New-Item -ItemType Directory -Force -Path $create -ErrorAction Stop
+}
+
+Export-ModuleMember -Function Initialize-BuildDirectory
+
 function Invoke-WithProcessEnvironment {
     # Runs -ScriptBlock with -Environment set in this process, then puts every variable back; a child it starts inherits them.
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Environment, [Parameter(Mandatory)][scriptblock]$ScriptBlock)
     $priorEnv = @(Get-ChildItem Env: | Where-Object Name -In @($Environment.Keys))
-    foreach ($name in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$name" -Value $Environment[$name] }
     try {
+        foreach ($name in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$name" -Value $Environment[$name] }
         & $ScriptBlock
     } finally {
         foreach ($name in @($Environment.Keys)) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }

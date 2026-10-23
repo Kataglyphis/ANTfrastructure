@@ -6,8 +6,7 @@
 Describe 'PE inspection primitives' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
         $script:kernel32 = Join-Path $env:SystemRoot 'System32\kernel32.dll'
         $script:pwshExe = (Get-Process -Id $PID).Path
         $script:hostMachine = switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) {

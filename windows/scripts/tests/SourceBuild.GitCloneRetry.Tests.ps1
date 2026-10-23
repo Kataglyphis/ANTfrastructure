@@ -3,16 +3,13 @@
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') -Force -DisableNameChecking
 
-$script:NewFakeGit = {
-    param($dir)
-    New-TestBatchTool -Directory $dir -Name 'git.bat' -Line @(
-        'echo GIT %* >> "%WBT_GIT_LOG%"',
-        'if "%WBT_GIT_MODE%"=="fail" exit /b 128',
-        'if exist "%WBT_GIT_FAILONCE%" ( del "%WBT_GIT_FAILONCE%" & mkdir "%WBT_GIT_TARGET%" 2>nul & echo partial > "%WBT_GIT_TARGET%\partial.txt" & exit /b 128 )',
-        'mkdir "%WBT_GIT_TARGET%" 2>nul',
-        'echo ok > "%WBT_GIT_TARGET%\cloned.txt"'
-    )
-}
+$script:NewFakeGit = New-TestBatchToolSetup -Name 'git.bat' -Line @(
+    'echo GIT %* >> "%WBT_GIT_LOG%"',
+    'if "%WBT_GIT_MODE%"=="fail" exit /b 128',
+    'if exist "%WBT_GIT_FAILONCE%" ( del "%WBT_GIT_FAILONCE%" & mkdir "%WBT_GIT_TARGET%" 2>nul & echo partial > "%WBT_GIT_TARGET%\partial.txt" & exit /b 128 )',
+    'mkdir "%WBT_GIT_TARGET%" 2>nul',
+    'echo ok > "%WBT_GIT_TARGET%\cloned.txt"'
+)
 
 function script:Invoke-GitCloneRetryFixture {
     param([int]$Failures = 0, [string]$Mode = '', [int]$MaxAttempts = 3, [switch]$SkipOnFailure)

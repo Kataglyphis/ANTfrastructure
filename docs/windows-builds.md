@@ -2462,6 +2462,10 @@ inputs. `Invoke-InTestScriptDir` parses before allocating a workspace, supplies 
 absolute script path and cleans up when the body fails; reading never executes the
 inspected source. Its fixtures cover malformed input and callback failure.
 
+`Copy-TestModuleClosure` validates and copies a complete sibling import closure
+for cold-import fixtures. Deliberately incomplete companion fixtures still name
+their partial file set explicitly.
+
 The harness also owns scoped fake-function restoration and recorded call state.
 `Invoke-WithFunctionModule -ScriptPath` loads selected functions without running
 top-level source; `-FixtureState` passes one object to initialization and the body,
@@ -2478,7 +2482,7 @@ fixtures exercise these policies with independent expectations; they do not
 replace container, compiler, certificate or GPU acceptance.
 
 
-The Windows unit runner's discovery floor is 2,252 after a complete 2,275-test
+The Windows unit runner's discovery floor is 2,378 after a complete 2,403-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
 
@@ -2496,3 +2500,50 @@ the portable suite supplies byte assertions. Mutation callbacks are captured
 before `It` registration so its own body parameter cannot shadow the verdict.
 A dedicated mutation removes the byte assertion and requires the writer mutants
 to survive, making the outer suite fail instead of accepting an inert callback.
+
+ORT dependency archives share the lowercase SHA1 pin check in the ONNX builder;
+Dawn still verifies its SHA256 pin first, and each caller keeps its mismatch
+diagnostic. Fixture archive hashes remain independent of the source helper.
+
+Compiler-rt callers share `Expand-CompilerRtLibrary` and `Find-InstalledCompilerRtLibrary`
+from `WindowsScripts.Shared`; source-build consumers reach both through their
+existing module companion. The archive is hashed before tar lookup or extraction.
+Native tar output remains separate from the selected library path. Source builds
+fail on a missing library; Scoop retains advisory fetching and its independent
+`WINDOWS_ARM64_STRICT` verdict. Both callers clean scratch on failure. `Find-FirstTreeFile` also owns recursive
+first-file discovery for OpenSSL installation and GStreamer prerequisites; callers
+retain advisory or fatal missing-file verdicts.
+
+Source preparation shares remote-cache eligibility, cache executable discovery,
+CPU defaults, portable ZIP extraction and cross-protoc preparation. Callers keep
+launcher selection, diagnostics, minimum versions and cleanup choices. DLL closure
+walks retain traversal order, import readers and system-library exclusions.
+`Get-RequiredBuildArtifact` retains caller filters, recursion and minimum/maximum
+cardinality; finding matching bytes cannot bypass a required artifact verdict.
+UV shares ABI probe transport while keeping fatal interpreter assertions separate
+from optional twin-store selection. Required companions import without forced
+reloads; malformed or missing companions fail before use.
+
+`Invoke-WithProcessEnvironment` restores missing, defined-empty and existing
+variables even if a setup write fails. GenieX log setup and hidden process launch
+use that scope. The standalone agentic module instead applies sanitizer overrides
+inside its existing child pwsh transport, retaining command logs and exit handling
+without adding a vendored dependency. Silo probes share recursive read-only log
+access through their existing companion; debugger operations stay with each probe.
+
+`New-TestDir -Files` initializes files inside the allocation cleanup scope;
+suite-scoped directories still clean up in `AfterAll`. `Invoke-InTestDir -Prefix`
+retains diagnostic names without leaking its prefix into lifted module parameters.
+`New-TestBatchToolSetup` captures a fake tool's writer and policy for retry suites.
+`Invoke-TestFunctionMutations -IncludeControl` runs the unmodified exercise first;
+a baseline failure cannot count as a killed mutation. Module-argument factories
+share temporary recipe workspaces; factory and import failures propagate before
+mutation expectations. These fixtures cover local
+policy and failure cleanup, not installed toolchains, ACLs or container builds.
+
+`Initialize-BuildDirectory` shares literal-root reset and directory creation for
+Python app staging, GenAI's ORT shim and proven ORT payloads. Child directories
+are created in caller order; reset and allocation failures terminate before a
+payload can be copied or proved. App wrappers keep their public signatures and
+work-directory defaults. The payload module binds its existing Shared companion
+directly so a private earlier import cannot hide the operation.

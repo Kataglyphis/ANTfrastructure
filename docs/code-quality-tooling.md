@@ -554,6 +554,11 @@ scan coverage requires explicit owner authorization. Existing rationales explain
 current debt; they do not authorize more. Remove an entry when its finding is fixed.
 A duplication report may identify shared syntax rather than shared behavior; inspect
 `--explain` before extracting a helper, and keep any remaining exception narrowly scoped.
+Windows preparation shares cache, archive and dependency-walk mechanisms while
+retaining caller verdicts. Environment scopes and child-only sanitizer overrides
+have failure and mutation coverage. Fixture constructors own allocation cleanup;
+mutation controls must pass before a deliberately broken implementation can count
+as proof. Baseline budgets only decrease after an authoritative whole-tree scan.
 
 The cleanup separates SBOM construction and comparison, Python extraction, package-index
 fetching, dependency dispatch, option parsing and smoke probes from their drivers. Shared

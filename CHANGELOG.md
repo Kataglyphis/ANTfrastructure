@@ -12,6 +12,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Windows preparation and environment lifetimes
+
+- Share compiler-rt verification, extraction and library discovery while retaining base-stage warnings and source-build failures.
+- Share source cache setup, portable ZIP tools, cross-protoc preparation and DLL dependency traversal with caller-specific policies.
+- Share UV interpreter probes, Linux helper lookup and literal staging-directory setup without weakening required module imports.
+- Restore temporary environments after partial setup or GenieX launch failure; apply sanitizer variables only to the test child.
+- Share recursive silo log read grants and fixture allocation, batch-tool setup and mutation lifetimes; retain negative controls and cleanup assertions.
+- Remove 24 Windows duplication exceptions (397 to 373) and lower 13 measured budgets without relaxing scan coverage or limits.
+- Raise the Windows test-discovery minimum to 2,378 after all 2,403 merged tests passed.
+- Preserve portable batch byte checks and native Windows execution, and update the Linux mutation receipt for all 38 harness cases.
+
 ## 2026-10-23 — restore portable harness mutation baselines
 
 - Preserve all native batch execution checks in their separately discovered Windows suite, sharing fixture construction and mutation lifecycle.

@@ -32,8 +32,7 @@ $arch = Get-WindowsTargetArch -Arch $(if ($manifest.ContainsKey('arch')) { $mani
 $packageArch = Get-WindowsPackageArch -Arch $arch
 $stem = "$($app['id'])-$version-windows-$packageArch"
 $OutDir = if ($OutDir) { Resolve-PythonAppPath $RepoRoot $OutDir } else { Split-Path $Bundle -Parent }
-if (-not $WorkDir) { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "python-app-package-$($app['id'])-$arch" }
-$null = New-Item -ItemType Directory -Force -Path $OutDir, $WorkDir
+$WorkDir = New-PythonAppWorkDirectory -Path $WorkDir -DefaultName "python-app-package-$($app['id'])-$arch" -AdditionalPath @($OutDir)
 $test = -not $SkipTest
 if ($test -and (Test-WindowsCrossTarget -Arch $arch)) {
     # Nothing here runs an arm64 binary; the device starts the bundle (New-PythonAppBundle.ps1's deferred self-test).
@@ -57,8 +56,7 @@ function Write-Created([string]$Path, [string]$Note = '') {
 # An empty directory under the work dir, whatever an earlier run left there.
 function New-EmptyWorkDir([string]$Name) {
     $path = Join-Path $WorkDir $Name
-    if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force }
-    $null = New-Item -ItemType Directory -Force -Path $path
+    Initialize-PythonAppDirectory -Path $path -Empty
     return $path
 }
 

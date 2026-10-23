@@ -35,17 +35,15 @@ $packageArch = Get-WindowsPackageArch -Arch $arch
 $app = Get-PythonAppConfig -Path (Resolve-PythonAppPath $RepoRoot $Config)
 if (-not $OutDir) { $OutDir = "dist/windows-$packageArch/bundle" }
 $bundle = Resolve-PythonAppPath $RepoRoot $OutDir
-if (-not $WorkDir) { $WorkDir = Join-Path ([IO.Path]::GetTempPath()) "python-app-$($app['id'])-$arch" }
-$null = New-Item -ItemType Directory -Force -Path $WorkDir
-if (Test-Path -LiteralPath $bundle) { Remove-Item -LiteralPath $bundle -Recurse -Force }
-$null = New-Item -ItemType Directory -Force -Path $bundle
+$WorkDir = New-PythonAppWorkDirectory -Path $WorkDir -DefaultName "python-app-$($app['id'])-$arch"
+Initialize-PythonAppDirectory -Path $bundle -Empty
 $hostPython = Join-Path $PythonBuild 'python.exe'
 # Host and target come from one CPython tree, so the host reports the target's version and ABI tag.
 $pythonVersion = "$(& $hostPython -c 'import sys; print(sys.version.split()[0])')".Trim()
 Write-Host "$($app['name']) for $arch$(if ($cross) { ' (cross)' }), CPython $pythonVersion"
 
 # The compiled wheel for the runtime's ABI and platform when there is one: the bundle ships binaries, not source.
-$wheels = @(Get-ChildItem -LiteralPath (Resolve-PythonAppPath $RepoRoot $WheelDir) -Filter '*.whl' -File |
+$wheels = @(Get-PythonAppWheelFile -Directory (Resolve-PythonAppPath $RepoRoot $WheelDir) |
     Where-Object { (($_.Name -split '-')[0] -replace '[-_.]+', '_').ToLowerInvariant() -eq ($app['distribution'] -replace '[-_.]+', '_').ToLowerInvariant() })
 if ($wheels.Count -eq 0) { throw "No $($app['distribution']) wheel in $WheelDir; build it first (Invoke-CiPackaging.ps1)" }
 $abiTag = Get-PythonAbiTag -Python $hostPython

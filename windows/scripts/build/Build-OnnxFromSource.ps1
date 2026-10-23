@@ -117,9 +117,17 @@ function Edit-KleidiaiMarmasmRule {
     return $CMakeText.Substring(0, $end) + $eol + $rule + $CMakeText.Substring($end)
 }
 
+function Assert-OrtDependencyArchiveSha1 {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 is the pin ORT''s own deps.txt carries')]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Expected,
+        [Parameter(Mandatory)][scriptblock]$FailureMessage)
+    $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA1).Hash.ToLowerInvariant()
+    if ($actual -ne $Expected) { throw (& $FailureMessage $actual $Expected) }
+    return $actual
+}
+
 # ORT's own KleidiAI tarball, rule-patched for FETCHCONTENT_SOURCE_DIR_KLEIDIAI.
 function Initialize-OrtKleidiaiSource {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 is the pin ORT''s own deps.txt carries')]
     param(
         [Parameter(Mandatory)][string]$OrtSourceDir,
         [Parameter(Mandatory)][string]$WorkDir,
@@ -130,8 +138,10 @@ function Initialize-OrtKleidiaiSource {
     $null = [System.IO.Directory]::CreateDirectory($WorkDir)
     $archive = Join-Path $WorkDir 'kleidiai.tar.gz'
     Invoke-DownloadWithRetry -Url $entry.Url -DestinationPath $archive -Description 'KleidiAI (ORT deps.txt)'
-    $sha1 = (Get-FileHash -LiteralPath $archive -Algorithm SHA1).Hash.ToLowerInvariant()
-    if ($sha1 -ne $entry.Sha1) { throw "KleidiAI archive SHA1 $sha1 is not ORT's deps.txt pin $($entry.Sha1)" }
+    $sha1 = Assert-OrtDependencyArchiveSha1 -Path $archive -Expected $entry.Sha1 -FailureMessage {
+        param($actual, $expected)
+        "KleidiAI archive SHA1 $actual is not ORT's deps.txt pin $expected"
+    }
     $root = Expand-SourceTarball -Archive $archive -Destination (Join-Path $WorkDir 'src')
     $wrapper = Join-Path $root 'kai-armasm.cmd'
     [System.IO.File]::WriteAllText($wrapper, (Get-KleidiaiArmasmWrapper -Triple $Triple), [System.Text.Encoding]::ASCII)
@@ -299,7 +309,6 @@ function Resolve-GnuPatchExe {
 
 # Every WebGPU input is pinned (Dawn, ORT's patches, four DEPS commits, DXC); nothing else is fetched.
 function Initialize-OrtWebGpuInput {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingBrokenHashAlgorithms', '', Justification = 'SHA1 only matches ORT''s deps.txt; the SHA256 pin verifies')]
     param([Parameter(Mandatory)][string]$OrtSourceDir, [Parameter(Mandatory)][string]$WorkDir, [Parameter(Mandatory)][string]$Python)
     $pin = Get-OrtWebGpuPin -Source ([Environment]::GetEnvironmentVariables())
     $entry = Get-OrtDawnDepsEntry -DepsLine @(Get-Content -LiteralPath (Join-Path $OrtSourceDir 'cmake\deps.txt')) -DawnVersion $pin.DAWN_VERSION
@@ -307,8 +316,10 @@ function Initialize-OrtWebGpuInput {
     [void](New-Item -ItemType Directory -Force -Path $WorkDir)
     $zip = Join-Path $WorkDir 'dawn.zip'
     Invoke-DownloadWithRetry -Url $entry.Url -DestinationPath $zip -ExpectedSha256 $pin.DAWN_SHA256 -ExpectSignature 'PK' -Description "Dawn $($pin.DAWN_VERSION)"
-    $sha1 = (Get-FileHash -Algorithm SHA1 -LiteralPath $zip).Hash.ToLowerInvariant()
-    if ($sha1 -ne $entry.Sha1) { throw "Dawn archive SHA1 $sha1 is not ORT's deps.txt $($entry.Sha1), yet its SHA256 matched: re-measure ORT_WEBGPU_WINDOWS_DAWN_SHA256" }
+    [void](Assert-OrtDependencyArchiveSha1 -Path $zip -Expected $entry.Sha1 -FailureMessage {
+        param($actual, $expected)
+        "Dawn archive SHA1 $actual is not ORT's deps.txt $expected, yet its SHA256 matched: re-measure ORT_WEBGPU_WINDOWS_DAWN_SHA256"
+    })
     $dawnSrc = Join-Path $WorkDir 'dawn'
     Expand-OrtDawnArchive -Zip $zip -Destination $dawnSrc
     $patchExe = Resolve-GnuPatchExe

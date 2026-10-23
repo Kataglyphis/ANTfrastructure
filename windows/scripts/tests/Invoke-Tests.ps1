@@ -22,7 +22,7 @@ $modDir = Join-Path (Split-Path $here -Parent) 'modules'
 $testFiles = @(Get-ChildItem -Path $here -Filter '*.Tests.ps1' | Sort-Object Name)
 if ($Only) { $testFiles = @($testFiles | Where-Object { $_.Name -eq $Only }) }
 # ~1% below the measured count: raise it when suites grow, never lower it to make a red run green.
-$minTests = 2318
+$minTests = 2378
 
 # Prints the one summary and returns the exit code: either path's tallies, the sum of every child's on the parallel one.
 function Write-TestSummary {

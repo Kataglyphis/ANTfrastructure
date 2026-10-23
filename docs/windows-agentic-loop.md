@@ -296,10 +296,15 @@ is PowerShell syntax and cannot change the loop's own session.
 |----------|---------|
 | `Resolve-BuildMatrixEntry -Entry <object>` | Normalize a string or JSON object to a hashtable with `Name`, `Sanitizer`, `TestCommand`, `BuildDir`, `BuildType`. |
 | `Get-SanitizerEnvVars -Sanitizer <string>` | Return a hashtable of env vars for the given sanitizer (`asan`, `tsan`, or `none`). |
-| `Invoke-SanitizerTestCommand -Command <string> -Sanitizer <string> -RepoRoot <string>` | Set sanitizer env vars, run tests, restore env. |
+| `Invoke-SanitizerTestCommand -Command <string> -Sanitizer <string> -RepoRoot <string>` | Apply sanitizer variables only in the test child; preserve the parent environment. |
 
 See [`agentic-loop-build-matrix.md`](agentic-loop-build-matrix.md) for the
 full build matrix documentation.
+
+Sanitizer overrides share the existing logged child-pwsh transport through
+`Invoke-TestCommand -Environment`. They preserve command text, leading parameter
+blocks, merged stdout/stderr, durable logs and exit status. The agentic module
+keeps its standalone import contract; it does not require a Shared companion.
 
 ### High-Level Loop
 

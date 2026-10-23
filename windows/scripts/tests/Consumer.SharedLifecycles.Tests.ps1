@@ -6,8 +6,9 @@ $script:ConsumerNativeWrappers = @('CMAKE_C_COMPILER_LAUNCHER', 'CMAKE_CXX_COMPI
 
 function Invoke-PackagingLifecycleFixture {
     param([scriptblock]$Body, [string]$Failure = '', [string]$Find = '', [string]$Replace = '')
+    $exercise = $Body
     Invoke-InTestDir { param($dir)
-        $state = New-TestCallState @{ Root = $dir; Failure = $Failure; Action = $Body }
+        $state = New-TestCallState @{ Root = $dir; Failure = $Failure }
         $prelude = @'
 $repoRoot = $State.Root
 $PythonVersion = 'fixture-python'
@@ -36,9 +37,7 @@ function Invoke-BuildExternal {
 function Remove-UvProjectEnvironment { param($EnvPath, $LogInfo, $LogWarning) $State.Calls.Add("remove:$(Split-Path $EnvPath -Leaf)") }
 '@
         Invoke-WithFunctionModule -ScriptPath 'windows\scripts\python\Invoke-CiPackaging.ps1' -FunctionName Invoke-PackagingEnvironmentBuild `
-            -FixtureState $state -Prelude $prelude -Find $Find -Replace $Replace -Body {
-                param($fixture) & $fixture.Action $fixture
-            }
+            -FixtureState $state -Prelude $prelude -Find $Find -Replace $Replace -Body $exercise
     }.GetNewClosure()
 }
 
@@ -235,7 +234,9 @@ function cmake { $global:LASTEXITCODE = 0 }
     @('WindowsMsix.Signing', 'WindowsBuild.Common', 'Write-BuildLog'),
     @('WindowsMsix.Common', 'WindowsScripts.Shared', 'Resolve-PathFromRoot'),
     @('WindowsUv.Common', 'WindowsScripts.Shared', 'Resolve-PathFromRoot'),
-    @('WindowsUv.Common', 'WindowsPythonWheel.Common', 'Get-PinnedPythonVersion'),
+    @('WindowsUv.Common', 'WindowsPythonWheel.Common', 'Resolve-SharedLinuxScriptFile'),
+    @('WindowsPythonApp.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
+    @('WindowsOrtPayload.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
     @('WindowsRustToolchain.Common', 'WindowsScripts.Shared', 'Invoke-DownloadWithRetry'),
     @('WindowsContainerImage.Common', 'WindowsScripts.Shared', 'Resolve-BuildValue')
 )
@@ -269,9 +270,8 @@ foreach (`$case in `$cases) {
         $result = Invoke-TestPwshProbe -Source $probe
         Assert-Equal 0 $result.ExitCode $result.Output
         Invoke-InTestDir { param($dir)
-            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common')
-            $moduleRoot = Join-Path (Get-RepoRoot) 'windows\scripts\modules'
-            foreach ($name in Get-ModuleImportClosure -Seed $seeds) { Copy-Item -LiteralPath (Join-Path $moduleRoot "$name.psm1") -Destination $dir }
+            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common')
+            Copy-TestModuleClosure -Seed $seeds -Destination $dir
             $mutations = @(
                 @{ Module = 'WindowsSourceBuild.Common'; Find = 'Import-Module $targetArchPath -ErrorAction Stop'; Replace = 'if (-not (Get-Module -Name WindowsTargetArch.Common)) { Import-Module $targetArchPath -ErrorAction Stop }'; Message = 'source-build architecture re-export missing' },
                 @{ Module = 'WindowsGstPlugins.Common'; Find = 'Import-Module $gstTargetArchPath'; Replace = 'Import-Module $gstTargetArchPath -Force'; Message = 'nested import replaced sibling state|parent command disappeared after nested import' }
@@ -306,7 +306,8 @@ foreach (`$case in `$cases) {
                 @{ Owner = 'WindowsMsix.Signing'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsMsix.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsUv.Common'; Copy = @(); Message = 'WindowsUvLock.Common.psm1' },
-                @{ Owner = 'WindowsPythonApp.Common'; Copy = @(); Message = 'WindowsOrtPayload.Common.psm1' }
+                @{ Owner = 'WindowsPythonApp.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
+                @{ Owner = 'WindowsOrtPayload.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' }
             )
             foreach ($case in $cases) {
                 $destination = Join-Path $dir $case.Owner

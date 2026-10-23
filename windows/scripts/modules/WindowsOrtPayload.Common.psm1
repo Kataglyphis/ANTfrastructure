@@ -4,6 +4,7 @@
 # Consumer-side proof a shipped tree carries only the chain ORT, no image stage loads it; see docs/onnxruntime-single-source.md
 
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop -DisableNameChecking
 
 # Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
 foreach ($sibling in 'WindowsOrtProvenance.Common', 'WindowsOnnx.Common') {
@@ -177,8 +178,7 @@ function New-OrtProvenPayload {
     if (-not (Test-Path -LiteralPath $ExePath -PathType Leaf)) { throw "Expected executable not found: $ExePath" }
     if (-not $PSCmdlet.ShouldProcess($Destination, 'build and prove the release payload')) { return }
     $loadsOrt = Test-PayloadLoadsOrt -ExePath $ExePath -IncludeDirectory $IncludeDirectory
-    if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Recurse -Force }
-    $null = New-Item -ItemType Directory -Force -Path $Destination
+    Initialize-BuildDirectory -Path $Destination -Empty
     Copy-Item -LiteralPath $ExePath -Destination $Destination
     $exeDir = Split-Path $ExePath -Parent
     Get-ChildItem -LiteralPath $exeDir -Filter '*.dll' -File |

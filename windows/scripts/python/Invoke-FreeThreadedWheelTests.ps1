@@ -26,7 +26,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot '..\modules\Initialize-CiEnvironment.ps1')
 $repoRoot = Initialize-CiEnvironment -ScriptRoot $PSScriptRoot -EnterRepoRoot -RepoRoot $RepoRoot -Modules @(
-    'WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common', 'WindowsPythonWheel.Suite')
+    'WindowsScripts.Shared', 'WindowsBuild.Common', 'WindowsUv.Common', 'WindowsTargetArch.Common', 'WindowsPythonWheel.Common', 'WindowsPythonWheel.Suite')
 if (-not $PythonVersion) { $PythonVersion = (Get-PinnedPythonVersion).MajorMinor }
 $arch = Get-WindowsTargetArch -Arch $TargetArch
 $ftMode = Resolve-FreeThreadedWheelMode -Value $FreeThreadedWheel
@@ -71,16 +71,14 @@ function Install-WheelTestsVenv([string]$Work, [pscustomobject]$Suite, [IO.FileI
 
 function Invoke-WheelTestsRun([string]$Python, [string]$RunDir, [pscustomobject]$Suite) {
     # The table's env reaches this one pytest process and the processes it starts, not the rest of the driver.
-    $before = @{}
-    foreach ($name in $Suite.Env.Keys) { $before[$name] = [Environment]::GetEnvironmentVariable($name) }
     $pytest = @(if ($Suite.Isolated) { '-I' }) + @((Get-FreeThreadedWheelSuiteHelper), 'run', '--') + $Suite.PytestArgs
     Push-Location -LiteralPath $RunDir
     try {
-        foreach ($name in $Suite.Env.Keys) { [Environment]::SetEnvironmentVariable($name, $Suite.Env[$name]) }
-        return Invoke-BuildExternal -Context $context -File $Python -Parameters $pytest -IgnoreExitCode
+        return Invoke-WithProcessEnvironment -Environment $Suite.Env -ScriptBlock {
+            Invoke-BuildExternal -Context $context -File $Python -Parameters $pytest -IgnoreExitCode
+        }
     } finally {
         Pop-Location
-        foreach ($name in $before.Keys) { [Environment]::SetEnvironmentVariable($name, $before[$name]) }
     }
 }
 

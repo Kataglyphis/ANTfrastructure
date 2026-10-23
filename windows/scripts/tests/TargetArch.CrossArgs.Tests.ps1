@@ -5,8 +5,7 @@
 
 Describe 'Get-CMakeCrossArgs' {
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
     }
 
     It 'arm64 carries C, CXX AND ASM compiler targets plus the matching _FLAGS_INIT' {

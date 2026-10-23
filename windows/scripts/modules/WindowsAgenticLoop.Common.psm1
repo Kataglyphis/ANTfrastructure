@@ -829,8 +829,21 @@ function Invoke-GitAutoCommit {
 function Invoke-LoggedAgenticCommand {
     param(
         [Parameter(Mandatory)][string]$Command,
-        [Parameter(Mandatory)][string]$Label
+        [Parameter(Mandatory)][string]$Label,
+        [Collections.IDictionary]$Environment = @{}
     )
+    if ($null -ne $Environment -and $Environment.Count -gt 0) {
+        $assignments = foreach ($name in $Environment.Keys) {
+            $path = ('Env:' + [string]$name).Replace("'", "''")
+            if ($null -eq $Environment[$name]) { "Remove-Item -LiteralPath '$path' -ErrorAction SilentlyContinue" }
+            else {
+                $value = ([string]$Environment[$name]).Replace("'", "''")
+                "Set-Item -LiteralPath '$path' -Value '$value' -ErrorAction Stop"
+            }
+        }
+        $scriptText = $Command.Replace("'", "''")
+        $Command = ($assignments -join "`n") + "`n& ([scriptblock]::Create('$scriptText'))"
+    }
     $logFile = Get-AgenticLogFile
     Write-Host "--- $Label output ---"
     & pwsh -NoProfile -Command $Command 2>&1 | ForEach-Object {
@@ -853,13 +866,13 @@ function Invoke-BuildCommand {
 }
 
 function Invoke-TestCommand {
-    param([string]$Command, [string]$RepoRoot)
+    param([string]$Command, [string]$RepoRoot, [Collections.IDictionary]$Environment = @{})
     Write-AgenticSection 'TESTS'
     Write-AgenticLog "Command: $Command"
     if ($script:AgenticDryRun) { return $true }
     Push-Location $RepoRoot
     try {
-        $ec = Invoke-LoggedAgenticCommand -Command $Command -Label 'test'
+        $ec = Invoke-LoggedAgenticCommand -Command $Command -Label 'test' -Environment $Environment
         if ($ec -ne 0) { Write-AgenticLog "TESTS FAILED (exit $ec)" 'ERROR'; return $false }
         Write-AgenticLog 'TESTS PASSED'; return $true
     } finally { Pop-Location }
@@ -941,21 +954,8 @@ function Invoke-SanitizerTestCommand {
         return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot
     }
     $envVars = Get-SanitizerEnvVars -Sanitizer $Sanitizer
-    $savedVars = @{}
-    foreach ($key in $envVars.Keys) {
-        $savedVars[$key] = [Environment]::GetEnvironmentVariable($key)
-        [Environment]::SetEnvironmentVariable($key, $envVars[$key])
-    }
-    Write-AgenticLog "Sanitizer: $Sanitizer — env vars set ($($envVars.Keys -join ', '))"
-    try {
-        return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot
-    } finally {
-        # Unset must stay unset: SetEnvironmentVariable($null) from PowerShell leaves it defined-empty.
-        foreach ($key in $savedVars.Keys) {
-            if ($null -eq $savedVars[$key]) { Remove-Item -Path "Env:$key" -ErrorAction SilentlyContinue }
-            else { [Environment]::SetEnvironmentVariable($key, $savedVars[$key]) }
-        }
-    }
+    Write-AgenticLog "Sanitizer: $Sanitizer — child env ($($envVars.Keys -join ', '))"
+    return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot -Environment $envVars
 }
 
 # -- Main loop ------------------------------------------------------------

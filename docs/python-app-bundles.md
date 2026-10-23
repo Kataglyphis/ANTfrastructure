@@ -121,6 +121,14 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
 bash <hub>/linux/scripts/06-packaging/python-app-bundle.sh --repo-root <repo> --wheel-dir dist --out-dir dist/linux-x86_64/bundle
 ```
 
+Windows app staging shares literal directory setup through
+`Initialize-PythonAppDirectory`, backed by `WindowsScripts.Shared`.
+`New-PythonAppWorkDirectory` preserves caller paths, temporary defaults and output
+creation order. `Get-PythonAppWheelFile` enumerates direct matching files only;
+callers keep their ABI/name predicates and first-match or unique-wheel verdicts.
+Keep the Shared companion when copying these modules; reset and allocation
+failures terminate before packaging proceeds.
+
 ## Windows: the image's OpenCV, not PyPI's
 
 PyPI's `cv2.pyd` imports `MFPlat.dll`, `MF.dll` and `MFReadWrite.dll` (Media Foundation).

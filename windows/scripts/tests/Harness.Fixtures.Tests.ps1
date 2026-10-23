@@ -3,6 +3,33 @@
 # SPDX-License-Identifier: MIT
 # Local filesystem and exception fixtures cover harness contracts, not Windows tools or image builds.
 
+function Invoke-DirectoryCleanupProbe {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    $record = [pscustomobject]@{ Path = ''; Exit = -1 }
+    $savedExit = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
+    try { & $Body $record }
+    finally {
+        if ($savedExit) { $global:LASTEXITCODE = $savedExit.Value } else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
+        if ($record.Path) { Remove-Item -LiteralPath $record.Path -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Assert-FixtureTreeContent {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][Collections.IDictionary]$Expected)
+    if ($Expected.Count -eq 0) { throw 'Expected must contain at least one file' }
+    foreach ($entry in (Get-TestFileTreeEntry -Root $Root -Files $Expected)) {
+        Assert-Equal $entry.Text ([IO.File]::ReadAllText($entry.Path)) "exact fixture bytes: $($entry.Path)"
+    }
+}
+
+function Assert-MutationFactoryRefused {
+    param([Parameter(Mandatory)][scriptblock]$Factory, [Parameter(Mandatory)][string]$MessagePattern,
+        [string]$Expected = 'recipe failure')
+    Assert-Throws {
+        Invoke-TestFunctionMutations -ModuleArgumentsFactory $Factory -Find old -Replace new -Expected $Expected -Body { throw 'body must not execute' }
+    } -MessagePattern $MessagePattern
+}
+
 Describe 'Harness fixture lifecycle' {
     It 'creates unique directories with the existing default prefix' {
         $first = New-TestDir
@@ -17,22 +44,45 @@ Describe 'Harness fixture lifecycle' {
         }
     }
 
-    It 'preserves a suite prefix containing spaces' {
-        $dir = New-TestDir -Prefix 'fixture space-'
+    It 'preserves a suite prefix and literal file paths while accepting an empty file map' {
+        $dir = New-TestDir -Prefix 'fixture space-' -Files ([ordered]@{ 'nested [parent]/exact.txt' = "fixture`nbytes"; 'empty.txt' = '' })
         try {
             Assert-True (Test-Path -LiteralPath $dir -PathType Container)
             Assert-Match '^fixture space-[a-f0-9]{32}$' (Split-Path $dir -Leaf)
+            Assert-Equal "fixture`nbytes" ([IO.File]::ReadAllText((Join-Path $dir 'nested [parent]/exact.txt')))
+            Assert-FixtureTreeContent -Root $dir -Expected @{ 'nested [parent]/exact.txt' = "fixture`nbytes"; 'empty.txt' = '' }
+            $empty = New-TestDir -Files @{}
+            try { Assert-True (Test-Path -LiteralPath $empty -PathType Container) }
+            finally { Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue }
         } finally { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
     }
 
+    It 'removes the allocated directory when file initialization fails and propagates that failure' {
+        Invoke-DirectoryCleanupProbe { param($state)
+            Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir -Prefix Init -FixtureState $state `
+                -Prelude 'function Write-TestFileTree { param($Root, $Files); $State.Path = $Root; throw "file initialization sentinel" }' -Body {
+                    param($record)
+                    Assert-Throws { New-InitTestDir -Files @{ 'requested.txt' = 'content' } } -MessagePattern 'file initialization sentinel'
+                    Assert-NotNull $record.Path
+                    Assert-False (Test-Path -LiteralPath $record.Path) 'failed initialization must not leak its root'
+                }
+        }
+    }
+
+    It 'propagates a directory allocation error before file initialization or a body can report success' {
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir -Prefix Allocation `
+            -Prelude 'function New-Item { param($ItemType, [switch]$Force, $Path, $ErrorAction); Write-Error "directory allocation sentinel" -ErrorAction $ErrorAction }' -Body {
+                Assert-Throws { New-AllocationTestDir } -MessagePattern 'directory allocation sentinel'
+            }
+    }
+
     It 'cleans up after a failing body and clears a previous native exit code' {
-        $state = [pscustomobject]@{ Path = ''; Exit = -1 }
-        $savedExit = Get-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue
-        try {
+        Invoke-DirectoryCleanupProbe { param($state)
             $global:LASTEXITCODE = 17
             Assert-Throws {
-                Invoke-InTestDir -Files @{ 'nested/file.txt' = 'fixture bytes' } -Body { param($dir)
+                Invoke-InTestDir -Prefix 'failing fixture-' -Files @{ 'nested/file.txt' = 'fixture bytes' } -Body { param($dir)
                     $state.Path = $dir
+                    Assert-Match '^failing fixture-' (Split-Path $dir -Leaf)
                     $state.Exit = $global:LASTEXITCODE
                     Assert-Equal 'fixture bytes' ([IO.File]::ReadAllText((Join-Path $dir 'nested/file.txt')))
                     throw 'fixture body failed'
@@ -40,14 +90,25 @@ Describe 'Harness fixture lifecycle' {
             } -MessagePattern 'fixture body failed'
             Assert-Equal 0 $state.Exit
             Assert-False (Test-Path -LiteralPath $state.Path)
-        } finally {
-            if ($savedExit) { $global:LASTEXITCODE = $savedExit.Value } else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
-            if ($state.Path) { Remove-Item -LiteralPath $state.Path -Recurse -Force -ErrorAction SilentlyContinue }
         }
     }
 }
 
 Describe 'Harness text trees' {
+    It 'projects ordered literal paths and string values without creating files' {
+        Invoke-InTestDir { param($dir)
+            $root = Join-Path $dir 'uncreated tree'
+            $entries = @(Get-TestFileTreeEntry -Root $root -Files ([ordered]@{ 'first [leaf]/a.txt' = 'MiXeD'; 'empty.txt' = $null; 'number.txt' = 42 }))
+            Assert-Equal 3 $entries.Count
+            Assert-Equal (Join-Path $root 'first [leaf]/a.txt') $entries[0].Path
+            Assert-Equal (Join-Path $root empty.txt) $entries[1].Path
+            Assert-Equal (Join-Path $root number.txt) $entries[2].Path
+            Assert-Equal 'MiXeD||42' (($entries | ForEach-Object { $_.Text }) -join '|')
+            Assert-Equal 0 @(Get-TestFileTreeEntry -Root $root -Files @{}).Count
+            Assert-False (Test-Path -LiteralPath $root)
+        }
+    }
+
     It 'creates nested parents, preserves exact contents and overwrites existing files without output' {
         Invoke-InTestDir { param($dir)
             $root = Join-Path $dir 'absent tree'
@@ -55,9 +116,20 @@ Describe 'Harness text trees' {
             $result = @(Write-TestFileTree -Root $root -Files ([ordered]@{ 'nested [folder]\file.txt' = $content; 'empty.txt' = '' }))
             Assert-Equal 0 $result.Count
             Assert-Equal $content ([IO.File]::ReadAllText((Join-Path $root 'nested [folder]\file.txt')))
-            Assert-Equal '' ([IO.File]::ReadAllText((Join-Path $root 'empty.txt')))
+            Assert-FixtureTreeContent -Root $root -Expected @{ 'nested [folder]/file.txt' = $content; 'empty.txt' = '' }
             Write-TestFileTree -Root $root -Files @{ 'nested [folder]\file.txt' = 'replacement' }
-            Assert-Equal 'replacement' ([IO.File]::ReadAllText((Join-Path $root 'nested [folder]\file.txt')))
+            Assert-FixtureTreeContent -Root $root -Expected @{ 'nested [folder]/file.txt' = 'replacement' }
+        }
+    }
+}
+
+Describe 'Exact fixture content verdicts' {
+    It 'refuses empty expectations, absent files and wrong bytes despite unrelated valid files' {
+        Invoke-InTestDir -Files @{ 'present.txt' = 'fixture content' } -Body { param($dir)
+            Assert-FixtureTreeContent -Root $dir -Expected @{ 'present.txt' = 'fixture content' }
+            Assert-Throws { Assert-FixtureTreeContent -Root $dir -Expected @{} } -MessagePattern 'at least one file'
+            Assert-Throws { Assert-FixtureTreeContent -Root $dir -Expected @{ 'missing.txt' = '' } } -MessagePattern 'missing.txt'
+            Assert-Throws { Assert-FixtureTreeContent -Root $dir -Expected @{ 'present.txt' = 'wrong content' } } -MessagePattern 'exact fixture bytes'
         }
     }
 }
@@ -75,6 +147,58 @@ Describe 'Batch fixture bytes' {
     Invoke-TestBatchToolMutationCases -Body {
         param($path)
         Assert-TestBatchFile -Path $path -Expected "@echo off`r`necho caller-marker`r`nexit /b 7`r`n"
+    }
+}
+
+Describe 'Copied module fixture closures' {
+    It 'copies the exact transitive sibling set from a literal path without unrelated modules or output' {
+        Invoke-InTestDir { param($dir)
+            $source = Join-Path $dir 'source [modules]'
+            $target = Join-Path $dir 'destination [modules]'
+            $rootText = "Import-Module (Join-Path `$PSScriptRoot 'Fixture.Leaf.psm1')"
+            Write-TestFileTree -Root $source -Files @{ 'Fixture.Root.psm1' = $rootText; 'Fixture.Leaf.psm1' = 'leaf bytes'; 'Unrelated.psm1' = 'not in closure' }
+            Assert-Equal 0 @(Copy-TestModuleClosure -Seed Fixture.Root -Destination $target -ModuleRoot $source).Count
+            Assert-Equal 'Fixture.Leaf.psm1,Fixture.Root.psm1' ((Get-ChildItem -LiteralPath $target -File | Sort-Object Name | ForEach-Object Name) -join ',')
+            Assert-Equal $rootText ([IO.File]::ReadAllText((Join-Path $target Fixture.Root.psm1)))
+            Assert-Equal 'leaf bytes' ([IO.File]::ReadAllText((Join-Path $target Fixture.Leaf.psm1)))
+        }
+    }
+
+    It 'refuses missing seeds or companions before creating a partial destination' {
+        Invoke-InTestDir -Files @{ 'source/Fixture.Root.psm1' = "Import-Module (Join-Path `$PSScriptRoot 'Missing.Leaf.psm1')" } -Body { param($dir)
+            $source = Join-Path $dir source
+            $target = Join-Path $dir destination
+            Assert-Throws { Copy-TestModuleClosure -Seed Missing.Seed -Destination $target -ModuleRoot $source } -MessagePattern 'Required test module missing:.*Missing.Seed'
+            Assert-Throws { Copy-TestModuleClosure -Seed Fixture.Root -Destination $target -ModuleRoot $source } -MessagePattern 'Required test module missing:.*Missing.Leaf'
+            Assert-False (Test-Path -LiteralPath $target)
+        }
+    }
+}
+
+Describe 'Deferred batch tool setup' {
+    It 'retains independent tool policies after their private construction scope exits' {
+        $factory = New-Module -ScriptBlock {
+            param($path)
+            Import-Module $path -DisableNameChecking
+            $lines = [string[]]@('echo DEFERRED [%~1]')
+            $first = New-TestBatchToolSetup -Name 'one [tool].cmd' -Line $lines -ExitCode 7
+            $lines[0] = 'echo caller array changed'
+            [pscustomobject]@{ First = $first; Second = (New-TestBatchToolSetup -Name two.cmd -Line 'exit /b 3' -ExitCode 9) }
+        } -ArgumentList (Join-Path $PSScriptRoot TestHarness.psm1) -ReturnResult
+        Invoke-InTestDir { param($dir)
+            $firstPath = & $factory.First $dir
+            $secondPath = & $factory.Second $dir
+            Assert-Equal (Join-Path $dir 'one [tool].cmd') $firstPath
+            Assert-Equal (Join-Path $dir two.cmd) $secondPath
+            Assert-TestBatchFile -Path $firstPath -Expected "@echo off`r`necho DEFERRED [%~1]`r`nexit /b 7`r`n"
+            Assert-TestBatchFile -Path $secondPath -Expected "@echo off`r`nexit /b 3`r`nexit /b 9`r`n"
+            if ($IsWindows) {
+                Assert-Equal 'DEFERRED [a b]' ((& $firstPath 'a b') | Out-String).Trim()
+                Assert-Equal 7 $global:LASTEXITCODE
+                & $secondPath
+                Assert-Equal 3 $global:LASTEXITCODE
+            }
+        }
     }
 }
 
@@ -207,12 +331,7 @@ Describe 'Isolated function mutation tables' {
     It 'forwards explicit body arguments and removes every mutant module after its assertion fails' {
         $state = New-TestCallState
         $arguments = @{ Text = 'function Get-TableFixture { 1 }'; BodyArgumentList = @($state, 'body argument') }
-        Invoke-WithFunctionModule @arguments -Body {
-            param($record, $argument)
-            Assert-Equal 'body argument' $argument
-            Assert-Equal 1 (Get-MutTableFixture)
-        }
-        Invoke-TestFunctionMutations -ModuleArguments $arguments -Case @(
+        Invoke-TestFunctionMutations -IncludeControl -ModuleArguments $arguments -Case @(
             @{ Find = '{ 1 }'; Replace = '{ 2 }'; Expected = 'value verdict' },
             @{ Find = '{ 1 }'; Replace = '{ 3 }'; Expected = 'value verdict' }
         ) -Body {
@@ -221,9 +340,54 @@ Describe 'Isolated function mutation tables' {
             $record.Calls.Add((Get-Command Get-MutTableFixture).Module.Path)
             Assert-Equal 1 (Get-MutTableFixture) 'value verdict'
         }
-        Assert-Equal 2 $state.Calls.Count
+        Assert-Equal 3 $state.Calls.Count
         foreach ($path in $state.Calls) { Assert-False (Test-Path -LiteralPath $path) }
         Assert-Null (Get-Command Get-MutTableFixture -ErrorAction SilentlyContinue)
+    }
+
+    It 'fails a broken control before running mutants and validates required control exceptions' {
+        $state = New-TestCallState
+        Assert-Throws {
+            Invoke-TestFunctionMutations -IncludeControl -Find '{ 1 }' -Replace '{ 2 }' -Expected 'control verdict' `
+                -ModuleArguments @{ Text = 'function Get-ControlFixture { 1 }'; FixtureState = $state } -Body {
+                    param($record)
+                    $record.Calls.Add((Get-MutControlFixture))
+                    Assert-Equal 2 (Get-MutControlFixture) 'control verdict'
+                }
+        } -MessagePattern 'control verdict'
+        Assert-Equal '1' ($state.Calls -join ',') 'a failed baseline cannot count as a killed mutation'
+        Invoke-TestFunctionMutations -IncludeControl -ModuleArguments @{ Text = 'function Invoke-ControlException { throw "required sentinel" }' } `
+            -Find 'throw "required sentinel"' -Replace '$null' -Throws '^required sentinel$' -Body { Invoke-MutControlException }
+    }
+
+    It 'owns the factory workspace across controls and mutants and rejects ambiguous or invalid recipes' {
+        $factoryRecord = New-TestCallState -Properties @{ Root = '' }
+        $factory = {
+            param($dir)
+            $factoryRecord.Root = $dir
+            @{ Text = 'function Get-FactoryFixture { 1 }'; BodyArgumentList = @($factoryRecord, $dir) }
+        }.GetNewClosure()
+        Invoke-TestFunctionMutations -ModuleArgumentsFactory $factory -IncludeControl -Find '{ 1 }' -Replace '{ 2 }' -Expected 'factory value verdict' -Body {
+            param($record, $directory)
+            Assert-True (Test-Path -LiteralPath $directory -PathType Container)
+            $record.Calls.Add((Get-MutFactoryFixture))
+            Assert-Equal 1 (Get-MutFactoryFixture) 'factory value verdict'
+        }
+        Assert-Equal '1,2' ($factoryRecord.Calls -join ',')
+        Assert-False (Test-Path -LiteralPath $factoryRecord.Root)
+        foreach ($mixed in @(@{ ModuleArguments = @{} }, @{ ScriptPath = 'source.ps1' }, @{ FunctionName = 'Get-FactoryFixture' }, @{ BodyArgumentList = @() })) {
+            Assert-Throws { Invoke-TestFunctionMutations -ModuleArgumentsFactory {} @mixed -Body {} } -MessagePattern 'cannot be mixed'
+        }
+        foreach ($invalid in @({ }, { 1; 2 })) {
+            Assert-MutationFactoryRefused -Factory $invalid -MessagePattern 'return exactly one dictionary'
+        }
+    }
+
+    It 'cleans the workspace when the recipe factory fails before any mutation verdict' {
+        $factoryRecord = [pscustomobject]@{ Root = '' }
+        $factory = { param($dir) $factoryRecord.Root = $dir; throw 'factory failure sentinel' }.GetNewClosure()
+        Assert-MutationFactoryRefused -Factory $factory -Expected 'factory failure sentinel' -MessagePattern '^factory failure sentinel$'
+        Assert-False (Test-Path -LiteralPath $factoryRecord.Root)
     }
 
     It 'rejects empty or incomplete cases and surviving mutants while keeping parse failures outside the expected assertion' {
@@ -327,7 +491,7 @@ Describe 'Harness fixture mutation proofs' {
         }
     }
     It 'detects a directory allocator that returns an uncreated path' {
-        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir -Find 'New-Item -ItemType Directory -Force -Path $d | Out-Null' -Replace '' -Body {
+        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir -Find '$null = New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop' -Replace '' -Body {
             $dir = New-MutTestDir
             Assert-Throws { Assert-True (Test-Path -LiteralPath $dir -PathType Container) } -MessagePattern 'Assert-True failed'
         }

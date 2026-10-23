@@ -105,30 +105,41 @@ function Invoke-WithEnv {
 
 # Suite-scoped fixtures keep their diagnostic prefix and clean up in AfterAll.
 function New-TestDir {
-    param([string]$Prefix = 'wbt-')
+    param([string]$Prefix = 'wbt-', [Collections.IDictionary]$Files)
     $d = Join-Path ([System.IO.Path]::GetTempPath()) ($Prefix + [guid]::NewGuid().ToString('N'))
-    New-Item -ItemType Directory -Force -Path $d | Out-Null
-    return $d
+    $null = New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop
+    try {
+        if ($null -ne $Files) { Write-TestFileTree -Root $d -Files $Files }
+        return $d
+    } catch {
+        Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
 }
 
 # Zeroes $LASTEXITCODE so cases that inspect native exit codes are isolated from earlier runs.
 function Invoke-InTestDir {
-    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files)
-    $d = New-TestDir
+    param([Parameter(Mandatory)][scriptblock]$Body, [Collections.IDictionary]$Files, [Alias('Prefix')][string]$DirectoryPrefix = 'wbt-')
     $global:LASTEXITCODE = 0
+    $d = New-TestDir -Prefix $DirectoryPrefix -Files $Files
     try {
-        if ($null -ne $Files) { Write-TestFileTree -Root $d -Files $Files }
         & $Body $d
     }
     finally { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+function Get-TestFileTreeEntry {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][Collections.IDictionary]$Files)
+    foreach ($entry in $Files.GetEnumerator()) {
+        [pscustomobject]@{ Path = Join-Path $Root ([string]$entry.Key); Text = [string]$entry.Value }
+    }
+}
+
 function Write-TestFileTree {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][System.Collections.IDictionary]$Files)
-    foreach ($entry in $Files.GetEnumerator()) {
-        $path = Join-Path $Root ([string]$entry.Key)
-        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
-        [IO.File]::WriteAllText($path, [string]$entry.Value)
+    foreach ($entry in (Get-TestFileTreeEntry -Root $Root -Files $Files)) {
+        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($entry.Path))
+        [IO.File]::WriteAllText($entry.Path, $entry.Text)
     }
 }
 
@@ -141,7 +152,7 @@ function Invoke-InTestScriptDir {
 
 Export-ModuleMember -Function Invoke-InTestScriptDir
 
-Export-ModuleMember -Function Write-TestFileTree
+Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree
 
 function New-TestBatchTool {
     param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Name,
@@ -153,7 +164,14 @@ function New-TestBatchTool {
     return $path
 }
 
-Export-ModuleMember -Function New-TestBatchTool
+function New-TestBatchToolSetup {
+    param([Parameter(Mandatory)][string]$Name, [string[]]$Line = @(), [int]$ExitCode = 0)
+    $writer = Get-Command New-TestBatchTool -CommandType Function
+    $content = @($Line)
+    return { param($dir) & $writer -Directory $dir -Name $Name -Line $content -ExitCode $ExitCode }.GetNewClosure()
+}
+
+Export-ModuleMember -Function New-TestBatchTool, New-TestBatchToolSetup
 
 function Assert-TestBatchFile {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Expected)
@@ -400,6 +418,19 @@ function Get-ModuleImportClosure {
     return @(@($seen) | Sort-Object)
 }
 
+function Copy-TestModuleClosure {
+    param([Parameter(Mandatory)][string[]]$Seed, [Parameter(Mandatory)][string]$Destination,
+        [string]$ModuleRoot = (Join-Path (Get-RepoRoot) 'windows/scripts/modules'))
+    $paths = @(Get-ModuleImportClosure -Seed $Seed -ModuleDir $ModuleRoot | ForEach-Object { Join-Path $ModuleRoot "$_.psm1" })
+    foreach ($path in $paths) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Required test module missing: $path" }
+    }
+    $null = [IO.Directory]::CreateDirectory($Destination)
+    foreach ($path in $paths) { Copy-Item -LiteralPath $path -Destination $Destination -ErrorAction Stop }
+}
+
+Export-ModuleMember -Function Copy-TestModuleClosure
+
 # Parsing declarations must never execute the build script being inspected.
 function Resolve-TestParseResult {
     param($Ast, [object[]]$ParseError, [string]$FailurePrefix)
@@ -532,11 +563,27 @@ function Invoke-WithFunctionModule {
 }
 
 function Invoke-TestFunctionMutations {
-    param([Collections.IDictionary]$ModuleArguments, [string]$ScriptPath, [string[]]$FunctionName = @(),
+    param([Collections.IDictionary]$ModuleArguments, [scriptblock]$ModuleArgumentsFactory, [string]$ScriptPath, [string[]]$FunctionName = @(),
         [object[]]$BodyArgumentList = @(), [string]$Find, [AllowEmptyString()][string]$Replace, [string]$Expected, [string]$Throws,
-        [AllowNull()][AllowEmptyCollection()][Collections.IDictionary[]]$Case,
+        [AllowNull()][AllowEmptyCollection()][Collections.IDictionary[]]$Case, [switch]$IncludeControl,
         [Parameter(Mandatory)][scriptblock]$Body)
     $ErrorActionPreference = 'Stop'
+    if ($PSBoundParameters.ContainsKey('ModuleArgumentsFactory')) {
+        foreach ($key in @('ModuleArguments', 'ScriptPath', 'FunctionName', 'BodyArgumentList')) {
+            if ($PSBoundParameters.ContainsKey($key)) { throw "ModuleArgumentsFactory cannot be mixed with $key" }
+        }
+        if ($null -eq $ModuleArgumentsFactory) { throw 'ModuleArgumentsFactory must be a scriptblock' }
+        $factory = $ModuleArgumentsFactory
+        $executor = $MyInvocation.MyCommand
+        $forwardedOptions = [hashtable]$PSBoundParameters
+        $null = $forwardedOptions.Remove('ModuleArgumentsFactory')
+        Invoke-InTestDir { param($dir)
+            $recipe = & $factory $dir
+            if ($recipe -isnot [Collections.IDictionary]) { throw 'ModuleArgumentsFactory must return exactly one dictionary' }
+            & $executor -ModuleArguments $recipe @forwardedOptions
+        }.GetNewClosure()
+        return
+    }
     if ($ScriptPath) {
         if ($ModuleArguments) { throw 'ScriptPath and ModuleArguments cannot be mixed' }
         $ModuleArguments = @{ ScriptPath = $ScriptPath; FunctionName = $FunctionName; BodyArgumentList = $BodyArgumentList }
@@ -563,22 +610,26 @@ function Invoke-TestFunctionMutations {
     $assertThrows = Get-Command Assert-Throws
     $originalBody = $Body
     $expectedThrow = $Throws
+    $exerciseBody = {
+        $forwarded = @($args)
+        $callback = $originalBody
+        $operation = { & $callback @forwarded }.GetNewClosure()
+        if ($expectedThrow) { & $assertThrows -Body $operation -MessagePattern $expectedThrow }
+        else { & $operation }
+    }.GetNewClosure()
+    $arguments = @{}
+    foreach ($key in $ModuleArguments.Keys) { $arguments[$key] = $ModuleArguments[$key] }
+    if ($IncludeControl) {
+        $arguments.Body = $exerciseBody
+        Invoke-WithFunctionModule @arguments
+    }
     foreach ($mutation in $Case) {
         $expected = [string]$mutation.Expected
         $guardedBody = {
             $forwarded = @($args)
-            $exerciseBody = $originalBody
-            $exercise = { & $exerciseBody @forwarded }.GetNewClosure()
-            if ($expectedThrow) {
-                $operation = $exercise
-                $throwAssertion = $assertThrows
-                $throwPattern = $expectedThrow
-                $exercise = { & $throwAssertion -Body $operation -MessagePattern $throwPattern }.GetNewClosure()
-            }
-            & $assertThrows -Body $exercise -MessagePattern $expected
+            $runExercise = $exerciseBody
+            & $assertThrows -Body { & $runExercise @forwarded }.GetNewClosure() -MessagePattern $expected
         }.GetNewClosure()
-        $arguments = @{}
-        foreach ($key in $ModuleArguments.Keys) { $arguments[$key] = $ModuleArguments[$key] }
         $arguments.Find = [string]$mutation.Find
         $arguments.Replace = [string]$mutation.Replace
         $arguments.Body = $guardedBody

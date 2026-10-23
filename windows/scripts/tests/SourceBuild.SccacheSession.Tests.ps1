@@ -57,11 +57,8 @@ Describe 'Start-SccacheServerSession' {
 
     It 'creates a missing error-log parent directory' {
         Invoke-InTestDir { param($dir)
-            $fake = & $newFakeSccache $dir
             $errLog = Join-Path $dir 'not-yet\deeper\err.log'
-            Invoke-WithEnv @{ WBT_SCC_LOG = (Join-Path $dir 'calls.log'); SCCACHE_ERROR_LOG = $errLog } {
-                Start-SccacheServerSession -SccachePath $fake 6>$null
-            }.GetNewClosure()
+            $null = Invoke-SccacheLoggedSession -Directory $dir -ErrorLog $errLog -Session Start
             Assert-True (Test-Path (Split-Path $errLog)) 'parent chain was created so the server can open the log'
         }
     }
@@ -122,22 +119,14 @@ Describe 'Complete-SccacheServerSession' {
 
     It 'falls back to the tail when the log has no error/warn lines' {
         Invoke-InTestDir { param($dir)
-            $fake = & $newFakeSccache $dir
-            $errLog = Join-Path $dir 'err.log'
-            Set-Content -LiteralPath $errLog -Value @('DEBUG a', 'DEBUG b') -Encoding ASCII
-            $out = Invoke-WithEnv @{ WBT_SCC_LOG = (Join-Path $dir 'calls.log'); SCCACHE_ERROR_LOG = $errLog } {
-                Complete-SccacheServerSession -SccachePath $fake 6>&1 | Out-String
-            }.GetNewClosure()
+            $out = (Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir 'err.log') -Session Complete -InitialLogLines @('DEBUG a', 'DEBUG b')).Output
             Assert-Match 'no error/warn lines; tail follows' $out 'quiet logs still show a context tail'
         }
     }
 
     It 'names an error log the server never opened' {
         Invoke-InTestDir { param($dir)
-            $fake = & $newFakeSccache $dir
-            $out = Invoke-WithEnv @{ WBT_SCC_LOG = (Join-Path $dir 'calls.log'); SCCACHE_ERROR_LOG = (Join-Path $dir 'never-written.log') } {
-                Complete-SccacheServerSession -SccachePath $fake 6>&1 | Out-String
-            }.GetNewClosure()
+            $out = (Invoke-SccacheLoggedSession -Directory $dir -ErrorLog (Join-Path $dir 'never-written.log') -Session Complete).Output
             Assert-Match 'never opened it' $out 'a missing log is reported, not silently skipped'
         }
     }

@@ -1,6 +1,15 @@
 #requires -Version 7.0
 # $scriptAssetRoot locates modules\ before any import, so it cannot live in one: each copy must be assigned, canonical, at column 0.
 
+function Assert-ScriptAssetProjection {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Definition,
+        [Parameter(Mandatory)][scriptblock]$Finding, [Parameter(Mandatory)][string]$FailureMessage,
+        [string]$Separator = ', ')
+    Assert-True ($Definition.Count -gt 0) 'expected at least one resolver definition'
+    $issues = @(foreach ($site in $Definition) { & $Finding $site })
+    Assert-True ($issues.Count -eq 0) ($FailureMessage + ($issues -join $Separator))
+}
+
 Describe 'scriptAssetRoot resolver parity' {
 
     $canonical = "`$scriptAssetRoot = if (Test-Path (Join-Path `$PSScriptRoot 'modules')) { `$PSScriptRoot } else { Split-Path `$PSScriptRoot -Parent }"
@@ -9,6 +18,15 @@ Describe 'scriptAssetRoot resolver parity' {
     $files = Get-ChildItem -Path $scriptsDir -Filter '*.ps1' -Recurse -File |
         Where-Object { $_.FullName -notmatch '\\tests\\' } |
         Where-Object { (Get-Content -LiteralPath $_.FullName -Raw) -match '\$scriptAssetRoot' }
+
+    $definitions = @(Select-String -LiteralPath @($files.FullName) -Pattern ([regex]::Escape('$scriptAssetRoot = ')))
+
+    It 'rejects an empty scan or an emitted finding while preserving caller diagnostics' {
+        $projection = { param($value) if ($value -ne 'valid') { 'fixture issue' } }
+        Assert-ScriptAssetProjection -Definition valid -Finding $projection -FailureMessage 'fixture rejection: '
+        Assert-Throws { Assert-ScriptAssetProjection -Definition @() -Finding $projection -FailureMessage fixture } -MessagePattern 'at least one resolver'
+        Assert-Throws { Assert-ScriptAssetProjection -Definition valid, wrong -Finding $projection -FailureMessage 'fixture rejection: ' } -MessagePattern 'fixture rejection: fixture issue'
+    }
 
     It 'finds the resolver population at all (guards the scan itself)' {
         # A convention rename fails loudly here instead of passing on an empty set.
@@ -23,26 +41,16 @@ Describe 'scriptAssetRoot resolver parity' {
     }
 
     It 'every definition is the canonical line, byte-identical' {
-        $drifted = [System.Collections.Generic.List[string]]::new()
-        foreach ($f in $files) {
-            $defs = @(Get-Content -LiteralPath $f.FullName | Where-Object { $_ -match [regex]::Escape('$scriptAssetRoot = ') })
-            foreach ($d in $defs) {
-                if ($d.TrimEnd() -cne $canonical) { $drifted.Add("$($f.Name): $($d.Trim())") }
-            }
+        Assert-ScriptAssetProjection -Definition $definitions -FailureMessage "drifted resolver copies:`n" -Separator "`n" -Finding {
+            param($definition)
+            if ($definition.Line.TrimEnd() -cne $canonical) { "$($definition.Filename): $($definition.Line.Trim())" }
         }
-        Assert-True ($drifted.Count -eq 0) ("drifted resolver copies:`n" + ($drifted -join "`n"))
     }
 
     It 'every definition sits at top level (column 0), never inside a block' {
-        $nested = [System.Collections.Generic.List[string]]::new()
-        foreach ($f in $files) {
-            $lines = Get-Content -LiteralPath $f.FullName
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -match [regex]::Escape('$scriptAssetRoot = ') -and $lines[$i] -notmatch '^\$scriptAssetRoot') {
-                    $nested.Add("$($f.Name):$($i + 1)")
-                }
-            }
+        Assert-ScriptAssetProjection -Definition $definitions -FailureMessage 'indented (block-scoped) resolver copies (the apply-containerd-config/-SkipCniSync bug class): ' -Finding {
+            param($definition)
+            if ($definition.Line -notmatch '^\$scriptAssetRoot') { "$($definition.Filename):$($definition.LineNumber)" }
         }
-        Assert-True ($nested.Count -eq 0) ("indented (block-scoped) resolver copies (the apply-containerd-config/-SkipCniSync bug class): " + ($nested -join ', '))
     }
 }

@@ -149,8 +149,7 @@ function New-GenaiOrtHome {
             throw "GenAI: the chain ONNX Runtime has no $file; ORT is built before GenAI, with USE_DML=ON on every lane"
         }
     }
-    if (Test-Path -LiteralPath $ShimRoot) { Remove-Item -LiteralPath $ShimRoot -Recurse -Force }
-    $null = New-Item -ItemType Directory -Force -Path (Join-Path $ShimRoot 'include'), (Join-Path $ShimRoot 'lib')
+    Initialize-BuildDirectory -Path $ShimRoot -Empty -ChildDirectory include, lib
     Copy-Item -Path (Join-Path $headerDir '*') -Destination (Join-Path $ShimRoot 'include') -Recurse -Force
     Copy-Item -LiteralPath $linkFiles -Destination (Join-Path $ShimRoot 'lib') -Force
     ConvertTo-GenaiCmakePath $ShimRoot

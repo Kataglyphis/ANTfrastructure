@@ -59,34 +59,9 @@ $env:CMAKE_PREFIX_PATH = "$vcpkgInstalledX64;$env:CMAKE_PREFIX_PATH"
 $protobufTools = Join-Path $vcpkgInstalledX64 'tools\protobuf'
 if (Test-Path $protobufTools) { $env:PATH = "$protobufTools;$env:PATH" }
 
-# The PK magic-byte check turns an HTML error page into an early failure, not a later Expand-Archive one.
-function Install-PortableZipTool {
-    param(
-        [Parameter(Mandatory)][string]$Url,
-        [Parameter(Mandatory)][string]$ZipPath,
-        [Parameter(Mandatory)][string]$Destination,
-        [Parameter(Mandatory)][string]$Description,
-        # Returns the tool's path/item when present, $null/empty otherwise.
-        [Parameter(Mandatory)][scriptblock]$Probe
-    )
-    $found = & $Probe
-    if ($found) { return $found }
-    Write-Host "Downloading $Description from $Url"
-    Invoke-DownloadWithRetry -Url $Url -DestinationPath $ZipPath -Description $Description -ExpectSignature PK
-    Expand-Archive -Path $ZipPath -DestinationPath $Destination -Force
-    $found = & $Probe
-    if (-not $found) { throw "Failed to obtain $Description under $Destination" }
-    return $found
-}
-
 # Must match the from-source protobuf runtime: vcpkg's protoc is another major, and a source-built one fails to link.
 $protocVer = Get-SourceBuildVersion -EnvironmentVariables @('PROTOC_VERSION') -DefaultValue '36.1'
-$hostProtocDir = "C:\temp\protoc-$protocVer"
-$hostProtoc = Join-Path $hostProtocDir 'bin\protoc.exe'
-[void](Install-PortableZipTool -Url "https://github.com/protocolbuffers/protobuf/releases/download/v$protocVer/protoc-$protocVer-win64.zip" `
-        -ZipPath "C:\temp\protoc-$protocVer-win64.zip" -Destination $hostProtocDir `
-        -Description "version-matched protoc v$protocVer" `
-        -Probe { if (Test-Path $hostProtoc) { $hostProtoc } })
+$hostProtoc = Install-ProtobufCompiler -Version $protocVer -WorkDir 'C:\temp'
 Write-Host "Using version-matched host protoc: $hostProtoc ($(& $hostProtoc --version))"
 
 # The build runs the prebuilt ANTLR jar and the media base ships no Java; a JRE is enough.

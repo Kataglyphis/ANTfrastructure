@@ -76,8 +76,7 @@ Start-Sleep -Seconds 20   # land inside the ~141 s stall, past silo creation
 Write-Host "snapshot B (container hanging) ..."
 $log = Invoke-HostLsmSnapshot 'B-hang'
 
-$me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-& icacls.exe $OutDir /grant "${me}:(OI)(CI)R" /T | Out-Null
+$null = Grant-SiloProbeReadAccess -OutDir $OutDir
 
 Write-Host "`n--- idle vs hanging ---"
 function Get-Frames([string]$path) {

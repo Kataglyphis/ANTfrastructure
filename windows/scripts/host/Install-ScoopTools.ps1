@@ -112,7 +112,7 @@ Import-Module $installerModulePath -Force
 
 # For Assert-FileSha256 and Get-PreferredToolPath, which the other modules do not re-export.
 $sharedHelpersPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelpersPath }
+Import-Module $sharedHelpersPath -ErrorAction Stop
 
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through the Common modules' re-export.
 
@@ -238,8 +238,8 @@ Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
 
 # aarch64 compiler-rt builtins, unconditionally; see docs/windows-cross-builds.md § aarch64 compiler-rt is a base prerequisite.
 $llvmAppRoot = Join-Path $env:USERPROFILE 'scoop\apps\llvm\current'
-$rtHost = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-$rtTarget = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+$rtHost = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmAppRoot -LibraryName 'clang_rt.builtins-x86_64.lib')
+$rtTarget = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmAppRoot)
 if ($rtTarget.Count -gt 0) {
     Write-Host "compiler-rt builtins for aarch64 already present ($($rtTarget[0].FullName))."
 } elseif ($rtHost.Count -eq 0) {
@@ -257,16 +257,11 @@ if ($rtTarget.Count -gt 0) {
         Invoke-DownloadWithRetry -Url $rtUrl -DestinationPath $rtArchive
         # Verified-or-warn: the key is empty here, since base runs before versions.env is baked.
         $rtSha = Resolve-ContainerImageValue -EnvironmentVariable 'LLVM_WINDOWS_AARCH64_RT_SHA256' -DefaultValue ''
-        Assert-FileSha256 -Path $rtArchive -Expected $rtSha -Label 'aarch64 compiler-rt archive' -PinName 'LLVM_WINDOWS_AARCH64_RT_SHA256'
-        New-Item -Path $rtExtractDir -ItemType Directory -Force | Out-Null
-        # System32 bsdtar: GNU tar reads C:\... as a remote host and does not match member patterns.
-        $rtTar = Get-PreferredToolPath -CommandName 'tar' -CandidatePaths @("$env:SystemRoot\System32\tar.exe")
-        if (-not $rtTar) { throw 'No tar.exe found to extract the aarch64 compiler-rt archive.' }
-        & $rtTar -xf $rtArchive -C $rtExtractDir '*clang_rt.builtins-aarch64.lib'
+        $rtLibrary = $null
+        Expand-CompilerRtLibrary -ArchivePath $rtArchive -ExtractDirectory $rtExtractDir -LibraryPath ([ref]$rtLibrary) -ExpectedSha256 $rtSha
         $global:LASTEXITCODE = 0
-        $rtFound = @(Get-ChildItem -Path $rtExtractDir -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-        if ($rtFound.Count -gt 0) {
-            Copy-Item -Path $rtFound[0].FullName -Destination $rtDestDir -Force
+        if ($rtLibrary) {
+            Copy-Item -LiteralPath $rtLibrary -Destination $rtDestDir -Force
             Write-Host "compiler-rt builtins for aarch64 installed -> $(Join-Path $rtDestDir 'clang_rt.builtins-aarch64.lib')"
         } else {
             Write-Warning "clang_rt.builtins-aarch64.lib was not found inside $rtArchive - the upstream archive layout changed."
@@ -278,7 +273,7 @@ if ($rtTarget.Count -gt 0) {
         Remove-Item -Path $rtExtractDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    $rtTarget = @(Get-ChildItem -Path (Join-Path $llvmAppRoot 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $rtTarget = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmAppRoot)
     if ($rtTarget.Count -eq 0) {
         # Warn by default: an arm64-only prerequisite in a shared layer must not break amd64.
         $msg = ('compiler-rt builtins for aarch64 are NOT installed under ' + $llvmAppRoot + '\lib\clang. ' +
@@ -297,9 +292,9 @@ try {
 }
 # aarch64 OpenSSL beside the host one, warn-only; see docs/windows-cross-builds.md § aarch64 OpenSSL is a base prerequisite too.
 $sslArm64Root = 'C:\opt\openssl-arm64'
-$sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-if ($sslArm64Lib.Count -gt 0) {
-    Write-Host "OpenSSL (aarch64) already present ($($sslArm64Lib[0].FullName))."
+$sslArm64Lib = Find-FirstTreeFile -Root $sslArm64Root -Filter 'libcrypto.lib'
+if ($sslArm64Lib) {
+    Write-Host "OpenSSL (aarch64) already present ($($sslArm64Lib.FullName))."
 } else {
     $sslExe  = Join-Path $env:TEMP 'Win64ARMOpenSSL.exe'
     try {
@@ -344,9 +339,9 @@ if ($sslArm64Lib.Count -gt 0) {
     }
 
     # Found by search, never by assuming slproweb's layout.
-    $sslArm64Lib = @(Get-ChildItem -Path $sslArm64Root -Recurse -Filter 'libcrypto.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
-    if ($sslArm64Lib.Count -gt 0) {
-        Write-Host "OpenSSL (aarch64) installed -> $($sslArm64Lib[0].FullName)"
+    $sslArm64Lib = Find-FirstTreeFile -Root $sslArm64Root -Filter 'libcrypto.lib'
+    if ($sslArm64Lib) {
+        Write-Host "OpenSSL (aarch64) installed -> $($sslArm64Lib.FullName)"
         # Log the shape once so the consumer side can be written against FACT.
         @('include', 'lib') | ForEach-Object {
             $d = Join-Path $sslArm64Root $_

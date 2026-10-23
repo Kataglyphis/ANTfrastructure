@@ -357,6 +357,7 @@ Export-ModuleMember -Function @(
     'Expand-LavapipeArchive',
     'Get-LavapipePinValues',
     # Re-exported from WindowsScripts.Shared, so one Import-Module suffices.
+    'Find-FirstTreeFile',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

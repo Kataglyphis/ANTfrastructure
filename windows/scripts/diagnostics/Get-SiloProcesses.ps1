@@ -77,6 +77,5 @@ foreach ($p in $silo) {
 
 $report = Join-Path $OutDir "silo-summary-$stamp.txt"
 $summary | Tee-Object -FilePath $report
-$me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-& icacls.exe $OutDir /grant "${me}:(OI)(CI)R" /T | Out-Null
+$null = Grant-SiloProbeReadAccess -OutDir $OutDir
 Write-Host "`nSaved: $report" -ForegroundColor Green

@@ -1,7 +1,24 @@
 #requires -Version 7.0
-# KleidiAI on arm64: the trusted deps.txt row, the patched ASM_MARMASM rule and the preprocess-then-armasm64 wrapper.
+# Metadata, wrapper and archive checksum fixtures do not fetch, extract or build upstream KleidiAI.
 
 $script:ortScript = 'windows\scripts\build\Build-OnnxFromSource.ps1'
+
+Describe 'ORT dependency archive SHA1 pin' {
+    It 'returns the computed lowercase digest and rejects a mismatched pin through the caller diagnostic (mutation)' {
+        Invoke-TestFunctionMutations -ScriptPath $script:ortScript -FunctionName Assert-OrtDependencyArchiveSha1 -IncludeControl `
+            -Find 'if ($actual -ne $Expected)' -Replace 'if ($false)' -Expected 'expected an exception but none was thrown' -Body {
+                Invoke-InTestDir -Files @{ 'archive.zip' = 'abc' } -Body { param($dir)
+                    $path = Join-Path $dir archive.zip
+                    Assert-Equal a9993e364706816aba3e25717850c26c9cd0d89d (Assert-MutOrtDependencyArchiveSha1 -Path $path `
+                        -Expected A9993E364706816ABA3E25717850C26C9CD0D89D -FailureMessage { throw 'matching hash must not invoke the diagnostic' })
+                    Assert-Throws { Assert-MutOrtDependencyArchiveSha1 -Path $path -Expected ('0' * 40) -FailureMessage {
+                        param($actual, $expected)
+                        "archive $actual does not match $expected"
+                    } } -MessagePattern 'archive a9993e364706816aba3e25717850c26c9cd0d89d does not match 0{40}'
+                }
+            }
+    }
+}
 
 Describe 'Get-OrtKleidiaiDepsEntry' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ortScript -FunctionName 'Get-OrtDepsRow', 'Get-OrtKleidiaiDepsEntry')

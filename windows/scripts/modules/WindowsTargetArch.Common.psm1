@@ -361,6 +361,44 @@ function Get-PeExportNames {
     return $names.ToArray()
 }
 
+function Get-DllDependencyEntry {
+    param([string]$Path, [object]$Context)
+    foreach ($name in @(& $Context.ReadImports $Path)) {
+        if ($name -match '^(api|ext)-ms-' -or -not $Context.Seen.Add($name.ToLower())) { continue }
+        $hit = & $Context.ResolveImport $name $Context.SearchDirectory
+        [pscustomobject]@{ From = [IO.Path]::GetFileName($Path); Name = $name; Path = $hit }
+        if ($hit -and $hit -notmatch $Context.SystemDirectoryPattern) {
+            if ($Context.DepthFirst) { Get-DllDependencyEntry -Path $hit -Context $Context }
+            else { $Context.Pending.Add($hit) }
+        }
+    }
+}
+
+function Get-DllDependencyGraph {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string[]]$SearchDirectory,
+        [scriptblock]$ReadImports = { param($file) Get-PeImportNames -Path $file -IncludeDelayLoad },
+        [scriptblock]$ResolveImport = {
+            param($name, $directories)
+            foreach ($directory in $directories) {
+                $candidate = [IO.Path]::Combine($directory, $name)
+                if ([IO.File]::Exists($candidate)) { return $candidate }
+            }
+        },
+        [string]$SystemDirectoryPattern = '\\(System32|SysWOW64|WinSxS)\\',
+        [switch]$DepthFirst,
+        [Collections.Generic.HashSet[string]]$Seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    )
+    $context = [pscustomobject]@{ ReadImports = $ReadImports; ResolveImport = $ResolveImport; SearchDirectory = $SearchDirectory
+        SystemDirectoryPattern = $SystemDirectoryPattern; DepthFirst = [bool]$DepthFirst; Seen = $Seen
+        Pending = [Collections.Generic.List[string]]::new() }
+    Get-DllDependencyEntry -Path $Path -Context $context
+    for ($i = 0; $i -lt $context.Pending.Count; $i++) {
+        Get-DllDependencyEntry -Path $context.Pending[$i] -Context $context
+    }
+}
+
 <#
 .SYNOPSIS
     Asserts every given PE file is the target machine; throws naming the first offender, returns the count.
@@ -623,6 +661,7 @@ Export-ModuleMember -Function @(
     'Test-PeRichHeader',
     'Get-PeImportNames',
     'Get-PeExportNames',
+    'Get-DllDependencyGraph',
     'Assert-PeTargetMachine',
     'Assert-DirectoryTargetArch',
     'Assert-PythonExtensionTag',

@@ -2032,6 +2032,12 @@ every turn), and compare prefill only *within one quant format* — a 2B Q4_K_M
 prefills 3.5x faster than a 9B Q4_K_M while a 4B in Q4_0 is slower than either.
 `windows/scripts/host/Start-GeniexServers.ps1` brings the fleet up correctly — it reads the model ids from `linux/llm-stack/backends.json`, passes `--nctx` and `-MaxTokens` (default 4096; the CLI's own 2048 default was invisible in every report), warms every lane **it starts** (a busy lane is left alone; re-run with `-Restart` to guarantee the recorded caps), and takes `-Models` / `-Pull`.
 
+The launcher requires `WindowsScripts.Shared.psm1` in the sibling `modules`
+directory. Keep that companion when copying the script. `-ServerEnv` overrides
+are inherited by the hidden server process; parent variables retain their original
+absent, empty or configured state even if log setup or process startup fails.
+Readiness checks run after restoration and use the same paired stdout/stderr logs.
+
 ## References
 
 - **GenieX repository**: <https://github.com/qualcomm/GenieX>

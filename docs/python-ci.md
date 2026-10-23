@@ -482,6 +482,13 @@ To run it by hand, start it from the repo root inside `:winamd64`:
 `windows/scripts/tests/PythonCiBuild.Tests.ps1`, with a uv, a python and the three child drivers
 replaced by stand-ins that record each call.
 
+The Windows free-threaded wheel-test driver scopes suite environment variables
+through `Invoke-WithProcessEnvironment`. Absent, empty and configured parent
+values are restored after success, failed setup or a thrown test command, while
+location and native test status retain their existing policy. Shared Linux helper
+lookup lives in `WindowsPythonWheel.Common`; UV's ORT census uses that resolver
+with the same repository-first and copied-image fallback paths.
+
 ## Windows arm64: the staged test job
 
 `python-ci-windows.yml` with `arm64-tests: true` adds two jobs (CON113, 2026-10-20). A hosted

@@ -5,13 +5,32 @@
 
 Set-StrictMode -Version Latest
 
-# Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
-foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common', 'WindowsScripts.Shared') {
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
+
+# Never -Force: a forced nested import unloads the caller's top-level copy.
+foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common') {
     if (-not (Get-Module -Name $sibling)) { Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking }
 }
 
 $script:LauncherSource = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\app-launcher\launcher.c'
 $script:SelfTestScript = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\Test-PythonAppSelfTest.ps1'
+
+function Initialize-PythonAppDirectory {
+    param([Parameter(Mandatory)][string[]]$Path, [switch]$Empty)
+    Initialize-BuildDirectory -Path $Path -Empty:$Empty
+}
+
+function New-PythonAppWorkDirectory {
+    param([string]$Path, [Parameter(Mandatory)][string]$DefaultName, [string[]]$AdditionalPath = @())
+    if (-not $Path) { $Path = Join-Path ([IO.Path]::GetTempPath()) $DefaultName }
+    Initialize-PythonAppDirectory -Path (@($AdditionalPath) + @($Path))
+    return $Path
+}
+
+function Get-PythonAppWheelFile {
+    param([Parameter(Mandatory)][string]$Directory, [string]$Filter = '*.whl')
+    Get-ChildItem -LiteralPath $Directory -File -Filter $Filter -ErrorAction Stop
+}
 
 function Get-PythonAppConfig {
     <#
@@ -192,8 +211,7 @@ function New-PythonAppCrossRuntime {
         if (-not (Test-Path -LiteralPath $required)) { throw "No ${required}: the image carries no target CPython for $Arch" }
     }
     $flat = Join-Path $WorkDir "pcbuild-$Arch"
-    if (Test-Path -LiteralPath $flat) { Remove-Item -LiteralPath $flat -Recurse -Force }
-    $null = New-Item -ItemType Directory -Force -Path $flat
+    Initialize-PythonAppDirectory -Path $flat -Empty
     $layoutParts = @(
         @{ Root = $TargetPython; Extensions = @('.exe', '.dll') }
         @{ Root = (Join-Path $TargetPython 'DLLs'); Extensions = @('.pyd', '.dll') }
@@ -272,7 +290,7 @@ function Add-PurePythonWheel {
             Invoke-AppUv -What "building $name $version as pure Python" -Arguments @('build', '--wheel', '--python', $HostPython, '--out-dir', $OutDir, $archive) | Out-Host
         }
         $stem = ($name -replace '[-.]+', '_')
-        $wheel = @(Get-ChildItem -LiteralPath $OutDir -File -Filter "*-$version-*.whl" | Where-Object { $_.Name -like "$stem-*" })
+        $wheel = @(Get-PythonAppWheelFile -Directory $OutDir -Filter "*-$version-*.whl" | Where-Object { $_.Name -like "$stem-*" })
         if ($wheel.Count -ne 1 -or $wheel[0].Name -notlike '*-py3-none-any.whl') { throw "$name $version built $($wheel.Name -join ', '), not one py3-none-any wheel" }
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [IO.Compression.ZipFile]::OpenRead($wheel[0].FullName)
@@ -291,7 +309,7 @@ function Add-StoreWheelHash {
     param([Parameter(Mandatory)][string]$Requirements, [string[]]$Store = @(), [Parameter(Mandatory)][string]$Tag)
     [string[]]$lines = Get-Content -LiteralPath $Requirements
     $added = [Collections.Generic.List[string]]::new()
-    foreach ($whl in @($Store | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter "*-$Tag.whl" -File })) {
+    foreach ($whl in @($Store | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { Get-PythonAppWheelFile -Directory $_ -Filter "*-$Tag.whl" })) {
         $name = ($whl.Name.Split('-')[0] -replace '[-_.]+', '-').ToLowerInvariant()
         if (-not @($lines -match "^$([regex]::Escape($name))==$([regex]::Escape($whl.Name.Split('-')[1]))(\s|$)").Count) { continue }
         $lines = Add-RequirementHash -Lines $lines -Name $name -Sha256 (Get-FileHash -LiteralPath $whl.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -432,7 +450,7 @@ function Copy-ChainOpenCvPackage {
         $shared = @($SharedDirectory | Where-Object { Test-Path -LiteralPath $_ -PathType Container } | ForEach-Object { (Resolve-Path -LiteralPath $_).ProviderPath })
         $closure = @(Get-PeImportClosure -Path $pyd[0].FullName -SearchDirectory (@($shared) + $search) -Arch $Arch)
         $bin = Join-Path $dest 'bin'
-        $null = New-Item -ItemType Directory -Force -Path $bin
+        Initialize-PythonAppDirectory -Path $bin
         $result = @(foreach ($source in $closure) {
                 if ($shared -contains (Split-Path $source -Parent)) { continue }
                 $target = Join-Path $bin (Split-Path $source -Leaf)
@@ -791,6 +809,6 @@ $(($apps -join "`n").TrimEnd())
     return $Destination
 }
 
-Export-ModuleMember -Function Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
+Export-ModuleMember -Function Get-PythonAppWheelFile, Initialize-PythonAppDirectory, New-PythonAppWorkDirectory, Get-PythonAppConfig, Resolve-PythonAppPath, New-PythonAppRuntime, New-PythonAppCrossRuntime, Get-PythonAbiTag, Select-PythonAppWheel, Install-PythonAppPackage, Install-PythonCrossSite, Install-PythonAppCrossPackage, Copy-ChainOpenCvPackage, Install-PythonAppChainOpenCv, Get-PythonAppEntryPoint,
     New-PythonAppLauncher, Copy-PythonAppRuntimeClosure, Invoke-PythonAppSelfTest, ConvertTo-PythonAppIcon, New-PythonAppWxs,
     New-PythonAppAppxManifest

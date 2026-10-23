@@ -4,7 +4,7 @@
 # Covers accounting, rendering and fake client transports; no real container, certificate or native pipe is exercised.
 
 $consumerModuleDir = Join-Path (Get-RepoRoot) 'windows\scripts\modules'
-foreach ($moduleName in 'WindowsBuild.Common', 'WindowsPerfBaseline.Common') {
+foreach ($moduleName in 'WindowsScripts.Shared', 'WindowsBuild.Common', 'WindowsPerfBaseline.Common') {
     Import-Module (Join-Path $consumerModuleDir "$moduleName.psm1")
 }
 
@@ -297,19 +297,18 @@ Describe 'Container source and artifact tar transfers' {
 Describe 'Cross Python layout staging' {
     It 'keeps the distinct root and DLLs extension policies and lets DLLs overwrite root copies' {
         $state = [pscustomobject]@{ Arguments = @() }
-        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsPythonApp.Common.psm1' -FunctionName New-PythonAppCrossRuntime -FixtureState $state `
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsPythonApp.Common.psm1' -FunctionName Initialize-PythonAppDirectory, New-PythonAppCrossRuntime -FixtureState $state `
             -Prelude '$script:State = $State; function Invoke-PythonAppLayout { param($HostPython, $SourceDir, $Destination, $Arguments) $script:State.Arguments = $Arguments; Join-Path $Destination "python.exe" }' `
             -Body {
                 param($state)
-                Invoke-InTestDir { param($dir)
+                Invoke-InTestDir -Files @{
+                    'target\python.exe' = 'python'; 'target\overlap.dll' = 'root'; 'target\root.pyd' = 'excluded'
+                    'target\DLLs\module.pyd' = 'extension'; 'target\DLLs\overlap.dll' = 'dlls'; 'target\DLLs\tool.exe' = 'excluded'
+                    'source\LICENSE' = 'license'
+                } -Body { param($dir)
                     $target = Join-Path $dir 'target'
                     $source = Join-Path $dir 'source'
-                    Write-TestFileTree -Root $target -Files @{
-                        'python.exe' = 'python'; 'overlap.dll' = 'root'; 'root.pyd' = 'excluded'
-                        'DLLs\module.pyd' = 'extension'; 'DLLs\overlap.dll' = 'dlls'; 'DLLs\tool.exe' = 'excluded'
-                    }
                     $null = New-Item -ItemType Directory -Path (Join-Path $source 'PC\layout') -Force
-                    [IO.File]::WriteAllText((Join-Path $source 'LICENSE'), 'license')
                     $destination = Join-Path $dir 'runtime'
                     Assert-Equal (Join-Path $destination 'python.exe') (New-MutPythonAppCrossRuntime -TargetPython $target -SourceDir $source -HostPython host-python -Arch arm64 -WorkDir $dir -Destination $destination)
                     $flat = Join-Path $dir 'pcbuild-arm64'

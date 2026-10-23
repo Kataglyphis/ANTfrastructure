@@ -40,9 +40,9 @@ Disable-ContainerWindowsUpdate
 # Fail-open: a GitHub blip must not kill the LLVM layer, and the GStreamer self-heal is the fallback.
 function Install-TargetCompilerRt {
     param([Parameter(Mandatory)][string]$Prefix, [Parameter(Mandatory)][string]$Version)
-    $existing = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-aarch64.lib' -File -ErrorAction SilentlyContinue)
+    $existing = @(Find-InstalledCompilerRtLibrary -LlvmRoot $Prefix)
     if ($existing.Count -gt 0) { Write-Host "aarch64 compiler-rt already staged ($($existing[0].FullName))."; return }
-    $hostLib = @(Get-ChildItem -Path (Join-Path $Prefix 'lib\clang') -Recurse -Filter 'clang_rt.builtins-x86_64.lib' -File -ErrorAction SilentlyContinue | Select-Object -First 1)
+    $hostLib = @(Find-InstalledCompilerRtLibrary -LlvmRoot $Prefix -LibraryName 'clang_rt.builtins-x86_64.lib')
     if ($hostLib.Count -eq 0) { Write-Warning 'clang_rt.builtins-x86_64.lib not found - cannot place the aarch64 lib; merge-stage self-heal will cover the cross lane.'; return }
     # The baked env, else the bind-mounted versions.env: this RUN bakes no env for the key.
     $rtSha = "$env:LLVM_WINDOWS_AARCH64_RT_SHA256".Trim()
@@ -160,8 +160,7 @@ $cmakeArgs = @(
 )
 # Remote backend only: a container-local cache dies with the layer.
 Start-SccacheServerSession
-if ((Test-SccacheRemoteConfigured) -and (Get-Command sccache.exe -ErrorAction SilentlyContinue)) {
-    if (-not $env:SCCACHE_MAX_JOBS) { $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString() }
+if (Get-SourceBuildSccache) {
     $cmakeArgs += '-DCMAKE_C_COMPILER_LAUNCHER=sccache', '-DCMAKE_CXX_COMPILER_LAUNCHER=sccache'
     Write-Host "sccache launcher enabled for the LLVM build (remote backend, max $env:SCCACHE_MAX_JOBS jobs)"
 } else {

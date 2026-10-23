@@ -19880,7 +19880,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "    Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($Expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($Path)))",
   "replace": "    $null = $Path",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 28 and d[\"Passed\"] == 28 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 38 and d[\"Passed\"] == 38 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "The byte verdict must reject changed caller lines and requested exit codes rather than let writer mutants survive."
  }
 ]

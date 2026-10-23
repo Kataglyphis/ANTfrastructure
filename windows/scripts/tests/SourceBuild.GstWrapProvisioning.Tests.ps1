@@ -6,12 +6,11 @@
 
 function script:Invoke-GstWrapFixture {
     param([string]$Wrap = '')
-    $dir = New-TestDir -Prefix gstwrap-
-    try {
+    Invoke-InTestDir -Prefix gstwrap- -Body { param($dir)
         New-Item -ItemType Directory -Path (Join-Path $dir 'libffi') -Force | Out-Null
         if ($Wrap) { Set-Content -LiteralPath (Join-Path $dir 'doomed.wrap') -Value $Wrap }
         Invoke-GstWrapProvisioning -SubprojectDir $dir -TempDir $dir -LibffiVersion '0.0' -Logger { param($m) }
-    } finally { Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue }
+    }.GetNewClosure()
 }
 
 Describe 'Invoke-GstWrapProvisioning (#88 failure collection)' {

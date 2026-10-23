@@ -7,8 +7,7 @@
 Describe 'Invoke-WithHostArchLibraryEnvironment' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
         $script:savedArch = $env:WINDOWS_TARGET_ARCH
         $script:savedLib = $env:LIB
         $script:savedLibPath = $env:LIBPATH

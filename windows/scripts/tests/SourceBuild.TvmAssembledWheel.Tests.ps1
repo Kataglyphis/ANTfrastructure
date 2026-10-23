@@ -6,8 +6,7 @@
 Describe 'TVM assembled-wheel helpers' {
 
     BeforeAll {
-        $script:tmp = New-TestDir -Prefix 'wbt-tvmwheel-'
-        Write-TestFileTree -Root $script:tmp -Files @{
+        $script:tmp = New-TestDir -Prefix 'wbt-tvmwheel-' -Files @{
             'root/tvm_ffi/__init__.py' = '# pkg'; 'root/tvm_ffi/core.cp314-win_arm64.pyd' = 'not a real pyd'
             'root/tvm_ffi/lib/tvm_ffi.dll' = 'not a real dll'
         }

@@ -130,8 +130,7 @@ Describe 'Get-TargetBuildPython (fixture CPython tree)' {
 
 Describe 'Invoke-InlineRegexPatch guards (-SkipIfMatch / -AssertGone)' {
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
         $script:tmp = New-TestDir -Prefix 'wbt-patch-'
     }
     AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
@@ -155,8 +154,7 @@ Describe 'Invoke-InlineRegexPatch guards (-SkipIfMatch / -AssertGone)' {
 
 Describe 'PE asserts over a real system DLL' {
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
         $script:hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -eq 'Arm64') { 'arm64' } else { 'amd64' }
         $script:otherArch = if ($script:hostArch -eq 'amd64') { 'arm64' } else { 'amd64' }
         $script:tmp = New-TestDir -Prefix 'wbt-pe-'
