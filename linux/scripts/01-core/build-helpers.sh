@@ -2,6 +2,8 @@
 # nerdctl build wrappers and build-arg helpers.
 [ -n "${_BUILD_HELPERS_LOADED:-}" ] && return 0
 _BUILD_HELPERS_LOADED=1
+
+source "$(dirname "${BASH_SOURCE[0]}")/image-ref-args.sh" || exit 1
 : "${MEDIA_STRIP:=1}"
 # shellcheck source=elf-strip.sh
 source "$(dirname "${BASH_SOURCE[0]}")/elf-strip.sh"
@@ -99,13 +101,7 @@ append_common_build_args() {
 
 image_exists() {
   local nerdctl_bin image_ref
-  if [ "$#" -eq 1 ]; then
-    nerdctl_bin="${NERDCTL_BIN:-nerdctl}"
-    image_ref="$1"
-  else
-    nerdctl_bin="$1"
-    image_ref="$2"
-  fi
+  image_ref_cli_args nerdctl_bin image_ref "$@"
   "${nerdctl_bin}" image inspect "${image_ref}" >/dev/null 2>&1
 }
 

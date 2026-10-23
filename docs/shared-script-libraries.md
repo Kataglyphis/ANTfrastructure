@@ -1847,3 +1847,37 @@ The Python payload emitted by `smoke-common.sh` uses one exception recorder for
 native Tensor and generation failures. Existing operation labels, exception names,
 `str` formatting and final defect counts remain unchanged; the recorder does not
 invoke custom exception formatting methods.
+
+### Containment, image arguments and runtime enumeration
+
+`01-core/path-helpers.sh` owns the lexical root predicate used by ORT provenance
+and GStreamer's ORT checks. GStreamer retains roots verbatim; provenance trims
+exactly one trailing slash before ignoring an empty root. Neither policy resolves
+symlinks or dot components. Copied callers require the existing helper in their
+relative `01-core` layout. Five media recipes mount those same canonical bytes
+at the matching installed path; cache IDs and the stage graph stay unchanged.
+
+`image-ref-args.sh` binds the optional container CLI and image reference for
+`build-helpers.sh` and `digest-pinning.sh`. One argument uses `NERDCTL_BIN` or
+`nerdctl`; multiple arguments retain the explicit first two values and ignore
+extras. The callers retain their own inspect/registry work, errors and shell
+failure contexts. No new argument validation changes their existing zero-argument
+behavior. Both compiler recipes and isolated copied bundles carry the mandatory
+pure companion.
+
+FFmpeg's SDK bundler and apt manifest share their existing bin-then-lib runtime
+file enumeration. It keeps depth limits, regular-file selection and suppressed
+find diagnostics. The bundler retains advisory process-substitution failures;
+the manifest retains its pipeline status. Independent byte receipts cover both
+producers failing under direct/conditional and strict/relaxed shell contexts.
+
+The runtime help pages also share the three common build-stage descriptions and
+options/footer/environment rendering. Caller heredocs retain their own text and
+literal values; the independent full-help receipts verify the original byte order.
+
+Cross-chain and cross-compiler help use the common repository-description row
+with their original columns. Their `--cross-targets` callbacks share raw assignment
+and argument consumption through `orchestrator_set_cross_targets`; compiler targets
+remain distinct from the chain's per-stage architecture list. Independent fixtures
+exercise empty values, commas, spaces, literal shell text and newlines inside
+caller-local variables. Complete help receipts also cover both cross entrypoints.

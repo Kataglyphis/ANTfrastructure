@@ -402,9 +402,9 @@ t_assert_ok test -f "${STAMP}"
 _put "${TREE}/build/_deps/ortlib-src/x.h" "x"
 _red "fetched ONNX Runtime content at ${TREE}/build/_deps/ortlib-src"
 
-t_case "source-only: sets no shell option, sources nothing, so a per-file mount is all it needs"
+t_case "source-only: preserves shell options and requires the shared lexical path owner"
 t_assert_fails grep -q -E -e '^[[:space:]]*(set|shopt)[[:space:]]+-' "${GATE}"
-t_assert_fails grep -q -E -e '^[[:space:]]*(source|\.)[[:space:]]' "${GATE}"
+t_assert_contains "$(cat "${GATE}")" 'source "$(dirname "${BASH_SOURCE[0]}")/../01-core/path-helpers.sh" || return $?'
 
 t_case "every consumer sources G2 by its per-file path and calls it once, fatally, after its own gate (mutation)"
 # _flat <file>: continuation lines joined, so `call \<nl> || die` reads as one line.
@@ -466,6 +466,8 @@ for _consumer in "03-media/build/opencv/build-opencv.sh" "03-media/build/ffmpeg/
   _all="$(_runs "${_consumer}" | wc -l | tr -d ' ')"
   t_assert_eq "${_all}" "$(_runs "${_consumer}" | grep -c -F -e "${_mount}" || true)" "every ${_consumer} RUN mounts it"
 done
+_path_mount='source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/01-core/path-helpers.sh,readonly'
+t_assert_eq 5 "$(_runs "${_mount}" | grep -c -F -e "${_path_mount}" || true)" "every provenance RUN ships its repo-shaped companion"
 t_assert_fails grep -q -E -e '^(COPY|ADD) .*ort-provenance\.sh' "${DF}"
 t_assert_fails grep -q -E -e 'source=linux/scripts/03-media(/core)?,' "${DF}"
 

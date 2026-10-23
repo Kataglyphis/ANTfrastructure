@@ -1,0 +1,246 @@
+{
+  "image_exists:default": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:empty-default": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:override": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:override tool\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:explicit": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:explicit tool\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:extras": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:explicit tool\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:empty-reference": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:\n",
+    "temporary": []
+  },
+  "image_exists:strict-zero": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "SOURCE: line @LINE@: $1: unbound variable\n",
+    "calls": "",
+    "temporary": []
+  },
+  "image_exists:relaxed-zero": {
+    "status": 127,
+    "stdout": "",
+    "stderr": "",
+    "calls": "",
+    "temporary": []
+  },
+  "image_exists:explicit-empty-tool": {
+    "status": 127,
+    "stdout": "",
+    "stderr": "",
+    "calls": "",
+    "temporary": []
+  },
+  "image_exists:command-is-not-argv": {
+    "status": 127,
+    "stdout": "",
+    "stderr": "",
+    "calls": "",
+    "temporary": []
+  },
+  "image_exists:strict-tool-failure": {
+    "status": 17,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:conditional-tool-failure": {
+    "status": 17,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:relaxed-tool-failure": {
+    "status": 17,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:pipefail-tool-failure": {
+    "status": 17,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:strict-invalid": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:conditional-invalid": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "image_exists:relaxed-invalid": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:image\narg:inspect\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:default": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:empty-default": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:override": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:override tool\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:explicit": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:explicit tool\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:extras": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:explicit tool\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:empty-reference": {
+    "status": 0,
+    "stdout": "@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:\n",
+    "temporary": []
+  },
+  "registry_pin_ref:strict-zero": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "SOURCE: line @LINE@: $1: unbound variable\n",
+    "calls": "",
+    "temporary": []
+  },
+  "registry_pin_ref:relaxed-zero": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "[ERROR] Could not resolve registry digest for \n[ERROR] Registry/digest diagnostic output:\nSOURCE: line @LINE@: : command not found\nERROR: registry-digest.py: invalid JSON input: Expecting value: line 1 column 1 (char 0)\n",
+    "calls": "",
+    "temporary": []
+  },
+  "registry_pin_ref:explicit-empty-tool": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "[ERROR] Could not resolve registry digest for registry.example:5443/repo with spaces:tag\n[ERROR] Registry/digest diagnostic output:\nSOURCE: line @LINE@: : command not found\nERROR: registry-digest.py: invalid JSON input: Expecting value: line 1 column 1 (char 0)\n",
+    "calls": "",
+    "temporary": []
+  },
+  "registry_pin_ref:command-is-not-argv": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "[ERROR] Could not resolve registry digest for registry.example:5443/repo with spaces:tag\n[ERROR] Registry/digest diagnostic output:\nSOURCE: line @LINE@: nerdctl --namespace fixture: command not found\nERROR: registry-digest.py: invalid JSON input: Expecting value: line 1 column 1 (char 0)\n",
+    "calls": "",
+    "temporary": []
+  },
+  "registry_pin_ref:strict-tool-failure": {
+    "status": 17,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": [
+      "",
+      "TOOL_STDERR\n"
+    ]
+  },
+  "registry_pin_ref:conditional-tool-failure": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:relaxed-tool-failure": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:pipefail-tool-failure": {
+    "status": 0,
+    "stdout": "registry.example:5443/repo with spaces@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:strict-invalid": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": [
+      "ERROR: registry-digest.py: invalid JSON input: Expecting value: line 1 column 1 (char 0)\n",
+      "TOOL_STDERR\n"
+    ]
+  },
+  "registry_pin_ref:conditional-invalid": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "[ERROR] Could not resolve registry digest for registry.example:5443/repo with spaces:tag\n[ERROR] Registry/digest diagnostic output:\nTOOL_STDERR\nERROR: registry-digest.py: invalid JSON input: Expecting value: line 1 column 1 (char 0)\n",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  },
+  "registry_pin_ref:relaxed-invalid": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "[ERROR] Could not resolve registry digest for registry.example:5443/repo with spaces:tag\n[ERROR] Registry/digest diagnostic output:\nTOOL_STDERR\nERROR: registry-digest.py: invalid JSON input: Expecting value: line 1 column 1 (char 0)\n",
+    "calls": "tool:nerdctl\narg:manifest\narg:inspect\narg:--verbose\narg:registry.example:5443/repo with spaces:tag\n",
+    "temporary": []
+  }
+}

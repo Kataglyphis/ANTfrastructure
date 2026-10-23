@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # G2: a consumer's tree, records, logs and fetch caches hold no ORT but the chain's. See docs/onnxruntime-single-source.md § The guards
 
+# shellcheck source=../01-core/path-helpers.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../01-core/path-helpers.sh" || return $?
+
 # ORT headers and binaries, compared byte for byte by name (.pc/.cmake metadata is not ORT code). Matched lower-cased.
 _ORTG_CODE_RE='^(lib)?onnxruntime[^/]*\.(h|hpp|inc|lib|dll|pyd|a|so(\.[0-9]+)*)$|_provider_factory\.h$|^onnxruntime_pybind11_state'
 # Any ORT library: the core, a provider, a static component (libonnxruntime_session.a), the pybind module; see _ortg_is_bin.
@@ -21,15 +24,8 @@ _ortg_chain_bytes_finding() {
   case "${hashes}" in *" $(_ortg_sha "${path}") "*) ;; *) echo "${path} is not the chain's ${name} (foreign ONNX Runtime bytes)${sfx}" ;; esac
 }
 
-_ortg_under() {  # <path> <root>...: 0 when path is a root or sits below one
-  local p="$1" r
-  shift
-  for r in "$@"; do
-    r="${r%/}"
-    [ -n "${r}" ] || continue
-    case "${p}" in "${r}" | "${r}"/*) return 0 ;; esac
-  done
-  return 1
+_ortg_under() {
+  path_under_roots trim-one "$@"
 }
 
 _ortg_is_bin() {  # <name>: 0 for an ORT library name; GenAI's and extensions' own libraries are not ORT

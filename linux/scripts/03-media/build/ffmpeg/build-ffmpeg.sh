@@ -381,6 +381,11 @@ _ffmpeg_enqueue_unresolved() {
     done < <(elf_unresolved_needed "${binary}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
 }
 
+_ffmpeg_runtime_artifacts() {
+    find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
+    find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
+}
+
 bundle_sdk_runtime_libs() {
     # The SDK cache mount is gone at runtime and no apt package owns its libs, so every NEEDED only it resolves (and that lib's closure) ships in the prefix.
     local sdk_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
@@ -395,10 +400,7 @@ bundle_sdk_runtime_libs() {
         local _f _so _src
         while IFS= read -r _f; do
             _ffmpeg_enqueue_unresolved queue "${_f}"
-        done < <(
-            find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
-            find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
-        )
+        done < <(_ffmpeg_runtime_artifacts)
 
         local bundled=0 i=0
         while [ "${i}" -lt "${#queue[@]}" ]; do
@@ -436,10 +438,7 @@ emit_runtime_apt_manifest() {
 
     local manifest="${FFMPEG_PREFIX}/runtime-apt-packages.txt" tmp
     tmp="$(mktemp)"
-    {
-        find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
-        find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
-    } | while IFS= read -r _f; do
+    _ffmpeg_runtime_artifacts | while IFS= read -r _f; do
         elf_needed_sonames "${_f}"   # canonical NEEDED walk (01-core/platform.sh, backlog D4)
     done | sort -u | while IFS= read -r _soname; do
         local _path _pkg

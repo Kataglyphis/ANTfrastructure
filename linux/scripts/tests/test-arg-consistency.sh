@@ -15,7 +15,7 @@ _tree() {
   mkdir -p "${d}/linux/scripts/01-core" "${d}/linux/scripts/02-toolchain" \
            "${d}/linux/scripts/tests" "${d}/linux/scripts/03-media/build"
   install -m 0755 "${GATE_SOURCE}" "${d}/linux/scripts/01-core/verify-arg-consistency.sh"
-  install -m 0644 "${CORE}/version-forwarding.sh" "${CORE}/build-helpers.sh" "${CORE}/elf-strip.sh" \
+  install -m 0644 "${CORE}/version-forwarding.sh" "${CORE}/build-helpers.sh" "${CORE}/elf-strip.sh" "${CORE}/image-ref-args.sh" \
     "${d}/linux/scripts/01-core/"
   printf 'GCC_VERSION=16.2.0\nLLVM_RELEASE=22.1.8\nFOO_VERSION=1.2.3\n# noforward\nHOST_ONLY=7\n' \
     > "${d}/linux/scripts/01-core/versions.env"

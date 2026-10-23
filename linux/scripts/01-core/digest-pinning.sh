@@ -3,19 +3,15 @@
 [ -n "${_DIGEST_PINNING_SH_LOADED:-}" ] && return 0
 _DIGEST_PINNING_SH_LOADED=1
 
+source "$(dirname "${BASH_SOURCE[0]}")/image-ref-args.sh" || exit 1
+
 _TAG_NAMING_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Prints repo@sha256 from the registry, never local RepoDigests: the pushed, converted manifest has another digest.
 registry_pin_ref() {
   local nerdctl_bin image_ref
 
-  if [ "$#" -eq 1 ]; then
-    nerdctl_bin="${NERDCTL_BIN:-nerdctl}"
-    image_ref="$1"
-  else
-    nerdctl_bin="$1"
-    image_ref="$2"
-  fi
+  image_ref_cli_args nerdctl_bin image_ref "$@"
 
   local repo digest
   repo="${image_ref%:*}"

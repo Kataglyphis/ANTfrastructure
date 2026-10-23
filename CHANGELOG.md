@@ -17,6 +17,15 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-23 — share containment, image arguments and FFmpeg enumeration
+
+- Share lexical root containment with unchanged caller slash policies; carry its canonical helper through narrow media mounts and copied provenance fixtures.
+- Share image-CLI argument binding while keeping inspect and registry status, diagnostics and default-tool policies separate.
+- Share FFmpeg runtime-file enumeration with exact selection, output and distinct process-substitution/pipeline failure behavior.
+- Share runtime help stage descriptions and section rendering without changing complete help bytes or caller-specific text.
+- Share cross-target callback assignment and repository help text while preserving raw values, dynamic caller locals and exact help columns.
+- Remove resolved duplication exceptions and lower measured overlap budgets without raising limits or reducing scan coverage.
+
 ## 2026-10-23 — reduce Windows fixture and tool lookup duplication
 
 - Share LLVM bare-name and `.exe` lookup while preserving optional archiver use and required MASM selection.

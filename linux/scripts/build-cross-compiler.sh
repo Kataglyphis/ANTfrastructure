@@ -28,7 +28,9 @@ on top of it (with --push both stages are pushed and digest-pinned).
 
 Options:
   --cross-targets LIST   Comma-separated target list (default: amd64,arm64,riscv64)
-  --image-repo REPO      Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
+EOF
+  runtime_usage_row '--image-repo REPO' 25
+  cat <<'EOF'
   --push                 Push the compiler image to the registry with digest pinning
   --dry-run              Print build commands without executing them
 EOF
@@ -61,7 +63,7 @@ EOF
 # Main
 _compiler_extra_arg() {
   case "$1" in
-    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    --cross-targets) orchestrator_set_cross_targets "$2" ;;
     *) return 1 ;;
   esac
 }

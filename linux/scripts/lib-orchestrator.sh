@@ -37,6 +37,13 @@ orchestrator_usage_mirror_options() {
 EOF
 }
 
+# Compiler targets remain independent of the per-stage architecture list.
+orchestrator_set_cross_targets() {
+  local -n _oct_targets=CROSS_TARGETS
+  _oct_targets="$1"
+  _OARG_SHIFT=2
+}
+
 # <usage_fn> <case_fn> <7 nameref names> "$@"; case_fn sets _OARG_SHIFT and returns 0, else non-zero.
 run_orchestrator_arg_loop() {
   local _usage_fn="$1" _case_fn="$2"

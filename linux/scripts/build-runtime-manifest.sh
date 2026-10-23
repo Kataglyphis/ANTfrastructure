@@ -21,9 +21,9 @@ usage() {
 Usage: build-runtime-manifest.sh --image IMAGE [options]
 
 Builds the documented cross publish flow end-to-end:
-1. clean per-architecture base images
-2. package images that layer target-built payload from cross-android-${arch}
-3. final wrapper images (includes torch venv + app + runtime scripts)
+EOF
+  runtime_usage_build_steps ''
+  cat <<'EOF'
 4. one multi-architecture manifest
 
 Options:
@@ -40,14 +40,12 @@ Options:
                                 span multiple generations (skip the XC3 coherence gate)
   --push                       Short for --push-images --push-manifest (intermediates stay local)
 EOF
-  runtime_shared_usage_options
-  cat <<'EOF'
+  runtime_usage_shared_sections <<'EOF'
   -h, --help                   Show this help text
 
 Environment overrides:
   IMAGE_NAME                   Final manifest image ref, equivalent to --image
 EOF
-  runtime_shared_usage_env_overrides
 }
 
 # Collection fills the gate's local run_ids and missing count without capturing logs.

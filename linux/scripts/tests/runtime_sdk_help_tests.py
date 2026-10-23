@@ -54,6 +54,29 @@ class HelpContracts(unittest.TestCase):
                     self.assertEqual(expected["stdout"], result.stdout)
                     self.assertEqual(expected["stderr"], result.stderr)
 
+    def test_cross_target_callbacks_keep_raw_values_and_caller_locals(self):
+        worker = (
+            'source "$1/test-harness.sh"\n'
+            'if grep -q "^orchestrator_set_cross_targets()" "$2/lib-orchestrator.sh"; then '
+            't_source_functions "$2/lib-orchestrator.sh" orchestrator_set_cross_targets || exit; fi\n'
+            't_source_functions "$2/$3" "$4" || exit\n'
+            'exercise() { local CROSS_TARGETS="prior targets" _OARG_SHIFT=9 status; '
+            '"$1" "$2" "$3"; status=$?; printf "%s\\n%s\\n%s\\n" "$status" "$CROSS_TARGETS" "$_OARG_SHIFT"; }\n'
+            'exercise "$4" "$5" "$6"\n'
+        )
+        for entry, callback in (
+            ("build-cross-chain.sh", "_chain_extra_arg"),
+            ("build-cross-compiler.sh", "_compiler_extra_arg"),
+        ):
+            for flag in ("--cross-targets", "--unknown-option"):
+                for value in ("", "amd64,arm64", "arm64 space% $(literal)", "arm64\nriscv64"):
+                    with self.subTest(entry=entry, flag=flag, value=value):
+                        result = run(["bash", "-u", "-c", worker, "_", str(TESTS), str(SCRIPTS), entry, callback, flag, value])
+                        expected = f"0\n{value}\n2\n" if flag == "--cross-targets" else "1\nprior targets\n9\n"
+                        self.assertEqual(0, result.returncode)
+                        self.assertEqual(expected, result.stdout)
+                        self.assertEqual("", result.stderr)
+
     def test_unknown_help_rows_fail_by_name(self):
         result = run(
             [
