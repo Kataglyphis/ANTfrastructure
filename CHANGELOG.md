@@ -18,6 +18,14 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-24 — share lint scope, wheel transport and packaging execution
+
+- Share lint scope initialization in the driver shell while preserving root selection, remaining arguments and rejected-root errors.
+- Carry both scope companions in copied-driver fixtures and retain independent lint verdict assertions.
+- Share quiet wheel unpack/pack commands while keeping caller-specific payload edits, statuses and cleanup.
+- Share packaging command execution with separate best-effort and sudo failure handlers.
+- Remove five resolved duplication exceptions; verify 48 lint, 96 wheel and 28 packaging original/current receipts without changing scanner settings.
+
 ## 2026-10-24 — share version shape, guarded links and raw pin lookup
 
 - Share three- and four-part numeric version checks while preserving exact match state, compiler defaults, builder warnings, docs failures and Rust normalization.

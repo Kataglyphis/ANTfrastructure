@@ -161,7 +161,7 @@ _litert_fix_pywrap_ext_name() {
     for wheel in "${LITERT_PREFIX}/wheels/"ai_edge_litert-*.whl; do
         [ -f "${wheel}" ] || continue
         tmp="$(mktemp -d)"
-        if ! "${py}" -m wheel unpack "${wheel}" -d "${tmp}" >/dev/null 2>&1; then
+        if ! wheel_archive_run unpack "${wheel}" "${tmp}" "${py}"; then
             rm -rf "${tmp}"; continue
         fi
         _renamed=""
@@ -171,7 +171,7 @@ _litert_fix_pywrap_ext_name() {
         done < <(find "${tmp}" -name '_pywrap_tensorflow_interpreter_wrapper*.so')
         if [ -n "${_renamed}" ]; then
             unpacked="$(first_match "${tmp}" -mindepth 1 -maxdepth 1 -type d)"
-            if "${py}" -m wheel pack "${unpacked}" -d "${LITERT_PREFIX}/wheels/" >/dev/null 2>&1; then
+            if wheel_archive_run pack "${unpacked}" "${LITERT_PREFIX}/wheels/" "${py}"; then
                 info "Renamed misnamed LiteRT pywrap ext to _pywrap_litert_interpreter_wrapper in $(basename "${wheel}")"
             else
                 warn "Failed to repack LiteRT wheel after pywrap rename: $(basename "${wheel}")"

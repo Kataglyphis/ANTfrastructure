@@ -153,6 +153,7 @@ MEDIA_STRIP=0
 strip_media_libs "$NATIVE_CPU_OUTPUT_DIR/lib" '*.so'
 t_assert_eq false "$([ -e "$STRIP_FILES" ] && echo true || echo false)"
 t_case 'wheel repair strips recursively, repacks after advisory strip failure and preserves pure Python wheel'
+t_source_functions "$repo/linux/scripts/01-core/common.sh" wheel_archive_run
 t_source_functions "$repo/linux/scripts/03-media/runtime/repair-wheels.sh" strip_cross_wheels
 WHEELS_DIR="$work/repair wheels"
 mkdir -p "$WHEELS_DIR"

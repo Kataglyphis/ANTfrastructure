@@ -23231,5 +23231,157 @@
   "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/\n",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The flattened Android SDK entry must carry its canonical initializer beside bootstrap.sh."
+ },
+ {
+  "id": "lib.lint-scope-init-owner-required",
+  "target": "linux/scripts/01-core/lint-scope-init.sh",
+  "find": " || return 1",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "a missing scope owner cannot reuse a previously defined scope function"
+ },
+ {
+  "id": "lib.lint-scope-init-root-failure",
+  "target": "linux/scripts/01-core/lint-scope-init.sh",
+  "find": " || exit 1",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "invalid consumer roots terminate before driver argument handling"
+ },
+ {
+  "id": "lib.lint-scope-init-all-arguments",
+  "target": "linux/scripts/01-core/lint-scope-init.sh",
+  "find": "\"${REPO_ROOT}\" \"$@\"",
+  "replace": "\"${REPO_ROOT}\" \"${1-}\"",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "root parsing preserves repeated root selectors and positional arguments"
+ },
+ {
+  "id": "lib.lint-scope-init-rest-handoff",
+  "target": "linux/scripts/01-core/lint-scope-init.sh",
+  "find": "set -- ${LINT_ROOT_REST[@]+\"${LINT_ROOT_REST[@]}\"}",
+  "replace": "set -- \"$@\"",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "the caller receives only remaining arguments with empty and multiline values intact"
+ },
+ {
+  "id": "shellcheck.scope-init-entry",
+  "target": "linux/scripts/lint-shell.sh",
+  "find": ". \"${CORE_DIR}/lint-scope-init.sh\" || exit 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "each lint driver initializes the selected consumer scope and remaining arguments"
+ },
+ {
+  "id": "dockerfile-lint.scope-init-entry",
+  "target": "linux/scripts/lint-dockerfiles.sh",
+  "find": ". \"${CORE_DIR}/lint-scope-init.sh\" || exit 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "each lint driver initializes the selected consumer scope and remaining arguments"
+ },
+ {
+  "id": "python-lint.scope-init-entry",
+  "target": "linux/scripts/lint-python.sh",
+  "find": ". \"${_core}/lint-scope-init.sh\" || exit 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-lint-scope-init.sh",
+  "why": "each lint driver initializes the selected consumer scope and remaining arguments"
+ },
+ {
+  "id": "lib.packaging-execution-conditional-command",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "    \"$@\" || status=$?",
+  "replace": "    \"$@\"; status=$?",
+  "test": "bash linux/scripts/tests/test-packaging-execution.sh",
+  "why": "Commands retain their original conditional execution context, including internal failures before their final status."
+ },
+ {
+  "id": "lib.packaging-execution-success-fastpath",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "    if [ \"$status\" -eq 0 ]; then return 0; fi",
+  "replace": "    if [ \"$status\" -ne 0 ]; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-packaging-execution.sh",
+  "why": "A failed command must reach its independent failure policy and a successful command must not invoke fallback."
+ },
+ {
+  "id": "lib.packaging-execution-argv-preserved",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "    \"$failure_handler\" \"$status\" \"$@\"",
+  "replace": "    \"$failure_handler\" \"$status\" \"$*\"",
+  "test": "bash linux/scripts/tests/test-packaging-execution.sh",
+  "why": "Sudo fallback receives the original command and argument boundaries, including whitespace, empty arguments and literal globs."
+ },
+ {
+  "id": "lib.packaging-execution-advisory-mode",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "    if best_effort_mode; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-packaging-execution.sh",
+  "why": "Best-effort packaging steps retain their warning and successful outer verdict after the command fails."
+ },
+ {
+  "id": "lib.packaging-execution-sudo-status",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "        sudo \"$@\"",
+  "replace": "        sudo \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-packaging-execution.sh",
+  "why": "A failed sudo retry preserves its raw status instead of becoming a successful packaging operation."
+ },
+ {
+  "id": "lib.wheel-archive-action",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel unpack \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "Both pack and unpack must retain their selected wheel operation."
+ },
+ {
+  "id": "lib.wheel-archive-source",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${action}\" \"${destination}\" -d \"${destination}\" >/dev/null 2>&1",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "The payload source is distinct from the output directory."
+ },
+ {
+  "id": "lib.wheel-archive-runner-argv",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$*\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "The uv run python command prefix retains argument boundaries."
+ },
+ {
+  "id": "lib.wheel-archive-stdout",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "Wheel tool stdout remains quiet."
+ },
+ {
+  "id": "lib.wheel-archive-stderr",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "Wheel tool stderr remains quiet."
+ },
+ {
+  "id": "lib.wheel-archive-raw-status",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1\n  return 0",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "Failed unpack and pack retain raw statuses for caller verdicts."
+ },
+ {
+  "id": "lib.wheel-archive-destination-quoting",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d ${destination} >/dev/null 2>&1",
+  "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
+  "why": "Wheel destinations containing spaces remain one argument."
  }
 ]

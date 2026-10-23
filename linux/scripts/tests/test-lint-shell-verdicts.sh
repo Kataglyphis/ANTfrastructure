@@ -9,7 +9,7 @@ trap 'rm -rf "${WORK}"' EXIT
 mkdir -p "${WORK}/tree/linux/scripts/01-core" "${WORK}/tree/src" "${WORK}/bin"
 cp "${SUBJECT}" "${WORK}/tree/linux/scripts/lint-shell.sh"
 cp "${TESTS_DIR}/../lib-ordered-jobs.sh" "${WORK}/tree/linux/scripts/"
-for companion in lint-root.sh lint-tool-release.sh load-versions-env.sh tool-pins.env downloads.sh; do
+for companion in lint-root.sh lint-scope-init.sh lint-tool-release.sh load-versions-env.sh tool-pins.env downloads.sh; do
   cp "${TESTS_DIR}/../01-core/${companion}" "${WORK}/tree/linux/scripts/01-core/"
 done
 pin="$(sed -n 's/^SHELLCHECK_VERSION=v\{0,1\}//p' "${TESTS_DIR}/../01-core/tool-pins.env")"
