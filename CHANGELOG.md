@@ -12,6 +12,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Android CMake target arguments
+
+- IREE, LiteRT and OpenCV use one array builder for NDK toolchain, ABI and API arguments, preserving project flags and failure policies.
+- Local argument fixtures and four mutations cover target selection and paths with spaces; remove the IREE/LiteRT duplication exemption and reduce IREE's remaining self-budget.
+
 ## 2026-10-23 — share LLVM source-cache validation
 
 - Native and cross LLVM builds share checkout readiness and stale-generation eviction in `common.sh`, preserving their fetch methods and build-directory policies.

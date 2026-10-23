@@ -1182,3 +1182,12 @@ the archive for cache reuse. The archive suite uses real local tarballs and hash
 including corrupted archives and a failed download over a valid stale archive.
 `download_verified_file` stops on fetch failure even when its caller disables
 `errexit`; checksum success alone cannot turn a failed fetch green.
+
+## Android CMake target arguments
+
+`android-build-preamble.sh` owns `android_cmake_target_args`, which replaces the
+caller's array with the selected NDK toolchain path, ABI and resolved API level.
+IREE, LiteRT and OpenCV expand that array into their target configuration; host
+configuration, project options, configure retries and failure policy remain with
+the caller. The argument suite checks three ABIs and an NDK path containing spaces;
+it does not invoke an NDK or build any of the projects.

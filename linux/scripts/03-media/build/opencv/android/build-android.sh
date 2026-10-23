@@ -38,11 +38,11 @@ case "${ANDROID_ABI}" in
     ;;
 esac
 
+ANDROID_CMAKE_TARGET_ARGS=()
+android_cmake_target_args ANDROID_CMAKE_TARGET_ARGS
 mkdir -p build-android && cd build-android
 cmake -GNinja \
-  -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI="${ANDROID_ABI}" \
-  -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
+  "${ANDROID_CMAKE_TARGET_ARGS[@]}" \
   -DANDROID_SDK="${ANDROID_HOME}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DBUILD_SHARED_LIBS=ON \

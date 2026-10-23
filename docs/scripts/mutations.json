@@ -17658,5 +17658,37 @@
   "replace": "rm -rf \"${old_source}\" || true",
   "test": "bash linux/scripts/tests/test-llvm-source-cache.sh",
   "why": "failed eviction must not be hidden by conditional caller errexit semantics"
+ },
+ {
+  "id": "probe.android-cmake-target-toolchain",
+  "target": "linux/scripts/03-media/android-build-preamble.sh",
+  "find": "\"-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake\"",
+  "replace": "\"-DCMAKE_TOOLCHAIN_FILE=/wrong/android.toolchain.cmake\"",
+  "test": "bash linux/scripts/tests/test-android-cmake-target.sh",
+  "why": "every Android target must use the selected NDK toolchain, including paths with spaces"
+ },
+ {
+  "id": "probe.android-cmake-target-abi",
+  "target": "linux/scripts/03-media/android-build-preamble.sh",
+  "find": "\"-DANDROID_ABI=${ANDROID_ABI}\"",
+  "replace": "\"-DANDROID_ABI=armeabi-v7a\"",
+  "test": "bash linux/scripts/tests/test-android-cmake-target.sh",
+  "why": "the common target array must retain the selected target ABI"
+ },
+ {
+  "id": "probe.android-cmake-target-api",
+  "target": "linux/scripts/03-media/android-build-preamble.sh",
+  "find": "\"-DANDROID_PLATFORM=android-${ANDROID_API_LEVEL}\"",
+  "replace": "\"-DANDROID_PLATFORM=android-21\"",
+  "test": "bash linux/scripts/tests/test-android-cmake-target.sh",
+  "why": "the target array must retain the resolved API level"
+ },
+ {
+  "id": "probe.android-cmake-target-quoted",
+  "target": "linux/scripts/03-media/android-build-preamble.sh",
+  "find": "\"-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake\"",
+  "replace": "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+  "test": "bash linux/scripts/tests/test-android-cmake-target.sh",
+  "why": "an NDK directory containing spaces must occupy one CMake argument"
  }
 ]

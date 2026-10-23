@@ -98,3 +98,12 @@ android_apply_patch() {
 
   bash "${_apply_patch}" "${_patches_root}/${patch_rel}" "${target_dir}" "${desc}"
 }
+
+android_cmake_target_args() {
+  local -n _android_target_args="$1"
+  _android_target_args=(
+    "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake"
+    "-DANDROID_ABI=${ANDROID_ABI}"
+    "-DANDROID_PLATFORM=android-${ANDROID_API_LEVEL}"
+  )
+}

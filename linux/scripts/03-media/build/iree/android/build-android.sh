@@ -55,11 +55,11 @@ cmake --build "${HOST_BUILD}" --target install -- -j"${PARALLEL_JOBS}" \
   || { warn "Android IREE: host-tools build failed; skipping (non-gating)"; exit 0; }
 
 # Stage 2 — cross the runtime for Android against the host tools.
+ANDROID_CMAKE_TARGET_ARGS=()
+android_cmake_target_args ANDROID_CMAKE_TARGET_ARGS
 TARGET_BUILD=/opt/iree-android/build-android
 cmake -GNinja -S /opt/iree-android -B "${TARGET_BUILD}" \
-    -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-    -DANDROID_ABI="${ANDROID_ABI}" \
-    -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
+    "${ANDROID_CMAKE_TARGET_ARGS[@]}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM} \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \

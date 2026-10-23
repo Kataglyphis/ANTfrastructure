@@ -53,13 +53,13 @@ litecore_include="${litecore_root}/exynos-ai-litecore-v1.1.0/include"
 [ -f "${litecore_include}/graph_wrapper_api.h" ] \
   || { echo "FATAL: ${litecore_include}/graph_wrapper_api.h missing from the LiteCore archive" >&2; exit 1; }
 
+ANDROID_CMAKE_TARGET_ARGS=()
+android_cmake_target_args ANDROID_CMAKE_TARGET_ARGS
 # FetchContent downloads can truncate mid-transfer, so a failed configure retries from wiped state.
 configure_litert_android() {
   cmake -GNinja \
-    -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+    "${ANDROID_CMAKE_TARGET_ARGS[@]}" \
     "${LITERT_EIGEN_FETCH_FLAGS[@]}" \
-    -DANDROID_ABI="${ANDROID_ABI}" \
-    -DANDROID_PLATFORM="android-${ANDROID_API_LEVEL}" \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM} \
     -DTFLITE_ENABLE_XNNPACK=ON \
