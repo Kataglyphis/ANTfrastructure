@@ -18,6 +18,17 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-23 — share linker policy, service actions and cross-chain help
+
+- Share the optional LLD check with its original literal-`false` policy, preserving lookup order, status, compiler arguments and logs.
+- Share host Python path selection with explicit and version-derived profiles, preserving caller overrides, pin order, PATH fallback and required platform companions.
+- Share nerdctl installer service actions while retaining caller guards, unit splitting, action order and warning policy; verify 204 independent offline scenarios.
+- Share architecture and repository help rows between the cross-chain driver and its verification wrapper with unchanged complete output.
+- Load the verification wrapper's function-only renderer only for help; preserve opaque argument forwarding and the child's exit status without that companion.
+- Keep independent full-help receipts and explicit missing-renderer and forwarding assertions.
+- Share actual cache-slug deletion while retaining separate trim-stop and protect-and-continue policies, quiet diagnostics and guarded cache roots.
+- Remove four resolved duplication exceptions without adding allowances or changing scanner settings.
+
 ## 2026-10-23 — share native compiler paths and test fixtures
 
 - Share native GCC system-path exports between Torch setup and the generated shell profile, preserving existing flags and expansion at profile sourcing time.

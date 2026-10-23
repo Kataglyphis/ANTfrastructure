@@ -113,6 +113,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
    Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
    Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced.
+   `verify-cross-chain.sh` help carries `runtime-build-fns.sh`; ordinary forwarding must not load build helpers.
    Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.

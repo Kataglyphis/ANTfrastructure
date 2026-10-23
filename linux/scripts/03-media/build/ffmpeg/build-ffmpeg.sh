@@ -282,7 +282,7 @@ _ffmpeg_linker_ccache_args() {
     local -n _fflc_out="$1"
 
     # Use lld linker for faster linking if available
-    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+    if compiler_tool_enabled ld.lld "${USE_LLD:-true}" literal-false; then
         _fflc_out+=("--extra-ldflags=-fuse-ld=lld")
         echo "Using lld linker for faster linking"
     fi

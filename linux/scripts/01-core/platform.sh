@@ -4,6 +4,57 @@
 [ -n "${_PLATFORM_SH_LOADED:-}" ] && return 0
 _PLATFORM_SH_LOADED=1
 
+# Explicit host pins stay separate from version derivation and PATH policies.
+host_python_pinned_path() {
+  local -n _hpp_result="$1"
+  local candidate
+  _hpp_result=""
+  for candidate in "${MEDIA_HOST_PYTHON:-}" "${UV_PYTHON:-}" \
+    "${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin/python}" \
+    "${PYTHON_MAJOR_MINOR:+/usr/local/bin/python${PYTHON_MAJOR_MINOR}}"; do
+    [ -n "${candidate}" ] && [ -x "${candidate}" ] || continue
+    _hpp_result="${candidate}"
+    return 0
+  done
+  return 1
+}
+
+# Canonical capture historically ignores a failed inner printf, while direct consumers retain its status.
+_host_python_capture_pin() {
+  local interpreter
+  host_python_pinned_path interpreter || return 1
+  printf '%s' "${interpreter}"
+  return 0
+}
+
+# Prints its first argument if it is an executable path, else fails; an unset pin is an empty argument.
+_host_python_try() {
+  [ -n "$1" ] && [ -x "$1" ] || return 1
+  printf '%s' "$1"
+}
+
+host_python_path() {
+  local interpreter
+  if [ "${1:-explicit}" = explicit ]; then
+    if host_python_pinned_path interpreter; then
+      printf '%s' "${interpreter}"
+      return
+    fi
+  else
+    interpreter="$(_host_python_capture_pin)" && {
+      printf '%s' "${interpreter}"
+      return 0
+    }
+  fi
+
+  if [ "${1:-explicit}" = derived ] && [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
+    local python_mm=""
+    python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"
+    _host_python_try "${python_mm:+/usr/local/bin/python${python_mm}}" && return 0
+  fi
+  command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+}
+
 # The one truthiness predicate; _bool_truthy and ubuntu_mirror_is_truthy delegate here (this leaf loads first).
 is_truthy() {
   case "${1:-}" in

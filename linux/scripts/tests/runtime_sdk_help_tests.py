@@ -77,6 +77,31 @@ class HelpContracts(unittest.TestCase):
                         self.assertEqual(expected, result.stdout)
                         self.assertEqual("", result.stderr)
 
+    def test_verify_forwarding_needs_no_help_renderer(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary) / "linux/scripts"
+            scripts.mkdir(parents=True)
+            wrapper = scripts / "verify-cross-chain.sh"
+            wrapper.write_bytes((SCRIPTS / wrapper.name).read_bytes())
+            (scripts / "build-cross-chain.sh").write_text('printf "<%s>\\n" "$@"\nexit 37\n')
+            for extra, mode in (([], "--verify-chain"), (["--describe-chain"], "--describe-chain")):
+                args = ["--unknown", "", "space % $(literal)", "line\nvalue"]
+                result = run(["bash", str(wrapper), *args, *extra])
+                self.assertEqual(37, result.returncode)
+                self.assertEqual("".join(f"<{value}>\n" for value in [mode, *args]), result.stdout)
+                self.assertEqual("", result.stderr)
+
+    def test_verify_help_requires_its_renderer(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            scripts = Path(temporary) / "linux/scripts"
+            scripts.mkdir(parents=True)
+            wrapper = scripts / "verify-cross-chain.sh"
+            wrapper.write_bytes((SCRIPTS / wrapper.name).read_bytes())
+            result = run(["bash", str(wrapper), "--help"])
+            self.assertEqual(1, result.returncode)
+            self.assertEqual("", result.stdout)
+            self.assertIn("runtime-build-fns.sh", result.stderr)
+
     def test_unknown_help_rows_fail_by_name(self):
         result = run(
             [
