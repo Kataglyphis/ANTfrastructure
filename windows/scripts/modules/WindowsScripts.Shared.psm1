@@ -835,4 +835,31 @@ function Resolve-NormalizedPath {
 
 Export-ModuleMember -Function Resolve-WorkspacePath, Resolve-NormalizedPath
 
+# Candidate order belongs to the caller; app bundles and test build trees differ.
+function Resolve-BuildExecutable {
+    param(
+        [Parameter(Mandatory)][string]$BuildRoot,
+        [Parameter(Mandatory)][string]$ExecutableName,
+        [string[]]$RelativeDirectory = @(''),
+        [switch]$ResolveCandidatePath
+    )
 
+    foreach ($relative in $RelativeDirectory) {
+        $candidate = if ([string]::IsNullOrEmpty($relative)) {
+            Join-Path $BuildRoot $ExecutableName
+        } else {
+            Join-Path $BuildRoot (Join-Path $relative $ExecutableName)
+        }
+        if (Test-Path $candidate) {
+            if ($ResolveCandidatePath) { return (Resolve-Path $candidate).Path }
+            return $candidate
+        }
+    }
+
+    $found = Get-ChildItem -Path $BuildRoot -Filter $ExecutableName -File -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($found) { return $found.FullName }
+    return $null
+}
+
+Export-ModuleMember -Function Resolve-BuildExecutable

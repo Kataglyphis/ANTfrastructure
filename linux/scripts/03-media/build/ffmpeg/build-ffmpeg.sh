@@ -12,6 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_common_init "${SCRIPT_DIR}"
+source_module compiler-resolution.sh
 
 # The Dockerfile bind-mounts the whole ffmpeg dir, so these siblings are always present.
 # shellcheck disable=SC1091

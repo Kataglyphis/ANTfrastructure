@@ -1,9 +1,9 @@
 [
  {
   "id": "lib.cmake-build-empty-positional",
-  "target": "linux/scripts/lib/cmake-build.sh",
-  "find": "CMAKE_BUILD_POSITIONAL=(\"$@\")",
-  "replace": "CMAKE_BUILD_POSITIONAL=(\"${@:2}\")",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "_cpo_remaining+=(\"$@\")",
+  "replace": "_cpo_remaining+=(\"${@:2}\")",
   "test": "bash linux/scripts/tests/test-lib-smoke.sh",
   "why": "an empty positional preset must retain its array entry and caller default instead of aborting on an empty associative-array key"
  },
@@ -674,8 +674,8 @@
  {
   "id": "shellcheck.extensionless-arm",
   "target": "linux/scripts/lint-shell.sh",
-  "find": "    *)\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
-  "replace": "    *)\n      continue\n      # No extension at all — admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "find": "    *)\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
+  "replace": "    *)\n      continue\n      # No extension at all \u2014 admit it only on a shell shebang. LOAD-BEARING: the live hook has none.",
   "test": "bash linux/scripts/tests/test-lint-shell-scope.sh",
   "why": "without the extension-less arm the live commit hook is linted by nothing, and the scan reports 'no shell scripts to check' -- a miss that looks like a pass"
  },
@@ -1077,7 +1077,7 @@
   "find": "            if m.group(\"sec\") in have:\n                continue",
   "replace": "            if True:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "a bare (§ 1a) pointing at no section must be caught, not merely counted"
+  "why": "a bare (\u00a7 1a) pointing at no section must be caught, not merely counted"
  },
  {
   "id": "doc-links.git-free-floor",
@@ -2690,7 +2690,7 @@
  {
   "id": "pre-commit.fast-tier-aborts",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED — fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
+  "find": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || {\n  echo \"pre-commit: FAILED \u2014 fix the gate above, or 'git commit --no-verify' if you know why\" >&2\n  exit 1\n}",
   "replace": "PREFLIGHT_ONLY=\"${_FAST_SLUGS}\" bash linux/scripts/preflight.sh || true",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "a failing fast gate must REFUSE the commit, not print and continue"
@@ -3290,7 +3290,7 @@
  {
   "id": "pre-commit.pinned-shellcheck-or-refuse",
   "target": "linux/host-config/git-hooks/pre-commit",
-  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck — see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
+  "find": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || {\n    echo \"pre-commit: no pinned shellcheck \u2014 see lint-shell.sh --print-bin\" >&2\n    exit 1\n  }",
   "replace": "  _sc_bin=\"$(bash linux/scripts/lint-shell.sh --print-bin)\" || _sc_bin=shellcheck",
   "test": "bash linux/scripts/tests/test-precommit-hook.sh",
   "why": "with no pinned binary the hook must REFUSE; falling back to whatever shellcheck PATH offers lints the commit against an unknown version and calls it green"
@@ -3410,8 +3410,8 @@
  {
   "id": "lib.cmake-build-skip-configure-optional-value",
   "target": "linux/scripts/lib/cmake-build.sh",
-  "find": "        if [[ $# -ge 2 && \"${2}\" != -* ]]; then",
-  "replace": "        if [[ $# -ge 2 ]]; then",
+  "find": "      if [[ $# -ge 2 && \"${2}\" != -* ]]; then",
+  "replace": "      if [[ $# -ge 2 ]]; then",
   "test": "bash linux/scripts/tests/test-lib-smoke.sh",
   "why": "--skip-configure takes an OPTIONAL value; without the -* guard it swallows the following flag as its value, so `--skip-configure --parallel 5` sets SKIP_CONFIGURE=--parallel and drops the job count"
  },
@@ -4082,8 +4082,8 @@
  {
   "id": "mutations.push-stale-check-aborts",
   "target": "linux/host-config/git-hooks/pre-push",
-  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
-  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}…\"",
+  "find": "  exit 1\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
+  "replace": "  exit 0\n}\n\necho \"pre-push: mutation gate over everything since ${_base}\u2026\"",
   "test": "bash linux/scripts/tests/test-prepush-hook.sh",
   "why": "a rotted manifest entry must STOP the push; printing and pushing anyway is the state this hook was written to end"
  },
@@ -4682,8 +4682,8 @@
  {
   "id": "arg-consistency.gcc-literal-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
-  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  ≠  expected ${_var} default ${_want}\"",
+  "find": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"\n      GCC_LITERAL_ERRORS=$((GCC_LITERAL_ERRORS + 1))",
+  "replace": "      echo \"  ERROR: ${_loc#\"${REPO_ROOT}/\"}  ${_expr}  \u2260  expected ${_var} default ${_want}\"",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "these ~25 sites all name the same /opt/gcc-<ver> toolchain, so unlike the generic scan there is no legitimate divergence to be advisory about"
  },
@@ -4722,8 +4722,8 @@
  {
   "id": "arg-consistency.script-drift-advisory",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
-  "replace": "    echo \"  WARN drift: ${file}  ${match}  ≠  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
+  "find": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1))",
+  "replace": "    echo \"  WARN drift: ${file}  ${match}  \u2260  versions.env ${var}=${env_val}\"\n    DRIFT_WARN=$((DRIFT_WARN + 1)); exit 1",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "script defaults legitimately diverge -- a standalone run pins a branch, not the built ref -- so this scan must never be an exit code"
  },
@@ -4941,7 +4941,7 @@
   "find": "            if SECTION_SIGN in line:\n                continue",
   "replace": "            if False:\n                continue",
   "test": "bash linux/scripts/tests/test-doc-links.sh",
-  "why": "`page.md § Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
+  "why": "`page.md \u00a7 Heading` already says which section it means and check_section_refs already validates it; reporting it as bare demands a second spelling of a reference the gate can already follow"
  },
  {
   "id": "doc-links.header-stale-row",
@@ -8254,8 +8254,8 @@
  {
   "id": "lib.cmake-build-configure-arg-accumulates",
   "target": "linux/scripts/lib/cmake-build.sh",
-  "find": "        CMAKE_BUILD_CONFIGURE_ARGS+=(\"$2\"); shift 2 ;;",
-  "replace": "        CMAKE_BUILD_CONFIGURE_ARGS=(\"$2\"); shift 2 ;;",
+  "find": "      CMAKE_BUILD_CONFIGURE_ARGS+=(\"$2\"); return 2 ;;",
+  "replace": "      CMAKE_BUILD_CONFIGURE_ARGS=(\"$2\"); return 2 ;;",
   "test": "bash linux/scripts/tests/test-lib-smoke.sh",
   "why": "the flag is REPEATABLE; overwriting keeps only the last -D and the consumer that needs two silently loses one"
  },
@@ -8270,8 +8270,8 @@
  {
   "id": "lib.cmake-build-configure-arg-empty-is-fatal",
   "target": "linux/scripts/lib/cmake-build.sh",
-  "find": "        [[ -n \"${2:-}\" ]] || err \"--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)\"",
-  "replace": "        [[ -n \"${2:-}\" ]] || true",
+  "find": "      [[ -n \"${2:-}\" ]] || err \"--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)\"",
+  "replace": "      [[ -n \"${2:-}\" ]] || true",
   "test": "bash linux/scripts/tests/test-lib-smoke.sh",
   "why": "an empty value reaches cmake as an empty argument, whose error names the source directory and not the caller"
  },
@@ -14886,8 +14886,8 @@
  {
   "id": "docs-site.publish-no-tolerance",
   "target": ".github/workflows/build-docs.yml",
-  "find": "      - name: 📂 Sync files to domain\n",
-  "replace": "      - name: 📂 Sync files to domain\n        continue-on-error: true\n",
+  "find": "      - name: \ud83d\udcc2 Sync files to domain\n",
+  "replace": "      - name: \ud83d\udcc2 Sync files to domain\n        continue-on-error: true\n",
   "test": "bash linux/scripts/tests/test-docs-site.sh",
   "why": "a publish that may fail is a site that stops updating while the lane stays green"
  },
@@ -17346,5 +17346,61 @@
   "replace": "for root in \"${VULKAN_SDK_ROOT}/x86_64\" \"${VULKAN_SDK_ROOT}/aarch64\" \"${VULKAN_SDK_ROOT}/riscv64\"; do",
   "test": "bash linux/scripts/tests/test-vulkan-sdk-smoke-paths.sh",
   "why": "the selected active SDK must take precedence over architecture fallback directories"
+ },
+ {
+  "id": "lib.value-option-requires-argument",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "[ \"${_cvo_count}\" -ge 2 ] || err \"${_cvo_flag} expects a value\"",
+  "replace": "[ \"${_cvo_count}\" -ge 0 ] || err \"${_cvo_flag} expects a value\"",
+  "test": "bash linux/scripts/tests/test-cli-value-options.sh",
+  "why": "a missing value must exit promptly rather than repeat the same unconsumed flag"
+ },
+ {
+  "id": "lib.value-option-delimiter",
+  "target": "linux/scripts/lib/cli-value-options.sh",
+  "find": "3) shift; break ;;",
+  "replace": "3) break ;;",
+  "test": "bash linux/scripts/tests/test-cli-value-options.sh",
+  "why": "the delimiter ends option parsing without becoming an argument of the launched app or ctest"
+ },
+ {
+  "id": "probe.compiler-smoke-object-mode",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "cc1-smoke 'cc1 compile-to-object smoke failed' -c",
+  "replace": "cc1-smoke 'cc1 compile-to-object smoke failed'",
+  "test": "bash linux/scripts/tests/test-compiler-smoke-command.sh",
+  "why": "compile-to-object must retain -c so the ELF check grades an object rather than a linked executable"
+ },
+ {
+  "id": "probe.compiler-smoke-command-cleanup",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  rm -rf \"${directory}\"\n}",
+  "replace": "  :\n}",
+  "test": "bash linux/scripts/tests/test-compiler-smoke-command.sh",
+  "why": "successful and advisory compiler probes must remove their temporary output tree"
+ },
+ {
+  "id": "gate-fixture.harness-capture-stub-status",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "2>&1)\" || _tcs_status=$?",
+  "replace": "2>&1)\" || _tcs_status=0",
+  "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+  "why": "a failing library call must retain its exit status for the fatal-path assertions"
+ },
+ {
+  "id": "gate-fixture.harness-capture-stub-environment",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "env \"${_tcs_environment[@]}\"",
+  "replace": "env",
+  "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+  "why": "per-case environment overrides must reach the stubbed subject"
+ },
+ {
+  "id": "probe.ffmpeg-host-language",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh",
+  "find": "    resolve_host_compiler_for_lang c\n",
+  "replace": "    resolve_host_compiler_for_lang cxx\n",
+  "test": "bash linux/scripts/tests/test-ffmpeg-probes.sh",
+  "why": "FFmpeg host generators need the C resolver and must retain its failure status"
  }
 ]

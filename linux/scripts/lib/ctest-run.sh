@@ -5,6 +5,8 @@ _CTEST_RUN_SH_LOADED=1
 
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
+# shellcheck source=./cli-value-options.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cli-value-options.sh"
 # shellcheck source=../01-core/vulkan-env.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/vulkan-env.sh"
 
@@ -37,57 +39,28 @@ EOF
 }
 
 # Argument parsing. Precedence: CLI flag > environment > caller default.
+_ctest_run_other_arg() {
+  case "$1" in
+    -h|--help) ctest_run_usage; exit 0 ;;
+    --) return 3 ;;
+    -*) err "Unknown argument: $1" ;;
+    *) return 0 ;;
+  esac
+}
+
 ctest_run_parse_args() {
   CTEST_RUN_PASSTHROUGH=()
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --vulkan-version)
-        # shellcheck disable=SC2034 # library output; read by the Vulkan env script it sources
-        VULKAN_VERSION="${2:-}"
-        shift 2
-        ;;
-      --vulkan-setup-script)
-        VULKAN_SETUP_SCRIPT="${2:-}"
-        shift 2
-        ;;
-      --vulkan-sdk)
-        # shellcheck disable=SC2034 # library output; read by the Vulkan env script it sources
-        VULKAN_SDK="${2:-}"
-        shift 2
-        ;;
-      --build-dir)
-        BUILD_DIR="${2:-}"
-        shift 2
-        ;;
-      --build-type)
-        BUILD_TYPE="${2:-}"
-        shift 2
-        ;;
-      --ctest-exclude)
-        CTEST_EXCLUDE="${2:-}"
-        shift 2
-        ;;
-      -h|--help)
-        ctest_run_usage
-        exit 0
-        ;;
-      --)
-        shift
-        break
-        ;;
-      -*)
-        err "Unknown argument: $1"
-        ;;
-      *)
-        break
-        ;;
-    esac
-  done
+  local -A _value_options=(
+    [--vulkan-version]=VULKAN_VERSION
+    [--vulkan-setup-script]=VULKAN_SETUP_SCRIPT
+    [--vulkan-sdk]=VULKAN_SDK
+    [--build-dir]=BUILD_DIR
+    [--build-type]=BUILD_TYPE
+    [--ctest-exclude]=CTEST_EXCLUDE
+  )
+  parse_cli_value_options _value_options CTEST_RUN_PASSTHROUGH _ctest_run_other_arg "$@"
 
-  if [[ $# -gt 0 ]]; then
-    CTEST_RUN_PASSTHROUGH=("$@")
-  fi
 
   BUILD_DIR="${BUILD_DIR:-${BUILD_DIR_DEFAULT:-${CTEST_RUN_DEFAULT_BUILD_DIR-build}}}"
   BUILD_TYPE="${BUILD_TYPE:-${BUILD_TYPE_DEFAULT:-${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug}}}"

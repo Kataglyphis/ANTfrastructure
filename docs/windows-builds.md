@@ -1564,6 +1564,12 @@ image builds FROM:
   (`pytorch-cu130` on the nvidia lane) and `test`; no `frontend` extra, like Linux),
   with `--no-install-package` for every `onnxruntime*` name in `uv.lock` (a locked name whose family
   has no chain wheel stops the stage), then a reconcile so this lane's wheels always win.
+  - Image assembly and consumer sync parse ORT lock names through
+    `WindowsUvLock.Common.psm1`. Copy this companion with `WindowsUv.Common.psm1`;
+    `Dockerfile.torch` also copies it beside the build script's other modules.
+    Package-table counts, normalized ORT family names and safe package spelling are
+    checked once. Consumer sync still treats an absent lock as empty; image assembly
+    still refuses one. Focused lock fixtures cover parsing, not a real uv installation.
   - The ORT census (`ort-venv-census.py --purge-list`, run in the venv) names every installed ONNX
     Runtime distribution: any `onnxruntime` or `onnxruntime-*` name and any owner of the
     `onnxruntime`, `onnxruntime_genai` or `onnxruntime_extensions` package; there is no fixed list.
@@ -1758,7 +1764,10 @@ Docker `HEALTHCHECK` script: verifies ONNX Runtime DLL, FFmpeg, GStreamer, CMake
 Comprehensive container validation, **25** test categories (23 until section 24, Hailo, and section
 25, the ORT single-source census, landed in 2026-09). Runs INSIDE the final
 image, which `windows/Dockerfile` COPYs it into along with the whole `modules` dir. The 25 sections
-live here; the assertion harness is in `WindowsSmokeTest.Common.psm1`.
+live here; the assertion harness is in `WindowsSmokeTest.Common.psm1`. The smoke imports
+`WindowsContainerImage.Common` for version precedence and VS root discovery. A missing
+module fails before section reporting; the final image's modules COPY and the live
+smoke mount both provide it. There are no private fallback implementations.
 
 #### `Set-TensorrtTree.ps1`
 
@@ -2254,3 +2263,21 @@ prints the build.
 carries `SCCACHE_WEBDAV_ENDPOINT`, so `Invoke-ContainerBuild` adds this host's endpoint and chain to
 `-CacheEnv` as `-e` entries unless the caller set them (`''` opts out):
 [`windows-build-resources.md` § The build host's remote tier, at run time](windows-build-resources.md#the-build-hosts-remote-tier-at-run-time).
+
+### Shared executable lookup
+
+`WindowsScripts.Shared` exports `Resolve-BuildExecutable`, used internally by both
+`WindowsAppRunner.Common` and `WindowsTesting.Common`. Each caller supplies its own
+ordered directories. The app runner searches the root and `bin` first, then
+`bin/<configuration>` and `<configuration>` for each requested configuration; direct
+hits return a resolved path. The test runner searches the root, Debug, Release,
+RelWithDebInfo and additional directories; direct hits retain the caller's path.
+Both then search recursively and return null on a miss. Vendoring the app runner
+also requires `WindowsScripts.Shared.psm1` beside it; both callers import the shared
+module without `-Force`.
+
+`Executable.Lookup.Tests.ps1` checks those orders, path forms, recursive fallback
+and absence using empty files. Its `-Standalone` mode runs these four cases with
+an explicit count and exit status. It starts no application and proves no Windows
+binary can run. Mutation checks reverse the candidates, remove app normalization
+and remove recursion; each must fail the suite.

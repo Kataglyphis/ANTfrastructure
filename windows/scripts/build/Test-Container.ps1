@@ -75,43 +75,9 @@ if ((Test-Path $repoVersions) -and (Test-Path $sharedModule)) {
     $script:versionsFromFile = ConvertFrom-VersionsEnv -Path $repoVersions
 }
 
-# Local fallbacks keep the suite runnable with a broken modules dir; keep them in sync with the module.
+# The final image and live smoke mount both carry the canonical module closure.
 $containerImageModule = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
-if (Test-Path $containerImageModule) {
-    Import-Module $containerImageModule -Force
-}
-if (-not (Get-Command Resolve-ContainerImageValue -ErrorAction SilentlyContinue)) {
-    function Resolve-ContainerImageValue {
-        param(
-            [AllowEmptyString()][string]$Value = '',
-            [string]$EnvironmentVariable = '',
-            [AllowEmptyString()][string]$DefaultValue = '',
-            [switch]$TrimVPrefix
-        )
-        $resolved = $DefaultValue
-        if (-not [string]::IsNullOrWhiteSpace($Value)) {
-            $resolved = $Value
-        } elseif (-not [string]::IsNullOrWhiteSpace($EnvironmentVariable)) {
-            $environmentValue = [Environment]::GetEnvironmentVariable($EnvironmentVariable)
-            if (-not [string]::IsNullOrWhiteSpace($environmentValue)) { $resolved = $environmentValue }
-        }
-        if ($TrimVPrefix -and $null -ne $resolved) { $resolved = ([string]$resolved).TrimStart('v') }
-        return $resolved
-    }
-}
-if (-not (Get-Command Resolve-VsBuildToolsRoot -ErrorAction SilentlyContinue)) {
-    function Resolve-VsBuildToolsRoot {
-        param([string]$VsMajor = '')
-        if ([string]::IsNullOrWhiteSpace($VsMajor)) {
-            $VsMajor = if ($env:VISUAL_STUDIO_VERSION) { $env:VISUAL_STUDIO_VERSION } else { '18' }
-        }
-        foreach ($programFiles in @('C:\Program Files', 'C:\Program Files (x86)')) {
-            $candidate = Join-Path $programFiles ("Microsoft Visual Studio\{0}\BuildTools" -f $VsMajor)
-            if (Test-Path (Join-Path $candidate 'Common7\Tools\VsDevCmd.bat')) { return $candidate }
-        }
-        return $null
-    }
-}
+Import-Module $containerImageModule -Force -ErrorAction Stop
 
 function Get-ExpectedVersion {
     # The setup and verify gates' own normalization; precedence env > versions.env > literal.

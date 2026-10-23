@@ -209,6 +209,12 @@ gutted or early-returning copy, not a library. It also parses
 private fallback copy. It skips the `agentic-*.sh` pair, one executable loop split
 over two files rather than a source-library.
 
+`t_capture_stubbed` in the shell test harness owns isolated library calls with
+per-case environment overrides, a fresh command log and captured output/status.
+The Flatpak and bind-mount ownership suites retain their own stub defaults and
+expected results. Both suites pass the same assertions before and after the
+extraction; status-swallowing and dropped-environment mutations must fail.
+
 ## The logging bootstrap
 
 `log-bootstrap.sh` is the one owner of the block every other library needs
@@ -238,6 +244,20 @@ a missing file **next to** the library it serves is a broken checkout, not a
 supported state. `tests/test-lib-modules.sh` holds that line: every `lib/*.sh`
 must source cleanly standalone, define `info`/`warn`/`err`, survive a double
 source, and end up with the *real* logging module rather than the fallbacks.
+
+## Shared CLI value parsing
+
+`app-runner.sh`, `cmake-build.sh` and `ctest-run.sh` source
+`cli-value-options.sh` beside them. Keep that companion when copying these libraries.
+One cursor loop assigns value flags from each caller's map; caller callbacks retain
+positional handling, repeatable configure arguments, optional skip-configure values
+and `--` behavior. A value flag without another argument exits with its diagnostic
+instead of repeating an unsuccessful `shift 2`. An explicitly empty argument remains
+valid where the caller already accepts it.
+
+`test-cli-value-options.sh` exercises all three real parsers with bounded workers;
+it launches no application, CMake build or CTest process. Mutation cases remove the
+missing-value guard and retain the delimiter, and both must fail.
 
 ## `cmake-build.sh` — configure + build a CMake project in a container
 

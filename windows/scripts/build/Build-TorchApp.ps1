@@ -22,6 +22,7 @@ $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScrip
 $nativeModulePath = Join-Path $scriptAssetRoot 'modules\WindowsNative.Common.psm1'
 if (-not (Test-Path $nativeModulePath)) { throw "Required module not found: $nativeModulePath" }
 Import-Module $nativeModulePath -Force
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsUvLock.Common.psm1')
 # Test-PeRichHeader for the install's sdist compiler gate; verify mode runs from mounts that may lack it.
 $targetArchModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
 if (Test-Path $targetArchModulePath) { Import-Module $targetArchModulePath -Force }
@@ -303,14 +304,7 @@ function Assert-TorchAppOrtChainOnly {
 # Every ORT distribution uv.lock pins, by the census's name pattern (never a list), normalized.
 function Get-TorchAppLockOrtName {
     param([Parameter(Mandatory)][string]$LockPath)
-    $text = [System.IO.File]::ReadAllText($LockPath)
-    $tables = [regex]::Matches($text, '(?m)^\[\[package\]\]\r?$').Count
-    $names = @([regex]::Matches($text, '(?m)^name = "([^"\r\n]*)"\r?$') | ForEach-Object { ($_.Groups[1].Value -replace '[-_.]+', '-').ToLowerInvariant() })
-    if (-not $tables -or $names.Count -ne $tables) { throw "cannot read the packages of ${LockPath}: $($names.Count) name(s) for $tables [[package]] table(s)" }
-    $ort = @($names | Where-Object { $_ -cmatch '^onnxruntime(-|$)' } | Sort-Object -Unique)
-    $bad = @($ort | Where-Object { $_ -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$' })
-    if ($bad.Count) { throw "${LockPath} pins an ORT name uv sync cannot be handed: $($bad -join ', ')" }
-    return $ort
+    return Get-OrtLockPackageName -LockPath $LockPath
 }
 
 # The chain wheel that replaces an ORT distribution: every runtime flavour is onnxruntime, every GenAI one onnxruntime-genai.

@@ -336,54 +336,41 @@ _cc_target_object_elf_check() {
   esac
 }
 
-_cc_target_compile_smoke() {
-  local target_arch="${_VCS_CC_TARGET_ARCH}"
-  local mode="${_VCS_CC_MODE}"
-  local cc_pattern="${_VCS_CC_PATTERN}"
-  local cc_obj _cc1_tmpdir
-  _cc1_tmpdir="$(mktemp -d)"
-  _VCS_CC_COMPILE_TMPDIR="${_cc1_tmpdir}"
-  cc_obj="${_cc1_tmpdir}/cc1smoke.o"
-  _VCS_CC_OBJ="${cc_obj}"
-  local _cc1_log="${_cc1_tmpdir}/cc1smoke.log"
-  if printf 'int answer(void){return 42;}\n' | cc -x c - -c -o "${cc_obj}" 2>"${_cc1_log}"; then
-    echo "Verified /usr/bin/cc cc1 compile-to-object smoke for ${target_arch}"
-    if [ -n "${cc_pattern}" ] && command -v readelf >/dev/null 2>&1; then
+_cc_target_run_smoke() {
+  local kind="$1" source="$2" name="$3" success="$4" failure="$5" gate="$6" message="$7"
+  shift 7
+  local directory output log
+  directory="$(mktemp -d)"
+  output="${directory}/${name}"
+  log="${directory}/${name}.log"
+  if printf '%s\n' "${source}" | cc -x c - "$@" -o "${output}" 2>"${log}"; then
+    echo "Verified /usr/bin/cc ${success} for ${_VCS_CC_TARGET_ARCH}"
+    if [ "${kind}" = compile ] && [ -n "${_VCS_CC_PATTERN}" ] && command -v readelf >/dev/null 2>&1; then
+      _VCS_CC_COMPILE_TMPDIR="${directory}"
+      _VCS_CC_OBJ="${output}"
       _cc_target_object_elf_check
     fi
+  elif [ "${_VCS_CC_MODE}" = "hard-fail" ]; then
+    echo "ERROR: ${failure}:" >&2
+    cat "${log}" >&2 || true
+    rm -rf "${directory}"
+    exit 1
   else
-    if [ "${mode}" = "hard-fail" ]; then
-      echo "ERROR: cc1 compile-to-object smoke FAILED for ${target_arch}:" >&2
-      cat "${_cc1_log}" >&2 || true
-      rm -rf "${_cc1_tmpdir}"
-      exit 1
-    else
-      validate_fail "cc1-smoke" "cc1 compile-to-object smoke failed for ${target_arch}"
-    fi
+    validate_fail "${gate}" "${message} for ${_VCS_CC_TARGET_ARCH}"
   fi
-  rm -rf "${_cc1_tmpdir}"
+  rm -rf "${directory}"
+}
+
+_cc_target_compile_smoke() {
+  _cc_target_run_smoke compile 'int answer(void){return 42;}' cc1smoke.o \
+    'cc1 compile-to-object smoke' "cc1 compile-to-object smoke FAILED for ${_VCS_CC_TARGET_ARCH}" \
+    cc1-smoke 'cc1 compile-to-object smoke failed' -c
 }
 
 _cc_target_link_smoke() {
-  local target_arch="${_VCS_CC_TARGET_ARCH}"
-  local mode="${_VCS_CC_MODE}"
-  local cc_exe _cc_link_tmpdir
-  _cc_link_tmpdir="$(mktemp -d)"
-  cc_exe="${_cc_link_tmpdir}/cclinksmoke"
-  local _cc_link_log="${_cc_link_tmpdir}/cclinksmoke.log"
-  if printf 'int main(void){return 0;}\n' | cc -x c - -o "${cc_exe}" 2>"${_cc_link_log}"; then
-    echo "Verified /usr/bin/cc link smoke for ${target_arch}"
-  else
-    if [ "${mode}" = "hard-fail" ]; then
-      echo "ERROR: cc link smoke FAILED for ${target_arch} (missing crt/startup files?):" >&2
-      cat "${_cc_link_log}" >&2 || true
-      rm -rf "${_cc_link_tmpdir}"
-      exit 1
-    else
-      validate_fail "cc-link" "cc link smoke failed for ${target_arch}"
-    fi
-  fi
-  rm -rf "${_cc_link_tmpdir}"
+  _cc_target_run_smoke link 'int main(void){return 0;}' cclinksmoke \
+    'link smoke' "cc link smoke FAILED for ${_VCS_CC_TARGET_ARCH} (missing crt/startup files?)" \
+    cc-link 'cc link smoke failed'
 }
 
 _validate_cc_target() {

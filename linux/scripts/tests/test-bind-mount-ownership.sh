@@ -50,16 +50,11 @@ printf 'b\n' > "${TREE}/sub/two.txt"
 OUT=""; rc=0; LOG=""
 # _call <env-assignments...> -- <args to fix_bind_mount_ownership>
 _call() {
-  local -a env_pairs=()
-  while [ $# -gt 0 ] && [ "$1" != "--" ]; do env_pairs+=("$1"); shift; done
+  local -a environment=()
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do environment+=("$1"); shift; done
   shift
-  LOG="$(mktemp "${_work}/log.XXXXXX")"
-  # Defaults spelled here give each stub switch an owner outside lint-env-knobs.allow.
-  OUT="$(PATH="${BIN}:${PATH}" STUB_LOG="${LOG}" \
-    STUB_CHOWN_RC=0 STUB_UID='' STUB_STAT_UID='' STUB_STAT_GID='' \
-    env "${env_pairs[@]+"${env_pairs[@]}"}" \
-    bash -c "$(t_stubbed_script "${SUBJECT}" fix_bind_mount_ownership "$@")" 2>&1)"
-  rc=$?
+  PATH="${BIN}:${PATH}" STUB_CHOWN_RC=0 STUB_UID='' STUB_STAT_UID='' STUB_STAT_GID='' \
+    t_capture_stubbed OUT rc LOG "${_work}" "${SUBJECT}" "${environment[@]}" -- fix_bind_mount_ownership "$@"
 }
 
 t_case "a target that does not exist is not an error"

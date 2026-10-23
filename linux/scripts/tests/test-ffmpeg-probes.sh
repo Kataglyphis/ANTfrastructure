@@ -77,4 +77,23 @@ if builtin command -v cc >/dev/null 2>&1; then
   t_assert_eq 0 "$(t_rc ffmpeg_try_link_probe stdio.h printf)"
   t_assert_eq 1 "$(t_rc ffmpeg_try_link_probe stdio.h ant_missing_symbol)"
 fi
+# shellcheck source=../01-core/compiler-resolution.sh
+source "${TESTS_DIR}/../01-core/compiler-resolution.sh"
+resolve_host_compiler_for_lang() {
+  printf 'host-%s' "$1"
+  return "${HOST_RESOLVE_STATUS:-0}"
+}
+t_case "FFmpeg delegates host C selection and preserves resolver failures"
+t_assert_eq host-c "$(resolve_ffmpeg_host_compiler)"
+t_assert_eq 7 "$(HOST_RESOLVE_STATUS=7 t_rc resolve_ffmpeg_host_compiler)"
+t_case "FFmpeg host wrappers retain isolated PATH, spaces and argument boundaries"
+cat > "${D}/compiler with spaces" <<'HOST_COMPILER'
+#!/bin/sh
+printf 'PATH=%s\n' "$PATH"
+printf '<%s>\n' "$@"
+HOST_COMPILER
+chmod +x "${D}/compiler with spaces"
+wrapper="$(FFMPEG_HOST_TOOLCHAIN_DIR="${D}/host toolchain" prepare_ffmpeg_host_compiler_wrapper "${D}/compiler with spaces")"
+t_assert_ok test -x "${wrapper}"
+t_assert_eq $'PATH=/usr/bin:/bin\n<-B/usr/bin/>\n<one argument>\n<two>' "$("${wrapper}" 'one argument' two)"
 t_summary

@@ -23,3 +23,38 @@ Describe 'Get-CiImageReference' {
         }
     }
 }
+
+Describe 'Container smoke canonical image helpers' {
+    $smokePath = Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-Container.ps1'
+    $tokens = $null; $errors = $null
+    $smokeAst = [System.Management.Automation.Language.Parser]::ParseFile($smokePath, [ref]$tokens, [ref]$errors)
+    $imports = @($smokeAst.FindAll({ param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Import-Module' -and
+                $node.CommandElements.Extent.Text -contains '$containerImageModule' }, $true))
+    $importBootstrap = $imports[0]
+    while ($importBootstrap.Parent -isnot [System.Management.Automation.Language.NamedBlockAst]) {
+        $importBootstrap = $importBootstrap.Parent
+    }
+
+    It 'imports the canonical helper owner without private fallback definitions' {
+        Assert-Equal 1 $imports.Count 'one module import'
+        $copies = @($smokeAst.FindAll({ param($node)
+                    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+                    $node.Name -in @('Resolve-ContainerImageValue', 'Resolve-VsBuildToolsRoot') }, $true))
+        Assert-Equal 0 $copies.Count 'helpers must have one owner'
+        $containerImageModule = Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsContainerImage.Common.psm1'
+        . ([scriptblock]::Create($importBootstrap.Extent.Text))
+        Assert-Equal 'canonical' (Resolve-ContainerImageValue -DefaultValue canonical)
+        Assert-Equal $containerImageModule (Get-Command Resolve-ContainerImageValue).Module.Path
+    }
+
+    It 'refuses an incomplete smoke module closure before reporting passed sections' {
+        Assert-Equal 1 $imports.Count 'the import cannot silently disappear'
+        Invoke-InTestDir { param($dir)
+            $containerImageModule = Join-Path $dir 'missing-module.psm1'
+            Assert-False (Test-Path $containerImageModule) 'the fixture has no module'
+            Assert-Throws { . ([scriptblock]::Create($importBootstrap.Extent.Text)) }
+        }
+    }
+}

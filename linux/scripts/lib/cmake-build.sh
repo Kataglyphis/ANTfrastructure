@@ -7,6 +7,8 @@ _CMAKE_BUILD_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CMAKE_BUILD_CORE_DIR="${_CMAKE_BUILD_LIB_DIR}/../01-core"
 # shellcheck source=./log-bootstrap.sh
 source "${_CMAKE_BUILD_LIB_DIR}/log-bootstrap.sh"
+# shellcheck source=./cli-value-options.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cli-value-options.sh"
 # shellcheck source=../01-core/vulkan-env.sh
 source "${_CMAKE_BUILD_CORE_DIR}/vulkan-env.sh"
 # shellcheck source=./linker-select.sh
@@ -57,22 +59,6 @@ _cmake_build_resolve_vulkan() {
   fi
 }
 
-_cmake_build_assign_option() {
-  case "$1" in
-    --preset) preset_arg="${2:-}" ;;
-    --build-dir) build_dir_arg="${2:-}" ;;
-    --clean-build-dir) clean_arg="${2:-}" ;;
-    --build-config) config_arg="${2:-}" ;;
-    --build-target) target_arg="${2:-}" ;;
-    --cargo-cache-dir) CARGO_CACHE_DIR="${2:-}" ;;
-    --parallel) PARALLEL_JOBS="${2:-}" ;;
-    --mb-per-job) MB_PER_JOB="${2:-}" ;;
-    --vulkan-version) vulkan_version_arg="${2:-}" ;;
-    --vulkan-setup-script) vulkan_setup_arg="${2:-}" ;;
-    --vulkan-sdk) vulkan_sdk_arg="${2:-}" ;;
-  esac
-}
-
 _cmake_build_resolve_paths() {
   PRESET="${preset_arg:-${PRESET:-${CMAKE_BUILD_POSITIONAL[0]:-${CMAKE_BUILD_DEFAULT_PRESET:-}}}}"
   BUILD_DIR="${build_dir_arg:-${BUILD_DIR:-${CMAKE_BUILD_DEFAULT_BUILD_DIR:-build}}}"
@@ -87,6 +73,25 @@ _cmake_build_resolve_paths() {
 }
 
 # Precedence: CLI flag > environment > caller default; a trailing positional is the preset.
+_cmake_build_other_arg() {
+  case "$1" in
+    --configure-arg)
+      [[ -n "${2:-}" ]] || err "--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)"
+      CMAKE_BUILD_CONFIGURE_ARGS+=("$2"); return 2 ;;
+    --allow-prebuild-failure) ALLOW_PREBUILD_FAILURE=true; return 1 ;;
+    --skip-configure)
+      if [[ $# -ge 2 && "${2}" != -* ]]; then
+        skip_arg="$2"; return 2
+      fi
+      skip_arg=true; return 1 ;;
+    --use-thread-sanitizer)
+      err "--use-thread-sanitizer does nothing (legacy plumbing) — select a sanitizer preset via --preset instead" ;;
+    -h|--help) cmake_build_usage; exit 0 ;;
+    -*) err "Unknown argument: $1" ;;
+    *) return 0 ;;
+  esac
+}
+
 cmake_build_parse_args() {
   local preset_arg="" build_dir_arg="" clean_arg="" skip_arg=""
   local config_arg="" target_arg=""
@@ -100,37 +105,21 @@ cmake_build_parse_args() {
   # An array, never an env string (splitting breaks -D values with spaces); reset so a re-parse inherits nothing.
   CMAKE_BUILD_CONFIGURE_ARGS=( ${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]+"${CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS[@]}"} )
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --preset|--build-dir|--clean-build-dir|--build-config|--build-target|--cargo-cache-dir|--parallel|--mb-per-job|--vulkan-version|--vulkan-setup-script|--vulkan-sdk)
-        [[ $# -ge 2 ]] || err "$1 expects a value"
-        _cmake_build_assign_option "$1" "$2"; shift 2 ;;
-      # Repeatable; an empty value is fatal because `cmake ""` fails far from the caller.
-      --configure-arg)
-        [[ -n "${2:-}" ]] || err "--configure-arg expects a value (e.g. --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE)"
-        CMAKE_BUILD_CONFIGURE_ARGS+=("$2"); shift 2 ;;
-      --allow-prebuild-failure) ALLOW_PREBUILD_FAILURE="true"; shift ;;
-      --skip-configure)
-        if [[ $# -ge 2 && "${2}" != -* ]]; then
-          skip_arg="${2}"
-          shift 2
-        else
-          skip_arg="true"
-          shift
-        fi
-        ;;
-      --use-thread-sanitizer)
-        err "--use-thread-sanitizer does nothing (legacy plumbing) — select a sanitizer preset via --preset instead"
-        ;;
-      -h|--help) cmake_build_usage; exit 0 ;;
-      -*)        err "Unknown argument: $1" ;;
-      *)         break ;;
-    esac
-  done
+  local -A _value_options=(
+    [--preset]=preset_arg
+    [--build-dir]=build_dir_arg
+    [--clean-build-dir]=clean_arg
+    [--build-config]=config_arg
+    [--build-target]=target_arg
+    [--cargo-cache-dir]=CARGO_CACHE_DIR
+    [--parallel]=PARALLEL_JOBS
+    [--mb-per-job]=MB_PER_JOB
+    [--vulkan-version]=vulkan_version_arg
+    [--vulkan-setup-script]=vulkan_setup_arg
+    [--vulkan-sdk]=vulkan_sdk_arg
+  )
+  parse_cli_value_options _value_options CMAKE_BUILD_POSITIONAL _cmake_build_other_arg "$@"
 
-  if [[ $# -gt 0 ]]; then
-    CMAKE_BUILD_POSITIONAL=("$@")
-  fi
 
   _cmake_build_resolve_vulkan \
     "${vulkan_version_arg}" "${vulkan_setup_arg}" "${vulkan_sdk_arg}"

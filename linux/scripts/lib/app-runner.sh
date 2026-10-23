@@ -4,6 +4,8 @@
 _APP_RUNNER_LIB_LOADED=1
 # shellcheck source=./log-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
+# shellcheck source=./cli-value-options.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cli-value-options.sh"
 
 app_runner_usage() {
   local shader_flag_summary=""
@@ -25,6 +27,19 @@ EOF
 }
 
 # Fills EXE_NAME, BUILD_DIR, BUILD_TYPE, APP_ARGS and CLEAN_AND_REBUILD_SHADERS.
+_app_runner_other_arg() {
+  case "$1" in
+    --clean-and-rebuild-shaders)
+      if [[ "${APP_RUNNER_ENABLE_SHADER_CLEAN:-false}" != true ]]; then err "Unknown option: $1"; fi
+      CLEAN_AND_REBUILD_SHADERS=true
+      return 1 ;;
+    -h|--help) app_runner_usage; exit 0 ;;
+    --) return 3 ;;
+    -*) err "Unknown option: $1" ;;
+    *) APP_ARGS+=("$1"); return 1 ;;
+  esac
+}
+
 app_runner_parse_args() {
   EXE_NAME="${APP_RUNNER_DEFAULT_EXE_NAME}"
   BUILD_DIR="${APP_RUNNER_DEFAULT_BUILD_DIR}"
@@ -32,45 +47,12 @@ app_runner_parse_args() {
   APP_ARGS=()
   CLEAN_AND_REBUILD_SHADERS=false
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --exe-name)
-        EXE_NAME="${2:-}"
-        shift 2
-        ;;
-      --build-dir)
-        BUILD_DIR="${2:-}"
-        shift 2
-        ;;
-      --build-type)
-        BUILD_TYPE="${2:-}"
-        shift 2
-        ;;
-      --clean-and-rebuild-shaders)
-        if [[ "${APP_RUNNER_ENABLE_SHADER_CLEAN:-false}" != "true" ]]; then
-          err "Unknown option: $1"
-        fi
-        CLEAN_AND_REBUILD_SHADERS=true
-        shift
-        ;;
-      -h|--help)
-        app_runner_usage
-        exit 0
-        ;;
-      --)
-        shift
-        APP_ARGS+=("$@")
-        break
-        ;;
-      -* )
-        err "Unknown option: $1"
-        ;;
-      *)
-        APP_ARGS+=("$1")
-        shift
-        ;;
-    esac
-  done
+  local -A _value_options=(
+    [--exe-name]=EXE_NAME
+    [--build-dir]=BUILD_DIR
+    [--build-type]=BUILD_TYPE
+  )
+  parse_cli_value_options _value_options APP_ARGS _app_runner_other_arg "$@"
 }
 
 # The caller's get_project_root wins, then the git worktree, then $PWD.

@@ -53,6 +53,28 @@ function Get-AstDefaultValue {
     return @{ Value = $null; IsLiteral = $false }
 }
 
+# Both pin APIs require the same command/default discovery, but accept different environment ASTs.
+function Get-PinDefaultCall {
+    param([Parameter(Mandatory)][string]$CommandName)
+    foreach ($entry in @(Get-PinScanAst -MustMentionPattern $CommandName)) {
+        $calls = @($entry.Ast.FindAll({ param($n)
+                    $n -is [System.Management.Automation.Language.CommandAst] -and
+                    $n.GetCommandName() -eq $CommandName }, $true))
+        foreach ($call in $calls) {
+            $parameters = Get-CommandParameterArgumentMap $call
+            $default = Get-AstDefaultValue $parameters['DefaultValue']
+            if ($null -eq $default.Value -or ($default.IsLiteral -and $default.Value -eq '')) { continue }
+            [pscustomobject]@{
+                Script = $entry.File.Name
+                Line = $call.Extent.StartLineNumber
+                Parameters = $parameters
+                Default = $default.Value
+                DefaultIsLiteral = $default.IsLiteral
+            }
+        }
+    }
+}
+
 function Get-CanonicalPins {
     param([Parameter(Mandatory)][string]$Label)
     $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
@@ -74,53 +96,23 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 
     # Literal-'' defaults are dropped: they bake nothing that can drift.
     function Get-PinParitySite {
-        $sites = @()
-        foreach ($entry in @(Get-PinScanAst -MustMentionPattern 'Get-SourceBuildVersion')) {
-            $f = $entry.File; $ast = $entry.Ast
-
-            $calls = @($ast.FindAll({ param($n)
-                        $n -is [System.Management.Automation.Language.CommandAst] -and
-                        $n.GetCommandName() -eq 'Get-SourceBuildVersion' }, $true))
-            foreach ($call in $calls) {
-                $default = $null
-                $defaultIsLiteral = $false
-                $envVars = @()
-                $stripV = $false
-
-                foreach ($p in (Get-CommandParameterArgumentMap $call).GetEnumerator()) {
-                    $argAst = $p.Value
-                    switch ($p.Key) {
-                        'DefaultValue' {
-                            $d = Get-AstDefaultValue $argAst
-                            $default = $d.Value
-                            $defaultIsLiteral = $d.IsLiteral
-                        }
-                        'EnvironmentVariables' {
-                            if ($null -ne $argAst) {
-                                $envVars = @($argAst.FindAll({ param($n)
-                                            $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) |
-                                        ForEach-Object { $_.Value })
-                            }
-                        }
-                        'StripVPrefix' {
-                            $stripV = $true
-                        }
-                    }
-                }
-
-                if ($null -eq $default) { continue }                       # no -DefaultValue at all
-                if ($defaultIsLiteral -and $default -eq '') { continue }   # pin-free fallback
-                $sites += [pscustomobject]@{
-                    Script           = $f.Name
-                    Line             = $call.Extent.StartLineNumber
-                    EnvVars          = $envVars
-                    Default          = $default
-                    DefaultIsLiteral = $defaultIsLiteral
-                    StripV           = $stripV
-                }
+        foreach ($site in @(Get-PinDefaultCall -CommandName 'Get-SourceBuildVersion')) {
+            $envVars = @()
+            $argAst = $site.Parameters['EnvironmentVariables']
+            if ($null -ne $argAst) {
+                $envVars = @($argAst.FindAll({ param($n)
+                            $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) |
+                        ForEach-Object { $_.Value })
+            }
+            [pscustomobject]@{
+                Script = $site.Script
+                Line = $site.Line
+                EnvVars = $envVars
+                Default = $site.Default
+                DefaultIsLiteral = $site.DefaultIsLiteral
+                StripV = $site.Parameters.Contains('StripVPrefix')
             }
         }
-        return $sites
     }
 
     # First -EnvironmentVariables entry in versions.env, matching the helper's first-hit-wins order.
@@ -269,54 +261,24 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
 
     # FindAll recurses into function bodies, so wrapper-internal calls are sites; a fallback definition of the helper is not.
     function Get-RcivSite {
-        $sites = @()
-        foreach ($entry in @(Get-PinScanAst -MustMentionPattern 'Resolve-ContainerImageValue')) {
-            $f = $entry.File; $ast = $entry.Ast
-
-            $calls = @($ast.FindAll({ param($n)
-                        $n -is [System.Management.Automation.Language.CommandAst] -and
-                        $n.GetCommandName() -eq 'Resolve-ContainerImageValue' }, $true))
-            foreach ($call in $calls) {
-                $default = $null
-                $defaultIsLiteral = $false
-                $envVar = '<none>'
-                $trimV = $false
-
-                foreach ($p in (Get-CommandParameterArgumentMap $call).GetEnumerator()) {
-                    $argAst = $p.Value
-                    switch ($p.Key) {
-                        'DefaultValue' {
-                            $d = Get-AstDefaultValue $argAst
-                            $default = $d.Value
-                            $defaultIsLiteral = $d.IsLiteral
-                        }
-                        'EnvironmentVariable' {
-                            # Only a direct literal names the env var; a nested FindAll would pull 'EnvVar' out of $pinned.EnvVar.
-                            if ($argAst -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
-                                $envVar = $argAst.Value
-                            } elseif ($null -ne $argAst) {
-                                $envVar = '<dynamic>'
-                            }
-                        }
-                        'TrimVPrefix' {
-                            $trimV = $true
-                        }
-                    }
-                }
-
-                if ($null -eq $default) { continue }                       # no -DefaultValue at all
-                if ($defaultIsLiteral -and $default -eq '') { continue }   # pin-free fallback
-                $sites += [pscustomobject]@{
-                    Script           = $f.Name
-                    Line             = $call.Extent.StartLineNumber
-                    EnvVar           = $envVar
-                    Default          = $default
-                    DefaultIsLiteral = $defaultIsLiteral
-                    TrimV            = $trimV
-                }
+        foreach ($site in @(Get-PinDefaultCall -CommandName 'Resolve-ContainerImageValue')) {
+            $envVar = '<none>'
+            $argAst = $site.Parameters['EnvironmentVariable']
+            # Nested strings can name a property rather than the environment variable.
+            if ($argAst -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+                $envVar = $argAst.Value
+            } elseif ($null -ne $argAst) {
+                $envVar = '<dynamic>'
+            }
+            [pscustomobject]@{
+                Script = $site.Script
+                Line = $site.Line
+                EnvVar = $envVar
+                Default = $site.Default
+                DefaultIsLiteral = $site.DefaultIsLiteral
+                TrimV = $site.Parameters.Contains('TrimVPrefix')
             }
         }
-        return $sites
     }
 
     # A direct versions.env key or a derived pin; $null leaves the site to the unknown-site guard.
@@ -451,11 +413,7 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
 Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbacks vs versions.env' {
     # The raw idiom the resolver scans miss; an else-literal for a key not in versions.env is a behaviour default, not a pin.
 
-    function Get-IdiomPins {
-        $envPath = Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env'
-        if (-not (Test-Path $envPath)) { throw "PinParity(W1c): canonical pin file not found at $envPath" }
-        return (ConvertFrom-VersionsEnv -Path $envPath)
-    }
+    function Get-IdiomPins { return (Get-CanonicalPins -Label 'PinParity(W1c)') }
 
     function Get-EnvElseLiteralSite {
         $sites = @()
