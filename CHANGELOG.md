@@ -20,7 +20,11 @@
 - Share leaf-file gap detection across MIGraphX install, ORT EP staging and license checks while preserving each caller's required-file list.
 - Share host tree byte, file and access-error enumeration for VHDX verification and disk-reclaim sizing while preserving caller-specific verdicts.
 - Centralize host buildctl lookup while retaining each script's candidate and PATH fallback policy.
+- Share host elevation detection between lock reset and component-store repair while keeping their throw and interactive-exit policies.
 - Share the wininit CIM query between silo baseline collection and polling while retaining timeout and baseline-exclusion behavior.
+- Share CPython ABI probing between app and uv modules while preserving fatal wheel-fit checks and optional twin-store selection.
+- Share Meson wrap-git and forced-libffi archive download, extraction and cleanup while keeping caller-specific failure and wrap deletion policies.
+- Share operation timing and failure capture across build steps, gates and optional operations while preserving each caller's verdict policy.
 
 ## 2026-10-23 — remove another Windows duplication wave
 

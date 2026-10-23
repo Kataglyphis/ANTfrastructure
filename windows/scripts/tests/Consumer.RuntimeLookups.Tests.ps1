@@ -3,6 +3,7 @@
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Common.psm1')
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1')
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonApp.Common.psm1')
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsScripts.Shared.psm1')
 
 function Assert-LinuxScriptLookupPolicy {
@@ -24,17 +25,24 @@ function Assert-LinuxScriptLookupPolicy {
     }.GetNewClosure()
 }
 
+function New-PythonAbiFixtureState {
+    param([int]$ExitCode = 0, [string[]]$Output = @('noise', ' cp314t '))
+    $state = New-TestCallState @{ Root = [IO.Path]::GetTempPath(); Missing = [guid]::NewGuid().ToString(); Probe = [pscustomobject]@{ ExitCode = $ExitCode; Output = $Output } }
+    $state.Runner = {
+        param($Python, $Arguments)
+        $State.Calls.Add("$Python/$($Arguments -join '|')")
+        $State.Probe
+    }.GetNewClosure()
+    return $state
+}
+
 function Invoke-UvAbiPolicyFixture {
     param([scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
-    $state = New-TestCallState @{ Root = [IO.Path]::GetTempPath(); Missing = [guid]::NewGuid().ToString(); Runner = $null; Probe = [pscustomobject]@{ ExitCode = 0; Output = @('noise', ' cp314t ') } }
+    $state = New-PythonAbiFixtureState
+    $helper = (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsPythonWheel.Common.psm1' -FunctionName Invoke-PythonAbiProbe).ToString()
     $prelude = @'
-$script:ChainOrtAbiCode = 'fixture ABI code'
-$State.Runner = {
-    param($Python, $Arguments)
-    $State.Calls.Add("$Python/$($Arguments -join '|')")
-    $State.Probe
-}.GetNewClosure()
-'@
+$script:PythonAbiProbeCode = 'fixture ABI code'
+'@ + "`n" + $helper
     Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsUv.Common.psm1' `
         -FunctionName Get-UvChainOrtPythonAbi, Assert-UvChainOrtAbiFit, Select-UvChainOrtWheelStore `
         -FixtureState $state -Prelude $prelude -Find $Find -Replace $Replace -Body $Body
@@ -121,6 +129,41 @@ Describe 'Consumer runtime file and interpreter lookups' {
                 Assert-Throws { Assert-MutUvChainOrtAbiFit -VenvPath fixture -Python 'fixture python' -Runner $state.Runner -Wheels @('onnxruntime-1-cp314-cp314-win_amd64.whl') } -MessagePattern 'fixture is a cp314t venv'
             }
         }
+    }
+
+    It 'shares the interpreter ABI probe while retaining both callers failure policies' {
+        $state = New-PythonAbiFixtureState -Output @('noise', ' cp315t ')
+        Assert-Equal 'cp315t' (Get-PythonAbiTag -Python 'fixture python' -Runner $state.Runner)
+        $uvModule = Get-Module WindowsUv.Common
+        $uvProbe = & $uvModule { param($abiRunner) Get-UvChainOrtPythonAbi -Python 'fixture python' -Runner $abiRunner } $state.Runner
+        Assert-Equal 'cp315t' $uvProbe.Abi 'the uv caller uses the shared ABI probe'
+        $probeCode = "import sys, sysconfig; print('cp%d%d%s' % (sys.version_info[0], sys.version_info[1], 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''))"
+        Assert-Equal "fixture python/-c|$probeCode|fixture python/-I|-c|$probeCode" ($state.Calls -join '|')
+        $failed = New-PythonAbiFixtureState -ExitCode 8 -Output @('interpreter failure')
+        Assert-Throws { Get-PythonAbiTag -Python 'fixture python' -Runner $failed.Runner } -MessagePattern 'could not report its ABI tag \(exit 8\)'
+        $uvProbe = & $uvModule { param($abiRunner) Get-UvChainOrtPythonAbi -Python 'fixture python' -Runner $abiRunner } $failed.Runner
+        Assert-Equal 8 $uvProbe.ExitCode 'uv returns the failed ABI probe for its caller policy'
+        Assert-Equal 'interpreter failure' ($uvProbe.Result.Output -join '|') 'uv keeps the interpreter diagnostic'
+    }
+
+    It 'detects dropping isolated mode from the shared ABI probe' {
+        $state = New-PythonAbiFixtureState -ExitCode 19 -Output @('fixture failure')
+        $module = @{
+            ScriptPath = 'windows\scripts\modules\WindowsPythonWheel.Common.psm1'
+            FunctionName = 'Invoke-PythonAbiProbe'
+            FixtureState = $state
+            Prelude = '$script:PythonAbiProbeCode = ''fixture ABI code'''
+        }
+        Invoke-TestFunctionMutations -ModuleArguments $module -IncludeControl `
+            -Find "if (`$Isolated) { `$arguments = @('-I') + `$arguments }" `
+            -Replace "if (`$false) { `$arguments = @('-I') + `$arguments }" `
+            -Expected 'shared Python ABI probes must run isolated' -Body {
+                param($fixture)
+                $probe = Invoke-MutPythonAbiProbe -Python fixture -Runner $fixture.Runner -Isolated
+                Assert-Equal 'fixture|-I|-c|fixture ABI code' $fixture.Calls[0] 'shared Python ABI probes must run isolated'
+                Assert-Equal 19 $probe.ExitCode 'shared Python ABI probe exit status must survive'
+                Assert-Equal 'fixture failure' ($probe.Output -join '|') 'shared Python ABI probe keeps diagnostics'
+            }
     }
 
     It 'does not probe without a twin directory and keeps ABI assertion failures fatal' {

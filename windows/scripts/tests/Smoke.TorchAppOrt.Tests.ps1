@@ -251,17 +251,11 @@ Describe 'Smoke §21: wiring in Test-Container.ps1' {
         Assert-Equal 'Provenance' $aspectOf['ortWheelFindings'] 'the provenance findings come from -Aspect Provenance, once'
         Assert-Equal 2 $aspectOf.Count 'no third findings variable'
         foreach ($case in @(@{ Name = 'built with DirectML'; Aspect = 'Dml' }, @{ Name = 'is the chain wheel'; Aspect = 'Provenance' })) {
-            $a = @($branch.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
-                        $n.GetCommandName() -eq 'Assert-Test' -and $n.Extent.Text -match [regex]::Escape($case.Name) }, $true))
+            $a = @(Get-TestAstCommands -Ast $branch -Name 'Assert-Test' | Where-Object { $_.Extent.Text -match [regex]::Escape($case.Name) })
             Assert-Equal 1 $a.Count "one Assert-Test '$($case.Name)'"
-            $els = $a[0].CommandElements
+            $arguments = Get-TestCommandArguments -Command $a[0] -AsAst
             foreach ($param in 'Finding', 'FailMessage') {
-                $arg = $null
-                for ($i = 0; $i -lt $els.Count; $i++) {
-                    if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -eq $param) {
-                        $arg = if ($els[$i].Argument) { $els[$i].Argument } elseif ($i + 1 -lt $els.Count) { $els[$i + 1] }
-                    }
-                }
+                $arg = $arguments[$param]
                 Assert-NotNull $arg "'$($case.Name)' has a -$param"
                 $read = @($arg.FindAll({ param($n) $n -is [System.Management.Automation.Language.VariableExpressionAst] }, $true) |
                         ForEach-Object { $_.VariablePath.UserPath } | Where-Object { $aspectOf.ContainsKey($_) } | Sort-Object -Unique)
@@ -274,8 +268,7 @@ Describe 'Smoke §21: wiring in Test-Container.ps1' {
     }
 
     It 'gates the two assertions on nothing but the cross lane and the venv (every amd64 lane)' {
-        $asserts = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
-                    $n.GetCommandName() -eq 'Assert-Test' -and $n.Extent.Text -match "-Name 'torch-app venv: onnxruntime" }, $true))
+        $asserts = @(Get-TestAstCommands -Ast $ast -Name 'Assert-Test' | Where-Object { $_.Extent.Text -match "-Name 'torch-app venv: onnxruntime" })
         Assert-Equal 2 $asserts.Count 'DML + provenance'
         foreach ($a in $asserts) {
             $conditions = @()

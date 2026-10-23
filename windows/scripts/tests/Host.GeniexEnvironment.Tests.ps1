@@ -73,7 +73,7 @@ Describe 'GenieX lane environment scope' {
     }
 
     It 'detects omitted environment cleanup' {
-        Invoke-GeniexEnvironmentFixture -Find 'Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue' -Replace '' -Body {
+        Invoke-GeniexEnvironmentFixture -Find 'Remove-Item -LiteralPath "Env:$environmentName" -ErrorAction SilentlyContinue' -Replace '' -Body {
             Start-MutLane -Compute gpu -Port 18182 6>$null
             Assert-Throws { Assert-GeniexParentEnvironment } -MessagePattern 'unset variables must remain absent'
         }
@@ -99,7 +99,7 @@ function Set-Item {
 }
 '@
             $module = @{ ScriptPath = 'windows/scripts/modules/WindowsScripts.Shared.psm1'; FunctionName = 'Invoke-WithProcessEnvironment'; Prelude = $prelude }
-            $setup = 'foreach ($name in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$name" -Value $Environment[$name] }'
+            $setup = 'foreach ($environmentName in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$environmentName" -Value $Environment[$environmentName] }'
             Invoke-TestFunctionMutations -ModuleArguments $module -IncludeControl -Find ("try {`n        " + $setup) -Replace ($setup + "`n    try {") -Expected 'partial setup must restore earlier writes' -Body {
                 Assert-Throws { Invoke-MutWithProcessEnvironment -Environment ([ordered]@{ ANT_ENV_FIRST = 'changed'; ANT_ENV_SECOND = 'fail' }) -ScriptBlock { throw 'callback must not run' } } -MessagePattern 'fixture environment write failed'
                 Assert-Equal original $env:ANT_ENV_FIRST 'partial setup must restore earlier writes'

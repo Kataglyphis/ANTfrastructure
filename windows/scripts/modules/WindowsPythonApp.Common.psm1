@@ -7,9 +7,9 @@ Set-StrictMode -Version Latest
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
-# Never -Force: a forced nested import unloads the caller's top-level copy.
-foreach ($sibling in 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common') {
-    if (-not (Get-Module -Name $sibling)) { Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking }
+# Unforced imports bind each required companion into this owner without unloading the caller's copy.
+foreach ($sibling in 'WindowsPythonWheel.Common', 'WindowsOrtPayload.Common', 'WindowsTargetArch.Common', 'WindowsCrossBundle.Common') {
+    Import-Module (Join-Path $PSScriptRoot "$sibling.psm1") -DisableNameChecking -ErrorAction Stop
 }
 
 $script:LauncherSource = Join-Path (Split-Path $PSScriptRoot -Parent) 'python\app-launcher\launcher.c'
@@ -105,10 +105,10 @@ function Get-PythonAbiTag {
         The ABI tag -Python's binary wheels carry: cpXY for a GIL build, cpXYt for a free-threaded one.
     #>
     [OutputType([string])]
-    param([Parameter(Mandatory)][string]$Python)
-    $tag = & $Python -c "import sys, sysconfig; print('cp%d%d%s' % (sys.version_info[0], sys.version_info[1], 't' if sysconfig.get_config_var('Py_GIL_DISABLED') else ''))"
-    if ($LASTEXITCODE -ne 0 -or -not $tag) { throw "$Python could not report its ABI tag (exit $LASTEXITCODE)" }
-    return "$tag".Trim()
+    param([Parameter(Mandatory)][string]$Python, [scriptblock]$Runner)
+    $probe = Invoke-PythonAbiProbe -Python $Python -Runner $Runner
+    if ($probe.ExitCode -ne 0 -or -not $probe.Abi) { throw "$Python could not report its ABI tag (exit $($probe.ExitCode))" }
+    return $probe.Abi
 }
 
 function Select-PythonAppWheel {

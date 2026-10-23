@@ -223,7 +223,7 @@ Describe 'Build-LitertLmBazel: the GPU payload' {
     }
 
     It 'names every shipped DLL in a Windows deps.json row, which the licence page and SBOM render' {
-        $deps = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'docs\deps\deps.json') -Raw | ConvertFrom-Json
+        $deps = Get-TestJsonFile -Path (Join-Path (Get-RepoRoot) 'docs\deps\deps.json')
         $rows = @(@($deps.sections | Where-Object { $_.title -eq 'Windows Image' }).subsections.entries | Where-Object { $_.spdx })
         $names = @($rows | ForEach-Object { $_.name }) -join "`n"
         $dlls = (Get-LlmPayloadFixture).Dlls

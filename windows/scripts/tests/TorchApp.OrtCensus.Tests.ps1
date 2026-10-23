@@ -219,14 +219,14 @@ Describe 'Build-TorchApp.ps1: uv sync leaves ai-edge-litert out when the chain h
 }
 
 Describe 'Build-TorchApp.ps1: the census gates install and verify' {
+    $script:TorchAppAst = Get-TestScriptAst -ScriptPath $script:TorchAppPath
     $script:TorchAppFns = @{}
-    foreach ($def in (Get-Command $script:TorchAppPath).ScriptBlock.Ast.EndBlock.Statements) {
+    foreach ($def in $script:TorchAppAst.EndBlock.Statements) {
         if ($def -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $script:TorchAppFns[$def.Name] = $def }
     }
     # Every call of $Command inside function $In whose text matches $Like, in source order.
     function Find-TorchAppCall([string]$In, [string]$Command, [string]$Like = '') {
-        $script:TorchAppFns[$In].Body.FindAll({ param($n)
-                $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Command -and $n.Extent.Text -match $Like }, $true)
+        Get-TestAstCommands -Ast $script:TorchAppFns[$In].Body -Name $Command | Where-Object { $_.Extent.Text -match $Like }
     }
     # $Node's ancestors inside function $In, innermost first; and the assignment statement $Node sits in.
     function Get-TorchAppAncestor($Node, [string]$In) { Get-TestAstAncestor -Node $Node -Stop $script:TorchAppFns[$In] }

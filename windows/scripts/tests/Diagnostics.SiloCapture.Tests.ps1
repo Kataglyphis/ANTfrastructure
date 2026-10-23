@@ -58,6 +58,9 @@ function Start-Sleep { param([int]$Seconds) $State.Now = $State.Now.AddSeconds($
 
 function Assert-SiloWininitQueries {
     param($State)
+    $State.Calls.Clear()
+    $State.Rows = @()
+    $State.Now = [datetime]'2026-01-01T00:00:00Z'
     Assert-Equal 0 @(Get-MutSiloWininitId).Count
     $State.Rows = @([pscustomobject]@{ ProcessId = 13 })
     Assert-Equal 13 (Get-MutSiloWininitId)
@@ -92,10 +95,15 @@ Describe 'Shared silo debugger transport' {
                 Find = $check.Find; Replace = $check.Replace; Expected = $expected; Body = { Assert-SiloDebuggerCapture } }
         } else {
             $expected = if ($check.Find -eq "Name='wininit.exe'") { 'all discovery paths must use the exact wininit query' } else { 'polling must exclude existing silo ids' }
-            @{ ScriptPath = 'windows/scripts/modules/WindowsSiloProbe.Common.psm1';
-                FunctionName = @('Get-SiloWininit', 'Get-SiloWininitId', 'Wait-ForNewSilo');
+            $moduleArguments = { param($dir)
+                @{ ScriptPath = 'windows/scripts/modules/WindowsSiloProbe.Common.psm1';
+                    FunctionName = @('Get-SiloWininit', 'Get-SiloWininitId', 'Wait-ForNewSilo');
+                    FixtureState = (New-TestCallState @{ Rows = @(); Now = [datetime]'2026-01-01T00:00:00Z' });
+                    Prelude = Get-SiloWininitPrelude }
+            }.GetNewClosure()
+            @{ ModuleArgumentsFactory = $moduleArguments;
                 Find = $check.Find; Replace = $check.Replace; Expected = $expected; IncludeControl = $true;
-                Prelude = Get-SiloWininitPrelude; Body = { param($state) Assert-SiloWininitQueries $state } }
+                Body = { param($state) Assert-SiloWininitQueries $state } }
         }
     }
 

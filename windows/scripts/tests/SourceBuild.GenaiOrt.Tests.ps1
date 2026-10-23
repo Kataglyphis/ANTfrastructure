@@ -318,7 +318,7 @@ Describe 'GenAI ORT: tree gate' {
     }
 }
 
-$script:GenaiScriptAst = (Get-Command -Name (Join-Path (Get-RepoRoot) $script:GenaiOrtScript)).ScriptBlock.Ast
+$script:GenaiScriptAst = Get-TestScriptAst -ScriptPath $script:GenaiOrtScript
 
 Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
     $find = { param([scriptblock]$Predicate) @($script:GenaiScriptAst.FindAll($Predicate, $true)) }
@@ -331,14 +331,12 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         }
         $true
     }
-    $callsOf = { param([string]$Name) @(& $find { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Name } | Where-Object { & $always $_ }) }
+    $callsOf = { param([string]$Name) @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name $Name | Where-Object { & $always $_ }) }
     $assignsTo = { param([string]$Var) @(& $find { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $Var }) }
     $argOf = {
         param($Call, [string]$Param)
-        $els = $Call.CommandElements
-        for ($i = 1; $i -lt $els.Count - 1; $i++) {
-            if ($els[$i] -is [System.Management.Automation.Language.CommandParameterAst] -and $els[$i].ParameterName -eq $Param) { return $els[$i + 1].Extent.Text }
-        }
+        $arguments = Get-TestCommandArguments -Command $Call -AsAst
+        if ($arguments.ContainsKey($Param)) { return $arguments[$Param].Extent.Text }
     }
     $configure = @(& $callsOf 'Invoke-CmakeConfigure')
 
@@ -397,7 +395,7 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         $post = @(& $assignsTo '$genaiOrtPost')
         Assert-Match '-TreeRoot \$SourceDir -OrtRoot \$genaiOrtRoot\)' $post[0].Right.Extent.Text
         Assert-Match '-TreeRoot \$genaiInstallDir -OrtRoot \$genaiOrtRoot -ForbidCopies' $post[0].Right.Extent.Text
-        $wheels = @(& $find { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-PythonWheelBuild' })
+        $wheels = @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name 'Invoke-PythonWheelBuild')
         Assert-True ($post[0].Extent.StartOffset -gt $wheels[$wheels.Count - 1].Extent.EndOffset) 'the post-build gate follows the wheel build'
     }
 }

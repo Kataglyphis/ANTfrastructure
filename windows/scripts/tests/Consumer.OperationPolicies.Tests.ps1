@@ -119,10 +119,12 @@ Describe 'Consumer operation accounting' {
             param($context, $optional)
             Assert-Equal 0 $optional.Count
             Assert-True ($context.Results.Durations['optional'] -ge 0)
+            Assert-Equal 'optional failed' $context.Results.Errors['optional']
             Assert-Equal 'optional' ($context.Results.AllowedFailures -join ',')
             Assert-Throws { Invoke-BuildStep -Context $context -StepName critical -Critical -Script { throw 'critical failed' } } `
                 -MessagePattern "Critical step 'critical' failed: critical failed"
             Assert-True ($context.Results.Durations['critical'] -ge 0)
+            Assert-Equal 'critical failed' $context.Results.Errors['critical']
             Assert-Equal 'critical' ($context.Results.Failed -join ',')
         }
     }
@@ -140,6 +142,19 @@ Describe 'Consumer operation accounting' {
                 } -MessagePattern 'duration must be nonnegative'
             }
     }
+
+    It 'detects shared operation execution swallowing the script output' {
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Set-BuildOperationDuration, Invoke-BuildOperationBody `
+            -Find '& $Script' -Replace '$null = & $Script' -Body {
+                Invoke-ConsumerBuildFixture {
+                    param($context)
+                    $operation = @{}
+                    $output = @(Invoke-MutBuildOperationBody -Context $context -Name operation -Script { 'operation output' } -Outcome $operation)
+                    Assert-Throws { Assert-Equal 'operation output' ($output -join '|') } -MessagePattern 'expected \[operation output\]'
+                }
+            }
+    }
+
 }
 
 Describe 'Benchmark row construction and rendering' {

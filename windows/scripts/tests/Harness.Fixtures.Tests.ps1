@@ -123,6 +123,16 @@ Describe 'Exact fixture content verdicts' {
     }
 }
 
+Describe 'JSON file fixtures' {
+    It 'parses a document and refuses a missing file' {
+        Invoke-InTestDir -Files @{ 'fixture.json' = '{"name":"fixture","items":[1,2]}' } -Body { param($dir)
+            $json = Get-TestJsonFile -Path (Join-Path $dir 'fixture.json')
+            Assert-Equal 'fixture|1,2' ("{0}|{1}" -f $json.name, ($json.items -join ',')) 'parsed document'
+            Assert-Throws { Get-TestJsonFile -Path (Join-Path $dir 'missing.json') } -MessagePattern 'JSON file not found'
+        }
+    }
+}
+
 Describe 'Batch fixture bytes' {
     It 'writes exact ASCII CRLF bytes and retains caller branches before the requested final exit' {
         Invoke-InTestDir { param($dir)

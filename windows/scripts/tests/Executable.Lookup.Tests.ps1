@@ -13,8 +13,9 @@ Import-Module (Join-Path $moduleDir 'WindowsTesting.Common.psm1')
 
 function New-ExecutableLookupFile {
     param([string]$Path)
-    [void](New-Item -ItemType Directory -Path (Split-Path $Path -Parent) -Force)
-    [void](New-Item -ItemType File -Path $Path)
+    $files = @{}
+    $files[[IO.Path]::GetFileName($Path)] = ''
+    Write-TestFileTree -Root (Split-Path $Path -Parent) -Files $files
 }
 
 function Assert-ExecutableLookupOrder {

@@ -19,6 +19,7 @@ function Resolve-SharedLinuxScriptFile {
 $script:FreeThreadedHelper = Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\02-toolchain\python\free-threaded-wheel.py'
 # ft_wheel_table reads the same twin table, so the two lanes hold one verdict per distribution.
 $script:FreeThreadedTwinTable = Resolve-SharedLinuxScriptFile -RepoPath 'linux\scripts\03-media\free-threaded-twins.txt'
+$script:PythonAbiProbeCode = 'import sys, sysconfig; print(''cp%d%d%s'' % (sys.version_info[0], sys.version_info[1], ''t'' if sysconfig.get_config_var(''Py_GIL_DISABLED'') else ''''))'
 
 function Resolve-FreeThreadedWheelMode {
     <#
@@ -143,6 +144,22 @@ function Find-UvPython {
     $found = @(& uv python find $Request 2>$null)
     if ($LASTEXITCODE -ne 0 -or $found.Count -eq 0) { throw "uv finds no $Request interpreter$(if ($Hint) { "; $Hint" })" }
     return "$($found[-1])".Trim()
+}
+
+function Invoke-PythonAbiProbe {
+    param([Parameter(Mandatory)][string]$Python, [scriptblock]$Runner, [switch]$Isolated)
+    $arguments = @('-c', $script:PythonAbiProbeCode)
+    if ($Isolated) { $arguments = @('-I') + $arguments }
+    if ($Runner) {
+        $result = & $Runner $Python $arguments
+        $exitCode = $result.ExitCode
+        $output = if ($result.PSObject.Properties['Output']) { [string[]]@($result.Output) } else { [string[]]@() }
+    } else {
+        $output = [string[]]@(& $Python @arguments 2>&1 | ForEach-Object { "$_" })
+        $exitCode = $LASTEXITCODE
+    }
+    $abi = if ($exitCode -eq 0 -and $output.Count -gt 0) { "$($output[-1])".Trim() } else { '' }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output; Abi = $abi }
 }
 
 # Runs the shared helper (-Helper, else this checkout's or image's copy) with -Python; returns its exit code and output.
@@ -419,6 +436,7 @@ function Get-WheelMemberDifference {
 }
 
 Export-ModuleMember -Function Resolve-SharedLinuxScriptFile, Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Get-PyprojectBuildInfo, Find-UvPython,
+    Invoke-PythonAbiProbe,
     Resolve-PythonLegList, Get-NativeWheelCheck,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,
     Invoke-FreeThreadedWheelVenvProof, Get-TwinInstallArgument, Invoke-TwinDeviceProof, Get-FreeThreadedTwinTable, ConvertTo-PythonDistributionName, Get-FreeThreadedTwinRow, Get-FreeThreadedWheelFinding,

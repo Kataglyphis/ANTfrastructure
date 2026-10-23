@@ -1,5 +1,80 @@
 #requires -Version 7.0
-# Transcript and tree-stat fixtures do not touch live services, disks, registry values, ACLs or host probes.
+# NOT covered: live services, disks, registry, ACLs, host probes or actual token elevation.
+
+function Assert-HostElevationPolicy {
+    param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][ValidateSet('Repair', 'Reset')][string]$Policy)
+    $ast = ConvertTo-TestScriptAst -Text $Text -ErrorLabel "${Policy} elevation policy"
+    $calls = @(Get-TestAstCommands -Ast $ast -Name Test-Elevated)
+    Assert-Equal 1 $calls.Count "$Policy must use the shared elevation predicate"
+    Assert-Equal 0 ([regex]::Matches($Text, '\[Security\.Principal\.WindowsPrincipal\]').Count) "$Policy must not keep a private token probe"
+    $guards = @($ast.FindAll({ param($node)
+        $node -is [Management.Automation.Language.IfStatementAst] -and $node.Clauses[0].Item1.Extent.Text.Contains('Test-Elevated')
+    }, $true))
+    Assert-Equal 1 $guards.Count "$Policy must keep one elevation guard"
+    $branch = $guards[0].Clauses[0].Item2
+    if ($Policy -eq 'Repair') {
+        $writeCalls = @(Get-TestAstCommands -Ast $branch -Name Write-Host)
+        $promptCalls = @(Get-TestAstCommands -Ast $branch -Name Read-Host)
+        $exits = @($branch.FindAll({ param($node) $node -is [Management.Automation.Language.ExitStatementAst] }, $true))
+        Assert-Equal 1 $writeCalls.Count 'repair keeps its visible denial'
+        Assert-Equal 1 $promptCalls.Count 'repair keeps its interactive pause'
+        Assert-Equal 1 $exits.Count 'repair must keep exit 1 on denial'
+        Assert-Match 'exit 1' $exits[0].Extent.Text 'repair must exit unsuccessfully after the prompt'
+    } else {
+        $throws = @($branch.FindAll({ param($node) $node -is [Management.Automation.Language.ThrowStatementAst] }, $true))
+        Assert-Equal 1 $throws.Count 'lock reset must throw on denial'
+        Assert-Match 'This must run ELEVATED' $throws[0].Extent.Text 'lock reset preserves its fatal message'
+        $promptCalls = @(Get-TestAstCommands -Ast $branch -Name Read-Host)
+        Assert-Equal 0 $promptCalls.Count 'lock reset remains non-interactive'
+    }
+}
+
+function Assert-HostElevationPolicyMutations {
+    $repairPath = Join-Path (Get-RepoRoot) 'windows/scripts/host/Repair-WindowsComponentstore.ps1'
+    $resetPath = Join-Path (Get-RepoRoot) 'windows/scripts/host/Reset-ContainerLocks.ps1'
+    $repair = [IO.File]::ReadAllText($repairPath)
+    $reset = [IO.File]::ReadAllText($resetPath)
+    Assert-HostElevationPolicy -Text $repair -Policy Repair
+    Assert-HostElevationPolicy -Text $reset -Policy Reset
+    Assert-Throws { Assert-HostElevationPolicy -Text $repair.Replace('Test-Elevated', '$true') -Policy Repair } -MessagePattern 'shared elevation predicate'
+    Assert-Throws { Assert-HostElevationPolicy -Text $repair.Replace('exit 1', 'return') -Policy Repair } -MessagePattern 'exit 1'
+    Assert-Throws { Assert-HostElevationPolicy -Text $reset.Replace("throw 'This must run ELEVATED (service restart + process kill need admin).'", "Write-Host 'denied'") -Policy Reset } -MessagePattern 'must throw on denial'
+}
+
+function New-HostTreeStatsPrelude {
+    return @'
+function Get-ChildItem {
+    [CmdletBinding()]
+    param([string]$LiteralPath, [switch]$Recurse, [switch]$File, [switch]$Force)
+    [pscustomobject]@{ FullName = 'C:\fixture\keep\file.bin'; Length = 5 }
+    [pscustomobject]@{ FullName = 'C:\fixture\$RECYCLE.BIN\old.bin'; Length = 7 }
+    Write-Error 'fixture access denied'
+}
+'@
+}
+
+function Assert-HostTreeStatsPolicyMutations {
+    $cases = [System.Collections.Generic.List[object]]::new()
+    $cases.Add(@{ Find = '-not ($ExcludeDir | Where-Object { $parts -contains $_ })'; Replace = '$true'; Expected = 'excluded files must not contribute bytes' })
+    $cases.Add(@{ Find = '-ErrorVariable ev'; Replace = ''; Expected = 'unreadable paths must remain observable' })
+    Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1'; FunctionName = 'Get-HostMaintenanceTreeStats'; Prelude = (New-HostTreeStatsPrelude) } -IncludeControl -Case $cases.ToArray() -Body {
+        $stats = Get-MutHostMaintenanceTreeStats -Root 'C:\fixture' -ExcludeDir '$RECYCLE.BIN'
+        Assert-Equal 5 $stats.Bytes 'excluded files must not contribute bytes'
+        Assert-Equal 1 $stats.Files 'excluded files must not contribute to the count'
+        Assert-Equal 1 $stats.Errors 'unreadable paths must remain observable'
+    }
+}
+
+function Assert-HostTreeRecursionMutation {
+    Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1'; FunctionName = 'Get-HostMaintenanceTreeStats' } -IncludeControl -Find '-Recurse' -Replace '' -Expected 'expected nested file count' -Body {
+        Invoke-InTestDir -Files @{ 'top.bin' = 'abc'; 'nested\deep.bin' = '123456' } -Body {
+            param($dir)
+            $stats = Get-MutHostMaintenanceTreeStats -Root $dir
+            Assert-Equal 2 $stats.Files 'expected nested file count'
+            Assert-Equal 9 $stats.Bytes
+        }
+    }
+}
 
 Describe 'Host maintenance contexts and live-process guard' {
     It 'isolates transcript contexts and preserves idle, force, diagnostics and save-before-throw policies' {
@@ -7,8 +82,8 @@ Describe 'Host maintenance contexts and live-process guard' {
             Get-TestScriptCommands -ScriptPath "windows/scripts/host/$script.ps1" -Name Write-HostMaintenanceProbe | ForEach-Object { $_.Extent.Text }
         })
         $state = [pscustomobject]@{ Results = @(); Calls = 0; Names = @(); ProbeArguments = @(); ProbeCommands = $probeCommands }
-        $prelude = 'function Get-Process { param($Name) $State.Calls++; $State.Names = $Name; $State.Results }; function Invoke-TestHostProbe { $State.ProbeArguments = $args; $global:LASTEXITCODE = 7; "wanted: worker"; "irrelevant" }'
-        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName New-HostMaintenanceLog, Write-HostStep, Save-HostMaintenanceLog, Write-HostMaintenanceMessage, Write-HostMaintenanceProbe, Get-HostMaintenanceProcess, Write-HostMaintenanceFailure, Write-HostMaintenanceError, Invoke-HostMaintenanceTask -Prelude $prelude -FixtureState $state -Body { param($state)
+        $prelude = 'function Get-Process { param($Name) $State.Calls++; $State.Names = $Name; $State.Results }; function Get-PreferredToolPath { param($CommandName, $CandidatePaths, [switch]$Required) "fixture $CommandName" }; function Invoke-TestHostProbe { $State.ProbeArguments = $args; $global:LASTEXITCODE = 7; "wanted: worker"; "irrelevant" }'
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName New-HostMaintenanceLog, Write-HostStep, Save-HostMaintenanceLog, Write-HostMaintenanceMessage, Write-HostMaintenanceProbe, Get-HostMaintenanceProcess, Get-HostMaintenanceBuildCtlPath, Write-HostMaintenanceFailure, Write-HostMaintenanceError, Invoke-HostMaintenanceTask -Prelude $prelude -FixtureState $state -Body { param($state)
             Invoke-InTestDir { param($dir)
                 $first = New-MutHostMaintenanceLog -Name first -RepoRoot $dir
                 $second = New-MutHostMaintenanceLog -Name second -RepoRoot $dir
@@ -63,42 +138,11 @@ Describe 'Host maintenance contexts and live-process guard' {
         Assert-HostTreeStatsPolicyMutations
     }
 
+    It 'shares token elevation detection and mutation-checks both caller denial policies' {
+        Assert-HostElevationPolicyMutations
+    }
+
     It 'walks nested files rather than silently measuring only the root (mutation)' {
         Assert-HostTreeRecursionMutation
-    }
-}
-
-function New-HostTreeStatsPrelude {
-    return @'
-function Get-ChildItem {
-    [CmdletBinding()]
-    param([string]$LiteralPath, [switch]$Recurse, [switch]$File, [switch]$Force)
-    [pscustomobject]@{ FullName = 'C:\fixture\keep\file.bin'; Length = 5 }
-    [pscustomobject]@{ FullName = 'C:\fixture\$RECYCLE.BIN\old.bin'; Length = 7 }
-    Write-Error 'fixture access denied'
-}
-'@
-}
-
-function Assert-HostTreeStatsPolicyMutations {
-    $cases = [System.Collections.Generic.List[object]]::new()
-    $cases.Add(@{ Find = '-not ($ExcludeDir | Where-Object { $parts -contains $_ })'; Replace = '$true'; Expected = 'excluded files must not contribute bytes' })
-    $cases.Add(@{ Find = '-ErrorVariable ev'; Replace = ''; Expected = 'unreadable paths must remain observable' })
-    Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName Get-HostMaintenanceTreeStats -Prelude (New-HostTreeStatsPrelude) -IncludeControl -Case $cases.ToArray() -Body {
-        $stats = Get-MutHostMaintenanceTreeStats -Root 'C:\fixture' -ExcludeDir '$RECYCLE.BIN'
-        Assert-Equal 5 $stats.Bytes 'excluded files must not contribute bytes'
-        Assert-Equal 1 $stats.Files 'excluded files must not contribute to the count'
-        Assert-Equal 1 $stats.Errors 'unreadable paths must remain observable'
-    }
-}
-
-function Assert-HostTreeRecursionMutation {
-    Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName Get-HostMaintenanceTreeStats -IncludeControl -Find '-Recurse' -Replace '' -Expected 'expected nested file count' -Body {
-        Invoke-InTestDir -Files @{ 'top.bin' = 'abc'; 'nested\deep.bin' = '123456' } -Body {
-            param($dir)
-            $stats = Get-MutHostMaintenanceTreeStats -Root $dir
-            Assert-Equal 2 $stats.Files 'expected nested file count'
-            Assert-Equal 9 $stats.Bytes
-        }
     }
 }

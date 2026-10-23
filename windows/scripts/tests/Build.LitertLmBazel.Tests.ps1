@@ -8,7 +8,12 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
     $script:LlmBazelText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-LitertLmBazel.ps1'))
 
     # An empty file at $Rel under $Root, its directories made on the way.
-    function New-TreeFile([string]$Root, [string]$Rel) { return (New-Item -ItemType File -Force -Path (Join-Path $Root $Rel)).FullName }
+    function New-TreeFile([string]$Root, [string]$Rel) {
+        $files = @{}
+        $files[$Rel] = ''
+        Write-TestFileTree -Root $Root -Files $files
+        return Join-Path $Root $Rel
+    }
 
     It 'removes each tree and file it names, and a junction inside one never takes its target along (mutation)' {
         Invoke-InTestDir { param($d)

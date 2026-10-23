@@ -795,7 +795,7 @@ function Test-Elevated {
     .SYNOPSIS
         The BOOLEAN half of the admin gate: is this process elevated?
     .DESCRIPTION
-        For callers that branch on the answer; the module-free repair tools keep an inline check on purpose.
+        For callers that branch on the answer instead of throwing.
     .OUTPUTS
         [bool] $true when the current identity is in the Administrators role.
     #>

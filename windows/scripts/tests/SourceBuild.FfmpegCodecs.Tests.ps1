@@ -1,18 +1,18 @@
 #requires -Version 7.0
 # NOT covered: real codec build or Meson; both Meson commands are stubbed here.
 
-. (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegCodecs.ps1' -FunctionName 'Add-CodecPcSystemLib')
-
-function Invoke-OnPc([string]$Text, [int]$Times = 1) {
-    Invoke-InTestDir { param($root)
-        $pc = Join-Path $root 'x265.pc'
-        [System.IO.File]::WriteAllText($pc, $Text)
-        for ($n = 0; $n -lt $Times; $n++) { Add-CodecPcSystemLib -Pc $pc -Name 'advapi32' | Out-Null }
-        [System.IO.File]::ReadAllText($pc) -replace "`r`n", "`n"
-    }
-}
-
 Describe 'Add-CodecPcSystemLib (x265 4.2 static lib needs advapi32)' {
+    BeforeAll {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-FfmpegCodecs.ps1' -FunctionName 'Add-CodecPcSystemLib')
+        function Invoke-OnPc([string]$Text, [int]$Times = 1) {
+            Invoke-InTestDir { param($root)
+                $pc = Join-Path $root 'x265.pc'
+                [System.IO.File]::WriteAllText($pc, $Text)
+                for ($n = 0; $n -lt $Times; $n++) { Add-CodecPcSystemLib -Pc $pc -Name 'advapi32' | Out-Null }
+                [System.IO.File]::ReadAllText($pc) -replace "`r`n", "`n"
+            }
+        }
+    }
 
     It 'appends the missing system lib to Libs: once, and leaves every other line alone' {
         # x265 4.2's generated x265.pc, trimmed to the lines that matter here.
@@ -58,6 +58,8 @@ function meson {
             @{ Code = 23; CC = 'caller-cc'; CXX = 'caller-cxx'; ExpectedCalls = 1; FailurePattern = 'fixture meson setup failed \(23\)' }
         )
         $exercise = { param($fixture)
+            $fixture.Calls.Clear()
+            $fixture.CompilerStates.Clear()
             if ($fixture.FailurePattern) {
                 Assert-Throws { Invoke-MutCodecMeson -Name 'fixture' -SourceDir 'C:\codec-source' -Options @() } -MessagePattern $fixture.FailurePattern
             } else {
@@ -66,10 +68,10 @@ function meson {
             Assert-Equal $fixture.ExpectedCalls $fixture.Calls.Count 'setup failure prevents install'
             Assert-Equal $fixture.ExpectedCalls $fixture.CompilerStates.Count
             foreach ($during in $fixture.CompilerStates) {
-                Assert-True $during.CCSet
                 Assert-Equal 'clang-cl' $during.CC
-                Assert-True $during.CXXSet
+                Assert-True $during.CCSet
                 Assert-Equal 'clang-cl' $during.CXX
+                Assert-True $during.CXXSet
             }
         }
         Invoke-InTestDir {

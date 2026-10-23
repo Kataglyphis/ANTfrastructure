@@ -13,11 +13,18 @@ Describe 'Host maintenance buildctl lookup' {
         }
         $prelude = 'function Test-Path { param($Path) $State.CheckedPaths.Add($Path); $Path -eq $State.ExistsPath }; function Get-PreferredToolPath { param($CommandName, $CandidatePaths, [switch]$Required) $State.PreferredCalls++; $State.PreferredPaths = $CandidatePaths; $State.Required = $Required; $State.Resolved }'
         Invoke-WithEnv @{ ProgramFiles = 'Z:\FixtureProgramFiles' } {
-            Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' `
-                -FunctionName Get-HostMaintenanceBuildCtlPath -Prelude $prelude -FixtureState $state -IncludeControl `
+            Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1';
+                    FunctionName = 'Get-HostMaintenanceBuildCtlPath'; Prelude = $prelude; FixtureState = $state } -IncludeControl `
                 -Find "if (`$IncludeCProgramFilesFallback) { `$candidates = @(`$candidates[0], 'C:\Program Files\Stevedore\bin\buildctl.exe', `$candidates[1]) }" `
                 -Replace '' -Expected 'C fallback must precede D' -Body {
                 param($state)
+                $state.CheckedPaths.Clear()
+                $state.ExistsPath = 'D:\Stevedore\bin\buildctl.exe'
+                $state.CommandName = ''
+                $state.PreferredCalls = 0
+                $state.PreferredPaths = @()
+                $state.Required = $false
+                $state.Resolved = 'buildctl from PATH'
                 $programFiles = "$env:ProgramFiles\Stevedore\bin\buildctl.exe"
                 $resolved = Get-MutHostMaintenanceBuildCtlPath
                 Assert-Equal 'D:\Stevedore\bin\buildctl.exe' $resolved 'the default candidate order ends at D'
@@ -60,7 +67,10 @@ Describe 'Host maintenance buildctl lookup' {
             } else {
                 Assert-Equal 0 $arguments.Count 'GC verification stays candidate-only'
             }
-            Assert-Equal 0 @(Get-TestAstCommands -Ast $Ast -Name Get-PreferredToolPath).Count 'host scripts must not own candidate selection'
+            $directBuildctlLookups = @(Get-TestAstCommands -Ast $Ast -Name Get-PreferredToolPath | Where-Object {
+                (Get-TestCommandArguments -Command $_).CommandName -eq "'buildctl.exe'"
+            })
+            Assert-Equal 0 $directBuildctlLookups.Count 'host scripts must route buildctl selection through the shared lookup'
         }.GetNewClosure()
 
         foreach ($script in @('Reset-ContainerLocks', 'Reset-ContainerStores', 'Set-BuildkitdGcpolicy')) {

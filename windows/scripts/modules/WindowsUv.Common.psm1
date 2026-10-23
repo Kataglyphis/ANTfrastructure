@@ -467,17 +467,16 @@ function Set-UvChainOrtSyncHold {
     }
 }
 
-# The interpreter's wheel ABI tag (cpXY, cpXYt), and which ORT import packages it can find.
-$script:ChainOrtAbiCode = 'import sys, sysconfig; print(''cp%d%d%s'' % (*sys.version_info[:2], ''t'' if sysconfig.get_config_var(''Py_GIL_DISABLED'') else ''''))'
+# Which ORT import packages the interpreter can find.
 $script:ChainOrtFindCode = 'import importlib.util as u, sys; hits = [p for p in (''onnxruntime'', ''onnxruntime_genai'', ''onnxruntime_extensions'') if u.find_spec(p)]; print(*hits); sys.exit(1 if hits else 0)'
 
 function Get-UvChainOrtPythonAbi {
     param([string]$Python, [scriptblock]$Runner)
-    $probe = & $Runner $Python @('-I', '-c', $script:ChainOrtAbiCode)
+    $probe = Invoke-PythonAbiProbe -Python $Python -Runner $Runner -Isolated
     return [pscustomobject]@{
         ExitCode = $probe.ExitCode
         Result = $probe
-        Abi = $(if ($probe.ExitCode -eq 0) { "$(@($probe.Output) | Select-Object -Last 1)".Trim() } else { '' })
+        Abi = $probe.Abi
     }
 }
 

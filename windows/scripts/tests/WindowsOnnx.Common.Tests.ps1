@@ -102,18 +102,18 @@ Describe 'WindowsOnnx.Common: the chain layout' {
 
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsOnnx.Common.psm1') -Force -DisableNameChecking
 
-    $root = Join-Path ([IO.Path]::GetTempPath()) ("onnxchain-" + [guid]::NewGuid().ToString('N'))
-    $chain = Join-Path $root 'onnxruntime-source'
+    $script:root = New-TestDir -Prefix 'onnxchain-'
+    $chain = Join-Path $script:root 'onnxruntime-source'
     New-TestPeFile (Join-Path $chain 'bin\onnxruntime.dll') -Tag 'chain'
     Write-OnnxTestTree -Root $chain -Relative @('lib\onnxruntime.lib', 'include\onnxruntime\onnxruntime_c_api.h')
-    $genai = Join-Path $root 'onnxruntime-genai-source'
+    $genai = Join-Path $script:root 'onnxruntime-genai-source'
     New-TestPeFile (Join-Path $genai 'lib\onnxruntime-genai.dll') -Tag 'genai'
     Write-OnnxTestTree -Root $genai -Relative @('include\ort_genai.h')
-    $zip = Join-Path $root 'onnxruntime-win-x64-1.25.1'
+    $zip = Join-Path $script:root 'onnxruntime-win-x64-1.25.1'
     New-TestPeFile (Join-Path $zip 'lib\onnxruntime.dll') -Tag 'release-zip'
-    $nuget = Join-Path $root 'nuget'
+    $nuget = Join-Path $script:root 'nuget'
     New-TestPeFile (Join-Path $nuget 'Microsoft.ML.OnnxRuntime.1.2.3\runtimes\win-x64\native\onnxruntime.dll') -Tag 'nuget'
-    $arm = Join-Path $root 'ort-arm64'
+    $arm = Join-Path $script:root 'ort-arm64'
     New-TestPeFile (Join-Path $arm 'bin\onnxruntime.dll') -Machine 0xAA64 -Tag 'arm64'
 
     Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $null; ONNX_ROOT = $null; ONNX_GENAI_ROOT = $null } {
@@ -207,5 +207,5 @@ Describe 'WindowsOnnx.Common: the chain layout' {
         }
     }
 
-    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+    AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue }
 }

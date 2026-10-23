@@ -54,16 +54,13 @@ Describe 'Install-Rocm: layout gate' {
     $script:RocmGlobMessage = @{ 'bin\amdhip64_7.dll' = 'amdhip64_\*\.dll'; 'lib\llvm\amdgcn\bitcode\ocml.bc' = 'bitcode\\\*\.bc' }
     function New-FakeRocmTree {
         param([string]$Root, [string[]]$Skip = @(), [string]$Version = '10.0.0')
+        $files = @{}
         foreach ($rel in @($script:RocmRequired | Where-Object { $_ -ne '.info\version' })) {
             if ($Skip -contains $rel) { continue }
-            $p = Join-Path $Root $rel
-            New-Item -ItemType Directory -Force -Path (Split-Path $p -Parent) | Out-Null
-            Set-Content -LiteralPath $p -Value 'x' -Encoding ASCII
+            $files[$rel] = 'x'
         }
-        if ($Skip -notcontains '.info\version') {
-            New-Item -ItemType Directory -Force -Path (Join-Path $Root '.info') | Out-Null
-            Set-Content -LiteralPath (Join-Path $Root '.info\version') -Value $Version -Encoding ASCII
-        }
+        if ($Skip -notcontains '.info\version') { $files['.info\version'] = $Version }
+        Write-TestFileTree -Root $Root -Files $files
     }
 
     It 'passes a complete tree' {
@@ -606,7 +603,7 @@ Describe 'Dockerfile.rocm and the final stage: the Vulkan loader layers' {
     }
 
     It 'names the shipped loader in a Windows deps.json row with an spdx id, which the licence page and SBOM render' {
-        $deps = Get-Content -LiteralPath (Join-Path $root 'docs\deps\deps.json') -Raw | ConvertFrom-Json
+        $deps = Get-TestJsonFile -Path (Join-Path $root 'docs\deps\deps.json')
         $rows = @(@($deps.sections | Where-Object { $_.title -eq 'Windows Image' }).subsections.entries |
                 Where-Object { $_.PSObject.Properties['spdx'] -and $_.spdx -and $_.name -match 'vulkan-1\.dll' })
         Assert-Equal 1 $rows.Count 'one Windows row names vulkan-1.dll'

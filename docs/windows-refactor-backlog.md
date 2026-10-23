@@ -179,16 +179,6 @@ this repo's cp314 pin).
   (`LITERT_LM_BAZEL_WINDOWS_*`, the clone's `.bazelversion`) on 2026-10-13 (CON92). **Still open:** serve pinned source archives from a cache
   mount keyed by commit, bake the aarch64 rust-std into the toolchain image, and build the
   target CPython once and keep its externals. Rides the next full chain.
-- **#178 — fold `Expand-PinnedArchive` into `Expand-SourceTarball` at the next media
-  rebuild (opened 2026-09-25).** `Expand-PinnedArchive` (`WindowsMigraphx.Common`) is
-  `Expand-SourceTarball`'s two 7-Zip passes, except that it skips the links 7-Zip 25+
-  refuses as dangerous instead of failing (flatbuffers 25.12.19 carries nine in-tree
-  ones). It lives apart only because `WindowsSourceBuild.Common` is mounted into every
-  media layer, so an edit there re-keys the whole media lane. At the next deliberate
-  media rebuild, give `Expand-SourceTarball` that tolerance, point `Save-PinnedSource`
-  at it, delete `Expand-PinnedArchive`, and delete its row in
-  `docs/scripts/code-dupes.allow` (the `WindowsMigraphx.Common` ↔
-  `WindowsSourceBuild.Common` pair). Rebuild-coupled like CON34 in `BACKLOG.md`.
 - **#177 — the image history named the build host's endpoints. DONE in source 2026-10-20**
   (owner: no endpoint, bucket, region or LAN address of the S3 cache in a Windows image's
   history or config). BuildKit wrote each `ARG SCCACHE_*=<value>` and every RUN's build args

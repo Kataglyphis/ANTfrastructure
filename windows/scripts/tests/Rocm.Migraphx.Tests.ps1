@@ -298,14 +298,15 @@ Describe 'WindowsMigraphx.Common: licence texts' {
     # Fetched trees holding every file Get-MigraphxLicenseFile names, plus a TheRock nlohmann header.
     function New-MgxLicenseFixture([string]$Root, [string]$Set) {
         $roots = @{}
+        $files = @{}
         $map = Get-MigraphxLicenseFile -Set $Set
         foreach ($n in $map.Keys) {
             $roots[$n] = Join-Path $Root "src\$n"
-            New-Item -ItemType Directory -Force -Path $roots[$n] | Out-Null
-            foreach ($r in $map[$n]) { New-Item -ItemType File -Force -Path (Join-Path $roots[$n] $r) -Value "$n $r" | Out-Null }
+            foreach ($r in $map[$n]) { $files["src\$n\$r"] = "$n $r" }
         }
         $header = "// JSON for Modern C++`n// SPDX-FileCopyrightText: 2013-2023 Niels Lohmann`n// SPDX-License-Identifier: MIT`n`n#ifndef INCLUDE_NLOHMANN_JSON_HPP_`n// a comment inside the code`n"
-        New-Item -ItemType File -Force -Path (Join-Path $Root 'rocm\include\nlohmann\json.hpp') -Value $header | Out-Null
+        $files['rocm\include\nlohmann\json.hpp'] = $header
+        Write-TestFileTree -Root $Root -Files $files
         return $roots
     }
 
@@ -654,11 +655,12 @@ Describe 'rocm-checks\MIGraphX.ps1' {
 
     # $Files maps 'rocm'/'ep' to the names written there (content = the name, so sizes differ per file).
     function New-MgxCheckFixture([string]$Root, [hashtable]$Files) {
+        $tree = @{}
         foreach ($side in 'rocm', 'ep') {
-            $d = Join-Path $Root $side
-            New-Item -ItemType Directory -Force -Path $d | Out-Null
-            foreach ($n in @($Files[$side])) { if ($n) { Set-Content -LiteralPath (Join-Path $d $n) -Value $n } }
+            foreach ($n in @($Files[$side])) { if ($n) { $tree["$side\$n"] = $n } }
         }
+        Write-TestFileTree -Root $Root -Files $tree
+        foreach ($side in 'rocm', 'ep') { $null = [IO.Directory]::CreateDirectory((Join-Path $Root $side)) }
         return @{ Rocm = (Join-Path $Root 'rocm'); Ep = (Join-Path $Root 'ep') }
     }
 

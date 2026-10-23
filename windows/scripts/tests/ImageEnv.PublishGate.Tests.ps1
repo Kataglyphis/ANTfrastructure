@@ -162,8 +162,7 @@ Describe 'Dockerfile.publish-gate' {
 # The CommandAsts named $Name, and the name of the function a node sits in ('' at script level).
 function Find-DriverCall {
     param([Parameter(Mandatory)]$Ast, [Parameter(Mandatory)][string]$Name)
-    @($Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
-                $n.GetCommandName() -eq $Name }.GetNewClosure(), $true))
+    Get-TestAstCommands -Ast $Ast -Name $Name
 }
 function Get-EnclosingFunctionName {
     param([Parameter(Mandatory)]$Node)

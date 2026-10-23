@@ -259,8 +259,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'age-gates: work in flight survives, stale entries are candidates' {
-        $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('reclaim-age-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-        New-Item -ItemType Directory -Path $sandbox -Force | Out-Null
+        $sandbox = New-TestDir -Prefix 'reclaim-age-'
         try {
             $fresh = New-Item -ItemType Directory -Path (Join-Path $sandbox 'scratch-fresh') -Force
             $stale = New-Item -ItemType Directory -Path (Join-Path $sandbox 'scratch-stale') -Force
@@ -278,7 +277,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
     }
 
     It 'marks a candidate containing a junction so the delete skips it' {
-        $sandbox = Join-Path ([IO.Path]::GetTempPath()) ('reclaim-link-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $sandbox = New-TestDir -Prefix 'reclaim-link-'
         $husk = Join-Path $sandbox 'scratch-linked'
         New-Item -ItemType Directory -Path $husk -Force | Out-Null
         $link = Join-Path $husk 'tunnel'

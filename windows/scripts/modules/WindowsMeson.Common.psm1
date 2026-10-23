@@ -173,6 +173,27 @@ function Expand-SubprojectArchive {
     return $moved
 }
 
+# One cleanup path covers both the wrap-git archives and the forced libffi archive.
+function Invoke-MesonSubprojectArchive {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Target,
+        [Parameter(Mandatory)][string]$Description,
+        [scriptblock]$Logger
+    )
+    $result = @{ Extracted = $false; ErrorRecord = $null }
+    try {
+        Invoke-WrapDownload -Url $Url -DestinationPath $Archive -Description $Description -Logger $Logger
+        $result.Extracted = Expand-SubprojectArchive -Archive $Archive -Target $Target
+    } catch {
+        $result.ErrorRecord = $_
+    } finally {
+        Remove-Item -Path $Archive -Force -ErrorAction SilentlyContinue
+    }
+    return [pscustomobject]$result
+}
+
 # git clone fails in Windows containers, so wrap-gits become tarballs; returns failures for the caller's fail-closed throw.
 function Invoke-GstWrapProvisioning {
     param(
@@ -202,20 +223,18 @@ function Invoke-GstWrapProvisioning {
         $tmp = Join-Path $TempDir "$dir-$rev.tar"
         $tmpFile = if ($tarballUrl -match '\.bz2$') { "$tmp.bz2" } else { "$tmp.gz" }
         & $say "Pre-extracting $fname..."
-        try {
-            Invoke-WrapDownload -Url $tarballUrl -DestinationPath $tmpFile -Description "gst wrap $fname ($rev)" -Logger $Logger
-            if (Expand-SubprojectArchive -Archive $tmpFile -Target $target) {
-                Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
-                & $say "Pre-extracted $fname to $target"
-            } else {
-                $failures.Add("$fname (downloaded but extraction into $dir failed)")
-            }
-        } catch {
-            # The real error text: a moved revision and a TLS failure need different fixes.
-            $failures.Add("$fname : $($_.Exception.Message)")
-            & $say "ERROR: wrap download failed: $fname - $($_.Exception.Message)"
+        $archive = Invoke-MesonSubprojectArchive -Url $tarballUrl -Archive $tmpFile -Target $target `
+            -Description "gst wrap $fname ($rev)" -Logger $Logger
+        if ($archive.ErrorRecord) {
+            $message = $archive.ErrorRecord.Exception.Message
+            $failures.Add("$fname : $message")
+            & $say "ERROR: wrap download failed: $fname - $message"
+        } elseif ($archive.Extracted) {
+            Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+            & $say "Pre-extracted $fname to $target"
+        } else {
+            $failures.Add("$fname (downloaded but extraction into $dir failed)")
         }
-        Remove-Item -Path $tmpFile -Force -ErrorAction SilentlyContinue
     }
 
     $libffiTarget = Join-Path $SubprojectDir 'libffi'
@@ -223,18 +242,17 @@ function Invoke-GstWrapProvisioning {
         & $say 'Force-downloading libffi...'
         $libffiUrl = "https://gitlab.freedesktop.org/gstreamer/meson-ports/libffi/-/archive/meson-$LibffiVersion/libffi-meson-$LibffiVersion.tar.bz2"
         $libffiTmp = Join-Path $TempDir 'libffi.tar.bz2'
-        try {
-            Invoke-WrapDownload -Url $libffiUrl -DestinationPath $libffiTmp -Description "libffi meson port $LibffiVersion" -Logger $Logger
-            if (Expand-SubprojectArchive -Archive $libffiTmp -Target $libffiTarget) {
-                & $say 'Force-pre-extracted libffi'
-            } else {
-                $failures.Add('libffi (downloaded but extraction failed)')
-            }
-        } catch {
-            $failures.Add("libffi : $($_.Exception.Message)")
-            & $say "ERROR: libffi download failed - $($_.Exception.Message)"
+        $archive = Invoke-MesonSubprojectArchive -Url $libffiUrl -Archive $libffiTmp -Target $libffiTarget `
+            -Description "libffi meson port $LibffiVersion" -Logger $Logger
+        if ($archive.ErrorRecord) {
+            $message = $archive.ErrorRecord.Exception.Message
+            $failures.Add("libffi : $message")
+            & $say "ERROR: libffi download failed - $message"
+        } elseif ($archive.Extracted) {
+            & $say 'Force-pre-extracted libffi'
+        } else {
+            $failures.Add('libffi (downloaded but extraction failed)')
         }
-        Remove-Item -Path $libffiTmp -Force -ErrorAction SilentlyContinue
         Remove-Item -Path (Join-Path $SubprojectDir 'libffi.wrap') -Force -ErrorAction SilentlyContinue
     }
 

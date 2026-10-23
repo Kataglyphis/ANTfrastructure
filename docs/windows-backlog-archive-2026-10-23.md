@@ -7,6 +7,14 @@ The dates and proof limits below are the original observations, not new build me
 Open Bazel-cache, post-relink and QNN-device checks remain in the live backlog.
 Earlier archives remain unchanged.
 
+- **#178 — source archive extraction shares one 7-Zip engine. DONE in source 2026-10-23.**
+  `Expand-SourceTarball` owns both passes and source-root lookup. Its optional
+  `-SkippedLinkResolver` and `-RemoveIntermediateTar` carry MIGraphX's narrow dangerous-link
+  tolerance and cleanup policy; `Expand-PinnedArchive` remains the exported policy wrapper.
+  `SourceBuild.Archive.Tests.ps1` exercises the strict default, selective link skips, mixed-error
+  failure, cleanup, and verdict/cleanup mutations through a fake 7-Zip executable. The duplicated
+  extraction lifecycle is gone; the wrapper stays as the MIGraphX policy API.
+
 - **#181 — the LiteRT layer no longer exports bazel's trees. DONE 2026-10-12.**
   `Build-LitertLmBazel.ps1` stops the bazel server and removes `C:\bzl`, `C:\llm`,
   `C:\bzl-tools` and the bazel log after the install's contract check; the merge copies only

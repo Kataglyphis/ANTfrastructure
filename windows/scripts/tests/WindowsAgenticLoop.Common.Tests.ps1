@@ -20,16 +20,14 @@ Describe 'WindowsAgenticLoop.Common' {
         }
         Set-Variable -Name LASTEXITCODE -Value 0 -Scope Global
 
-        # Temporary directory for test files
-        $script:testDir = Join-Path ([System.IO.Path]::GetTempPath()) "agentic-loop-pester-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
-        New-Item -ItemType Directory -Force $script:testDir | Out-Null
+        $script:testDir = New-TestDir -Prefix 'agentic-loop-pester-'
 
         # Initialize the module with dry-run
         Initialize-AgenticLoop -RepoRoot $script:testDir -DryRun
     }
 
     AfterAll {
-        if (Test-Path $script:testDir) { Remove-Item $script:testDir -Recurse -Force }
+        if (Test-Path -LiteralPath $script:testDir) { Remove-Item -LiteralPath $script:testDir -Recurse -Force }
     }
 
     # Platform detection

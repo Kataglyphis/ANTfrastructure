@@ -297,6 +297,32 @@ function Set-BuildOperationDuration {
     $Context.Results.Durations[$Name] = $Stopwatch.Elapsed.TotalSeconds
 }
 
+# Shared operation accounting leaves each caller's failure policy local.
+function Invoke-BuildOperationBody {
+    param(
+        [Parameter(Mandatory)][pscustomobject]$Context,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Script,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Outcome,
+        [scriptblock]$OnSuccess = {}
+    )
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    $Outcome.Stopwatch = $stopwatch
+    $Outcome.ErrorRecord = $null
+    try {
+        & $Script
+        $stopwatch.Stop()
+        $Context.Results.Succeeded.Add($Name) | Out-Null
+        & $OnSuccess $stopwatch | Out-Null
+    } catch {
+        $stopwatch.Stop()
+        $Outcome.ErrorRecord = $_
+        $Context.Results.Errors[$Name] = $_.Exception.Message
+    } finally {
+        Set-BuildOperationDuration -Context $Context -Name $Name -Stopwatch $stopwatch
+    }
+}
+
 function Invoke-BuildOptional {
     param(
         [Parameter(Mandatory)]
@@ -307,20 +333,12 @@ function Invoke-BuildOptional {
         [string]$Name
     )
 
-    # Mirrors Invoke-BuildStep -AllowFailure rather than calling it, whose boolean would pollute the passed-through output.
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    try {
-        & $Script
-        $stopwatch.Stop()
-        $Context.Results.Succeeded.Add($Name) | Out-Null
-    } catch {
-        $stopwatch.Stop()
-        $Context.Results.Errors[$Name] = $_.Exception.Message
+    $operation = @{}
+    Invoke-BuildOperationBody -Context $Context -Name $Name -Script $Script -Outcome $operation
+    if ($operation.ErrorRecord) {
         $Context.Results.AllowedFailures.Add($Name) | Out-Null
-        Write-BuildLogWarning -Context $Context -Message "$Name failed, continuing. Details: $($_.Exception.Message)"
+        Write-BuildLogWarning -Context $Context -Message "$Name failed, continuing. Details: $($operation.ErrorRecord.Exception.Message)"
     }
-
-    Set-BuildOperationDuration -Context $Context -Name $Name -Stopwatch $stopwatch
 }
 
 # All three buckets at once, so an all-skip batch reaches the no-gate-ran arm instead of a null reference.
@@ -362,21 +380,16 @@ function Invoke-BuildGate {
     Initialize-BuildGateBuckets -Context $Context
     $Context.Results['Gates'].Add($Name) | Out-Null
 
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     Write-BuildLog -Context $Context -Message "== $Name =="
-    try {
-        & $Script
-        $stopwatch.Stop()
-        $Context.Results.Succeeded.Add($Name) | Out-Null
+    $operation = @{}
+    Invoke-BuildOperationBody -Context $Context -Name $Name -Script $Script -Outcome $operation -OnSuccess {
         Write-BuildLog -Context $Context -Message "== ${Name}: ok =="
-    } catch {
-        $stopwatch.Stop()
-        $Context.Results.Errors[$Name] = $_.Exception.Message
+    }
+    if ($operation.ErrorRecord) {
         $Context.Results.Failed.Add($Name) | Out-Null
         $Context.Results['GateFailures'].Add($Name) | Out-Null
-        Write-BuildLogError -Context $Context -Message "== ${Name}: FAILED == $($_.Exception.Message)"
+        Write-BuildLogError -Context $Context -Message "== ${Name}: FAILED == $($operation.ErrorRecord.Exception.Message)"
     }
-    $Context.Results.Durations[$Name] = $stopwatch.Elapsed.TotalSeconds
 }
 
 <#
@@ -484,45 +497,36 @@ function Invoke-BuildStep {
     Write-BuildLog -Context $Context -Message ">>> Starting: $StepName"
     Write-BuildLog -Context $Context -Message ("=" * 60)
 
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-
-    try {
-        & $Script
-        $stopwatch.Stop()
-        $Context.Results.Succeeded.Add($StepName) | Out-Null
+    $operation = @{}
+    Invoke-BuildOperationBody -Context $Context -Name $StepName -Script $Script -Outcome $operation -OnSuccess {
+        param($stopwatch)
         Write-BuildLogSuccess -Context $Context -Message "<<< Completed: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
-        
-        Set-BuildOperationDuration -Context $Context -Name $StepName -Stopwatch $stopwatch
-        
-        return $true
-    } catch {
-        $stopwatch.Stop()
-        $errorMessage = $_.Exception.Message
-        Set-BuildOperationDuration -Context $Context -Name $StepName -Stopwatch $stopwatch
-        $Context.Results.Errors[$StepName] = $errorMessage
+    }
+    if ($operation.ErrorRecord) {
+        $errorMessage = $operation.ErrorRecord.Exception.Message
 
         if ($AllowFailure) {
             $Context.Results.AllowedFailures.Add($StepName) | Out-Null
-            Write-BuildLogWarning -Context $Context -Message "<<< FAILED (allowed, non-gating): $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
+            Write-BuildLogWarning -Context $Context -Message "<<< FAILED (allowed, non-gating): $StepName (Duration: $($operation.Stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
             Write-BuildLogWarning -Context $Context -Message "    Error: $errorMessage"
             return $false
         }
 
         $Context.Results.Failed.Add($StepName) | Out-Null
-        Write-BuildLogError -Context $Context -Message "<<< FAILED: $StepName (Duration: $($stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
+        Write-BuildLogError -Context $Context -Message "<<< FAILED: $StepName (Duration: $($operation.Stopwatch.Elapsed.ToString('mm\:ss\.fff')))"
         Write-BuildLogError -Context $Context -Message "    Error: $errorMessage"
 
 
-        if ($_.ScriptStackTrace) {
-            Write-BuildLog -Context $Context -Message "    Stack: $($_.ScriptStackTrace)"
+        if ($operation.ErrorRecord.ScriptStackTrace) {
+            Write-BuildLog -Context $Context -Message "    Stack: $($operation.ErrorRecord.ScriptStackTrace)"
         }
 
         if ($Context.StopOnError -and $Critical) {
             throw "Critical step '$StepName' failed: $errorMessage"
         }
 
-        return $false
     }
+    return ($null -eq $operation.ErrorRecord)
 }
 
 function Write-BuildSummary {

@@ -6,10 +6,10 @@
 Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
 
     $exportScript = Join-Path $PSScriptRoot '..\build\Export-Arm64Bundle.ps1'
-    $work = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'export-arm64bundle-' + [guid]::NewGuid().ToString('N'))
-    $real = Join-Path $work 'real'
-    $empty = Join-Path $work 'empty'
-    $out = Join-Path $work 'out'
+    $script:work = New-TestDir -Prefix 'export-arm64bundle-'
+    $real = Join-Path $script:work 'real'
+    $empty = Join-Path $script:work 'empty'
+    $out = Join-Path $script:work 'out'
     [void](New-Item -ItemType Directory -Force -Path (Join-Path $real 'python'), $empty)
     $null = New-Item -ItemType File -Force -Path (Join-Path $real 'BUNDLE-ENV.ps1')
     Set-Content -LiteralPath (Join-Path $real 'python\python.exe') -Value 'fake'
@@ -19,7 +19,7 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     }
 
     It 'refuses a root without the bundle python' {
-        $noPy = Join-Path $work 'nopy'
+        $noPy = Join-Path $script:work 'nopy'
         [void](New-Item -ItemType Directory -Force -Path $noPy)
         Set-Content -Path (Join-Path $noPy 'BUNDLE-ENV.ps1') -Value '# fake'
         Assert-Throws { & $exportScript -BundleRoot $noPy -OutDir $out } 'no python' -MessagePattern 'python'
@@ -38,11 +38,11 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     }
 
     It 'the zip expands to the bundle markers' {
-        $dest = Join-Path $work 'extract'
+        $dest = Join-Path $script:work 'extract'
         Expand-Archive -LiteralPath (Join-Path $out 'bundle.zip') -DestinationPath $dest -Force
         Assert-True (Test-Path (Join-Path $dest 'BUNDLE-ENV.ps1')) 'BUNDLE-ENV.ps1 extracts'
         Assert-True (Test-Path (Join-Path $dest 'python\python.exe')) 'python extracts'
     }
 
-    Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
+    AfterAll { Remove-Item -LiteralPath $script:work -Recurse -Force -ErrorAction SilentlyContinue }
 }

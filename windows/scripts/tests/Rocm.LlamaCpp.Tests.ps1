@@ -15,7 +15,7 @@ Describe 'Install-LlamaCpp: lane gate (rocm only; cpu and nvidia refused for bot
 
     It 'refuses cpu and nvidia for either backend; only HIP needs hipBLAS/rocBLAS in the ROCm tree' {
         Invoke-InTestDir { param($dir)
-            New-Item -ItemType File -Force -Path (Join-Path $dir 'bin\amdhip64_7.dll') -Value 'x' | Out-Null
+            Write-TestFileTree -Root $dir -Files @{ 'bin\amdhip64_7.dll' = 'x' }
             $rocm = @{ GpuType = 'rocm'; HasRocm = $true; RocmRoot = $dir }
             $hip = Get-LlamaCppBackendSpec -Backend hip
             $vk = Get-LlamaCppBackendSpec -Backend vulkan
@@ -234,7 +234,7 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
 
     It 'refuses a used install dir before downloading, and a zip that shadows ROCm or brings a loader before extracting' {
         Invoke-InTestDir { param($dir)
-            New-Item -ItemType File -Force -Path (Join-Path $dir 'out\ggml.dll') -Value 'an older build' | Out-Null
+            Write-TestFileTree -Root $dir -Files @{ 'out\ggml.dll' = 'an older build' }
             $r = Invoke-LlamaInstallFixture -Root $dir -Backend vulkan
             Assert-Match 'already has content; refusing to mix' "$($r.Error)" 'used dir'
             Assert-Equal 0 $r.Downloads.Count 'no download into a used dir'
@@ -734,7 +734,7 @@ Describe 'Installer, check, Dockerfile and deps.json agree per backend' {
     }
 
     It 'gives each home a deps.json llama.cpp row on the one build pin, and names it in the libomp row (both zips ship libomp)' {
-        $deps = Get-Content -LiteralPath (Join-Path (Get-RepoRoot) 'docs\deps\deps.json') -Raw | ConvertFrom-Json
+        $deps = Get-TestJsonFile -Path (Join-Path (Get-RepoRoot) 'docs\deps\deps.json')
         $subs = @(@($deps.sections | Where-Object { $_.title -eq 'Windows Image' }).subsections | Where-Object { $_.title -match '^llama\.cpp .*\(rocm variant only\)$' })
         Assert-Equal 1 $subs.Count 'one rocm-only llama.cpp subsection'
         $rows = @($subs[0].entries)

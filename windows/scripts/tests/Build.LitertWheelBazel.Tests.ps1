@@ -105,11 +105,7 @@ Describe 'Build-LitertWheelBazel: upstream''s source rewrites are throw-on-miss'
                 '                        "Generate Objective-C header and source.");', '  rust::RustGenerator rust_generator;',
                 '  cli.RegisterGenerator("--rust_out", "--rust_opt", &rust_generator,', '                        "Generate Rust sources.");')
             $files['com_google_protobuf\src\google\protobuf\compiler\main.cc'] = ($main -join "`n") + "`n"
-            foreach ($rel in $files.Keys) {
-                $p = Join-Path $d $rel
-                New-Item -ItemType Directory -Force (Split-Path $p) | Out-Null
-                [IO.File]::WriteAllText($p, $files[$rel])
-            }
+            Write-TestFileTree -Root $d -Files $files
             $insert = Join-Path $script:PatchDir 'untyped_message_insert_field.cc'
             Invoke-LitertExternalRewrite -External $d -InsertFieldFile $insert | Out-Null
             Assert-Match 'SOURCE_LOCATION 0' ([IO.File]::ReadAllText((Join-Path $d 'com_google_absl\absl\base\options.h'))) 'absl'

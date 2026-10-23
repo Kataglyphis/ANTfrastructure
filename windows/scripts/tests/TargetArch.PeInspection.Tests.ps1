@@ -14,11 +14,12 @@ Describe 'PE inspection primitives' {
             'Arm64' { 0xAA64 }
             default { 0x8664 }
         }
-        $script:notPe = Join-Path ([IO.Path]::GetTempPath()) ('not-a-pe-' + [guid]::NewGuid().ToString('N') + '.dll')
+        $script:notPeDir = New-TestDir -Prefix 'target-pe-inspection-'
+        $script:notPe = Join-Path $script:notPeDir 'not-a-pe.dll'
         Set-Content -Path $script:notPe -Value 'this is not a portable executable, it is a haiku' -Encoding ASCII
     }
 
-    AfterAll { Remove-Item $script:notPe -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -LiteralPath $script:notPeDir -Recurse -Force -ErrorAction SilentlyContinue }
 
     It 'Get-PeFileMachine reads the machine of a real system DLL' {
         Assert-Equal $script:hostMachine (Get-PeFileMachine -Path $script:kernel32) 'kernel32.dll must report the runner''s own machine type'

@@ -166,6 +166,12 @@ function Write-TestFileTree {
     }
 }
 
+function Get-TestJsonFile {
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "JSON file not found: $Path" }
+    return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json)
+}
+
 function Invoke-InTestScriptDir {
     param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][scriptblock]$Body)
     $source = Get-TestScriptAst -ScriptPath $ScriptPath
@@ -175,7 +181,7 @@ function Invoke-InTestScriptDir {
 
 Export-ModuleMember -Function Invoke-InTestScriptDir
 
-Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree
+Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree, Get-TestJsonFile
 
 function New-TestBatchTool {
     param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Name,
