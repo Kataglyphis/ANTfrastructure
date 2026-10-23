@@ -13,10 +13,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 CORE_DIR="${REPO_ROOT}/linux/scripts/01-core"
 
 # Everything below is scoped to the root; CORE_DIR and the bootstrap cache stay in REPO_ROOT.
-# shellcheck source=01-core/lint-root.sh
-. "${CORE_DIR}/lint-root.sh"
-lint_scope_begin SCAN_ROOT "${REPO_ROOT}" "$@" || exit 1
-set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
+# shellcheck source=01-core/lint-scope-init.sh
+. "${CORE_DIR}/lint-scope-init.sh" || exit 1
 
 SHOW_WARNINGS=0
 LIST_FILES=0

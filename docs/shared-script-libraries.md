@@ -1772,6 +1772,27 @@ adding an environment export. Linter-specific options and pinned-tool handling
 remain in each driver. ShellCheck fatal reports share diagnostic replay while
 retaining distinct flags and headings and the original exit status.
 
+The shell, Python and Dockerfile drivers source `01-core/lint-scope-init.sh`
+in their own shell. It loads the root parser, publishes the selected tree and
+replaces positional arguments with the unconsumed arguments. Keep this initializer
+beside `lint-root.sh` when copying a driver. A function call would isolate `set --`
+from the driver. Empty arguments, line breaks, repeated root options and rejected
+roots have frozen original receipts; linter execution has separate driver tests.
+The ShellCheck root-contract test copies a small hub separately from its consumer
+fixture so ignoring `--root` reaches the same assertions without scanning the
+entire repository. The live-tree warning check remains separate.
+
+`01-core/common.sh` owns `wheel_archive_run` for quiet wheel unpack and pack
+commands, including multiword Python launchers and their raw status. LiteRT
+renaming and runtime stripping retain their own payload edits, verdicts and
+temporary cleanup. Repacking still regenerates RECORD through the wheel tool.
+
+`02-toolchain/packaging-deps.sh` shares command execution and status capture
+between packaging steps and sudo retries. Separate failure handlers retain
+best-effort warnings, root refusal and the original sudo arguments and status.
+Offline fixtures cover the current user's branch; they do not change privilege
+or run package installation.
+
 Core helpers share nondefault-host suffix formatting and caller-directory
 resolution while preserving explicit path bytes. Disk validation keeps positive
 settings distinct from nonnegative free-space readings: zero-disabled settings

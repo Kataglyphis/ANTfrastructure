@@ -24,6 +24,7 @@ _fixture() {
   # lint-shell.sh sources lint-root.sh from beside itself, or --list-files dies on line 1.
   install -D -m 0644 "${TESTS_DIR}/../01-core/lint-root.sh" \
     "${d}/linux/scripts/01-core/lint-root.sh"
+  cp "${TESTS_DIR}/../01-core/lint-scope-init.sh" "${d}/linux/scripts/01-core/"
   install -D -m 0644 "${TESTS_DIR}/../01-core/lint-tool-release.sh" \
     "${d}/linux/scripts/01-core/lint-tool-release.sh"
   for spec in "$@"; do
@@ -145,7 +146,7 @@ t_assert_eq "1" "$(_rc "${fix}")" "the full run sees b.sh's new SC2155"
 t_assert_eq "0" "$(_rc "${fix}" --files linux/scripts/a.sh)" "a.sh alone is at its baseline"
 out="$(_run "${fix}" --files "${fix}/linux/scripts/a.sh")"
 t_assert_eq "0" "$(_rc "${fix}" --files "${fix}/linux/scripts/a.sh")" "absolute paths resolve too"
-t_assert_contains "${out}" "(1 of 5 file(s))" "and resolve INTO the scope, rather than passing by being skipped"
+t_assert_contains "${out}" "(1 of 6 file(s))" "and resolve INTO the scope, rather than passing by being skipped"
 t_assert_fails grep -q -F -e "note:" <<<"${out}"
 t_assert_eq "1" "$(_rc "${fix}" --files linux/scripts/b.sh)" "b.sh alone is over its baseline"
 t_assert_contains "$(_run "${fix}" --files linux/scripts/b.sh)" "b.sh:SC2155 is 1 findings"
@@ -154,7 +155,7 @@ rm -rf "${fix}"
 t_case "--files on a file with zero rows and zero findings passes"
 fix="$(_fixture a:unused c:clean)"
 t_assert_eq "0" "$(_rc "${fix}" --files linux/scripts/c.sh)"
-t_assert_contains "$(_run "${fix}" --files linux/scripts/c.sh)" "(1 of 5 file(s))" \
+t_assert_contains "$(_run "${fix}" --files linux/scripts/c.sh)" "(1 of 6 file(s))" \
   "the copied lint-shell.sh and its shared core modules are in scope too"
 rm -rf "${fix}"
 
@@ -165,7 +166,7 @@ out="$(_run "${fix}" --files docs/x.sh linux/scripts/gone.sh)"
 t_assert_eq "0" "$(_rc "${fix}" --files docs/x.sh)"
 t_assert_contains "${out}" "note: docs/x.sh is outside the lint-shell.sh scope, skipped"
 t_assert_contains "${out}" "note: linux/scripts/gone.sh is outside" "a deleted file is outside too"
-t_assert_contains "${out}" "(0 of 4 file(s))"
+t_assert_contains "${out}" "(0 of 5 file(s))"
 rm -rf "${fix}"
 
 # --write-baseline: how a freeze and a recorded decrease are produced
@@ -288,9 +289,11 @@ if [ -z "${SKIP_REAL_TREE}" ]; then
   t_assert_eq "0" "$("${PY}" "${GATE}" >/dev/null 2>&1; echo $?)"
 fi
 
-# Fixtures above plant the tree around the gate, so only this case tells --root from its own repo.
+# A separate hub fixture keeps ignored-root scans small while retaining the real linter.
 t_case "--root grades the named tree, and reads its freeze file"
 _root_subject=$'#!/usr/bin/env bash\nunused_var=1'
-gate_root_arm "${PY}" "${GATE}" "${_root_subject}" shellcheck-warnings.allow 'zz-sentinel.sh | SC2034 | 1 | sentinel' zz-sentinel.sh
+_root_gate="$(_fixture c:clean)"
+SHELLCHECK_BIN="${SC_BIN}" gate_root_arm "${PY}" "${_root_gate}/linux/scripts/verify_shellcheck_warnings.py" "${_root_subject}" shellcheck-warnings.allow 'zz-sentinel.sh | SC2034 | 1 | sentinel' zz-sentinel.sh
+rm -rf "${_root_gate}"
 
 t_summary

@@ -277,6 +277,13 @@ llvm_prepare_source_checkout() {
   rm -rf "${source_dir}"
 }
 
+# Wheel payload edits must repack through wheel so RECORD is regenerated.
+wheel_archive_run() {
+  local action="$1" source="$2" destination="$3"
+  shift 3
+  "$@" -m wheel "${action}" "${source}" -d "${destination}" >/dev/null 2>&1
+}
+
 cross_wheel_platform_tag() {
   if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
     return 1

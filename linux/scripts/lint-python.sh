@@ -27,10 +27,8 @@ trap 'rm -f "${_RUFF_OUT}"; rm -rf "${_EMB_DIR:-}"' EXIT
 preflight_python_require lint-python.sh || exit 1
 _LINT_PY="${PREFLIGHT_PYTHON}"
 
-# shellcheck source=01-core/lint-root.sh
-. "${_core}/lint-root.sh"
-lint_scope_begin SCAN_ROOT "${REPO_ROOT}" "$@" || exit 1
-set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
+# shellcheck source=01-core/lint-scope-init.sh
+. "${_core}/lint-scope-init.sh" || exit 1
 
 # Target set: first-party Python only
 if [ "$#" -gt 0 ]; then

@@ -121,12 +121,12 @@ strip_cross_wheels() {
     [ -f "${whl}" ] || continue
     case "${whl}" in *-none-any.whl) continue ;; esac
     tmp="$(mktemp -d)"
-    if uv run python -m wheel unpack "${whl}" -d "${tmp}/u" >/dev/null 2>&1 \
+    if wheel_archive_run unpack "${whl}" "${tmp}/u" uv run python \
        && find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) -print -quit 2>/dev/null | grep -q .; then
       apply_shared_library_action "${tmp}/u" "" 2 '*.so' '*.so.*' "${strip_bin}" --strip-all
       unpacked="$(first_match "${tmp}/u" -mindepth 1 -maxdepth 1 -type d)"
       mkdir -p "${tmp}/p"   # `wheel pack -d` does NOT create its dest dir
-      if [ -n "${unpacked}" ] && uv run python -m wheel pack "${unpacked}" -d "${tmp}/p" >/dev/null 2>&1; then
+      if [ -n "${unpacked}" ] && wheel_archive_run pack "${unpacked}" "${tmp}/p" uv run python; then
         packed="$(first_match "${tmp}/p" -maxdepth 1 -name '*.whl')"
         if [ -n "${packed}" ]; then
           rm -f "${whl}"
