@@ -703,10 +703,17 @@ runtime_usage_row() {
       '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc)' ;;
       TARGET_ARCHES) description='Comma-separated target list' ;;
     esac
+  elif [ "${3:-runtime}" = chain ] && [ "$key" = '--target-arches LIST' ]; then
+    description='Comma-separated arch list (default: amd64,arm64,riscv64)'
   fi
   padding=$((column - 2 - ${#key}))
   [ "$padding" -gt 0 ] || padding=1
   printf '  %s%*s%s\n' "$key" "$padding" '' "$description"
+}
+
+runtime_usage_chain_arches() {
+  runtime_usage_row '--target-arches LIST' 27 chain
+  runtime_usage_row '--architectures LIST' 27 chain
 }
 
 # A shared description keeps both entrypoints aligned with the build flow.

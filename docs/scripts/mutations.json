@@ -22127,5 +22127,333 @@
   "replace": "    :",
   "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
   "why": "The original descendant-death assertion stays red when production stops terminating children; fixture cleanup remains independent."
+ },
+ {
+  "id": "lib.runtime-help-chain-arch-profile",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "runtime_usage_row '--target-arches LIST' 27 chain",
+  "replace": "runtime_usage_row '--target-arches LIST' 27 runtime",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Cross-chain help retains its historical arch-list wording through the shared renderer."
+ },
+ {
+  "id": "lib.runtime-help-chain-alias-row",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "runtime_usage_row '--architectures LIST' 27 chain",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Cross-chain help retains the independent alias row at its original position."
+ },
+ {
+  "id": "lib.runtime-help-verify-image-row",
+  "target": "linux/scripts/verify-cross-chain.sh",
+  "find": "runtime_usage_row '--image-repo REPO' 27 chain",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "The verification wrapper renders the original image repository help row."
+ },
+ {
+  "id": "lib.runtime-help-verify-required-renderer",
+  "target": "linux/scripts/verify-cross-chain.sh",
+  "find": "source \"${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh\" || return 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Help must import the actual renderer rather than merely claiming a companion dependency."
+ },
+ {
+  "id": "lib.runtime-help-verify-lazy-renderer",
+  "target": "linux/scripts/verify-cross-chain.sh",
+  "find": "usage() {\n  # Loading only function definitions keeps help independent of build initialization.\n  source \"${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh\" || return 1",
+  "replace": "source \"${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh\"\nusage() {",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Opaque forwarding works without a help renderer and keeps the child exit status."
+ },
+ {
+  "id": "lib.runtime-help-verify-opaque-forwarding",
+  "target": "linux/scripts/verify-cross-chain.sh",
+  "find": "${FWD_ARGS[@]+\"${FWD_ARGS[@]}\"}",
+  "replace": "${FWD_ARGS[*]}",
+  "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
+  "why": "Forwarding preserves empty, spaced and multiline arguments independently of shared help."
+ },
+ {
+  "id": "disk-guard.slug-removal-quiet",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "rm -rf \"${1:?}/${2}\" 2>/dev/null || true",
+  "replace": "rm -rf \"${1:?}/${2}\" || true",
+  "test": "bash linux/scripts/tests/test-disk-slug-removal.sh",
+  "why": "Slug removal preserves guarded roots, quiet diagnostics, advisory command failure and actual remaining-path evidence."
+ },
+ {
+  "id": "disk-guard.slug-removal-advisory",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "rm -rf \"${1:?}/${2}\" 2>/dev/null || true",
+  "replace": "rm -rf \"${1:?}/${2}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-disk-slug-removal.sh",
+  "why": "Slug removal preserves guarded roots, quiet diagnostics, advisory command failure and actual remaining-path evidence."
+ },
+ {
+  "id": "disk-guard.slug-removal-presence",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "if [ -e \"$1/$2\" ]; then return 1; fi",
+  "replace": "if [ ! -e \"$1/$2\" ]; then return 1; fi",
+  "test": "bash linux/scripts/tests/test-disk-slug-removal.sh",
+  "why": "Slug removal preserves guarded roots, quiet diagnostics, advisory command failure and actual remaining-path evidence."
+ },
+ {
+  "id": "disk-guard.slug-removal-root-required",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "${1:?}/${2}",
+  "replace": "${1}/${2}",
+  "test": "bash linux/scripts/tests/test-disk-slug-removal.sh",
+  "why": "Slug removal preserves guarded roots, quiet diagnostics, advisory command failure and actual remaining-path evidence."
+ },
+ {
+  "id": "disk-guard.slug-removal-callers",
+  "target": "linux/scripts/01-core/disk-guard.sh",
+  "find": "rm -rf \"${1:?}/${2}\" 2>/dev/null || true",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-disk-guard.sh",
+  "why": "Cache eviction callers delegate to the real slug removal owner and retain independent file-deletion assertions."
+ },
+ {
+  "id": "lib.lld-literal-false-ffmpeg-policy",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "compiler_tool_enabled ld.lld \"${USE_LLD:-true}\" literal-false",
+  "replace": "compiler_tool_enabled ld.lld \"${USE_LLD:-true}\"",
+  "test": "bash linux/scripts/tests/test-lld-literal-false-policy.sh",
+  "why": "These build arguments disable only literal false; broader configure-probe spellings must not leak into this caller."
+ },
+ {
+  "id": "lib.lld-literal-false-onnx-policy",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "compiler_tool_enabled ld.lld \"${USE_LLD:-true}\" literal-false",
+  "replace": "compiler_tool_enabled ld.lld \"${USE_LLD:-true}\"",
+  "test": "bash linux/scripts/tests/test-lld-literal-false-policy.sh",
+  "why": "These build arguments disable only literal false; broader configure-probe spellings must not leak into this caller."
+ },
+ {
+  "id": "lib.lld-literal-false-exact-spelling",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "      literal-false) if [ \"${2:-true}\" = false ]; then status=1; fi ;;",
+  "replace": "      literal-false) if [ \"${2:-true}\" = FALSE ]; then status=1; fi ;;",
+  "test": "bash linux/scripts/tests/test-lld-literal-false-policy.sh",
+  "why": "The literal false policy remains case-sensitive and does not normalize other spellings."
+ },
+ {
+  "id": "lib.lld-literal-false-lookup-first",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "compiler_tool_enabled() {\n  local status=0",
+  "replace": "compiler_tool_enabled() {\n  local status=0\n  if [ \"${3:-}\" = literal-false ] && [ \"${2:-true}\" = false ]; then return 1; fi",
+  "test": "bash linux/scripts/tests/test-lld-literal-false-policy.sh",
+  "why": "A failed lookup status is retained even for false, and the probe must happen before evaluating the flag."
+ },
+ {
+  "id": "lib.lld-literal-false-raw-status",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "    status=$?\n  fi\n  return \"$status\"",
+  "replace": "    status=1\n  fi\n  return \"$status\"",
+  "test": "bash linux/scripts/tests/test-lld-literal-false-policy.sh",
+  "why": "Optional-tool lookup statuses7 and127 must not be collapsed into a flag refusal1."
+ },
+ {
+  "id": "lib.compiler-tool-fixture-subject-overrides",
+  "target": "linux/scripts/tests/compiler-tool-fixture.sh",
+  "find": "_ctf_ort=\"${2:-",
+  "replace": "_ctf_ort=\"${1:-",
+  "test": "bash linux/scripts/tests/test-lld-literal-false-policy.sh",
+  "why": "Fixture subject overrides remain positional and isolated; fake-path assertions must fail without executing any production entrypoint."
+ },
+ {
+  "id": "lib.nerdctl-services-user-stop-order",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  systemctl --user stop buildkit.service containerd.service 2>/dev/null || true",
+  "replace": "  systemctl --user stop containerd.service buildkit.service 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "The user stack stops buildkit before containerd in every original flow."
+ },
+ {
+  "id": "lib.nerdctl-services-user-stop-best-effort",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  systemctl --user stop buildkit.service containerd.service 2>/dev/null || true",
+  "replace": "  systemctl --user stop buildkit.service containerd.service 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "User service stop failures stay best effort even under direct strict execution."
+ },
+ {
+  "id": "lib.nerdctl-services-user-stop-stdout",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  systemctl --user stop buildkit.service containerd.service 2>/dev/null || true",
+  "replace": "  systemctl --user stop buildkit.service containerd.service >/dev/null 2>&1 || true",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "User service stderr is suppressed while its stdout remains observable."
+ },
+ {
+  "id": "lib.nerdctl-services-rootful-unit-expansion",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  if sudo systemctl \"$action\" ${units}; then return 0; fi",
+  "replace": "  if sudo systemctl \"$action\" \"${units}\"; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "Rootful unit lists retain original IFS splitting and filename expansion."
+ },
+ {
+  "id": "lib.nerdctl-services-rootful-warning-status",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  warn \"could not ${description} ${units}\"",
+  "replace": "  warn \"could not ${description} ${units}\" || true",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "Failed warnings keep their raw status and direct versus conditional errexit behavior."
+ },
+ {
+  "id": "lib.nerdctl-services-rootful-restart-message",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "description=\"${3:-$1}\"",
+  "replace": "description=\"$1\"",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "The historical start failure says could not restart without changing the actual start action."
+ },
+ {
+  "id": "lib.nerdctl-services-rollback-stop-wiring",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "    _rootful_service_action stop \"${_rb_rootful}\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "Rollback stops active rootful services before the user stack and restoration."
+ },
+ {
+  "id": "lib.nerdctl-services-install-start-wiring",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  _rootful_service_action start \"${_rootful_active}\" restart",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-nerdctl-service-helpers.sh",
+  "why": "An included rootful stack restarts only after the original user readiness checks."
+ },
+ {
+  "id": "lib.host-python-pin-precedence",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "for candidate in \"${MEDIA_HOST_PYTHON:-}\" \"${UV_PYTHON:-}\"",
+  "replace": "for candidate in \"${UV_PYTHON:-}\" \"${MEDIA_HOST_PYTHON:-}\"",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "explicit media pins precede uv pins even when both are executable"
+ },
+ {
+  "id": "lib.host-python-pin-executable",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "[ -n \"${candidate}\" ] && [ -x \"${candidate}\" ] || continue",
+  "replace": "[ -n \"${candidate}\" ] && [ -f \"${candidate}\" ] || continue",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "an existing nonexecutable pin must not displace the next executable candidate"
+ },
+ {
+  "id": "lib.host-python-venv-pin",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "\"${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin/python}\"",
+  "replace": "\"${VIRTUAL_ENV:+${VIRTUAL_ENV}/python}\"",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "virtual environments retain the exact executable subpath"
+ },
+ {
+  "id": "lib.host-python-path-precedence",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1",
+  "replace": "command -v python 2>/dev/null || command -v python3 2>/dev/null || return 1",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "PATH fallback prefers python3 and returns its raw command-v path"
+ },
+ {
+  "id": "lib.host-python-canonical-profile",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "  host_python_path derived",
+  "replace": "  host_python_path explicit",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "canonical cross resolution retains optional PYTHON_VERSION derivation"
+ },
+ {
+  "id": "lib.host-python-android-profile",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "    host_python_path explicit",
+  "replace": "    host_python_path derived",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "the old-SDK Android fallback must not derive a version from PYTHON_VERSION"
+ },
+ {
+  "id": "lib.host-python-android-override-status",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "        host_python_bin\n        return",
+  "replace": "        host_python_bin\n        :",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "existing function and executable overrides remain authoritative even on failure"
+ },
+ {
+  "id": "lib.host-python-cross-import-status",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/platform.sh\" || exit $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/platform.sh\" || exit 1",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "selected companion failure retains its actual status even in conditional source context"
+ },
+ {
+  "id": "lib.host-python-android-import-status",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "source /opt/scripts/core/platform.sh || exit $?",
+  "replace": "source /opt/scripts/core/platform.sh || exit 1",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "selected installed companion failure must not become a different status or a repository retry"
+ },
+ {
+  "id": "lib.host-python-cross-required-symbol",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "declare -F host_python_path >/dev/null || { echo \"Error: platform.sh lacks host_python_path\" >&2; exit 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "a stale loaded platform guard cannot silently substitute PATH for the required selector"
+ },
+ {
+  "id": "lib.host-python-android-required-symbol",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "declare -F host_python_path >/dev/null || { echo \"Error: platform.sh lacks host_python_path\" >&2; exit 1; }",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "the Android copied module requires the actual shared selector even when a host override exists"
+ },
+ {
+  "id": "lib.host-python-source-only",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "if [ \"${BASH_SOURCE[0]}\" = \"$0\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "the cross module still rejects direct execution"
+ },
+ {
+  "id": "lib.host-python-loaded-module",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "[ -z \"${_CROSS_PYTHON_LOADED:-}\" ] || return 0",
+  "replace": "[ -z \"${_CROSS_PYTHON_LOADED:-}\" ] || :",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "already-loaded modules retain existing caller definitions"
+ },
+ {
+  "id": "lib.host-python-platform-guard",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "[ -n \"${_PLATFORM_SH_LOADED:-}\" ] && return 0",
+  "replace": "[ -n \"${_PLATFORM_SH_LOADED:-}\" ] && :",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "an already loaded platform does not overwrite caller selection hooks"
+ },
+ {
+  "id": "lib.host-python-android-raw-newlines",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    if host_python_pinned_path interpreter; then\n      printf '%s' \"${interpreter}\"\n      return",
+  "replace": "    if host_python_pinned_path interpreter; then\n      interpreter=\"$(printf '%s' \"${interpreter}\")\"\n      printf '%s' \"${interpreter}\"\n      return",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "Android explicit pins preserve trailing newline bytes while the canonical derived profile retains legacy capture semantics"
+ },
+ {
+  "id": "lib.host-python-android-printf-status",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    if host_python_pinned_path interpreter; then\n      printf '%s' \"${interpreter}\"\n      return",
+  "replace": "    if host_python_pinned_path interpreter; then\n      printf '%s' \"${interpreter}\"\n      return 0",
+  "test": "bash linux/scripts/tests/test-host-python-pins.sh",
+  "why": "a selected Android pin whose stdout emission fails retains that failure and never falls through to PATH"
  }
 ]

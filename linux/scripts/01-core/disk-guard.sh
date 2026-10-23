@@ -136,6 +136,13 @@ _disk_guard_trim_cache_export() {
   return 0
 }
 
+# A failed removal matters only when the selected slug still exists.
+_disk_guard_remove_slug() {
+  rm -rf "${1:?}/${2}" 2>/dev/null || true
+  if [ -e "$1/$2" ]; then return 1; fi
+  return 0
+}
+
 # 1 = stop trimming: keep floor reached, no victim, or a victim that cannot be removed.
 _disk_guard_trim_one() {
   local bc_dir="$1" protected="$2" keep_n="$3"
@@ -149,9 +156,8 @@ _disk_guard_trim_one() {
   [ -n "${victim}" ] || return 1
   sz="$(_disk_guard_dir_bytes "${bc_dir}/${victim}")"
   [ -n "${sz}" ] || sz=0
-  rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
   # Undeletable victim would be re-picked forever: report and stop.
-  if [ -e "${bc_dir}/${victim}" ]; then
+  if ! _disk_guard_remove_slug "${bc_dir}" "${victim}"; then
     _disk_guard_log "[disk-trim]   SKIP ${victim} — could not remove; stopping"
     return 1
   fi

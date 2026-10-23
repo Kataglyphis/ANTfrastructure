@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Help receipts and isolated env contracts cover documentation and runtime-only consumption, not builds or image contents.
+# Help and forwarding receipts cover text, argument preservation and dependency scope, not builds or images.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"

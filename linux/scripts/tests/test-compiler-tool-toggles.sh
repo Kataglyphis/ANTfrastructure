@@ -2,13 +2,8 @@
 # Actual probe and cache consumers run with stubbed tools; no compiler, cache server, build or network operation runs.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-workspace-fixture.sh"
-t_fixture_workspace_init WORK
-FFMPEG="${1:-${TESTS_DIR}/../03-media/build/ffmpeg/ffmpeg-probe-framework.sh}"
-ORT="${2:-${TESTS_DIR}/../03-media/build/onnxruntime/build/lib/common.sh}"
-UTILS="${3:-${TESTS_DIR}/../01-core/compiler-cache-utils.sh}"
-RECEIPT="${4:-}"
-[ -z "$RECEIPT" ] || : > "$RECEIPT"
+source "${TESTS_DIR}/compiler-tool-fixture.sh"
+t_compiler_tool_fixture_init ffmpeg-probe-framework.sh "$@"
 t_fn_src "$ORT" append_onnx_ccache_build_args > "$WORK/ort-functions.sh"
 t_fn_src "$ORT" _onnx_compiler_cache_launcher >> "$WORK/ort-functions.sh"
 cat > "$WORK/worker.sh" <<'BASH'

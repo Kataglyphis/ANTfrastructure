@@ -1918,3 +1918,47 @@ remain independent. Chain lifecycle fixtures share process cleanup and archive
 construction, while retaining explicit assertions for leaf termination, retained
 and removed run IDs, symlinks and foreign files. Cleanup tracks fixture processes
 without relying on the production subtree terminator under test.
+
+### Cross-chain verification help
+
+Cross-chain and verification-wrapper help share architecture rows through
+`runtime_usage_chain_arches` and the repository row through `runtime_usage_row`.
+The `chain` profile preserves the original arch-list wording and column widths.
+The verification wrapper loads the function-only renderer inside `usage`; normal
+forwarding does not depend on it or initialize build helpers. Its independent
+receipts cover full help bytes, a missing renderer, empty and multiline forwarded
+arguments, describe mode and the child process's nonzero exit status.
+
+### Optional linkers, installer services and cache removal
+
+FFmpeg and ORT use the optional-tool predicate's explicit literal-false policy
+for LLD: only `false` disables it. Values such as `0`, `FALSE`, `no` and `off`
+retain their historical enabled behavior. Lookup still precedes the policy check;
+lookup failure keeps its original status and suppresses diagnostics. Caller
+compiler arguments and logs remain separate. Their offline suites share fixture
+setup while retaining independent policy expectations and complete byte receipts.
+
+The nerdctl installer shares its user-stack stop and rootful service actions
+inside the installer file. Callers retain service guards, stop/start order,
+logging, unit-list splitting and best-effort behavior. Offline fixtures exercise
+actual service sections with stubbed commands; they never execute installation
+or real service operations.
+
+`_disk_guard_remove_slug` owns guarded, quiet removal and remaining-path evidence.
+The in-stage trimmer stops at an undeletable slug; the chain protects it and keeps
+looking. Both retain advisory removal-command failure and their original logs
+and counters. Unit tests cover actual filesystem outcomes and independent caller
+assertions, including empty-root refusal and strict-shell command failure.
+
+### Host Python path policies
+
+`platform.sh` owns `host_python_path` with explicit and derived profiles. Both
+retain the ordered executable pins from `MEDIA_HOST_PYTHON`, `UV_PYTHON`,
+`VIRTUAL_ENV` and `PYTHON_MAJOR_MINOR`, followed by PATH lookup. The canonical
+cross-Python caller retains optional `PYTHON_VERSION` derivation; GStreamer's
+fallback does not gain it and still prefers an existing `host_python_bin` override.
+Inputs remain raw and are read when called. Each profile retains its original
+trailing-newline and output-failure behavior. Both imports require the existing
+platform companion rather than loading the broader cross environment or providing
+a private fallback. Independent receipts cover pin order, failed lookups, version
+policy, overrides, source guards and copied-companion failures.

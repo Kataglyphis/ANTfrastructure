@@ -1,0 +1,410 @@
+{
+  "canonical:strict:printf-failure": {
+    "status": 43,
+    "stdout": "partial",
+    "stderr": "",
+    "trace": "printf-fault\nprintf-fault\n"
+  },
+  "canonical:strict:newline-media": {
+    "status": 0,
+    "stdout": "WORK/newline pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:media": {
+    "status": 0,
+    "stdout": "WORK/media pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:invalid-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:nonexec-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:uv": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:venv": {
+    "status": 0,
+    "stdout": "WORK/venv/bin/python",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:explicit-version": {
+    "status": 0,
+    "stdout": "/usr/local/bin/python3.99",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:derived-version": {
+    "status": 0,
+    "stdout": "/usr/local/bin/python3.99",
+    "stderr": "",
+    "trace": "derive:3.99.1\n"
+  },
+  "canonical:strict:derived-failure": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": "derive:3.99.1\n"
+  },
+  "canonical:strict:invalid-explicit-version": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": "derive:3.99.1\n"
+  },
+  "canonical:strict:path-python3": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:path-python": {
+    "status": 0,
+    "stdout": "WORK/tools/python\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:path-missing": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:strict:dynamic-pins": {
+    "status": 0,
+    "stdout": "WORK/media pin\nWORK/second pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:printf-failure": {
+    "status": 0,
+    "stdout": "partial",
+    "stderr": "",
+    "trace": "printf-fault\nprintf-fault\n"
+  },
+  "canonical:conditional:newline-media": {
+    "status": 0,
+    "stdout": "WORK/newline pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:media": {
+    "status": 0,
+    "stdout": "WORK/media pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:invalid-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:nonexec-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:uv": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:venv": {
+    "status": 0,
+    "stdout": "WORK/venv/bin/python",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:explicit-version": {
+    "status": 0,
+    "stdout": "/usr/local/bin/python3.99",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:derived-version": {
+    "status": 0,
+    "stdout": "/usr/local/bin/python3.99",
+    "stderr": "",
+    "trace": "derive:3.99.1\n"
+  },
+  "canonical:conditional:derived-failure": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": "derive:3.99.1\n"
+  },
+  "canonical:conditional:invalid-explicit-version": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": "derive:3.99.1\n"
+  },
+  "canonical:conditional:path-python3": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:path-python": {
+    "status": 0,
+    "stdout": "WORK/tools/python\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:path-missing": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "",
+    "trace": ""
+  },
+  "canonical:conditional:dynamic-pins": {
+    "status": 0,
+    "stdout": "WORK/media pin\nWORK/second pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:printf-failure": {
+    "status": 43,
+    "stdout": "partial",
+    "stderr": "",
+    "trace": "printf-fault\n"
+  },
+  "gst:strict:newline-media": {
+    "status": 0,
+    "stdout": "WORK/newline pin\n\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:media": {
+    "status": 0,
+    "stdout": "WORK/media pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:invalid-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:nonexec-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:uv": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:venv": {
+    "status": 0,
+    "stdout": "WORK/venv/bin/python",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:explicit-version": {
+    "status": 0,
+    "stdout": "/usr/local/bin/python3.99",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:derived-version": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:derived-failure": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:invalid-explicit-version": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:path-python3": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:path-python": {
+    "status": 0,
+    "stdout": "WORK/tools/python\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:path-missing": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:dynamic-pins": {
+    "status": 0,
+    "stdout": "WORK/media pin\nWORK/second pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:function-override": {
+    "status": 0,
+    "stdout": "host override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:failing-function-override": {
+    "status": 39,
+    "stdout": "host override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:executable-override": {
+    "status": 0,
+    "stdout": "external override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:strict:failing-executable-override": {
+    "status": 41,
+    "stdout": "external override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:printf-failure": {
+    "status": 43,
+    "stdout": "partial",
+    "stderr": "",
+    "trace": "printf-fault\n"
+  },
+  "gst:conditional:newline-media": {
+    "status": 0,
+    "stdout": "WORK/newline pin\n\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:media": {
+    "status": 0,
+    "stdout": "WORK/media pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:invalid-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:nonexec-media": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:uv": {
+    "status": 0,
+    "stdout": "WORK/uv pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:venv": {
+    "status": 0,
+    "stdout": "WORK/venv/bin/python",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:explicit-version": {
+    "status": 0,
+    "stdout": "/usr/local/bin/python3.99",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:derived-version": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:derived-failure": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:invalid-explicit-version": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:path-python3": {
+    "status": 0,
+    "stdout": "WORK/tools/python3\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:path-python": {
+    "status": 0,
+    "stdout": "WORK/tools/python\n",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:path-missing": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:dynamic-pins": {
+    "status": 0,
+    "stdout": "WORK/media pin\nWORK/second pin",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:function-override": {
+    "status": 0,
+    "stdout": "host override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:failing-function-override": {
+    "status": 39,
+    "stdout": "host override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:executable-override": {
+    "status": 0,
+    "stdout": "external override with spaces",
+    "stderr": "",
+    "trace": ""
+  },
+  "gst:conditional:failing-executable-override": {
+    "status": 41,
+    "stdout": "external override with spaces",
+    "stderr": "",
+    "trace": ""
+  }
+}

@@ -79,8 +79,9 @@ build-runtime-manifest.sh to build per-arch base/package/torch wrapper images on
 the real target platform and publish the multi-arch manifest.
 
 Options:
-  --target-arches LIST     Comma-separated arch list (default: amd64,arm64,riscv64)
-  --architectures LIST     Alias for --target-arches
+EOF
+  runtime_usage_chain_arches
+  cat <<'EOF'
   --cross-targets LIST     Compiler target list baked into the compiler image
                            (default: amd64,arm64,riscv64; must cover --target-arches)
 EOF
@@ -423,8 +424,7 @@ _chain_evict_slugs() {
     victim="$(_disk_guard_pick_victim "${bc_dir}" "${_prot_ref}")"
     [ -n "${victim}" ] || break
     log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
-    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-    if [ -e "${bc_dir}/${victim}" ]; then
+    if ! _disk_guard_remove_slug "${bc_dir}" "${victim}"; then
       warn "[disk-guard]   could not remove ${victim}; skipping it"
       _prot_ref="${_prot_ref},${victim}"
     fi
