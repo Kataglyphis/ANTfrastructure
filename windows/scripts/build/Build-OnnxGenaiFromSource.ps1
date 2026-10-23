@@ -244,18 +244,8 @@ function Get-GenaiOrtNinjaFinding {
 function Get-GenaiOrtTreeFinding {
     param([Parameter(Mandatory)][string]$TreeRoot, [Parameter(Mandatory)][string]$OrtRoot, [switch]$ForbidCopies)
     $walk = [System.IO.EnumerationOptions]@{ RecurseSubdirectories = $true; AttributesToSkip = [System.IO.FileAttributes]0; IgnoreInaccessible = $false }
-    $flatWalk = [System.IO.EnumerationOptions]@{ AttributesToSkip = [System.IO.FileAttributes]0; IgnoreInaccessible = $false }
-    $chainSha = @{}
-    foreach ($ref in @(@{ Dir = 'include\onnxruntime'; Walk = $walk }, @{ Dir = 'lib'; Walk = $flatWalk }, @{ Dir = 'bin'; Walk = $flatWalk })) {
-        $refDir = Join-Path $OrtRoot $ref.Dir
-        if (-not (Test-Path -LiteralPath $refDir -PathType Container)) { continue }
-        foreach ($file in [System.IO.Directory]::EnumerateFiles($refDir, '*', $ref.Walk)) {
-            $leaf = [System.IO.Path]::GetFileName($file)
-            if ($leaf -notmatch '(?i)^onnxruntime|_provider_factory\.h$') { continue }
-            if (-not $chainSha.ContainsKey($leaf)) { $chainSha[$leaf] = [System.Collections.Generic.List[string]]::new() }
-            $chainSha[$leaf].Add((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash)
-        }
-    }
+    $chainIndex = Get-OrtGateDirectoryIndex -OrtRoot $OrtRoot -Consumer Genai
+    $chainSha = $chainIndex.Sha
     foreach ($anchor in 'onnxruntime_c_api.h', 'onnxruntime.lib', 'onnxruntime.dll') {
         if (-not $chainSha.ContainsKey($anchor)) { "the chain ONNX Runtime at $OrtRoot has no $anchor to compare against" }
     }

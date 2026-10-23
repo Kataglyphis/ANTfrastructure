@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 ? reduce Windows behavior duplication
+
+- Share source-archive extraction while keeping strict failures, pinned dangerous-link checks and optional tar cleanup.
+- Share ORT chain file indexing while preserving each gate's recursion, filename and unreadable-file policies.
+- Share Flutter plugin patching and artifact-copy lifecycle; retain idempotence, CMake-state exclusions and robocopy warnings.
+- Share sccache diagnostic startup, compile/source setup and stats parsing while keeping environment choices and verdicts per mode.
+- Share Python CI tool and child-driver fixtures; preserve exit status, quoting, call-log isolation and caller-specific summaries.
+- Add focused regression and mutation proofs; remove resolved duplication exceptions and lower remaining budgets without relaxing the scan.
+
 ## 2026-10-23 — continue Linux quality and runtime deduplication
 
 - Share host architecture probing with unchanged target/build precedence and failure fallbacks; reuse host Python version selection and ordered LLVM builder discovery.

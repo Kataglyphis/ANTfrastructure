@@ -161,12 +161,6 @@ function Resolve-PinnedSource {
 }
 
 function Get-SevenZipSkippedLink {
-    <#
-    .SYNOPSIS
-        The in-archive links one 7-Zip extraction refused as dangerous; throws on any other failure.
-    .DESCRIPTION
-        7-Zip 25+ refuses any '..' symlink with exit 2 and never writes it; any other error or exit code throws.
-    #>
     param(
         # 7-Zip prints blank lines.
         [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]]$Output,
@@ -184,29 +178,11 @@ function Get-SevenZipSkippedLink {
 }
 
 function Expand-PinnedArchive {
-    <#
-    .SYNOPSIS
-        Expand-SourceTarball's two 7-Zip passes, except that links 7-Zip refuses as dangerous are skipped.
-    .DESCRIPTION
-        The intermediate .tar is deleted, as G2 refuses an ORT-named archive; kept out of the media-mounted SourceBuild.Common.
-    #>
     param(
         [Parameter(Mandatory)][string]$Archive,
         [Parameter(Mandatory)][string]$Destination
     )
-    $skipped = @()
-    # A .tar.gz yields a .tar on the first pass, and its entries on the second.
-    foreach ($pass in 1, 2) {
-        $from = if ($pass -eq 1) { $Archive } else { Get-ChildItem -Path $Destination -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName }
-        if (-not $from) { break }
-        $out = @(& 7z x "$from" -o"$Destination" -y -bd 2>&1 | ForEach-Object { "$_" })
-        $skipped += @(Get-SevenZipSkippedLink -Output $out -ExitCode $LASTEXITCODE -Archive $from)
-        if ($pass -eq 2) { Remove-Item -LiteralPath $from -Force }
-    }
-    if ($skipped.Count) { Write-Warning "7-Zip left $($skipped.Count) in-tree link(s) of $(Split-Path $Archive -Leaf) unextracted: $($skipped -join ', ')" }
-    $root = Get-ChildItem -Path $Destination -Directory | Select-Object -First 1 -ExpandProperty FullName
-    if (-not $root) { throw "Failed to locate extracted source directory under $Destination" }
-    return $root
+    Expand-SourceTarball -Archive $Archive -Destination $Destination -SkippedLinkResolver ${function:Get-SevenZipSkippedLink} -RemoveIntermediateTar
 }
 
 function Save-PinnedSource {

@@ -46,6 +46,21 @@ Describe 'Harness fixture lifecycle' {
     }
 }
 
+Describe 'Harness text trees' {
+    It 'creates nested parents, preserves exact contents and overwrites existing files without output' {
+        Invoke-InTestDir { param($dir)
+            $root = Join-Path $dir 'absent tree'
+            $content = "first line`nsecond line"
+            $result = @(Write-TestFileTree -Root $root -Files ([ordered]@{ 'nested [folder]\file.txt' = $content; 'empty.txt' = '' }))
+            Assert-Equal 0 $result.Count
+            Assert-Equal $content ([IO.File]::ReadAllText((Join-Path $root 'nested [folder]\file.txt')))
+            Assert-Equal '' ([IO.File]::ReadAllText((Join-Path $root 'empty.txt')))
+            Write-TestFileTree -Root $root -Files @{ 'nested [folder]\file.txt' = 'replacement' }
+            Assert-Equal 'replacement' ([IO.File]::ReadAllText((Join-Path $root 'nested [folder]\file.txt')))
+        }
+    }
+}
+
 Describe 'Lifted module fixture arguments' {
     It 'forwards module initialization and body arguments and removes the module after failure' {
         $state = [pscustomobject]@{ ModulePath = ''; Seen = '' }

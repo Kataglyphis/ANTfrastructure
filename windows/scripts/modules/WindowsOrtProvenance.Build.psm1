@@ -51,8 +51,8 @@ function Test-OrtGateUnder {
 }
 
 function Get-OrtGateSha {
-    param([Parameter(Mandatory)][string]$Path)
-    try { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() } catch { return 'unreadable' }
+    param([Parameter(Mandatory)][string]$Path, [switch]$RequireReadable)
+    try { return (Get-FileHash -LiteralPath $Path -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant() } catch { if ($RequireReadable) { throw }; return 'unreadable' }
 }
 
 function Add-OrtGateSha {
@@ -69,26 +69,38 @@ function Get-OrtGateChainWheel {
     return @(Get-ChildItem -LiteralPath $WheelDir -Filter '*.whl' -File | Where-Object { $_.Name -match $pattern } | ForEach-Object FullName)
 }
 
-function Get-OrtGateChainIndex {
-    # leaf -> the SHA256s the chain ships under that name (its install tree and its wheels), the anchors G1 reads, and gaps.
-    param([Parameter(Mandatory)][string]$OrtRoot, [AllowEmptyCollection()][string[]]$ChainWheel = @())
+function Get-OrtGateDirectoryIndex {
+    param(
+        [Parameter(Mandatory)][string]$OrtRoot,
+        [ValidateSet('Chain', 'Genai')][string]$Consumer = 'Chain'
+    )
+    $genai = $Consumer -eq 'Genai'
+    $include = if ($genai) { 'include\onnxruntime' } else { 'include' }
+    $codeName = if ($genai) { [regex]::new('^onnxruntime|_provider_factory\.h$', 'IgnoreCase') } else { $script:OrtGateCodeName }
     $index = @{
         Sha = [System.Collections.Generic.Dictionary[string, System.Collections.Generic.HashSet[string]]]::new([StringComparer]::OrdinalIgnoreCase)
         Archive = [System.Collections.Generic.HashSet[string]]::new(); Finding = [System.Collections.Generic.List[string]]::new(); Core = ''; CApi = ''
     }
-    $walk = [System.IO.EnumerationOptions]@{ RecurseSubdirectories = $true; AttributesToSkip = [System.IO.FileAttributes]0 }
-    foreach ($sub in 'include', 'lib', 'bin') {
+    foreach ($sub in @($include, 'lib', 'bin')) {
         $dir = Join-Path $OrtRoot $sub
         if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        $walk = [System.IO.EnumerationOptions]@{ RecurseSubdirectories = ($sub -eq $include -or -not $genai); AttributesToSkip = [System.IO.FileAttributes]0; IgnoreInaccessible = (-not $genai) }
         foreach ($f in [System.IO.Directory]::EnumerateFiles($dir, '*', $walk)) {
             $leaf = [System.IO.Path]::GetFileName($f)
-            if (-not $script:OrtGateCodeName.IsMatch($leaf)) { continue }
-            $sha = Get-OrtGateSha -Path $f
+            if (-not $codeName.IsMatch($leaf)) { continue }
+            $sha = Get-OrtGateSha -Path $f -RequireReadable:$genai
             Add-OrtGateSha -Index $index -Leaf $leaf -Sha $sha
             if ($sub -eq 'bin' -and $leaf -eq 'onnxruntime.dll') { $index.Core = $sha }
             if ($leaf -eq 'onnxruntime_c_api.h' -and -not $index.CApi) { $index.CApi = $sha }
         }
     }
+    return $index
+}
+
+function Get-OrtGateChainIndex {
+    # Wheel references and required anchors extend the shared directory index.
+    param([Parameter(Mandatory)][string]$OrtRoot, [AllowEmptyCollection()][string[]]$ChainWheel = @())
+    $index = Get-OrtGateDirectoryIndex -OrtRoot $OrtRoot
     foreach ($wheel in $ChainWheel) {
         [void]$index.Archive.Add((Get-OrtGateSha -Path $wheel))
         $zip = [System.IO.Compression.ZipFile]::OpenRead($wheel)
@@ -347,6 +359,6 @@ function Assert-ChainOrtOnly {
 }
 
 Export-ModuleMember -Function @(
-    'Get-OrtGateStampPath', 'Get-OrtGateDefaultCache', 'Get-OrtGateChainIndex', 'Get-OrtGateTreeFinding', 'Get-OrtGatePathToken',
+    'Get-OrtGateStampPath', 'Get-OrtGateDefaultCache', 'Get-OrtGateDirectoryIndex', 'Get-OrtGateChainIndex', 'Get-OrtGateTreeFinding', 'Get-OrtGatePathToken',
     'Get-OrtGateRecordToken', 'Get-OrtGateRecordFinding', 'Get-OrtGateLogFinding', 'Assert-ChainOrtOnly'
 )

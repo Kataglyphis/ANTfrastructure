@@ -82,6 +82,24 @@ function Repair-FlutterPluginSymlink {
     }
 }
 
+function Edit-FlutterPluginText {
+    param(
+        [object]$Context,
+        [AllowEmptyString()][string]$Content,
+        [hashtable]$Patch
+    )
+
+    if ($Content -match $Patch.Already) {
+        Write-BuildLog -Context $Context -Message "permission_handler_windows $($Patch.Label) already patched."
+    } elseif ($Content -match $Patch.Target) {
+        Write-BuildLog -Context $Context -Message "Patching permission_handler_windows $($Patch.Label)..."
+        return $Content -replace $Patch.Target, $Patch.Replacement
+    } elseif ($Patch.WarnMissing) {
+        Write-BuildLogWarning -Context $Context -Message 'Patch target line not found in permission_handler_windows plugin file.'
+    }
+    return $Content
+}
+
 function Update-PermissionHandlerWindows {
     [CmdletBinding()]
     param(
@@ -95,40 +113,62 @@ function Update-PermissionHandlerWindows {
     $pluginFile = Join-Path $WorkspaceDir "windows\flutter\ephemeral\.plugin_symlinks\permission_handler_windows\windows\permission_handler_windows_plugin.cpp"
     $pluginFile = [System.IO.Path]::GetFullPath($pluginFile)
 
-    if (Test-Path $pluginFile) {
-        $pluginContent = Get-Content -LiteralPath $pluginFile -Raw
-        $changed = $false
+    if (-not (Test-Path $pluginFile)) { return }
 
-        $targetLine = 'result->Success\(requestResults\);'
-        $patchedLine = 'result->Success(flutter::EncodableValue(requestResults));'
-
-        if ($pluginContent -match 'result->Success\(flutter::EncodableValue\(requestResults\)\);') {
-            Write-BuildLog -Context $Context -Message "permission_handler_windows Success already patched."
-        } elseif ($pluginContent -match $targetLine) {
-            Write-BuildLog -Context $Context -Message "Patching permission_handler_windows Success..."
-            $pluginContent = $pluginContent -replace $targetLine, $patchedLine
-            $changed = $true
-        } else {
-            Write-BuildLogWarning -Context $Context -Message "Patch target line not found in permission_handler_windows plugin file."
+    $originalContent = [IO.File]::ReadAllText($pluginFile)
+    $pluginContent = $originalContent
+    $patches = @(
+        @{
+            Label = 'Success'
+            Already = 'result->Success\(flutter::EncodableValue\(requestResults\)\);'
+            Target = 'result->Success\(requestResults\);'
+            Replacement = 'result->Success(flutter::EncodableValue(requestResults));'
+            WarnMissing = $true
+        },
+        @{
+            Label = 'loop'
+            Already = 'for\s*\(\s*size_t\s+i'
+            Target = 'for\s*\(\s*int\s+i\s*=\s*0\s*;\s*i\s*<\s*permissions\.size\(\)\s*;\s*i\+\+\s*\)'
+            Replacement = 'for (size_t i=0;i<permissions.size();i++)'
+            WarnMissing = $false
         }
-
-        $targetLineFor = 'for\s*\(\s*int\s+i\s*=\s*0\s*;\s*i\s*<\s*permissions\.size\(\)\s*;\s*i\+\+\s*\)'
-        $patchedLineFor = 'for (size_t i=0;i<permissions.size();i++)'
-
-        if ($pluginContent -match 'for\s*\(\s*size_t\s+i') {
-            Write-BuildLog -Context $Context -Message "permission_handler_windows loop already patched."
-        } elseif ($pluginContent -match $targetLineFor) {
-            Write-BuildLog -Context $Context -Message "Patching permission_handler_windows loop..."
-            $pluginContent = $pluginContent -replace $targetLineFor, $patchedLineFor
-            $changed = $true
-        }
-
-        if ($changed) {
-            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-            [System.IO.File]::WriteAllText($pluginFile, $pluginContent, $utf8NoBom)
-            Write-BuildLog -Context $Context -Message "Successfully applied permission_handler_windows patches."
-        }
+    )
+    foreach ($patch in $patches) {
+        $pluginContent = [string](Edit-FlutterPluginText -Context $Context -Content $pluginContent -Patch $patch)
     }
+    if ($pluginContent -cne $originalContent) {
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($pluginFile, $pluginContent, $utf8NoBom)
+        Write-BuildLog -Context $Context -Message 'Successfully applied permission_handler_windows patches.'
+    }
+}
+
+
+function Sync-FlutterArtifactTree {
+    param(
+        [object]$Context,
+        [string]$Source,
+        [string]$Destination,
+        [string]$Kind,
+        [string[]]$ExcludeFiles,
+        [string[]]$ExcludeDirectories
+    )
+
+    Write-BuildLog -Context $Context -Message "Syncing fast local $Kind artifacts ($Source) back to host ($Destination)..."
+    if (-not (Test-Path $Destination)) {
+        New-Item -ItemType Directory -Force -Path $Destination | Out-Null
+    }
+    # /R:1 /W:1 avoid a locked file's million retries; /FFT avoids false bind-mount changes.
+    $copyArgs = @($Source, $Destination, '/E', '/MT:16', '/R:1', '/W:1', '/FFT', '/NOOFFLOAD', '/XF') +
+        $ExcludeFiles + @('/XD') + $ExcludeDirectories +
+        @('/NFL', '/NDL', '/NJH', '/NJS', '/nc', '/ns', '/np', '/LOG:nul')
+    & robocopy.exe @copyArgs > $null 2>&1
+    $copyExit = $LASTEXITCODE
+    if ($copyExit -ge 8) {
+        Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of $Kind artifacts to '$Destination' failed (exit code $copyExit); host copy may be incomplete."
+    }
+    # Robocopy's success codes 1-7 must not trip the caller's exit-code gate.
+    $global:LASTEXITCODE = 0
 }
 
 function Sync-FastLocalArtifactsToHost {
@@ -150,51 +190,14 @@ function Sync-FastLocalArtifactsToHost {
         [string] $HostRustTargetDir
     )
 
-    Write-BuildLog -Context $Context -Message "Syncing fast local build artifacts ($BuildRoot) back to host ($OriginalBuildRoot)..."
-    
-    if (-not (Test-Path $OriginalBuildRoot)) {
-        New-Item -ItemType Directory -Force -Path $OriginalBuildRoot | Out-Null
-    }
-    
-    # /R:1 /W:1 avoid robocopy's million retries on a locked file; /FFT stops false "modified" on bind mounts.
-    $robocopyArgs = @(
-        $BuildRoot,
-        $OriginalBuildRoot,
-        "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD",
-        # CMake state is bound to its dir and generator, and would abort the host's next VS-generator configure.
-        "/XF", "*.obj", "*.tlog", "*.lastbuildstate", "*.idb", "*.ilk", "*.pdb", ".ninja*", "CMakeCache.txt",
-        "/XD", "*.dir", "CMakeFiles", "x64_x64-ClangCL*",
-        "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
-    )
-    & robocopy.exe $robocopyArgs > $null 2>&1
-    # robocopy >= 8 is a failed copy: best-effort sync-back warns, never silently.
-    $robocopyExit = $LASTEXITCODE
-    if ($robocopyExit -ge 8) {
-        Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of build artifacts to '$OriginalBuildRoot' failed (exit code $robocopyExit); host copy may be incomplete."
-    }
-    # Reset so robocopy's non-zero success codes (1-7) never trip callers' exit-code gates.
-    $global:LASTEXITCODE = 0
-
+    # CMake state is tied to its directory and generator, so the host receives only artifacts.
+    Sync-FlutterArtifactTree -Context $Context -Source $BuildRoot -Destination $OriginalBuildRoot -Kind 'build' `
+        -ExcludeFiles @('*.obj', '*.tlog', '*.lastbuildstate', '*.idb', '*.ilk', '*.pdb', '.ninja*', 'CMakeCache.txt') `
+        -ExcludeDirectories @('*.dir', 'CMakeFiles', 'x64_x64-ClangCL*')
     if (-not [string]::IsNullOrEmpty($CargoTargetDir) -and -not [string]::IsNullOrEmpty($HostRustTargetDir)) {
-        Write-BuildLog -Context $Context -Message "Syncing fast local Rust artifacts ($CargoTargetDir) back to host ($HostRustTargetDir)..."
-        if (-not (Test-Path $HostRustTargetDir)) {
-            New-Item -ItemType Directory -Force -Path $HostRustTargetDir | Out-Null
-        }
-        
-        $robocopyRustArgs = @(
-            $CargoTargetDir,
-            $HostRustTargetDir,
-            "/E", "/MT:16", "/R:1", "/W:1", "/FFT", "/NOOFFLOAD",
-            "/XF", "*.rlib", "*.rmeta", "*.d", "*.o",
-            "/XD", ".fingerprint", "build", "deps", "incremental",
-            "/NFL", "/NDL", "/NJH", "/NJS", "/nc", "/ns", "/np", "/LOG:nul"
-        )
-        & robocopy.exe $robocopyRustArgs > $null 2>&1
-        $robocopyRustExit = $LASTEXITCODE
-        if ($robocopyRustExit -ge 8) {
-            Write-BuildLogWarning -Context $Context -Message "robocopy sync-back of Rust artifacts to '$HostRustTargetDir' failed (exit code $robocopyRustExit); host copy may be incomplete."
-        }
-        $global:LASTEXITCODE = 0
+        Sync-FlutterArtifactTree -Context $Context -Source $CargoTargetDir -Destination $HostRustTargetDir -Kind 'Rust' `
+            -ExcludeFiles @('*.rlib', '*.rmeta', '*.d', '*.o') `
+            -ExcludeDirectories @('.fingerprint', 'build', 'deps', 'incremental')
     }
 }
 

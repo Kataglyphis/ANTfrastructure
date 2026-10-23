@@ -5,11 +5,9 @@
 
 # Lays out files relative to a root, creating directories; content is irrelevant to every check here.
 function Write-OnnxTestTree([string]$Root, [string[]]$Relative) {
-    foreach ($rel in $Relative) {
-        $p = Join-Path $Root $rel
-        $null = New-Item -ItemType Directory -Force -Path (Split-Path $p -Parent)
-        [IO.File]::WriteAllText($p, $rel)
-    }
+    $files = @{}
+    foreach ($rel in $Relative) { $files[$rel] = $rel }
+    Write-TestFileTree -Root $Root -Files $files
 }
 
 Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
@@ -22,10 +20,9 @@ Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
         if ($args[0] -eq 'list') { return $env:ONNX_TEST_NUGET_OFFER }
         if ($args[0] -ne 'install') { return }
         $out = $args[[array]::IndexOf($args, '-OutputDirectory') + 1]
-        foreach ($rel in @($env:ONNX_TEST_NUGET_LAYOUT -split ';' | Where-Object { $_ })) {
-            $null = New-Item -ItemType Directory -Force -Path (Split-Path (Join-Path $out $rel) -Parent)
-            [IO.File]::WriteAllText((Join-Path $out $rel), 'nupkg')
-        }
+        $files = @{}
+        foreach ($rel in @($env:ONNX_TEST_NUGET_LAYOUT -split ';' | Where-Object { $_ })) { $files[$rel] = 'nupkg' }
+        Write-TestFileTree -Root $out -Files $files
     }
     # Runs $Body with the stand-in answering $Offer/$Layout; $Body gets the output directory and the call log.
     function Invoke-WithNuGetStandIn([string]$Offer, [string[]]$Layout, [scriptblock]$Body) {

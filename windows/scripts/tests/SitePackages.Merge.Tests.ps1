@@ -8,11 +8,7 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsSitePack
 # Writes -Files (relative path -> text) under -Root and a RECORD listing -Record into -DistInfo.
 function script:New-SitePackagesFixture {
     param([Parameter(Mandatory)][string]$Root, [hashtable]$Files = @{}, [string]$DistInfo = '', [string[]]$Record = @())
-    foreach ($entry in $Files.GetEnumerator()) {
-        $target = [IO.Path]::Combine($Root, $entry.Key)
-        [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))
-        [IO.File]::WriteAllText($target, $entry.Value)
-    }
+    Write-TestFileTree -Root $Root -Files $Files
     if ($DistInfo) {
         $info = [IO.Directory]::CreateDirectory([IO.Path]::Combine($Root, $DistInfo))
         [IO.File]::WriteAllLines([IO.Path]::Combine($info.FullName, 'RECORD'), [string[]]@($Record | ForEach-Object { "$_,sha256=x,1" }))

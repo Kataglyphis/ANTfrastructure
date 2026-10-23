@@ -1,6 +1,8 @@
 #requires -Version 7.0
 # GenAI on the chain's ONNX Runtime, every lane: the ORT_HOME shim, the -D set and both gates; no real GenAI build.
 
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Build.psm1') -Force -DisableNameChecking
+
 $script:GenaiOrtScript = 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1'
 $script:GenaiOrtFns = @('ConvertTo-GenaiCmakePath', 'New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiOrtConfigureFinding',
     'Get-GenaiOrtNinjaFinding', 'Get-GenaiOrtTreeFinding')

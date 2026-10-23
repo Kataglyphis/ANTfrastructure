@@ -120,6 +120,17 @@ function Invoke-InTestDir {
     finally { Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+function Write-TestFileTree {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][System.Collections.IDictionary]$Files)
+    foreach ($entry in $Files.GetEnumerator()) {
+        $path = [IO.Path]::Combine($Root, [string]$entry.Key)
+        $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
+        [IO.File]::WriteAllText($path, [string]$entry.Value)
+    }
+}
+
+Export-ModuleMember -Function Write-TestFileTree
+
 # The smallest file Get-PeFileMachine accepts (MZ, e_lfanew, 'PE', machine), plus a tag so no two fixtures share bytes.
 function New-TestPeFile {
     param([Parameter(Mandatory)][string]$Path, [uint16]$Machine = 0x8664, [string]$Tag = 'x')

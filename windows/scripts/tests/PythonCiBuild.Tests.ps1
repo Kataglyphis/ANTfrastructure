@@ -3,23 +3,20 @@
 # SPDX-License-Identifier: MIT
 # NOT covered: a real uv, pytest and the two child drivers in the image (python-ci-windows.yml's build job does that).
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsPythonCi.DriverFixture.psm1') -Force -DisableNameChecking
+
 $script:CiBuild = Join-Path (Get-RepoRoot) 'windows\scripts\python\Invoke-PythonCiBuild.ps1'
 
 # A demo repo, a uv and a python that log each call ("python find" prints the fake python), and stubs of the three child drivers.
 function script:New-CiBuildFixture([string]$Dir, [string]$Settings = '') {
-    $fake = Join-Path $Dir 'fake'
-    $null = New-Item -ItemType Directory -Force -Path $fake, (Join-Path $Dir 'repo\scripts\windows')
-    Set-Content -LiteralPath (Join-Path $Dir 'repo\pyproject.toml') -Value @('[project]', 'name = "demo-dist"')
-    Set-Content -LiteralPath (Join-Path $Dir 'repo\uv.lock') -Value 'version = 1'
-    if ($Settings) { Set-Content -LiteralPath (Join-Path $Dir 'repo\scripts\windows\python-ci.psd1') -Value $Settings }
-    New-FakeToolShim -Dir $fake -Tool uv, python
-    Set-Content -LiteralPath (Join-Path $fake 'fake-uv.ps1') -Encoding utf8 -Value @(
+    $fake = New-PythonCiFixtureTools -Dir $Dir -UvBody @(
         'if ("$args" -eq "python find $($args[2])") { Write-Output (Join-Path $PSScriptRoot "python.cmd") }'
         'if ($env:FAKE_FAIL -and "uv $args" -match $env:FAKE_FAIL) { exit 1 }'
     )
-    Set-Content -LiteralPath (Join-Path $fake 'fake-python.ps1') -Encoding utf8 -Value @(
-        'if ($args[2] -eq "declares") { if ($env:FAKE_DECLARES) { "Free Threading"; exit 0 }; "no classifier"; exit 1 }'
-    )
+    $null = New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'repo\scripts\windows')
+    Set-Content -LiteralPath (Join-Path $Dir 'repo\pyproject.toml') -Value @('[project]', 'name = "demo-dist"')
+    Set-Content -LiteralPath (Join-Path $Dir 'repo\uv.lock') -Value 'version = 1'
+    if ($Settings) { Set-Content -LiteralPath (Join-Path $Dir 'repo\scripts\windows\python-ci.psd1') -Value $Settings }
     foreach ($stub in @(@{ n = 'static'; p = 'PythonVersion, PackageName, RepoRoot, ExtraPaths, BanditExcludes' },
             @{ n = 'packaging'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' },
             @{ n = 'wheeltests'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' })) {
@@ -36,25 +33,18 @@ function script:New-CiBuildFixture([string]$Dir, [string]$Settings = '') {
 function script:Invoke-CiBuildFixture {
     param([Parameter(Mandatory)][string]$Dir, [string[]]$Arguments = @(), [string]$Fail = '', [switch]$Declares)
     $fake = Join-Path $Dir 'fake'
-    $log = Join-Path $Dir 'calls.log'
-    Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
-    $vars = @{ FAKE_LOG = $log; FAKE_FAIL = $Fail; FAKE_DECLARES = $(if ($Declares) { '1' } else { $null }); PATH = "$fake;$env:PATH"
+    $vars = @{ FAKE_FAIL = $Fail; FAKE_DECLARES = $(if ($Declares) { '1' } else { $null }); PATH = "$fake;$env:PATH"
         PYTHON_VERSION = '9.87.6'; EXPERIMENTAL_PYTHON_VERSIONS = $null; ORT_CHAIN_WHEEL_DIR = $null; PYTHON_WHEELS = $null; UV_PROJECT_ENVIRONMENT = $null
     }
     $seams = @('-StaticAnalysisScript', (Join-Path $fake 'static.ps1'), '-PackagingScript', (Join-Path $fake 'packaging.ps1'),
         '-WheelTestsScript', (Join-Path $fake 'wheeltests.ps1'))
-    $output = Invoke-WithEnv $vars {
-        Push-Location (Join-Path $Dir 'repo')
-        try { & pwsh -NoProfile -File $script:CiBuild @seams @Arguments 2>&1 | ForEach-Object { "$_" } } finally { Pop-Location }
-    }
-    $code = $LASTEXITCODE
+    $result = Invoke-PythonCiFixtureDriver -Dir $Dir -Script $script:CiBuild -Environment $vars -Arguments ($seams + $Arguments) -WorkingDirectory (Join-Path $Dir 'repo')
     $summary = Get-ChildItem -LiteralPath (Join-Path $Dir 'repo\logs') -Filter 'build-summary-*.json' -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime | Select-Object -Last 1 | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json }
     Remove-Item -LiteralPath (Join-Path $Dir 'repo\logs') -Recurse -Force -ErrorAction SilentlyContinue
-    $calls = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log | ForEach-Object { $_.Replace("$Dir\repo", '<d>') }) } else { @() }
-    # Plain text: the child's error view colours and wraps a long message at its console width.
-    $text = ($output -join "`n") -replace '\x1b\[[0-9;]*m', '' -replace '\s*\n\s*(\|\s*)*', ' '
-    return [pscustomobject]@{ Code = $code; Calls = $calls; Text = $text; Summary = $summary }
+    $result.Calls = @($result.Calls | ForEach-Object { $_.Replace("$Dir\repo", '<d>') })
+    $result | Add-Member -NotePropertyName Summary -NotePropertyValue $summary
+    return $result
 }
 
 Describe 'Invoke-PythonCiBuild.ps1' {

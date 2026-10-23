@@ -3,6 +3,8 @@
 # SPDX-License-Identifier: MIT
 # NOT covered: a passing run, which needs a free-threaded interpreter (proved in :winamd64 and on windows-11-arm, CON122).
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsPythonCi.DriverFixture.psm1') -Force -DisableNameChecking
+
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Suite.psm1') -Force -DisableNameChecking
 
 $script:WheelTests = Join-Path (Get-RepoRoot) 'windows\scripts\python\Invoke-FreeThreadedWheelTests.ps1'
@@ -81,36 +83,26 @@ Describe 'WindowsPythonWheel.Suite: the table, read through the shared helper (C
 
 # A uv that logs each call (`python find` prints the fake python, `venv` makes a real venv of the host's GIL python, `export` writes its -o).
 function script:New-WheelTestsFake([string]$Dir) {
-    $fake = Join-Path $Dir 'fake'
-    $null = New-Item -ItemType Directory -Force -Path $fake
-    New-FakeToolShim -Dir $fake -Tool uv, python
-    Set-Content -LiteralPath (Join-Path $fake 'fake-uv.ps1') -Encoding utf8 -Value @(
+    return New-PythonCiFixtureTools -Dir $Dir -UvBody @(
         'if ("$($args[0]) $($args[1])" -eq "python find") { Write-Output (Join-Path $PSScriptRoot "python.cmd"); exit 0 }'
         'if ($args[0] -eq "venv") { & $env:REAL_PYTHON -m venv --without-pip $args[-1]; exit $LASTEXITCODE }'
         'if ($args[0] -eq "export") { Set-Content -LiteralPath $args[[array]::IndexOf($args, "-o") + 1] -Value "" }'
-    )
-    # declares answers from FAKE_DECLARES; the table is the real helper's, on the host's python.
-    Set-Content -LiteralPath (Join-Path $fake 'fake-python.ps1') -Encoding utf8 -Value @(
-        'if ($args[2] -eq "declares") { if ($env:FAKE_DECLARES) { "Free Threading"; exit 0 }; "no classifier"; exit 1 }'
+    ) -PythonBody @(
         'if ($args[2] -eq "table") { & $env:REAL_PYTHON @args; exit $LASTEXITCODE }'
     )
-    return $fake
 }
 
 # The driver in a child pwsh; returns its exit code, its plain output and the calls it made.
 function script:Invoke-WheelTestsFixture {
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][string]$Repo, [string[]]$Arguments = @(), [switch]$Declares, [string]$Mode = '')
     $fake = New-WheelTestsFake $Dir
-    $log = Join-Path $Dir 'calls.log'
-    Remove-Item -LiteralPath $log -ErrorAction SilentlyContinue
-    $vars = @{ FAKE_LOG = $log; FAKE_DECLARES = $(if ($Declares) { '1' } else { $null }); REAL_PYTHON = (Get-SuiteTestPython); PATH = "$fake;$env:PATH"
+    $vars = @{ FAKE_DECLARES = $(if ($Declares) { '1' } else { $null }); REAL_PYTHON = (Get-SuiteTestPython); PATH = "$fake;$env:PATH"
         PYTHON_VERSION = '9.87.6'; PYTHON_FREE_THREADED_WHEEL = $(if ($Mode) { $Mode } else { $null }); WINDOWS_TARGET_ARCH = $null; FIXTURE_COMPILED = $null
     }
-    $output = Invoke-WithEnv $vars { & pwsh -NoProfile -File $script:WheelTests -RepoRoot $Repo @Arguments 2>&1 | ForEach-Object { "$_" } }
-    $code = $LASTEXITCODE
-    $calls = if (Test-Path -LiteralPath $log) { @(Get-Content -LiteralPath $log) } else { @() }
-    $text = ($output -join "`n") -replace '\x1b\[[0-9;]*m', '' -replace '\s*\n\s*(\|\s*)*', ' '
-    return [pscustomobject]@{ Code = $code; Calls = $calls; Text = $text }
+    $result = Invoke-PythonCiFixtureDriver -Dir $Dir -Script $script:WheelTests -Environment $vars -Arguments (@('-RepoRoot', $Repo) + $Arguments)
+    $work = [regex]::Match(($result.Calls -join "`n"), '(?m)^uv export .* -o "?(.+\\ft-wheel-tests-[^\\]+)\\requirements\.txt"?$')
+    $result | Add-Member -NotePropertyName WorkDirectory -NotePropertyValue $work.Groups[1].Value
+    return $result
 }
 
 Describe 'Invoke-FreeThreadedWheelTests.ps1: the Windows twin of test-free-threaded-wheel.sh (CON122)' {
@@ -144,7 +136,6 @@ Describe 'Invoke-FreeThreadedWheelTests.ps1: the Windows twin of test-free-threa
         Invoke-InTestDir { param($d)
             $wheel = 'demo-1.0-cp987-cp987t-win_amd64.whl'
             $repo = New-SuiteRepo $d -Wheels $wheel, 'demo-1.0-cp987-cp987-win_amd64.whl'
-            $start = Get-Date
             $r = Invoke-WheelTestsFixture -Dir $d -Repo $repo -Declares
             $calls = $r.Calls -join '|'
             Assert-Match 'uv python find 9\.87t' $calls 'the image''s interpreter, never downloaded'
@@ -155,8 +146,8 @@ Describe 'Invoke-FreeThreadedWheelTests.ps1: the Windows twin of test-free-threa
             Assert-Equal 1 $r.Code $r.Text
             Assert-Match 'is not a free-threaded interpreter' $r.Text
             Assert-Match ([regex]::Escape("the tests failed against $wheel, or left the GIL enabled (exit 2)")) $r.Text
-            Assert-Equal 0 @(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'ft-wheel-tests-*' |
-                    Where-Object { $_.CreationTime -ge $start }).Count 'the work directory is removed'
+            Assert-True ([IO.Path]::IsPathFullyQualified($r.WorkDirectory)) 'the cleanup assertion must name the directory this child used'
+            Assert-False (Test-Path -LiteralPath $r.WorkDirectory) 'the work directory is removed'
         }
     }
 }

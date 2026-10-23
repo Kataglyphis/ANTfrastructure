@@ -146,7 +146,7 @@ Describe 'WindowsMigraphx.Common: 7-Zip''s refused links' {
     It 'Expand-PinnedArchive deletes the intermediate .tar, which G2 reads as an ORT archive for the EP source' {
         # onnxruntime-ep-amdgpu.tar matches G2's archive name rule, so a leftover fails the EP stage's verify.
         $body = (Get-Command Expand-PinnedArchive).Definition
-        Assert-Match 'if \(\$pass -eq 2\) \{ Remove-Item -LiteralPath \$from -Force \}' $body 'the .tar goes once unpacked'
+        Assert-Match 'Expand-SourceTarball -Archive \$Archive -Destination \$Destination -SkippedLinkResolver \$\{function:Get-SevenZipSkippedLink\} -RemoveIntermediateTar' $body 'the shared extractor owns both pinned policies'
     }
 }
 

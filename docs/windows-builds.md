@@ -2326,3 +2326,34 @@ command files also need a Windows run.
 constructor argument array and body argument array. Defaults retain existing
 mutant imports. The helper owns module and temporary-directory cleanup even when
 the body throws; callers keep their fixture state and command policy.
+
+## Shared Windows behavior
+
+`Expand-SourceTarball` owns the two 7-Zip passes. Its default rejects every failed
+pass and retains the intermediate tar. `Expand-PinnedArchive` supplies the existing
+MIGraphX dangerous-link classifier and requests tar removal; unrelated extraction
+errors still throw. `SourceBuild.Archive.Tests.ps1` checks both policies with a
+stub 7-Zip, including failure and cleanup mutants.
+
+`Get-OrtGateDirectoryIndex` owns chain file hashing. GenAI retains recursive
+`include/onnxruntime` and flat `lib`/`bin` scans with fatal read errors. G2 retains
+recursive scans, its narrower filename pattern and unreadable-file sentinel.
+Directory-index fixtures check those distinctions without compiling or loading ORT.
+
+Flutter's plugin patcher shares its idempotent text policy. Artifact sync shares
+robocopy setup and exit handling while the public caller keeps separate CMake and
+Rust exclusions. Missing optional plugin text stays optional; copy exits at least
+8 warn, both copies are attempted, and the native exit code is reset afterward.
+The fixture suite exercises text and copy arguments, not real robocopy I/O.
+
+The sccache write diagnostic shares root-directory startup, serial compilation,
+unique compiled source tokens and first-match counters. Each mode keeps its
+absent, empty or configured cache levels and its verdict. Missing counters stay
+`-1`, and `/Fo` has no colon. Stubbed regressions and mutations check orchestration;
+they do not establish real cache writes or BuildKit mount behavior.
+
+Python CI suites import `WindowsPythonCi.DriverFixture.psm1` beside the harness.
+It owns fake-tool setup, child status, call-log reset and plain error text. The
+callers keep tool-specific scripts, summaries and path normalization. Transport
+fixtures check arguments with spaces and colons, environment/location restoration,
+failed exits and stale logs; the existing consumer suites retain their assertions.

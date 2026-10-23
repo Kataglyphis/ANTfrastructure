@@ -1708,23 +1708,26 @@ function Invoke-NinjaBuildWithRetry {
 
 function Expand-SourceTarball {
     param(
-        [Parameter(Mandatory)]
-        [string]$Archive,
-        [Parameter(Mandatory)]
-        [string]$Destination
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Destination,
+        [scriptblock]$SkippedLinkResolver,
+        [switch]$RemoveIntermediateTar
     )
-    # Gate both 7z passes, or a corrupt tarball surfaces as a missing source directory.
-    $pass1 = @(& 7z x "$Archive" -o"$Destination" -y -bd 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        throw "7z extraction of '$Archive' failed (exit $LASTEXITCODE): $((($pass1 | Select-Object -Last 5) -join '; '))"
-    }
-    $tarFile = Get-ChildItem -Path $Destination -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName
-    if ($tarFile) {
-        $pass2 = @(& 7z x "$tarFile" -o"$Destination" -y -bd 2>&1)
-        if ($LASTEXITCODE -ne 0) {
-            throw "7z tar extraction of '$tarFile' failed (exit $LASTEXITCODE): $((($pass2 | Select-Object -Last 5) -join '; '))"
+    $skipped = @()
+    foreach ($pass in 1, 2) {
+        $from = if ($pass -eq 1) { $Archive } else { Get-ChildItem -Path $Destination -Filter '*.tar' | Select-Object -First 1 -ExpandProperty FullName }
+        if (-not $from) { break }
+        $output = @(& 7z x "$from" -o"$Destination" -y -bd 2>&1 | ForEach-Object { "$_" })
+        if ($SkippedLinkResolver) {
+            $skipped += @(& $SkippedLinkResolver -Output $output -ExitCode $LASTEXITCODE -Archive $from)
+        } elseif ($LASTEXITCODE -ne 0) {
+            $kind = if ($pass -eq 1) { 'extraction' } else { 'tar extraction' }
+            throw "7z $kind of '$from' failed (exit $LASTEXITCODE): $(($output | Select-Object -Last 5) -join '; ')"
         }
+        # G2 rejects leftover ORT-named tar files; other callers preserve their existing archive policy.
+        if ($pass -eq 2 -and $RemoveIntermediateTar) { Remove-Item -LiteralPath $from -Force }
     }
+    if ($skipped.Count) { Write-Warning "7-Zip left $($skipped.Count) in-tree link(s) of $(Split-Path $Archive -Leaf) unextracted: $($skipped -join ', ')" }
     $srcDir = Get-ChildItem -Path $Destination -Directory | Select-Object -First 1 -ExpandProperty FullName
     if (-not $srcDir) { throw "Failed to locate extracted source directory under $Destination" }
     return $srcDir

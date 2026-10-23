@@ -3254,6 +3254,13 @@ kernel settings remain distinct. Tests keep independent flag literals and verify
 record isolation. No detector normalization or threshold changes accompany these
 budget reductions.
 
+
+Windows archive, ORT index, Flutter and sccache probe refactors retain caller
+policies while sharing their repeated lifecycle. Python CI test drivers share
+transport and fake-tool fixtures. Their [contracts and coverage limits](windows-builds.md#shared-windows-behavior)
+separate stubbed regressions from image-build and runtime validation. Existing
+exceptions shrink to the measured remainder; no threshold or scope changes apply.
+
 ### Workflow fixture builders
 
 The workflow-lint suite shares repository initialization, job headers and

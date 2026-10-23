@@ -28,6 +28,67 @@ function Write-Result {
     Write-Host ("{0} {1}{2}" -f $tag, $Name, $(if ($Detail) { " - $Detail" } else { '' }))
 }
 
+function Write-SccacheProbeSource {
+    param([Parameter(Mandatory)][string]$Path, [int]$Value)
+    # A comment is preprocessed away, so the unique token must be part of the compiled code.
+    $token = [Guid]::NewGuid().ToString('N')
+    @"
+#include <cstdio>
+int probe_value_$token() { return $Value; }
+int main() { std::printf("%d\n", probe_value_$token()); return 0; }
+"@ | Set-Content -Path $Path -Encoding ascii
+}
+
+function Invoke-SccacheProbeCompile {
+    param(
+        [Parameter(Mandatory)][string]$SccachePath,
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Object,
+        [string]$IgnoredPattern = 'DEBUG|INFO '
+    )
+    Push-Location (Split-Path $Source -Parent)
+    try {
+        # A colon after /Fo makes sccache construct an invalid absolute output path.
+        & $SccachePath clang-cl /c /nologo /EHsc "/Fo$Object" $Source 2>&1 |
+            Where-Object { $_ -notmatch $IgnoredPattern } | ForEach-Object { Write-Host "  cl| $_" }
+        return ($LASTEXITCODE -eq 0)
+    } finally { Pop-Location }
+}
+
+function Start-SccacheProbeServer {
+    param([Parameter(Mandatory)][string]$SccachePath, [string]$Pattern = 'Listening|error')
+    # Relative object paths depend on the server inheriting the same root in every probe mode.
+    Push-Location 'C:\'
+    try {
+        & $SccachePath --start-server 2>&1 | Where-Object { $_ -match $Pattern } |
+            ForEach-Object { Write-Host "  start| $_" }
+    } finally { Pop-Location }
+    $global:LASTEXITCODE = 0
+    & $SccachePath --zero-stats 2>&1 | Out-Null
+    $global:LASTEXITCODE = 0
+}
+
+function Get-SccacheProbeStats {
+    param(
+        [Parameter(Mandatory)][string]$SccachePath,
+        [AllowEmptyString()][string]$Pattern = 'Cache misses\s+\d|Cache write errors|write failures'
+    )
+    $lines = @(& $SccachePath --show-stats 2>&1)
+    $global:LASTEXITCODE = 0
+    if ($Pattern) {
+        $lines | Where-Object { $_ -match $Pattern } | ForEach-Object { Write-Host "  $($_.ToString().Trim())" }
+    }
+    $misses = -1
+    $writeErrors = -1
+    $cacheSize = ''
+    foreach ($line in $lines) {
+        if ($misses -lt 0 -and $line -match 'Cache misses\s+(\d+)') { $misses = [int]$Matches[1] }
+        if ($writeErrors -lt 0 -and $line -match 'Cache write errors\s+(\d+)') { $writeErrors = [int]$Matches[1] }
+        if (-not $cacheSize -and $line -match 'Cache size\s+(.*)') { $cacheSize = $line.ToString().Trim() }
+    }
+    return [pscustomobject]@{ Misses = $misses; WriteErrors = $writeErrors; CacheSize = $cacheSize }
+}
+
 if ($ChildWrite) {
     # What the child sees too: a missing or empty mount alone would explain os error 3.
     $report = [ordered]@{
@@ -236,48 +297,21 @@ function Invoke-SccacheVariant {
     $env:SCCACHE_DIR = $Dir
     Write-Host ("  chain='{0}' endpoint='{1}' dir='{2}'" -f $Chain, $Endpoint, $Dir)
 
-    Push-Location 'C:\'
-    try { & $sccache.Source --start-server 2>&1 | Where-Object { $_ -match 'Listening|error' } | ForEach-Object { Write-Host "  start| $_" } }
-    finally { Pop-Location }
-    $global:LASTEXITCODE = 0
-    & $sccache.Source --zero-stats 2>&1 | Out-Null
-    $global:LASTEXITCODE = 0
+    Start-SccacheProbeServer -SccachePath $sccache.Source
 
     # Truncated per variant, so the dump below belongs to this variant.
     if ($env:SCCACHE_ERROR_LOG) {
         Set-Content -Path $env:SCCACHE_ERROR_LOG -Value $null -Force -ErrorAction SilentlyContinue
     }
 
-    # A unique token in real code, not a comment: sccache hashes preprocessed output, and a hit attempts no write.
     $tag = [Guid]::NewGuid().ToString('N')
     $work = Join-Path $env:TEMP ('sccache-probe-' + $tag)
     $null = New-Item -ItemType Directory -Force -Path $work
     $src = Join-Path $work 'probe.cpp'
-    @"
-#include <cstdio>
-int probe_value_$tag() { return 42; }
-int main() { std::printf("%d\n", probe_value_$tag()); return 0; }
-"@ | Set-Content -Path $src -Encoding ascii
+    Write-SccacheProbeSource -Path $src -Value 42
+    $compileOk = Invoke-SccacheProbeCompile -SccachePath $sccache.Source -Source $src -Object (Join-Path $work 'probe.obj')
 
-    $compileOk = $false
-    Push-Location $work
-    try {
-        $obj = Join-Path $work 'probe.obj'
-        # /Fo without a colon: sccache turns /Fo:C:\x.obj into the bogus path C:\:C:\x.obj.
-        & $sccache.Source clang-cl /c /nologo /EHsc "/Fo$obj" $src 2>&1 |
-            Where-Object { $_ -notmatch 'DEBUG|INFO ' } | ForEach-Object { Write-Host "  cl| $_" }
-        $compileOk = ($LASTEXITCODE -eq 0)
-    } finally { Pop-Location }
-
-    $stats = @(& $sccache.Source --show-stats 2>&1)
-    $global:LASTEXITCODE = 0
-    $stats | Where-Object { $_ -match 'Cache misses\s+\d|Cache write errors|write failures' } |
-        ForEach-Object { Write-Host "  $($_.ToString().Trim())" }
-
-    $writeErr = -1
-    foreach ($line in $stats) {
-        if ($line -match 'Cache write errors\s+(\d+)') { $writeErr = [int]$Matches[1]; break }
-    }
+    $writeErr = (Get-SccacheProbeStats -SccachePath $sccache.Source).WriteErrors
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
     Write-Result "$Name wrote to cache" ($writeErr -eq 0) "compile exit ok=$compileOk, write errors=$writeErr"
 
@@ -505,23 +539,14 @@ $parallel = 16
 $env:SCCACHE_MULTILEVEL_CHAIN = $origChain
 $env:SCCACHE_WEBDAV_ENDPOINT = $origEndpoint
 $env:SCCACHE_DIR = $origDir
-Push-Location 'C:\'
-try { & $sccache.Source --start-server 2>&1 | Where-Object { $_ -match 'Listening|error' } | ForEach-Object { Write-Host "  start| $_" } }
-finally { Pop-Location }
-& $sccache.Source --zero-stats 2>&1 | Out-Null
-$global:LASTEXITCODE = 0
+Start-SccacheProbeServer -SccachePath $sccache.Source
 
 $pwork = Join-Path $env:TEMP ('sccache-par-' + [Guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Force -Path $pwork
 $procs = @()
 for ($i = 1; $i -le $parallel; $i++) {
-    $t = [Guid]::NewGuid().ToString('N')
     $s = Join-Path $pwork "p$i.cpp"
-    @"
-#include <cstdio>
-int probe_value_$t() { return $i; }
-int main() { std::printf("%d\n", probe_value_$t()); return 0; }
-"@ | Set-Content -Path $s -Encoding ascii
+    Write-SccacheProbeSource -Path $s -Value $i
     $psi = [Diagnostics.ProcessStartInfo]::new($sccache.Source)
     foreach ($a in @('clang-cl', '/c', '/nologo', '/EHsc', "/Fo$(Join-Path $pwork "p$i.obj")", $s)) { $null = $psi.ArgumentList.Add($a) }
     $psi.UseShellExecute = $false
@@ -535,12 +560,7 @@ foreach ($p in $procs) { $null = $p.WaitForExit(180000) }
 $okCount = @($procs | Where-Object { $_.HasExited -and $_.ExitCode -eq 0 }).Count
 Write-Host "  $okCount of $parallel concurrent compiles exited 0"
 
-$pstats = @(& $sccache.Source --show-stats 2>&1)
-$global:LASTEXITCODE = 0
-$pstats | Where-Object { $_ -match 'Compile requests\s+\d|Cache misses\s+\d|Cache write errors|write failures' } |
-    ForEach-Object { Write-Host "  $($_.ToString().Trim())" }
-$pWriteErr = -1
-foreach ($line in $pstats) { if ($line -match 'Cache write errors\s+(\d+)') { $pWriteErr = [int]$Matches[1]; break } }
+$pWriteErr = (Get-SccacheProbeStats -SccachePath $sccache.Source -Pattern 'Compile requests\s+\d|Cache misses\s+\d|Cache write errors|write failures').WriteErrors
 Remove-Item $pwork -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Section 'CONCURRENCY VERDICT'
@@ -569,34 +589,16 @@ if (-not (Test-Path $deepDir)) {
 } else {
     & $sccache.Source --stop-server 2>&1 | Out-Null
     $env:SCCACHE_DIR = $origDir
-    Push-Location 'C:\'
-    try { & $sccache.Source --start-server 2>&1 | Where-Object { $_ -match 'Listening' } | ForEach-Object { Write-Host "  start| $_" } }
-    finally { Pop-Location }
-    & $sccache.Source --zero-stats 2>&1 | Out-Null
-    $global:LASTEXITCODE = 0
+    Start-SccacheProbeServer -SccachePath $sccache.Source -Pattern 'Listening'
 
-    $t = [Guid]::NewGuid().ToString('N')
     $dsrc = Join-Path $deepDir 'deep_probe_translation_unit_with_a_long_name.cpp'
-    @"
-#include <cstdio>
-int probe_value_$t() { return 7; }
-int main() { std::printf("%d\n", probe_value_$t()); return 0; }
-"@ | Set-Content -Path $dsrc -Encoding ascii
+    Write-SccacheProbeSource -Path $dsrc -Value 7
     $dobj = Join-Path $deepDir 'deep_probe_translation_unit_with_a_long_name.cpp.obj'
     Write-Host ("  source path: {0} chars / object path: {1} chars" -f $dsrc.Length, $dobj.Length)
-    Push-Location $deepDir
-    try {
-        & $sccache.Source clang-cl /c /nologo /EHsc "/Fo$dobj" $dsrc 2>&1 |
-            Where-Object { $_ -notmatch 'DEBUG|INFO |TRACE' } | ForEach-Object { Write-Host "  cl| $_" }
-        Write-Result 'deep compile exited 0' ($LASTEXITCODE -eq 0)
-    } finally { Pop-Location }
+    $compileOk = Invoke-SccacheProbeCompile -SccachePath $sccache.Source -Source $dsrc -Object $dobj -IgnoredPattern 'DEBUG|INFO |TRACE'
+    Write-Result 'deep compile exited 0' $compileOk
 
-    $dstats = @(& $sccache.Source --show-stats 2>&1)
-    $global:LASTEXITCODE = 0
-    $dstats | Where-Object { $_ -match 'Cache misses\s+\d|Cache write errors|write failures' } |
-        ForEach-Object { Write-Host "  $($_.ToString().Trim())" }
-    $dErr = -1
-    foreach ($line in $dstats) { if ($line -match 'Cache write errors\s+(\d+)') { $dErr = [int]$Matches[1]; break } }
+    $dErr = (Get-SccacheProbeStats -SccachePath $sccache.Source).WriteErrors
     Write-Section 'PATH-LENGTH VERDICT'
     if ($dErr -gt 0) {
         Write-Host '  => REPRODUCED from a deep source path while short paths write cleanly.'
@@ -619,11 +621,7 @@ function Invoke-BulkWrite {
     Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
     $env:SCCACHE_DIR = $Dir
     $null = New-Item -ItemType Directory -Force -Path $Dir -ErrorAction SilentlyContinue
-    Push-Location 'C:\'
-    try { & $sccache.Source --start-server 2>&1 | Where-Object { $_ -match 'Listening|error' } | ForEach-Object { Write-Host "  start| $_" } }
-    finally { Pop-Location }
-    & $sccache.Source --zero-stats 2>&1 | Out-Null
-    $global:LASTEXITCODE = 0
+    Start-SccacheProbeServer -SccachePath $sccache.Source
 
     $work = Join-Path $env:TEMP ('bulk-' + [Guid]::NewGuid().ToString('N'))
     $null = New-Item -ItemType Directory -Force -Path $work
@@ -639,18 +637,11 @@ function Invoke-BulkWrite {
     } finally { Pop-Location }
     $global:LASTEXITCODE = 0
 
-    $st = @(& $sccache.Source --show-stats 2>&1)
-    $global:LASTEXITCODE = 0
-    $misses = -1; $werr = -1
-    foreach ($line in $st) {
-        if ($line -match 'Cache misses\s+(\d+)') { if ($misses -lt 0) { $misses = [int]$Matches[1] } }
-        if ($line -match 'Cache write errors\s+(\d+)') { if ($werr -lt 0) { $werr = [int]$Matches[1] } }
-    }
-    $sz = ($st | Where-Object { $_ -match 'Cache size\s+(.*)' } | Select-Object -First 1)
+    $stats = Get-SccacheProbeStats -SccachePath $sccache.Source -Pattern ''
     Write-Host ("  {0,-14} dir={1}" -f $Label, $Dir)
-    Write-Host ("  {0,-14} misses={1} write errors={2}  {3}" -f '', $misses, $werr, $(if ($sz) { $sz.ToString().Trim() } else { '' }))
+    Write-Host ("  {0,-14} misses={1} write errors={2}  {3}" -f '', $stats.Misses, $stats.WriteErrors, $stats.CacheSize)
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
-    return [pscustomobject]@{ Label = $Label; Misses = $misses; WriteErrors = $werr }
+    return [pscustomobject]@{ Label = $Label; Misses = $stats.Misses; WriteErrors = $stats.WriteErrors }
 }
 
 # Stable names, kept: the trigger is inheriting a populated dir across RUNs, so the second probe run is the experiment.
