@@ -257,6 +257,7 @@ COPY --link --from=android-iree /opt/android/iree /opt/android/iree
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-android.sh /opt/scripts/packaging/smoke-android.sh
 COPY --chmod=755 linux/scripts/06-packaging/swap-native-gcc.sh /opt/scripts/packaging/swap-native-gcc.sh
+COPY --chmod=755 linux/scripts/01-core/native-gcc-system-paths.sh /opt/scripts/core/native-gcc-system-paths.sh
 RUN set -euo pipefail; \
     if [ -d /opt/python-cross ] && [ ! -f /opt/python-cross/.keep ]; then \
         touch /opt/python-cross/.keep; fi; \

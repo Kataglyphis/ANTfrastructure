@@ -12,16 +12,11 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-all}"
 VENV="${VENV:-/opt/venv}"
 BUILD_MODE="${BUILD_MODE:-native}"
 
-# The native GCC's sysroot lacks /usr/include and #include_next needs -idirafter; inline copy of append_cross_idirafter.
+# Discovery stays here because an image can lack either multiarch directory.
 _mi="$(compgen -G '/usr/include/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _ml="$(compgen -G '/usr/lib/*-linux-gnu' 2>/dev/null | head -1 || true)"
-_idaf="-idirafter /usr/include"
-[ -n "${_mi}" ] && _idaf="-idirafter ${_mi} ${_idaf}"
-export CPATH="${CPATH:+${CPATH}:}${_mi:+${_mi}:}/usr/include"
-export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }${_idaf}"
-export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
-export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
-export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
+source /opt/scripts/core/native-gcc-system-paths.sh || exit 1
+native_gcc_system_paths "${_mi}" "${_ml}"
 
 # Hard-require platform.sh: it feeds a fail-loud gate that a silent skip would disarm.
 # shellcheck source=linux/scripts/01-core/module-bootstrap.sh

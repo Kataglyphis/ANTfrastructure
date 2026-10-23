@@ -65,17 +65,13 @@ _link_multiarch_dirs() {
   fi
 }
 
-# Inlined twin of common.sh's append_cross_idirafter (android stage lacks it). docs/cross-build-verification.md#swapping-the-native-gcc-in-the-shipped-image
+# Values expand when the profile is sourced, so existing consumer flags survive.
 _write_native_gcc_profile_d() {
   local triplet="$1"
   mkdir -p /etc/profile.d
   cat > /etc/profile.d/50-native-gcc-paths.sh <<EOF
-_idaf="-idirafter /usr/include/${triplet} -idirafter /usr/include"
-export CPATH="\${CPATH:+\${CPATH}:}/usr/include/${triplet}:/usr/include"
-export CPPFLAGS="\${CPPFLAGS:+\${CPPFLAGS} }\${_idaf}"
-export CFLAGS="\${CFLAGS:+\${CFLAGS} }\${_idaf}"
-export CXXFLAGS="\${CXXFLAGS:+\${CXXFLAGS} }\${_idaf}"
-export LIBRARY_PATH="\${LIBRARY_PATH:+\${LIBRARY_PATH}:}/usr/lib/${triplet}:/usr/lib"
+. /opt/scripts/core/native-gcc-system-paths.sh || return 1
+native_gcc_system_paths /usr/include/${triplet} /usr/lib/${triplet}
 EOF
   echo "Wrote /etc/profile.d/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)"
 }
