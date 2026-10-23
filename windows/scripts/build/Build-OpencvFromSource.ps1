@@ -115,10 +115,8 @@ if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemP
             -Replacement "#define float32_t softfloat`n#define float64_t softdouble" `
             -Description 'opencv softfloat.cpp: float32_t/float64_t typedef -> macro (NEON __builtin_bit_cast collision)')
     # Drift assertion: a silent no-op here resurfaces as bit_cast errors deep inside arm_neon.h.
-    $sfText = [System.IO.File]::ReadAllText($sfCpp)
-    if ($sfText -notmatch '#define\s+float32_t\s+softfloat') {
-        throw "opencv softfloat.cpp: the float32_t/float64_t typedefs were not converted to macros (upstream layout changed?). intrin_neon.hpp will fail with '__builtin_bit_cast destination type must be trivially copyable'. Re-check $sfCpp."
-    }
+    Assert-SourceFileContent -Path $sfCpp -Condition { param($text) $text -match '#define\s+float32_t\s+softfloat' } `
+        -FailureMessage "opencv softfloat.cpp: the float32_t/float64_t typedefs were not converted to macros (upstream layout changed?). intrin_neon.hpp will fail with '__builtin_bit_cast destination type must be trivially copyable'. Re-check $sfCpp."
 
     # clang-cl defines _M_ARM64 but lacks MSVC's neon_fmaxv/fminv; wrapped, not deleted, with explicit idempotence.
     $mlasiH = Join-Path $mainSrc '3rdparty\mlas\lib\mlasi.h'
@@ -129,11 +127,10 @@ if ($ocvCross -and (Get-WindowsTargetArchInfo -Arch $ocvTargetArch).CMakeSystemP
                 -Pattern '#define\s+(vmaxvq_f32|vminvq_f32)\(src\)\s+neon_(fmaxv|fminv)\(src\)' `
                 -Replacement "#if !defined(__clang__)`n`$0`n#endif" `
                 -Description 'opencv mlasi.h: MSVC neon_* remap excluded under clang-cl')
-        $mlasiText = [System.IO.File]::ReadAllText($mlasiH)
     }
-    if ($mlasiText -match 'neon_fmaxv' -and $mlasiText -notmatch '#if !defined\(__clang__\)') {
-        throw "opencv mlasi.h: the MSVC neon_* remap is present but was not guarded for clang (upstream layout changed?). MLAS will fail with ""use of undeclared identifier 'neon_fmaxv'"". Re-check $mlasiH."
-    }
+    Assert-SourceFileContent -Path $mlasiH -Condition { param($text)
+        $text -notmatch 'neon_fmaxv' -or $text -match '#if !defined\(__clang__\)'
+    } -FailureMessage "opencv mlasi.h: the MSVC neon_* remap is present but was not guarded for clang (upstream layout changed?). MLAS will fail with ""use of undeclared identifier 'neon_fmaxv'"". Re-check $mlasiH."
 }
 
 # VsDevCmd, pyconfig.h into Include\ for cv2, and the platform-tag shim before pip resolves anything.

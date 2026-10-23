@@ -10,6 +10,7 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "${_SCRIPT_DIR}/bootstrap.sh"
 source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
+source_toolchain_elf_strip "${_SCRIPT_DIR}"
 install_err_trap
 
 usage() {
@@ -678,15 +679,20 @@ if [ "${SKIP_SYSTEM_REGISTRATION}" != "1" ]; then
   echo "update-alternatives registration complete."
 fi
 
-# 6e) Strip binaries if requested
-if [ "${DO_STRIP}" = "1" ]; then
-  info "Stripping binaries in ${PREFIX}..."
-  # The build machine's strip too: the target's strip cannot read a plain cross compiler's x86-64 binaries.
+_gcc_strip_binaries() {
+  local -a strip_files=()
+  local strip_bin
+  # The build machine's strip must handle host binaries even when the target strip cannot.
   mapfile -t strip_files < <(${SUDO} find "${PREFIX}" -type f -executable -exec file {} + 2>/dev/null \
     | awk -F': *' '/ELF.*(executable|shared object)/{print $1}')
   for strip_bin in strip ${TARGET_TRIPLET:+"${TARGET_TRIPLET}-strip"}; do
-    printf '%s\0' "${strip_files[@]}" | xargs -0 -r -P"${JOBS:-$(nproc)}" "${strip_bin}" --strip-all 2>/dev/null || true
+    strip_elf_files "${JOBS:-$(nproc)}" "${strip_bin}" "${strip_files[@]}"
   done
+}
+
+if [ "${DO_STRIP}" = "1" ]; then
+  info "Stripping binaries in ${PREFIX}..."
+  _gcc_strip_binaries
 fi
 
 # 7) Enhanced verification

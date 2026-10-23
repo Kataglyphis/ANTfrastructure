@@ -3,6 +3,8 @@
 [ -n "${_BUILD_HELPERS_LOADED:-}" ] && return 0
 _BUILD_HELPERS_LOADED=1
 : "${MEDIA_STRIP:=1}"
+# shellcheck source=elf-strip.sh
+source "$(dirname "${BASH_SOURCE[0]}")/elf-strip.sh"
 
 # Echoes its argv, so never pass secrets through it.
 run() {
@@ -127,14 +129,7 @@ run_nerdctl_build() {
 }
 
 # strip_elf_tree <dir> [jobs] [strip-bin]: best-effort parallel strip; pass <triplet>-strip for a foreign tree.
-strip_elf_tree() {
-  local dir="$1" jobs strip_bin="${3:-strip}"
-  jobs="${2:-$(nproc)}"
-  [ -d "${dir}" ] || return 0
-  ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \
-    | awk -F': *' '/ELF/{print $1}' \
-    | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
-}
+
 
 # ${STRIP}, else the cross <triplet>-strip: several build scripts never set STRIP, and host strip no-ops on foreign ELFs.
 _resolve_media_strip_bin() {

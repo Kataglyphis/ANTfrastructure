@@ -14,6 +14,17 @@
 
 ## 2026-10-23 — preserve failure paths while reducing quality freezes
 
+- Share PowerShell fixture AST parsing for files and snippets; reject malformed inputs
+  without executing build scripts and preserve function-extraction diagnostics.
+- Share Windows source-patch reads and write verdicts, and OpenCV's written-source
+  assertions. Retain regex/callback semantics, idempotence, caller diagnostics and
+  refusal of missing files or incomplete required edits; add fixture coverage.
+- Share ELF strip execution across media helpers, minimal toolchain setup and GCC;
+  preserve host/target passes and carry the leaf in narrow GCC/LLVM build closures.
+  Preserve filenames with spaces and avoid invoking strip for an empty selection.
+- Share pin-parity site validation and default comparisons; retain environment AST
+  policies, case sensitivity, stale-exception checks and distinct `v` trimming rules.
+
 - Share shell CLI value parsing across app, CMake and CTest runners; retain argument
   policies and fail promptly on missing values. Share Windows ORT lock parsing and
   carry its module into the image. Remove the two resolved duplication exemptions.

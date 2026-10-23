@@ -32,6 +32,14 @@ remove directory" or "(os error 32)".
 - Targets a *pinned* upstream version (e.g. the file header names the git tag in
   `linux/scripts/01-core/versions.env`).
 
+Regex and callback edits share file reads and write/no-change verdicts in
+`WindowsSourceBuild.Patches`; their transformations and idempotence rules stay separate.
+`Assert-SourceFileContent`, also re-exported by `WindowsSourceBuild.Common`, verifies
+the written file with a caller predicate and diagnostic. The predicate must return
+exactly one Boolean true; empty, textual or multiple results fail. OpenCV's ARM
+softfloat and MLAS checks use it. Fixture coverage exercises source edits and these
+postconditions, without building OpenCV or proving compiler behavior.
+
 **Exceptions, kept inline on purpose:**
 
 1. **Generated build files.** FFmpeg's post-configure `ffbuild/*.mak`, `library.mak`, `subdir.mak`,

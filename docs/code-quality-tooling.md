@@ -666,7 +666,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2175 entries** over **209 distinct test commands**; both digits are
+manifest holds **2179 entries** over **210 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1922,7 +1922,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 750 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 751 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -3212,3 +3212,26 @@ ORT lock parsing in `WindowsUvLock.Common`. The pin-parity suite shares command
 and default discovery while retaining its different rules for environment arrays
 and direct environment literals. Compiler smoke execution shares setup and cleanup;
 its [stubbed coverage](cross-build-verification.md) preserves compile/link boundaries.
+
+Pin-parity scanners share known-site collection, unknown-site/stale-exception
+checks and default comparison. Environment arrays and direct environment literals
+retain separate discovery rules. Single-leading-`v` removal and `TrimStart('v')`
+remain distinct. Five focused validation cases supplement the thirteen repository
+checks; manual mutations suppress unknown/stale checks and remove case sensitivity,
+and each must fail. These tests validate static pin analysis, not a Windows build.
+
+ELF stripping has one [shared leaf](shared-script-libraries.md#elf-stripping-in-media-and-toolchain-builds)
+for media, minimal toolchain setup and GCC. Selection policies remain at their callers.
+
+Windows source patchers share file reads and write/no-change verdicts. Their
+[file-content assertion](windows-builds.md#source-patch-policy) checks the written
+source; OpenCV's ARM postconditions retain separate predicates and diagnostics.
+Source-patch fixtures pass before and after extraction. Mutations disabling writes,
+required-file checks, remaining-pattern checks and content-verdict rejection must
+fail; these fixtures do not prove an OpenCV build or upstream patch applicability.
+
+`Get-TestScriptAst` and `ConvertTo-TestScriptAst` in the PowerShell test harness
+own file and snippet parsing with shared parse-error validation.
+Missing files and parse errors fail with caller labels; it never runs the source.
+Function extraction, native-argument positive controls and source-verification
+fixtures use it. The AST fixture suite covers malformed inputs and non-execution.

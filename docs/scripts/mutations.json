@@ -17402,5 +17402,37 @@
   "replace": "    resolve_host_compiler_for_lang cxx\n",
   "test": "bash linux/scripts/tests/test-ffmpeg-probes.sh",
   "why": "FFmpeg host generators need the C resolver and must retain its failure status"
+ },
+ {
+  "id": "probe.elf-strip-nul-arguments",
+  "target": "linux/scripts/01-core/elf-strip.sh",
+  "find": "printf '%s\\0' \"$@\" | xargs -0",
+  "replace": "printf '%s\\n' \"$@\" | xargs",
+  "test": "bash linux/scripts/tests/test-elf-strip.sh",
+  "why": "strip invocations must preserve spaces inside each filename"
+ },
+ {
+  "id": "probe.elf-strip-empty-selection",
+  "target": "linux/scripts/01-core/elf-strip.sh",
+  "find": "  [ \"$#\" -gt 0 ] || return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-elf-strip.sh",
+  "why": "an empty selection must not become a single empty filename passed to strip"
+ },
+ {
+  "id": "probe.gcc-strip-target-pass",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "for strip_bin in strip ${TARGET_TRIPLET:+\"${TARGET_TRIPLET}-strip\"}; do",
+  "replace": "for strip_bin in strip; do",
+  "test": "bash linux/scripts/tests/test-elf-strip.sh",
+  "why": "GCC must retain the target strip pass as well as the host strip pass"
+ },
+ {
+  "id": "probe.elf-strip-parallelism",
+  "target": "linux/scripts/01-core/elf-strip.sh",
+  "find": "xargs -0 -r -P\"${jobs}\"",
+  "replace": "xargs -0 -r -P1",
+  "test": "bash linux/scripts/tests/test-elf-strip.sh",
+  "why": "the caller-selected strip parallelism must reach xargs instead of serializing every tree"
  }
 ]
