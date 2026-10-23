@@ -6449,8 +6449,8 @@
  },
  {
   "id": "packaging.absl-headers-copied",
-  "target": "linux/scripts/06-packaging/copy-media-payloads.sh",
-  "find": "    /usr/local/include/absl \\",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "/usr/local/include/absl|copy\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-critical-fixes.sh",
   "why": "707 of the 1322 LiteRT headers this loop copies include absl/; without absl a consumer compiling against the shipped prefix fails on the first include"
@@ -18310,16 +18310,16 @@
  {
   "id": "lib.parallel-loop-fixture-child-source",
   "target": "linux/scripts/tests/test-parallel-loop.sh",
-  "find": "  printf 'source %q\\n' \"${CORE_DIR}/parallel-loop.sh\"",
-  "replace": ":",
+  "find": "  printf 'source %q\\n' \"${CORE_DIR}/platform.sh\" \"${CORE_DIR}/parallel-loop.sh\"",
+  "replace": "  printf 'source %q\\n' \"${CORE_DIR}/platform.sh\"",
   "test": "bash linux/scripts/tests/test-parallel-loop.sh",
   "why": "Caller and fail-fast fixtures must execute the real loop library in their child shell."
  },
  {
   "id": "lib.parallel-loop-fixture-child-truthy",
   "target": "linux/scripts/tests/test-parallel-loop.sh",
-  "find": "1|true|yes|on) return 0",
-  "replace": "1|true|yes|on) return 1",
+  "find": "  t_fn_src \"${CORE_DIR}/build-helpers.sh\" _bool_truthy || return 1",
+  "replace": "  printf '_bool_truthy() { return 1; }\\n'",
   "test": "bash linux/scripts/tests/test-parallel-loop.sh",
   "why": "The shared child predicate must preserve fail-fast selection instead of running every architecture."
  },
@@ -19122,5 +19122,189 @@
   "replace": "t_assert_rc 1 rg -q -- '-fuse-ld=lld'",
   "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
   "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
+ },
+ {
+  "id": "lib.android-patch-dispatch",
+  "target": "linux/scripts/03-media/build/gstreamer/android/build-android-from-source.sh",
+  "find": "    android_apply_patch cerbero/001-drop-m4-dependency.patch",
+  "replace": "    : cerbero/001-drop-m4-dependency.patch",
+  "test": "bash linux/scripts/tests/test-android-patch-dispatch.sh",
+  "why": "Cerbero patch dispatch must invoke the shared patch owner after both recipe guards pass."
+ },
+ {
+  "id": "lib.android-patch-caller-root",
+  "target": "linux/scripts/03-media/android-build-preamble.sh",
+  "find": "$(dirname \"${BASH_SOURCE[1]}\")/../../../..",
+  "replace": "$(dirname \"${BASH_SOURCE[0]}\")/../../../..",
+  "test": "bash linux/scripts/tests/test-android-patch-dispatch.sh",
+  "why": "Repository patch paths derive from the caller script depth, not the shared preamble location."
+ },
+ {
+  "id": "lib.parallel-fixture-truthy-owner",
+  "target": "linux/scripts/tests/test-parallel-loop.sh",
+  "find": "source \"${CORE_DIR}/platform.sh\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "Parallel loop fixtures must use the production truthiness predicate, so parallel selection and fail-fast behavior remain covered without copied boolean tables."
+ },
+ {
+  "id": "lib.media-payload-observation",
+  "target": "linux/scripts/06-packaging/media-payloads.sh",
+  "find": "/usr/local/include/tflite|observe",
+  "replace": "/usr/local/include/tflite|copy",
+  "test": "bash linux/scripts/tests/test-media-payload-inventory.sh",
+  "why": "the compiler smoke keeps its original five optional observations independently of the fourteen copied payloads"
+ },
+ {
+  "id": "lib.media-payload-copy-companion",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh /tmp/",
+  "replace": "COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/",
+  "test": "bash linux/scripts/tests/test-media-payload-inventory.sh",
+  "why": "the isolated payload copier must ship the shared inventory it sources"
+ },
+ {
+  "id": "lib.media-payload-validator-companion",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh linux/scripts/06-packaging/media-payloads.sh /opt/scripts/packaging/",
+  "replace": "COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/",
+  "test": "bash linux/scripts/tests/test-media-payload-inventory.sh",
+  "why": "the final compiler validator needs its inventory beside the script"
+ },
+ {
+  "id": "lib.media-payload-artifact-bind",
+  "target": "linux/Dockerfile.package",
+  "find": " --mount=type=bind,source=linux/scripts/06-packaging/media-payloads.sh,target=/tmp/media-payloads.sh,ro",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-media-payload-inventory.sh",
+  "why": "the artifact-source compiler check must carry the new inventory in its narrow bind closure"
+ },
+ {
+  "id": "lib.media-install-strip-optional-function",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "declare -F strip_media_prefixes",
+  "replace": "command -v strip_media_prefixes",
+  "test": "bash linux/scripts/tests/test-media-install-strip.sh",
+  "why": "Installed media prefixes keep optional function-only strip dispatch, quiet missing helpers, advisory strip status, exact paths and install/provenance/listing order."
+ },
+ {
+  "id": "lib.media-install-strip-advisory-status",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "strip_media_prefixes \"$@\" || true",
+  "replace": "strip_media_prefixes \"$@\"",
+  "test": "bash linux/scripts/tests/test-media-install-strip.sh",
+  "why": "Installed media prefixes keep optional function-only strip dispatch, quiet missing helpers, advisory strip status, exact paths and install/provenance/listing order."
+ },
+ {
+  "id": "lib.media-install-strip-argument-boundaries",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "strip_media_prefixes \"$@\" || true",
+  "replace": "strip_media_prefixes $* || true",
+  "test": "bash linux/scripts/tests/test-media-install-strip.sh",
+  "why": "Installed media prefixes keep optional function-only strip dispatch, quiet missing helpers, advisory strip status, exact paths and install/provenance/listing order."
+ },
+ {
+  "id": "lib.media-install-strip-armnn-wiring",
+  "target": "linux/scripts/03-media/build/armnn/build-armnn.sh",
+  "find": "media_strip_prefixes_if_available \"${ARMNN_INSTALL_DIR}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-media-install-strip.sh",
+  "why": "Installed media prefixes keep optional function-only strip dispatch, quiet missing helpers, advisory strip status, exact paths and install/provenance/listing order."
+ },
+ {
+  "id": "lib.media-install-strip-opencv-wiring",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "media_strip_prefixes_if_available \"${OPENCV_PREFIX}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-media-install-strip.sh",
+  "why": "Installed media prefixes keep optional function-only strip dispatch, quiet missing helpers, advisory strip status, exact paths and install/provenance/listing order."
+ },
+ {
+  "id": "lib.cache-utils-off-spellings",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "0|false|FALSE|False|no|NO|off|OFF)",
+  "replace": "false)",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "all previous off spellings disable cache and linker configuration while empty and unknown values retain their enabled policy"
+ },
+ {
+  "id": "lib.cache-utils-guarded-launcher",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "    *sccache*)",
+  "replace": "    sccache)",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "a guarded sccache launcher path must select sccache statistics rather than ccache output"
+ },
+ {
+  "id": "lib.cache-utils-filter-argument",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "grep -E \"$2\"",
+  "replace": "cat",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "media and GCC retain their distinct statistic row filters"
+ },
+ {
+  "id": "lib.cache-utils-best-effort-status",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "    *sccache*) sccache --show-stats 2>/dev/null | grep -E \"$2\" || true ;;",
+  "replace": "    *sccache*) sccache --show-stats 2>/dev/null | grep -E \"$2\" ;;",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "phase statistics remain advisory when a cache command fails under pipefail"
+ },
+ {
+  "id": "lib.cache-utils-tool-diagnostics",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "sccache --show-stats 2>/dev/null |",
+  "replace": "sccache --show-stats |",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "raw cache diagnostics remain suppressed while selected human statistics retain the caller stream"
+ },
+ {
+  "id": "lib.cache-utils-side-effect-free",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "_flag_disabled() {",
+  "replace": "export CCACHE_DIR=/unexpected-cache-default\n_flag_disabled() {",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "sourcing shared predicates into the CMake leaf must not initialize or export cache defaults"
+ },
+ {
+  "id": "lib.cache-utils-compiler-module-required",
+  "target": "linux/scripts/01-core/compiler-cache.sh",
+  "find": "source \"${_CC_SH_DIR}/compiler-cache-utils.sh\" || return 1",
+  "replace": "source \"${_CC_SH_DIR}/compiler-cache-utils.sh\" || true",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "a missing utility cannot make the compiler-cache module report successful loading even inside if"
+ },
+ {
+  "id": "lib.cache-utils-cmake-module-required",
+  "target": "linux/scripts/01-core/cmake-cache-linker.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/compiler-cache-utils.sh\" || return 1",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/compiler-cache-utils.sh\" || true",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "a missing utility cannot make the CMake module report successful loading or latch its loaded guard"
+ },
+ {
+  "id": "lib.cache-utils-gcc-required",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "[ \"${_gcc_cache_utils_loaded}\" -eq 1 ]",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "native GCC must reject a missing utility before error-trap initialization or any build action"
+ },
+ {
+  "id": "lib.cache-utils-toolchain-mount",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "the LLVM build RUN must carry the cache utility used by its native GCC builder without relying on a stale ancestor"
+ },
+ {
+  "id": "lib.cache-utils-media-copy",
+  "target": "linux/Dockerfile.media",
+  "find": " linux/scripts/01-core/compiler-cache-utils.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "the copied CMake helper carries its cache utility in a media-only rebuild"
  }
 ]

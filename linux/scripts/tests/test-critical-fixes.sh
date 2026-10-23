@@ -543,7 +543,7 @@ else
 fi
 
 t_case "the packaging answer to fix2 — the payload copy carries absl, not just the headers that need it"
-_PAY="$(cat "${PAYLOADS}")"
+_PAY="$(bash -c 'source "$1"; eval "$2"; copy_path() { printf "%s\n" "$1"; }; copy_glob() { :; }; copy_cuda_payload() { :; }; copy_tensorrt_payload() { :; }; copy_rocm_payload() { :; }; copy_deepstream_payload() { :; }; copy_media_payloads' _ "${PKG}/media-payloads.sh" "$(t_fn_src "${PAYLOADS}" copy_media_payloads)")"
 t_assert_contains "${_PAY}" "/usr/local/include/absl" "the LiteRT headers it copies include absl/"
 t_assert_contains "${_PAY}" "/usr/local/include/tflite" "and the headers themselves are still copied"
 

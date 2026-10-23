@@ -2,16 +2,9 @@
 # append_cmake_cache_linker_args <array_ref>: LLD and compiler-cache launcher flags for CMake.
 
 [ -n "${_CMAKE_CACHE_LINKER_LOADED:-}" ] && return 0
+# shellcheck source=linux/scripts/01-core/compiler-cache-utils.sh
+source "$(dirname "${BASH_SOURCE[0]}")/compiler-cache-utils.sh" || return 1
 _CMAKE_CACHE_LINKER_LOADED=1
-
-# Accepts every off spelling (0/false/no/off); only "false" used to work, so USE_CCACHE=0 was ignored.
-_flag_disabled() {
-  case "${1:-}" in
-    0|false|FALSE|False|no|NO|off|OFF) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
 
 append_cmake_cache_linker_args() {
   local -n _accla_args=$1

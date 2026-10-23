@@ -165,3 +165,8 @@ media_compiler_launcher() {
   fi
   return 0
 }
+
+# Older SDKs may omit the strip callback; completed installs remain usable.
+media_strip_prefixes_if_available() {
+  declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "$@" || true
+}

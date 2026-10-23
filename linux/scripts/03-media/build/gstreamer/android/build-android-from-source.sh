@@ -71,20 +71,8 @@ patch_cerbero_system_m4_usage() {
     [ -f "${autoconf_recipe}" ] || return 0
     [ -f "${libtool_recipe}" ] || return 0
 
-    # Container layout first: in the flattened /opt/scripts tree the repo-relative path does not exist.
-    local _apply_patch _patches_root _scripts_dir
-    if [ -f /opt/scripts/core/apply-patch.sh ]; then
-        _apply_patch=/opt/scripts/core/apply-patch.sh
-        _patches_root=/opt/scripts/patches
-    else
-        _scripts_dir="$(cd "${SCRIPT_DIR}/../../../.." && pwd)"
-        _apply_patch="${_scripts_dir}/01-core/apply-patch.sh"
-        _patches_root="${_scripts_dir}/patches"
-    fi
-    bash "${_apply_patch}" \
-      "${_patches_root}/cerbero/001-drop-m4-dependency.patch" \
-      "$(pwd)" \
-      "Cerbero drop m4 dependency from autoconf/libtool recipes"
+    android_apply_patch cerbero/001-drop-m4-dependency.patch \
+      "$(pwd)" "Cerbero drop m4 dependency from autoconf/libtool recipes"
 }
 
 override_pkgconfig_dead_mirror() {

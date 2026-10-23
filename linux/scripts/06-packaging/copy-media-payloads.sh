@@ -3,6 +3,9 @@ set -euo pipefail
 
 # Usage: [SRCPREFIX=<artifact mount>] copy-media-payloads.sh [dest-prefix]
 
+# shellcheck source=media-payloads.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/media-payloads.sh"
+
 SRCPREFIX="${SRCPREFIX:-}"
 
 # warn is undefined when this runs standalone.
@@ -43,27 +46,12 @@ copy_glob() {
 }
 
 copy_media_payloads() {
-  local target_dir="${1:-}"
+  local target_dir="${1:-}" _observation
   export COPY_TARGET_DIR="${target_dir}"
 
-  for path in \
-    /usr/local/lib/onnxruntime-genai \
-    /usr/local/lib/onnxruntime-gpu \
-    /usr/local/include/tflite \
-    /usr/local/include/absl \
-    /usr/local/include/tensorflow \
-    /usr/local/include/flatbuffers \
-    /usr/local/include/c \
-    /usr/local/lib/pkgconfig/litert.pc \
-    /usr/local/lib/pkgconfig/tensorflow-lite.pc \
-    /usr/local/lib/pkgconfig/tensorflowlite_c.pc \
-    /usr/local/lib/pkgconfig/libvvdec.pc \
-    /usr/local/lib/litert-web \
-    /usr/local/lib/litert-lm-web \
-    /usr/local/lib/onnxruntime-web; do
-    # (llvm-target is COPY'd explicitly by Dockerfile.package; not repeated here)
+  while IFS='|' read -r path _observation; do
     copy_path "${path}"
-  done
+  done < <(media_optional_payloads)
 
   for pattern in \
     '/usr/local/lib/libLiteRt.so*' \

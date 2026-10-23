@@ -4,7 +4,8 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
-CCSH="${TESTS_DIR}/../01-core/compiler-cache.sh"
+CCSH="${1:-${TESTS_DIR}/../01-core/compiler-cache.sh}"
+CACHE_UTILS="${2:-${TESTS_DIR}/../01-core/compiler-cache-utils.sh}"
 CACHE_FIXTURE_WORK="$(mktemp -d)"
 trap 'rm -rf "${CACHE_FIXTURE_WORK}"' EXIT
 
@@ -205,7 +206,8 @@ STATS
 chmod +x "${_SC_BIN}/sccache"
 _dump() {  # $1 = hits to report; prints stderr only
   sed "s/^Cache hits  \+318/Cache hits                          $1/" -i "${_SC_BIN}/sccache" 2>/dev/null || true
-  PATH="${_SC_BIN}:${PATH}" bash -c "$(t_fn_src "${CCSH}" dump_compiler_cache_stats)"$'\n''_cc_warn() { echo "WARN $*"; }'$'\n''dump_compiler_cache_stats' 2>&1
+  PATH="${_SC_BIN}:${PATH}" bash -c 'source "$1"; eval "$2"; _cc_warn() { echo "WARN $*"; }; dump_compiler_cache_stats' \
+    _ "${CACHE_UTILS}" "$(t_fn_src "${CCSH}" dump_compiler_cache_stats)" 2>&1
 }
 _out="$(_dump 318)"
 t_assert_eq "" "$(printf '%s\n' "${_out}" | grep -i 'integer expected')" \

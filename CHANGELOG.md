@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux cache, payload and lifecycle behavior
+
+- Share side-effect-free cache policy and statistics, with explicit companions in narrow compiler mounts and media copies.
+- Share the optional package payload inventory while preserving fourteen copies, five advisory observations and all three Dockerfile closures.
+- Reuse Android patch dispatch, optional media stripping and production lifecycle predicates; retain guards, failure policies and child cleanup.
+- Add offline characterization and mutation proofs and remove resolved duplication exemptions without relaxing gates.
+
 ## 2026-10-23 — repair portable CI fixture baselines
 
 - Remove accidental ripgrep requirements from six Linux fixture suites and require exact no-match status in negative searches.

@@ -13,6 +13,8 @@ for _vcs_mod_path in \
     break
   fi
 done
+# shellcheck source=media-payloads.sh
+source "${_vcs_script_dir}/media-payloads.sh"
 source_module platform.sh
 source_module arch-mapping.sh
 source_module common.sh   # alt_install_and_set (+ SUDO="" default)
@@ -494,19 +496,15 @@ _smoke_symlink_chains() {
 
 _smoke_optional_payloads() {
   # Optional payloads note, never fail: they depend on the GPU variant and copy-media-payloads.sh sources.
-  local payload
-  for payload in \
-    /usr/local/lib/onnxruntime-genai \
-    /usr/local/lib/onnxruntime-gpu \
-    /usr/local/include/tflite \
-    /usr/local/include/tensorflow \
-    /usr/local/lib/pkgconfig/litert.pc; do
+  local payload observation
+  while IFS='|' read -r payload observation; do
+    [ "${observation}" = observe ] || continue
     if [ -e "${payload}" ]; then
       echo "SMOKE OK: payload ${payload}"
     else
       echo "SMOKE NOTE: optional payload missing: ${payload}"
     fi
-  done
+  done < <(media_optional_payloads)
 }
 
 # sysconfig's OPT survives stripping; extension-module -O0 is not visible here.

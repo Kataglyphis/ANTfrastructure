@@ -5,7 +5,9 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
 source "${TESTS_DIR}/test-harness.sh"
 
-_bool_truthy() { case "${1:-}" in 1|true|TRUE|yes|YES|on|ON) return 0 ;; *) return 1 ;; esac; }
+# shellcheck source=../01-core/platform.sh
+source "${CORE_DIR}/platform.sh"
+t_source_functions "${CORE_DIR}/build-helpers.sh" _bool_truthy || exit 1
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 
 source "${CORE_DIR}/parallel-loop.sh"
@@ -19,9 +21,9 @@ t_assert_eq "/custom/tmp/cross-loop-flags" \
             "$(TMPDIR=/custom/tmp arch_loop_flag_prefix cross-loop-flags)"
 
 _parallel_loop_child_prelude() {
-  printf 'source %q\n' "${CORE_DIR}/parallel-loop.sh"
+  printf 'source %q\n' "${CORE_DIR}/platform.sh" "${CORE_DIR}/parallel-loop.sh"
+  t_fn_src "${CORE_DIR}/build-helpers.sh" _bool_truthy || return 1
   cat <<'CHILD'
-_bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
 warn() { :; }
 CHILD
 }

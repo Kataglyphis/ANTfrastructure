@@ -77,7 +77,7 @@ COPY --chmod=644 linux/scripts/03-media/core/arch-flags-${TARGET_ARCH}.env /opt/
 COPY --chmod=755 linux/scripts/03-media/activate-cross-python.sh    /opt/scripts/03-media/activate-cross-python.sh
 COPY --chmod=755 linux/scripts/01-core/install-deps-preamble.sh  /opt/scripts/core/install-deps-preamble.sh
 COPY --chmod=755 linux/scripts/01-core/python-host.sh            /opt/scripts/core/python-host.sh
-COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh     /opt/scripts/core/cmake-cache-linker.sh
+COPY --chmod=755 linux/scripts/01-core/cmake-cache-linker.sh linux/scripts/01-core/compiler-cache-utils.sh /opt/scripts/core/
 COPY --chmod=755 linux/scripts/01-core/modules.sh                /opt/scripts/core/modules.sh
 
 # Fail fast: :sdk has no nvcc, and every CUDA consumer below would otherwise die deep in a build.

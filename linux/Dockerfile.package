@@ -47,7 +47,7 @@ ARG TARGETARCH
 ARG GCC_VERSION
 ARG LLVM_RELEASE
 
-RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro \
+RUN --mount=type=bind,source=linux/scripts/06-packaging/validate-compilers.sh,target=/tmp/validate-compilers.sh,ro --mount=type=bind,source=linux/scripts/06-packaging/media-payloads.sh,target=/tmp/media-payloads.sh,ro \
     set -euo pipefail; \
     TARGET_ARCH="${TARGET_ARCH:-${TARGETARCH}}" \
     bash /tmp/validate-compilers.sh artifact-source
@@ -117,14 +117,14 @@ COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/lo
 # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Tolerant per-path copies: variant payloads such as onnxruntime-gpu may be absent.
-COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh /tmp/copy-media-payloads.sh
+COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh /tmp/
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
     # No soname repair here: that belongs to the sdk stage alone (materialize-llvm-target.sh).
     ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
       ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \
       ENABLE_TENSORRT="${ENABLE_TENSORRT:-false}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
-    rm -f /tmp/copy-media-payloads.sh
+    rm -f /tmp/copy-media-payloads.sh /tmp/media-payloads.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
@@ -298,7 +298,7 @@ COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh /opt/scripts/
 COPY --chmod=755 linux/scripts/02-toolchain/python/fix-staged-python-pc.sh /opt/scripts/python/fix-staged-python-pc.sh
 COPY --chmod=755 linux/scripts/06-packaging/setup-package-image.sh /opt/scripts/packaging/setup-package-image.sh
 COPY --chmod=755 linux/scripts/06-packaging/package-image-wiring.sh /opt/scripts/packaging/package-image-wiring.sh
-COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh /opt/scripts/packaging/validate-compilers.sh
+COPY --chmod=755 linux/scripts/06-packaging/validate-compilers.sh linux/scripts/06-packaging/media-payloads.sh /opt/scripts/packaging/
 COPY --chmod=755 linux/scripts/06-packaging/setup-vulkan-symlinks.sh /opt/scripts/packaging/setup-vulkan-symlinks.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-common.sh /opt/scripts/packaging/smoke-common.sh
 COPY --chmod=755 linux/scripts/06-packaging/smoke-media.sh /opt/scripts/packaging/smoke-media.sh

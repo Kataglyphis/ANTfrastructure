@@ -1572,3 +1572,34 @@ Clang share compiler-cache help rendering and unknown-option rejection through
 their already-required toolchain bootstrap. Each builder retains its help spacing,
 cache options and remaining parser behavior. Offline argv and byte comparisons
 exercise the original and refactored builders without downloading or compiling.
+
+### Cache policy, packaging inventory and media dispatch
+
+`01-core/compiler-cache-utils.sh` owns disabled-flag recognition and launcher
+statistics without installing environment defaults or starting cache servers.
+Cache modules require this companion; GCC resolves it through the existing
+bootstrap. GCC and LLVM retain separate read-only mounts in the toolchain stage,
+and the media stage explicitly copies it beside the CMake cache helper. Existing
+whole-core copies already carry it. Launcher arguments, selected statistics,
+output streams and best-effort failure handling retain each caller's policy.
+
+`06-packaging/media-payloads.sh` owns the ordered optional payload inventory.
+The copier processes all fourteen entries; the validator observes only the five
+marked for advisory checks. Paths remain relative to the caller's source prefix,
+and GPU payload order and missing-payload behavior remain unchanged. Package's
+artifact-source validator mounts the companion beside its script. The temporary
+copier copies and removes both files; the final validator carries the companion
+under `/opt/scripts/packaging`. Each closure is checked without building images.
+
+The GStreamer Android recipe wrapper uses `android_apply_patch` after its existing
+recipe guards. Mounted core scripts retain precedence; repository lookup uses
+the caller's source directory. Fixtures cover paths containing spaces, both
+layouts, skipped recipes and failed patch status without applying real patches.
+Arm NN and OpenCV share optional install stripping through media common. Older
+SDKs without the strip callback still skip it quietly; callback failures remain
+advisory. Tests use stubs and never strip installed libraries.
+
+Lifecycle fixtures use production truthiness behavior instead of copied boolean
+tables. They track and reap their own children on exit. Offline fixtures and
+mutation checks cover these dispatch contracts; they do not prove compiler,
+container build, registry or real filesystem installation behavior.

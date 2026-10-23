@@ -748,7 +748,7 @@ main() {
     echo "OpenCV ${OPENCV_VERSION} installed successfully to ${OPENCV_PREFIX}"
 
     # Best-effort strip (MEDIA_STRIP=0 disables); the helper derives the cross strip itself, as STRIP is unset here.
-    declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${OPENCV_PREFIX}" || true
+    media_strip_prefixes_if_available "${OPENCV_PREFIX}"
 
     echo "Libraries:"
     ls -la "${OPENCV_PREFIX}/lib" 2>/dev/null | head -20 || echo "Could not list libraries"

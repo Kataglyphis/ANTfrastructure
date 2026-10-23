@@ -2,9 +2,10 @@
 # Compiler-cache and lld wiring for the 03-media chain only: docs/build-cache-tiers.md#5-scc1--the-ccachesccache-hybrid
 
 [ -n "${_COMPILER_CACHE_LOADED:-}" ] && return 0
-_COMPILER_CACHE_LOADED=1
-
 _CC_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=linux/scripts/01-core/compiler-cache-utils.sh
+source "${_CC_SH_DIR}/compiler-cache-utils.sh" || return 1
+_COMPILER_CACHE_LOADED=1
 # Absent where compiler-cache.sh is mounted alone; the server then starts on disk only.
 # shellcheck disable=SC1091
 [ ! -f "${_CC_SH_DIR}/sccache-s3-level.sh" ] || source "${_CC_SH_DIR}/sccache-s3-level.sh"
@@ -36,14 +37,6 @@ _ccache_available() {
 
 _sccache_available() {
   command -v sccache >/dev/null 2>&1
-}
-
-# Accepts every off spelling; only "false" used to work, so USE_CCACHE=0 was ignored.
-_flag_disabled() {
-  case "${1:-}" in
-    0|false|FALSE|False|no|NO|off|OFF) return 0 ;;
-    *) return 1 ;;
-  esac
 }
 
 # Run in the compiling shell, never in $( ): docs/build-cache-tiers.md#the-server-address-must-be-exported-where-the-compiles-run
@@ -127,11 +120,8 @@ setup_ccache() {
   # Without -M ccache keeps its compiled-in default, not CCACHE_MAXSIZE.
   ccache -M "${CCACHE_MAXSIZE}" 2>/dev/null || true
 
-  # Substring match: the launcher may be the guarded launcher's path, not the literal "sccache".
-  case "${_cc_launcher}" in
-    *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' || true ;;
-    *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
-  esac
+  compiler_cache_stats_for_launcher "${_cc_launcher}" \
+    '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)'
 }
 
 setup_sccache() {
@@ -227,11 +217,11 @@ dump_compiler_cache_stats() {
     _hits="$(sccache --show-stats 2>/dev/null | awk '/^Cache hits[[:space:]]+[0-9]+[[:space:]]*$/ { print $NF; exit }')"
     case "${_req}" in ''|*[!0-9]*) _req=0 ;; esac
     case "${_hits}" in ''|*[!0-9]*) _hits=0 ;; esac
-    sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' >&2 || true
+    compiler_cache_stats_for_launcher sccache '^(Compile requests|Cache hits|Cache misses|Cache (read |write )?errors|Cache timeouts|Forced recaches|Non-cacheable|Unsupported|Errors|Cache location|Max cache size)' >&2
     if [ "${_req}" -gt 0 ] && [ "${_hits}" -eq 0 ]; then
       _cc_warn "sccache: ${_req} compile requests, 0 cache hits — cache may be dead"
     fi
   elif command -v ccache >/dev/null 2>&1; then
-    ccache --show-stats 2>/dev/null | head -5 >&2 || true
+    compiler_cache_stats_for_launcher ccache '' >&2
   fi
 }

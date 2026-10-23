@@ -8,7 +8,17 @@ source "${CORE_DIR}/chain-lifecycle.sh"
 source "${CORE_DIR}/chain-storage.sh"
 
 workdir="$(mktemp -d)"
-trap 'rm -rf "${workdir}"' EXIT
+_cleanup_lifecycle_fixture() {
+  local pid
+  for pid in "${_fixture_root_pid:-}" "${_fixture_sibling_pid:-}"; do
+    [ -n "$pid" ] || continue
+    chain_terminate_descendants TERM "$pid"
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  done
+  rm -rf "${workdir}"
+}
+trap _cleanup_lifecycle_fixture EXIT
 
 # O2: run-id generation
 t_case "cross_run_id_generate returns a non-empty timestamped id"
@@ -56,6 +66,7 @@ t_case "chain_terminate_descendants TERMs the descendant subtree"
 t_needs "pgrep (procps)" command -v pgrep
 bash -c 'sleep 30 & echo $! > "'"${workdir}"'/leaf.pid"; wait' &
 root=$!
+_fixture_root_pid="${root}"
 # Give the child time to spawn its leaf and record the pid.
 _waited=0
 while [ ! -s "${workdir}/leaf.pid" ] && [ "${_waited}" -lt 20 ]; do sleep 0.1; _waited=$((_waited + 1)); done
@@ -68,6 +79,7 @@ while kill -0 "${leaf}" 2>/dev/null && [ "${_waited}" -lt 25 ]; do sleep 0.1; _w
 t_assert_fails kill -0 "${leaf}"
 kill "${root}" 2>/dev/null || true
 wait "${root}" 2>/dev/null || true
+_fixture_root_pid=""
 
 # STALE-LOG: build-cross-chain.sh runs main at the bottom, so its shipped text is evaluated piece by piece
 CHAIN_SH="${TESTS_DIR}/../build-cross-chain.sh"
@@ -353,7 +365,6 @@ eval "$(sed -n '/^_chain_runtime_lane_disk_gate() {$/,/^}$/p' "${CHAIN_SH}")"
 log()  { printf '[INFO] %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*"; }
 err()  { printf '[ERROR] %s\n' "$*"; exit 1; }
-_bool_truthy() { case "${1:-}" in 1|true|TRUE|yes|YES|on|ON) return 0 ;; *) return 1 ;; esac; }
 arch_list_to_words() { printf '%s' "${1//,/ }"; }
 _disk_guard_protected_slugs() { printf ''; }
 TARGET_ARCHES="amd64,arm64,riscv64"
@@ -633,6 +644,7 @@ eval "$(sed -n '/^_chain_archive_prev_logs()/,/^}/p' "${CHAIN_SH}")"
 _sib_pf="$(mktemp)"
 cross_chain_pidfile_path() { printf '%s' "${_sib_pf}"; }
 sleep 300 & _sib_pid=$!
+_fixture_sibling_pid="${_sib_pid}"
 printf '%s\n' "${_sib_pid}" > "${_sib_pf}"
 
 t_case "a live sibling keeps the pidfile, so stop-cross-chain.sh still reaches it"
@@ -650,6 +662,8 @@ CROSS_RUN_ID=this-run _chain_archive_prev_logs >/dev/null 2>&1
 t_assert_ok test -f "${_sib_logs}/media-arm64.log"
 
 kill "${_sib_pid}" 2>/dev/null || true
+wait "${_sib_pid}" 2>/dev/null || true
+_fixture_sibling_pid=""
 rm -rf "${_sib_pf}" "${_sib_logs}"
 
 # B3: the between-stage guard aims at the next lane's need, not a fixed 40G floor that reclaims too late

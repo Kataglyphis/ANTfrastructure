@@ -11,6 +11,10 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/bootstrap.sh"
 source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
 source_toolchain_elf_strip "${_SCRIPT_DIR}"
+_gcc_cache_utils_loaded=0
+_source_toolchain_first_available _gcc_cache_utils_loaded "${_SCRIPT_DIR}" compiler-cache-utils.sh
+[ "${_gcc_cache_utils_loaded}" -eq 1 ] || { printf 'ERROR: toolchain bootstrap requires compiler-cache-utils.sh\n' >&2; exit 1; }
+unset _gcc_cache_utils_loaded
 install_err_trap
 
 usage() {
@@ -626,11 +630,8 @@ else
 fi
 # Cache stats for this compile phase, best effort; zero hits is the earliest sign of a dead cache.
 if [ "${USE_CCACHE}" = "1" ]; then
-  # Substring match: CC_LAUNCHER is a path such as .../sccache-launcher.sh.
-  case "${CC_LAUNCHER:-}" in
-    *sccache*) sccache --show-stats 2>/dev/null | grep -E '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)' || true ;;
-    *)         ccache --show-stats 2>/dev/null | head -5 || true ;;
-  esac
+  compiler_cache_stats_for_launcher "${CC_LAUNCHER:-}" \
+    '^(Compile requests|Cache hits|Cache misses|Non-cacheable|Unsupported|Errors)'
 fi
 
 echo "Installing to ${PREFIX}..."

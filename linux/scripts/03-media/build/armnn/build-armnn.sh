@@ -100,7 +100,7 @@ build_armnn() {
 
   info "Arm NN installed to ${ARMNN_INSTALL_DIR}"
   # Best-effort strip of the dedicated prefix; MEDIA_STRIP=0 disables it inside the helper.
-  declare -F strip_media_prefixes >/dev/null 2>&1 && strip_media_prefixes "${ARMNN_INSTALL_DIR}" || true
+  media_strip_prefixes_if_available "${ARMNN_INSTALL_DIR}"
   ls -la "${ARMNN_INSTALL_DIR}/lib/" 2>/dev/null | head -10 || true
 }
 
