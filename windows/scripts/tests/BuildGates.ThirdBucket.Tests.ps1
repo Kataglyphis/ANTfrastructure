@@ -4,57 +4,62 @@
 
 # The skip bucket, twin of gates.sh --tolerate-skips: see docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
 
-$script:GateModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsBuild.Common.psm1'
-$script:gateContexts = @()
-# Not -Force: in a harness suite it unloads a module the runner's other imports are bound to.
-Import-Module $script:GateModule -DisableNameChecking
+BeforeAll {
+    $script:GateModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsBuild.Common.psm1'
+    $script:gateContexts = @()
+    $script:gateWorkspace = New-TestDir -Prefix 'gatebucket-'
+    # Not -Force: in a harness suite it unloads a module the runner's other imports are bound to.
+    Import-Module $script:GateModule -DisableNameChecking
 
-# The log writer stays open so a gate's messages can be read back.
-function script:New-GateContext {
-    $dir = New-TestDir -Prefix 'gatebucket-'
-    $ctx = New-BuildContext -Workspace $dir -LogDir $dir
-    $ctx.SuppressConsoleOutput = $true
-    Open-BuildLog -Context $ctx
-    $script:gateContexts += $ctx
-    return $ctx
-}
-
-# Closes the writer first: an un-flushed StreamWriter reads back short.
-function script:Get-GateLog {
-    param([Parameter(Mandatory)][pscustomobject]$Context)
-    Close-BuildLog -Context $Context
-    return ('' + (Get-Content -Raw -LiteralPath $Context.LogPath))
-}
-
-# The batch must be refused, and the refusal must say why.
-function script:Assert-BatchRefused {
-    param(
-        [Parameter(Mandatory)][pscustomobject]$Context,
-        [Parameter(Mandatory)][string]$Pattern,
-        [Parameter(Mandatory)][string]$Because,
-        [switch]$TolerateSkips
-    )
-    Assert-Throws -MessagePattern $Pattern -Message $Because -Body {
-        Assert-BuildGates -Context $Context -Label 'T' -TolerateSkips:$TolerateSkips
+    # The log writer stays open so a gate's messages can be read back.
+    function script:New-GateContext {
+        $dir = Join-Path $script:gateWorkspace ([guid]::NewGuid().ToString('N'))
+        $null = New-Item -ItemType Directory -Path $dir -ErrorAction Stop
+        $ctx = New-BuildContext -Workspace $dir -LogDir $dir
+        $ctx.SuppressConsoleOutput = $true
+        Open-BuildLog -Context $ctx
+        $script:gateContexts += $ctx
+        return $ctx
     }
-}
 
-# One gate that ran and one that could not.
-function script:New-SkippedBatch {
-    $ctx = New-GateContext
-    Invoke-BuildGate -Context $ctx -Name 'ran' -Script { } | Out-Null
-    Add-BuildGateSkip -Context $ctx -Name 'missing-tool' -Reason 'no such binary' | Out-Null
-    return $ctx
+    # Closes the writer first: an un-flushed StreamWriter reads back short.
+    function script:Get-GateLog {
+        param([Parameter(Mandatory)][pscustomobject]$Context)
+        Close-BuildLog -Context $Context
+        return ('' + (Get-Content -Raw -LiteralPath $Context.LogPath))
+    }
+
+    # The batch must be refused, and the refusal must say why.
+    function script:Assert-BatchRefused {
+        param(
+            [Parameter(Mandatory)][pscustomobject]$Context,
+            [Parameter(Mandatory)][string]$Pattern,
+            [Parameter(Mandatory)][string]$Because,
+            [switch]$TolerateSkips
+        )
+        Assert-Throws -MessagePattern $Pattern -Message $Because -Body {
+            Assert-BuildGates -Context $Context -Label 'T' -TolerateSkips:$TolerateSkips
+        }
+    }
+
+    # One gate that ran and one that could not.
+    function script:New-SkippedBatch {
+        $ctx = New-GateContext
+        Invoke-BuildGate -Context $ctx -Name 'ran' -Script { } | Out-Null
+        Add-BuildGateSkip -Context $ctx -Name 'missing-tool' -Reason 'no such binary' | Out-Null
+        return $ctx
+    }
 }
 
 Describe 'WindowsBuild.Common gates: the third bucket' {
     AfterEach {
         foreach ($ctx in $script:gateContexts) {
             Close-BuildLog -Context $ctx
-            Remove-TestDir -Path $ctx.Workspace
         }
         $script:gateContexts = @()
     }
+
+    AfterAll { Remove-TestDir -Path $script:gateWorkspace }
 
     It 'Add-BuildGateSkip records the gate and its reason, and grades nothing' {
         $ctx = New-GateContext
