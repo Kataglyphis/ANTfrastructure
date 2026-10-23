@@ -27,6 +27,7 @@
 ## 2026-10-23 — classify the shared cache utility as a core leaf
 
 - Register `compiler-cache-utils.sh` as L0 so the layer gate accepts its intended use by `common.sh` and enforces that the helper sources no core modules.
+- Prove the classification and no-upward-import constraint with two mutations.
 
 ## 2026-10-23 — share Linux cache, dependency and packaging behavior
 

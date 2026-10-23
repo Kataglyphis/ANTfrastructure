@@ -20202,5 +20202,21 @@
   "replace": "      :",
   "test": "bash linux/scripts/tests/test-critical-fixes.sh",
   "why": "Rust must retain the guarded choice or sccache when the resolver yields ccache or an empty value."
+ },
+ {
+  "id": "lib.layer-order-cache-utility-classified",
+  "target": "linux/scripts/tests/test-layer-order.sh",
+  "find": "compiler-cache-utils.sh ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-layer-order.sh",
+  "why": "The cache companion must remain classified as a pure leaf while common keeps its lower-layer dependency."
+ },
+ {
+  "id": "lib.layer-order-cache-utility-leaf",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "# shellcheck shell=bash",
+  "replace": "# shellcheck shell=bash\nsource /opt/scripts/core/common.sh",
+  "test": "bash linux/scripts/tests/test-layer-order.sh",
+  "why": "Classifying the utility as L0 must reject a future higher-layer dependency instead of exempting the utility from source-graph checks."
  }
 ]
