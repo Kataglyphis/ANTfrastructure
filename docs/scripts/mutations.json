@@ -610,16 +610,16 @@
  {
   "id": "lib.cmake-build-vulkan-script-on-link",
   "target": "linux/scripts/lib/cmake-build.sh",
-  "find": "    vulkan_env_source_script \"${VULKAN_SETUP_SCRIPT}\"\n",
-  "replace": "    . \"${VULKAN_SETUP_SCRIPT}\"\n",
+  "find": "  project_env_source_vulkan\n",
+  "replace": "  :\n",
   "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
   "why": "a consumer lane that names --vulkan-setup-script re-pins the arch dir the entrypoint left on the link (CON48)"
  },
  {
   "id": "lib.ctest-run-vulkan-script-on-link",
   "target": "linux/scripts/lib/ctest-run.sh",
-  "find": "    vulkan_env_source_script \"${VULKAN_SETUP_SCRIPT}\"\n",
-  "replace": "    . \"${VULKAN_SETUP_SCRIPT}\"\n",
+  "find": "  project_env_source_vulkan\n",
+  "replace": "  :\n",
   "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
   "why": "a consumer lane that names --vulkan-setup-script re-pins the arch dir the entrypoint left on the link (CON48)"
  },
@@ -17434,5 +17434,85 @@
   "replace": "xargs -0 -r -P1",
   "test": "bash linux/scripts/tests/test-elf-strip.sh",
   "why": "the caller-selected strip parallelism must reach xargs instead of serializing every tree"
+ },
+ {
+  "id": "probe.renovate-local-dry-run",
+  "target": "linux/scripts/renovate-cli.sh",
+  "find": "local:--dry-run) assign_renovate_options DRY_RUN 1 ;;",
+  "replace": "local:--dry-run) assign_renovate_options DRY_RUN 1 MODE apply ;;",
+  "test": "bash linux/scripts/tests/test-renovate-cli.sh",
+  "why": "local dry-run must preserve report mode"
+ },
+ {
+  "id": "probe.renovate-fleet-dry-run",
+  "target": "linux/scripts/renovate-cli.sh",
+  "find": "fleet:--dry-run) assign_renovate_options DRY_RUN 1 MODE apply ;;",
+  "replace": "fleet:--dry-run) assign_renovate_options DRY_RUN 1 ;;",
+  "test": "bash linux/scripts/tests/test-renovate-cli.sh",
+  "why": "fleet dry-run must select the apply plan"
+ },
+ {
+  "id": "probe.renovate-cli-missing-value",
+  "target": "linux/scripts/renovate-cli.sh",
+  "find": "[ \"$#\" -gt 0 ] || err \"${option} needs a value\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-renovate-cli.sh",
+  "why": "missing values must fail with the option diagnostic"
+ },
+ {
+  "id": "probe.renovate-submodule-empty-path",
+  "target": "linux/scripts/renovate-git.sh",
+  "find": "[ -n \"${path}\" ] || continue",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-renovate-git.sh",
+  "why": "empty submodule paths must not reach callbacks"
+ },
+ {
+  "id": "probe.renovate-submodule-context",
+  "target": "linux/scripts/renovate-git.sh",
+  "find": "\"${callback}\" \"${directory}\" \"${name}\" \"${path}\" \"$@\"",
+  "replace": "\"${callback}\" \"${directory}\" \"${name}\" \"${path}\" dropped",
+  "test": "bash linux/scripts/tests/test-renovate-git.sh",
+  "why": "callback context must survive shared iteration"
+ },
+ {
+  "id": "probe.gstreamer-required-cross-guard",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "    return 1\n  fi\n\n  local host_arch=",
+  "replace": "    :\n  fi\n\n  local host_arch=",
+  "test": "bash linux/scripts/tests/test-gstreamer-meson-flags.sh",
+  "why": "monorepo setup must refuse an incomplete module closure instead of inventing a private cross-mode guard"
+ },
+ {
+  "id": "lib.project-env-active-link",
+  "target": "linux/scripts/lib/project-env.sh",
+  "find": "    vulkan_env_source_script \"${VULKAN_SETUP_SCRIPT}\"",
+  "replace": "    . \"${VULKAN_SETUP_SCRIPT}\"",
+  "test": "bash linux/scripts/tests/test-vulkan-env-active-link.sh",
+  "why": "the shared launcher path must restore the active SDK link"
+ },
+ {
+  "id": "lib.project-env-git-failure",
+  "target": "linux/scripts/lib/project-env.sh",
+  "find": "git config --global --add safe.directory \"$1\" || true",
+  "replace": "git config --global --add safe.directory \"$1\"",
+  "test": "bash linux/scripts/tests/test-project-env.sh",
+  "why": "Git setup is advisory in a read-only configuration"
+ },
+ {
+  "id": "lib.project-env-hook-precedence",
+  "target": "linux/scripts/lib/project-env.sh",
+  "find": "    source_vulkan_env\n",
+  "replace": "    vulkan_env_source_script \"${VULKAN_SETUP_SCRIPT}\"\n",
+  "test": "bash linux/scripts/tests/test-project-env.sh",
+  "why": "the project hook wins over the explicit SDK script and retains its failure status"
+ },
+ {
+  "id": "probe.core-cross-native-alias",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "[ -n \"${target}\" ] && [ \"${target}\" != \"${build}\" ]",
+  "replace": "[ -n \"${target}\" ] && [ \"${target}\" = \"${build}\" ]",
+  "test": "bash linux/scripts/tests/test-cross-fallback-parity.sh",
+  "why": "core-only cross detection must normalize OCI and uname spellings before comparing"
  }
 ]

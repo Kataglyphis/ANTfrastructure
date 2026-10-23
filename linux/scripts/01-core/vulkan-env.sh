@@ -181,3 +181,11 @@ vulkan_env_source() {
   _vulkan_env_warn "Vulkan setup-env.sh not found – continuing without explicit sourcing"
   return 0
 }
+
+vulkan_env_cli_usage() {
+  cat <<'EOF'
+  --vulkan-version VER     Vulkan SDK version to source
+  --vulkan-setup-script P  explicit Vulkan setup-env.sh to source
+  --vulkan-sdk DIR         Vulkan SDK root whose setup-env.sh is sourced
+EOF
+}

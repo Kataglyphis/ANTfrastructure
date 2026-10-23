@@ -666,7 +666,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2179 entries** over **210 distinct test commands**; both digits are
+manifest holds **2189 entries** over **214 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1922,7 +1922,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 751 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 758 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1933,7 +1933,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **286** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **287** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -3235,3 +3235,13 @@ own file and snippet parsing with shared parse-error validation.
 Missing files and parse errors fail with caller labels; it never runs the source.
 Function extraction, native-argument positive controls and source-verification
 fixtures use it. The AST fixture suite covers malformed inputs and non-execution.
+
+Renovate drivers share argument policies and Git discovery in
+[`renovate-cli.sh` and `renovate-git.sh`](dependency-updates.md#shared-driver-helpers).
+Their pair exemption is removed. GStreamer also drops its private cross-mode
+fallback and requires the media bootstrap's validated guard. Regression fixtures
+and targeted mutations cover dry-run policies, discovery and missing guards.
+
+CMake and CTest share project Git/Vulkan initialization and Vulkan CLI help. Their
+pair exemption is removed. See the [project environment contract](shared-script-libraries.md#shared-cmake-and-ctest-project-environment)
+for hook precedence, optional Git configuration and fixture coverage.

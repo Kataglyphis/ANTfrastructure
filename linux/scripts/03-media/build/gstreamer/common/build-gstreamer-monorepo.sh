@@ -88,19 +88,10 @@ compute_gstreamer_meson_jobs() {
 }
 
 _gst_monorepo_env_setup() {
-  # Without cross-env.sh: normalize both arches, or OCI-vs-uname names read as cross on native arm64.
-  if ! command -v cross_build_is_active >/dev/null 2>&1; then
-    cross_build_is_active() {
-      if command -v cross_build_enabled >/dev/null 2>&1; then
-        cross_build_enabled
-        return $?
-      fi
-      [ "${BUILD_MODE:-native}" = "cross" ] || return 1
-      local _t _b
-      _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
-      _b="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
-      [ -n "${_t}" ] && [ "${_t}" != "${_b}" ]
-    }
+  # media_common_init validates the canonical guard before any monorepo setup.
+  if ! declare -F cross_build_is_active >/dev/null 2>&1; then
+    printf 'ERROR: GStreamer requires cross_build_is_active from media_common_init\n' >&2
+    return 1
   fi
 
   local host_arch=""

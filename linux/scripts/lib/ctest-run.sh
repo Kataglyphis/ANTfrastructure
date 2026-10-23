@@ -7,8 +7,8 @@ _CTEST_RUN_SH_LOADED=1
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/log-bootstrap.sh"
 # shellcheck source=./cli-value-options.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cli-value-options.sh"
-# shellcheck source=../01-core/vulkan-env.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/vulkan-env.sh"
+# shellcheck source=./project-env.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/project-env.sh"
 
 # -T test leaves a Testing/ tree CI can upload; --output-on-failure keeps a failing test's stdout.
 _CTEST_RUN_BUILTIN_ARGS=(
@@ -28,9 +28,9 @@ ${CTEST_RUN_USAGE_INTRO:-Runs the ctest suite of a CMake project.} Options:
   --build-dir DIR          build tree to run ctest in (default: ${CTEST_RUN_DEFAULT_BUILD_DIR:-build})
   --build-type CONFIG      value for ctest -C (default: ${CTEST_RUN_DEFAULT_BUILD_TYPE:-Debug})
   --ctest-exclude REGEX    value for ctest -E (default: ${CTEST_RUN_DEFAULT_EXCLUDE:-<none>})
-  --vulkan-version VER     Vulkan SDK version to source
-  --vulkan-setup-script P  explicit Vulkan setup-env.sh to source
-  --vulkan-sdk DIR         Vulkan SDK root whose setup-env.sh is sourced
+EOF
+  vulkan_env_cli_usage
+  cat <<EOF
   -h, --help               show this help
 
 Anything after -- (or after the first non-option argument) is appended to the
@@ -69,17 +69,9 @@ ctest_run_parse_args() {
 
 # Environment preparation: git refuses a host-owned bind mount until it is marked safe.
 ctest_run_prepare_env() {
-  local safe_dir="${CTEST_RUN_SAFE_DIRECTORY-/workspace}"
-  if [[ -n "${safe_dir}" ]]; then
-    git config --global --add safe.directory "${safe_dir}" || true
-  fi
+  project_env_allow_git_directory "${CTEST_RUN_SAFE_DIRECTORY-/workspace}"
 
-  if declare -F source_vulkan_env >/dev/null 2>&1; then
-    source_vulkan_env
-  elif [[ -n "${VULKAN_SETUP_SCRIPT:-}" && -f "${VULKAN_SETUP_SCRIPT}" ]]; then
-    info "Sourcing Vulkan env from: ${VULKAN_SETUP_SCRIPT}"
-    vulkan_env_source_script "${VULKAN_SETUP_SCRIPT}"
-  fi
+  project_env_source_vulkan
 }
 
 # Command construction. Pure: fills CTEST_CMD without running anything, so it stays testable.

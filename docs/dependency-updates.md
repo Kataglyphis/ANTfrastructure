@@ -38,6 +38,24 @@ placed wherever that repo already keeps its ANTfrastructure wrappers -
 AccelerANTgine and ANThology, but the flat `scripts/` in jotrockenmitlocken.
 Same shape as `run-lint-gates.sh` there.
 
+## Shared driver helpers
+
+Both drivers require `renovate-cli.sh`, `renovate-git.sh` and `renovate-say.sh`
+beside them. The CLI helper owns argument movement, value validation and common
+options. Local `--dry-run` preserves the selected mode; fleet `--dry-run` selects
+apply mode, so it prints the complete plan. A later `--report` still wins.
+
+The Git helper validates the root and enumerates declared submodule names and
+nonempty paths from one NUL-delimited Git query. Duplicate declarations retain
+Git's last-value path semantics. Callbacks retain the policies: local classifies explicit branches;
+fleet resolves identities and recurses within its depth bound. Discovery makes no
+network requests and changes no gitlinks. Root validation preserves a supplied
+subdirectory; fleet separately resolves its repository top level.
+
+`test-renovate-cli.sh` checks option order, diagnostics and driver boundaries;
+`test-renovate-git.sh` checks local discovery, spaces and callback context. The
+existing fixture suites cover planning, fleet recursion and transactional writes.
+
 ## The six things AGENTS.md warned about
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), unedited except for this heading, the relative links and the 2026-09-25 corrections. The RULES stayed there; this is the reference behind them.

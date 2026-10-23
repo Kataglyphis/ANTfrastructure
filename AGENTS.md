@@ -80,6 +80,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
+   CMake/CTest library copies include `project-env.sh` and its Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
+   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
 
 ## Container Architecture

@@ -9,8 +9,8 @@ _CMAKE_BUILD_CORE_DIR="${_CMAKE_BUILD_LIB_DIR}/../01-core"
 source "${_CMAKE_BUILD_LIB_DIR}/log-bootstrap.sh"
 # shellcheck source=./cli-value-options.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cli-value-options.sh"
-# shellcheck source=../01-core/vulkan-env.sh
-source "${_CMAKE_BUILD_CORE_DIR}/vulkan-env.sh"
+# shellcheck source=./project-env.sh
+source "${_CMAKE_BUILD_LIB_DIR}/project-env.sh"
 # shellcheck source=./linker-select.sh
 source "${_CMAKE_BUILD_LIB_DIR}/linker-select.sh"
 
@@ -29,9 +29,9 @@ ${CMAKE_BUILD_USAGE_INTRO:-Configures and builds a CMake project.} Options:
   --parallel N             explicit job count (default: memory-aware auto-detect)
   --mb-per-job MB          peak RAM per job used by the auto-detection (default: ${CMAKE_BUILD_DEFAULT_MB_PER_JOB:-4000})
   --cargo-cache-dir DIR    writable CARGO_HOME/CARGO_TARGET_DIR (e.g. a named volume)
-  --vulkan-version VER     Vulkan SDK version to source
-  --vulkan-setup-script P  explicit Vulkan setup-env.sh to source
-  --vulkan-sdk DIR         Vulkan SDK root whose setup-env.sh is sourced
+EOF
+  vulkan_env_cli_usage
+  cat <<EOF
   --allow-prebuild-failure downgrade a failing pre-build hook to a warning
   -h, --help               show this help
 EOF
@@ -129,10 +129,7 @@ cmake_build_parse_args() {
 
 # Environment preparation for an unprivileged build; safe to call more than once.
 cmake_build_prepare_env() {
-  local safe_dir="${CMAKE_BUILD_SAFE_DIRECTORY-/workspace}"
-  if [[ -n "${safe_dir}" ]]; then
-    git config --global --add safe.directory "${safe_dir}" || true
-  fi
+  project_env_allow_git_directory "${CMAKE_BUILD_SAFE_DIRECTORY-/workspace}"
 
   # ccache reads CCACHE_SECONDARY_STORAGE as a URL; a non-URL value fails every gcc compile.
   if [[ -n "${CCACHE_SECONDARY_STORAGE:-}" && "${CCACHE_SECONDARY_STORAGE}" != *"://"* ]]; then
@@ -140,12 +137,7 @@ cmake_build_prepare_env() {
     unset CCACHE_SECONDARY_STORAGE
   fi
 
-  if declare -F source_vulkan_env >/dev/null 2>&1; then
-    source_vulkan_env
-  elif [[ -n "${VULKAN_SETUP_SCRIPT:-}" && -f "${VULKAN_SETUP_SCRIPT}" ]]; then
-    info "Sourcing Vulkan env from: ${VULKAN_SETUP_SCRIPT}"
-    vulkan_env_source_script "${VULKAN_SETUP_SCRIPT}"
-  fi
+  project_env_source_vulkan
 
   # See docs/cross-build-verification.md#cmake-buildsh-a-writable-cargo_home
   if ! { mkdir -p "${CARGO_HOME:-/usr/local/cargo}/registry" 2>/dev/null \

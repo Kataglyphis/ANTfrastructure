@@ -61,26 +61,13 @@ TARGET=""
 DRY_RUN=0
 REFRESH=0
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --apply)     MODE=apply ;;
-    --report)    MODE=report ;;
-    --dry-run)   DRY_RUN=1 ;;
-    --refresh)   REFRESH=1 ;;
-    --print-bin) MODE=print-bin ;;
-    --managers)  shift; [ $# -gt 0 ] || err "--managers needs a value"; MANAGERS="$1" ;;
-    --managers=*) MANAGERS="${1#*=}" ;;
-    -h|--help)   _renovate_usage; exit 0 ;;
-    -*)          err "unknown option: $1" ;;
-    *)           [ -z "${TARGET}" ] || err "more than one repo root given"; TARGET="$1" ;;
-  esac
-  shift
-done
+# shellcheck source=renovate-cli.sh
+. "$(dirname "${BASH_SOURCE[0]}")/renovate-cli.sh" || err "cannot load renovate-cli.sh beside me"
+parse_renovate_options local _renovate_usage "repo root" TARGET "$@"
 
-TARGET="${TARGET:-$PWD}"
-[ -d "${TARGET}" ] || err "not a directory: ${TARGET}"
-TARGET="$(cd "${TARGET}" && pwd)"
-git -C "${TARGET}" rev-parse --git-dir >/dev/null 2>&1 || err "not a git repo: ${TARGET}"
+# shellcheck source=renovate-git.sh
+. "$(dirname "${BASH_SOURCE[0]}")/renovate-git.sh" || err "cannot load renovate-git.sh beside me"
+resolve_renovate_root TARGET
 
 # A saved report JSON and resolved config let --apply run offline, with nothing bootstrapped.
 INJECTED_REPORT="${RENOVATE_LOCAL_REPORT:-}"
@@ -454,18 +441,17 @@ report_lock_maintenance() {
 
 # Apply: gitlinks move with git, other ecosystems by one line rewrite; neither half may half-run.
 submodule_paths() {
-  local want="$1" name path
-  git -C "${TARGET}" config -f .gitmodules --name-only --get-regexp '\.path$' 2>/dev/null \
-  | sed -e 's/^submodule\.//' -e 's/\.path$//' \
-  | while read -r name; do
-      if git -C "${TARGET}" config -f .gitmodules --get "submodule.${name}.branch" >/dev/null 2>&1; then
-        [ "${want}" = with-branch ] || continue
-      else
-        [ "${want}" = without-branch ] || continue
-      fi
-      path="$(git -C "${TARGET}" config -f .gitmodules --get "submodule.${name}.path" 2>/dev/null)"
-      if [ -n "${path}" ]; then printf '%s\n' "${path}"; fi
-    done
+  for_each_renovate_submodule "${TARGET}" print_renovate_submodule_path "$1"
+}
+
+print_renovate_submodule_path() {
+  local directory="$1" name="$2" path="$3" want="$4"
+  if git -C "${directory}" config -f .gitmodules --get "submodule.${name}.branch" >/dev/null 2>&1; then
+    [ "${want}" = with-branch ] || return 0
+  else
+    [ "${want}" = without-branch ] || return 0
+  fi
+  printf '%s\n' "${path}"
 }
 
 # Globals: bash cannot return a list, and a $() round-trip would re-run the classification.

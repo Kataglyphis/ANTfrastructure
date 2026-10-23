@@ -1120,3 +1120,37 @@ executable/shared-object selection and invokes both host and target strip tools.
 The shared invocation uses NUL separators, preserving filenames containing spaces;
 an empty selection invokes no tool. `test-elf-strip.sh` uses stubbed file and strip
 tools, not real ELF mutation or a compiler build.
+
+## Renovate driver helpers
+
+`renovate-cli.sh` owns the local/fleet argument loop and their explicit option
+policies. `renovate-git.sh` owns root validation and callback-based submodule
+enumeration. Both are passive libraries, require the driver's existing `err`
+function and must accompany either driver. Discovery callbacks own branch
+classification and recursive identity resolution. See
+[dependency-updates.md](dependency-updates.md#shared-driver-helpers) for the dry-run
+contract and regression coverage.
+
+GStreamer monorepo setup uses the cross guard validated by `media_common_init`. It
+refuses a missing guard before configuring flags, rather than defining its own
+fallback. The Meson fixture suite checks both guard verdicts and incomplete closure
+refusal. The fallback for core-only consumers remains owned by `01-core/common.sh`.
+
+## Shared CMake and CTest project environment
+
+`lib/project-env.sh` owns Git safe-directory setup and project Vulkan initialization.
+Both launchers source it, so copies must carry it and `01-core/vulkan-env.sh`.
+An empty safe-directory setting opts out; Git configuration failures stay advisory.
+The caller's `source_vulkan_env` hook takes precedence over an explicit setup script,
+including its exit status. Explicit scripts use the Vulkan leaf's active-link
+restoration. That leaf also owns the common Vulkan CLI help lines.
+
+`test-project-env.sh` checks hooks, setup-script effects in the caller, directory
+spacing and each launcher's delegation with stubbed Git. Existing Vulkan fixtures
+check the active link. Neither suite initializes a real SDK or changes user Git
+configuration. CMake retains its separate Cargo, ccache and linker policies.
+
+Core-only cross detection lives in `core_cross_build_is_active` in `common.sh`;
+its source-time selector preserves a loaded canonical guard or compatibility hook.
+The fallback suite tests this approximation directly, including native architecture
+aliases, while GStreamer tests the mandatory canonical guard at its own boundary.

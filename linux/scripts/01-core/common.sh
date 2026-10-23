@@ -35,19 +35,21 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 export TZ=Etc/UTC
 
-# Required fallback: several media scripts call cross_build_is_active without sourcing cross-env.sh, its owner.
+core_cross_build_is_active() {
+  [ "${BUILD_MODE:-native}" = "cross" ] || return 1
+  local target build
+  target="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
+  build="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
+  if [ -n "${target}" ] && [ "${target}" != "${build}" ]; then return 0; fi
+  return 1
+}
+
+# Full cross modules remain authoritative; core-only consumers use the normalized approximation.
 if ! command -v cross_build_is_active >/dev/null 2>&1; then
   if command -v cross_build_enabled >/dev/null 2>&1; then
     cross_build_is_active() { cross_build_enabled; }
   else
-    # Normalize both sides: OCI names vs `uname -m` names made native arm64 hosts look cross.
-    cross_build_is_active() {
-      [ "${BUILD_MODE:-native}" = "cross" ] || return 1
-      local _t _b
-      _t="$(arch_normalize "${TARGET_ARCH:-${TARGETARCH:-}}" 2>/dev/null || printf '%s' "${TARGET_ARCH:-${TARGETARCH:-}}")"
-      _b="$(arch_normalize "${BUILDARCH:-$(uname -m)}" 2>/dev/null || printf '%s' "${BUILDARCH:-$(uname -m)}")"
-      [ -n "${_t}" ] && [ "${_t}" != "${_b}" ]
-    }
+    cross_build_is_active() { core_cross_build_is_active; }
   fi
 fi
 

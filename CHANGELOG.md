@@ -31,6 +31,13 @@
 
 ## 2026-10-23 — preserve failure paths while reducing quality freezes
 
+- Share CMake/CTest Git and Vulkan setup in a passive project-environment library;
+  preserve SDK hook precedence, Git opt-out and advisory configuration failures.
+- Remove GStreamer's private cross-mode fallback; require the guard already validated
+  by media initialization and test native/cross decisions and incomplete closures.
+- Share Renovate argument parsing, repository validation and submodule enumeration;
+  preserve local/fleet dry-run differences, branch policies and recursive discovery.
+
 - Share PowerShell fixture AST parsing for files and snippets; reject malformed inputs
   without executing build scripts and preserve function-extraction diagnostics.
 - Share Windows source-patch reads and write verdicts, and OpenCV's written-source

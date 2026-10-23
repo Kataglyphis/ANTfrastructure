@@ -66,4 +66,25 @@ t_assert_eq target-g++ "${CXX}"
 t_assert_contains "${MESON_FLAGS[*]}" -Dgst-python:python.build_config=/fixture/python.json
 t_assert_eq '--wrap-mode=forcefallback --force-fallback-for=pygobject-3.0' "${EXTRA_MESON_ARGS}"
 t_assert_eq $'[properties]\nkeep = true' "$(cat "${MESON_CROSS_FILE}")"
+t_case "environment setup requires the loaded guard and preserves its cross decision"
+eval "$(t_fn_src "${SUBJECT}" _gst_monorepo_env_setup)"
+missing_guard_setup() (
+  unset -f cross_build_is_active
+  _gst_monorepo_env_setup >/dev/null 2>&1
+)
+t_assert_fails missing_guard_setup
+setup_calls=0
+setup_linux_cross_env() { setup_calls=$((setup_calls + 1)); }
+prepare_host_cargo_toolchain_env() { :; }
+IS_CROSS=1
+python_feature=enabled gtk_feature=enabled
+_gst_monorepo_env_setup >/dev/null
+t_assert_eq 0 "${setup_calls}"
+t_assert_eq enabled "${python_feature}"
+t_assert_eq enabled "${gtk_feature}"
+IS_CROSS=0
+_gst_monorepo_env_setup >/dev/null
+t_assert_eq 1 "${setup_calls}"
+t_assert_eq disabled "${python_feature}"
+t_assert_eq disabled "${gtk_feature}"
 t_summary

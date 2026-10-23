@@ -60,27 +60,9 @@ BUDGET=600
 # The rollback window between TERM and KILL; a KILL cannot be trapped.
 BUDGET_GRACE=30
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --apply)      MODE=apply ;;
-    --report)     MODE=report ;;
-    --dry-run)    DRY_RUN=1; MODE=apply ;;
-    --here)       HERE=1 ;;
-    --vendored|--in-place) VENDORED_MODE=1 ;;
-    --only)       shift; [ $# -gt 0 ] || err "--only needs a value"; ONLY="$1" ;;
-    --only=*)     ONLY="${1#*=}" ;;
-    --skip)       shift; [ $# -gt 0 ] || err "--skip needs a value"; SKIP="$1" ;;
-    --skip=*)     SKIP="${1#*=}" ;;
-    --managers)   shift; [ $# -gt 0 ] || err "--managers needs a value"; MANAGERS="$1" ;;
-    --managers=*) MANAGERS="${1#*=}" ;;
-    --timeout)    shift; [ $# -gt 0 ] || err "--timeout needs a value"; BUDGET="$1" ;;
-    --timeout=*)  BUDGET="${1#*=}" ;;
-    -h|--help)    usage; exit 0 ;;
-    -*)           err "unknown option: $1" ;;
-    *)            [ -z "${ROOT}" ] || err "more than one root given"; ROOT="$1" ;;
-  esac
-  shift
-done
+# shellcheck source=renovate-cli.sh
+. "$(dirname "${BASH_SOURCE[0]}")/renovate-cli.sh" || err "cannot load renovate-cli.sh beside me"
+parse_renovate_options fleet usage root ROOT "$@"
 
 case "${BUDGET}" in
   ''|*[!0-9]*) err "--timeout takes whole seconds (0 turns the budget off), not '${BUDGET}'" ;;
@@ -90,10 +72,9 @@ if [ "${BUDGET}" -gt 0 ] && ! command -v timeout >/dev/null 2>&1; then
   err "no 'timeout' on PATH, so the ${BUDGET}s per-repo budget cannot be enforced -- install coreutils, or run with --timeout 0 and accept that one repo can hold the fleet"
 fi
 
-ROOT="${ROOT:-$PWD}"
-[ -d "${ROOT}" ] || err "not a directory: ${ROOT}"
-ROOT="$(cd "${ROOT}" && pwd)"
-git -C "${ROOT}" rev-parse --git-dir >/dev/null 2>&1 || err "not a git repo: ${ROOT}"
+# shellcheck source=renovate-git.sh
+. "$(dirname "${BASH_SOURCE[0]}")/renovate-git.sh" || err "cannot load renovate-git.sh beside me"
+resolve_renovate_root ROOT
 ROOT="$(git -C "${ROOT}" rev-parse --show-toplevel)"
 
 # Identity is the normalised remote (host/owner/name), one key for every path and url spelling; an ssh :port breaks it.
@@ -151,25 +132,22 @@ MAX_DEPTH=8
 
 # Emits "<checkout|uninit>\t<identity>\t<abs path>\t<vendoring repo>"; an uninit submodule keeps its edge.
 walk_submodules() {
-  local dir="$1" depth="$2" name path abs id declared
-  [ "${depth}" -gt 0 ] || return 0
-  [ -f "${dir}/.gitmodules" ] || return 0
-  while IFS= read -r name; do
-    [ -n "${name}" ] || continue
-    path="$(git -C "${dir}" config -f .gitmodules --get "submodule.${name}.path" 2>/dev/null)"
-    [ -n "${path}" ] || continue
-    abs="${dir}/${path}"
-    declared="$(normalize_url "$(git -C "${dir}" config -f .gitmodules --get "submodule.${name}.url" 2>/dev/null)")"
-    if [ ! -e "${abs}/.git" ]; then
-      printf 'uninit\t%s\t%s\t%s\n' "${declared}" "${abs}" "${dir}"
-      continue
-    fi
-    id="$(repo_identity "${abs}" 2>/dev/null)" || id=""
-    [ -n "${id}" ] || id="${declared}"
-    printf 'checkout\t%s\t%s\t%s\n' "${id}" "${abs}" "${dir}"
-    walk_submodules "${abs}" $((depth - 1))
-  done < <(git -C "${dir}" config -f .gitmodules --name-only --get-regexp '\.path$' 2>/dev/null \
-           | sed -e 's/^submodule\.//' -e 's/\.path$//')
+  [ "$2" -gt 0 ] || return 0
+  for_each_renovate_submodule "$1" visit_fleet_submodule "$2"
+}
+
+visit_fleet_submodule() {
+  local dir="$1" name="$2" path="$3" depth="$4" abs id declared
+  abs="${dir}/${path}"
+  declared="$(normalize_url "$(git -C "${dir}" config -f .gitmodules --get "submodule.${name}.url" 2>/dev/null)")"
+  if [ ! -e "${abs}/.git" ]; then
+    printf 'uninit\t%s\t%s\t%s\n' "${declared}" "${abs}" "${dir}"
+    return 0
+  fi
+  id="$(repo_identity "${abs}" 2>/dev/null)" || id=""
+  [ -n "${id}" ] || id="${declared}"
+  printf 'checkout\t%s\t%s\t%s\n' "${id}" "${abs}" "${dir}"
+  walk_submodules "${abs}" $((depth - 1))
 }
 
 TOP=""; FAMILY_DIR=""; OWNER=""

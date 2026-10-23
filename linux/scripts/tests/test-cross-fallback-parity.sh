@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The bundled cross_build_is_active fallback copies must behave alike; compared by behaviour, not text.
+# Core-only cross-mode decisions and mirror restoration; no real image builds or package installs.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -7,18 +7,16 @@ source "${TESTS_DIR}/test-harness.sh"
 _probe() {
   # $1 = file, $2.. = env; runs the fallback alone in a bash where cross_build_is_active is undefined.
   local file="$1"; shift
+  local approximation
+  approximation="$(t_fn_src "${file}" core_cross_build_is_active)" || return 1
   bash -c "
     arch_normalize() { case \"\$1\" in x86_64) echo amd64;; aarch64) echo arm64;; *) echo \"\$1\";; esac; }
-    # extract just the guarded fallback definition block
-    src=\$(awk '/if ! command -v cross_build_is_active/,/^  fi\$|^fi\$/' '${file}')
+    ${approximation}
+    src=\$(awk '/if ! command -v cross_build_is_active/,/^fi\$/' '${file}')
     eval \"\${src}\"
     $* cross_build_is_active && echo ACTIVE || echo INACTIVE
   " 2>/dev/null
 }
-
-# 01-core/common.sh delegates at source time, which awk extraction cannot run, so its structure is asserted.
-t_case "01-core/common.sh: source-time delegation to cross_build_enabled present"
-t_assert_ok grep -q 'cross_build_is_active() { cross_build_enabled; }' "${TESTS_DIR}/../01-core/common.sh"
 
 # 03-media/core/common.sh needs no copy only while media_common_init refuses to run without the function.
 MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
@@ -39,7 +37,7 @@ t_assert_eq "" "$(printf '%s\n' "${_MEDIA_INIT_SRC}" | grep -e 'cross_build_is_a
   "16 lines that could not execute, and one more copy to keep in parity"
 
 FILES=(
-  "${TESTS_DIR}/../03-media/build/gstreamer/common/build-gstreamer-monorepo.sh"
+  "${TESTS_DIR}/../01-core/common.sh"
 )
 
 for f in "${FILES[@]}"; do
@@ -58,7 +56,7 @@ for f in "${FILES[@]}"; do
   out="$(bash -c "
     arch_normalize() { echo \"\$1\"; }
     cross_build_enabled() { return 0; }
-    src=\$(awk '/if ! command -v cross_build_is_active/,/^  fi\$|^fi\$/' '${f}')
+    src=\$(awk '/if ! command -v cross_build_is_active/,/^fi\$/' '${f}')
     eval \"\${src}\"
     BUILD_MODE=native cross_build_is_active && echo DELEGATED || echo RAW
   " 2>/dev/null)"
