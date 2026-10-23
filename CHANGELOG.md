@@ -12,6 +12,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share remaining Windows operations and fixtures
+
+- Share Meson binaries, ARM per-file features, optional source edits, machine names, handoff transfers and sccache command lifecycle.
+- Share compiler-wrapper environments, packaging cleanup, CMake diagnostics, Flutter links and lazy agentic configuration while preserving caller policies.
+- Share host guards and diagnostic verdicts, rename evidence, directory rows and replay traces; retain exact streams and failure cleanup.
+- Bind required module companions into each owner scope without forcing reloads; preserve cold and warm visibility and fail on missing dependencies.
+- Carry diagnostic companions through narrow probe Dockerfile mounts and prove their import layout with missing-companion controls.
+- Share batch-tool, child-import, source-literal and mutation fixtures; keep parse/import failures separate from assertion failures and lower only measured duplication budgets.
+- Raise the Windows discovery minimum to 2,313 after a full run passed all 2,337 tests.
+
 ## 2026-10-23 — broaden Windows duplication cleanup
 
 - Share GPU and Python probe transport, smoke scratch and verdicts, source-module lookup, TVM wheel packaging, bundle environment models and FFmpeg listing checks.

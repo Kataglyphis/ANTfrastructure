@@ -6,9 +6,9 @@
 
 Set-StrictMode -Version Latest
 
-# Guarded, WITHOUT -Force (repo-wide nested-import rule): -Force unloads the caller's top-level import.
+# No -Force: reloading a nested dependency removes the caller's exported commands.
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+Import-Module $sharedPath -ErrorAction Stop
 
 function Edit-CppKeywordAlternatives {
     param(
@@ -203,8 +203,10 @@ function Invoke-InlineRegexPatch {
         [string]$SkipIfMatch = '',
         # Throws when the file still matches this after writing, or when the pattern was never found.
         [string]$AssertGone = '',
-        [switch]$Quiet
+        [switch]$Quiet,
+        [switch]$IfPresent
     )
+    if ($IfPresent -and -not (Test-Path $Path)) { return $false }
     $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Invoke-InlineRegexPatch' -Require:($Require -or [bool]$AssertGone)
     if ($null -eq $patchInput) { return $false }
     $Description = $patchInput.Description
@@ -352,6 +354,28 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
     }
 }
 
+function Invoke-VerifiedSourceFilePatch {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Marker,
+        [Parameter(Mandatory)][scriptblock]$Patch, [Parameter(Mandatory)][scriptblock]$Condition,
+        [Parameter(Mandatory)][string]$FailureMessage, [System.Collections.IDictionary]$Message = @{},
+        [scriptblock]$Log = { param($text) Write-Host $text })
+    $status = 'Missing'
+    if (Test-Path $Path) {
+        if ([IO.File]::ReadAllText($Path) -match $Marker) { $status = 'Already' }
+        else {
+            & $Patch $Path | Out-Null
+            Assert-SourceFileContent -Path $Path -Condition $Condition -FailureMessage $FailureMessage
+            $status = 'Patched'
+        }
+    }
+    if ($Message.Contains($status)) {
+        $text = $Message[$status]
+        if ($text -is [scriptblock]) { $text = & $text }
+        & $Log ([string]$text) | Out-Null
+    }
+    return $status
+}
+
 function Add-FileBlockOnce {
     param(
         [Parameter(Mandatory)]
@@ -365,14 +389,11 @@ function Add-FileBlockOnce {
         [switch]$Require,
         [string]$Description = ''
     )
-    if (-not (Test-Path $Path)) {
-        if ($Require) { throw "Add-FileBlockOnce: file not found: $Path" }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    if ((Get-Content -Raw $Path) -match $Marker) { return $false }
+    $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Add-FileBlockOnce' -Require:$Require -Marker $Marker
+    if ($null -eq $patchInput) { return $false }
+    $Description = $patchInput.Description
     if ($Prepend) {
-        [System.IO.File]::WriteAllText($Path, $Content + [System.IO.File]::ReadAllText($Path))
+        [System.IO.File]::WriteAllText($Path, $Content + $patchInput.Text)
     }
     elseif ($Encoding) {
         Add-Content -LiteralPath $Path -Value $Content -Encoding $Encoding
@@ -411,6 +432,7 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Assert-SourceFileContent',
+    'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',
     'Edit-SourceFile',
     'Resolve-DirectoryPath',

@@ -21,5 +21,7 @@ ARG PROBE_NONCE="0"
 RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=locked `
     --mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT `
     --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/diagnostics/Test-SccacheWrite.ps1,target=C:\bkmnt\Test-SccacheWrite.ps1 `
-    & 'C:\bkmnt\Test-SccacheWrite.ps1' -Nonce "${PROBE_NONCE}"
+    --mount=type=bind,source=windows/scripts/diagnostics/Test-SccacheWrite.ps1,target=C:\bkmnt\diagnostics\Test-SccacheWrite.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsDiagnostics.Common.psm1,target=C:\bkmnt\modules\WindowsDiagnostics.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    & 'C:\bkmnt\diagnostics\Test-SccacheWrite.ps1' -Nonce "${PROBE_NONCE}"

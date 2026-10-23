@@ -140,8 +140,13 @@ A forced re-import from module context unloads the caller's top-level copy
 and rebinds it into the module's private session state (probed 2026-08-05:
 `Import-Versions.ps1`'s `Import-Module Shared -Force`, run via
 Import-CanonicalVersions, made `Resolve-DirectoryPath` CommandNotFound at
-gstreamer top level and killed the merge-warm solve). Nested imports use the
-guarded form `if (-not (Get-Module -Name 'X')) { Import-Module $path }`.
+gstreamer top level and killed the merge-warm solve). Required nested imports use `Import-Module $path -ErrorAction Stop` without
+`-Force`. A `Get-Module` guard can see an instance loaded privately by another
+module even though its functions are absent from the current owner scope. An
+unforced import binds that same instance into the owner without unloading other
+callers. Missing required companions must terminate even when the caller uses
+`ErrorActionPreference=Continue`. Cold, private-warm and global-warm fixture
+cases preserve command visibility and function identity.
 Regression pin: import Shared→Installer→SourceBuild.Common, run
 Import-CanonicalVersions, then `Get-Command Resolve-DirectoryPath` must still
 resolve.

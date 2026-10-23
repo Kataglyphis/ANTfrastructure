@@ -134,6 +134,34 @@ function Write-TestFileTree {
 
 Export-ModuleMember -Function Write-TestFileTree
 
+function New-TestBatchTool {
+    param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Name,
+        [string[]]$Line = @(), [int]$ExitCode = 0)
+    $path = Join-Path $Directory $Name
+    $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
+    $text = (@('@echo off') + $Line + @("exit /b $ExitCode")) -join "`r`n"
+    [IO.File]::WriteAllText($path, $text + "`r`n", [Text.Encoding]::ASCII)
+    return $path
+}
+
+Export-ModuleMember -Function New-TestBatchTool
+
+function Assert-TestScriptContains {
+    # Literal presence cannot establish AST structure, uniqueness or runtime behavior.
+    param([Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][AllowNull()][AllowEmptyCollection()][AllowEmptyString()][string[]]$Literal,
+        [string]$ReasonPrefix = 'required script literal')
+    if ($null -eq $Literal -or $Literal.Count -eq 0) { throw 'Literal must contain at least one nonempty string' }
+    foreach ($needle in $Literal) {
+        if ([string]::IsNullOrEmpty($needle)) { throw 'Literal must contain only nonempty strings' }
+    }
+    $path = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
+    $text = [IO.File]::ReadAllText($path)
+    foreach ($needle in $Literal) { Assert-True $text.Contains($needle) ("${ReasonPrefix}: $needle") }
+}
+
+Export-ModuleMember -Function Assert-TestScriptContains
+
 function Invoke-WithTestFunction {
     param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][scriptblock]$Definition,
         [Parameter(Mandatory)][scriptblock]$Body, [object[]]$BodyArgumentList = @(), [object]$FixtureState)
@@ -460,6 +488,64 @@ function Invoke-WithFunctionModule {
     }
 }
 
+function Invoke-TestFunctionMutations {
+    param([Collections.IDictionary]$ModuleArguments, [string]$ScriptPath, [string[]]$FunctionName = @(),
+        [object[]]$BodyArgumentList = @(), [string]$Find, [AllowEmptyString()][string]$Replace, [string]$Expected, [string]$Throws,
+        [AllowNull()][AllowEmptyCollection()][Collections.IDictionary[]]$Case,
+        [Parameter(Mandatory)][scriptblock]$Body)
+    $ErrorActionPreference = 'Stop'
+    if ($ScriptPath) {
+        if ($ModuleArguments) { throw 'ScriptPath and ModuleArguments cannot be mixed' }
+        $ModuleArguments = @{ ScriptPath = $ScriptPath; FunctionName = $FunctionName; BodyArgumentList = $BodyArgumentList }
+    }
+    if ($null -eq $ModuleArguments) { throw 'A source path or module arguments are required' }
+    if (-not $PSBoundParameters.ContainsKey('Case')) {
+        if ($Throws -and -not $Expected) { $Expected = 'expected an exception but none was thrown' }
+        $Case = @(@{ Find = $Find; Replace = $Replace; Expected = $Expected })
+    } elseif ($PSBoundParameters.ContainsKey('Find') -or $PSBoundParameters.ContainsKey('Replace') -or $PSBoundParameters.ContainsKey('Expected')) {
+        throw 'Case and individual mutation fields cannot be mixed'
+    }
+    if ($null -eq $Case -or $Case.Count -eq 0) { throw 'Case must contain at least one mutation' }
+    foreach ($mutation in $Case) {
+        foreach ($field in @('Find', 'Replace', 'Expected')) {
+            if ($null -eq $mutation -or -not $mutation.Contains($field)) { throw "Mutation case requires $field" }
+        }
+        if ([string]::IsNullOrEmpty($mutation.Find) -or [string]::IsNullOrEmpty($mutation.Expected)) {
+            throw 'Mutation Find and Expected must be nonempty'
+        }
+    }
+    foreach ($key in @('Body', 'Find', 'Replace')) {
+        if ($ModuleArguments.Contains($key)) { throw "ModuleArguments cannot supply $key" }
+    }
+    $assertThrows = Get-Command Assert-Throws
+    $originalBody = $Body
+    $expectedThrow = $Throws
+    foreach ($mutation in $Case) {
+        $expected = [string]$mutation.Expected
+        $guardedBody = {
+            $forwarded = @($args)
+            $exerciseBody = $originalBody
+            $exercise = { & $exerciseBody @forwarded }.GetNewClosure()
+            if ($expectedThrow) {
+                $operation = $exercise
+                $throwAssertion = $assertThrows
+                $throwPattern = $expectedThrow
+                $exercise = { & $throwAssertion -Body $operation -MessagePattern $throwPattern }.GetNewClosure()
+            }
+            & $assertThrows -Body $exercise -MessagePattern $expected
+        }.GetNewClosure()
+        $arguments = @{}
+        foreach ($key in $ModuleArguments.Keys) { $arguments[$key] = $ModuleArguments[$key] }
+        $arguments.Find = [string]$mutation.Find
+        $arguments.Replace = [string]$mutation.Replace
+        $arguments.Body = $guardedBody
+        # Import and parse failures cannot satisfy the assertion expected from the original test body.
+        Invoke-WithFunctionModule @arguments
+    }
+}
+
+Export-ModuleMember -Function Invoke-TestFunctionMutations
+
 function Start-LoopbackListener {
     # A started TcpListener on a free loopback port; after Stop() nothing answers on that port.
     $listener = [Net.Sockets.TcpListener]::new([Net.IPAddress]::Loopback, 0)
@@ -498,6 +584,22 @@ function Invoke-SourceFileDiagnosticCase {
 
 Export-ModuleMember -Function Invoke-SourceFileDiagnosticCase
 
+function Invoke-TestPwshProbe {
+    param([Parameter(Mandatory)][string]$Source)
+    $output = & pwsh -NoProfile -NonInteractive -Command $Source 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    [pscustomobject]@{ ExitCode = $code; Output = $output.Trim() }
+}
+
+function Assert-TestPwshFailure {
+    param([Parameter(Mandatory)]$Probe, [Parameter(Mandatory)][string]$Pattern,
+        [string]$Reason = 'child PowerShell must fail')
+    Assert-False ($Probe.ExitCode -eq 0) ("{0}: {1}" -f $Reason, $Probe.Output)
+    Assert-Match $Pattern $Probe.Output
+}
+
+Export-ModuleMember -Function Assert-TestPwshFailure
+
 function Test-ColdModuleCommands {
     param([Parameter(Mandatory)][string[]]$ModulePath, [Parameter(Mandatory)][string[]]$CommandName, [switch]$Force)
     $paths = ($ModulePath | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
@@ -509,12 +611,10 @@ foreach (`$path in @($paths)) { Import-Module `$path -Force:`$$($Force.IsPresent
 if (`$missing) { `$missing -join ','; exit 1 }
 exit 0
 "@
-    $output = & pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | Out-String
-    $code = $LASTEXITCODE
-    [pscustomobject]@{ ExitCode = $code; Output = $output.Trim() }
+    Invoke-TestPwshProbe -Source $probe
 }
 
-Export-ModuleMember -Function Test-ColdModuleCommands
+Export-ModuleMember -Function Test-ColdModuleCommands, Invoke-TestPwshProbe
 
 function Get-TestFunctionNames {
     param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast)

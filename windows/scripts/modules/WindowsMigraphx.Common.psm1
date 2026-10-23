@@ -7,9 +7,9 @@ Set-StrictMode -Version Latest
 
 # Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath -DisableNameChecking }
+Import-Module $sharedPath -DisableNameChecking -ErrorAction Stop
 $sourceBuildPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Common.psm1'
-if (-not (Get-Module -Name 'WindowsSourceBuild.Common')) { Import-Module $sourceBuildPath -DisableNameChecking }
+Import-Module $sourceBuildPath -DisableNameChecking -ErrorAction Stop
 
 function Assert-MigraphxRocmLane {
     <#
@@ -126,6 +126,18 @@ function Assert-RocmBuiltPe {
     $machine = Get-PeFileMachine -Path $Path
     if ($machine -ne (Get-PeMachineType -Arch 'amd64')) { throw ('{0} PE machine 0x{1:X4} is not amd64' -f [System.IO.Path]::GetFileName($Path), $machine) }
 }
+
+function Save-MigraphxPrimarySource {
+    param([Parameter(Mandatory)][ValidateSet('Migraphx', 'OrtAmdgpuEp')][string]$Component, [Parameter(Mandatory)][string]$WorkDir)
+    $spec = switch ($Component) {
+        'Migraphx' { @{ Name = 'AMDMIGraphX'; VersionKey = 'MIGRAPHX_WINDOWS_COMMIT'; ShaKey = 'MIGRAPHX_WINDOWS_SOURCE_SHA256'; UrlFormat = 'https://github.com/ROCm/AMDMIGraphX/archive/{0}.tar.gz' } }
+        'OrtAmdgpuEp' { @{ Name = 'onnxruntime-ep-amdgpu'; VersionKey = 'ORT_AMDGPU_EP_COMMIT'; ShaKey = 'ORT_AMDGPU_EP_SOURCE_SHA256'; UrlFormat = 'https://github.com/onnxruntime/onnxruntime-ep-amdgpu/archive/{0}.tar.gz' } }
+    }
+    $source = Resolve-PinnedSource @spec
+    Save-PinnedSource -Source $source -WorkDir $WorkDir
+}
+
+Export-ModuleMember -Function Save-MigraphxPrimarySource
 
 function Resolve-PinnedSource {
     <#

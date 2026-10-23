@@ -7,10 +7,10 @@ Describe 'TVM assembled-wheel helpers' {
 
     BeforeAll {
         $script:tmp = New-TestDir -Prefix 'wbt-tvmwheel-'
-        New-Item -ItemType Directory -Force -Path (Join-Path $script:tmp 'root\tvm_ffi\lib') | Out-Null
-        Set-Content (Join-Path $script:tmp 'root\tvm_ffi\__init__.py') '# pkg'
-        Set-Content (Join-Path $script:tmp 'root\tvm_ffi\core.cp314-win_arm64.pyd') 'not a real pyd'
-        Set-Content (Join-Path $script:tmp 'root\tvm_ffi\lib\tvm_ffi.dll') 'not a real dll'
+        Write-TestFileTree -Root $script:tmp -Files @{
+            'root/tvm_ffi/__init__.py' = '# pkg'; 'root/tvm_ffi/core.cp314-win_arm64.pyd' = 'not a real pyd'
+            'root/tvm_ffi/lib/tvm_ffi.dll' = 'not a real dll'
+        }
     }
     AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 

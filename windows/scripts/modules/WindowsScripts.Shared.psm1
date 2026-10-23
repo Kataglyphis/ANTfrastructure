@@ -5,6 +5,19 @@
 
 Set-StrictMode -Version Latest
 
+function Resolve-BuildValue {
+    param([string]$Value = '', [string[]]$EnvironmentVariables = @(), [string]$DefaultValue = '')
+    if (-not [string]::IsNullOrWhiteSpace($Value)) { return $Value }
+    foreach ($name in $EnvironmentVariables) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        $environmentValue = [Environment]::GetEnvironmentVariable($name)
+        if (-not [string]::IsNullOrWhiteSpace($environmentValue)) { return $environmentValue }
+    }
+    return $DefaultValue
+}
+
+Export-ModuleMember -Function Resolve-BuildValue
+
 
 <#
 .SYNOPSIS
@@ -894,3 +907,26 @@ function Find-ChildDirectoryFile {
 }
 
 Export-ModuleMember -Function Find-ChildDirectoryFile
+
+function Get-CompilerWrapperVariableName {
+    param([switch]$IncludeCuda)
+    $names = @('CMAKE_C_COMPILER_LAUNCHER', 'CMAKE_CXX_COMPILER_LAUNCHER', 'RUSTC_WRAPPER', 'CC_WRAPPER', 'CXX_WRAPPER')
+    if ($IncludeCuda) { $names += 'CMAKE_CUDA_COMPILER_LAUNCHER' }
+    return $names
+}
+
+function Set-CompilerWrapperEnvironment {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Value, [switch]$IncludeCuda)
+    foreach ($name in Get-CompilerWrapperVariableName -IncludeCuda:$IncludeCuda) {
+        Set-Item -LiteralPath "Env:$name" -Value $Value
+    }
+}
+
+function Remove-CompilerWrapperEnvironment {
+    param([switch]$IncludeCuda)
+    foreach ($name in Get-CompilerWrapperVariableName -IncludeCuda:$IncludeCuda) {
+        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+    }
+}
+
+Export-ModuleMember -Function Set-CompilerWrapperEnvironment, Remove-CompilerWrapperEnvironment

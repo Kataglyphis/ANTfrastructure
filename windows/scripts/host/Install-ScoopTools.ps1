@@ -224,17 +224,7 @@ if (Test-Path $vkArm64Lib) {
         Write-Warning "Vulkan maintenancetool.exe not found at $maintenanceTool - cannot add the ARM64 component."
     }
 
-    if (Test-Path $vkArm64Lib) {
-        Write-Host "Vulkan ARM64 cross libraries installed ($vkArm64Lib)."
-    } elseif ($armStrict -eq '1') {
-        throw ("Vulkan ARM64 component (com.lunarg.vulkan.arm64) is not installed: $vkArm64Lib is missing. " +
-               'It is an optional component of the x64 SDK and is required to link an aarch64 target. ' +
-               'WINDOWS_ARM64_STRICT=1 made this a hard gate.')
-    } else {
-        Write-Warning ("Vulkan ARM64 component (com.lunarg.vulkan.arm64) not installed: $vkArm64Lib is missing. " +
-                       'The amd64 lane is unaffected; an arm64 target cannot link Vulkan until this is resolved. ' +
-                       'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
-    }
+    Assert-VulkanArm64Library -Path $vkArm64Lib -Strict ($armStrict -eq '1') -Phase Install
 }
 
 # Pinned so the Windows image cannot silently diverge from the Linux lane.

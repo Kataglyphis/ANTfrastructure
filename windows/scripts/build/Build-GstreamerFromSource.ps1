@@ -834,52 +834,45 @@ int _isatty(int);
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
 
-    # gst-plugins-base's msvc branch sets have_sse/have_sse2 on aarch64; extend have_sse41's cpu_family guard to them.
+    # Missing upstream files stay optional; present files must satisfy their patch postcondition.
     if ($script:GstCross) {
         $gstBaseMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-base/meson.build'
-        if (-not (Test-Path $gstBaseMeson)) {
-            log "NOTE: $gstBaseMeson not found - skipping the x86 SIMD guard (layout changed?)"
-        } elseif ((Get-Content -LiteralPath $gstBaseMeson -Raw) -match "cpu_family\(\) in \['x86'") {
-            log 'gst-plugins-base x86 SIMD guard already applied.'
-        } else {
-            # 'have_sse2?' cannot match have_sse41: the '4' fails the '\s*=' that follows.
-            [void](Invoke-InlineRegexPatch -Path $gstBaseMeson -Guard 'have_sse\s*=\s*cc\.has_argument' `
+        $gstVkMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build'
+        $crossPatches = @(
+        @{ Path = $gstBaseMeson; Marker = "cpu_family\(\) in \['x86'"; Patch = {
+            param($path)
+            [void](Invoke-InlineRegexPatch -Path $path -Guard 'have_sse\s*=\s*cc\.has_argument' `
                     -Pattern 'have_sse2?\s*=\s*cc\.has_argument\(sse2?_args\)' `
                     -Replacement "`$0 and host_machine.cpu_family() in ['x86', 'x86_64']" `
                     -Description 'gst-plugins-base: gate x86 SSE resampler variants on cpu_family')
-            $gstBaseText = Get-Content -LiteralPath $gstBaseMeson -Raw
-            if ($gstBaseText -notmatch "cpu_family\(\) in \['x86'") {
-                throw ("gst-plugins-base meson.build: the have_sse/have_sse2 guard did not apply (upstream layout " +
-                       "changed?). Without it the x86 SSE resampler sources are compiled for aarch64 and die in " +
-                       "mmintrin.h. Re-check $gstBaseMeson.")
-            }
-            log 'Patched gst-plugins-base: x86 SSE resampler variants now gated on host_machine.cpu_family().'
-        }
-    }
-
-    # vulkan/meson.build picks its lib dir from build_machine via `dirs:`, which LIB order cannot override; key it on host.
-    if ($script:GstCross) {
-        $gstVkMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build'
-        if (-not (Test-Path $gstVkMeson)) {
-            log "NOTE: $gstVkMeson not found - skipping the Vulkan lib-dir fix (layout changed?)"
-        } elseif ((Get-Content -LiteralPath $gstVkMeson -Raw) -match "Lib-ARM64") {
-            log 'gst-plugins-bad Vulkan lib-dir fix already applied.'
-        } else {
+        }; Condition = { param($text) $text -match "cpu_family\(\) in \['x86'" }; FailureMessage = (
+            "gst-plugins-base meson.build: the have_sse/have_sse2 guard did not apply (upstream layout changed?). " +
+            "Without it the x86 SSE resampler sources are compiled for aarch64 and die in mmintrin.h. Re-check $gstBaseMeson."); Message = @{
+            Missing = "NOTE: $gstBaseMeson not found - skipping the x86 SIMD guard (layout changed?)"
+            Already = 'gst-plugins-base x86 SIMD guard already applied.'
+            Patched = 'Patched gst-plugins-base: x86 SSE resampler variants now gated on host_machine.cpu_family().'
+        } }
+        @{ Path = $gstVkMeson; Marker = 'Lib-ARM64'; Patch = {
+            param($path)
             $vkDirName = Get-VulkanLibDirName -Arch $script:GstTargetArch
             $vkCpu = switch ($script:GstTargetArch) {
                 'arm64' { 'aarch64' }
                 default { throw "build-gstreamer: no meson cpu_family mapping for '$($script:GstTargetArch)' in the Vulkan lib-dir fix." }
             }
-            [void](Invoke-InlineRegexPatch -Path $gstVkMeson `
-                    -Guard "build_machine\.cpu_family\(\) == 'x86_64'" `
+            [void](Invoke-InlineRegexPatch -Path $path -Guard "build_machine\.cpu_family\(\) == 'x86_64'" `
                     -Pattern "if build_machine\.cpu_family\(\) == 'x86_64'\r?\n(\s*)vulkan_lib_dir = join_paths\(vulkan_root, 'Lib'\)" `
                     -Replacement "if host_machine.cpu_family() == '$vkCpu'`n`${1}vulkan_lib_dir = join_paths(vulkan_root, '$vkDirName')`n    elif build_machine.cpu_family() == 'x86_64'`n`${1}vulkan_lib_dir = join_paths(vulkan_root, 'Lib')" `
-                    -Description "gst-plugins-bad: Vulkan lib dir follows host_machine, not build_machine")
-            if ((Get-Content -LiteralPath $gstVkMeson -Raw) -notmatch [regex]::Escape($vkDirName)) {
-                throw ("gst-plugins-bad vulkan/meson.build: the lib-dir fix did not apply (upstream layout changed?). " +
-                       "Without it the aarch64 build links the x64 vulkan-1.lib and fails with a machine-type conflict. Re-check $gstVkMeson.")
-            }
-            log "Patched gst-plugins-bad: Vulkan lib dir -> $vkDirName (host_machine, not build_machine)."
+                    -Description 'gst-plugins-bad: Vulkan lib dir follows host_machine, not build_machine')
+        }; Condition = { param($text) $text -match [regex]::Escape((Get-VulkanLibDirName -Arch $script:GstTargetArch)) }; FailureMessage = (
+            "gst-plugins-bad vulkan/meson.build: the lib-dir fix did not apply (upstream layout changed?). " +
+            "Without it the aarch64 build links the x64 vulkan-1.lib and fails with a machine-type conflict. Re-check $gstVkMeson."); Message = @{
+            Missing = "NOTE: $gstVkMeson not found - skipping the Vulkan lib-dir fix (layout changed?)"
+            Already = 'gst-plugins-bad Vulkan lib-dir fix already applied.'
+            Patched = { "Patched gst-plugins-bad: Vulkan lib dir -> $(Get-VulkanLibDirName -Arch $script:GstTargetArch) (host_machine, not build_machine)." }
+        } }
+        )
+        foreach ($crossPatch in $crossPatches) {
+            [void](Invoke-VerifiedSourceFilePatch @crossPatch -Log { param($message) log $message })
         }
     }
 
@@ -922,15 +915,7 @@ int _isatty(int);
         }
         $crossFile = Join-Path $resolvedLogDir "meson-cross-$gstTargetArch.ini"
         Set-Content -Path $crossFile -Encoding ASCII -Value @"
-[binaries]
-c = [$ccList]
-cpp = [$cxxList]
-ar = 'llvm-lib'
-strip = 'llvm-strip'
-windres = 'llvm-rc'
-pkg-config = 'pkg-config'
-cmake = 'cmake'
-$rustTargetLine
+$(Format-MesonWindowsBinaries -C $ccList -Cpp $cxxList -ExtraLine @($rustTargetLine))
 
 [properties]
 # Nothing built here can run on this windows/amd64 host, so every cc.run() and
@@ -968,17 +953,7 @@ endian = 'little'
         # The build machine links its own ffi-7.dll (a default target) from the same ffi.h, so it needs -fcommon too.
         $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
         Set-Content -Path $nativeFile -Encoding ASCII -Value @"
-[binaries]
-c = [$nccList]
-cpp = [$ncxxList]
-ar = 'llvm-lib'
-strip = 'llvm-strip'
-windres = 'llvm-rc'
-pkg-config = 'pkg-config'
-cmake = 'cmake'
-cl = '$buildCl'
-ml64 = '$buildMl64'
-$(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })
+$(Format-MesonWindowsBinaries -C $nccList -Cpp $ncxxList -ExtraLine @("cl = '$buildCl'", "ml64 = '$buildMl64'", $(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })))
 
 [built-in options]
 c_args = ['-fcommon']

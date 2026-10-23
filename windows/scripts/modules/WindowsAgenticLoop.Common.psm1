@@ -165,6 +165,13 @@ function Resolve-AgenticPromptAsset {
     return $Path
 }
 
+function Get-AgenticEnvironmentValue {
+    param([string]$Name, [scriptblock]$Fallback)
+    $value = [Environment]::GetEnvironmentVariable($Name)
+    if ($value) { return $value }
+    return & $Fallback
+}
+
 function Resolve-AgenticEngine {
     <#
     .SYNOPSIS
@@ -174,8 +181,7 @@ function Resolve-AgenticEngine {
     #>
     param($Config, [string]$RepoRoot = (Get-Location).Path, [string]$EngineOverride = '')
     $engine = if ($EngineOverride) { $EngineOverride }
-              elseif ($env:AGENTIC_ENGINE) { $env:AGENTIC_ENGINE }
-              else { Get-AgenticConfigValue $Config 'engine' 'opencode' }
+              else { Get-AgenticEnvironmentValue -Name AGENTIC_ENGINE -Fallback { Get-AgenticConfigValue $Config 'engine' 'opencode' } }
     if ($engine -notin @('opencode', 'claude')) {
         throw "Unknown agentic engine: '$engine' (expected opencode|claude)"
     }
@@ -184,10 +190,12 @@ function Resolve-AgenticEngine {
     $engineCfg = if ($engines) { Get-AgenticConfigValue $engines $engine $null } else { $null }
     $legacyModels = Get-AgenticConfigValue $Config 'models' $null
 
-    $plannerModel = if ($env:AGENTIC_PLANNER_MODEL) { $env:AGENTIC_PLANNER_MODEL }
-                    else { Get-AgenticConfigValue $engineCfg 'plannerModel' (Get-AgenticConfigValue $legacyModels 'planner' $null) }
-    $executorModel = if ($env:AGENTIC_EXECUTOR_MODEL) { $env:AGENTIC_EXECUTOR_MODEL }
-                     else { Get-AgenticConfigValue $engineCfg 'executorModel' (Get-AgenticConfigValue $legacyModels 'executor' $null) }
+    $plannerModel = Get-AgenticEnvironmentValue -Name AGENTIC_PLANNER_MODEL -Fallback {
+        Get-AgenticConfigValue $engineCfg 'plannerModel' (Get-AgenticConfigValue $legacyModels 'planner' $null)
+    }
+    $executorModel = Get-AgenticEnvironmentValue -Name AGENTIC_EXECUTOR_MODEL -Fallback {
+        Get-AgenticConfigValue $engineCfg 'executorModel' (Get-AgenticConfigValue $legacyModels 'executor' $null)
+    }
     if (-not $plannerModel -or -not $executorModel) {
         throw "No planner/executor model configured for engine '$engine' (need .engines.$engine.plannerModel/executorModel or legacy .models.*)"
     }

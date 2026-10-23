@@ -56,6 +56,22 @@ function Get-ReplayStepFacts {
     return [pscustomobject]@{ Kind = $kind; Defines = [regex]::Matches($Line, $DefinePattern).Count }
 }
 
+function Get-ReplayStepRecord {
+    param([object[]]$Lines, [string]$Pattern, [Collections.IDictionary]$Rules, [string]$DefaultKind, [string]$DefinePattern)
+    $Lines | Select-String -Pattern $Pattern | ForEach-Object {
+        $facts = Get-ReplayStepFacts -Line $_.Line -Rules $Rules -DefaultKind $DefaultKind -DefinePattern $DefinePattern
+        [pscustomobject]@{ Line = $_.Line; Kind = $facts.Kind; Defines = $facts.Defines }
+    }
+}
+
+function Format-ReplayTrace {
+    param([object[]]$Lines, [string]$Prefix, [int]$Limit)
+    $Lines | Select-String 'cicc|ptxas|cudafe|fatbinary' | Select-Object -First $Limit | ForEach-Object {
+        $line = $_.Line.Trim()
+        "$Prefix| $($line.Substring(0, [Math]::Min(300, $line.Length)))"
+    }
+}
+
 function Measure-ReplayIntermediate {
     param([Parameter(Mandatory)][string]$BareDirectory, [Parameter(Mandatory)][string]$WrappedDirectory,
         [Parameter(Mandatory)][string[]]$Patterns, [switch]$SimpleMatch, [switch]$Sort)
@@ -202,25 +218,21 @@ Write-Chunked 'execFE|' $execFE
 
 # 6c. Per-step USE_CUDA: the dropped instantiation sits behind #ifdef USE_CUDA, so find the first step that loses it.
 Write-Host '--- per-step USE_CUDA accounting (plan) ---'
-$planLines | Select-String 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' | ForEach-Object {
-    $l = $_.Line
-    $facts = Get-ReplayStepFacts -Line $l -Rules ([ordered]@{ 'cudafe\+\+' = 'cudafe++'; 'cicc' = 'cicc'; '-EP|/EP|-E |/E ' = 'preprocess' }) -DefaultKind host-cl -DefinePattern '[-/]D'
-    Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $facts.Kind, $facts.Defines, ($l -match 'DUSE_CUDA'))
+Get-ReplayStepRecord -Lines $planLines -Pattern 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' `
+    -Rules ([ordered]@{ 'cudafe\+\+' = 'cudafe++'; 'cicc' = 'cicc'; '-EP|/EP|-E |/E ' = 'preprocess' }) -DefaultKind host-cl -DefinePattern '[-/]D' | ForEach-Object {
+    Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $_.Kind, $_.Defines, ($_.Line -match 'DUSE_CUDA'))
 }
 Write-Host '--- per-step USE_CUDA accounting (sccache executed) ---'
-Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'get_cached_or_compile|msvc\] preprocess|creating.*command' | ForEach-Object {
-    $l = $_.Line
-    $facts = Get-ReplayStepFacts -Line $l -Rules ([ordered]@{ 'module_id' = 'cudafe++'; 'compute_\d+\.ptx' = 'cicc'; 'preprocess' = 'preprocess'; '\.cu\.obj' = 'host-cl' }) -DefaultKind other -DefinePattern '"-D|\\"-D|[-/]D'
-    Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $facts.Kind, $facts.Defines, ($l -match 'USE_CUDA'))
+Get-ReplayStepRecord -Lines (Get-Content $env:SCCACHE_ERROR_LOG) -Pattern 'get_cached_or_compile|msvc\] preprocess|creating.*command' `
+    -Rules ([ordered]@{ 'module_id' = 'cudafe++'; 'compute_\d+\.ptx' = 'cicc'; 'preprocess' = 'preprocess'; '\.cu\.obj' = 'host-cl' }) -DefaultKind other -DefinePattern '"-D|\\"-D|[-/]D' | ForEach-Object {
+    Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $_.Kind, $_.Defines, ($_.Line -match 'USE_CUDA'))
 }
 
 # 6. nvcc's plan vs sccache's executed steps, on stdout since the container fs dies with the RUN.
 Set-Location $build
-& cmd.exe /S /C "$cmd --dryrun" 2>&1 | Select-String 'cicc|ptxas|cudafe|fatbinary' |
-    Select-Object -First 40 | ForEach-Object { "plan| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
+Format-ReplayTrace -Lines @(& cmd.exe /S /C "$cmd --dryrun" 2>&1) -Prefix plan -Limit 40
 if (Test-Path $env:SCCACHE_ERROR_LOG) {
-    Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'cicc|ptxas|cudafe|fatbinary' |
-        Select-Object -First 120 | ForEach-Object { "exec| $($_.Line.Trim().Substring(0, [Math]::Min(300, $_.Line.Trim().Length)))" }
+    Format-ReplayTrace -Lines (Get-Content $env:SCCACHE_ERROR_LOG) -Prefix exec -Limit 120
 }
 
 # 7. Both flows keep their intermediates; the first wrapped file with fewer Iddd markers than bare is the broken step.
@@ -262,10 +274,9 @@ if (Test-Path $keepLog) {
 
 # 9. The transformed commands sccache executed (trace level)
 if (Test-Path $keepLog) {
-    Get-Content $keepLog | Select-String 'transformed nvcc command' | ForEach-Object {
-        $l = $_.Line
-        $facts = Get-ReplayStepFacts -Line $l -Rules ([ordered]@{ 'cudafe' = 'cudafe++'; 'cicc' = 'cicc'; 'ptxas' = 'ptxas'; 'fatbinary' = 'fatbin'; 'cl\.exe|cl ' = 'cl' }) -DefaultKind '?' -DefinePattern '-D'
-        Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $facts.Kind, $facts.Defines, ($l -match 'CUDA_DOUBLE_MATH'), ($l -match '__CUDACC__'), $l.Length)
+    Get-ReplayStepRecord -Lines (Get-Content $keepLog) -Pattern 'transformed nvcc command' `
+        -Rules ([ordered]@{ 'cudafe' = 'cudafe++'; 'cicc' = 'cicc'; 'ptxas' = 'ptxas'; 'fatbinary' = 'fatbin'; 'cl\.exe|cl ' = 'cl' }) -DefaultKind '?' -DefinePattern '-D' | ForEach-Object {
+        Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $_.Kind, $_.Defines, ($_.Line -match 'CUDA_DOUBLE_MATH'), ($_.Line -match '__CUDACC__'), $_.Line.Length)
     }
     $clLine = (Get-Content $keepLog | Select-String 'transformed nvcc command' | Where-Object { $_.Line -match 'cpp1\.ii|cpp4\.ii' } | Select-Object -First 1).Line
     if ($clLine) { for ($i = 0; $i -lt [Math]::Min($clLine.Length, 4600); $i += 230) { Write-Host ("xformPP| " + $clLine.Substring($i, [Math]::Min(230, $clLine.Length - $i))) } }

@@ -4,7 +4,7 @@
 
 Set-StrictMode -Version Latest
 
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') }
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 function Resolve-DiagnosticDocker {
     param([string]$Docker = '')
@@ -15,6 +15,16 @@ function Resolve-DiagnosticDocker {
     if (-not $Docker) { throw 'docker.exe not found. Pass -Docker <path>.' }
     return $Docker
 }
+
+function Write-DiagnosticResult {
+    param([string]$Name, [bool]$Ok, [string]$Detail = '', [switch]$SeparateDetail)
+    $tag = if ($Ok) { '[ OK ]' } else { '[FAIL]' }
+    $suffix = if ($Detail -and -not $SeparateDetail) { " - $Detail" } else { '' }
+    Write-Host ("{0} {1}{2}" -f $tag, $Name, $suffix)
+    if ($Detail -and $SeparateDetail) { Write-Host ("       {0}" -f $Detail) }
+}
+
+Export-ModuleMember -Function Write-DiagnosticResult
 
 function Write-DiagnosticHeading {
     param([string]$Title)
@@ -62,4 +72,4 @@ function Write-DiagnosticVerdict {
     return $code
 }
 
-Export-ModuleMember -Function Resolve-DiagnosticDocker, Write-DiagnosticHeading, Write-DiagnosticHostEnvironment, Invoke-DiagnosticDocker, Invoke-DiagnosticControl, Write-DiagnosticVerdict
+Export-ModuleMember -Function Find-ChildDirectoryFile, Resolve-DiagnosticDocker, Write-DiagnosticHeading, Write-DiagnosticHostEnvironment, Invoke-DiagnosticDocker, Invoke-DiagnosticControl, Write-DiagnosticVerdict

@@ -137,9 +137,7 @@ $python = Start-MigraphxBuildSession -WorkDir $WorkDir
 
 try {
     Switch-BuildPhase '1. MIGraphX source'
-    $source = Resolve-PinnedSource -Name 'AMDMIGraphX' -VersionKey 'MIGRAPHX_WINDOWS_COMMIT' -ShaKey 'MIGRAPHX_WINDOWS_SOURCE_SHA256' `
-        -UrlFormat 'https://github.com/ROCm/AMDMIGraphX/archive/{0}.tar.gz'
-    $sourceRoot = Save-PinnedSource -Source $source -WorkDir $WorkDir
+    $sourceRoot = Save-MigraphxPrimarySource -Component Migraphx -WorkDir $WorkDir
     $treeVersion = Get-MigraphxTreeFact -Fact MigraphxVersion -CMakeText ([System.IO.File]::ReadAllText((Join-Path $sourceRoot 'CMakeLists.txt')))
     if ($treeVersion -ne $migraphxVersion) { throw "MIGRAPHX_WINDOWS_COMMIT is MIGraphX $treeVersion, but MIGRAPHX_VERSION is $migraphxVersion" }
 

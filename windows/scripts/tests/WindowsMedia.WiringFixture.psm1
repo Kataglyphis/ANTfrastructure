@@ -21,6 +21,7 @@ function Get-MediaTestAstNode {
     }, $true)
 }
 
+
 function Get-MediaTestEnclosingIf {
     param([Parameter(Mandatory)][Management.Automation.Language.Ast]$Node, [string]$ConditionPattern = '')
     Get-TestAstAncestor -Node $Node -Type ([Management.Automation.Language.IfStatementAst]) -First -Predicate {

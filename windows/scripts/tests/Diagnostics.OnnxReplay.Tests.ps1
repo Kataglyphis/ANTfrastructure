@@ -33,3 +33,30 @@ Describe 'ONNX replay shared accounting' {
         }
     }
 }
+
+$script:ReplayProjectionModule = @{ ScriptPath = 'windows/scripts/diagnostics/Test-OnnxTuReplay.ps1'; FunctionName = @('Get-ReplayStepFacts', 'Get-ReplayStepRecord', 'Format-ReplayTrace') }
+
+function Assert-ReplayProjectionFixture {
+    $records = @(Get-MutReplayStepRecord -Lines @('irrelevant', 'cicc -DA', 'cudafe++ -DA -DB') -Pattern 'cicc|cudafe' `
+        -Rules ([ordered]@{ 'cudafe\+\+' = 'frontend'; cicc = 'device' }) -DefaultKind host -DefinePattern '-D')
+    Assert-Equal 2 $records.Count 'step filtering'
+    Assert-Equal 'cicc -DA:device:1|cudafe++ -DA -DB:frontend:2' (($records | ForEach-Object { '{0}:{1}:{2}' -f $_.Line, $_.Kind, $_.Defines }) -join '|')
+    $lines = @(Format-MutReplayTrace -Lines @('irrelevant', ('  cicc' + ('x' * 350) + '  '), 'ptxas keep', 'fatbinary excluded') -Prefix sample -Limit 2)
+    Assert-Equal 2 $lines.Count 'trace limit'
+    Assert-Equal ('sample| cicc' + ('x' * 296) + '|sample| ptxas keep') ($lines -join '|') 'trace bytes, trimming and cap'
+    Assert-Equal 0 @(Format-MutReplayTrace -Lines @() -Prefix plan -Limit 40).Count
+}
+
+Describe 'ONNX replay step and trace projections' {
+    It 'shares filtering and classification while retaining trace ordering and limits' {
+        Invoke-WithFunctionModule @script:ReplayProjectionModule -Body { Assert-ReplayProjectionFixture }
+    }
+
+    It 'rejects lost step filtering' {
+        Invoke-TestFunctionMutations -Find '$Lines | Select-String -Pattern $Pattern' -Replace '$Lines | ForEach-Object { [pscustomobject]@{ Line = $_ } }' -Expected 'step filtering' -Body { Assert-ReplayProjectionFixture } -ModuleArguments $script:ReplayProjectionModule
+    }
+
+    It 'rejects lost trace count limits' {
+        Invoke-TestFunctionMutations -Find 'Select-Object -First $Limit' -Replace 'ForEach-Object { $_ }' -Expected 'trace limit' -Body { Assert-ReplayProjectionFixture } -ModuleArguments $script:ReplayProjectionModule
+    }
+}

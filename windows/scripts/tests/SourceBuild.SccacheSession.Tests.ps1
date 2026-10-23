@@ -5,8 +5,7 @@
 $newRefusingSccache = {
     param($dir, [switch]$Always)
     $refuse = if ($Always) { 'goto refuse' } else { 'if defined SCCACHE_BUCKET goto refuse' }
-    $lines = @(
-        '@echo off',
+    New-TestBatchTool -Directory $dir -Name 'sccache.cmd' -Line @(
         'echo SCCACHE %1 [%SCCACHE_BUCKET%] >> "%WBT_SCC_LOG%"',
         'if not "%1"=="--start-server" exit /b 0',
         $refuse,
@@ -15,22 +14,14 @@ $newRefusingSccache = {
         'echo sccache: error: Timed out waiting for server startup 1>&2',
         'exit /b 2'
     )
-    $path = Join-Path $dir 'sccache.cmd'
-    Set-Content -LiteralPath $path -Value ($lines -join "`r`n") -Encoding ASCII
-    return $path
 }
 
 # File scope: both Describes below use the same fake (WBT_SCC_LOG appender).
 $newFakeSccache = {
     param($dir)
-    $lines = @(
-        '@echo off',
-        'echo SCCACHE %* >> "%WBT_SCC_LOG%"',
-        'exit /b 0'
+    New-TestBatchTool -Directory $dir -Name 'sccache.cmd' -Line @(
+        'echo SCCACHE %* >> "%WBT_SCC_LOG%"'
     )
-    $path = Join-Path $dir 'sccache.cmd'
-    Set-Content -LiteralPath $path -Value ($lines -join "`r`n") -Encoding ASCII
-    return $path
 }
 
 function Invoke-SccacheLoggedSession {

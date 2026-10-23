@@ -42,6 +42,7 @@ $ErrorActionPreference = 'Stop'
 # Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1')
 
 # Test-Elevated, not Assert-Elevated: -ReportOnly runs without admin.
 $isAdmin = Test-Elevated
@@ -50,11 +51,6 @@ if (-not $isAdmin -and -not $ReportOnly) {
 }
 
 $scriptRoot = $PSScriptRoot
-
-function Write-Step {
-    param([string]$Message, [string]$Color = 'Gray')
-    Write-Host ('[{0}] {1}' -f (Get-Date -Format 'HH:mm:ss'), $Message) -ForegroundColor $Color
-}
 
 function Get-LanIpv4Address {
     # The address containers reach the host on: an up adapter with a real gateway, never HNS or link-local.
@@ -95,7 +91,7 @@ function Get-NatAdapterCidr {
 
 # ── Step 1: CNI conflist (authored) + apply-containerd-config (derives .conf) ─
 function Invoke-StepCni {
-    if ($SkipCni) { Write-Step 'cni        : skipped (-SkipCni)'; return }
+    if ($SkipCni) { Write-HostMaintenanceMessage 'cni        : skipped (-SkipCni)'; return }
 
     $cniDir = 'C:\Program Files\containerd\cni\conf'
     $conflistPath = Join-Path $cniDir '0-containerd-nat.conflist'
@@ -122,25 +118,25 @@ function Invoke-StepCni {
 
     $verb = if ($ReportOnly) { 'would write' } else { 'writing' }
     if ($changeNeed) {
-        Write-Step ("cni        : {0} the .conflist (subnet {1} from the live nat adapter)" -f $verb, $natCidr) 'Yellow'
+        Write-HostMaintenanceMessage ("cni        : {0} the .conflist (subnet {1} from the live nat adapter)" -f $verb, $natCidr) 'Yellow'
         if (-not $ReportOnly) {
             New-Item -ItemType Directory -Force -Path $cniDir | Out-Null
             Set-Content -Path $conflistPath -Value ($desired + "`n") -Encoding utf8
-            Write-Step "cni        : wrote $conflistPath" 'Green'
+            Write-HostMaintenanceMessage "cni        : wrote $conflistPath" 'Green'
         }
     } else {
-        Write-Step "cni        : .conflist already at the live subnet ($natCidr) - no change"
+        Write-HostMaintenanceMessage "cni        : .conflist already at the live subnet ($natCidr) - no change"
     }
 
     # Hashtable splat: an array binds by position and would pass '-ReportOnly' as $ServiceName.
     $acArgs = @{ ReportOnly = $ReportOnly }
-    Write-Step 'containerd : applying Set-ContainerdConfig.ps1 (debug flags, teardown env, Defender, .conf derive)'
+    Write-HostMaintenanceMessage 'containerd : applying Set-ContainerdConfig.ps1 (debug flags, teardown env, Defender, .conf derive)'
     & (Join-Path $scriptRoot 'Set-ContainerdConfig.ps1') @acArgs
 }
 
 # ── Step 2: GC policy + step-log env + buildkitd restart ───────────────────────
 function Invoke-StepGcPolicy {
-    if ($SkipGcPolicy) { Write-Step 'buildkitd  : skipped (-SkipGcPolicy)'; return }
+    if ($SkipGcPolicy) { Write-HostMaintenanceMessage 'buildkitd  : skipped (-SkipGcPolicy)'; return }
 
     $svcKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\buildkitd'
     $desiredEnv = @('BUILDKIT_STEP_LOG_MAX_SIZE=-1', 'BUILDKIT_STEP_LOG_MAX_SPEED=-1')
@@ -150,32 +146,29 @@ function Invoke-StepGcPolicy {
     $missing = @($desiredEnv | Where-Object { $have -notcontains $_ })
 
     if ($missing.Count -eq 0) {
-        Write-Step 'buildkitd  : step-log env present'
+        Write-HostMaintenanceMessage 'buildkitd  : step-log env present'
     } elseif ($ReportOnly) {
-        Write-Step "buildkitd  : step-log env MISSING ($($missing -join ', ')) - would set on the real run" 'Yellow'
+        Write-HostMaintenanceMessage "buildkitd  : step-log env MISSING ($($missing -join ', ')) - would set on the real run" 'Yellow'
     } elseif (-not $Force) {
-        $live = @(Get-Process -Name 'buildctl' -ErrorAction SilentlyContinue)
-        if ($live.Count -gt 0) {
-            throw ("{0} live buildctl process(es) - this step restarts buildkitd and kills them. " -f $live.Count) +
-                'Wait, or pass -Force if they are stale.'
-        }
+        $null = Get-HostMaintenanceProcess -Name buildctl -FailureTemplate (
+            '{0} live buildctl process(es) - this step restarts buildkitd and kills them. Wait, or pass -Force if they are stale.')
     }
 
     if (-not $ReportOnly -and $missing.Count -gt 0) {
         $merged = @($have | Where-Object { $_ -notmatch '^BUILDKIT_STEP_LOG_' }) + $desiredEnv
         Set-ItemProperty -Path $svcKey -Name Environment -Value ([string[]]$merged) -Type MultiString
-        Write-Step "buildkitd  : Environment set to $($merged -join '; ')" 'Green'
+        Write-HostMaintenanceMessage "buildkitd  : Environment set to $($merged -join '; ')" 'Green'
     }
 
     if ($ReportOnly) {
         # Set-BuildkitdGcpolicy.ps1 has NO dry-run mode - report, never invoke it.
-        Write-Step 'buildkitd  : would apply Set-BuildkitdGcpolicy.ps1 (GC policy + history cap + --config + restart)'
+        Write-HostMaintenanceMessage 'buildkitd  : would apply Set-BuildkitdGcpolicy.ps1 (GC policy + history cap + --config + restart)'
         return
     }
 
     # Hashtable splat (NOT an array) so -Force binds as the switch, not as $ConfigDest.
     $gcArgs = @{ Force = $Force }
-    Write-Step 'buildkitd  : applying Set-BuildkitdGcpolicy.ps1 (GC policy + --config + restart)'
+    Write-HostMaintenanceMessage 'buildkitd  : applying Set-BuildkitdGcpolicy.ps1 (GC policy + --config + restart)'
     & (Join-Path $scriptRoot 'Set-BuildkitdGcpolicy.ps1') @gcArgs
 }
 
@@ -194,7 +187,7 @@ function Test-RecordedShimLive {
 }
 
 function Invoke-StepShim {
-    if ($SkipShim) { Write-Step 'shim       : skipped (-SkipShim)'; return }
+    if ($SkipShim) { Write-HostMaintenanceMessage 'shim       : skipped (-SkipShim)'; return }
 
     $shimExe = "$env:ProgramFiles\Stevedore\bin\containerd-shim-runhcs-v1.exe"
     $installedSize = if (Test-Path $shimExe) { (Get-Item $shimExe).Length } else { 0 }
@@ -205,14 +198,14 @@ function Invoke-StepShim {
     }
 
     if (Test-RecordedShimLive -RecordPath $json -ShimExe $shimExe) {
-        Write-Step 'shim       : the live shim is the recorded patched one (SHA256 match) - skipping'
+        Write-HostMaintenanceMessage 'shim       : the live shim is the recorded patched one (SHA256 match) - skipping'
         return
     }
     if ($installedSize -gt 0 -and $recorded) {
-        Write-Step 'shim       : the live shim is NOT the recorded one (a Stevedore/containerd update replaced it) - redeploying' 'Yellow'
+        Write-HostMaintenanceMessage 'shim       : the live shim is NOT the recorded one (a Stevedore/containerd update replaced it) - redeploying' 'Yellow'
     }
     if ($installedSize -gt 0 -and $installedSize -ne 23279616 -and -not $recorded) {
-        Write-Step ('shim       : installed binary ({0:N0} B) is NOT stock but no recorded hash - deploy once to record it' -f $installedSize) 'Yellow'
+        Write-HostMaintenanceMessage ('shim       : installed binary ({0:N0} B) is NOT stock but no recorded hash - deploy once to record it' -f $installedSize) 'Yellow'
     }
 
     $build = $ShimPath
@@ -223,7 +216,7 @@ function Invoke-StepShim {
     }
 
     if ($ReportOnly) {
-        Write-Step "shim       : would deploy $build"
+        Write-HostMaintenanceMessage "shim       : would deploy $build"
         return
     }
     # Hashtable splat; without the 5m knob the fork's shim keeps the stock 30 s (docs/windows-host-setup.md § R1).
@@ -232,7 +225,7 @@ function Invoke-StepShim {
         Force              = $Force
         ServiceEnvironment = @('CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=5m')
     }
-    Write-Step 'shim       : deploying the patched runhcs shim (env-configurable, TEARDOWN_TIMEOUT=5m)'
+    Write-HostMaintenanceMessage 'shim       : deploying the patched runhcs shim (env-configurable, TEARDOWN_TIMEOUT=5m)'
     & (Join-Path $scriptRoot 'Publish-ShimPatch.ps1') @dsp
 }
 
@@ -258,7 +251,7 @@ function Invoke-BuildPatchedShim {
     $exeOut = Join-Path $work 'containerd-shim-runhcs-v1.exe'
 
     if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
-        Write-Step 'shim       : Go not found - installing via scoop'
+        Write-HostMaintenanceMessage 'shim       : Go not found - installing via scoop'
         if ($ReportOnly) { return $exeOut }
         $scoop = Join-Path $env:USERPROFILE 'scoop\shims\scoop.cmd'
         if (-not (Test-Path $scoop)) { throw "scoop not found ($scoop) - install a patched shim via -ShimPath instead" }
@@ -269,10 +262,10 @@ function Invoke-BuildPatchedShim {
     $git = (Get-Command git -ErrorAction SilentlyContinue).Source
     if (-not (Test-Path (Join-Path $work '.git'))) {
         if ($ReportOnly) {
-            Write-Step 'shim       : would clone the hcsshim fork and pin the env-configurable teardown commits'
+            Write-HostMaintenanceMessage 'shim       : would clone the hcsshim fork and pin the env-configurable teardown commits'
             return $exeOut
         }
-        Write-Step 'shim       : cloning the hcsshim fork (shallow, branch pinned by commit)'
+        Write-HostMaintenanceMessage 'shim       : cloning the hcsshim fork (shallow, branch pinned by commit)'
         if (-not $git) { throw 'git not found - install Git for Windows, or pass -ShimPath' }
         Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
         if (Test-Path $work) { throw "cannot clear the shim work dir: $work" }
@@ -281,7 +274,7 @@ function Invoke-BuildPatchedShim {
     }
     if (-not $git) { throw 'git not found - install Git for Windows, or pass -ShimPath' }
     if (Sync-ShimForkCheckout -Git $git -Work $work -Pin $forkPin) {
-        Write-Step "shim       : fork tree checked out at the pin $($forkPin.Substring(0, 12))"
+        Write-HostMaintenanceMessage "shim       : fork tree checked out at the pin $($forkPin.Substring(0, 12))"
     }
     if (-not (Test-Path $src)) { throw "task_hcs.go not found at $src - unexpected hcsshim layout?" }
 
@@ -290,27 +283,27 @@ function Invoke-BuildPatchedShim {
     if ($raw -notmatch 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT') {
         throw "the pinned fork tree lacks the CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT knob at $src - refusing to build a silently stock shim"
     }
-    Write-Step 'shim       : fork tree carries the env-configurable teardown knob (pin verified)' 'Green'
+    Write-HostMaintenanceMessage 'shim       : fork tree carries the env-configurable teardown knob (pin verified)' 'Green'
 
     Push-Location $work
     try {
         & go build .\cmd\containerd-shim-runhcs-v1
         if ($LASTEXITCODE -ne 0) { throw "go build failed (exit $LASTEXITCODE)" }
     } finally { Pop-Location }
-    Write-Step ("shim       : built $exeOut ({0:N0} B)" -f (Get-Item $exeOut).Length) 'Green'
+    Write-HostMaintenanceMessage ("shim       : built $exeOut ({0:N0} B)" -f (Get-Item $exeOut).Length) 'Green'
     return $exeOut
 }
 
 # ── Step 4: dufs sccache L2 server + logon task + machine endpoint env ─────────
 function Invoke-StepDufs {
-    if ($SkipDufs) { Write-Step 'dufs       : skipped (-SkipDufs)'; return }
+    if ($SkipDufs) { Write-HostMaintenanceMessage 'dufs       : skipped (-SkipDufs)'; return }
 
     $lanIp = Get-LanIpv4Address
     $endpoint = 'http://{0}:{1}' -f $lanIp, $SccachePort
 
     $dufsCmd = Get-Command dufs -ErrorAction SilentlyContinue
     if (-not $dufsCmd) {
-        Write-Step 'dufs       : not installed - installing via scoop'
+        Write-HostMaintenanceMessage 'dufs       : not installed - installing via scoop'
         if (-not $ReportOnly) {
             $scoop = Join-Path $env:USERPROFILE 'scoop\shims\scoop.cmd'
             if (-not (Test-Path $scoop)) { throw "scoop not found ($scoop) - install dufs by hand (docs C5)" }
@@ -318,7 +311,7 @@ function Invoke-StepDufs {
             if ($LASTEXITCODE -ne 0) { throw 'scoop install dufs failed' }
         }
     } else {
-        Write-Step ('dufs       : present at {0}' -f $dufsCmd.Source)
+        Write-HostMaintenanceMessage ('dufs       : present at {0}' -f $dufsCmd.Source)
     }
 
     if (-not $ReportOnly) {
@@ -332,9 +325,9 @@ function Invoke-StepDufs {
 
     $open = Test-NetConnection -ComputerName '127.0.0.1' -Port ([int]$SccachePort) -WarningAction SilentlyContinue
     if ($open.TcpTestSucceeded) {
-        Write-Step "dufs       : already serving on :$SccachePort (adopting)"
+        Write-HostMaintenanceMessage "dufs       : already serving on :$SccachePort (adopting)"
     } else {
-        Write-Step "dufs       : nothing on :$SccachePort - would start '$dufsExe' serving '$SccacheCacheDir'"
+        Write-HostMaintenanceMessage "dufs       : nothing on :$SccachePort - would start '$dufsExe' serving '$SccacheCacheDir'"
         if (-not $ReportOnly -and $dufsExe) {
             Start-Process -FilePath $dufsExe -ArgumentList @($SccacheCacheDir, $DufsExtraArgs, '-p', $SccachePort) -WindowStyle Hidden
             Start-Sleep -Seconds 3
@@ -347,30 +340,30 @@ function Invoke-StepDufs {
     $taskExists = ($LASTEXITCODE -eq 0)
     if (-not $taskExists) {
         $verb = if ($ReportOnly) { 'would register' } else { 'registering' }
-        Write-Step ("dufs       : {0} the '{1}' ONLOGON scheduled task" -f $verb, $taskName) 'Yellow'
+        Write-HostMaintenanceMessage ("dufs       : {0} the '{1}' ONLOGON scheduled task" -f $verb, $taskName) 'Yellow'
         if (-not $ReportOnly -and $dufsExe) {
             $cmd = '"{0}" "{1}" {2} -p {3}' -f $dufsExe, $SccacheCacheDir, $DufsExtraArgs, $SccachePort
             & schtasks.exe /Create /F /TN $taskName /TR $cmd /SC ONLOGON /RL LIMITED *> $null
             if ($LASTEXITCODE -ne 0) { throw "schtasks /Create $taskName failed (exit $LASTEXITCODE)" }
         }
     } else {
-        Write-Step "dufs       : task '$taskName' already registered"
+        Write-HostMaintenanceMessage "dufs       : task '$taskName' already registered"
     }
 
     # Machine-level endpoint (new shells + the build inherit it). NEVER localhost.
     $machineEp = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', 'Machine')
     if ($machineEp -ne $endpoint) {
         $verb = if ($ReportOnly) { 'would set' } else { 'setting' }
-        Write-Step ("dufs       : {0} SCCACHE_WEBDAV_ENDPOINT={1} (Machine)" -f $verb, $endpoint) 'Yellow'
+        Write-HostMaintenanceMessage ("dufs       : {0} SCCACHE_WEBDAV_ENDPOINT={1} (Machine)" -f $verb, $endpoint) 'Yellow'
         if (-not $ReportOnly) { [Environment]::SetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', $endpoint, 'Machine') }
     } else {
-        Write-Step "dufs       : SCCACHE_WEBDAV_ENDPOINT already $endpoint"
+        Write-HostMaintenanceMessage "dufs       : SCCACHE_WEBDAV_ENDPOINT already $endpoint"
     }
 
     if (-not $ReportOnly) {
         try {
             $code = (Invoke-WebRequest -Uri $endpoint -Method Head -TimeoutSec 5 -UseBasicParsing).StatusCode
-            Write-Step "dufs       : endpoint $endpoint -> HTTP $code" 'Green'
+            Write-HostMaintenanceMessage "dufs       : endpoint $endpoint -> HTTP $code" 'Green'
         } catch { throw "sccache endpoint $endpoint is not reachable: $($_.Exception.Message)" }
     }
 }
@@ -392,18 +385,18 @@ function Invoke-StepTcpTimeWait {
     $value = if ($props) { $props.PSObject.Properties['TcpTimedWaitDelay'] } else { $null }
     $change = Get-TcpTimeWaitChange -Current $(if ($value) { $value.Value }) -Desired $TcpTimedWaitDelay
     if (-not $change) {
-        Write-Step "tcp        : TcpTimedWaitDelay already $TcpTimedWaitDelay s"
+        Write-HostMaintenanceMessage "tcp        : TcpTimedWaitDelay already $TcpTimedWaitDelay s"
     } elseif ($ReportOnly) {
-        Write-Step "tcp        : would set TcpTimedWaitDelay $change (live from the next boot)" 'Yellow'
+        Write-HostMaintenanceMessage "tcp        : would set TcpTimedWaitDelay $change (live from the next boot)" 'Yellow'
     } else {
         Set-ItemProperty -Path $key -Name 'TcpTimedWaitDelay' -Type DWord -Value $TcpTimedWaitDelay
         $script:RebootNeeded = $true
-        Write-Step "tcp        : TcpTimedWaitDelay $change; the stack reads it at boot, so REBOOT before the next chain" 'Yellow'
+        Write-HostMaintenanceMessage "tcp        : TcpTimedWaitDelay $change; the stack reads it at boot, so REBOOT before the next chain" 'Yellow'
     }
 }
 
 # ── run ─────────────────────────────────────────────────────────────────────────
-Write-Step ('setup-new-host {0}' -f $(if ($ReportOnly) { 'REPORT ONLY' } else { 'APPLY' }))
+Write-HostMaintenanceMessage ('setup-new-host {0}' -f $(if ($ReportOnly) { 'REPORT ONLY' } else { 'APPLY' }))
 $script:RebootNeeded = $false
 
 if (-not $SkipCni)         { Invoke-StepCni }
@@ -415,23 +408,20 @@ if (-not $SkipTcpTimeWait) { Invoke-StepTcpTimeWait }
 # One restart makes the new CNI .conf and step-log env live; guarded, since it kills in-flight solves.
 if (-not $ReportOnly) {
     if (-not $Force) {
-        $live = @(Get-Process -Name 'buildctl' -ErrorAction SilentlyContinue)
-        if ($live.Count -gt 0) {
-            throw ("{0} live buildctl process(es) - restarting buildkitd kills their solves. " -f $live.Count) +
-                'Wait, or pass -Force if they are stale.'
-        }
+        $null = Get-HostMaintenanceProcess -Name buildctl -FailureTemplate (
+            '{0} live buildctl process(es) - restarting buildkitd kills their solves. Wait, or pass -Force if they are stale.')
     }
-    Write-Step 'buildkitd  : restarting to ensure the CNI .conf and step-log env are live'
+    Write-HostMaintenanceMessage 'buildkitd  : restarting to ensure the CNI .conf and step-log env are live'
     try {
         Restart-Service buildkitd -Force -ErrorAction Stop
-        Write-Step ('buildkitd  : {0}' -f (Get-Service buildkitd).Status)
+        Write-HostMaintenanceMessage ('buildkitd  : {0}' -f (Get-Service buildkitd).Status)
     } catch {
-        Write-Step ('buildkitd  : RESTART ERROR: {0}' -f $_.Exception.Message) 'Red'
+        Write-HostMaintenanceMessage ('buildkitd  : RESTART ERROR: {0}' -f $_.Exception.Message) 'Red'
         throw
     }
 }
 
-if ($script:RebootNeeded) { Write-Step 'reboot     : needed for TcpTimedWaitDelay; Test-HostSetup.ps1 reads only the registry' 'Yellow' }
+if ($script:RebootNeeded) { Write-HostMaintenanceMessage 'reboot     : needed for TcpTimedWaitDelay; Test-HostSetup.ps1 reads only the registry' 'Yellow' }
 $lan = Get-LanIpv4Address
-Write-Step ('DONE ({0}). Verify with:  pwsh -File windows\scripts\host\Test-HostSetup.ps1 -SccacheEndpoint http://{1}:{2}' -f
+Write-HostMaintenanceMessage ('DONE ({0}). Verify with:  pwsh -File windows\scripts\host\Test-HostSetup.ps1 -SccacheEndpoint http://{1}:{2}' -f
     $(if ($ReportOnly) { 'nothing changed' } else { 'applied' }), $lan, $SccachePort) 'Cyan'

@@ -4,17 +4,14 @@
 Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.RetryFixtures.psm1') -Force -DisableNameChecking
 
 $script:NewFakeNinja = {
-        param($dir)
-        $lines = @(
-            '@echo off',
-            'echo NINJA %* >> "%WBT_NINJA_LOG%"',
-            'if "%WBT_NINJA_MODE%"=="fail" ( (if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%") & exit /b 1 )',
-            'if exist "%WBT_NINJA_FAILONCE%" ( del "%WBT_NINJA_FAILONCE%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
-            'if exist "%WBT_NINJA_FAILONCE2%" ( del "%WBT_NINJA_FAILONCE2%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
-            'exit /b 0'
-        )
-        Set-Content -LiteralPath (Join-Path $dir 'ninja.bat') -Value ($lines -join "`r`n") -Encoding ASCII
-    }
+    param($dir)
+    New-TestBatchTool -Directory $dir -Name 'ninja.bat' -Line @(
+        'echo NINJA %* >> "%WBT_NINJA_LOG%"',
+        'if "%WBT_NINJA_MODE%"=="fail" ( (if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%") & exit /b 1 )',
+        'if exist "%WBT_NINJA_FAILONCE%" ( del "%WBT_NINJA_FAILONCE%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )',
+        'if exist "%WBT_NINJA_FAILONCE2%" ( del "%WBT_NINJA_FAILONCE2%" & ( if not "%WBT_NINJA_STALLMARK%"=="" echo kill >> "%WBT_NINJA_STALLMARK%" ) & exit /b 1 )'
+    )
+}
 
 function script:Invoke-NinjaRetryFixture {
     param([int]$RetryJobs = 1, [int]$Jobs = 4, [int]$Failures = 0, [string]$Mode = '',

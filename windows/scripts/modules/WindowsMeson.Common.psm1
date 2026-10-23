@@ -5,6 +5,14 @@
 
 Set-StrictMode -Version Latest
 
+function Format-MesonWindowsBinaries {
+    param([Parameter(Mandatory)][string]$C, [Parameter(Mandatory)][string]$Cpp, [string[]]$ExtraLine = @())
+    (@('[binaries]', "c = [$C]", "cpp = [$Cpp]", "ar = 'llvm-lib'", "strip = 'llvm-strip'",
+        "windres = 'llvm-rc'", "pkg-config = 'pkg-config'", "cmake = 'cmake'") + $ExtraLine) -join "`n"
+}
+
+Export-ModuleMember -Function Format-MesonWindowsBinaries
+
 # The site-count throws are load-bearing: see docs/failure-modes.md § meson cross
 function Invoke-MesonBuildSubprojectPatch {
     param(

@@ -10,11 +10,10 @@ Describe 'Resolve-BuildMachineMsvcTool' {
 
         $script:tmp = New-TestDir -Prefix 'wbt-vctools-'
         $script:vc = Join-Path $script:tmp 'VC\Tools\MSVC\14.51.36231'
-        New-Item -ItemType Directory -Force -Path (Join-Path $script:vc 'bin\HostX64\x64') | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $script:vc 'bin\HostX64\ARM64') | Out-Null
-        Set-Content (Join-Path $script:vc 'bin\HostX64\x64\cl.exe') 'x64 cl'
-        Set-Content (Join-Path $script:vc 'bin\HostX64\ARM64\cl.exe') 'arm64 cl'
-        Set-Content (Join-Path $script:vc 'bin\HostX64\ARM64\ml64.exe') 'arm64-dir ml64'
+        Write-TestFileTree -Root $script:vc -Files @{
+            'bin/HostX64/x64/cl.exe' = 'x64 cl'; 'bin/HostX64/ARM64/cl.exe' = 'arm64 cl'
+            'bin/HostX64/ARM64/ml64.exe' = 'arm64-dir ml64'
+        }
     }
     AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 

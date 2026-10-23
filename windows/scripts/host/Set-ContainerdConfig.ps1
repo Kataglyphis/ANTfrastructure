@@ -30,28 +30,23 @@ $ErrorActionPreference = 'Stop'
 # Shared assets sit beside this script in a flat container mount, one level up in the repo.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1')
-Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force
+Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1')
 
 $svcKey = "HKLM:\SYSTEM\CurrentControlSet\Services\$ServiceName"
-
-function Write-Step {
-    param([string]$Message, [string]$Color = 'Gray')
-    Write-Host ('[{0}] {1}' -f (Get-Date -Format 'HH:mm:ss'), $Message) -ForegroundColor $Color
-}
 
 # --- report -------------------------------------------------------------------
 
 if (-not (Test-Path $svcKey)) { throw "service '$ServiceName' not found (looked at $svcKey)" }
 $current = Get-ItemProperty $svcKey
 
-Write-Step ('service    : {0} ({1})' -f $ServiceName, (Get-Service $ServiceName -ErrorAction SilentlyContinue).Status)
-Write-Step ('ImagePath  : {0}' -f $current.ImagePath)
+Write-HostMaintenanceMessage ('service    : {0} ({1})' -f $ServiceName, (Get-Service $ServiceName -ErrorAction SilentlyContinue).Status)
+Write-HostMaintenanceMessage ('ImagePath  : {0}' -f $current.ImagePath)
 $currentEnv = @(if ($current.PSObject.Properties.Name -contains 'Environment') { $current.Environment } else { @() })
-Write-Step ('Environment: {0}' -f $(if ($currentEnv.Count) { $currentEnv -join '; ' } else { '(none)' }))
+Write-HostMaintenanceMessage ('Environment: {0}' -f $(if ($currentEnv.Count) { $currentEnv -join '; ' } else { '(none)' }))
 if (Test-Path $LogFile) {
-    Write-Step ('debug log  : {0:N1} MB  {1}' -f ((Get-Item $LogFile).Length / 1MB), $LogFile)
+    Write-HostMaintenanceMessage ('debug log  : {0:N1} MB  {1}' -f ((Get-Item $LogFile).Length / 1MB), $LogFile)
 } else {
-    Write-Step ('debug log  : not present yet ({0})' -f $LogFile)
+    Write-HostMaintenanceMessage ('debug log  : not present yet ({0})' -f $LogFile)
 }
 
 $isAdmin = Test-Elevated
@@ -65,7 +60,7 @@ if (-not $SkipCniSync) {
     $confListPath = Join-Path $CniConfDir '0-containerd-nat.conflist'
     $confPath = Join-Path $CniConfDir '0-containerd-nat.conf'
     if (-not (Test-Path $confListPath)) {
-        Write-Step "cni        : no $confListPath - nothing to derive from (see docs/windows-host-setup.md A5)" 'Yellow'
+        Write-HostMaintenanceMessage "cni        : no $confListPath - nothing to derive from (see docs/windows-host-setup.md A5)" 'Yellow'
     } else {
         $derived = ConvertFrom-CniConfList -ConfListText (Get-Content $confListPath -Raw)
         $existing = if (Test-Path $confPath) { (Get-Content $confPath -Raw) } else { '' }
@@ -78,14 +73,14 @@ if (-not $SkipCniSync) {
             } catch { $same = $false }
         }
         if ($same) {
-            Write-Step 'cni        : .conf matches the .conflist (derived, in sync)'
+            Write-HostMaintenanceMessage 'cni        : .conf matches the .conflist (derived, in sync)'
         } elseif ($ReportOnly) {
-            Write-Step "cni        : .conf is OUT OF SYNC with the .conflist - run without -ReportOnly to rewrite it" 'Yellow'
+            Write-HostMaintenanceMessage "cni        : .conf is OUT OF SYNC with the .conflist - run without -ReportOnly to rewrite it" 'Yellow'
         } elseif (-not $isAdmin) {
-            Write-Step "cni        : .conf out of sync but writing $CniConfDir needs admin" 'Yellow'
+            Write-HostMaintenanceMessage "cni        : .conf out of sync but writing $CniConfDir needs admin" 'Yellow'
         } elseif ($PSCmdlet.ShouldProcess($confPath, 'rewrite from the .conflist')) {
             Set-Content -Path $confPath -Value $derived -Encoding ascii
-            Write-Step "cni        : rewrote $confPath from the .conflist - restart buildkitd to pick it up" 'Green'
+            Write-HostMaintenanceMessage "cni        : rewrote $confPath from the .conflist - restart buildkitd to pick it up" 'Green'
         }
     }
 }
@@ -95,10 +90,10 @@ if (-not $SkipDefenderExclusions) {
         $have = @((Get-MpPreference).ExclusionPath)
         foreach ($p in $ExclusionPath) {
             $ok = $have -contains $p
-            Write-Step ("exclusion  : {0,-32} {1}" -f $p, $(if ($ok) { 'present' } else { 'MISSING' })) $(if ($ok) { 'Gray' } else { 'Yellow' })
+            Write-HostMaintenanceMessage ("exclusion  : {0,-32} {1}" -f $p, $(if ($ok) { 'present' } else { 'MISSING' })) $(if ($ok) { 'Gray' } else { 'Yellow' })
         }
     } else {
-        Write-Step 'exclusions : need admin to read (Get-MpPreference)' 'Yellow'
+        Write-HostMaintenanceMessage 'exclusions : need admin to read (Get-MpPreference)' 'Yellow'
     }
 }
 
@@ -113,13 +108,13 @@ if ($TeardownTimeout) { $desiredEnv += "CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEO
 $imagePathDrift = ($current.ImagePath.Trim() -ne $desiredImagePath)
 $envDrift = ((($currentEnv | Sort-Object) -join '|') -ne (($desiredEnv | Sort-Object) -join '|'))
 
-Write-Step ('ImagePath drift : {0}' -f $imagePathDrift) $(if ($imagePathDrift) { 'Yellow' } else { 'Green' })
-Write-Step ('Environment drift: {0}' -f $envDrift) $(if ($envDrift) { 'Yellow' } else { 'Green' })
+Write-HostMaintenanceMessage ('ImagePath drift : {0}' -f $imagePathDrift) $(if ($imagePathDrift) { 'Yellow' } else { 'Green' })
+Write-HostMaintenanceMessage ('Environment drift: {0}' -f $envDrift) $(if ($envDrift) { 'Yellow' } else { 'Green' })
 
 if ($ReportOnly) {
-    if ($imagePathDrift) { Write-Step ('would set  : {0}' -f $desiredImagePath) 'Cyan' }
-    if ($envDrift) { Write-Step ('would set  : {0}' -f ($desiredEnv -join '; ')) 'Cyan' }
-    Write-Step 'ReportOnly: nothing changed.' 'Cyan'
+    if ($imagePathDrift) { Write-HostMaintenanceMessage ('would set  : {0}' -f $desiredImagePath) 'Cyan' }
+    if ($envDrift) { Write-HostMaintenanceMessage ('would set  : {0}' -f ($desiredEnv -join '; ')) 'Cyan' }
+    Write-HostMaintenanceMessage 'ReportOnly: nothing changed.' 'Cyan'
     return
 }
 
@@ -135,14 +130,14 @@ if (-not $SkipDefenderExclusions) {
         if (@((Get-MpPreference).ExclusionPath) -notcontains $p) {
             if ($PSCmdlet.ShouldProcess($p, 'Add-MpPreference -ExclusionPath')) {
                 Add-MpPreference -ExclusionPath $p
-                Write-Step ("exclusion added: $p") 'Green'
+                Write-HostMaintenanceMessage ("exclusion added: $p") 'Green'
             }
         }
     }
 }
 
 if (-not $imagePathDrift -and -not $envDrift) {
-    Write-Step 'service configuration already correct - no restart needed.' 'Green'
+    Write-HostMaintenanceMessage 'service configuration already correct - no restart needed.' 'Green'
     return
 }
 
@@ -150,20 +145,20 @@ if (-not $PSCmdlet.ShouldProcess($ServiceName, 'update service configuration and
 
 if ($imagePathDrift) {
     Set-ItemProperty -Path $svcKey -Name ImagePath -Value $desiredImagePath
-    Write-Step ('ImagePath set: {0}' -f $desiredImagePath) 'Green'
+    Write-HostMaintenanceMessage ('ImagePath set: {0}' -f $desiredImagePath) 'Green'
 }
 if ($envDrift) {
     if ($desiredEnv.Count) {
         Set-ItemProperty -Path $svcKey -Name Environment -Value ([string[]]$desiredEnv) -Type MultiString
-        Write-Step ('Environment set: {0}' -f ($desiredEnv -join '; ')) 'Green'
+        Write-HostMaintenanceMessage ('Environment set: {0}' -f ($desiredEnv -join '; ')) 'Green'
     } elseif ($current.PSObject.Properties.Name -contains 'Environment') {
         Remove-ItemProperty -Path $svcKey -Name Environment
-        Write-Step 'Environment removed' 'Green'
+        Write-HostMaintenanceMessage 'Environment removed' 'Green'
     }
 }
 
 # -Force: a plain Restart-Service is refused when dependents exist.
 Restart-Service $ServiceName -Force
 Start-Sleep -Seconds 3
-Write-Step ('{0}: {1}' -f $ServiceName, (Get-Service $ServiceName).Status) 'Green'
-Write-Step 'NOTE: the runhcs shim picks up the new environment per CONTAINER, so no further restart is needed.' 'Cyan'
+Write-HostMaintenanceMessage ('{0}: {1}' -f $ServiceName, (Get-Service $ServiceName).Status) 'Green'
+Write-HostMaintenanceMessage 'NOTE: the runhcs shim picks up the new environment per CONTAINER, so no further restart is needed.' 'Cyan'

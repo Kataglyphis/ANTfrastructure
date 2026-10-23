@@ -5,9 +5,9 @@
 
 Set-StrictMode -Version Latest
 
-# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+Import-Module $sharedPath -ErrorAction Stop
 
 function Resolve-ContainerImageValue {
     param(
@@ -20,17 +20,7 @@ function Resolve-ContainerImageValue {
         [switch]$TrimVPrefix
     )
 
-    $resolved = $DefaultValue
-
-    if (-not [string]::IsNullOrWhiteSpace($Value)) {
-        $resolved = $Value
-    } elseif (-not [string]::IsNullOrWhiteSpace($EnvironmentVariable)) {
-        $environmentValue = [Environment]::GetEnvironmentVariable($EnvironmentVariable)
-        if (-not [string]::IsNullOrWhiteSpace($environmentValue)) {
-            $resolved = $environmentValue
-        }
-    }
-
+    $resolved = Resolve-BuildValue -Value $Value -EnvironmentVariables @($EnvironmentVariable) -DefaultValue $DefaultValue
     if ($TrimVPrefix -and $null -ne $resolved) {
         $resolved = ([string]$resolved).TrimStart('v')
     }
@@ -308,6 +298,30 @@ function Expand-LavapipeArchive {
     if ($LASTEXITCODE -ne 0) { throw "Expand-LavapipeArchive: 7-Zip exited $LASTEXITCODE unpacking $ArchivePath" }
 }
 
+function Assert-VulkanArm64Library {
+    param([Parameter(Mandatory)][string]$Path, [bool]$Strict,
+        [Parameter(Mandatory)][ValidateSet('Install', 'Verify')][string]$Phase, [string]$DisplayPath = $Path)
+    if ($Phase -eq 'Install') {
+        $success = "Vulkan ARM64 cross libraries installed ($Path)."
+        $required = "Vulkan ARM64 component (com.lunarg.vulkan.arm64) is not installed: $Path is missing. " +
+            'It is an optional component of the x64 SDK and is required to link an aarch64 target. ' +
+            'WINDOWS_ARM64_STRICT=1 made this a hard gate.'
+        $advisory = "Vulkan ARM64 component (com.lunarg.vulkan.arm64) not installed: $Path is missing. " +
+            'The amd64 lane is unaffected; an arm64 target cannot link Vulkan until this is resolved. ' +
+            'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.'
+    } else {
+        $success = "Vulkan ARM64 import library OK: $DisplayPath"
+        $required = "Vulkan ARM64 import library missing at $DisplayPath. The com.lunarg.vulkan.arm64 component " +
+            'is optional in the x64 SDK and Install-ScoopTools.ps1 must add it. ' +
+            'WINDOWS_ARM64_STRICT=1 made this a hard gate.'
+        $advisory = "Vulkan ARM64 import library missing at $DisplayPath - an arm64 target cannot link Vulkan. " +
+            'The amd64 lane is unaffected. Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.'
+    }
+    if (Test-Path $Path) { Write-Host $success }
+    elseif ($Strict) { throw $required }
+    else { Write-Warning $advisory }
+}
+
 <#
 .SYNOPSIS
     Reads the four lavapipe pins through a caller-supplied lookup (env vars in the image, versions.env on a host).
@@ -333,6 +347,7 @@ Export-ModuleMember -Function @(
     'Clear-PendingFileHandle',
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',
+    'Assert-VulkanArm64Library',
     'Get-CiImageReference',
     'Expand-VulkanRuntimeComponents',
     'Get-LavapipeWindowsUrl',

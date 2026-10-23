@@ -5,42 +5,14 @@
 
 # One scan surface for W1/W1b/W1c; the matchers stay per-Describe because they read different AST shapes.
 function Get-PinScanAst {
-    param([string]$MustMentionPattern = '')
     $scriptsDir = Split-Path $PSScriptRoot -Parent
     $files = @(Get-ChildItem -Path $scriptsDir -Recurse -Filter '*.ps1' -File |
             Where-Object { $_.FullName -notmatch '[\\/](tests|modules)[\\/]' } | Sort-Object Name)  # #108 grouped layout
     $files += @(Get-ChildItem -Path (Join-Path $scriptsDir 'modules') -Filter '*.psm1' -File | Sort-Object Name)
     foreach ($f in $files) {
-        $tokens = $null; $errors = $null
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$tokens, [ref]$errors)
-        if ($errors -and @($errors).Count -gt 0) {
-            # Fatal only when the file could hold a site the caller would miss; syntax health is another gate's job.
-            if ($MustMentionPattern -and ((Get-Content -Path $f.FullName -Raw) -match $MustMentionPattern)) {
-                throw ('PinParity: ' + $f.Name + ' has parse errors; cannot scan: ' + @($errors)[0].Message)
-            }
-            continue
-        }
+        $ast = Get-TestScriptAst -ScriptPath $f.FullName
         [pscustomobject]@{ File = $f; Ast = $ast }
     }
-}
-
-# A parameter's argument is attached (-Name:value) or the next element.
-function Get-CommandParameterArgumentMap {
-    param([System.Management.Automation.Language.CommandAst]$Call)
-    $map = [ordered]@{}
-    $elems = $Call.CommandElements
-    for ($i = 0; $i -lt $elems.Count; $i++) {
-        $e = $elems[$i]
-        if ($e -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
-        # Abbreviated parameter names would surface via the unknown-site guard.
-        $argAst = $e.Argument
-        if ($null -eq $argAst -and ($i + 1) -lt $elems.Count -and
-            $elems[$i + 1] -isnot [System.Management.Automation.Language.CommandParameterAst]) {
-            $argAst = $elems[$i + 1]
-        }
-        $map[$e.ParameterName] = $argAst
-    }
-    return $map
 }
 
 # Shared 'DefaultValue' arm: literal-valued when the AST is a string constant.
@@ -56,12 +28,10 @@ function Get-AstDefaultValue {
 # Both pin APIs require the same command/default discovery, but accept different environment ASTs.
 function Get-PinDefaultCall {
     param([Parameter(Mandatory)][string]$CommandName)
-    foreach ($entry in @(Get-PinScanAst -MustMentionPattern $CommandName)) {
-        $calls = @($entry.Ast.FindAll({ param($n)
-                    $n -is [System.Management.Automation.Language.CommandAst] -and
-                    $n.GetCommandName() -eq $CommandName }, $true))
+    foreach ($entry in @(Get-PinScanAst)) {
+        $calls = @(Get-TestAstCommands -Ast $entry.Ast -Name $CommandName)
         foreach ($call in $calls) {
-            $parameters = Get-CommandParameterArgumentMap $call
+            $parameters = Get-TestCommandArguments -Command $call -AsAst
             $default = Get-AstDefaultValue $parameters['DefaultValue']
             if ($null -eq $default.Value -or ($default.IsLiteral -and $default.Value -eq '')) { continue }
             [pscustomobject]@{
@@ -134,6 +104,16 @@ function Get-PinDefaultMismatch {
     if ($actual -cne $comparedExpected) {
         return "$($Site.Script):$($Site.Line): -DefaultValue '$($Site.Default)' != versions.env ${Key}=$Expected$Note - $Hint"
     }
+}
+
+function Assert-PinDefaultSites {
+    param([object[]]$Sites, [Parameter(Mandatory)][scriptblock]$Compare, [string]$FailureLabel)
+    $failures = @()
+    foreach ($site in $Sites) {
+        $finding = & $Compare $site
+        if ($finding) { $failures += $finding }
+    }
+    Assert-True ($failures.Count -eq 0) ("${FailureLabel}:`n  " + ($failures -join "`n  "))
 }
 
 Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' {
@@ -225,18 +205,15 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 
     It 'every literal -DefaultValue equals its canonical versions.env pin' {
         $pins = Get-PinParityPins
-        $failures = @()
-        foreach ($s in @(Get-PinParitySite)) {
+        Assert-PinDefaultSites -Sites @(Get-PinParitySite) -FailureLabel 'hardcoded default(s) drifted from versions.env' -Compare { param($s)
             $key = Resolve-PinParityKey -Site $s -Pins $pins
-            if ($null -eq $key) { continue }   # handled by the unknown-site guard below
+            if ($null -eq $key) { return }
             $defaultKey = Resolve-DefaultValueKey -Site $s -ResolvedKey $key
             $note = if ($defaultKey -ne $key) { " (DefaultValue is the $defaultKey tag fallback, not the $key commit override)" } else { '' }
-            $finding = Get-PinDefaultMismatch -Site $s -Key $defaultKey -Expected ([string]$pins[$defaultKey]) -Note $note `
+            Get-PinDefaultMismatch -Site $s -Key $defaultKey -Expected ([string]$pins[$defaultKey]) -Note $note `
                 -TrimMode $(if ($s.StripV) { 'Single' } else { 'None' }) `
                 -Hint 'update the script default (and any twin site) to the canonical pin'
-            if ($finding) { $failures += $finding }
         }
-        Assert-True ($failures.Count -eq 0) ("hardcoded default(s) drifted from versions.env:`n  " + ($failures -join "`n  "))
     }
 
     It 'unknown-site guard: every site maps to a versions.env key or the explicit non-version allowlist' {
@@ -354,17 +331,14 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     It 'every literal Resolve-ContainerImageValue -DefaultValue equals its canonical (or derived) pin - excluding tracked known drift' {
         $pins = Get-RcivPins
         $knownIds = @(Get-RcivKnownDriftId)
-        $failures = @()
-        foreach ($s in @(Get-RcivSite)) {
+        Assert-PinDefaultSites -Sites @(Get-RcivSite) -FailureLabel 'hardcoded Resolve-ContainerImageValue default(s) drifted from versions.env' -Compare { param($s)
             $resolved = Resolve-RcivExpected -Site $s -Pins $pins
-            if ($null -eq $resolved) { continue }   # handled by the unknown-site guard below
-            if ($knownIds -contains "$($s.Script)|$($s.EnvVar)") { continue }   # handled by the pending It below
-            $finding = Get-PinDefaultMismatch -Site $s -Key $resolved.Key -Expected $resolved.Expected -Note $resolved.Derivation `
+            if ($null -eq $resolved) { return }
+            if ($knownIds -contains "$($s.Script)|$($s.EnvVar)") { return }
+            Get-PinDefaultMismatch -Site $s -Key $resolved.Key -Expected $resolved.Expected -Note $resolved.Derivation `
                 -TrimMode $(if ($s.TrimV) { 'All' } else { 'None' }) `
                 -Hint 'update the script default to the canonical pin (or, ONLY while a rebuild window blocks the fix, add a KnownDriftAwaitingRebuildWindow entry)'
-            if ($finding) { $failures += $finding }
         }
-        Assert-True ($failures.Count -eq 0) ("hardcoded Resolve-ContainerImageValue default(s) drifted from versions.env:`n  " + ($failures -join "`n  "))
     }
 
     It 'unknown-site guard: every Resolve-ContainerImageValue site maps to a versions.env pin, a derived pin, or the explicit non-version allowlist' {
@@ -487,6 +461,21 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
 }
 
 Describe 'Pin parity shared validation contracts' {
+    It 'aggregates every comparison failure while retaining empty verdicts as matches' {
+        Assert-PinDefaultSites -Sites @('matching') -Compare { $null } -FailureLabel fixture
+        Assert-Throws {
+            Assert-PinDefaultSites -Sites @('first', 'matching', 'second') -Compare { param($site)
+                if ($site -ne 'matching') { "$site mismatch" }
+            } -FailureLabel fixture
+        } -MessagePattern '(?s)fixture:.*first mismatch.*second mismatch'
+    }
+
+    It 'detects a shared verdict collector that loses mismatch findings' {
+        Invoke-TestFunctionMutations -Find '$failures += $finding' -Replace '$null = $finding' -Expected 'expected an exception but none was thrown' -Body {
+                Assert-Throws { Assert-MutPinDefaultSites -Sites wrong -Compare { 'mismatch' } -FailureLabel fixture }
+            } -ScriptPath 'windows/scripts/tests/SourceBuild.PinParity.Tests.ps1' -FunctionName @('Assert-PinDefaultSites')
+    }
+
     $site = [pscustomobject]@{ Script = 'fixture.ps1'; Line = 1; Key = 'PIN'; Default = 'v1'; DefaultIsLiteral = $true }
     $resolve = { param($entry) if ($entry.Key -eq 'PIN') { $entry.Key } }
     $idOf = { param($entry) "$($entry.Script)|$($entry.Key)" }

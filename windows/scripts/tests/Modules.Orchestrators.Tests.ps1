@@ -12,17 +12,14 @@ Describe 'Invoke-WasmOpt (orchestrator)' {
 
     $newFakeWasmOpt = {
         param($dir)
-        $lines = @(
-            '@echo off',
+        New-TestBatchTool -Directory $dir -Name 'wasm-opt.bat' -Line @(
             'echo WASMOPT %* >> "%WBT_WASMOPT_LOG%"',
             'if "%WBT_WASMOPT_MODE%"=="fail" exit /b 1',
             'if "%WBT_WASMOPT_MODE%"=="failfirst" (',
             '  echo %* | findstr /C:"--all-features" >nul && exit /b 0',
             '  exit /b 1',
-            ')',
-            'exit /b 0'
+            ')'
         )
-        Set-Content -LiteralPath (Join-Path $dir 'wasm-opt.bat') -Value ($lines -join "`r`n") -Encoding ASCII
     }
 
     function Invoke-WasmOptCase {

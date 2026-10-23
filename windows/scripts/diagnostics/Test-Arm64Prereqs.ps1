@@ -22,6 +22,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsDiagnostics.Common.psm1') -DisableNameChecking
 
 Write-Host "=== arm64 prerequisite probe nonce=$Nonce ==="
 Write-Host ''
@@ -34,9 +35,7 @@ function Add-Finding {
         [Parameter(Mandatory)][bool]$Ok,
         [string]$Detail = ''
     )
-    $mark = if ($Ok) { '[ OK ]' } else { '[FAIL]' }
-    Write-Host ("{0} {1}" -f $mark, $Question)
-    if ($Detail) { Write-Host ("       {0}" -f $Detail) }
+    Write-DiagnosticResult -Name $Question -Ok $Ok -Detail $Detail -SeparateDetail
     $script:Findings.Add([pscustomobject]@{ Question = $Question; Ok = $Ok; Detail = $Detail })
 }
 
@@ -72,9 +71,7 @@ if (Test-Path $obj) {
 
 # Q2: is the Windows SDK architecture-complete, as Install-Vs.ps1 assumes? If not, arm64 links fail on kernel32.lib.
 $sdkLibRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\Lib'
-$sdkArm = Get-ChildItem $sdkLibRoot -Directory -ErrorAction SilentlyContinue |
-    ForEach-Object { Join-Path $_.FullName 'um\arm64\kernel32.lib' } |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
+$sdkArm = Find-ChildDirectoryFile -Parent $sdkLibRoot -RelativePath 'um\arm64\kernel32.lib'
 Add-Finding -Question 'Windows SDK ships um\arm64 import libs (architecture-complete)' `
     -Ok ([bool]$sdkArm) `
     -Detail $(if ($sdkArm) { $sdkArm } else { "none found under $sdkLibRoot" })
@@ -100,9 +97,8 @@ $vcToolsRoots = @(${env:ProgramFiles(x86)}, $env:ProgramFiles) |
     Where-Object { Test-Path $_ }
 $msvcArm = $vcToolsRoots |
     ForEach-Object { Get-ChildItem $_ -Recurse -Directory -Filter 'MSVC' -ErrorAction SilentlyContinue } |
-    ForEach-Object { Get-ChildItem $_.FullName -Directory -ErrorAction SilentlyContinue } |
-    ForEach-Object { Join-Path $_.FullName 'lib\arm64\libcmt.lib' } |
-    Where-Object { Test-Path $_ } | Select-Object -First 1
+    ForEach-Object { Find-ChildDirectoryFile -Parent $_.FullName -RelativePath 'lib\arm64\libcmt.lib' } |
+    Select-Object -First 1
 Add-Finding -Question 'CONTROL: MSVC lib\arm64 present (expected NO on a pre-rebuild base)' `
     -Ok ([bool]$msvcArm) `
     -Detail $(if ($msvcArm) { "$msvcArm -- you are probing a NEWER base than expected" } else { 'absent, as expected: VC.Tools.ARM64 not installed in this image' })

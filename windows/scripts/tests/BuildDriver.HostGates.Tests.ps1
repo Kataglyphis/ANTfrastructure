@@ -1,6 +1,30 @@
 #requires -Version 7.0
 # The host preflight gates run only before a multi-hour build, so a regression in them surfaces only after it is paid for.
 
+function Invoke-ShimFilesFixture {
+    param([Parameter(Mandatory)][scriptblock]$Body, [string]$Content = 'x', [string]$StockContent, [Collections.IDictionary]$AdditionalFiles = @{})
+    $files = @{ 'shim.exe' = $Content }
+    if ($PSBoundParameters.ContainsKey('StockContent')) { $files['shim.exe.orig'] = $StockContent }
+    foreach ($entry in $AdditionalFiles.GetEnumerator()) { $files[$entry.Key] = $entry.Value }
+    $action = $Body
+    Invoke-InTestDir -Files $files -Body { param($dir)
+        $fixture = [pscustomobject]@{
+            Shim = Join-Path $dir 'shim.exe'; StatePath = Join-Path $dir 'state.json'
+            Stock = Join-Path $dir 'shim.exe.orig'; Directory = $dir
+        }
+        & $action $fixture
+    }.GetNewClosure()
+}
+
+function Assert-Rdna4FixtureNamesRejected {
+    param([string[]]$Name, [string]$Reason)
+    foreach ($deviceName in $Name) {
+        Assert-Throws -Body {
+            Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $deviceName; Status = 'OK' })
+        } -Message ("$deviceName $Reason")
+    }
+}
+
 Describe 'Assert-DiskHeadroom (multi-drive)' {
 
     It 'passes when every checked drive clears the floor' {
@@ -46,29 +70,21 @@ Describe 'Assert-DiskHeadroom (multi-drive)' {
 Describe 'Write-ShimPatchState / Get-ShimPatchStatePath' {
 
     It 'records the hash, size and variant of the deployed binary' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'patched-shim-bytes' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            $written = Write-ShimPatchState -ShimPath $shim -StatePath $statePath -Variant 'local-constant'
-            Assert-Equal $statePath $written 'returns the path it wrote'
-            $state = Get-Content $statePath -Raw | ConvertFrom-Json
-            Assert-Equal (Get-FileHash -Algorithm SHA256 -Path $shim).Hash $state.sha256 'records the live hash'
+        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Body { param($fixture)
+            $written = Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath -Variant 'local-constant'
+            Assert-Equal $fixture.StatePath $written 'returns the path it wrote'
+            $state = Get-Content $fixture.StatePath -Raw | ConvertFrom-Json
+            Assert-Equal (Get-FileHash -Algorithm SHA256 -Path $fixture.Shim).Hash $state.sha256 'records the live hash'
             Assert-Equal 'local-constant' $state.variant 'records the variant'
-            Assert-Equal (Get-Item $shim).Length $state.sizeBytes 'records the size'
+            Assert-Equal (Get-Item $fixture.Shim).Length $state.sizeBytes 'records the size'
         }
     }
 
     It 'records the stock backup hash when one is supplied' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            $stock = Join-Path $dir 'shim.exe.orig'
-            Set-Content -Path $shim -Value 'patched' -NoNewline
-            Set-Content -Path $stock -Value 'stock' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Write-ShimPatchState -ShimPath $shim -StatePath $statePath -StockBackupPath $stock | Out-Null
-            $state = Get-Content $statePath -Raw | ConvertFrom-Json
-            Assert-Equal (Get-FileHash -Algorithm SHA256 -Path $stock).Hash $state.stockSha256 'records the stock hash'
+        Invoke-ShimFilesFixture -Content 'patched' -StockContent 'stock' -Body { param($fixture)
+            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath -StockBackupPath $fixture.Stock | Out-Null
+            $state = Get-Content $fixture.StatePath -Raw | ConvertFrom-Json
+            Assert-Equal (Get-FileHash -Algorithm SHA256 -Path $fixture.Stock).Hash $state.stockSha256 'records the stock hash'
         }
     }
 
@@ -86,69 +102,51 @@ Describe 'Write-ShimPatchState / Get-ShimPatchStatePath' {
 Describe 'Assert-ShimPatch (hash gate)' {
 
     It 'passes when the live binary matches the recorded hash' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'patched-shim-bytes' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Write-ShimPatchState -ShimPath $shim -StatePath $statePath -Variant 'local-constant' | Out-Null
+        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Body { param($fixture)
+            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath -Variant 'local-constant' | Out-Null
             # No -Force, no size in either table: the hash alone must satisfy it.
-            Assert-ShimPatch -ShimPath $shim -StatePath $statePath
+            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath
         }
     }
 
     It 'throws when the binary changed after deployment' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'patched-shim-bytes' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Write-ShimPatchState -ShimPath $shim -StatePath $statePath | Out-Null
+        Invoke-ShimFilesFixture -Content 'patched-shim-bytes' -Body { param($fixture)
+            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath | Out-Null
             # Simulate a Stevedore update overwriting the patched shim.
-            Set-Content -Path $shim -Value 'something-else-entirely' -NoNewline
+            Set-Content -Path $fixture.Shim -Value 'something-else-entirely' -NoNewline
             Assert-Throws -MessagePattern 'CHANGED since the patch was deployed' -Body {
-                Assert-ShimPatch -ShimPath $shim -StatePath $statePath
+                Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath
             }
         }
     }
 
     It 'names a revert to stock specifically when the stock hash is known' {
         # "Reverted to stock" tells the operator a Stevedore update did it; "changed" leaves them guessing.
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            $stock = Join-Path $dir 'shim.exe.orig'
-            Set-Content -Path $shim -Value 'patched' -NoNewline
-            Set-Content -Path $stock -Value 'stock' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Write-ShimPatchState -ShimPath $shim -StatePath $statePath -StockBackupPath $stock | Out-Null
-            Copy-Item $stock $shim -Force
+        Invoke-ShimFilesFixture -Content 'patched' -StockContent 'stock' -Body { param($fixture)
+            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath -StockBackupPath $fixture.Stock | Out-Null
+            Copy-Item $fixture.Stock $fixture.Shim -Force
             Assert-Throws -MessagePattern 'REVERTED TO THE STOCK BINARY' -Body {
-                Assert-ShimPatch -ShimPath $shim -StatePath $statePath
+                Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath
             }
         }
     }
 
     It '-Force downgrades a hash mismatch to a warning' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'patched' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Write-ShimPatchState -ShimPath $shim -StatePath $statePath | Out-Null
-            Set-Content -Path $shim -Value 'other' -NoNewline
-            Assert-ShimPatch -ShimPath $shim -StatePath $statePath -Force -WarningAction SilentlyContinue
+        Invoke-ShimFilesFixture -Content 'patched' -Body { param($fixture)
+            Write-ShimPatchState -ShimPath $fixture.Shim -StatePath $fixture.StatePath | Out-Null
+            Set-Content -Path $fixture.Shim -Value 'other' -NoNewline
+            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath -Force -WarningAction SilentlyContinue
         }
     }
 
     It 'ignores a state file recorded for a DIFFERENT install path' {
         # Comparing hashes of two unrelated binaries is worse than no check, so the gate must fall back.
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            $other = Join-Path $dir 'elsewhere.exe'
-            Set-Content -Path $shim -Value 'patched' -NoNewline
-            Set-Content -Path $other -Value 'unrelated' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Write-ShimPatchState -ShimPath $other -StatePath $statePath | Out-Null
+        Invoke-ShimFilesFixture -Content patched -AdditionalFiles @{ 'elsewhere.exe' = 'unrelated' } -Body { param($fixture)
+            $other = Join-Path $fixture.Directory 'elsewhere.exe'
+            Write-ShimPatchState -ShimPath $other -StatePath $fixture.StatePath | Out-Null
             # Falls back to size: declare this file's size as patched -> passes.
-            Assert-ShimPatch -ShimPath $shim -StatePath $statePath `
-                -PatchedSize @((Get-Item $shim).Length) -WarningAction SilentlyContinue
+            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
+                -PatchedSize @((Get-Item $fixture.Shim).Length) -WarningAction SilentlyContinue
         }
     }
 }
@@ -156,31 +154,25 @@ Describe 'Assert-ShimPatch (hash gate)' {
 Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
 
     It 'accepts a known patched size and asks to record the hash' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'x' -NoNewline
-            Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
-                -PatchedSize @((Get-Item $shim).Length) -WarningAction SilentlyContinue
+        Invoke-ShimFilesFixture -Body { param($fixture)
+            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
+                -PatchedSize @((Get-Item $fixture.Shim).Length) -WarningAction SilentlyContinue
         }
     }
 
     It 'still fails hard on a known stock size' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'x' -NoNewline
+        Invoke-ShimFilesFixture -Body { param($fixture)
             # The patched sentinel must not match the fixture's 1-byte size, or the stock check never runs.
             Assert-Throws -MessagePattern 'STOCK binary' -Body {
-                Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
-                    -PatchedSize @(999999) -StockSize @((Get-Item $shim).Length)
+                Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
+                    -PatchedSize @(999999) -StockSize @((Get-Item $fixture.Shim).Length)
             }
         }
     }
 
     It 'warns (never throws) on an unrecognised size' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'x' -NoNewline
-            Assert-ShimPatch -ShimPath $shim -StatePath (Join-Path $dir 'absent.json') `
+        Invoke-ShimFilesFixture -Body { param($fixture)
+            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
                 -PatchedSize @(999999) -StockSize @(999998) -WarningAction SilentlyContinue
         }
     }
@@ -201,13 +193,10 @@ Describe 'Assert-ShimPatch (size fallback, no recorded hash)' {
     }
 
     It 'falls back to the size check when the state file is corrupt' {
-        Invoke-InTestDir { param($dir)
-            $shim = Join-Path $dir 'shim.exe'
-            Set-Content -Path $shim -Value 'x' -NoNewline
-            $statePath = Join-Path $dir 'state.json'
-            Set-Content -Path $statePath -Value 'not json at all {{{' -NoNewline
-            Assert-ShimPatch -ShimPath $shim -StatePath $statePath `
-                -PatchedSize @((Get-Item $shim).Length) -WarningAction SilentlyContinue
+        Invoke-ShimFilesFixture -Content 'x' -Body { param($fixture)
+            Set-Content -Path $fixture.StatePath -Value 'not json at all {{{' -NoNewline
+            Assert-ShimPatch -ShimPath $fixture.Shim -StatePath $fixture.StatePath `
+                -PatchedSize @((Get-Item $fixture.Shim).Length) -WarningAction SilentlyContinue
         }
     }
 }
@@ -319,20 +308,12 @@ Describe 'Assert-NoActiveRdna4Gpu (RDNA4 layer-lock gate, 2026-08-10)' {
     }
 
     It 'catches other RDNA4 SKUs via the pattern (RX 9060, AI PRO R9700)' {
-        foreach ($name in @('AMD Radeon RX 9060 XT', 'AMD Radeon AI PRO R9700')) {
-            Assert-Throws -Body {
-                Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $name; Status = 'OK' })
-            } -Message "$name must be treated as a hazard"
-        }
+        Assert-Rdna4FixtureNamesRejected -Name @('AMD Radeon RX 9060 XT', 'AMD Radeon AI PRO R9700') -Reason 'must be treated as a hazard'
     }
 
     It 'survives Adrenalin (TM)-style renames of the FriendlyName' {
         # Drivers have shipped both 'Radeon (TM)' spellings; a rename must not disarm the gate.
-        foreach ($name in @('AMD Radeon(TM) RX 9070 XT', 'AMD Radeon (TM) RX 9070 XT')) {
-            Assert-Throws -Body {
-                Assert-NoActiveRdna4Gpu -Devices @([pscustomobject]@{ FriendlyName = $name; Status = 'OK' })
-            } -Message "$name must still be treated as a hazard"
-        }
+        Assert-Rdna4FixtureNamesRejected -Name @('AMD Radeon(TM) RX 9070 XT', 'AMD Radeon (TM) RX 9070 XT') -Reason 'must still be treated as a hazard'
     }
 }
 

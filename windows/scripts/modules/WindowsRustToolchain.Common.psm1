@@ -5,10 +5,10 @@
 
 Set-StrictMode -Version Latest
 
-# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $rustSharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 if (Test-Path $rustSharedPath) {
-    if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $rustSharedPath }
+    Import-Module $rustSharedPath -ErrorAction Stop
 } else {
     throw ("WindowsRustToolchain.Common: required sibling module not found at $rustSharedPath. " +
            'Install-RustTargetStdFromPinnedManifest downloads through Invoke-DownloadWithRetry ' +

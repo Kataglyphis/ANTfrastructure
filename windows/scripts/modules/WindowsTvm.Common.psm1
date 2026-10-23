@@ -6,7 +6,7 @@
 
 Set-StrictMode -Version Latest
 
-if (-not (Get-Module -Name 'WindowsNative.Common')) { Import-Module (Join-Path $PSScriptRoot 'WindowsNative.Common.psm1') }
+Import-Module (Join-Path $PSScriptRoot 'WindowsNative.Common.psm1') -ErrorAction Stop
 
 
 # The submodule's nearest v* tag, else TVM's apache-tvm-ffi>= bound: the version both assembled wheels resolve against.

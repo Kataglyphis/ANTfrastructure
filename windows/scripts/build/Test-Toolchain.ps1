@@ -173,16 +173,7 @@ Assert-Arm64ComponentLib -Label 'Windows SDK ARM64 import libraries' -Root $sdkL
 # Warn-only unless WINDOWS_ARM64_STRICT=1: the shared base must not block amd64 over an arm64-only prerequisite.
 if ($env:VULKAN_SDK) {
     $vkArmLib = Join-Path $env:VULKAN_SDK (Get-VulkanLibDirName -Arch 'arm64')
-    if (Test-Path (Join-Path $vkArmLib 'vulkan-1.lib')) {
-        Write-Host "Vulkan ARM64 import library OK: $vkArmLib"
-    } elseif ($env:WINDOWS_ARM64_STRICT -eq '1') {
-        throw ("Vulkan ARM64 import library missing at $vkArmLib. The com.lunarg.vulkan.arm64 component " +
-            'is optional in the x64 SDK and Install-ScoopTools.ps1 must add it. ' +
-            'WINDOWS_ARM64_STRICT=1 made this a hard gate.')
-    } else {
-        Write-Warning ("Vulkan ARM64 import library missing at $vkArmLib - an arm64 target cannot link Vulkan. " +
-            'The amd64 lane is unaffected. Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
-    }
+    Assert-VulkanArm64Library -Path (Join-Path $vkArmLib 'vulkan-1.lib') -DisplayPath $vkArmLib -Strict ($env:WINDOWS_ARM64_STRICT -eq '1') -Phase Verify
 } else {
     Write-Warning 'VULKAN_SDK is not set - skipping the Vulkan ARM64 import-library check.'
 }

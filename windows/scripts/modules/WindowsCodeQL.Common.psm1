@@ -6,8 +6,8 @@
 Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
+Import-Module $sharedPath
 
 if (-not (Get-Module -Name 'WindowsBuild.Common')) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
@@ -149,9 +149,7 @@ function Remove-SarifIgnoredResult {
 # The image's sccache server never exits (SCCACHE_IDLE_TIMEOUT=0) and keeps its client's pipe, so a traced build never ends.
 function Disable-SccacheForTrace {
     $env:KATAGLYPHIS_NO_SCCACHE = '1'
-    foreach ($name in @('RUSTC_WRAPPER', 'CC_WRAPPER', 'CXX_WRAPPER', 'CMAKE_C_COMPILER_LAUNCHER', 'CMAKE_CXX_COMPILER_LAUNCHER')) {
-        Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
-    }
+    Remove-CompilerWrapperEnvironment
 }
 
 function Invoke-BuildCodeQL {

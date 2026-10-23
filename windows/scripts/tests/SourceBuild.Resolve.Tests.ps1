@@ -1,6 +1,16 @@
 #requires -Version 7.0
 # Tests for the pure resolver and version helpers.
 
+function Invoke-ResolverRootFixture {
+    param([Parameter(Mandatory)][string]$EnvironmentVariable, [string[]]$Directory = @(),
+        [Collections.IDictionary]$Files = @{}, [Parameter(Mandatory)][scriptblock]$Body)
+    $action = $Body
+    Invoke-InTestDir -Files $Files -Body { param($dir)
+        foreach ($relative in $Directory) { $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir $relative) }
+        Invoke-WithEnv @{ $EnvironmentVariable = $dir } { & $action $dir }
+    }.GetNewClosure()
+}
+
 Describe 'Get-SourceBuildVersion' {
 
     It 'an explicit value wins over env and default' {
@@ -62,49 +72,31 @@ Describe 'Resolve-TensorRtRoot' {
     }
 
     It 'returns $null for an empty root directory (graceful no-TensorRT skip)' {
-        Invoke-InTestDir { param($dir)
-            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } { Assert-Null (Resolve-TensorRtRoot) }
-        }
+        Invoke-ResolverRootFixture -EnvironmentVariable TENSORRT_ROOT -Body { Assert-Null (Resolve-TensorRtRoot) }
     }
 
     It 'returns the versioned TensorRT-* subdirectory when present' {
-        Invoke-InTestDir { param($dir)
-            $sub = Join-Path $dir 'TensorRT-10.5.0.18'
-            New-Item -ItemType Directory -Force -Path $sub | Out-Null
-            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } {
-                Assert-Equal $sub (Resolve-TensorRtRoot)
-            }
+        Invoke-ResolverRootFixture -EnvironmentVariable TENSORRT_ROOT -Directory 'TensorRT-10.5.0.18' -Body { param($dir)
+            Assert-Equal (Join-Path $dir 'TensorRT-10.5.0.18') (Resolve-TensorRtRoot)
         }
     }
 
     It 'returns the root itself for a flat layout (no TensorRT-* subdir)' {
-        Invoke-InTestDir { param($dir)
-            Set-Content -Path (Join-Path $dir 'nvinfer.lib') -Value '' -NoNewline
-            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } {
-                Assert-Equal $dir (Resolve-TensorRtRoot)
-            }
+        Invoke-ResolverRootFixture -EnvironmentVariable TENSORRT_ROOT -Files @{ 'nvinfer.lib' = '' } -Body { param($dir)
+            Assert-Equal $dir (Resolve-TensorRtRoot)
         }
     }
 
     # The resolver must agree with the runtime PATH, which names the stable 'current' dir rather than the pin.
     It "prefers the stable 'current' directory (backlog #38)" {
-        Invoke-InTestDir { param($dir)
-            $stable = Join-Path $dir 'current'
-            New-Item -ItemType Directory -Force -Path $stable | Out-Null
-            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } {
-                Assert-Equal $stable (Resolve-TensorRtRoot)
-            }
+        Invoke-ResolverRootFixture -EnvironmentVariable TENSORRT_ROOT -Directory current -Body { param($dir)
+            Assert-Equal (Join-Path $dir current) (Resolve-TensorRtRoot)
         }
     }
 
     It "prefers 'current' OVER a leftover versioned dir (both present)" {
-        Invoke-InTestDir { param($dir)
-            $stable = Join-Path $dir 'current'
-            New-Item -ItemType Directory -Force -Path $stable | Out-Null
-            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'TensorRT-10.5.0.18') | Out-Null
-            Invoke-WithEnv @{ TENSORRT_ROOT = $dir } {
-                Assert-Equal $stable (Resolve-TensorRtRoot)
-            }
+        Invoke-ResolverRootFixture -EnvironmentVariable TENSORRT_ROOT -Directory @('current', 'TensorRT-10.5.0.18') -Body { param($dir)
+            Assert-Equal (Join-Path $dir current) (Resolve-TensorRtRoot)
         }
     }
 }

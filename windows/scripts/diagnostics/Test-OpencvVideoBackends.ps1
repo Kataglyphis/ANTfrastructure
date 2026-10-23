@@ -11,11 +11,7 @@ param([string]$Nonce = '')
 
 $ErrorActionPreference = 'Continue'
 
-function Write-Result {
-    param([string]$Name, [bool]$Ok, [string]$Detail = '')
-    $tag = if ($Ok) { '[ OK ]' } else { '[FAIL]' }
-    Write-Host ("{0} {1}{2}" -f $tag, $Name, $(if ($Detail) { " - $Detail" } else { '' }))
-}
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsDiagnostics.Common.psm1') -DisableNameChecking
 
 Write-Host "=== opencv video-backend probe (nonce=$Nonce) ==="
 
@@ -39,10 +35,10 @@ Write-Host "`n--- the three #95 assertions, run here ---"
 $gstInfo = $info -match '(?m)^\s*GStreamer:\s+YES'
 $gstReg = (& python -c "import cv2; print(cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String) -match 'True'
 $gst = $gstInfo -or $gstReg
-Write-Result 'GStreamer backend available (built-in OR plugin, #93)' $gst "build-info=$gstInfo plugin=$gstReg"
+Write-DiagnosticResult 'GStreamer backend available (built-in OR plugin, #93)' $gst "build-info=$gstInfo plugin=$gstReg"
 
 $ffOwn = $info -match '(?m)^\s*FFMPEG:\s+YES(?![^\r\n]*prebuilt)'
-Write-Result "FFmpeg is the chain's, not a prebuilt download (#94)" $ffOwn
+Write-DiagnosticResult "FFmpeg is the chain's, not a prebuilt download (#94)" $ffOwn
 
 $ffDir = if ($env:FFMPEG_BIN) { $env:FFMPEG_BIN } else { 'C:\runtime\ffmpeg\bin' }
 $ffExe = Join-Path $ffDir 'ffmpeg.exe'
@@ -53,7 +49,7 @@ if (Test-Path $ffExe) {
     if ($chain -match '(?m)^\s*libavcodec\s+(\d+)\.') { $chainMajor = $Matches[1] }
 }
 if ($info -match '(?m)^\s*avcodec:\s+(?:YES\s*\()?(\d+)\.') { $cvMajor = $Matches[1] }
-Write-Result 'OpenCV avcodec major == chain avcodec major (#94)' ($chainMajor -and $cvMajor -and $chainMajor -eq $cvMajor) `
+Write-DiagnosticResult 'OpenCV avcodec major == chain avcodec major (#94)' ($chainMajor -and $cvMajor -and $chainMajor -eq $cvMajor) `
     "chain=$(if ($chainMajor) { $chainMajor } else { '?' }) opencv=$(if ($cvMajor) { $cvMajor } else { '?' })"
 
 # The misleading check, shown side by side on purpose.
@@ -81,7 +77,7 @@ foreach ($d in $pcDirs) {
 
 $pkgConfig = Get-Command pkg-config -ErrorAction SilentlyContinue
 if (-not $pkgConfig) {
-    Write-Result 'pkg-config on PATH' $false 'cannot verify FFmpeg discoverability'
+    Write-DiagnosticResult 'pkg-config on PATH' $false 'cannot verify FFmpeg discoverability'
 } else {
     $existing = @($pcDirs | Where-Object { Test-Path $_ })
     $env:PKG_CONFIG_PATH = (@($existing + ($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })) | Select-Object -Unique) -join ';'
@@ -90,7 +86,7 @@ if (-not $pkgConfig) {
         $v = & $pkgConfig.Source --modversion $mod 2>&1 | Out-String
         $ok = ($LASTEXITCODE -eq 0)
         $global:LASTEXITCODE = 0
-        Write-Result "pkg-config resolves $mod" $ok $v.Trim()
+        Write-DiagnosticResult "pkg-config resolves $mod" $ok $v.Trim()
     }
 }
 
@@ -99,7 +95,7 @@ Write-Host "`n--- does CMake's pkg_check_modules resolve FFmpeg here? (#94 route
 
 $cmake = Get-Command cmake -ErrorAction SilentlyContinue
 if (-not $cmake) {
-    Write-Result 'cmake on PATH' $false 'cannot test the CMake detection route'
+    Write-DiagnosticResult 'cmake on PATH' $false 'cannot test the CMake detection route'
 } else {
     $cmWork = Join-Path $env:TEMP ('cmffmpeg-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
     $null = New-Item -ItemType Directory -Force -Path $cmWork
@@ -128,7 +124,7 @@ endif()
     foreach ($line in ($out -split "`r?`n")) {
         if ($line -match 'PROBE ') { Write-Host "  $($line.Trim())" }
     }
-    Write-Result 'CMake pkg_check_modules finds FFmpeg' ($out -match 'PROBE FFMPEG_FOUND=1') `
+    Write-DiagnosticResult 'CMake pkg_check_modules finds FFmpeg' ($out -match 'PROBE FFMPEG_FOUND=1') `
         'if true, a CMAKE_PROJECT_INCLUDE shim that calls find_package(PkgConfig) unblocks OpenCV''s existing route'
     Remove-Item $cmWork -Recurse -Force -ErrorAction SilentlyContinue
 }

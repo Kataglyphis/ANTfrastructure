@@ -1,6 +1,15 @@
 #requires -Version 7.0
 # Host-independent only: -Msvc must never yield LLVM's ASan runtime, which aborts COM/CRT hosts with a bad-free.
 
+function Assert-TestExecutableLayout {
+    param([Collections.IDictionary]$Files, [string]$ExecutableName, [string]$ExpectedRelativePath,
+        [string[]]$AdditionalDirectory = @(), [string]$Reason)
+    Invoke-InTestDir -Files $Files -Body { param($dir)
+        $actual = Resolve-TestExecutable -BuildRoot $dir -ExecutableName $ExecutableName -AdditionalRelativeDirectory $AdditionalDirectory
+        Assert-Equal (Join-Path $dir $ExpectedRelativePath) $actual $Reason
+    }.GetNewClosure()
+}
+
 Describe 'Invoke-WithAsanOptions' {
 
     It 'prepends to an existing ASAN_OPTIONS and restores it afterwards' {
@@ -118,35 +127,19 @@ Describe 'Get-AsanRuntimeDirs' {
 Describe 'Resolve-TestExecutable' {
 
     It 'prefers the build root over a configuration subdirectory' {
-        Invoke-InTestDir {
-            param($dir)
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'Release')
-            Set-Content -Path (Join-Path $dir 'unit.exe') -Value 'x'
-            Set-Content -Path (Join-Path $dir 'Release\unit.exe') -Value 'x'
-            Assert-Equal (Join-Path $dir 'unit.exe') (Resolve-TestExecutable -BuildRoot $dir -ExecutableName 'unit.exe') `
-                'the flat build root wins over a multi-config subdir'
-        }
+        Assert-TestExecutableLayout -Files @{ 'unit.exe' = 'x'; 'Release/unit.exe' = 'x' } -ExecutableName unit.exe `
+            -ExpectedRelativePath unit.exe -Reason 'the flat build root wins over a multi-config subdir'
     }
 
     It 'finds a binary in a caller-supplied extra directory' {
-        Invoke-InTestDir {
-            param($dir)
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'Test\perf')
-            Set-Content -Path (Join-Path $dir 'Test\perf\bench.exe') -Value 'x'
-            Assert-Equal (Join-Path $dir 'Test\perf\bench.exe') `
-                (Resolve-TestExecutable -BuildRoot $dir -ExecutableName 'bench.exe' -AdditionalRelativeDirectory @('Test\perf')) `
-                '-AdditionalRelativeDirectory replaced the hard-coded Test\* probes'
-        }
+        Assert-TestExecutableLayout -Files @{ 'Test/perf/bench.exe' = 'x'; 'aaa/bench.exe' = 'recursive decoy' } -ExecutableName bench.exe `
+            -ExpectedRelativePath 'Test/perf/bench.exe' -AdditionalDirectory 'Test/perf' `
+            -Reason '-AdditionalRelativeDirectory replaced the hard-coded Test\* probes'
     }
 
     It 'falls back to a recursive search' {
-        Invoke-InTestDir {
-            param($dir)
-            $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'deep\nested')
-            Set-Content -Path (Join-Path $dir 'deep\nested\hidden.exe') -Value 'x'
-            Assert-Equal (Join-Path $dir 'deep\nested\hidden.exe') (Resolve-TestExecutable -BuildRoot $dir -ExecutableName 'hidden.exe') `
-                'an unlisted layout must still be found'
-        }
+        Assert-TestExecutableLayout -Files @{ 'deep/nested/hidden.exe' = 'x' } -ExecutableName hidden.exe `
+            -ExpectedRelativePath 'deep/nested/hidden.exe' -Reason 'an unlisted layout must still be found'
     }
 
     It 'returns $null when nothing matches' {

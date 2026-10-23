@@ -1,11 +1,18 @@
 #requires -Version 7.0
 # Stubbed sccache commands verify probe orchestration, not real cache writes or BuildKit mounts.
 
+function Get-SccacheProbeFixtureSource {
+    $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../diagnostics/Test-SccacheWrite.ps1'))
+    $renderer = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsDiagnostics.Common.psm1' -FunctionName Write-DiagnosticResult).ToString()
+    return $source + "`n" + $renderer
+}
+
 function Invoke-SccacheProbeFixture {
-    param([Parameter(Mandatory)][scriptblock]$Body)
-    $text = [IO.File]::ReadAllText((Join-Path $PSScriptRoot '../diagnostics/Test-SccacheWrite.ps1'))
-    $functions = @('Start-SccacheProbeServer', 'Get-SccacheProbeStats', 'Write-SccacheProbeSource', 'Invoke-SccacheProbeCompile')
-    Invoke-WithFunctionModule -Text $text -FunctionName $functions -BodyArgumentList @($Body) -Body { param($caseBody)
+    param([Parameter(Mandatory)][scriptblock]$Body, [string]$Find = '', [string]$Replace = '', [string]$Expected = '')
+    $text = Get-SccacheProbeFixtureSource
+    $functions = @('Write-DiagnosticResult', 'Write-SccacheRenameProbe', 'Write-SccacheProbeEntries', 'Stop-SccacheProbeServer', 'Start-SccacheProbeServer', 'Get-SccacheProbeStats', 'Write-SccacheProbeSource', 'Invoke-SccacheProbeCompile')
+    $recipe = @{ Text = $text; FunctionName = $functions; BodyArgumentList = @($Body) }
+    $exercise = { param($caseBody)
         Invoke-InTestDir { param($dir)
             $callback = $caseBody
             $fake = Join-Path $dir 'sccache.ps1'
@@ -16,6 +23,7 @@ if ($Command -eq '--start-server') {
     if ($env:WBT_PROBE_THROW) { throw 'fixture start failed' }
     'Listening on test port'; 'error: fixture message'; 'irrelevant chatter'
 }
+if ($Command -eq '--stop-server') { 'Stopping fixture'; 'error: stop fixture'; 'irrelevant stop' }
 if ($Command -eq '--show-stats' -and $env:WBT_PROBE_STATS) { Get-Content $env:WBT_PROBE_STATS }
 if ($Command -eq 'clang-cl') { 'DEBUG noise'; 'TRACE detail'; 'compiler warning' }
 $global:LASTEXITCODE = if ($env:WBT_PROBE_EXIT) { [int]$env:WBT_PROBE_EXIT } else { 17 }
@@ -25,6 +33,8 @@ $global:LASTEXITCODE = if ($env:WBT_PROBE_EXIT) { [int]$env:WBT_PROBE_EXIT } els
             }.GetNewClosure()
         }.GetNewClosure()
     }
+    if ($Expected) { Invoke-TestFunctionMutations -ModuleArguments $recipe -Find $Find -Replace $Replace -Expected $Expected -Body $exercise }
+    else { Invoke-WithFunctionModule @recipe -Body $exercise }
 }
 
 Describe 'Sccache write probe shared lifecycle' {
@@ -97,6 +107,17 @@ Describe 'Sccache write probe shared lifecycle' {
         }
     }
 
+    It 'stops with unchanged quiet or filtered output and resets native exit status' {
+        Invoke-SccacheProbeFixture { param($fake, $dir)
+            Assert-Equal 0 @(Stop-MutSccacheProbeServer -SccachePath $fake 6>&1).Count
+            Assert-Equal 0 $global:LASTEXITCODE
+            $lines = @(Stop-MutSccacheProbeServer -SccachePath $fake -Pattern 'Stopping|error' 6>&1 | ForEach-Object { "$_" })
+            Assert-Equal '  stop| Stopping fixture|  stop| error: stop fixture' ($lines -join '|') 'filtered stop output retains exact order and prefixes'
+            Assert-Equal 0 $global:LASTEXITCODE
+            Assert-Equal ("--stop-server|$((Get-Location).Path)") @(Get-Content $env:WBT_PROBE_CALLS)[0]
+        }
+    }
+
     It 'retains first counters, missing-stat sentinels, size text and each mode display policy' {
         Invoke-SccacheProbeFixture { param($fake, $dir)
             [IO.File]::WriteAllLines($env:WBT_PROBE_STATS, @('Compile requests 8', 'Cache misses 7', 'Cache misses 90',
@@ -119,6 +140,55 @@ Describe 'Sccache write probe shared lifecycle' {
             Assert-Equal -1 $stats.Misses
             Assert-Equal -1 $stats.WriteErrors
             Assert-Equal '' $stats.CacheSize
+        }
+    }
+}
+
+function Assert-SccacheRenameProbeFixture {
+    param([string]$Command = 'Write-MutSccacheRenameProbe')
+    Invoke-InTestDir { param($dir)
+        $source = Join-Path $dir 'source [1].tmp'
+        $destination = Join-Path $dir 'destination [1].bin'
+        $output = & $Command -Source $source -Destination $destination -Name 'fixture move' 6>&1 | Out-String
+        Assert-True (Test-Path -LiteralPath $destination) 'rename must move the file'
+        Assert-False (Test-Path -LiteralPath $source)
+        Assert-Equal 64 (Get-Item -LiteralPath $destination).Length
+        Assert-Equal '1,64' (([IO.File]::ReadAllBytes($destination)[0,-1]) -join ',')
+        Assert-Match '\[ OK \] fixture move' $output
+        $missingDestination = Join-Path $dir 'absent/destination.bin'
+        foreach ($cleanup in $false, $true) {
+            $output = & $Command -Source $source -Destination $missingDestination -Name 'failed move' -CleanupSourceOnFailure:$cleanup 6>&1 | Out-String
+            Assert-Match '\[FAIL\] failed move' $output
+            Assert-Equal (-not $cleanup) (Test-Path -LiteralPath $source) 'only the system-temp probe removes a failed source'
+        }
+    }.GetNewClosure()
+}
+
+Describe 'Sccache raw rename evidence' {
+    It 'preserves staged bytes, verdicts and distinct failure cleanup policies' {
+        Invoke-SccacheProbeFixture { Assert-SccacheRenameProbeFixture }
+    }
+
+    It 'rejects skipped renames' {
+        Invoke-SccacheProbeFixture -Find '[IO.File]::Move($Source, $Destination)' -Replace '' -Expected 'rename must move the file' -Body { Assert-SccacheRenameProbeFixture }
+    }
+
+    It 'rejects lost failure cleanup' {
+        Invoke-SccacheProbeFixture -Find 'Remove-Item -LiteralPath $Source -Force -ErrorAction SilentlyContinue' -Replace '' -Expected 'only the system-temp probe' -Body { Assert-SccacheRenameProbeFixture }
+    }
+}
+
+Describe 'Sccache directory evidence rendering' {
+    It 'preserves entry order, file sizes and directory markers without requiring directory length' {
+        Invoke-SccacheProbeFixture {
+            $entries = @(
+                [pscustomobject]@{ PSIsContainer = $false; Name = 'first.bin'; Length = 3 }
+                [pscustomobject]@{ PSIsContainer = $true; Name = 'folder' }
+                [pscustomobject]@{ PSIsContainer = $false; Name = 'empty.bin'; Length = 0 }
+            )
+            $lines = @(Write-MutSccacheProbeEntries -Entry $entries 6>&1 | ForEach-Object { "$_" })
+            Assert-Equal '    FILE first.bin (3 bytes)|    DIR  folder|    FILE empty.bin (0 bytes)' ($lines -join '|')
+            Assert-Equal 0 @(Write-MutSccacheProbeEntries -Entry @() 6>&1).Count
         }
     }
 }

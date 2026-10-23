@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
-Import-Module $sharedPath
+Import-Module $sharedPath -ErrorAction Stop
 
 $patchesPath = Join-Path $PSScriptRoot 'WindowsSourceBuild.Patches.psm1'
 $cudaPath    = Join-Path $PSScriptRoot 'WindowsSourceBuild.Cuda.psm1'
@@ -15,12 +15,12 @@ $nativePath  = Join-Path $PSScriptRoot 'WindowsNative.Common.psm1'
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 # Optional like the two above: only the cp3XYt twin functions need it, and they throw by name without it.
 $pythonWheelPath = Join-Path $PSScriptRoot 'WindowsPythonWheel.Common.psm1'
-if ((Test-Path $patchesPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Patches')) { Import-Module $patchesPath }
-if ((Test-Path $cudaPath) -and -not (Get-Module -Name 'WindowsSourceBuild.Cuda')) { Import-Module $cudaPath }
-if ((Test-Path $pythonWheelPath) -and -not (Get-Module -Name 'WindowsPythonWheel.Common')) { Import-Module $pythonWheelPath }
+if (Test-Path $patchesPath) { Import-Module $patchesPath -ErrorAction Stop }
+if (Test-Path $cudaPath) { Import-Module $cudaPath -ErrorAction Stop }
+if (Test-Path $pythonWheelPath) { Import-Module $pythonWheelPath -ErrorAction Stop }
 # Re-exported: every COPY list that carries this module must carry WindowsNative.Common.psm1 too.
 if (Test-Path $nativePath) {
-    if (-not (Get-Module -Name 'WindowsNative.Common')) { Import-Module $nativePath }
+    Import-Module $nativePath -ErrorAction Stop
 } else {
     function Invoke-ShieldedNative {
         throw 'Invoke-ShieldedNative unavailable: WindowsNative.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 (incomplete modules COPY list)'
@@ -28,7 +28,7 @@ if (Test-Path $nativePath) {
 }
 # Re-exported on the same terms: every COPY list with this module needs WindowsTargetArch.Common.psm1.
 if (Test-Path $targetArchPath) {
-    if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
+    Import-Module $targetArchPath -ErrorAction Stop
 } else {
     # Throw, not a stub: Export-ModuleMember skips unmatched names, so the gap would surface much later.
     throw ("WindowsTargetArch.Common.psm1 is not next to WindowsSourceBuild.Common.psm1 " +
@@ -44,18 +44,7 @@ function Get-SourceBuildVersion {
         [switch]$StripVPrefix
     )
 
-    $resolved = $DefaultValue
-    if (-not [string]::IsNullOrWhiteSpace($Value)) {
-        $resolved = $Value
-    } else {
-        foreach ($envVar in $EnvironmentVariables) {
-            if (-not [string]::IsNullOrWhiteSpace($envVar)) {
-                $envValue = [Environment]::GetEnvironmentVariable($envVar)
-                if (-not [string]::IsNullOrWhiteSpace($envValue)) { $resolved = $envValue; break }
-            }
-        }
-    }
-
+    $resolved = Resolve-BuildValue -Value $Value -EnvironmentVariables $EnvironmentVariables -DefaultValue $DefaultValue
     if ($StripVPrefix) { $resolved = $resolved -replace '^v', '' }
     return $resolved
 }
@@ -891,6 +880,31 @@ function Copy-BuildArtifact {
     -Select returns the flags for each `build` line, or nothing. Below -Floor the file stays untouched and the
     call throws, because a selector that matches nothing would otherwise succeed silently.
 #>
+function Get-NinjaFeatureFlag {
+    param([Parameter(Mandatory)][string]$Line, [Parameter(Mandatory)][System.Collections.IDictionary]$FeatureMap,
+        [Parameter(Mandatory)][string]$TokenPattern)
+    foreach ($token in $FeatureMap.Keys) {
+        if ($Line -match $TokenPattern.Replace('{0}', [regex]::Escape([string]$token))) {
+            $feature = $FeatureMap[$token]
+            if ($feature) { return "/clang:-march=armv8.2-a+$feature" }
+            return ''
+        }
+    }
+    return ''
+}
+
+function Add-NinjaArmFeatureFlags {
+    param([Parameter(Mandatory)][string]$NinjaFile, [Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][int]$Floor,
+        [Parameter(Mandatory)][System.Collections.IDictionary]$FeatureMap, [Parameter(Mandatory)][string]$TokenPattern,
+        [Parameter(Mandatory)][scriptblock]$Include)
+    $featureSelector = Get-Command Get-NinjaFeatureFlag
+    Add-NinjaPerTuFlags -NinjaFile $NinjaFile -Label $Label -Floor $Floor -AlreadyTaggedPattern 'armv8\.2-a' -Select {
+        param($line)
+        if (& $Include $line) { return & $featureSelector -Line $line -FeatureMap $FeatureMap -TokenPattern $TokenPattern }
+        return ''
+    }.GetNewClosure()
+}
+
 function Add-NinjaPerTuFlags {
     param(
         [Parameter(Mandatory)][string]$NinjaFile,
@@ -1233,7 +1247,8 @@ function New-CrossBuildPython {
     .SYNOPSIS
         New-FreeThreadedBuildPython's venv, or with no -FreeThreaded its GIL twin: a venv of -GilPython linking Get-TargetBuildPython's library.
     .PARAMETER LibDir
-        The target library directory instead of Get-TargetBuildPython's, such as a shipped image's C:untime\python\libs.
+        The target library directory instead of Get-TargetBuildPython's, such as a shipped image's C:
+untime\python\libs.
     #>
     param(
         [Parameter(Mandatory)][hashtable]$GilPython,
@@ -2084,22 +2099,34 @@ function Initialize-ToolchainPythonEnvironment {
 
 # sccache server session: best-effort, a missing or dead server must never fail a green build.
 
+function Resolve-SccacheServerPath {
+    param([string]$SccachePath = '')
+    if ($SccachePath) { return $SccachePath }
+    $command = Get-Command sccache.exe -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+    return ''
+}
+
+function Invoke-SccacheServerCommand {
+    param([Parameter(Mandatory)][string]$SccachePath, [Parameter(Mandatory)][string[]]$ArgumentList,
+        [Parameter(Mandatory)][string]$LogPrefix)
+    $output = @(& $SccachePath @ArgumentList 2>&1 | ForEach-Object { Write-Host "  ${LogPrefix}| $_"; "$_" })
+    $code = $LASTEXITCODE
+    [pscustomobject]@{ ExitCode = $code; Output = $output }
+}
+
 function Start-SccacheServerSession {
     # sccache reads SCCACHE_ERROR_LOG only at server start, so start a fresh server before the first compile.
     [CmdletBinding()]
     param(
         [string]$SccachePath = ''
     )
-    if (-not $SccachePath) {
-        # StrictMode-safe: .Source on a $null Get-Command result throws.
-        $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-        if ($sccacheCmd) { $SccachePath = $sccacheCmd.Source }
-    }
+    $SccachePath = Resolve-SccacheServerPath -SccachePath $SccachePath
     if (-not $SccachePath) { return }
     Write-Host "Starting the sccache server from a STABLE working directory (backlog #99)..."
     try {
         # Stop first so this start wins; "no connection could be made" is expected in a fresh container.
-        & $SccachePath --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+        $null = Invoke-SccacheServerCommand -SccachePath $SccachePath -ArgumentList '--stop-server' -LogPrefix sccache-prologue
 
         # The sccache-logs mount is append-only, so without truncation the epilogue replays old failures.
         if ($env:SCCACHE_ERROR_LOG) {
@@ -2118,16 +2145,14 @@ function Start-SccacheServerSession {
 
         # $true when the server came up; the client gives up after 10 s, which is what a stalled level costs.
         $startServer = {
-            $out = @(& $SccachePath --start-server 2>&1 | ForEach-Object { "$_" })
-            $code = $LASTEXITCODE
-            $out | ForEach-Object { Write-Host "  sccache-prologue| $_" }
-            return ($code -eq 0 -and -not (($out -join "`n") -match 'Timed out waiting for server startup|Server startup failed'))
+            $result = Invoke-SccacheServerCommand -SccachePath $SccachePath -ArgumentList '--start-server' -LogPrefix sccache-prologue
+            return ($result.ExitCode -eq 0 -and -not (($result.Output -join "`n") -match 'Timed out waiting for server startup|Server startup failed'))
         }
         Push-Location 'C:\'
         try {
             # One level that fails its startup check stops the whole server (multilevel.rs), so a dead bucket would leave every compile uncached.
             if (-not (& $startServer) -and (Remove-SccacheS3Level -Reason 'the server did not start with it')) {
-                & $SccachePath --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache-prologue| $_" }
+                $null = Invoke-SccacheServerCommand -SccachePath $SccachePath -ArgumentList '--stop-server' -LogPrefix sccache-prologue
                 if (-not (& $startServer)) { Write-Warning 'sccache: the server did not start without the S3 level either; compiles run uncached' }
             }
         } finally { Pop-Location }
@@ -2192,16 +2217,12 @@ function Complete-SccacheServerSession {
     param(
         [string]$SccachePath = ''
     )
-    if (-not $SccachePath) {
-        # StrictMode-safe: .Source on a $null Get-Command result throws.
-        $sccacheCmd = Get-Command sccache.exe -ErrorAction SilentlyContinue
-        if ($sccacheCmd) { $SccachePath = $sccacheCmd.Source }
-    }
+    $SccachePath = Resolve-SccacheServerPath -SccachePath $SccachePath
     if ($SccachePath) {
         $null = Wait-SccacheUploadDrain -SccachePath $SccachePath
         Write-Host 'Stopping the sccache server so its error log + webdav tail flush before the layer closes...'
         try {
-            & $SccachePath --stop-server 2>&1 | ForEach-Object { Write-Host "  sccache| $_" }
+            $null = Invoke-SccacheServerCommand -SccachePath $SccachePath -ArgumentList '--stop-server' -LogPrefix sccache
         } catch {
             Write-Warning "sccache --stop-server failed (non-fatal): $($_.Exception.Message)"
         }
@@ -2280,6 +2301,30 @@ function Invoke-SourceBuildChain {
 
 # BuildKit warm/materialize handoff: heavy-churn containers cannot finalize, and cache mounts reject renames.
 
+function New-BuildHandoffContext {
+    param([Parameter(Mandatory)][string]$Name, [string]$Endpoint, [Parameter(Mandatory)][string]$CallerName)
+    if ([string]::IsNullOrWhiteSpace($Endpoint)) { throw "${CallerName}: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset" }
+    [pscustomobject]@{
+        Name = $Name
+        Url = "$Endpoint/bkhandoff/$Name.tar"
+        TarFile = Join-Path $env:TEMP "handoff-$Name.tar"
+        ListFile = Join-Path $env:TEMP "handoff-$Name.list"
+    }
+}
+
+function Invoke-BuildHandoffTransfer {
+    param([Parameter(Mandatory)]$Context, [switch]$Upload)
+    $transferArguments = @('-sf', '--retry', '3', '--retry-delay', '5', '--retry-all-errors')
+    $transferArguments += if ($Upload) { @('-T', $Context.TarFile) } else { @('-o', $Context.TarFile) }
+    & (Join-Path $env:SystemRoot 'System32\curl.exe') @transferArguments $Context.Url
+    $code = $LASTEXITCODE
+    if ($Upload) {
+        if ($code -ne 0) { throw "Export-BuildHandoff: upload to $($Context.Url) failed (exit $code)" }
+    } elseif ($code -ne 0 -or -not (Test-Path $Context.TarFile)) {
+        throw "Import-BuildHandoff: download $($Context.Url) failed - did the warm solve run?"
+    }
+}
+
 function Export-BuildHandoff {
     # WebDAV, not a cache mount: BuildKit clones a locked cache mount, so two solves may see different copies.
     [CmdletBinding()]
@@ -2289,11 +2334,9 @@ function Export-BuildHandoff {
         [string]$Endpoint = $env:SCCACHE_WEBDAV_ENDPOINT,
         [string[]]$Roots = @('C:\runtime', 'C:\temp\cpython\Lib\site-packages')
     )
-    if ([string]::IsNullOrWhiteSpace($Endpoint)) {
-        throw 'Export-BuildHandoff: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset'
-    }
-    $listFile = Join-Path $env:TEMP "handoff-$Name.list"
-    $tarFile  = Join-Path $env:TEMP "handoff-$Name.tar"
+    $handoff = New-BuildHandoffContext -Name $Name -Endpoint $Endpoint -CallerName Export-BuildHandoff
+    $listFile = $handoff.ListFile
+    $tarFile = $handoff.TarFile
     $entries = foreach ($root in $Roots) {
         if (-not (Test-Path $root)) { continue }
         Get-ChildItem -Path $root -Recurse -Force -File -ErrorAction SilentlyContinue |
@@ -2306,9 +2349,7 @@ function Export-BuildHandoff {
     # System32 paths: scoop's git puts MSYS tar on PATH, which parses a drive path as a remote host.
     & (Join-Path $env:SystemRoot 'System32\tar.exe') -cf $tarFile -C C:\ -T $listFile
     if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: tar failed (exit $LASTEXITCODE)" }
-    # --retry-all-errors: this PUT is the only copy of an hours-long warm build.
-    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -T $tarFile "$Endpoint/bkhandoff/$Name.tar"
-    if ($LASTEXITCODE -ne 0) { throw "Export-BuildHandoff: upload to $Endpoint/bkhandoff/$Name.tar failed (exit $LASTEXITCODE)" }
+    Invoke-BuildHandoffTransfer -Context $handoff -Upload
     $sizeMb = [math]::Round((Get-Item $tarFile).Length / 1MB, 1)
     Remove-Item $tarFile, $listFile -Force -ErrorAction SilentlyContinue
     Write-Host "Export-BuildHandoff: $($entries.Count) files ($sizeMb MB) -> $Endpoint/bkhandoff/$Name.tar"
@@ -2322,15 +2363,9 @@ function Import-BuildHandoff {
         [Parameter(Mandatory)][string]$Name,
         [string]$Endpoint = $env:SCCACHE_WEBDAV_ENDPOINT
     )
-    if ([string]::IsNullOrWhiteSpace($Endpoint)) {
-        throw 'Import-BuildHandoff: no -Endpoint and SCCACHE_WEBDAV_ENDPOINT is unset'
-    }
-    $tarFile = Join-Path $env:TEMP "handoff-$Name.tar"
-    # Same retries as the upload: one HTTP round-trip gates the whole layer.
-    & (Join-Path $env:SystemRoot 'System32\curl.exe') -sf --retry 3 --retry-delay 5 --retry-all-errors -o $tarFile "$Endpoint/bkhandoff/$Name.tar"
-    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $tarFile)) {
-        throw "Import-BuildHandoff: download $Endpoint/bkhandoff/$Name.tar failed - did the warm solve run?"
-    }
+    $handoff = New-BuildHandoffContext -Name $Name -Endpoint $Endpoint -CallerName Import-BuildHandoff
+    $tarFile = $handoff.TarFile
+    Invoke-BuildHandoffTransfer -Context $handoff
     # The tar holds files only, and bsdtar's long-path mode does not create missing parents.
     $tarExe = Join-Path $env:SystemRoot 'System32\tar.exe'
     & $tarExe -tf $tarFile |
@@ -2521,6 +2556,8 @@ Export-ModuleMember -Function @(
     'Get-PythonDllHome',
     'Write-PythonDllDirectoryShim',
     'Invoke-WithHostArchLibraryEnvironment',
+    'Get-NinjaFeatureFlag',
+    'Add-NinjaArmFeatureFlags',
     'Add-NinjaPerTuFlags',
     'Resolve-QnnSdk',
     'Copy-QnnRuntime',
@@ -2540,6 +2577,7 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
     'Assert-SourceFileContent',
+    'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',
     'Edit-SourceFile',
     'Invoke-NinjaBuildWithRetry',

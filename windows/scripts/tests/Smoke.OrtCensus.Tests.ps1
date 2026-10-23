@@ -503,11 +503,9 @@ Describe 'ORT census: wiring' {
         $list = [regex]::Match($body, '(?m)^\$ortCensusExemption = @\((.*?)\)\s*#')
         Assert-True $list.Success 'the exemption list is where section 25 keeps it'
         Assert-False ($list.Groups[1].Value -match '(?i)\\Windows\\|System32|SysWOW64') 'no exemption names the OS''s Windows dir'
-        $mod = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Common.psm1'))
-        foreach ($lit in @('InboxRoot = @(if (-not $CrossTarget) { $winDir })', '"$winDir\$d\onnxruntime.dll"; "$winDir\$d\Windows.AI.MachineLearning.dll"',
-                "foreach (`$d in 'System32', 'SysWOW64')", '-ExtraFile $inboxFile')) {
-            Assert-True $mod.Contains($lit) "Invoke-OrtImageCensus carries: $lit"
-        }
+        Assert-TestScriptContains -ScriptPath 'windows/scripts/modules/WindowsOrtProvenance.Common.psm1' -ReasonPrefix 'Invoke-OrtImageCensus carries' -Literal @(
+            'InboxRoot = @(if (-not $CrossTarget) { $winDir })', '"$winDir\$d\onnxruntime.dll"; "$winDir\$d\Windows.AI.MachineLearning.dll"',
+            "foreach (`$d in 'System32', 'SysWOW64')", '-ExtraFile $inboxFile')
     }
 
     It 'the declared chain root is Build-OnnxFromSource.ps1''s SourceDir, and the image census scans the whole drive by name' {

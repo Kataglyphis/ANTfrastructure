@@ -44,6 +44,23 @@ function Invoke-SiblingScript([string]$Name, [string[]]$Arguments) {
     Invoke-BuildExternal -Context $script:BuildContext -File 'pwsh' -Parameters (@('-NoProfile', '-File', (Join-Path $PSScriptRoot $Name)) + $Arguments) | Out-Null
 }
 
+function Invoke-PackagingEnvironmentBuild {
+    param([string]$EnvName, [switch]$AddNativeLibraryPath)
+    $envPath = Join-Path $repoRoot $EnvName
+    New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName $EnvName -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
+    if ($AddNativeLibraryPath) {
+        $homeLine = @(Get-Content -LiteralPath (Join-Path $envPath 'pyvenv.cfg') | Where-Object { $_ -match '^home\s*=' })
+        if ($homeLine.Count -ne 1) { throw "$envPath\pyvenv.cfg names no single home interpreter" }
+        Add-PythonLibPath -PythonDir ($homeLine[0] -replace '^home\s*=\s*', '').Trim()
+    }
+    try {
+        Sync-UvProjectDependencies
+        Invoke-BuildExternal -Context $script:BuildContext -File 'uv' -Parameters $buildArgs | Out-Null
+    } finally {
+        Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
+    }
+}
+
 # uv build picks its own interpreter, not the venv's: a plain X.Y built OrchestrANT's wheel as cpXYt.
 $pythonRequest = Get-UvPythonRequest -Version $PythonVersion
 $buildArgs = @('build', '--python', $pythonRequest)
@@ -58,15 +75,7 @@ try {
             Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters $buildArgs | Out-Null
             return
         }
-        $envPath = Join-Path $repoRoot ".venv-packaging-sources"
-        New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-packaging-sources" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
-
-        try {
-            Sync-UvProjectDependencies
-            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters $buildArgs | Out-Null
-        } finally {
-            Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
-        }
+        Invoke-PackagingEnvironmentBuild -EnvName '.venv-packaging-sources'
     } | Out-Null
 
     # Cython here compiles for the host; a cross bundle takes the pure wheel instead (Select-PythonAppWheel).
@@ -74,19 +83,7 @@ try {
         Write-CiLog "=== Packaging (Windows binaries) ==="
         $env:CYTHONIZE = "True"
 
-        $envPath = Join-Path $repoRoot ".venv-packaging-binaries"
-        New-UvProjectEnvironment -Workspace $repoRoot -PythonVersion $PythonVersion -EnvName ".venv-packaging-binaries" -CommandRunner $script:UvCommandRunner -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning | Out-Null
-        # The venv's base interpreter, which the venv step installs when the host lacks it.
-        $homeLine = @(Get-Content -LiteralPath (Join-Path $envPath 'pyvenv.cfg') | Where-Object { $_ -match '^home\s*=' })
-        if ($homeLine.Count -ne 1) { throw "$envPath\pyvenv.cfg names no single home interpreter" }
-        Add-PythonLibPath -PythonDir ($homeLine[0] -replace '^home\s*=\s*', '').Trim()
-
-        try {
-            Sync-UvProjectDependencies
-            Invoke-BuildExternal -Context $script:BuildContext -File "uv" -Parameters $buildArgs | Out-Null
-        } finally {
-            Remove-UvProjectEnvironment -EnvPath $envPath -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
-        }
+        Invoke-PackagingEnvironmentBuild -EnvName '.venv-packaging-binaries' -AddNativeLibraryPath
     } | Out-Null }
 
     # The binary build again on the image's free-threaded interpreter, then a fresh venv of it must load the wheel GIL-free.

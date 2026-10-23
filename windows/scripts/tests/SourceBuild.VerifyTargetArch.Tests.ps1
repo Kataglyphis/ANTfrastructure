@@ -6,20 +6,6 @@
 Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     BeforeAll {
-        # Get-ScriptFunctionDefinition lifts only functions, so their script-level $machineNames must exist first.
-        $script:machineNames = @{
-            0x0000 = 'UNKNOWN'
-            0x014C = 'I386'
-            0x8664 = 'AMD64'
-            0xAA64 = 'ARM64'
-            0xA641 = 'ARM64EC'
-            0xA64E = 'ARM64X'
-            0x01C0 = 'ARM'
-            0x01C4 = 'ARMNT'
-            0x0200 = 'IA64'
-            0x5032 = 'RISCV32'
-            0x5064 = 'RISCV64'
-        }
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Test-TargetArch.ps1' `
                 -FunctionName 'Get-CoffMachine', 'Get-ArchiveMachine', 'Format-Machine')
 

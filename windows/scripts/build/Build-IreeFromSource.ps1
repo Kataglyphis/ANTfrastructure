@@ -113,13 +113,7 @@ function Update-IreeCrossNinjaFile {
     [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel (asm keyword)' -Floor 10 -AlreadyTaggedPattern '-Dasm=__asm__' -Select {
         param($line) if (& $isArm64Uk $line) { '-Dasm=__asm__' } else { '' }
     }.GetNewClosure())
-    [void](Add-NinjaPerTuFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -AlreadyTaggedPattern 'armv8\.2-a' -Select {
-        param($line)
-        if (& $isArm64Uk $line) {
-            foreach ($tok in $ireeUkFeatureMap.Keys) { if ($line -match "$tok\.c\.obj") { return "/clang:-march=armv8.2-a+$($ireeUkFeatureMap[$tok])" } }
-        }
-        return ''
-    }.GetNewClosure())
+    [void](Add-NinjaArmFeatureFlags -NinjaFile $ireeNinja -Label 'IREE arm_64 ukernel feature' -Floor 5 -FeatureMap $ireeUkFeatureMap -TokenPattern '{0}\.c\.obj' -Include $isArm64Uk)
 }
 
 # The cp3XYt twins of the IREE wheels from the GIL tree, reconfigured, rebuilt where Python reaches and packed per package.
@@ -200,22 +194,18 @@ $ireeMasm = $ireeMasm -replace '\\', '/'
 
 # A C99 `inline` definition emits no symbol, yet this ukernel is used by address; -fgnu89-inline did not help under clang-cl.
 $ireeI8mm = Join-Path $SourceDir 'runtime\src\iree\builtins\ukernel\arch\arm_64\mmt4d_arm_64_i8mm.c'
-if (Test-Path $ireeI8mm) {
-    [void](Invoke-InlineRegexPatch -Path $ireeI8mm `
-            -SkipIfMatch '(?m)^void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
-            -Pattern 'IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void(\s*\r?\n)iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
-            -Replacement 'void$1iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(' `
-            -AssertGone 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
-            -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition (C99 inline emitted no symbol)')
-}
+[void](Invoke-InlineRegexPatch -IfPresent -Path $ireeI8mm `
+        -SkipIfMatch '(?m)^void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+        -Pattern 'IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void(\s*\r?\n)iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+        -Replacement 'void$1iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(' `
+        -AssertGone 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+        -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition (C99 inline emitted no symbol)')
 
 # v3.12.0's VM ISA genrules run a bare `python3`, which no Windows image has (measured 2026-10-07); the configured Python runs them.
 $ireeIsa = Join-Path $SourceDir 'runtime\src\iree\vm\bytecode\isa\CMakeLists.txt'
-if (Test-Path $ireeIsa) {
-    [void](Invoke-InlineRegexPatch -Path $ireeIsa -SkipIfMatch 'Python3_EXECUTABLE' -Pattern '"python3 \$\(rootpath' `
-            -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
-            -Description 'IREE VM ISA genrules: the configured Python3_EXECUTABLE, not a bare python3')
-}
+[void](Invoke-InlineRegexPatch -IfPresent -Path $ireeIsa -SkipIfMatch 'Python3_EXECUTABLE' -Pattern '"python3 \$\(rootpath' `
+        -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
+        -Description 'IREE VM ISA genrules: the configured Python3_EXECUTABLE, not a bare python3')
 
 # Also copies pyconfig.h into Include\, where FindPython looks; in-tree CPython keeps it in PC\.
 $py = Initialize-ToolchainPythonEnvironment

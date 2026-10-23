@@ -5,7 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') }
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 function New-HostMaintenanceLog {
     <#

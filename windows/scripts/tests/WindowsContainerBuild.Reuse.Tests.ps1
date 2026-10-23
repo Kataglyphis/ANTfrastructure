@@ -5,6 +5,19 @@
 
 Import-Module (Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules') 'WindowsContainerBuild.Reuse.psm1') -Force -DisableNameChecking
 
+function Assert-ReuseCommandParameters {
+    param([string]$CommandName, [string[]]$Name, [switch]$Mandatory)
+    $parameters = (Get-Command $CommandName).Parameters
+    foreach ($parameterName in $Name) {
+        Assert-True $parameters.ContainsKey($parameterName) "missing parameter -$parameterName"
+        if ($Mandatory) {
+            $required = @($parameters[$parameterName].Attributes |
+                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory })
+            Assert-True ($required.Count -gt 0) "-$parameterName should be mandatory"
+        }
+    }
+}
+
 Describe 'WindowsContainerBuild.Reuse: Get-ContainerEnvArgs' {
 
     It 'returns an empty array for an empty dictionary' {
@@ -143,13 +156,10 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
     }
 
     It 'exposes every parameter a project wrapper depends on' {
-        $p = (Get-Command Invoke-ContainerBuild).Parameters
-        foreach ($name in @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand',
+        Assert-ReuseCommandParameters -CommandName Invoke-ContainerBuild -Name @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand',
                 'WorkspacePath', 'IncrementalDirs', 'IncrementalExclude', 'OutputDirs', 'VerifyDirs',
                 'InboundExclude', 'InboundItems', 'OutboundExclude', 'KeepDirs', 'CacheEnv', 'IsolationArgs',
-                'EntrypointPath', 'ProbeFile', 'WaitTimeoutMinutes', 'UseBindMount', 'FreshContainer')) {
-            Assert-True $p.ContainsKey($name) "missing parameter -$name"
-        }
+                'EntrypointPath', 'ProbeFile', 'WaitTimeoutMinutes', 'UseBindMount', 'FreshContainer')
     }
 
     It 'defaults the workspace to C:\ws (shared by both transports so CMake caches stay valid)' {
@@ -165,12 +175,7 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
     }
 
     It 'requires the parameters that have no sensible default' {
-        $p = (Get-Command Invoke-ContainerBuild).Parameters
-        foreach ($name in @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand')) {
-            $mandatory = @($p[$name].Attributes |
-                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory })
-            Assert-True ($mandatory.Count -gt 0) "-$name should be mandatory"
-        }
+        Assert-ReuseCommandParameters -CommandName Invoke-ContainerBuild -Name @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand') -Mandatory
     }
 }
 
@@ -182,19 +187,11 @@ Describe 'WindowsContainerBuild.Reuse: Wait-ContainerExit contract' {
     }
 
     It 'exposes the parameters a caller waits on a container with' {
-        $p = (Get-Command Wait-ContainerExit).Parameters
-        foreach ($name in @('DockerExe', 'Name', 'PollSeconds', 'TimeoutMinutes', 'Label')) {
-            Assert-True $p.ContainsKey($name) "missing parameter -$name"
-        }
+        Assert-ReuseCommandParameters -CommandName Wait-ContainerExit -Name @('DockerExe', 'Name', 'PollSeconds', 'TimeoutMinutes', 'Label')
     }
 
     It 'requires the container it is asked to wait for' {
-        $p = (Get-Command Wait-ContainerExit).Parameters
-        foreach ($name in @('DockerExe', 'Name')) {
-            $mandatory = @($p[$name].Attributes |
-                Where-Object { $_ -is [System.Management.Automation.ParameterAttribute] -and $_.Mandatory })
-            Assert-True ($mandatory.Count -gt 0) "-$name should be mandatory"
-        }
+        Assert-ReuseCommandParameters -CommandName Wait-ContainerExit -Name @('DockerExe', 'Name') -Mandatory
     }
 
     It 'bounds the wait - a lane must not be hangable by a container that never stops' {

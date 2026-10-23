@@ -125,6 +125,22 @@ function Get-CmakeConfigureArgs {
   return , $configureArgs
 }
 
+function Write-CmakeEnvironmentDiagnostics {
+  param($Context, [string[]]$Name, [switch]$ShowUnset)
+  foreach ($variable in $Name) {
+    $value = [Environment]::GetEnvironmentVariable($variable)
+    if ($value) { Write-BuildLog -Context $Context -Message "DEBUG:   $variable = $value" }
+    elseif ($ShowUnset) { Write-BuildLog -Context $Context -Message "DEBUG:   $variable = (not set)" }
+  }
+}
+
+function Write-CmakeSccacheStats {
+  param($Context, [switch]$Advanced)
+  foreach ($line in @(Get-SccacheStatsText -Advanced:$Advanced | Where-Object { $null -ne $_ })) {
+    Write-BuildLog -Context $Context -Message "DEBUG:   $line"
+  }
+}
+
 function Invoke-CmakeConfigureAndBuild {
   param(
     [Parameter(Mandatory)]
@@ -164,13 +180,8 @@ function Invoke-CmakeConfigureAndBuild {
 
   if ($DisableSccache) {
     Write-BuildLog -Context $Context -Message "DEBUG: ========== DISABLING SCCACHE =========="
-    $env:CMAKE_C_COMPILER_LAUNCHER = ""
-    $env:CMAKE_CXX_COMPILER_LAUNCHER = ""
-    # Nothing here sets it, but it can arrive from the environment, and a wrapped nvcc breaks multi-arch builds.
-    $env:CMAKE_CUDA_COMPILER_LAUNCHER = ""
-    $env:RUSTC_WRAPPER = ""
-    $env:CC_WRAPPER = ""
-    $env:CXX_WRAPPER = ""
+    # A CUDA launcher can arrive from the environment, and a wrapped nvcc breaks multi-arch builds.
+    Set-CompilerWrapperEnvironment -Value '' -IncludeCuda
     Write-BuildLog -Context $Context -Message "DEBUG: Cleared all compiler wrapper environment variables"
 
     $sccachePath = Get-Command 'sccache' -ErrorAction SilentlyContinue
@@ -249,14 +260,7 @@ function Invoke-CmakeConfigureAndBuild {
       'CMAKE_CUDA_COMPILER_LAUNCHER', 'SCCACHE_MULTILEVEL_CHAIN',
       'RUSTC_WRAPPER', 'CC_WRAPPER', 'CXX_WRAPPER'
     )
-    foreach ($var in $sccacheEnvVars) {
-      $value = [Environment]::GetEnvironmentVariable($var)
-      if ($value) {
-        Write-BuildLog -Context $Context -Message "DEBUG:   $var = $value"
-      } else {
-        Write-BuildLog -Context $Context -Message "DEBUG:   $var = (not set)"
-      }
-    }
+    Write-CmakeEnvironmentDiagnostics -Context $Context -Name $sccacheEnvVars -ShowUnset
 
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache server status ---"
     try {
@@ -268,14 +272,10 @@ function Invoke-CmakeConfigureAndBuild {
 
     # No -RequireRemote: these diagnostics are wanted for a container-local cache too.
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache stats (full) ---"
-    foreach ($line in @(Get-SccacheStatsText | Where-Object { $null -ne $_ })) {
-      Write-BuildLog -Context $Context -Message "DEBUG:   $line"
-    }
+    Write-CmakeSccacheStats -Context $Context
 
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache internal stats ---"
-    foreach ($line in @(Get-SccacheStatsText -Advanced | Where-Object { $null -ne $_ })) {
-      Write-BuildLog -Context $Context -Message "DEBUG:   $line"
-    }
+    Write-CmakeSccacheStats -Context $Context -Advanced
   } else {
     Write-BuildLog -Context $Context -Message "DEBUG: sccache not found on PATH"
   }
@@ -286,12 +286,7 @@ function Invoke-CmakeConfigureAndBuild {
     'CL', '_CL_', 'LINK', '_LINK_', 'LIB', 'LIBPATH', 'INCLUDE',
     'MAKEFLAGS', 'NUMBER_OF_PROCESSORS'
   )
-  foreach ($var in $otherEnvVars) {
-    $value = [Environment]::GetEnvironmentVariable($var)
-    if ($value) {
-      Write-BuildLog -Context $Context -Message "DEBUG:   $var = $value"
-    }
-  }
+  Write-CmakeEnvironmentDiagnostics -Context $Context -Name $otherEnvVars
 
   Write-BuildLog -Context $Context -Message "DEBUG: ========== STARTING BUILD =========="
   Write-BuildLog -Context $Context -Message "DEBUG: Starting configure step..."
@@ -368,9 +363,7 @@ function Invoke-CmakeConfigureAndBuild {
 
   Write-BuildLog -Context $Context -Message "DEBUG: ========== SCCACHE DIAGNOSTICS (AFTER BUILD) =========="
   if ($sccachePath) {
-    foreach ($line in @(Get-SccacheStatsText | Where-Object { $null -ne $_ })) {
-      Write-BuildLog -Context $Context -Message "DEBUG:   $line"
-    }
+    Write-CmakeSccacheStats -Context $Context
   }
 }
 

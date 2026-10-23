@@ -8,10 +8,10 @@ Set-StrictMode -Version Latest
 
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+Import-Module $sharedPath -ErrorAction Stop
 # Imported here too because tests load this module alone.
 $targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
-if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath }
+Import-Module $targetArchPath -ErrorAction Stop
 
 function Get-CudaRoot {
     if ($env:CUDA_ROOT -and (Test-Path $env:CUDA_ROOT)) { return $env:CUDA_ROOT }

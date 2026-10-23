@@ -47,10 +47,8 @@ Describe 'New-Arm64PythonTestStage: what windows-11-arm runs (CON113)' {
     }
 
     It 'builds the wheels in a child, where VS''s cross environment ends, with clang-cl told the target through CL' {
-        $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:stagePath))
-        foreach ($needle in @('& pwsh -NoProfile -File $PSCommandPath -RepoRoot $repo', '$env:CL = "--target=$((Get-WindowsTargetArchInfo).ClangTriple)"',
-                'Invoke-CrossWheelBuild -Python $venv.Exe -Source $repo', 'Install-PythonCrossSite -HostPython $hostPython -SitePackages $site')) {
-            Assert-True $text.Contains($needle) "the stage holds $needle"
-        }
+        Assert-TestScriptContains -ScriptPath $script:stagePath -ReasonPrefix 'the stage holds' -Literal @(
+            '& pwsh -NoProfile -File $PSCommandPath -RepoRoot $repo', '$env:CL = "--target=$((Get-WindowsTargetArchInfo).ClangTriple)"',
+            'Invoke-CrossWheelBuild -Python $venv.Exe -Source $repo', 'Install-PythonCrossSite -HostPython $hostPython -SitePackages $site')
     }
 }

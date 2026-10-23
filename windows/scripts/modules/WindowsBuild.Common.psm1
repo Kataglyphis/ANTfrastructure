@@ -6,8 +6,8 @@
 Set-StrictMode -Version Latest
 
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-# Guarded, no -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
-if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
+# No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
+Import-Module $sharedPath
 
 # -- Logging primitives (module-internal; scripts use the Write-BuildLog* wrappers) --
 
@@ -797,12 +797,8 @@ function Enable-SccacheCompilerWrapper {
 
     # Before any launcher is wired: an endpoint this host cannot reach kills sccache's server.
     $null = Clear-UnreachableSccacheEndpoint
-    $env:CMAKE_C_COMPILER_LAUNCHER = $SccacheExe
-    $env:CMAKE_CXX_COMPILER_LAUNCHER = $SccacheExe
     # No CUDA launcher: sccache-wrapped nvcc loses the per-arch .cubin files before fatbinary combines them.
-    $env:RUSTC_WRAPPER = $SccacheExe
-    $env:CC_WRAPPER = $SccacheExe
-    $env:CXX_WRAPPER = $SccacheExe
+    Set-CompilerWrapperEnvironment -Value $SccacheExe
 }
 
 # Consumer API with no in-repo caller: see docs/consumer-inventory.md § Why a grep was not enough
@@ -857,6 +853,13 @@ function Initialize-BuildCacheEnvironment {
     return $fastLocalCache
 }
 
+function Stop-BuildLockingProcess {
+    param([string[]]$Name)
+    foreach ($processName in $Name) {
+        Get-Process $processName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Remove-BuildRoot {
     param(
         [Parameter(Mandatory)]
@@ -881,9 +884,7 @@ function Remove-BuildRoot {
         "cargo", "rustc"
     )
 
-    foreach ($name in $processNames) {
-        Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    }
+    Stop-BuildLockingProcess -Name $processNames
 
     Start-Sleep -Seconds 3
 
@@ -895,9 +896,7 @@ function Remove-BuildRoot {
         } catch {
             Write-BuildLogWarning -Context $Context -Message "Attempt $i/8 failed: $($_.Exception.Message)"
 
-            foreach ($name in $processNames) {
-                Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-            }
+            Stop-BuildLockingProcess -Name $processNames
 
             if ($i -lt 8) { Start-Sleep -Seconds 2 }
         }

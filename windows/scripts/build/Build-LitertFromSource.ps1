@@ -175,14 +175,8 @@ if (Test-WindowsCrossTarget) {
         'neonsme'       = ''
     }
     # .S files are excluded: their features come from in-source .arch directives, prepended below.
-    [void](Add-NinjaPerTuFlags -NinjaFile (Join-Path $buildDir 'build.ninja') -Label 'XNNPACK microkernel' -Floor 100 -AlreadyTaggedPattern 'armv8\.2-a' -Select {
-        param($line)
-        if ($line -match 'xnnpack-' -and $line -notmatch '\.S\.obj') {
-            foreach ($tok in $xnnFeatureMap.Keys) {
-                if ($line -match "-$tok[.-]") { if ($xnnFeatureMap[$tok]) { return "/clang:-march=armv8.2-a+$($xnnFeatureMap[$tok])" } else { return '' } }
-            }
-        }
-        return ''
+    [void](Add-NinjaArmFeatureFlags -NinjaFile (Join-Path $buildDir 'build.ninja') -Label 'XNNPACK microkernel' -Floor 100 -FeatureMap $xnnFeatureMap -TokenPattern '-{0}[.-]' -Include {
+        param($line) $line -match 'xnnpack-' -and $line -notmatch '\.S\.obj'
     })
 
     # Found by the *-asm-aarch64-*.S name, not the FetchContent layout, which LiteRT's FindXNNPACK wrapper moves.

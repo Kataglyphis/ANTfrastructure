@@ -3271,6 +3271,13 @@ check failed exits, empty artifacts, cleanup, counters and guards. The
 requirements and the limits of stubbed coverage. Resolved rows are removed and
 remaining budgets follow measured reductions; no exceptions are added.
 
+The next Windows pass shares Meson and ARM source plans, patch lifecycle, compiler
+wrapper variables, packaging cleanup, host guards and diagnostic evidence. Test
+fixtures share batch tools, child imports, literal checks and mutation lifetime.
+Cold and warm visibility cases also check required companion failures. The
+[shared behavior reference](windows-builds.md#shared-windows-behavior) records
+caller differences and coverage limits; independent test expectations remain local.
+
 ### Workflow fixture builders
 
 The workflow-lint suite shares repository initialization, job headers and

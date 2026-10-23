@@ -5,6 +5,28 @@
 
 Set-StrictMode -Version Latest
 
+$script:peMachineNames = @{
+    0x0000 = 'UNKNOWN'
+    0x014C = 'I386'
+    0x8664 = 'AMD64'
+    0xAA64 = 'ARM64'
+    0xA641 = 'ARM64EC'
+    0xA64E = 'ARM64X'
+    0x01C0 = 'ARM'
+    0x01C4 = 'ARMNT'
+    0x0200 = 'IA64'
+    0x5032 = 'RISCV32'
+    0x5064 = 'RISCV64'
+}
+
+function Get-PeMachineName {
+    param([Parameter(Mandatory)][int]$Value)
+    $script:peMachineNames[$Value]
+}
+
+Export-ModuleMember -Function Get-PeMachineName
+
+
 # Target-arch facts; dependency-free because host provisioning imports it before the module set is copied.
 
 # The table: adding a target is a table edit, and a missing case throws instead of building x64.

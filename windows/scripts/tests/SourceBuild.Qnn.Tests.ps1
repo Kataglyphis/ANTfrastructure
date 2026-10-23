@@ -3,29 +3,28 @@
 # SPDX-License-Identifier: MIT
 # The QNN SDK is login-gated, so a fake zip with its layout is the only exercise of the SDK-present branch.
 
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+
 Describe 'Resolve-QnnSdk' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
-        $script:savedArch = $env:WINDOWS_TARGET_ARCH
         $script:tmp = New-TestDir -Prefix 'wbt-qnn-'
         $script:drop = Join-Path $script:tmp 'drop'
         $script:extract = Join-Path $script:tmp 'extract'
         New-Item -Path $script:drop -ItemType Directory -Force | Out-Null
         # Build the fake SDK tree, zip it.
         $sdk = Join-Path $script:tmp 'sdk\qairt\2.34.0'
-        foreach ($d in 'include\QNN', 'lib\aarch64-windows-msvc', 'lib\x86_64-windows-msvc', 'lib\hexagon-v73\unsigned') { New-Item -Path (Join-Path $sdk $d) -ItemType Directory -Force | Out-Null }
-        Set-Content (Join-Path $sdk 'include\QNN\QnnInterface.h') '// fake'
-        Set-Content (Join-Path $sdk 'lib\aarch64-windows-msvc\QnnCpu.dll') 'fake'
-        Set-Content (Join-Path $sdk 'lib\aarch64-windows-msvc\QnnHtp.dll') 'fake'
-        Set-Content (Join-Path $sdk 'lib\hexagon-v73\unsigned\libQnnHtpV73Skel.so') 'fake'
+        Write-TestFileTree -Root $sdk -Files @{
+            'include/QNN/QnnInterface.h' = '// fake'; 'lib/aarch64-windows-msvc/QnnCpu.dll' = 'fake'
+            'lib/aarch64-windows-msvc/QnnHtp.dll' = 'fake'; 'lib/hexagon-v73/unsigned/libQnnHtpV73Skel.so' = 'fake'
+        }
+        $null = New-Item -ItemType Directory -Force -Path (Join-Path $sdk 'lib/x86_64-windows-msvc')
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $script:zip = Join-Path $script:drop 'v2.34.0.zip'
         [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $script:tmp 'sdk'), $script:zip)
         $script:sha = (Get-FileHash -Algorithm SHA256 -Path $script:zip).Hash
     }
-    AfterAll { $env:WINDOWS_TARGET_ARCH = $script:savedArch; Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
     It 'returns $null when no zip is staged (the default state)' {
         $empty = Join-Path $script:tmp 'empty'; New-Item $empty -ItemType Directory -Force | Out-Null

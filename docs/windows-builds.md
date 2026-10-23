@@ -39,7 +39,9 @@ does not match, sharing input selection with their marker handling.
 `Edit-SourceFile` and `Invoke-InlineRegexPatch` accept `-Quiet` for callers that
 already own change counters and diagnostics. It suppresses informational and
 no-change messages; required-input errors, callback exceptions and `AssertGone`
-postconditions still throw. Defaults retain their existing warnings. GStreamer's
+postconditions still throw. `Invoke-InlineRegexPatch -IfPresent` skips only an
+absent optional input; present inputs retain required postconditions and failures.
+Defaults retain their existing warnings. GStreamer's
 zero-match C++ standard warning remains at the caller. C++ keyword conversion,
 Ninja cleanup, IREE egg-info edits and LiteRT-LM CMake edits use the same
 write/no-change machinery.
@@ -2328,6 +2330,50 @@ mutant imports. The helper owns module and temporary-directory cleanup even when
 the body throws; callers keep their fixture state and command policy.
 
 ## Shared Windows behavior
+
+`Resolve-BuildValue` owns raw explicit, ordered environment and default selection.
+Source-build and container-image wrappers keep their distinct version-prefix rules.
+Meson native and cross files share binary rendering. IREE and LiteRT share ordered
+per-file ARM feature selection and application while keeping different minimum
+architectures and source predicates. PE and COFF checks share machine names through
+`WindowsTargetArch.Common`. Handoff transfers share context and curl execution;
+source-build sccache sessions share lookup and command capture without changing
+startup, upload-drain or completion policy.
+
+`Set-CompilerWrapperEnvironment` and `Remove-CompilerWrapperEnvironment` share the
+canonical launcher names in `WindowsScripts.Shared`. Build sets its five launchers,
+CMake clears its launchers including CUDA, and CodeQL removes its five variables.
+An empty variable remains different from a removed variable. Packaging shares venv
+cleanup, CMake shares environment/stat diagnostics, Flutter shares link cleanup and
+the agentic loop shares lazy environment-to-config fallback. Caller ordering,
+whitespace, retry, broken-link and trace-marker policies stay at the caller.
+
+`Write-DiagnosticResult` renders the existing verdict bytes, including ARM64's
+separate detail line. The sccache write probe shares rename evidence, directory
+rows and server shutdown while preserving staged-source retention versus temporary
+source cleanup on failure. Cleanup uses literal paths so brackets remain filenames.
+ONNX replay shares step projection and clipped traces with caller limits. New-host
+setup shares maintenance logging and live-build guards before protected writes;
+forced, report-only and skipped steps keep their own policy. Optional Vulkan file
+verdicts share `Assert-VulkanArm64Library`; installation and verification still
+run independently with their own paths, strict inputs and messages.
+
+Required sibling imports bind into each owner's scope without forcing a reload.
+Fixtures cover cold, private-warm and global-warm visibility plus fatal missing
+companions. The sccache-write and OpenCV-video probe Dockerfiles mount their script
+under `diagnostics` and exactly `WindowsDiagnostics.Common` plus
+`WindowsScripts.Shared` under sibling `modules`. A mount-derived child-import
+fixture removes a companion as a negative control; it does not run BuildKit or the
+probe experiments.
+
+The harness owns batch-tool construction, child-pwsh capture and literal-source
+assertions. Retry suites keep tool-specific behavior in their shared fixture.
+`Invoke-TestFunctionMutations` constructs each module before expecting the original
+test body to fail, so malformed source or import failures cannot count as proof.
+It forwards fixture state and restores module lifetime. Direct source arguments
+share recipe construction; `-Throws` preserves tests of required exceptions. These tests exercise local
+policies with stubs and isolated files, without validating an installed SDK,
+compiler, GPU, live host service or container image.
 
 `Expand-SourceTarball` owns the two 7-Zip passes. Its default rejects every failed
 pass and retains the intermediate tar. `Expand-PinnedArchive` supplies the existing

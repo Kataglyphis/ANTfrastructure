@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 # Arch filtering lives in the contract, never at a call site: see docs/windows-build-invariants.md § The mandatory GStreamer plugin set is a contract
 $gstTargetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
 if (Test-Path $gstTargetArchPath) {
-    if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $gstTargetArchPath }
+    Import-Module $gstTargetArchPath -ErrorAction Stop
 } else {
     throw ("WindowsGstPlugins.Common: required sibling module not found at $gstTargetArchPath. " +
            'Get-RequiredGstPlugin filters the contract per target arch and cannot answer correctly ' +

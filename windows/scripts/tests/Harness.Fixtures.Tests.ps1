@@ -62,6 +62,89 @@ Describe 'Harness text trees' {
     }
 }
 
+Describe 'Native batch fixtures' {
+    It 'writes exact ASCII CRLF bytes, forwards quoted arguments and applies the requested final exit' {
+        Invoke-InTestDir { param($dir)
+            $lines = @('echo ARG1=[%~1] ARG2=[%~2]')
+            $path = New-TestBatchTool -Directory (Join-Path $dir 'missing parent') -Name 'fixture tool.cmd' -Line $lines -ExitCode 7
+            $expected = "@echo off`r`necho ARG1=[%~1] ARG2=[%~2]`r`nexit /b 7`r`n"
+            Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($path)))
+            Assert-Match 'ARG1=\[a b\] ARG2=\[second value\]' ((& $path 'a b' 'second value') | Out-String)
+            Assert-Equal 7 $global:LASTEXITCODE
+            $early = New-TestBatchTool -Directory $dir -Name early.cmd -Line 'exit /b 3' -ExitCode 7
+            & $early
+            Assert-Equal 3 $global:LASTEXITCODE 'caller branches can override the appended fallback'
+        }
+    }
+
+    foreach ($fault in @(
+            @{ Name = 'detects a batch writer that ignores the requested final exit'; Find = '"exit /b $ExitCode"'; Replace = '"exit /b 0"'; Expected = 'Assert-Equal' },
+            @{ Name = 'detects a batch writer that drops caller behavior'; Find = ' + $Line + '; Replace = ' + '; Expected = 'does not match' }
+        )) {
+        It $fault.Name {
+            Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/tests/TestHarness.psm1'; FunctionName = @('New-TestBatchTool') } `
+                -Case $fault -Body {
+                    Invoke-InTestDir { param($dir)
+                        $path = New-MutTestBatchTool -Directory $dir -Name fail.cmd -Line 'echo caller-marker' -ExitCode 7
+                        $output = (& $path) | Out-String
+                        $code = $global:LASTEXITCODE
+                        Assert-Match caller-marker $output
+                        Assert-Equal 7 $code
+                    }
+                }
+        }
+    }
+}
+
+Describe 'Child PowerShell fixture transport' {
+    It 'requires both a failed status and the expected child diagnostic' {
+        Assert-TestPwshFailure -Probe ([pscustomobject]@{ ExitCode = 7; Output = 'expected marker' }) -Pattern '^expected marker$'
+        Assert-Throws { Assert-TestPwshFailure -Probe ([pscustomobject]@{ ExitCode = 0; Output = 'expected marker' }) -Pattern marker } -MessagePattern 'child PowerShell must fail'
+        Assert-Throws { Assert-TestPwshFailure -Probe ([pscustomobject]@{ ExitCode = 7; Output = 'different' }) -Pattern marker } -MessagePattern 'does not match'
+    }
+    It 'captures success, merged failure output and native status without executing source in the parent' {
+        Set-Variable -Name WbtChildProbeIsolation -Scope Global -Value parent
+        try {
+            $success = Invoke-TestPwshProbe -Source "Write-Output 'success-marker'; exit 0"
+            Assert-Equal 0 $success.ExitCode
+            Assert-Equal success-marker $success.Output
+            $failure = Invoke-TestPwshProbe -Source '$global:WbtChildProbeIsolation = "child"; Write-Output "stdout-marker"; Write-Error "stderr-marker"; exit 7'
+            Assert-Equal 7 $failure.ExitCode
+            Assert-Match stdout-marker $failure.Output
+            Assert-Match stderr-marker $failure.Output
+            Assert-Equal parent (Get-Variable -Name WbtChildProbeIsolation -Scope Global -ValueOnly)
+        } finally { Remove-Variable WbtChildProbeIsolation -Scope Global -ErrorAction SilentlyContinue }
+    }
+
+    It 'detects child failures being replaced by a successful exit code' {
+        Invoke-TestFunctionMutations -Find '$code = $LASTEXITCODE' -Replace '$code = 0' -Expected 'Assert-Equal' -Body {
+                $probe = Invoke-MutTestPwshProbe -Source 'exit 7'
+                Assert-Equal 7 $probe.ExitCode
+            } -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName @('Invoke-TestPwshProbe')
+    }
+}
+
+Describe 'Required literal script assertions' {
+    It 'keeps literal case, rejects vacuous inputs and refuses a missing source' {
+        Invoke-InTestDir -Files @{ 'source.ps1' = 'alpha BETA' } -Body { param($dir)
+            $path = Join-Path $dir source.ps1
+            Assert-TestScriptContains -ScriptPath $path -Literal alpha, BETA
+            Assert-Throws { Assert-TestScriptContains -ScriptPath $path -Literal beta } -MessagePattern 'required script literal: beta'
+            foreach ($invalid in @(@{ Literal = @() }, @{ Literal = @('') }, @{ Literal = @($null) })) {
+                Assert-Throws { Assert-TestScriptContains -ScriptPath $path @invalid } -MessagePattern 'nonempty string'
+            }
+            Assert-Throws { Assert-TestScriptContains -ScriptPath (Join-Path $dir missing.ps1) -Literal alpha } -MessagePattern 'missing.ps1'
+        }
+    }
+
+    It 'detects a literal assertion that accepts missing source content' {
+        Invoke-TestFunctionMutations -Find '$text.Contains($needle)' -Replace '$true' -Expected 'expected an exception but none was thrown' -Body {
+                $absent = 'missing-literal-' + [guid]::NewGuid().ToString('N')
+                Assert-Throws { Assert-MutTestScriptContains -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -Literal $absent }
+            } -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName @('Assert-TestScriptContains')
+    }
+}
+
 Describe 'Lifted module fixture arguments' {
     It 'forwards module initialization and body arguments and removes the module after failure' {
         $state = [pscustomobject]@{ ModulePath = ''; Seen = '' }
@@ -117,6 +200,11 @@ Describe 'Lifted module fixture arguments' {
                 Assert-True ([object]::ReferenceEquals($state, (Get-MutFixtureState))) 'constructor argument identity'
                 Assert-Equal $count $received.Count
             }
+            Invoke-TestFunctionMutations -Find '{ 1 }' -Replace '{ 2 }' -Expected 'value verdict' -Body {
+                    param($record)
+                    Assert-True ([object]::ReferenceEquals($state, $record)) 'mutation body state identity'
+                    Assert-Equal 1 (Get-MutTableFixture) 'value verdict'
+                } -ModuleArguments @{ Text = 'function Get-TableFixture { 1 }'; FixtureState = $state }
             Invoke-WithTestFunction -Name Invoke-StateBoundFixture -FixtureState $state -Definition {
                 $State.Add(@($args))
             } -Body { param($received)
@@ -130,6 +218,58 @@ Describe 'Lifted module fixture arguments' {
                 Invoke-WithTestFunction -Name Invoke-StateBoundFixture -FixtureState $state -BodyArgumentList 1 -Definition {} -Body {}
             } -MessagePattern 'cannot be combined'
         }
+    }
+}
+
+Describe 'Isolated function mutation tables' {
+    It 'forwards explicit body arguments and removes every mutant module after its assertion fails' {
+        $state = New-TestCallState
+        $arguments = @{ Text = 'function Get-TableFixture { 1 }'; BodyArgumentList = @($state, 'body argument') }
+        Invoke-WithFunctionModule @arguments -Body {
+            param($record, $argument)
+            Assert-Equal 'body argument' $argument
+            Assert-Equal 1 (Get-MutTableFixture)
+        }
+        Invoke-TestFunctionMutations -ModuleArguments $arguments -Case @(
+            @{ Find = '{ 1 }'; Replace = '{ 2 }'; Expected = 'value verdict' },
+            @{ Find = '{ 1 }'; Replace = '{ 3 }'; Expected = 'value verdict' }
+        ) -Body {
+            param($record, $argument)
+            Assert-Equal 'body argument' $argument
+            $record.Calls.Add((Get-Command Get-MutTableFixture).Module.Path)
+            Assert-Equal 1 (Get-MutTableFixture) 'value verdict'
+        }
+        Assert-Equal 2 $state.Calls.Count
+        foreach ($path in $state.Calls) { Assert-False (Test-Path -LiteralPath $path) }
+        Assert-Null (Get-Command Get-MutTableFixture -ErrorAction SilentlyContinue)
+    }
+
+    It 'rejects empty or incomplete cases and surviving mutants while keeping parse failures outside the expected assertion' {
+        $module = @{ Text = 'function Get-TableFixture { 1 }' }
+        foreach ($cases in @(@{ Case = @() }, @{ Case = @(@{ Find = ''; Replace = ''; Expected = 'assertion' }) },
+                @{ Case = @(@{ Find = '1'; Expected = 'assertion' }) }, @{ Case = @(@{ Find = '1'; Replace = ''; Expected = '' }) })) {
+            Assert-Throws { Invoke-TestFunctionMutations -ModuleArguments $module @cases -Body {} } -MessagePattern 'at least one|requires Replace|must be nonempty'
+        }
+        Assert-Throws {
+            Invoke-TestFunctionMutations -Find '{ 1 }' -Replace '{ 2 }' -Expected 'value verdict' -Body {
+                Assert-Equal 2 (Get-MutTableFixture)
+            } -ModuleArguments $module
+        } -MessagePattern 'expected an exception but none was thrown'
+        Assert-Throws {
+            Invoke-TestFunctionMutations -Find 'BrokenFixture' -Replace 'OtherFixture' -Expected 'parse' -Body { throw 'test body must not execute' } -ModuleArguments @{ Text = 'function Get-BrokenFixture {'; FunctionName = @('Get-BrokenFixture') }
+        } -MessagePattern 'parse'
+        Assert-Throws {
+            Invoke-TestFunctionMutations -Find '{ 1 }' -Replace '{ 2 }' -Expected 'fixture import failed' -Body { throw 'test body must not execute' } -ModuleArguments @{ Text = 'function Get-TableFixture { 1 }'; Prelude = "throw 'fixture import failed'" }
+        } -MessagePattern 'fixture import failed'
+    }
+}
+
+Describe 'Direct mutation inputs and required exceptions' {
+    It 'shares direct source inputs, rejects mixed recipes and detects a lost exception' {
+        Assert-Throws { Invoke-TestFunctionMutations -ScriptPath any -ModuleArguments @{ Text = 'function Get-A { 1 }' } -Find old -Replace new -Expected failure -Body {} } -MessagePattern 'cannot be mixed'
+        Assert-Throws { Invoke-TestFunctionMutations -ModuleArguments @{ Text = 'function Get-A { 1 }' } -Case @() -Find old -Body {} } -MessagePattern 'cannot be mixed'
+        Invoke-TestFunctionMutations -ModuleArguments @{ Text = "function Invoke-RequiredFixture { throw 'required fixture error' }" } `
+            -Find "throw 'required fixture error'" -Replace '$null' -Throws '^required fixture error$' -Body { Invoke-MutRequiredFixture }
     }
 }
 

@@ -31,9 +31,7 @@ Invoke-InTestDir { param($dir)
             } finally { Remove-Item Function:\Get-ParentOnlyColdFixture }
         }
         It 'rejects a probe that hides a failed child exit code' {
-            $text = (Get-Command Test-ColdModuleCommands).Definition
-            $source = "function Test-ColdModuleCommands {`n$text`n}"
-            Invoke-WithFunctionModule -Text $source -FunctionName Test-ColdModuleCommands -Find '$code = $LASTEXITCODE' -Replace '$code = 0' -Body {
+            Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName Test-ColdModuleCommands, Invoke-TestPwshProbe -Find '$code = $LASTEXITCODE' -Replace '$code = 0' -Body {
                 $result = Test-MutColdModuleCommands -ModulePath (Join-Path ([IO.Path]::GetTempPath()) 'absent-cold-fixture.psm1') -CommandName Get-Date
                 Assert-Throws { Assert-True ($result.ExitCode -ne 0) } -MessagePattern 'Assert-True failed'
             }

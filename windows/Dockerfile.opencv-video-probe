@@ -8,5 +8,7 @@ ARG PROBE_NONCE="0"
 
 # sccache-logs holds the persistent opencv-configure.log, the only record of why configure dropped a backend.
 RUN --mount=type=cache,target=C:\sccache-logs,id=sccache-logs-winamd64,sharing=shared `
-    --mount=type=bind,source=windows/scripts/diagnostics/Test-OpencvVideoBackends.ps1,target=C:\bkmnt\Test-OpencvVideoBackends.ps1 `
-    & 'C:\bkmnt\Test-OpencvVideoBackends.ps1' -Nonce "${PROBE_NONCE}"
+    --mount=type=bind,source=windows/scripts/diagnostics/Test-OpencvVideoBackends.ps1,target=C:\bkmnt\diagnostics\Test-OpencvVideoBackends.ps1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsDiagnostics.Common.psm1,target=C:\bkmnt\modules\WindowsDiagnostics.Common.psm1 `
+    --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
+    & 'C:\bkmnt\diagnostics\Test-OpencvVideoBackends.ps1' -Nonce "${PROBE_NONCE}"

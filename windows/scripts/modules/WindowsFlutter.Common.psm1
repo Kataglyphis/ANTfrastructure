@@ -10,6 +10,15 @@ if (-not (Get-Module -Name 'WindowsBuild.Common')) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1')
 }
 
+function Remove-FlutterPluginLink {
+    param([string]$Path, [switch]$RemoveStaleFile)
+    if (Test-Path -LiteralPath $Path -ErrorAction SilentlyContinue) {
+        Remove-Item -LiteralPath $Path -Force -Recurse -ErrorAction SilentlyContinue
+    }
+    & cmd.exe /c "rmdir /q /s `"$Path`" 2>nul"
+    if ($RemoveStaleFile) { & cmd.exe /c "del /q /f `"$Path`" 2>nul" }
+}
+
 function Clear-FlutterPluginSymlink {
     [CmdletBinding()]
     param(
@@ -23,8 +32,7 @@ function Clear-FlutterPluginSymlink {
     $symlinksDirToClean = Join-Path $WorkspaceDir "windows\flutter\ephemeral\.plugin_symlinks"
     if (Test-Path -LiteralPath $symlinksDirToClean) {
         Write-BuildLog -Context $Context -Message "Cleaning up old Flutter plugin symlinks directory: $symlinksDirToClean"
-        Remove-Item -LiteralPath $symlinksDirToClean -Force -Recurse -ErrorAction SilentlyContinue
-        & cmd.exe /c "rmdir /q /s `"$symlinksDirToClean`" 2>nul"
+        Remove-FlutterPluginLink -Path $symlinksDirToClean
     }
 }
 
@@ -57,12 +65,8 @@ function Repair-FlutterPluginSymlink {
 
                 $junctionPath = Join-Path $symlinksDir $pluginName
 
-                if (Test-Path -LiteralPath $junctionPath -ErrorAction SilentlyContinue) {
-                    Remove-Item -LiteralPath $junctionPath -Force -Recurse -ErrorAction SilentlyContinue
-                }
                 # Test-Path misses a broken symlink.
-                & cmd.exe /c "rmdir /q /s `"$junctionPath`" 2>nul"
-                & cmd.exe /c "del /q /f `"$junctionPath`" 2>nul"
+                Remove-FlutterPluginLink -Path $junctionPath -RemoveStaleFile
 
                 # A junction, not a copy: copying a deep vendored plugin tree overruns MAX_PATH.
                 Write-BuildLog -Context $Context -Message "Creating junction for $pluginName..."

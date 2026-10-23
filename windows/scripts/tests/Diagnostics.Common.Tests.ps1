@@ -48,3 +48,18 @@ function Get-ItemProperty { param($Path) if ($Path -notmatch 'Windows NT\\Curren
         }
     }
 }
+
+Describe 'Shared diagnostic result lines' {
+    It 'preserves exact success, failure and optional-detail bytes' {
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsDiagnostics.Common.psm1') -DisableNameChecking
+        $module = Get-Module WindowsDiagnostics.Common
+        Assert-True ($module.ExportedFunctions.ContainsKey('Find-ChildDirectoryFile')) 'diagnostics reexport their required library lookup'
+        $lines = @(
+            Write-DiagnosticResult -Name 'present' -Ok $true -Detail '64 bytes' 6>&1
+            Write-DiagnosticResult -Name 'absent' -Ok $false 6>&1
+            Write-DiagnosticResult -Name 'error' -Ok $false -Detail 'fixture failure' 6>&1
+            Write-DiagnosticResult -Name 'separate' -Ok $false -Detail 'second line' -SeparateDetail 6>&1
+        ) | ForEach-Object { "$_" }
+        Assert-Equal '[ OK ] present - 64 bytes|[FAIL] absent|[FAIL] error - fixture failure|[FAIL] separate|       second line' ($lines -join '|')
+    }
+}

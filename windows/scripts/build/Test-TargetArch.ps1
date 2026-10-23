@@ -62,21 +62,6 @@ $targetArch = Get-WindowsTargetArch -Arch $Arch
 $expected = Get-PeMachineType -Arch $targetArch
 $expectedName = (Get-WindowsTargetArchInfo -Arch $targetArch).PeMachineName
 
-# Named, so a diagnostic says what was found instead of a bare hex number.
-$machineNames = @{
-    0x0000 = 'UNKNOWN'
-    0x014C = 'I386'
-    0x8664 = 'AMD64'
-    0xAA64 = 'ARM64'
-    0xA641 = 'ARM64EC'
-    0xA64E = 'ARM64X'
-    0x01C0 = 'ARM'
-    0x01C4 = 'ARMNT'
-    0x0200 = 'IA64'
-    0x5032 = 'RISCV32'
-    0x5064 = 'RISCV64'
-}
-
 # ARM64EC and ARM64X belong to the ARM64 family and appear in Microsoft's own SDK libs.
 $acceptedMachines = @{
     0x8664 = @(0x8664)
@@ -96,7 +81,8 @@ function Test-NsisInstaller {
 }
 function Format-Machine {
     param([int]$Value)
-    $name = if ($machineNames.ContainsKey($Value)) { $machineNames[$Value] } else { 'UNRECOGNIZED' }
+    $name = Get-PeMachineName -Value $Value
+    if (-not $name) { $name = 'UNRECOGNIZED' }
     return ('0x{0:X4} ({1})' -f $Value, $name)
 }
 
@@ -129,7 +115,7 @@ function Get-CoffMachine {
         # An unlinked COFF object starts with IMAGE_FILE_HEADER, whose first field is Machine.
         $fs.Position = 0
         $machine = [int]$br.ReadUInt16()
-        if ($machineNames.ContainsKey($machine) -and $machine -ne 0) { return $machine }
+        if ((Get-PeMachineName -Value $machine) -and $machine -ne 0) { return $machine }
         return $null
     } catch {
         return $null
@@ -170,7 +156,7 @@ function Get-ArchiveMachine {
                     # Short-import header: Sig1=0, Sig2=0xFFFF, Version, Machine.
                     return [int]$bytes[$dataStart + 6] -bor ([int]$bytes[$dataStart + 7] -shl 8)
                 }
-                if ($machineNames.ContainsKey($m0) -and $m0 -ne 0) { return $m0 }
+                if ((Get-PeMachineName -Value $m0) -and $m0 -ne 0) { return $m0 }
             }
 
             # Members are 2-byte aligned.

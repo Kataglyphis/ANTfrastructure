@@ -4,11 +4,11 @@
 
 # The shared cross-lane helpers over fixtures and one real system DLL; nothing here needs a toolchain.
 
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+
 Describe 'Add-NinjaPerTuFlags' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
         $script:tmp = New-TestDir -Prefix 'wbt-ninja-'
         $script:ninja = Join-Path $script:tmp 'build.ninja'
         @(
@@ -50,36 +50,33 @@ Describe 'Add-NinjaPerTuFlags' {
 
 Describe 'Write-AbsentOnCrossMarker' {
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
-        $script:savedArch = $env:WINDOWS_TARGET_ARCH
         $script:tmp = New-TestDir -Prefix 'wbt-absent-'
     }
-    AfterAll { $env:WINDOWS_TARGET_ARCH = $script:savedArch; Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
     It 'creates the root + ensured dirs and writes the arch-named marker with the reason lines' {
-        $env:WINDOWS_TARGET_ARCH = 'arm64'
-        $m = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'litert-lm') -Component 'LiteRT-LM' -Reason @('bazel has no windows-arm64 config') -EnsureDirs @('include', 'bin')
-        Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\include')) 'include dir ensured'
-        Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\bin')) 'bin dir ensured'
-        Assert-Equal 'ABSENT-ON-ARM64.txt' (Split-Path $m -Leaf) 'default file name follows the target arch'
-        $body = Get-Content $m
-        Assert-True ($body[0] -match 'LiteRT-LM is intentionally ABSENT from the Windows arm64 bundle') 'first line names component + arch'
-        Assert-True ($body -contains 'bazel has no windows-arm64 config') 'reason line present'
-        Assert-True ($body[-1] -eq 'See docs/windows-cross-builds.md.') 'docs pointer last'
+        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
+            $m = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'litert-lm') -Component 'LiteRT-LM' -Reason @('bazel has no windows-arm64 config') -EnsureDirs @('include', 'bin')
+            Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\include')) 'include dir ensured'
+            Assert-True (Test-Path (Join-Path $script:tmp 'litert-lm\bin')) 'bin dir ensured'
+            Assert-Equal 'ABSENT-ON-ARM64.txt' (Split-Path $m -Leaf) 'default file name follows the target arch'
+            $body = Get-Content $m
+            Assert-True ($body[0] -match 'LiteRT-LM is intentionally ABSENT from the Windows arm64 bundle') 'first line names component + arch'
+            Assert-True ($body -contains 'bazel has no windows-arm64 config') 'reason line present'
+            Assert-True ($body[-1] -eq 'See docs/windows-cross-builds.md.') 'docs pointer last'
+        }
     }
 
     It 'honours an explicit file name (the TVM/IREE COMPILER marker)' {
-        $env:WINDOWS_TARGET_ARCH = 'arm64'
-        $m = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'tvm') -Component 'tvm_compiler.dll' -Reason @('needs target LLVM') -FileName 'COMPILER-ABSENT-ON-ARM64.txt'
-        Assert-Equal 'COMPILER-ABSENT-ON-ARM64.txt' (Split-Path $m -Leaf)
+        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
+            $m = Write-AbsentOnCrossMarker -Root (Join-Path $script:tmp 'tvm') -Component 'tvm_compiler.dll' -Reason @('needs target LLVM') -FileName 'COMPILER-ABSENT-ON-ARM64.txt'
+            Assert-Equal 'COMPILER-ABSENT-ON-ARM64.txt' (Split-Path $m -Leaf)
+        }
     }
 }
 
 Describe 'Get-PythonCMakeHintArgs' {
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
         $script:py = @{ Exe = 'C:\temp\cpython\PCbuild\amd64\python.exe'; Include = 'C:\temp\cpython\Include'; Lib = 'C:\temp\cpython\PCbuild\arm64\python314.lib'; LibDir = 'C:\temp\cpython\PCbuild\arm64' }
     }
 
@@ -101,34 +98,33 @@ Describe 'Get-PythonCMakeHintArgs' {
 
 Describe 'Get-TargetBuildPython (fixture CPython tree)' {
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
-        $script:savedArch = $env:WINDOWS_TARGET_ARCH
         $script:tmp = New-TestDir -Prefix 'wbt-tpy-'
         foreach ($d in 'PCbuild\amd64', 'PCbuild\arm64', 'Include') { New-Item -Path (Join-Path $script:tmp $d) -ItemType Directory -Force | Out-Null }
         Set-Content (Join-Path $script:tmp 'PCbuild\amd64\python.exe') 'x'
         Set-Content (Join-Path $script:tmp 'PCbuild\amd64\python314.lib') 'x'
         Set-Content (Join-Path $script:tmp 'PCbuild\arm64\python314.lib') 'x'
     }
-    AfterAll { $env:WINDOWS_TARGET_ARCH = $script:savedArch; Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
     It 'on a cross lane: host .Exe, target .Lib/.LibDir, Available when the target lib exists' {
-        $env:WINDOWS_TARGET_ARCH = 'arm64'
-        $t = Get-TargetBuildPython -CpythonDir $script:tmp
-        Assert-True ($t.Exe -like '*\PCbuild\amd64\python.exe') 'host interpreter runs'
-        Assert-True ($t.Lib -like '*\PCbuild\arm64\python314.lib') 'target import lib links'
-        Assert-True ($t.LibDir -like '*\PCbuild\arm64') 'target lib dir'
-        Assert-True $t.Available 'available while the target lib exists'
-        Remove-Item (Join-Path $script:tmp 'PCbuild\arm64\python314.lib') -Force
-        Assert-True (-not (Get-TargetBuildPython -CpythonDir $script:tmp).Available) 'not available once the target lib is gone'
-        Set-Content (Join-Path $script:tmp 'PCbuild\arm64\python314.lib') 'x'
+        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
+            $t = Get-TargetBuildPython -CpythonDir $script:tmp
+            Assert-True ($t.Exe -like '*\PCbuild\amd64\python.exe') 'host interpreter runs'
+            Assert-True ($t.Lib -like '*\PCbuild\arm64\python314.lib') 'target import lib links'
+            Assert-True ($t.LibDir -like '*\PCbuild\arm64') 'target lib dir'
+            Assert-True $t.Available 'available while the target lib exists'
+            Remove-Item (Join-Path $script:tmp 'PCbuild\arm64\python314.lib') -Force
+            Assert-True (-not (Get-TargetBuildPython -CpythonDir $script:tmp).Available) 'not available once the target lib is gone'
+            Set-Content (Join-Path $script:tmp 'PCbuild\arm64\python314.lib') 'x'
+        }
     }
 
     It 'on the native lane collapses to the host values' {
-        $env:WINDOWS_TARGET_ARCH = 'amd64'
-        $t = Get-TargetBuildPython -CpythonDir $script:tmp
-        Assert-True ($t.Lib -like '*\PCbuild\amd64\python314.lib') 'host == target'
-        Assert-True $t.Available
+        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'amd64' } {
+            $t = Get-TargetBuildPython -CpythonDir $script:tmp
+            Assert-True ($t.Lib -like '*\PCbuild\amd64\python314.lib') 'host == target'
+            Assert-True $t.Available
+        }
     }
 }
 

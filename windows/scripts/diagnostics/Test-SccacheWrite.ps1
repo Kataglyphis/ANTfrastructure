@@ -22,10 +22,27 @@ $ErrorActionPreference = 'Continue'
 if (-not $CacheDir) { $CacheDir = 'C:\sccache' }
 
 function Write-Section { param([string]$Title) Write-Host "`n=== $Title ===" }
-function Write-Result {
-    param([string]$Name, [bool]$Ok, [string]$Detail = '')
-    $tag = if ($Ok) { '[ OK ]' } else { '[FAIL]' }
-    Write-Host ("{0} {1}{2}" -f $tag, $Name, $(if ($Detail) { " - $Detail" } else { '' }))
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsDiagnostics.Common.psm1') -DisableNameChecking
+
+function Write-SccacheProbeEntries {
+    param([AllowEmptyCollection()][object[]]$Entry)
+    foreach ($item in $Entry) {
+        $kind = if ($item.PSIsContainer) { 'DIR ' } else { 'FILE' }
+        $size = if ($item.PSIsContainer) { '' } else { " ($($item.Length) bytes)" }
+        Write-Host ("    {0} {1}{2}" -f $kind, $item.Name, $size)
+    }
+}
+
+function Write-SccacheRenameProbe {
+    param([string]$Source, [string]$Destination, [string]$Name, [switch]$CleanupSourceOnFailure)
+    try {
+        [IO.File]::WriteAllBytes($Source, [byte[]](1..64))
+        [IO.File]::Move($Source, $Destination)
+        Write-DiagnosticResult $Name $true $Destination
+    } catch {
+        Write-DiagnosticResult $Name $false $_.Exception.Message
+        if ($CleanupSourceOnFailure) { Remove-Item -LiteralPath $Source -Force -ErrorAction SilentlyContinue }
+    }
 }
 
 function Write-SccacheProbeSource {
@@ -53,6 +70,13 @@ function Invoke-SccacheProbeCompile {
             Where-Object { $_ -notmatch $IgnoredPattern } | ForEach-Object { Write-Host "  cl| $_" }
         return ($LASTEXITCODE -eq 0)
     } finally { Pop-Location }
+}
+
+function Stop-SccacheProbeServer {
+    param([Parameter(Mandatory)][string]$SccachePath, [AllowEmptyString()][string]$Pattern = '')
+    $lines = @(& $SccachePath --stop-server 2>&1)
+    if ($Pattern) { $lines | Where-Object { $_ -match $Pattern } | ForEach-Object { Write-Host "  stop| $_" } }
+    $global:LASTEXITCODE = 0
 }
 
 function Start-SccacheProbeServer {
@@ -134,17 +158,13 @@ if (Test-Path $CacheDir) {
     Write-Host "  attributes : $($di.Attributes)"
     Write-Host "  full name  : $($di.FullName)"
     # A reparse point could resolve differently for the server process than for this script.
-    Write-Result 'not a reparse point' (-not ($di.Attributes -band [IO.FileAttributes]::ReparsePoint))
+    Write-DiagnosticResult 'not a reparse point' (-not ($di.Attributes -band [IO.FileAttributes]::ReparsePoint))
     # With types: a file where a single-hex bucket directory belongs would fail every insert into it.
     $top = @(Get-ChildItem $CacheDir -Force -ErrorAction SilentlyContinue)
     Write-Host "  entries    : $($top.Count)"
-    foreach ($e in $top) {
-        $kind = if ($e.PSIsContainer) { 'DIR ' } else { 'FILE' }
-        $size = if ($e.PSIsContainer) { '' } else { " ($($e.Length) bytes)" }
-        Write-Host ("    {0} {1}{2}" -f $kind, $e.Name, $size)
-    }
+    Write-SccacheProbeEntries -Entry $top
 } else {
-    Write-Result "$CacheDir exists" $false 'MISSING - the cache mount is not present in this RUN'
+    Write-DiagnosticResult "$CacheDir exists" $false 'MISSING - the cache mount is not present in this RUN'
 }
 
 # Hypothesis A: each step of sccache's nested-dir, temp-then-rename write is tested alone, so the failing one is named.
@@ -154,43 +174,30 @@ $probeRoot = Join-Path $CacheDir 'probe-tmp'
 $nested = Join-Path $probeRoot 'a1\b2'
 try {
     $null = New-Item -ItemType Directory -Force -Path $nested -ErrorAction Stop
-    Write-Result 'create nested directory' $true $nested
+    Write-DiagnosticResult 'create nested directory' $true $nested
 } catch {
-    Write-Result 'create nested directory' $false $_.Exception.Message
+    Write-DiagnosticResult 'create nested directory' $false $_.Exception.Message
 }
 
 $plain = Join-Path $nested 'plain.bin'
 try {
     [IO.File]::WriteAllBytes($plain, [byte[]](1..64))
-    Write-Result 'write file in nested dir' $true "$plain ($((Get-Item $plain).Length) bytes)"
+    Write-DiagnosticResult 'write file in nested dir' $true "$plain ($((Get-Item $plain).Length) bytes)"
 } catch {
-    Write-Result 'write file in nested dir' $false $_.Exception.Message
+    Write-DiagnosticResult 'write file in nested dir' $false $_.Exception.Message
 }
 
 # A rename across a wcifs layer boundary can fail where a plain write succeeds (cf. Test-LayerRename.ps1).
 $tmpFile = Join-Path $probeRoot 'staged.tmp'
 $renamed = Join-Path $nested 'renamed.bin'
-try {
-    [IO.File]::WriteAllBytes($tmpFile, [byte[]](1..64))
-    [IO.File]::Move($tmpFile, $renamed)
-    Write-Result 'rename temp -> cache path' $true $renamed
-} catch {
-    Write-Result 'rename temp -> cache path' $false $_.Exception.Message
-}
+Write-SccacheRenameProbe -Source $tmpFile -Destination $renamed -Name 'rename temp -> cache path'
 
 # Staged from %TEMP% instead: failing only here points at the temp directory.
 $sysTmp = [IO.Path]::GetTempPath()
 Write-Host "  system temp: $sysTmp (exists: $(Test-Path $sysTmp))"
 $tmpFile2 = Join-Path $sysTmp ('sccache-probe-' + [Guid]::NewGuid().ToString('N') + '.tmp')
 $renamed2 = Join-Path $nested 'from-systemp.bin'
-try {
-    [IO.File]::WriteAllBytes($tmpFile2, [byte[]](1..64))
-    [IO.File]::Move($tmpFile2, $renamed2)
-    Write-Result 'rename %TEMP% -> cache path' $true $renamed2
-} catch {
-    Write-Result 'rename %TEMP% -> cache path' $false $_.Exception.Message
-    Remove-Item $tmpFile2 -Force -ErrorAction SilentlyContinue
-}
+Write-SccacheRenameProbe -Source $tmpFile2 -Destination $renamed2 -Name 'rename %TEMP% -> cache path' -CleanupSourceOnFailure
 
 Remove-Item $probeRoot -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -208,10 +215,10 @@ if (-not $deep) {
         $probeFile = Join-Path $dir.FullName ('inherited-' + [Guid]::NewGuid().ToString('N').Substring(0, 8) + '.bin')
         try {
             [IO.File]::WriteAllBytes($probeFile, [byte[]](1..64))
-            Write-Result "write into inherited path" $true $dir.FullName
+            Write-DiagnosticResult "write into inherited path" $true $dir.FullName
             Remove-Item $probeFile -Force -ErrorAction SilentlyContinue
         } catch {
-            Write-Result "write into inherited path" $false "$($dir.FullName) -> $($_.Exception.Message)"
+            Write-DiagnosticResult "write into inherited path" $false "$($dir.FullName) -> $($_.Exception.Message)"
         }
     }
 }
@@ -268,7 +275,7 @@ Remove-Item $resFile -Force -ErrorAction SilentlyContinue
 # Hypothesis B: vary one sccache factor per unique compile; only the multilevel rows failing is an upstream bug.
 $sccache = (Get-Command sccache.exe -ErrorAction SilentlyContinue)
 if (-not $sccache) {
-    Write-Result 'sccache.exe on PATH' $false 'cannot run the compile test'
+    Write-DiagnosticResult 'sccache.exe on PATH' $false 'cannot run the compile test'
     return
 }
 Write-Host "`n  sccache: $($sccache.Source)"
@@ -289,8 +296,7 @@ function Invoke-SccacheVariant {
     Write-Section "variant: $Name"
 
     # The server reads its config once at start, so a running one would silently measure the old config.
-    & $sccache.Source --stop-server 2>&1 | Out-Null
-    $global:LASTEXITCODE = 0
+    Stop-SccacheProbeServer -SccachePath $sccache.Source
 
     if ($Chain) { $env:SCCACHE_MULTILEVEL_CHAIN = $Chain } else { Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue }
     if ($Endpoint) { $env:SCCACHE_WEBDAV_ENDPOINT = $Endpoint } else { Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue }
@@ -313,11 +319,10 @@ function Invoke-SccacheVariant {
 
     $writeErr = (Get-SccacheProbeStats -SccachePath $sccache.Source).WriteErrors
     Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
-    Write-Result "$Name wrote to cache" ($writeErr -eq 0) "compile exit ok=$compileOk, write errors=$writeErr"
+    Write-DiagnosticResult "$Name wrote to cache" ($writeErr -eq 0) "compile exit ok=$compileOk, write errors=$writeErr"
 
     # Stopping flushes the log (the server never idles out), where a failing variant names the path it could not write.
-    & $sccache.Source --stop-server 2>&1 | Out-Null
-    $global:LASTEXITCODE = 0
+    Stop-SccacheProbeServer -SccachePath $sccache.Source
     if ($env:SCCACHE_ERROR_LOG -and (Test-Path $env:SCCACHE_ERROR_LOG)) {
         $vlines = @(Get-Content $env:SCCACHE_ERROR_LOG -ErrorAction SilentlyContinue)
         $interesting = @($vlines | Where-Object {
@@ -397,9 +402,9 @@ if (-not $foreign) {
     foreach ($f in $foreign) {
         try {
             Move-Item -LiteralPath $f.FullName -Destination (Join-Path $quarantine $f.Name) -Force -ErrorAction Stop
-            Write-Result "moved $($f.Name) off the mount" $true
+            Write-DiagnosticResult "moved $($f.Name) off the mount" $true
         } catch {
-            Write-Result "moved $($f.Name) off the mount" $false $_.Exception.Message
+            Write-DiagnosticResult "moved $($f.Name) off the mount" $false $_.Exception.Message
         }
     }
     $after = Invoke-SccacheVariant -Name 'disk-only-after-cleanup' -Chain '' -Endpoint '' -Dir $origDir
@@ -472,11 +477,7 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
                     $cb = Join-Path $origDir $culprit
                     $kids = @(Get-ChildItem $cb -Force -ErrorAction SilentlyContinue)
                     Write-Host ("  bucket '{0}' holds {1} top-level entr(y|ies):" -f $culprit, $kids.Count)
-                    foreach ($k in $kids) {
-                        $kind = if ($k.PSIsContainer) { 'DIR ' } else { 'FILE' }
-                        $sz = if ($k.PSIsContainer) { '' } else { " ($($k.Length) bytes)" }
-                        Write-Host ("    {0} {1}{2}" -f $kind, $k.Name, $sz)
-                    }
+                    Write-SccacheProbeEntries -Entry $kids
                     # A valid bucket holds only single-hex dirs; a file here or a zero-byte object deeper is an anomaly.
                     $odd = @($kids | Where-Object { -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') })
                     if ($odd) { Write-Host ("  ANOMALY: {0} entr(y|ies) are not single-hex directories: {1}" -f $odd.Count, (($odd | ForEach-Object { $_.Name }) -join ', ')) }
@@ -535,7 +536,7 @@ if ($d -eq 0 -and $m -eq $repeat) {
 Write-Section 'concurrency: N unique compiles AT ONCE'
 
 $parallel = 16
-& $sccache.Source --stop-server 2>&1 | Out-Null
+Stop-SccacheProbeServer -SccachePath $sccache.Source
 $env:SCCACHE_MULTILEVEL_CHAIN = $origChain
 $env:SCCACHE_WEBDAV_ENDPOINT = $origEndpoint
 $env:SCCACHE_DIR = $origDir
@@ -587,7 +588,7 @@ Write-Host ("  depth: {0} chars -> {1}" -f $deepDir.Length, $deepDir)
 if (-not (Test-Path $deepDir)) {
     Write-Host '  could not create the deep directory (already a MAX_PATH failure at mkdir).'
 } else {
-    & $sccache.Source --stop-server 2>&1 | Out-Null
+    Stop-SccacheProbeServer -SccachePath $sccache.Source
     $env:SCCACHE_DIR = $origDir
     Start-SccacheProbeServer -SccachePath $sccache.Source -Pattern 'Listening'
 
@@ -596,7 +597,7 @@ if (-not (Test-Path $deepDir)) {
     $dobj = Join-Path $deepDir 'deep_probe_translation_unit_with_a_long_name.cpp.obj'
     Write-Host ("  source path: {0} chars / object path: {1} chars" -f $dsrc.Length, $dobj.Length)
     $compileOk = Invoke-SccacheProbeCompile -SccachePath $sccache.Source -Source $dsrc -Object $dobj -IgnoredPattern 'DEBUG|INFO |TRACE'
-    Write-Result 'deep compile exited 0' $compileOk
+    Write-DiagnosticResult 'deep compile exited 0' $compileOk
 
     $dErr = (Get-SccacheProbeStats -SccachePath $sccache.Source).WriteErrors
     Write-Section 'PATH-LENGTH VERDICT'
@@ -615,8 +616,7 @@ Write-Section "bulk write test: cache MOUNT vs plain directory (N unique objects
 function Invoke-BulkWrite {
     param([string]$Label, [string]$Dir, [int]$Count)
 
-    & $sccache.Source --stop-server 2>&1 | Out-Null
-    $global:LASTEXITCODE = 0
+    Stop-SccacheProbeServer -SccachePath $sccache.Source
     Remove-Item Env:\SCCACHE_MULTILEVEL_CHAIN -ErrorAction SilentlyContinue
     Remove-Item Env:\SCCACHE_WEBDAV_ENDPOINT -ErrorAction SilentlyContinue
     $env:SCCACHE_DIR = $Dir
@@ -673,8 +673,7 @@ if ($onMount.WriteErrors -gt 0 -and $offMount.WriteErrors -eq 0) {
 Write-Host ("  kept for the next run: {0}" -f $mountDir)
 
 Write-Section 'sccache error log'
-& $sccache.Source --stop-server 2>&1 | Where-Object { $_ -match 'Stopping|error' } | ForEach-Object { Write-Host "  stop| $_" }
-$global:LASTEXITCODE = 0
+Stop-SccacheProbeServer -SccachePath $sccache.Source -Pattern 'Stopping|error'
 $errLog = $env:SCCACHE_ERROR_LOG
 if ($errLog -and (Test-Path $errLog)) {
     $lines = @(Get-Content $errLog -ErrorAction SilentlyContinue)

@@ -86,9 +86,7 @@ $python = Start-MigraphxBuildSession -WorkDir $WorkDir
 
 try {
     Switch-BuildPhase '1. EP source + FetchContent seeds'
-    $epSource = Resolve-PinnedSource -Name 'onnxruntime-ep-amdgpu' -VersionKey 'ORT_AMDGPU_EP_COMMIT' -ShaKey 'ORT_AMDGPU_EP_SOURCE_SHA256' `
-        -UrlFormat 'https://github.com/onnxruntime/onnxruntime-ep-amdgpu/archive/{0}.tar.gz'
-    $epRoot = Save-PinnedSource -Source $epSource -WorkDir $WorkDir
+    $epRoot = Save-MigraphxPrimarySource -Component OrtAmdgpuEp -WorkDir $WorkDir
 
     $specs = @(Get-MigraphxPinnedSourceSpec -Set OrtAmdgpuEp)
     $resolved = @{}

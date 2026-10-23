@@ -86,6 +86,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
    Stateful Windows fixtures use the harness binding APIs; preserve collection identity, fake argv and nested-function restoration.
+   Required Windows siblings import unforced into their owner scope and fail on missing companions; test cold, private-warm and global-warm visibility.
+   Windows compiler-wrapper setup and removal share the canonical variable list; emptying an environment variable and removing it remain distinct.
+   Windows source builders share Meson binaries, ARM per-file feature selection, handoff transfers and sccache commands; retain caller flags and failure policy.
+   Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.

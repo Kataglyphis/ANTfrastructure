@@ -14,9 +14,9 @@ function script:New-CiBuildFixture([string]$Dir, [string]$Settings = '') {
         'if ($env:FAKE_FAIL -and "uv $args" -match $env:FAKE_FAIL) { exit 1 }'
     )
     $null = New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'repo\scripts\windows')
-    Set-Content -LiteralPath (Join-Path $Dir 'repo\pyproject.toml') -Value @('[project]', 'name = "demo-dist"')
-    Set-Content -LiteralPath (Join-Path $Dir 'repo\uv.lock') -Value 'version = 1'
-    if ($Settings) { Set-Content -LiteralPath (Join-Path $Dir 'repo\scripts\windows\python-ci.psd1') -Value $Settings }
+    $files = @{ 'repo/pyproject.toml' = "[project]`r`nname = `"demo-dist`"`r`n"; 'repo/uv.lock' = "version = 1`r`n" }
+    if ($Settings) { $files['repo/scripts/windows/python-ci.psd1'] = $Settings + "`r`n" }
+    Write-TestFileTree -Root $Dir -Files $files
     foreach ($stub in @(@{ n = 'static'; p = 'PythonVersion, PackageName, RepoRoot, ExtraPaths, BanditExcludes' },
             @{ n = 'packaging'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' },
             @{ n = 'wheeltests'; p = 'PythonVersion, RepoRoot, TargetArch, FreeThreadedWheel' })) {
