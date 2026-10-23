@@ -2664,6 +2664,8 @@ Export-ModuleMember -Function @(
     'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',
     'Edit-SourceFile',
+    'Add-SourceRegexGuard',
+    'Edit-SourceRegexText',
     'Invoke-NinjaBuildWithRetry',
     'Expand-SourceTarball',
     'Initialize-ExtractedGitRepo',

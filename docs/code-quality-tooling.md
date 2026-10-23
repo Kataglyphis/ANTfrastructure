@@ -558,7 +558,10 @@ Windows preparation shares cache, archive and dependency-walk mechanisms while
 retaining caller verdicts. Environment scopes and child-only sanitizer overrides
 have failure and mutation coverage. Fixture constructors own allocation cleanup;
 mutation controls must pass before a deliberately broken implementation can count
-as proof. Baseline budgets only decrease after an authoritative whole-tree scan.
+as proof. Baseline budgets only decrease after an authoritative whole-tree scan. Windows
+DLL graph, debugger transport, temporary environments and local git fixtures now
+share their existing owners. Regression controls retain independent expected bytes,
+arguments and failure verdicts; missing copied companions remain fatal.
 
 The cleanup separates SBOM construction and comparison, Python extraction, package-index
 fetching, dependency dispatch, option parsing and smoke probes from their drivers. Shared

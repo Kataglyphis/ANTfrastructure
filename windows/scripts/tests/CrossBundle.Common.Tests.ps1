@@ -2,23 +2,9 @@
 # Cross-build configure args and the DLL closure over synthetic PE import tables; real binaries are the arch gate's job.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsCrossBundle.Common.psm1') -Force -DisableNameChecking
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.GraphFixture.psm1') -ErrorAction Stop
 
 $script:Arm64 = [uint16]0xAA64
-
-# Two search dirs: a.dll -> b.dll -> c.dll ~> d.dll (~> a delay-load), with names only the OS has.
-function New-ClosureFixture {
-    param([Parameter(Mandatory)][string]$Dir, [uint16]$BMachine = $script:Arm64)
-    $first = Join-Path $Dir 'runtime\bin'
-    $second = Join-Path $Dir 'ort\bin'
-    New-OrtTestPe -Path "$first\a.dll" -Import @('b.dll', 'KERNEL32.dll') -Text @('a from the first dir') -Machine $script:Arm64
-    New-OrtTestPe -Path "$first\c.dll" -DelayImport @('d.dll') -Machine $script:Arm64
-    New-OrtTestPe -Path "$first\d.dll" -Text @('d') -Machine $script:Arm64
-    New-OrtTestPe -Path "$first\unused.dll" -Text @('nobody imports me') -Machine $script:Arm64
-    New-OrtTestPe -Path "$second\a.dll" -Text @('a from the second dir') -Machine $script:Arm64
-    New-OrtTestPe -Path "$second\B.DLL" -Import @('c.dll', 'api-ms-win-crt-runtime-l1-1-0.dll') -Machine $BMachine
-    New-OrtTestPe -Path "$Dir\app\app.exe" -Import @('a.dll', 'ucrtbase.dll') -Machine $script:Arm64
-    return @($first, $second)
-}
 
 Describe 'Get-CrossConfigureArgs' {
     It 'is empty on the host, so an x64 configure line does not change' {

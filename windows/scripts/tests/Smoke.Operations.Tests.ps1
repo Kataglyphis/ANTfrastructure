@@ -101,7 +101,9 @@ Describe 'Smoke command and compilation operations' {
     }
 
     It 'detects a finding verdict that accepts nonempty findings' {
-        Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsSmokeTest.Common.psm1' -Find '@($Finding).Count -eq 0' -Replace '@($Finding).Count -ge 0' -Body {
+        Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsSmokeTest.Common.psm1' `
+            -FunctionName Initialize-SmokeTestRun, Get-SmokeTestSummary, Complete-SmokeSection, Assert-Test, Request-SmokeAbort `
+            -Find '@($Finding).Count -eq 0' -Replace '@($Finding).Count -ge 0' -Body {
             Initialize-MutSmokeTestRun
             Assert-MutTest -Name missing -Finding @('missing artifact')
             Assert-Throws { Assert-Equal 1 (Get-MutSmokeTestSummary).Failed 'nonempty findings must fail' } -MessagePattern 'nonempty findings must fail'

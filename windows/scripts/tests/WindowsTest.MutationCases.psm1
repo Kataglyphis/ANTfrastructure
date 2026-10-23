@@ -20,3 +20,12 @@ function Invoke-TestMutationChecks {
 }
 
 Export-ModuleMember -Function Invoke-TestMutationChecks
+
+function Invoke-TestFunctionSourceProbe {
+    param([Parameter(Mandatory)][string]$FixtureSource, [Parameter(Mandatory)][string]$ProbeSource)
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($FixtureSource))
+    $binding = "`$ErrorActionPreference = 'Stop'`n`$FixtureSource = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$encoded'))"
+    Invoke-TestPwshProbe -Source ($binding + "`n" + $ProbeSource)
+}
+
+Export-ModuleMember -Function Invoke-TestFunctionSourceProbe

@@ -8,7 +8,7 @@ Describe 'WindowsWasmOpt.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsWasmOpt.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('wasmopt-' + (Get-Random))) -Force).FullName
+    $script:root = New-TestDir -Prefix 'wasmopt-'
     $script:fixtureEnv = Join-Path $script:root 'versions.env'
     Set-Content -Path $script:fixtureEnv -Value @(
       '# noforward'

@@ -228,6 +228,16 @@ function Write-BuildLogSuccess {
     Write-ContextLog -Context $Context -Message $Message -Level Success
 }
 
+function Write-BuildCommandOutput {
+    param([Parameter(Mandatory)][pscustomobject]$Context, [Parameter(ValueFromPipeline)]$InputObject,
+        [Collections.Generic.List[string]]$Capture)
+    process {
+        $line = $InputObject.ToString()
+        if ($null -ne $Capture) { $Capture.Add($line) }
+        if (-not [string]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
+    }
+}
+
 function Invoke-BuildExternal {
     param(
         [Parameter(Mandatory)]
@@ -263,20 +273,9 @@ function Invoke-BuildExternal {
     $global:LASTEXITCODE = 0
 
     try {
-        $capturedOutput = @()
-        if ($parameterList -and $parameterList.Count -gt 0) {
-            & $File @parameterList 2>&1 | ForEach-Object {
-                $line = $_.ToString()
-                $capturedOutput += $line
-                if (-not [String]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
-            }
-        } else {
-            & $File 2>&1 | ForEach-Object {
-                $line = $_.ToString()
-                $capturedOutput += $line
-                if (-not [String]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
-            }
-        }
+        $capturedOutput = [Collections.Generic.List[string]]::new()
+        if (-not $parameterList) { $parameterList = @() }
+        & $File @parameterList 2>&1 | Write-BuildCommandOutput -Context $Context -Capture $capturedOutput
 
         $exitCode = $LASTEXITCODE
 
@@ -680,6 +679,7 @@ Export-ModuleMember -Function @(
     'Write-BuildLogWarning',
     'Write-BuildLogError',
     'Write-BuildLogSuccess',
+    'Write-BuildCommandOutput',
     'Invoke-BuildExternal',
     'Invoke-BuildOptional',
     'Invoke-BuildGate',

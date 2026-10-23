@@ -6,9 +6,7 @@
 
 Describe 'GStreamer cross-lane compiler-rt self-heal (#135 follow-up)' {
 
-    $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $gstPath = Join-Path $repoWin 'scripts\build\Build-GstreamerFromSource.ps1'
-    $gstText = Get-Content -Raw $gstPath
+    $gstText = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-GstreamerFromSource.ps1').Extent.Text
 
     It 'mines the aarch64 builtins from the LLVM release archive' {
         Assert-Match 'clang_rt\.builtins-aarch64\.lib' $gstText
@@ -34,9 +32,7 @@ Describe 'GStreamer cross-lane compiler-rt self-heal (#135 follow-up)' {
 
 Describe 'GStreamer cross-lane opus intrinsics (reverted to the proven disabled state)' {
 
-    $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $gstPath = Join-Path $repoWin 'scripts\build\Build-GstreamerFromSource.ps1'
-    $gstText = Get-Content -Raw $gstPath
+    $gstText = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-GstreamerFromSource.ps1').Extent.Text
 
     It 'keeps opus intrinsics DISABLED on both lanes (the 08-26 proven shape)' {
         Assert-True ($gstText.Contains('-Dopus:intrinsics=disabled')) 'intrinsics must stay disabled'

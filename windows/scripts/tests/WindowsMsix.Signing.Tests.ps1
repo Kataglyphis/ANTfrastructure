@@ -11,8 +11,7 @@ Describe 'WindowsMsix.Signing' {
       Import-Module (Join-Path $modDir "$m.psm1") -Force -DisableNameChecking
     }
 
-    $script:workspace = (New-Item -ItemType Directory `
-        -Path (Join-Path $env:TEMP ('msix-signing-' + (Get-Random))) -Force).FullName
+    $script:workspace = New-TestDir -Prefix 'msix-signing-'
     $script:ctx = New-BuildContext -Workspace $script:workspace `
       -LogDir (Join-Path $script:workspace 'logs')
     $script:msixOut = Join-Path $script:workspace 'out.msix'

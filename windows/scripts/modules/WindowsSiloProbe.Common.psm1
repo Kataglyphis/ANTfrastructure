@@ -5,7 +5,23 @@
 
 Set-StrictMode -Version Latest
 
-# Setup only for the LSM/silo probes; the measurement itself differs per probe and stays in each.
+function Get-SiloWininitId {
+    Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId
+}
+
+function Invoke-SiloDebugger {
+    param(
+        [Parameter(Mandatory)][string]$CdbPath,
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][string]$OutDir,
+        [Parameter(Mandatory)][string]$Command,
+        [Parameter(Mandatory)][string]$LogPath,
+        [switch]$Invasive
+    )
+    [string[]]$attach = if ($Invasive) { '-p' } else { '-pv', '-p' }
+    $symbols = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
+    & $CdbPath @attach $ProcessId -y $symbols -c $Command > $LogPath 2>&1
+}
 
 <#
 .SYNOPSIS
@@ -162,6 +178,8 @@ function Get-SiloSvchost {
 
 Export-ModuleMember -Function @(
     'Get-CdbPath',
+    'Get-SiloWininitId',
+    'Invoke-SiloDebugger',
     'Grant-SiloProbeReadAccess',
     'Initialize-LsmProbeOutDir',
     'Start-SiloBaitContainer',

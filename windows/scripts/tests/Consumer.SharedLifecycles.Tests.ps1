@@ -1,4 +1,6 @@
 #requires -Version 7.0
+
+Import-Module (Join-Path $PSScriptRoot 'WindowsConsumer.ExecutionFixtures.psm1') -ErrorAction Stop
 # Fake build tools cover dispatch, diagnostics and cleanup; real compiler, junction and packaging compatibility remains build coverage.
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsScripts.Shared.psm1')
@@ -182,16 +184,8 @@ Describe 'Shared compiler wrapper environment policy' {
             }
             Assert-Equal fixture-cache $env:RUSTC_WRAPPER
             Assert-Equal 'cuda override' $env:CMAKE_CUDA_COMPILER_LAUNCHER
-            $prelude = @'
-function Get-CimInstance { [pscustomobject]@{ NumberOfLogicalProcessors = 1 } }
-function Get-Command { return $null }
-function Write-BuildLog {}
-function Write-CmakeEnvironmentDiagnostics {}
-function Get-CmakeConfigureArgs { return @('-B', 'fixture-root') }
-function Invoke-BuildExternal {}
-function cmake { $global:LASTEXITCODE = 0 }
-'@
-            Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsCMake.Common.psm1' -FunctionName Invoke-CmakeConfigureAndBuild -Prelude $prelude -Body {
+            $fixture = New-TestCmakeExecutionModuleArguments
+            Invoke-WithFunctionModule @fixture -Body {
                 Invoke-MutCmakeConfigureAndBuild -Context ([pscustomobject]@{}) -BuildPath fixture-root -Preset fixture -Configuration Release -DisableSccache
             }
             foreach ($name in $script:ConsumerNativeWrappers + 'CMAKE_CUDA_COMPILER_LAUNCHER') {
@@ -212,6 +206,7 @@ function cmake { $global:LASTEXITCODE = 0 }
 `$cases = @(
     @('WindowsBuild.Common', 'WindowsScripts.Shared', 'Set-CompilerWrapperEnvironment'),
     @('WindowsCMake.Common', 'WindowsScripts.Shared', 'Set-CompilerWrapperEnvironment'),
+    @('WindowsCMake.Common', 'WindowsBuild.Common', 'Write-BuildCommandOutput'),
     @('WindowsCodeQL.Common', 'WindowsScripts.Shared', 'Set-CompilerWrapperEnvironment'),
     @('WindowsGstPlugins.Common', 'WindowsTargetArch.Common', 'Get-WindowsTargetArch'),
     @('WindowsSourceBuild.Common', 'WindowsTargetArch.Common', 'Get-PeMachineType'),
@@ -239,6 +234,8 @@ function cmake { $global:LASTEXITCODE = 0 }
     @('WindowsOrtPayload.Common', 'WindowsScripts.Shared', 'Initialize-BuildDirectory'),
     @('WindowsBuildDriver.Common', 'WindowsScripts.Shared', 'Get-DriveFreeSpaceGb'),
     @('WindowsTesting.Common', 'WindowsScripts.Shared', 'Invoke-WithProcessEnvironment'),
+    @('WindowsSmokeTest.Common', 'WindowsScripts.Shared', 'Invoke-WithProcessEnvironment'),
+    @('WindowsCrossBundle.Common', 'WindowsTargetArch.Common', 'Get-DllDependencyGraph'),
     @('WindowsRustToolchain.Common', 'WindowsScripts.Shared', 'Invoke-DownloadWithRetry'),
     @('WindowsContainerImage.Common', 'WindowsScripts.Shared', 'Resolve-BuildValue')
 )
@@ -272,7 +269,7 @@ foreach (`$case in `$cases) {
         $result = Invoke-TestPwshProbe -Source $probe
         Assert-Equal 0 $result.ExitCode $result.Output
         Invoke-InTestDir { param($dir)
-            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common', 'WindowsBuildDriver.Common', 'WindowsTesting.Common')
+            $seeds = @('WindowsBuild.Common', 'WindowsCMake.Common', 'WindowsCodeQL.Common', 'WindowsGstPlugins.Common', 'WindowsSourceBuild.Common', 'WindowsRustToolchain.Common', 'WindowsContainerImage.Common', 'WindowsMigraphx.Common', 'WindowsTvm.Common', 'WindowsFlutter.Common', 'WindowsFormatting.Common', 'WindowsMsix.Signing', 'WindowsMsix.Common', 'WindowsUv.Common', 'WindowsPythonApp.Common', 'WindowsOrtPayload.Common', 'WindowsBuildDriver.Common', 'WindowsTesting.Common', 'WindowsSmokeTest.Common', 'WindowsCrossBundle.Common')
             Copy-TestModuleClosure -Seed $seeds -Destination $dir
             $mutations = @(
                 @{ Module = 'WindowsSourceBuild.Common'; Find = 'Import-Module $targetArchPath -ErrorAction Stop'; Replace = 'if (-not (Get-Module -Name WindowsTargetArch.Common)) { Import-Module $targetArchPath -ErrorAction Stop }'; Message = 'source-build architecture re-export missing' },
@@ -311,7 +308,9 @@ foreach (`$case in `$cases) {
                 @{ Owner = 'WindowsPythonApp.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsOrtPayload.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
                 @{ Owner = 'WindowsBuildDriver.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
-                @{ Owner = 'WindowsTesting.Common'; Copy = @(); Message = 'WindowsBuild.Common.psm1' }
+                @{ Owner = 'WindowsTesting.Common'; Copy = @(); Message = 'WindowsBuild.Common.psm1' },
+                @{ Owner = 'WindowsSmokeTest.Common'; Copy = @(); Message = 'WindowsScripts.Shared.psm1' },
+                @{ Owner = 'WindowsCrossBundle.Common'; Copy = @(); Message = 'WindowsTargetArch.Common.psm1' }
             )
             foreach ($case in $cases) {
                 $destination = Join-Path $dir $case.Owner

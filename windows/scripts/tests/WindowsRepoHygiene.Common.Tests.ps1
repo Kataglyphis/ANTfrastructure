@@ -7,25 +7,19 @@ Describe 'WindowsRepoHygiene.Common' {
   BeforeAll {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsRepoHygiene.Common.psm1'
     Import-Module $modulePath -Force
+    Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -DisableNameChecking
 
-    $script:sandbox = (New-Item -ItemType Directory `
-        -Path (Join-Path $env:TEMP ('repohygiene-' + (Get-Random))) -Force).FullName
+    $script:sandbox = New-TestDir -Prefix 'repohygiene-'
 
     # Identity is per-repo so the suite never depends on or touches the host's global git config.
     function script:New-TestRepo {
       param([string]$Name)
-      $path = (New-Item -ItemType Directory -Path (Join-Path $script:sandbox $Name) -Force).FullName
-      & git -C $path init --quiet --initial-branch=main 2>$null
-      & git -C $path config user.email 'test@example.invalid'
-      & git -C $path config user.name 'Repo Hygiene Test'
-      return $path
+      New-TestGitRepository -Path (Join-Path $script:sandbox $Name) -UserName 'Repo Hygiene Test' -UserEmail 'test@example.invalid'
     }
 
     function script:Add-TestCommit {
       param([string]$Path, [string]$File, [string]$Content, [string]$Message)
-      Set-Content -LiteralPath (Join-Path $Path $File) -Value $Content -Encoding utf8
-      & git -C $Path add -A 2>$null
-      & git -C $Path commit --quiet -m $Message 2>$null
+      Add-TestGitCommit -Path $Path -Files @{ $File = "$Content$([Environment]::NewLine)" } -Message $Message
     }
 
     # Child: the repository used as a submodule
@@ -40,7 +34,7 @@ Describe 'WindowsRepoHygiene.Common' {
     script:Add-TestCommit -Path $script:parent -File 'root.txt' -Content 'root' -Message 'root'
     & git -C $script:parent -c protocol.file.allow=always submodule add --quiet `
       ($script:child -replace '\\', '/') 'sub' 2>$null
-    & git -C $script:parent commit --quiet -m 'add submodule' 2>$null
+    Add-TestGitCommit -Path $script:parent -Message 'add submodule'
     $script:parentSub = Join-Path $script:parent 'sub'
   }
 
@@ -146,12 +140,9 @@ Describe 'WindowsRepoHygiene.Common' {
     It 'reports unreachable for a commit that exists only locally' {
       $clone = Join-Path $script:sandbox 'child-local-only'
       & git -c protocol.file.allow=always clone --quiet ($script:child -replace '\\', '/') $clone 2>$null
-      & git -C $clone config user.email 'test@example.invalid'
-      & git -C $clone config user.name 'Repo Hygiene Test'
+      Set-TestGitIdentity -Path $clone -UserName 'Repo Hygiene Test' -UserEmail 'test@example.invalid'
       # A commit the remote never saw: no branch can contain it, so all three escalation steps come up empty.
-      Set-Content -LiteralPath (Join-Path $clone 'local.txt') -Value 'local' -Encoding utf8
-      & git -C $clone add -A 2>$null
-      & git -C $clone commit --quiet -m 'local only' 2>$null
+      Add-TestGitCommit -Path $clone -Files @{ 'local.txt' = "local$([Environment]::NewLine)" } -Message 'local only'
 
       $result = Test-SubmoduleCommitReachable -SubmodulePath $clone
       $result.Reachable | Should -BeFalse

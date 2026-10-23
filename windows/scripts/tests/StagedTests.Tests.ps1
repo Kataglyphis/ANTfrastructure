@@ -14,8 +14,7 @@ function script:New-FakeTest([string]$Name, [string]$Kind, [int]$Exit, [string[]
 function script:Invoke-FakeSuite {
     param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][object[]]$Tests, [scriptblock]$CrashEventReader)
     $entries = foreach ($t in $Tests) {
-        $body = @('@echo off') + @($t.Lines | ForEach-Object { "echo $_" }) + "exit /b $($t.Exit)"
-        Set-Content -LiteralPath (Join-Path $Dir "$($t.Name).cmd") -Value $body -Encoding ascii
+        $null = New-TestBatchTool -Directory $Dir -Name "$($t.Name).cmd" -Line @($t.Lines | ForEach-Object { "echo $_" }) -ExitCode $t.Exit
         @{ exe = "$($t.Name).cmd"; kind = $t.Kind }
     }
     ConvertTo-Json -InputObject @($entries) | Set-Content -LiteralPath (Join-Path $Dir 'tests.json') -Encoding utf8

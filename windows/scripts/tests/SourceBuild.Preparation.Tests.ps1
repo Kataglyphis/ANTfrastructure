@@ -2,6 +2,7 @@
 # Fixtures cover preparation, artifact verdicts and DLL graph policy; they do not compile upstream projects or fetch from the network.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'WindowsSourceBuild.GraphFixture.psm1') -ErrorAction Stop
 
 function New-SourcePreparationArguments {
     param([string[]]$FunctionName, [scriptblock]$Body, [Collections.IDictionary[]]$Mutation,
@@ -86,28 +87,31 @@ function Assert-DllDependencyGraphFixture {
         New-OrtTestPe -Path (Join-Path $dir a.dll) -Import missingA.dll, shared.dll, system.dll
         New-OrtTestPe -Path (Join-Path $dir b.dll) -Import missingB.dll, SHARED.DLL
         New-OrtTestPe -Path (Join-Path $dir shared.dll) -Import a.dll
-        New-OrtTestPe -Path (Join-Path $dir 'System32/system.dll')
+        New-OrtTestPe -Path (Join-Path $dir 'System32/system.dll') -Import child.dll
+        New-OrtTestPe -Path (Join-Path $dir second.exe) -Import other.dll, absent.dll
+        New-OrtTestPe -Path (Join-Path $dir api-ms-skip.dll) -DelayImport api-child.dll
+        foreach ($name in 'other.dll', 'child.dll', 'api-child.dll') { New-OrtTestPe -Path (Join-Path $dir $name) }
         $null = New-Item -ItemType Directory -Path (Join-Path $dir dir.dll)
-        $read = [Collections.Generic.List[string]]::new()
+        $state = New-TestCallState @{ AllowSystem = $false }
         $reader = {
             param($path)
             $name = [IO.Path]::GetFileName($path)
-            Assert-False ($name -eq 'system.dll') 'OS imports are excluded from recursion'
-            $read.Add($name)
+            Assert-False ($name -eq 'system.dll' -and -not $state.AllowSystem) 'OS imports are excluded from recursion'
+            $state.Calls.Add($name)
             if ($name -eq 'dir.dll') { return }
             Get-PeImportNames -Path $path -IncludeDelayLoad
         }.GetNewClosure()
         $options = @{ Path = (Join-Path $dir root.dll); SearchDirectory = @($dir, (Join-Path $dir System32)); ReadImports = $reader }
         $breadth = @(Get-MutDllDependencyGraph @options)
         Assert-Equal 'a.dll|missingRoot.dll|b.dll|dir.dll|missingA.dll|shared.dll|system.dll|missingB.dll' ($breadth.Name -join '|') 'breadth-first graph order'
-        Assert-Equal 'root.dll|a.dll|b.dll|shared.dll' ($read -join '|') 'API sets, cycles, duplicates and OS children are not read'
+        Assert-Equal 'root.dll|a.dll|b.dll|shared.dll' ($state.Calls -join '|') 'API sets, cycles, duplicates and OS children are not read'
         Assert-Equal 'a.dll' $breadth[4].From
         Assert-Equal (Join-Path $dir a.dll) $breadth[0].Path
         Assert-Null $breadth[3].Path 'a directory is not a loadable file'
-        $read.Clear()
+        $state.Calls.Clear()
         $depth = @(Get-MutDllDependencyGraph @options -DepthFirst)
         Assert-Equal 'a.dll|missingA.dll|shared.dll|system.dll|missingRoot.dll|b.dll|missingB.dll|dir.dll' ($depth.Name -join '|') 'depth-first graph order'
-        Assert-Equal 'root.dll|a.dll|shared.dll|b.dll' ($read -join '|')
+        Assert-Equal 'root.dll|a.dll|shared.dll|b.dll' ($state.Calls -join '|')
         $known = [Collections.Generic.HashSet[string]]::new()
         [void]$known.Add('b.dll')
         $withDirectory = @(Get-MutDllDependencyGraph @options -Seen $known -DepthFirst -SystemDirectoryPattern '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)' -ResolveImport {
@@ -119,6 +123,17 @@ function Assert-DllDependencyGraphFixture {
         Assert-False ($withDirectory.Name -contains 'missingB.dll')
         Assert-True $known.Contains('missingroot.dll') 'visited keys retain the builder lower-case convention'
         Assert-Throws { Get-MutDllDependencyGraph @options -ReadImports { throw 'import reader failed' } } -MessagePattern 'import reader failed'
+        $options.Path = @((Join-Path $dir root.dll), (Join-Path $dir second.exe))
+        $state.Calls.Clear()
+        $defaults = @(Get-MutDllDependencyGraph @options)
+        Assert-Equal 'a.dll|missingRoot.dll|b.dll|dir.dll|other.dll|absent.dll|missingA.dll|shared.dll|system.dll|missingB.dll' ($defaults.Name -join '|') 'multiple seeds are processed before dependency children'
+        Assert-Equal 'root.dll|second.exe|a.dll|b.dll|other.dll|shared.dll' ($state.Calls -join '|') 'default exclusions apply to every root'
+        $state.Calls.Clear()
+        $state.AllowSystem = $true
+        $all = @(Get-MutDllDependencyGraph @options -SkipImportPattern '' -SystemDirectoryPattern '')
+        Assert-Equal 'a.dll|missingRoot.dll|b.dll|api-ms-skip.dll|EXT-MS-SKIP.dll|dir.dll|other.dll|absent.dll|missingA.dll|shared.dll|system.dll|missingB.dll|api-child.dll|child.dll' ($all.Name -join '|') 'explicit policies retain indexed API sets and system children'
+        Assert-Equal 'root.dll|second.exe|a.dll|b.dll|api-ms-skip.dll|other.dll|shared.dll|system.dll|api-child.dll|child.dll' ($state.Calls -join '|') 'breadth-first traversal spans all seed queues'
+        Assert-Null ($all | Where-Object Name -eq absent.dll).Path
     }
 }
 
@@ -209,6 +224,23 @@ function Assert-SourcePatchSetContract {
     }
 }
 
+function Assert-SourceRegexGuardFixture {
+    $text = 'alpha($value); middle beta({ $1 }); alpha(last);'
+    $actual = @(Add-MutSourceRegexGuard -Text $text -Pattern 'alpha\([^;]*\);', 'beta\([^;]*\);' -Condition '!defined(_WIN32)' -Comment 'fixture $1' -Indent '  ')
+    $expected = "#if !defined(_WIN32)  // fixture `$1`n  alpha(`$value);`n#endif middle #if !defined(_WIN32)  // fixture `$1`n  beta({ `$1 });`n#endif #if !defined(_WIN32)  // fixture `$1`n  alpha(last);`n#endif"
+    Assert-Equal 1 $actual.Count 'a guard transform returns only the transformed text'
+    Assert-Equal $expected $actual[0] 'guarded source bytes preserve every literal match and boundary'
+    Assert-Equal '#if ENABLED' (Add-MutSourceRegexGuard -Text '#if ENABLED' -Pattern 'absent' -Condition '!defined(_WIN32)')
+    Assert-Equal '' (Add-MutSourceRegexGuard -Text '' -Pattern 'alpha' -Condition ENABLED)
+    Assert-Equal 'unchanged' (Add-MutSourceRegexGuard -Text unchanged -Pattern @() -Condition ENABLED)
+    Assert-Equal "#if ENABLED`nalpha`n#endif" (Add-MutSourceRegexGuard -Text alpha -Pattern alpha -Condition ENABLED) 'comments and indentation are optional'
+    Assert-Equal 'done AB' (Edit-MutSourceRegexText -Text 'ab AB' -Map @(
+        @{ Pattern = '(a)b'; Replacement = '${1}bc' }
+        @{ Pattern = 'abc'; Replacement = 'done' }
+    )) 'ordered regex passes retain capture substitution and case sensitivity'
+
+}
+
 Describe 'Shared source-build preparation' {
     $scenarios = @(
         @{ Name = 'gates compiler caching on remote configuration plus an executable and preserves the caller job limit'
@@ -230,7 +262,10 @@ Describe 'Shared source-build preparation' {
             ScriptPath = 'windows/scripts/modules/WindowsTargetArch.Common.psm1'
             FunctionName = @('Get-DllDependencyEntry', 'Get-DllDependencyGraph'); Body = { Assert-DllDependencyGraphFixture }; Mutation = @(
                 @{ Find = 'if ($Context.DepthFirst)'; Replace = 'if ($false)'; Expected = 'depth-first graph order' }
-                @{ Find = 'if ($hit -and $hit -notmatch $Context.SystemDirectoryPattern)'; Replace = 'if ($hit)'; Expected = 'OS imports are excluded from recursion' }
+                @{ Find = 'if ($hit -and (-not $Context.SystemDirectoryPattern -or $hit -notmatch $Context.SystemDirectoryPattern))'; Replace = 'if ($hit)'; Expected = 'OS imports are excluded from recursion' }
+                @{ Find = 'Pending = [Collections.Generic.List[string]]::new([string[]]$Path)'; Replace = 'Pending = [Collections.Generic.List[string]]::new([string[]]@($Path[0]))'; Expected = 'multiple seeds are processed before dependency children' }
+                @{ Find = 'SkipImportPattern = $SkipImportPattern'; Replace = "SkipImportPattern = '^(api|ext)-ms-'"; Expected = 'explicit policies retain indexed API sets and system children' }
+                @{ Find = '(-not $Context.SystemDirectoryPattern -or $hit -notmatch $Context.SystemDirectoryPattern)'; Replace = '($hit -notmatch $Context.SystemDirectoryPattern)'; Expected = 'explicit policies retain indexed API sets and system children' }
             ) }
         @{ Name = 'enforces caller artifact cardinality while retaining file filters and recursive policy'
             FunctionName = @('Get-RequiredBuildArtifact'); Body = { Assert-RequiredBuildArtifactFixture }
@@ -247,6 +282,21 @@ Describe 'Shared source-build preparation' {
                 @{ Find = '($changed + 1)'; Replace = '($changed + 2)'; Expected = 'unchanged files do not consume a target index' }
                 @{ Find = 'if (& $Patch $item ($changed + 1))'; Replace = 'if ((& $Patch $item ($changed + 1)) -or $true)'; Expected = 'only changed files are counted' }
                 @{ Find = '& $OnChanged $item $changed | Out-Null'; Replace = '& $OnChanged $item $changed'; Expected = 'callbacks do not pollute the scalar count' }
+            ) }
+        @{ Name = 'wraps every ordered regex match in literal source guards without owning file policy'
+            ScriptPath = 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1'
+            FunctionName = @('Add-SourceRegexGuard', 'Edit-SourceRegexText'); Body = { Assert-SourceRegexGuardFixture }; Mutation = @(
+                @{ Find = '$prefix + $match.Value + "`n#endif"'; Replace = '$prefix + "`n#endif"'; Expected = 'guarded source bytes' }
+                @{ Find = '$prefix + $match.Value + "`n#endif"'; Replace = '$prefix + $match.Value'; Expected = 'guarded source bytes' }
+                @{ Find = 'foreach ($expression in $Pattern)'; Replace = 'foreach ($expression in @($Pattern[0]))'; Expected = 'guarded source bytes' }
+                @{ Find = 'foreach ($edit in $Map)'; Replace = 'foreach ($edit in @($Map[0]))'; Expected = 'guarded source bytes|ordered regex passes' }
+            ) }
+        @{ Name = 'shares breadth-first traversal while retaining indexed API sets, system children and per-DLL machine verdicts'
+            ScriptPath = 'windows/scripts/modules/WindowsCrossBundle.Common.psm1'
+            FunctionName = @('Get-PeImportClosure'); Body = { Assert-ClosureRootPolicies }; Mutation = @(
+                @{ Find = "-SkipImportPattern ''"; Replace = ''; Expected = 'every seed stays ahead of its imported children' }
+                @{ Find = "-SystemDirectoryPattern ''"; Replace = ''; Expected = 'every seed stays ahead of its imported children' }
+                @{ Find = '$null = & $assertMachine -Path $source -Arch $Arch -Context "closure DLL imported as $name, which the device could not load"'; Replace = ''; Expected = 'expected an exception but none was thrown' }
             ) }
     )
     $prepare = Get-Command New-SourcePreparationArguments

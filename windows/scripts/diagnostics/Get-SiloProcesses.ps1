@@ -18,13 +18,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Only the setup is shared with the other LSM probes; the per-process attach stays here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
 $cdb = Get-CdbPath
 
-$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+$baseWininit = @(Get-SiloWininitId)
 Start-SiloBaitContainer -Tag 'silo'
 Write-Host 'bait started; waiting for its silo ...'
 
@@ -50,14 +49,13 @@ foreach ($n in 'smss.exe', 'csrss.exe') {
 Write-Host ("silo processes to inspect: {0}" -f $silo.Count)
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
 $summary = [System.Collections.Generic.List[string]]::new()
 $summary.Add("silo of wininit $($newWininit.ProcessId), sampled $stamp")
 $summary.Add('')
 
 foreach ($p in $silo) {
     $log = Join-Path $OutDir "silo-$($p.Name)-$($p.ProcessId)-$stamp.txt"
-    & $cdb -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
+    Invoke-SiloDebugger -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -Command '.reload /f; ~*kb; qd' -LogPath $log
     $stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     if ($stacks -lt 1) {
         # 0n5 is a protected process refusing even a read-only attach, not a hang.

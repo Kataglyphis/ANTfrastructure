@@ -317,14 +317,10 @@ $execUtils = Join-Path $SourceDir 'runtime\executor\litert_compiled_model_execut
 $settingsUtils = Join-Path $SourceDir 'runtime\executor\llm_executor_settings_utils.cc'
 [void](Edit-SourceFile -Path $settingsUtils -Marker 'LiteRTLM-winfix' -Description 'llm_executor_settings_utils.cc: guard Windows-absent GpuOptions/RuntimeOptions setters' -Transform {
     param($su)
-    foreach ($m in @('gpu_compilation_options.SetKernelBatchSize', 'runtime_options.SetDisableDelegateClustering')) {
-        $pat = [regex]::Escape($m) + '\([^;]*\);'
-        $su = [regex]::Replace($su, $pat, {
-            param($mm)
-            "#if !defined(_WIN32)  // [LiteRTLM-winfix] litert GpuOptions/RuntimeOptions setter absent on Windows`n      " + $mm.Value + "`n#endif"
-        })
-    }
-    $su
+    $patterns = @('gpu_compilation_options.SetKernelBatchSize', 'runtime_options.SetDisableDelegateClustering') |
+        ForEach-Object { [regex]::Escape($_) + '\([^;]*\);' }
+    Add-SourceRegexGuard -Text $su -Pattern $patterns -Condition '!defined(_WIN32)' -Indent '      ' `
+        -Comment '[LiteRTLM-winfix] litert GpuOptions/RuntimeOptions setter absent on Windows'
 })
 
 # Guarding whole blocks, not calls, leaves the params non-quantized; the NPU executor is dead on Windows anyway.
@@ -335,13 +331,8 @@ $npuExec = Join-Path $SourceDir 'runtime\executor\llm_litert_npu_compiled_model_
         'if \(tensor_expected->HasQuantization\(\)\) \{[\s\S]*?q_params\.zero_point = pq\.zero_point;\s*\}',
         'if \(logits_tensor\.HasQuantization\(\)\) \{[\s\S]*?<< "\)\.";\s*\}'
     )
-    foreach ($b in $blocks) {
-        $ne = [regex]::Replace($ne, $b, {
-            param($mm)
-            "#if !defined(_WIN32)  // [LiteRTLM-winfix] litert::SimpleTensor quantization API absent on Windows (NPU off)`n" + $mm.Value + "`n#endif"
-        })
-    }
-    $ne
+    Add-SourceRegexGuard -Text $ne -Pattern $blocks -Condition '!defined(_WIN32)' `
+        -Comment '[LiteRTLM-winfix] litert::SimpleTensor quantization API absent on Windows (NPU off)'
 })
 
 # The Windows litert build lacks GoogleTensorOptions' perf mode; guard the whole block so no bound reference dangles.
@@ -349,10 +340,8 @@ Get-ChildItem (Join-Path $SourceDir 'runtime\executor') -Filter '*_litert_compil
     $gtFile = $_.FullName
     $gtRaw = Get-Content -Raw $gtFile
     if (($gtRaw -match 'GoogleTensorOptions::PerformanceMode') -and ($gtRaw -notmatch 'LiteRTLM-winfix google_tensor')) {
-        $gt = [regex]::Replace($gtRaw, 'LITERT_ASSIGN_OR_RETURN\(auto& google_tensor_options,[\s\S]*?PerformanceMode::kBurst\);', {
-            param($mm)
-            "#if !defined(_WIN32)  // [LiteRTLM-winfix google_tensor] GoogleTensorOptions perf-mode API absent on Windows`n      " + $mm.Value + "`n#endif"
-        })
+        $gt = Add-SourceRegexGuard -Text $gtRaw -Pattern 'LITERT_ASSIGN_OR_RETURN\(auto& google_tensor_options,[\s\S]*?PerformanceMode::kBurst\);' `
+            -Condition '!defined(_WIN32)' -Indent '      ' -Comment '[LiteRTLM-winfix google_tensor] GoogleTensorOptions perf-mode API absent on Windows'
         [System.IO.File]::WriteAllText($gtFile, $gt)
         Write-Host "Patched $($_.Name): guard Windows-absent GoogleTensorOptions::SetPerformanceMode"
     }
@@ -447,12 +436,11 @@ $fetchContent = Join-Path $SourceDir 'cmake\modules\fetch_content.cmake'
 $litertLmPkg = Join-Path $SourceDir 'cmake\packages\litert_lm\CMakeLists.txt'
 [void](Edit-SourceFile -Path $litertLmPkg -Marker 'LiteRTLM-winfix link-spec' -Description 'litert_lm/CMakeLists.txt: route Windows clang++/lld-link to the MSVC /WHOLEARCHIVE link spec (-Wl, prefixed)' -Transform {
     param($c)
-    $c = [regex]::Replace($c,
-        'if\(CMAKE_CXX_COMPILER_ID MATCHES "Clang\|GNU"\)(\s*if\(APPLE\))',
-        'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch$1')
-    $c = [regex]::Replace($c,
-        'elseif\(MSVC\)(\s*#\s*Windows Linker)',
-        'elseif(MSVC OR WIN32)$1')
+    $c = Edit-SourceRegexText -Text $c -Map @(
+        @{ Pattern = 'if\(CMAKE_CXX_COMPILER_ID MATCHES "Clang\|GNU"\)(\s*if\(APPLE\))'
+            Replacement = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch$1' }
+        @{ Pattern = 'elseif\(MSVC\)(\s*#\s*Windows Linker)'; Replacement = 'elseif(MSVC OR WIN32)$1' }
+    )
     # CMake reads a leading-'/' link item as an input file, so -Wl, forwards these through clang++.
     $c = $c.Replace('set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE")', 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE")')
     $c.Replace('set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")', 'set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")')

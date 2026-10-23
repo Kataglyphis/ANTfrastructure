@@ -7,7 +7,7 @@
 Describe 'BuildKit module closure' {
 
     BeforeAll {
-        $script:repoRoot  = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
+        $script:repoRoot  = Get-RepoRoot
         $script:moduleDir = Join-Path $script:repoRoot 'windows\scripts\modules'
         $script:buildDir  = Join-Path $script:repoRoot 'windows\scripts\build'
         $script:hostDir   = Join-Path $script:repoRoot 'windows\scripts\host'

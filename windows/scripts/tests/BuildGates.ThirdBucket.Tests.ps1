@@ -11,9 +11,7 @@ Import-Module $script:GateModule -DisableNameChecking
 # One owner for the throwaway directory both fixtures below need.
 function script:New-ScratchDir {
     param([Parameter(Mandatory)][string]$Prefix)
-    $dir = Join-Path $env:TEMP ($Prefix + '-' + (Get-Random))
-    New-Item -ItemType Directory -Path $dir -Force | Out-Null
-    return $dir
+    New-TestDir -Prefix ($Prefix + '-')
 }
 
 # The log writer stays open so a gate's messages can be read back.

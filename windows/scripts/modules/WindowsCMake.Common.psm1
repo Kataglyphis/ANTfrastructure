@@ -7,13 +7,13 @@ Set-StrictMode -Version Latest
 
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level
 $buildCommonPath = Join-Path $PSScriptRoot 'WindowsBuild.Common.psm1'
-Import-Module $buildCommonPath
+Import-Module $buildCommonPath -ErrorAction Stop
 
 $sharedCommonPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
-Import-Module $sharedCommonPath
+Import-Module $sharedCommonPath -ErrorAction Stop
 
 $testingCommonPath = Join-Path $PSScriptRoot 'WindowsTesting.Common.psm1'
-Import-Module $testingCommonPath
+Import-Module $testingCommonPath -ErrorAction Stop
 
 # Generates compile_commands.json from the ninja graph when CMake did not emit one.
 function Get-CompileCommandsDatabase {
@@ -314,25 +314,18 @@ function Invoke-CmakeConfigureAndBuild {
   Write-BuildLog -Context $Context -Message "CMD: $buildCmdLine"
 
   $global:LASTEXITCODE = 0
-  $originalPath = $env:PATH
-  try {
-    if ($sanitizerRuntimeDirs.Count -gt 0) {
-      $env:PATH = (($sanitizerRuntimeDirs -join ';') + ';' + $env:PATH)
+  $runtimePath = if ($sanitizerRuntimeDirs.Count -gt 0) { (($sanitizerRuntimeDirs -join ';') + ';' + $env:PATH) } else { $env:PATH }
+  $buildResult = @{ ExitCode = 1 }
+  Invoke-WithProcessEnvironment -Environment @{ PATH = $runtimePath } -ScriptBlock {
+    try {
+      & cmake @buildArgs 2>&1 | Write-BuildCommandOutput -Context $Context
+      $buildResult.ExitCode = $global:LASTEXITCODE
+    } catch {
+      Write-BuildLog -Context $Context -Message "ERROR: Build exception: $_"
+      $buildResult.ExitCode = 1
     }
-
-    & cmake @buildArgs 2>&1 | ForEach-Object {
-      $line = $_.ToString()
-      if (-not [String]::IsNullOrWhiteSpace($line)) {
-        Write-BuildLog -Context $Context -Message $line
-      }
-    }
-    $buildExitCode = $global:LASTEXITCODE
-  } catch {
-    Write-BuildLog -Context $Context -Message "ERROR: Build exception: $_"
-    $buildExitCode = 1
-  } finally {
-    $env:PATH = $originalPath
   }
+  $buildExitCode = $buildResult.ExitCode
 
   $buildEndTime = Get-Date
   $buildDuration = $buildEndTime - $buildStartTime

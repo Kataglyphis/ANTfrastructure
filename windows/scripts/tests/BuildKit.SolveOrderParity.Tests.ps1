@@ -6,9 +6,9 @@
 
 Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
 
-    $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
+    $repoWin = Join-Path (Get-RepoRoot) 'windows'
     $dfText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-builder')
-    $drvText = Get-Content -Raw (Join-Path $repoWin 'Build-Buildkit.ps1')
+    $drvText = (Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1').Extent.Text
 
     # Dockerfile side: stage -> parent ARG key, from `FROM ${MEDIA_CORE_X_IMAGE} AS stage`
     $dfMap = @{}

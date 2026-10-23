@@ -2,13 +2,14 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.TextFixtures.psm1') -DisableNameChecking
+
 Describe 'WindowsMsix.Common' {
   BeforeAll {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsMsix.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:tmp = (New-Item -ItemType Directory `
-        -Path (Join-Path $env:TEMP ('msix-common-' + (Get-Random))) -Force).FullName
+    $script:tmp = New-TestDir -Prefix 'msix-common-'
   }
 
   AfterAll {
@@ -51,57 +52,59 @@ Describe 'WindowsMsix.Common' {
 
   Context 'Get-PackageVersion' {
     It 'pads a short version to the four components an AppxManifest needs' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v1') -Force).FullName
-      Set-Content -LiteralPath (Join-Path $ws 'version.txt') -Value '1.2' -Encoding utf8
-      Get-PackageVersion -WorkspacePath $ws | Should -Be '1.2.0.0'
+      Invoke-InTestDir -Files @{ 'version.txt' = "1.2$([Environment]::NewLine)" } -Body { param($ws)
+        Get-PackageVersion -WorkspacePath $ws | Should -Be '1.2.0.0'
+      }
     }
 
     It 'takes the digits out of a decorated version, and drops extra components' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v2') -Force).FullName
-      Set-Content -LiteralPath (Join-Path $ws 'VERSION.txt') -Value "v3.4.5.6.7-rc1`n" -Encoding utf8
-      Get-PackageVersion -WorkspacePath $ws | Should -Be '3.4.5.6'
+      Invoke-InTestDir -Files @{ 'VERSION.txt' = "v3.4.5.6.7-rc1`n$([Environment]::NewLine)" } -Body { param($ws)
+        Get-PackageVersion -WorkspacePath $ws | Should -Be '3.4.5.6'
+      }
     }
 
     It 'takes CMakeLists.txt project() VERSION when there is no version file, as CPack does' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v4') -Force).FullName
-      Set-Content -LiteralPath (Join-Path $ws 'CMakeLists.txt') -Encoding utf8 -Value @(
-        'cmake_minimum_required(VERSION 3.25)', 'project(', '  Demo', '  VERSION 0.0.2', '  LANGUAGES CXX)')
-      Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.2.0'
+      $cmake = @('cmake_minimum_required(VERSION 3.25)', 'project(', '  Demo', '  VERSION 0.0.2', '  LANGUAGES CXX)')
+      Invoke-InTestDir -Files @{ 'CMakeLists.txt' = (ConvertTo-TestFileText -Line $cmake) } -Body { param($ws)
+        Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.2.0'
+      }
     }
 
     It 'lets a version file win over CMakeLists.txt' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v5') -Force).FullName
-      Set-Content -LiteralPath (Join-Path $ws 'CMakeLists.txt') -Value 'project(Demo VERSION 9.9.9)' -Encoding utf8
-      Set-Content -LiteralPath (Join-Path $ws 'VERSION.txt') -Value '1.5.1' -Encoding utf8
-      Get-PackageVersion -WorkspacePath $ws | Should -Be '1.5.1.0'
+      Invoke-InTestLineDir -LineFiles @{ 'CMakeLists.txt' = @('project(Demo VERSION 9.9.9)'); 'VERSION.txt' = @('1.5.1') } -Body { param($ws)
+        Get-PackageVersion -WorkspacePath $ws | Should -Be '1.5.1.0'
+      }
     }
 
     It 'falls back to the default when there is no version file' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v3') -Force).FullName
-      Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.1.0'
+      Invoke-InTestDir { param($ws)
+        Get-PackageVersion -WorkspacePath $ws -Default '0.0.1.0' | Should -Be '0.0.1.0'
+      }
     }
 
     It 'reads -VersionFile as version_util.sh --file-version does, pyproject.toml too' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v6') -Force).FullName
-      Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @(
-        '[package]', 'name = "x"', 'version = "2.3.4-rc1"', '[dependencies]', 'serde = { version = "1" }', '[workspace.package]', 'version = "5.6.7"')
-      Set-Content -LiteralPath (Join-Path $ws 'pubspec.yaml') -Encoding utf8 -Value @('name: app', 'version: 2.0.0+2')
-      Set-Content -LiteralPath (Join-Path $ws 'pyproject.toml') -Encoding utf8 -Value @(
-        '[tool.other]', 'version = "9.9"', '[project]', 'name = "p"', 'version = "0.10.1"')
-      Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required | Should -Be '5.6.7.0'
-      Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Components 3 -Required | Should -Be '2.0.0'
-      Get-PackageVersion -WorkspacePath $ws -VersionFile (Join-Path $ws 'pyproject.toml') | Should -Be '0.10.1.0'
-      Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @('[package]', 'version = "2.3.4-rc1"')
-      Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '2.3.4.0'
+      Invoke-InTestDir -Body { param($ws)
+        Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @(
+          '[package]', 'name = "x"', 'version = "2.3.4-rc1"', '[dependencies]', 'serde = { version = "1" }', '[workspace.package]', 'version = "5.6.7"')
+        Set-Content -LiteralPath (Join-Path $ws 'pubspec.yaml') -Encoding utf8 -Value @('name: app', 'version: 2.0.0+2')
+        Set-Content -LiteralPath (Join-Path $ws 'pyproject.toml') -Encoding utf8 -Value @(
+          '[tool.other]', 'version = "9.9"', '[project]', 'name = "p"', 'version = "0.10.1"')
+        Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required | Should -Be '5.6.7.0'
+        Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Components 3 -Required | Should -Be '2.0.0'
+        Get-PackageVersion -WorkspacePath $ws -VersionFile (Join-Path $ws 'pyproject.toml') | Should -Be '0.10.1.0'
+        Write-TestFileTree -Root $ws -Files @{ 'Cargo.toml' = (ConvertTo-TestFileText -Line @('[package]', 'version = "2.3.4-rc1"')) }
+        Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '2.3.4.0'
+      }
     }
 
     It 'throws with -Required instead of falling back to the default' {
-      $ws = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'v7') -Force).FullName
-      { Get-PackageVersion -WorkspacePath $ws -Required } | Should -Throw -ExpectedMessage '*no version in*VERSION.txt*refuses the 0.0.1.0 fallback*'
-      { Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Required } | Should -Throw -ExpectedMessage '*no version in*pubspec.yaml*'
-      Set-Content -LiteralPath (Join-Path $ws 'Cargo.toml') -Encoding utf8 -Value @('[package]', 'version.workspace = true')
-      { Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required } | Should -Throw -ExpectedMessage '*no version in*Cargo.toml*'
-      Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '0.0.1.0'
+      Invoke-InTestDir { param($ws)
+        { Get-PackageVersion -WorkspacePath $ws -Required } | Should -Throw -ExpectedMessage '*no version in*VERSION.txt*refuses the 0.0.1.0 fallback*'
+        { Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Required } | Should -Throw -ExpectedMessage '*no version in*pubspec.yaml*'
+        Write-TestFileTree -Root $ws -Files @{ 'Cargo.toml' = (ConvertTo-TestFileText -Line @('[package]', 'version.workspace = true')) }
+        { Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required } | Should -Throw -ExpectedMessage '*no version in*Cargo.toml*'
+        Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '0.0.1.0'
+      }
     }
   }
 
@@ -202,8 +205,8 @@ Describe 'WindowsMsix.Common' {
 
   Context 'Invoke-MsiPackage' {
     BeforeAll {
-      $script:msiIn = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'msi-in') -Force).FullName
-      'main.wxs', 'License.rtf', 'app.exe', 'wix.exe' | ForEach-Object { New-Item -ItemType File -Path (Join-Path $script:msiIn $_) -Force | Out-Null }
+      $script:msiIn = Join-Path $script:tmp 'msi-in'
+      Write-TestFileTree -Root $script:msiIn -Files @{ 'main.wxs' = ''; 'License.rtf' = ''; 'app.exe' = ''; 'wix.exe' = '' }
       # Records the argv and writes the -out file, as wix build does.
       $script:fakeWix = {
         param($exe, $argv)
@@ -267,24 +270,20 @@ Describe 'WindowsMsix.Common' {
     }
 
     It 'takes wix.exe from $env:WIX before PATH' {
-      $wixDir = (New-Item -ItemType Directory -Path (Join-Path $script:tmp 'wix-root') -Force).FullName
-      Set-Content -LiteralPath (Join-Path $wixDir 'wix.exe') -Value 'x'
+      $wixDir = Join-Path $script:tmp 'wix-root'
+      Write-TestFileTree -Root $wixDir -Files @{ 'wix.exe' = "x$([Environment]::NewLine)" }
       Mock -ModuleName WindowsMsix.Common -CommandName Get-Command { [pscustomobject]@{ Source = 'C:\elsewhere\wix.exe' } }
-      $saved = $env:WIX
-      try {
-        $env:WIX = $wixDir
+      Invoke-WithEnv @{ WIX = $wixDir } {
         Resolve-WixExe -OverridePath '' | Should -Be (Join-Path $wixDir 'wix.exe')
-      } finally { $env:WIX = $saved }
+      }
     }
 
     It 'returns $null when neither WIX nor PATH has it' {
       Mock -ModuleName WindowsMsix.Common -CommandName Get-Command { return $null }
       Mock -ModuleName WindowsMsix.Common -CommandName Test-Path { return $false }
-      $saved = $env:WIX
-      try {
-        $env:WIX = ''
+      Invoke-WithEnv @{ WIX = '' } {
         Resolve-WixExe -OverridePath '' | Should -BeNullOrEmpty
-      } finally { $env:WIX = $saved }
+      }
     }
   }
 }

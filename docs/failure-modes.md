@@ -89,6 +89,8 @@ Two neighbours, so you land on the right page:
 - [A Flutter web app's `/icons/` 404 on Apache](#a-flutter-web-apps-icons-404-on-apache)
 - [Emoji draw as empty boxes on a self-hosted Flutter web app](#emoji-draw-as-empty-boxes-on-a-self-hosted-flutter-web-app)
 
+- [`$cdb` is unset during a manual LSM handle scan](#cdb-is-unset-during-a-manual-lsm-handle-scan)
+
 **Windows: the layer store (hcsshim)**
 
 - [`hcsshim::ActivateLayer 0x20` on an AMD Radeon host](#hcsshimactivatelayer-0x20-on-an-amd-radeon-host)
@@ -2312,3 +2314,11 @@ older formatting helpers could report an uninitialized `clangFormatSource`
 variable under strict mode. Shared executable lookup now reports that
 clang-format is missing. Install the formatter or expose its executable on PATH;
 mandatory checks still fail, while advisory checks retain their skip diagnostic.
+
+### `$cdb` is unset during a manual LSM handle scan
+
+`Find-LsmEventHolder.ps1 -LsmPid ... -Handle ...` could fail under StrictMode
+when optional debugger detail read `$cdb`, initialized only by automatic discovery.
+Initialize that optional state before the branch. Manual mode now scans the supplied
+process/handle pair without requiring cdb; automatic discovery retains its debugger
+steps. The regression exercises the actual branches without attaching to a process.

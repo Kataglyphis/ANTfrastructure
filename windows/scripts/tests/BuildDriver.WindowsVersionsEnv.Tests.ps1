@@ -1,12 +1,12 @@
 #requires -Version 7.0
 # A Linux-only versions.env edit re-keyed the whole Windows chain (CON87); a key the chain reads must never be filtered out.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.TextFixtures.psm1') -DisableNameChecking
+
 Describe 'Get-WindowsVersionsEnvLine' {
 
     It 'drops a Linux-only key unless windows\ names it or it says WINDOWS, and keeps everything else in order (mutation)' {
-        Invoke-InTestDir { param($d)
-            $env_ = Join-Path $d 'versions.env'
-            Set-Content -LiteralPath $env_ -Value @(
+        Invoke-InTestLineDir -LineFiles @{ 'versions.env' = @(
                 '# a comment the bake does not need',
                 'CMAKE_VERSION=4.4.4',
                 '# noforward',
@@ -15,19 +15,18 @@ Describe 'Get-WindowsVersionsEnvLine' {
                 'NODE_VERSION=24.1.0',
                 'TORCH_WINDOWS_ARM64_TORCH_URL=https://example.invalid/t.whl',
                 'CMAKE_POLICY_VERSION_MINIMUM=3.5')
+            'Build-Thing.ps1' = @('$v = $env:NODE_VERSION') } -Body { param($d)
+            $env_ = Join-Path $d 'versions.env'
             $script_ = Join-Path $d 'Build-Thing.ps1'
-            Set-Content -LiteralPath $script_ -Value '$v = $env:NODE_VERSION'
             $lines = @(Get-WindowsVersionsEnvLine -VersionsEnv $env_ -Corpus @($script_))
             Assert-Equal 'CMAKE_VERSION=4.4.4|NODE_VERSION=24.1.0|TORCH_WINDOWS_ARM64_TORCH_URL=https://example.invalid/t.whl|CMAKE_POLICY_VERSION_MINIMUM=3.5' ($lines -join '|')
         }
     }
 
     It 'matches a key as a whole name, not inside a longer one' {
-        Invoke-InTestDir { param($d)
+        Invoke-InTestDir -Files @{ 'versions.env' = "NODE_VERSION=24.1.0$([Environment]::NewLine)"; 'Build-Thing.ps1' = '$v = $env:NODE_VERSION_RISCV64' + [Environment]::NewLine } -Body { param($d)
             $env_ = Join-Path $d 'versions.env'
-            Set-Content -LiteralPath $env_ -Value 'NODE_VERSION=24.1.0'
             $script_ = Join-Path $d 'Build-Thing.ps1'
-            Set-Content -LiteralPath $script_ -Value '$v = $env:NODE_VERSION_RISCV64'
             Assert-Equal 0 @(Get-WindowsVersionsEnvLine -VersionsEnv $env_ -Corpus @($script_)).Count 'NODE_VERSION_RISCV64 is not NODE_VERSION'
         }
     }

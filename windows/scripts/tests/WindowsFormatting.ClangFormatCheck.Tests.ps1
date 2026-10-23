@@ -7,14 +7,11 @@ Describe 'Invoke-ClangFormatCheck' {
   BeforeAll {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsFormatting.Common.psm1') -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('fmt-check-' + (Get-Random))) -Force).FullName
-    $script:fake = Join-Path $script:root 'clang-format.cmd'
+    $script:root = New-TestDir -Prefix 'fmt-check-'
     # --dry-run -Werror <file>: the third argument is the file, and a name with "bad" in it deviates.
-    Set-Content -LiteralPath $script:fake -Encoding ascii -Value @(
-      '@echo off',
+    $script:fake = New-TestBatchTool -Directory $script:root -Name 'clang-format.cmd' -Line @(
       'if "%~1"=="--version" (echo clang-format version 23.1.1 & exit /b 0)',
-      'echo %~3| findstr /i "bad" >nul && exit /b 1',
-      'exit /b 0')
+      'echo %~3| findstr /i "bad" >nul && exit /b 1')
     $script:good = Join-Path $script:root 'good.cpp'
     $script:bad = Join-Path $script:root 'bad.cpp'
 
@@ -83,7 +80,7 @@ Describe 'Invoke-ClangFormatCheck' {
 Describe 'The source walk without a git checkout' {
   BeforeAll {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsFormatting.Common.psm1') -Force
-    $script:tree = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('fmt-walk-' + (Get-Random))) -Force).FullName
+    $script:tree = New-TestDir -Prefix 'fmt-walk-'
     $own = 'src\app.cpp', 'src\CMakeLists.txt', 'windows\flutter\generated_plugin_registrant.cc'
     $untracked = '.opencode\node_modules\msgpackr-extract\src\extract.cpp', 'node_modules\addon\CMakeLists.txt',
       '.pub-cache\hosted\fl_chart\example\linux\main.cc', '.dart_tool\gen.h', 'android\app\.cxx\gen.cpp',

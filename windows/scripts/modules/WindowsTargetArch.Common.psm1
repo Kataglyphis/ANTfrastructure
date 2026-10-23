@@ -364,10 +364,10 @@ function Get-PeExportNames {
 function Get-DllDependencyEntry {
     param([string]$Path, [object]$Context)
     foreach ($name in @(& $Context.ReadImports $Path)) {
-        if ($name -match '^(api|ext)-ms-' -or -not $Context.Seen.Add($name.ToLower())) { continue }
+        if (($Context.SkipImportPattern -and $name -match $Context.SkipImportPattern) -or -not $Context.Seen.Add($name.ToLower())) { continue }
         $hit = & $Context.ResolveImport $name $Context.SearchDirectory
         [pscustomobject]@{ From = [IO.Path]::GetFileName($Path); Name = $name; Path = $hit }
-        if ($hit -and $hit -notmatch $Context.SystemDirectoryPattern) {
+        if ($hit -and (-not $Context.SystemDirectoryPattern -or $hit -notmatch $Context.SystemDirectoryPattern)) {
             if ($Context.DepthFirst) { Get-DllDependencyEntry -Path $hit -Context $Context }
             else { $Context.Pending.Add($hit) }
         }
@@ -376,7 +376,7 @@ function Get-DllDependencyEntry {
 
 function Get-DllDependencyGraph {
     param(
-        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string[]]$Path,
         [Parameter(Mandatory)][string[]]$SearchDirectory,
         [scriptblock]$ReadImports = { param($file) Get-PeImportNames -Path $file -IncludeDelayLoad },
         [scriptblock]$ResolveImport = {
@@ -386,14 +386,14 @@ function Get-DllDependencyGraph {
                 if ([IO.File]::Exists($candidate)) { return $candidate }
             }
         },
-        [string]$SystemDirectoryPattern = '\\(System32|SysWOW64|WinSxS)\\',
+        [AllowEmptyString()][string]$SystemDirectoryPattern = '\\(System32|SysWOW64|WinSxS)\\',
         [switch]$DepthFirst,
-        [Collections.Generic.HashSet[string]]$Seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        [Collections.Generic.HashSet[string]]$Seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase),
+        [AllowEmptyString()][string]$SkipImportPattern = '^(api|ext)-ms-'
     )
     $context = [pscustomobject]@{ ReadImports = $ReadImports; ResolveImport = $ResolveImport; SearchDirectory = $SearchDirectory
-        SystemDirectoryPattern = $SystemDirectoryPattern; DepthFirst = [bool]$DepthFirst; Seen = $Seen
-        Pending = [Collections.Generic.List[string]]::new() }
-    Get-DllDependencyEntry -Path $Path -Context $context
+        SystemDirectoryPattern = $SystemDirectoryPattern; SkipImportPattern = $SkipImportPattern; DepthFirst = [bool]$DepthFirst; Seen = $Seen
+        Pending = [Collections.Generic.List[string]]::new([string[]]$Path) }
     for ($i = 0; $i -lt $context.Pending.Count; $i++) {
         Get-DllDependencyEntry -Path $context.Pending[$i] -Context $context
     }

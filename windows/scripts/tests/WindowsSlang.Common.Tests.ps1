@@ -8,7 +8,7 @@ Describe 'WindowsSlang.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSlang.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('slang-' + (Get-Random))) -Force).FullName
+    $script:root = New-TestDir -Prefix 'slang-'
 
     # An IO struct with one member lacking @builtin and @location, as slangc < 2026.8 emitted in combined mode.
     $script:badWgsl = Join-Path $script:root 'bad.wgsl'

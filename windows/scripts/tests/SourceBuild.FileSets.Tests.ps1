@@ -81,4 +81,53 @@ Describe 'Shared source file-set operations' {
             Assert-Throws { & $apply } -MessagePattern 'only 1 probe file'
         }
     }
+    It 'keeps the LiteRT-LM setter, quantization and GoogleTensor guard patterns at the real call sites' {
+        $path = 'windows/scripts/build/Build-LitertLmFromSource.ps1'
+        $edits = @(Get-TestScriptCommands -ScriptPath $path -Name Edit-SourceFile)
+        $cases = @(
+            @{ Variable = '$settingsUtils'; Input = "gpu_compilation_options.SetKernelBatchSize(`$bytes); runtime_options.SetDisableDelegateClustering(false);"; Marker = 'litert GpuOptions/RuntimeOptions setter absent on Windows'; Indent = '      '; Guards = 2
+                Parts = @('gpu_compilation_options.SetKernelBatchSize($bytes);', 'runtime_options.SetDisableDelegateClustering(false);') }
+            @{ Variable = '$npuExec'; Input = "if (tensor_expected->HasQuantization()) { q_params.zero_point = pq.zero_point; }`nif (logits_tensor.HasQuantization()) { LOG << "").""; }"; Marker = 'litert::SimpleTensor quantization API absent on Windows (NPU off)'; Indent = ''; Guards = 2
+                Parts = @('if (tensor_expected->HasQuantization()) { q_params.zero_point = pq.zero_point; }', 'if (logits_tensor.HasQuantization()) { LOG << ")."; }') }
+        )
+        foreach ($case in $cases) {
+            $call = @($edits | Where-Object { (Get-TestCommandArguments -Command $_).Path -eq $case.Variable })
+            Assert-Equal 1 $call.Count
+            $transform = (Get-TestCommandArguments -Command $call[0] -AsAst).Transform.ScriptBlock.GetScriptBlock()
+            $rendered = & $transform $case.Input
+            Assert-Equal $case.Guards ([regex]::Matches($rendered, '#if !defined\(_WIN32\)')).Count
+            Assert-True $rendered.Contains($case.Marker)
+            foreach ($part in $case.Parts) { Assert-True $rendered.Contains(("`n" + $case.Indent + $part + "`n#endif")) 'each entire matched source survives its own guard' }
+            Assert-Equal $case.Guards ([regex]::Matches($rendered, '#endif')).Count
+        }
+        $gtRaw = 'LITERT_ASSIGN_OR_RETURN(auto& google_tensor_options, source); google_tensor_options.SetPerformanceMode(GoogleTensorOptions::PerformanceMode::kBurst);'
+        $guards = @(Get-TestScriptCommandBlock -ScriptPath $path -Name Add-SourceRegexGuard -ExpectedCount 3)
+        $google = & $guards[2]
+        Assert-Equal ("#if !defined(_WIN32)  // [LiteRTLM-winfix google_tensor] GoogleTensorOptions perf-mode API absent on Windows`n      " + $gtRaw + "`n#endif") $google
+        $link = $edits | Where-Object { (Get-TestCommandArguments -Command $_).Path -eq '$litertLmPkg' }
+        $linkTransform = (Get-TestCommandArguments -Command $link -AsAst).Transform.ScriptBlock.GetScriptBlock()
+        $cmake = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")' + "`n  if(APPLE)`n" + 'elseif(MSVC)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")'
+        $expected = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch' + "`n  if(APPLE)`n" + 'elseif(MSVC OR WIN32)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")'
+        Assert-Equal $expected (& $linkTransform $cmake) 'link-spec passes retain capture whitespace and literal flag forwarding'
+        $link = $edits | Where-Object { (Get-TestCommandArguments -Command $_).Path -eq '$litertLmPkg' }
+        $linkTransform = (Get-TestCommandArguments -Command $link -AsAst).Transform.ScriptBlock.GetScriptBlock()
+        $cmake = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")' + "`n  if(APPLE)`n" + 'elseif(MSVC)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")'
+        $expected = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch' + "`n  if(APPLE)`n" + 'elseif(MSVC OR WIN32)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")'
+        Assert-Equal $expected (& $linkTransform $cmake) 'link-spec passes retain capture whitespace and literal flag forwarding'
+    }
+
+    It 'keeps the TVM core module query recursive, file-only and exactly one' {
+        Invoke-InTestDir -Files @{ 'nested/core.cp987-win_arm64.pyd' = 'module'; 'ignore.txt' = 'decoy' } -Body { param($BuildDir)
+            $null = New-Item -ItemType Directory -Path (Join-Path $BuildDir core-decoy.pyd)
+            $query = Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-TvmFromSource.ps1' -Name Get-RequiredBuildArtifact
+            $one = @(& $query)
+            Assert-Equal 1 $one.Count
+            Assert-Equal 'core.cp987-win_arm64.pyd' $one[0].Name
+            [IO.File]::WriteAllText((Join-Path $BuildDir core.pyd), 'second module')
+            Assert-Throws { & $query } -MessagePattern 'expected exactly one.*found 2:.*core'
+            Remove-Item (Join-Path $BuildDir core.pyd), $one[0].FullName
+            Assert-Throws { & $query } -MessagePattern 'expected exactly one.*found 0:'
+        }
+    }
+
 }

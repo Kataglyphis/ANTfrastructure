@@ -6,6 +6,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
+
 $script:exitOnFirstFailure = $false
 
 function Initialize-SmokeTestRun {
@@ -348,6 +350,7 @@ function Assert-NativeLinkRun {
     $cross = $CrossLinkOnly.IsPresent
     $targetFlag = if ($cross) { "/clang:--target=$(Get-ClangTargetTriple)" } else { $null }
     $expectMachine = if ($cross) { Get-PeMachineType } else { 0 }
+    $withEnvironment = Get-Command Invoke-WithProcessEnvironment
     Assert-Test -Name $Name -Condition {
         $d = Join-Path $env:TEMP "kataglyphis-smoke-$work"
         New-Item -Path $d -ItemType Directory -Force | Out-Null
@@ -364,10 +367,11 @@ function Assert-NativeLinkRun {
             if ($cross) {
                 try { $ok = ((Get-PeFileMachine -Path $exe) -eq $expectMachine) } catch { $ok = $false }
             } else {
-                $prev = $env:PATH
-                $env:PATH = "$ddir;$env:PATH"
-                try { $out = (& $exe 2>&1 | Out-String); $code = $LASTEXITCODE } finally { $env:PATH = $prev }
-                $ok = ($code -eq 0) -and ($out -match $expect)
+                $result = & $withEnvironment -Environment @{ PATH = "$ddir;$env:PATH" } -ScriptBlock {
+                    $out = (& $exe 2>&1 | Out-String)
+                    [pscustomobject]@{ Output = $out; ExitCode = $LASTEXITCODE }
+                }.GetNewClosure()
+                $ok = ($result.ExitCode -eq 0) -and ($result.Output -match $expect)
             }
         }
         Remove-Item $d -Recurse -Force -ErrorAction SilentlyContinue
@@ -389,6 +393,19 @@ public static class KataNativeProbe {
 '@
 }
 
+function Invoke-SmokeDllProbe {
+    param([string]$Path, [string[]]$DependencyDirs = @(), [string]$Export = '')
+    Invoke-WithProcessEnvironment -Environment @{ PATH = ((@((Split-Path $Path)) + $DependencyDirs) -join ';') + ';' + $env:PATH } -ScriptBlock {
+        $h = [KataNativeProbe]::LoadLibraryW($Path)
+        if ($h -eq [IntPtr]::Zero) {
+            return [pscustomobject]@{ Loaded = $false; ExportPresent = $false; ErrorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error() }
+        }
+        $exportPresent = -not $Export -or ([KataNativeProbe]::GetProcAddress($h, $Export) -ne [IntPtr]::Zero)
+        [void][KataNativeProbe]::FreeLibrary($h)
+        return [pscustomobject]@{ Loaded = $true; ExportPresent = $exportPresent; ErrorCode = 0 }
+    }.GetNewClosure()
+}
+
 function Assert-DllLoads {
     # LoadLibrary proves the whole dependent-DLL chain resolves, for libs whose headers are awkward to compile against.
     param(
@@ -399,20 +416,13 @@ function Assert-DllLoads {
         [string]$FailMessage
     )
     $dllPath = $DllPath; $depDirs = $DependencyDirs; $export = $Export
+    $probeDll = Get-Command Invoke-SmokeDllProbe
     # Outside the closure: GetNewClosure's dynamic module cannot see this module's private functions.
     Initialize-KataNativeProbe
     Assert-Test -Name $Name -Condition {
         if (-not (Test-Path $dllPath)) { return $false }
-        $prev = $env:PATH
-        $env:PATH = ((@((Split-Path $dllPath)) + $depDirs) -join ';') + ';' + $env:PATH
-        try {
-            $h = [KataNativeProbe]::LoadLibraryW($dllPath)
-            if ($h -eq [IntPtr]::Zero) { return $false }
-            $ok = $true
-            if ($export) { $ok = ([KataNativeProbe]::GetProcAddress($h, $export) -ne [IntPtr]::Zero) }
-            [void][KataNativeProbe]::FreeLibrary($h)
-            return $ok
-        } finally { $env:PATH = $prev }
+        $result = & $probeDll -Path $dllPath -DependencyDirs $depDirs -Export $export
+        return $result.Loaded -and $result.ExportPresent
     }.GetNewClosure() -FailMessage $FailMessage
 }
 
@@ -451,21 +461,13 @@ function Assert-AllDllsLoad {
         if ($candidates.Count -lt $MinimumChecked) {
             $problems += "only $($candidates.Count) non-allow-listed DLL(s) under $Root (of $($dlls.Count) found), expected at least $MinimumChecked - wrong root, or over-broad -Allow?"
         } else {
-            $prev = $env:PATH
-            try {
-                foreach ($d in $dlls) {
-                    if ($Allow -contains $d.Name) { continue }
-                    $checked++
-                    # Each DLL's own dir leads: a full-path LoadLibraryW does not search it for dependents.
-                    $env:PATH = ((@((Split-Path $d.FullName)) + @($Root) + $DependencyDirs) -join ';') + ';' + $prev
-                    $h = [KataNativeProbe]::LoadLibraryW($d.FullName)
-                    if ($h -eq [IntPtr]::Zero) {
-                        $problems += ("{0} (Win32 {1})" -f $d.Name, [Runtime.InteropServices.Marshal]::GetLastWin32Error())
-                    } else {
-                        [void][KataNativeProbe]::FreeLibrary($h)
-                    }
-                }
-            } finally { $env:PATH = $prev }
+            foreach ($d in $dlls) {
+                if ($Allow -contains $d.Name) { continue }
+                $checked++
+                # Each DLL's own dir leads: a full-path LoadLibraryW does not search it for dependents.
+                $result = Invoke-SmokeDllProbe -Path $d.FullName -DependencyDirs (@($Root) + $DependencyDirs)
+                if (-not $result.Loaded) { $problems += ("{0} (Win32 {1})" -f $d.Name, $result.ErrorCode) }
+            }
         }
     }
     $ok = ($problems.Count -eq 0)

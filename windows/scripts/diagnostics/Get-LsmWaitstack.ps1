@@ -20,12 +20,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Only the setup is shared with the other LSM probes; this one writes .dmp files, so it keeps its own subdirectory.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir -DefaultSubPath 'out\lsm-dumps'
 
-$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+$baseWininit = @(Get-SiloWininitId)
 Write-Host "Baseline: $($baseWininit.Count) wininit (host + existing silos). Waiting for a NEW silo (max $WaitForSiloSec s)..."
 
 $newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3

@@ -130,7 +130,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Verified downloads must propagate fetch failures even under conditional calls; a matching stale archive does not excuse a failed fetch.
    Compiler-rt consumers share verified extraction and library discovery; keep base-stage advisory and source-build fatal policies distinct.
    Temporary process environments restore absent, empty and existing values after setup or callback failure; sanitizer overrides belong to the test child.
-   Silo log grants share recursive read access without widening permissions or hiding command-lookup failures.
+   Silo probes share wininit discovery, debugger transport and recursive read grants; preserve attach policy, raw status and manual handle mode.
+   Cross-bundle DLL closure uses the architecture graph; retain first-directory precedence, machine checks, indexed API sets and system descendants.
+   Git fixtures share checked local repository setup; native tool failures must fail the fixture without changing global identity.
+   Windows native logging and DLL smoke probes share transport; preserve blank failure evidence, loader cleanup and caller coverage minimums. Smoke module copies carry Shared.
    Staging directories share literal-root setup; failed reset or allocation aborts before payload copy and proof.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.

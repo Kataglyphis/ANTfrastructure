@@ -7,7 +7,7 @@ Describe 'WindowsClang.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsClang.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('clang-common-' + (Get-Random))) -Force).FullName
+    $script:root = New-TestDir -Prefix 'clang-common-'
     $script:ws = Join-Path $script:root 'ws'
     $script:buildRoot = Join-Path $script:root 'build'
     $null = New-Item -ItemType Directory -Path (Join-Path $script:ws 'Src\Playground') -Force
@@ -63,12 +63,9 @@ Describe 'WindowsClang.Common' {
       $pdb = @($script:good, $script:bad | ForEach-Object { @{ file = $_; command = 'clang-cl /c x.cpp'; directory = $script:pbuild } })
       $pdb | ConvertTo-Json -AsArray | Set-Content -LiteralPath (Join-Path $script:pbuild 'compile_commands.json')
       # A clang-tidy that reports on every file and fails bad.cpp.
-      $script:fakeTidy = Join-Path $script:root 'fake-tidy.cmd'
-      Set-Content -LiteralPath $script:fakeTidy -Value @(
-        '@echo off'
+      $script:fakeTidy = New-TestBatchTool -Directory $script:root -Name 'fake-tidy.cmd' -Line @(
         'echo tidied %*'
         'echo %* | findstr /c:"bad.cpp" >nul && exit /b 3'
-        'exit /b 0'
       )
     }
 

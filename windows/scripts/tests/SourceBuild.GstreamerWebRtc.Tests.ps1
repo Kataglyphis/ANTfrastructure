@@ -163,7 +163,7 @@ Describe 'Get-GstRustSourceMirrorConfig (gitlab.freedesktop.org git sources go t
 
 Describe 'Build-GstreamerFromSource.ps1: the WebRTC wiring stays in place' {
 
-    $text = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-GstreamerFromSource.ps1')
+    $text = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-GstreamerFromSource.ps1').Extent.Text
 
     It 'links without /FORCE:MULTIPLE and compiles C with -fcommon, the build machine included' {
         Assert-False ($text -match "'/FORCE:MULTIPLE'") '/FORCE:MULTIPLE turned the libffi duplicate symbols into a silently zeroed DLL'

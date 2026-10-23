@@ -6,8 +6,8 @@
 
 Describe 'BK driver defaults to the patched-llvm toolchain (#135)' {
 
-    $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-    $drvText = Get-Content -Raw (Join-Path $repoWin 'Build-Buildkit.ps1')
+    $repoWin = Join-Path (Get-RepoRoot) 'windows'
+    $drvText = (Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1').Extent.Text
     $dfText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.toolchain-builder')
 
     It 'exposes a -StockLlvm opt-out switch' {

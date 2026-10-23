@@ -14,8 +14,7 @@ function Invoke-SourceArchiveFixture {
             Tar = Join-Path $destination 'source.tar'; Source = Join-Path $destination 'source'
             Log = Join-Path $dir '7z.log'
         }
-        Set-Content -LiteralPath (Join-Path $dir '7z.bat') -Encoding ASCII -Value @(
-            '@echo off',
+        $null = New-TestBatchTool -Directory $dir -Name '7z.bat' -Line @(
             'echo %~2>> "%WBT_ARCHIVE_LOG%"',
             'if "%WBT_ARCHIVE_MODE%"=="first-error" ( echo ERROR: Cannot open archive & exit /b 7 )',
             'if "%~x2"==".tar" goto tar',
@@ -28,8 +27,7 @@ function Invoke-SourceArchiveFixture {
             ':source',
             'mkdir "%WBT_ARCHIVE_DEST%\source"',
             'if "%WBT_ARCHIVE_MODE%"=="dangerous" ( echo ERROR: Dangerous link path was ignored : source\link : ..\target & exit /b 2 )',
-            'if "%WBT_ARCHIVE_MODE%"=="mixed" ( echo ERROR: Dangerous link path was ignored : source\link : ..\target & echo ERROR: Data Error : bad.c & exit /b 2 )',
-            'exit /b 0'
+            'if "%WBT_ARCHIVE_MODE%"=="mixed" ( echo ERROR: Dangerous link path was ignored : source\link : ..\target & echo ERROR: Data Error : bad.c & exit /b 2 )'
         )
         $fixtureAction = $action
         Invoke-WithEnv @{ PATH = "$dir;$env:PATH"; WBT_ARCHIVE_LOG = $fixture.Log; WBT_ARCHIVE_MODE = $Mode; WBT_ARCHIVE_DEST = $destination } {

@@ -10,16 +10,15 @@ BeforeAll {
     # Both builds' import libraries and their stable-ABI stubs in one directory, as a careless staging would leave them.
     function script:New-ImportLibSet {
         param([Parameter(Mandatory)][string]$Dir)
-        New-Item -ItemType Directory -Force $Dir | Out-Null
-        foreach ($n in 'python3.lib', 'python3t.lib', 'python314.lib', 'python314t.lib') { Set-Content (Join-Path $Dir $n) 'x' }
+        $files = @{}
+        foreach ($n in 'python3.lib', 'python3t.lib', 'python314.lib', 'python314t.lib') { $files[$n] = "x$([Environment]::NewLine)" }
+        Write-TestFileTree -Root $Dir -Files $files
         return $Dir
     }
     # A .cmd standing in for python.exe: prints -Line, exits -Exit.
     function script:New-FakePython {
         param([string]$Dir, [string]$Line, [int]$Exit = 0)
-        $p = Join-Path $Dir 'python.cmd'
-        Set-Content -LiteralPath $p -Value @('@echo off', "echo $Line", "exit /b $Exit") -Encoding ASCII
-        return $p
+        New-TestBatchTool -Directory $Dir -Name 'python.cmd' -Line "echo $Line" -ExitCode $Exit
     }
 }
 

@@ -187,8 +187,10 @@ function New-TvmFfiCrossWheel {
     $logName = "tvm-ffi-python-build$(if ($Python['FreeThreaded']) { "-$AbiTag" }).log"
     # To the host: the packed wheel's path is this function's only output.
     Invoke-NinjaBuildWithRetry -BuildDir $BuildDir -RetryJobs 1 -MemGBPerJob 2 -LogFile (Get-PersistentBuildLogPath -Name $logName -FallbackDir $BuildDir) -Targets @('tvm_ffi_cython') | Out-Host
-    $corePyd = @(Get-ChildItem -Path $BuildDir -Recurse -Filter 'core*.pyd' -File)
-    if ($corePyd.Count -ne 1) { throw "TVM cross: expected exactly one tvm_ffi core*.pyd under $BuildDir, found $($corePyd.Count): $(($corePyd | ForEach-Object Name) -join ', ')" }
+    $corePyd = @(Get-RequiredBuildArtifact -Root $BuildDir -Filter 'core*.pyd' -Recurse -MaximumCount 1 -FailureMessage {
+        param($files)
+        "TVM cross: expected exactly one tvm_ffi core*.pyd under $BuildDir, found $($files.Count): $(($files | ForEach-Object Name) -join ', ')"
+    })
     $wantExt = Get-PythonWheelTag
     # FindPython has no SOABI on Windows, so a bare core.pyd is valid; only a host-tagged name is wrong.
     if ($corePyd[0].Name -match '\.cp\d+t?-win_(amd64|arm64)\.pyd$' -and $corePyd[0].Name -notmatch [regex]::Escape($wantExt)) { throw "TVM cross: tvm_ffi core module is named $($corePyd[0].Name) -- a HOST EXT_SUFFIX tag, the target interpreter would never import it (expected '$wantExt' or a bare core.pyd)" }

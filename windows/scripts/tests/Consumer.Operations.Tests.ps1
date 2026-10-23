@@ -3,7 +3,69 @@
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsConsumer.ArtifactFixtures.psm1') -ErrorAction Stop
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'WindowsConsumer.ExecutionFixtures.psm1') -ErrorAction Stop
 Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsScripts.Shared.psm1') -ErrorAction Stop
+
+function Assert-CmakeRuntimeEnvironment {
+    param($State)
+    foreach ($debug in @($false, $true)) {
+        Invoke-TestEnvironmentCases -Name PATH -Value @($null, '', 'parent path') -With @{ SCCACHE_MAX_JOBS = '1' } -AssertRestored -Body {
+                param($parent)
+                $State.Runtime = if ($debug) { [IO.FileInfo]::new((Join-Path ([IO.Path]::GetTempPath()) 'clang_rt.fixture.dll')) } else { $null }
+                $configuration = if ($debug) { 'Debug' } else { 'Release' }
+                $expected = if ($debug) { $State.Runtime.DirectoryName + ';' + $parent } else { $parent }
+                foreach ($mode in @('success', 'nonzero', 'throw')) {
+                    $State.Throw = $mode -eq 'throw'; $State.Code = if ($mode -eq 'nonzero') { 9 } else { 0 }
+                    $invoke = { Invoke-MutCmakeConfigureAndBuild -Context ([pscustomobject]@{}) -BuildPath 'fixture build' -Preset fixture -Configuration $configuration -ParallelJobs 2 -VerboseOutput }.GetNewClosure()
+                    if ($mode -eq 'success') { Assert-Equal 0 @(& $invoke).Count 'the build adds no result objects to its output' }
+                    else { Assert-Throws $invoke -MessagePattern ('CMake build failed with exit code ' + $(if ($mode -eq 'throw') { 1 } else { 9 })) }
+                    Assert-Equal $expected $State.Paths[-1] 'CMake runtime PATH preserves directory precedence'
+                    Assert-Equal "--build|fixture build|--config|$configuration|--parallel|2|--verbose" ($State.Calls[-1] -join '|')
+                }
+                Assert-True (@($State.Logs | Where-Object { $_ -like 'ERROR: Build exception:*|PATH=dirty build path' }).Count -gt 0) 'exception diagnostics precede environment restoration'
+        }.GetNewClosure()
+    }
+}
+
+function Assert-EnvironmentCaseExecution {
+    $seen = [Collections.Generic.List[object]]::new()
+    Invoke-WithEnv @{ ANT_EXECUTION_CASE = 'outside' } {
+        $caseRecords = $seen
+        Invoke-MutTestEnvironmentCases -Name ANT_EXECUTION_CASE -Value @($null, '', 'configured') -Body {
+            param($value)
+            $caseRecords.Add($value)
+            Assert-Equal $value ([Environment]::GetEnvironmentVariable('ANT_EXECUTION_CASE'))
+            Assert-Equal ($null -ne $value) (Test-Path Env:ANT_EXECUTION_CASE)
+            $env:ANT_EXECUTION_CASE = 'changed in case'
+        }.GetNewClosure()
+        Assert-Equal 3 $seen.Count 'environment case iteration must include every caller value'
+        Assert-Equal outside $env:ANT_EXECUTION_CASE
+        Assert-Throws {
+            Invoke-MutTestEnvironmentCases -Name ANT_EXECUTION_CASE -Value @('failing') -Body { throw 'case callback failed' }
+        } -MessagePattern 'case callback failed'
+        Assert-Equal outside $env:ANT_EXECUTION_CASE 'failed case cleanup restores the parent'
+        Assert-Throws {
+            Invoke-MutTestEnvironmentCases -Name ANT_EXECUTION_CASE -Value @('expected') -AssertRestored -Body { $env:ANT_EXECUTION_CASE = 'unexpected' }
+        } -MessagePattern 'operation restores the environment value'
+        Assert-Throws {
+            Invoke-MutTestEnvironmentCases -Name ANT_EXECUTION_CASE -Value @() -Body { throw 'must not run' }
+        } -MessagePattern 'Value'
+        Assert-Throws {
+            Invoke-MutTestEnvironmentCases -Name ANT_EXECUTION_CASE -Value $null -Body { throw 'must not run' }
+        } -MessagePattern 'Value'
+    }.GetNewClosure()
+}
+
+function Assert-TestFunctionSourceRoundTrip {
+    $value = "source 'quotes' λ`nsecond line"
+    $probe = @'
+if ($FixtureSource -cne "source 'quotes' λ`nsecond line") { throw 'fixture source roundtrip failed' }
+'@
+    $result = Invoke-MutTestFunctionSourceProbe -FixtureSource $value -ProbeSource $probe
+    Assert-Equal 0 $result.ExitCode 'child source transport must preserve Unicode, newlines and quotes'
+    $failure = Invoke-MutTestFunctionSourceProbe -FixtureSource $value -ProbeSource "Write-Error 'source probe failed'; 'continued after error'"
+    Assert-TestPwshFailure -Probe $failure -Pattern 'source probe failed' -Reason 'child source transport must fail on a nonterminating error'
+}
 
 function Assert-TestRuntimeEnvironmentScope {
     foreach ($prior in @(
@@ -89,6 +151,18 @@ Describe 'Shared consumer operation policies' {
         @{ Name = 'retains empty-input short circuits and detects bypassed runtime PATH'
            Arguments = @{ ModuleArguments = $runtimeModule; Body = $runtimeCheck
                Find = "`$environment['PATH'] = ((`$normalizedRuntimeDirs -join ';') + ';' + `$env:PATH)"; Replace = '$null = $normalizedRuntimeDirs'; Expected = 'runtime PATH scope' } }
+        @{ Name = 'scopes CMake runtime paths across success, failed exits and exceptions and detects bypassed restoration'
+            Arguments = @{ ModuleArguments = (New-TestCmakeExecutionModuleArguments); Body = { param($state) Assert-CmakeRuntimeEnvironment $state }
+                Find = 'Invoke-WithProcessEnvironment -Environment @{ PATH = $runtimePath }'; Replace = 'Invoke-WithProcessEnvironment -Environment @{}'; Expected = 'operation restores the environment value|CMake runtime PATH' } }
+        @{ Name = 'runs every requested environment state, cleans failed cases and detects truncated matrices'
+            Arguments = @{ ScriptPath = 'windows/scripts/tests/WindowsConsumer.ExecutionFixtures.psm1'; FunctionName = @('Invoke-TestEnvironmentCases'); Body = { Assert-EnvironmentCaseExecution }
+                Find = 'foreach ($sample in $Value)'; Replace = 'foreach ($sample in @($Value[0]))'; Expected = 'environment case iteration' } }
+        @{ Name = 'round-trips source text without interpolation and detects a lossy decoder'
+            Arguments = @{ ScriptPath = 'windows/scripts/tests/WindowsTest.MutationCases.psm1'; FunctionName = @('Invoke-TestFunctionSourceProbe'); Body = { Assert-TestFunctionSourceRoundTrip }
+                Find = 'UTF8.GetString'; Replace = 'ASCII.GetString'; Expected = 'child source transport must preserve' } }
+        @{ Name = 'propagates child script errors and detects a source probe that continues after failure'
+            Arguments = @{ ScriptPath = 'windows/scripts/tests/WindowsTest.MutationCases.psm1'; FunctionName = @('Invoke-TestFunctionSourceProbe'); Body = { Assert-TestFunctionSourceRoundTrip }
+                Find = "ErrorActionPreference = 'Stop'"; Replace = "ErrorActionPreference = 'Continue'"; Expected = 'child source transport must fail' } }
     )
     Invoke-TestMutationChecks -Check $operationChecks
 

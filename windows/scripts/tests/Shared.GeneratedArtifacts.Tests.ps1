@@ -3,22 +3,22 @@
 # SPDX-License-Identifier: MIT
 # The consumers' suite run as they run it: a child pwsh, Pester 3.4.0 (run-pester-suite's pin) and 5+, GITHUB_WORKSPACE.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.TextFixtures.psm1') -DisableNameChecking
+
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -DisableNameChecking
+
 $script:ArtifactsSuite = Join-Path (Get-RepoRoot) 'shared\windows\tests\Repo.GeneratedArtifacts.Tests.ps1'
 
 # A committed repo with -Files and, unless -NoPatternFile, scripts\windows\generated-artifacts.txt holding -Patterns.
 function script:New-ArtifactsRepo([string]$Dir, [string[]]$Files, [string[]]$Patterns = @(), [switch]$NoPatternFile) {
-    $null = New-Item -ItemType Directory -Force -Path $Dir
+    $null = New-TestGitRepository -Path $Dir -InitialBranch '' -UserName 'Artifacts Test' -UserEmail 'test@example.invalid'
     if (-not $NoPatternFile) { $Files += 'scripts/windows/generated-artifacts.txt' }
+    $tree = @{}
     foreach ($f in $Files) {
-        $path = Join-Path $Dir $f
-        $null = New-Item -ItemType Directory -Force -Path (Split-Path $path)
-        $body = if ($f -like '*generated-artifacts.txt') { $Patterns } else { 'x' }
-        Set-Content -LiteralPath $path -Value $body
+        $lines = @(if ($f -like '*generated-artifacts.txt') { $Patterns } else { 'x' })
+        $tree[$f] = ConvertTo-TestFileText -Line $lines
     }
-    $identity = @('-c', 'user.email=test@example.invalid', '-c', 'user.name=Artifacts Test')
-    & git -C $Dir @identity init --quiet 2>$null
-    & git -C $Dir @identity add -A 2>$null
-    & git -C $Dir @identity commit --quiet -m fixture 2>$null
+    Add-TestGitCommit -Path $Dir -Files $tree
 }
 
 # Runs the suite in a child pwsh under one Pester version; returns "<total>/<failed>" and the failure messages.

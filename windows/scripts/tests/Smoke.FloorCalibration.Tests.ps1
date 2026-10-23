@@ -7,20 +7,17 @@
 Describe 'smoke gate: the global floor is calibrated against the section floors' {
 
     BeforeAll {
-        $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $s = Join-Path $root 'scripts\build\Test-Container.ps1'
-        if (-not (Test-Path $s)) { throw "smoke test not found: $s" }
-        $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
+        $script:smokeText = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Test-Container.ps1').Extent.Text
+        $block = [regex]::Match($script:smokeText, '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
         # '<sec>' = @{ Gpu = n; Cpu = n; Arm64 = n }: groups 2/3/4 keep the order the assertions rely on.
         $script:floorTriples = [regex]::Matches($block, "'(\d+)'\s*=\s*@\{\s*Gpu\s*=\s*(\d+);\s*Cpu\s*=\s*(\d+);\s*Arm64\s*=\s*(\d+)\s*\}")
-        $script:driver = Get-Content -Raw (Join-Path $root 'Build-Buildkit.ps1')
+        $script:driver = (Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1').Extent.Text
     }
 
     It 'section floors parse and cover all three lanes' {
         Assert-True ($script:floorTriples.Count -ge 20) "expected the full three-column section floor table, parsed $($script:floorTriples.Count) entries"
         # A section entry without an Arm64 key means one section silently has no arm64 floor.
-        $s = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts\build\Test-Container.ps1'
-        $block = [regex]::Match((Get-Content -Raw $s), '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
+        $block = [regex]::Match($script:smokeText, '(?s)\$sectionFloors = @\{(.+?)\n\}').Groups[1].Value
         $entries = @([regex]::Matches($block, "'(\d+)'\s*=\s*@\{[^}]*\}"))
         $incomplete = @($entries | Where-Object { $_.Value -notmatch 'Gpu\s*=' -or $_.Value -notmatch 'Cpu\s*=' -or $_.Value -notmatch 'Arm64\s*=' })
         Assert-Equal 0 $incomplete.Count "every section must carry Gpu, Cpu and Arm64 floors (incomplete: $(($incomplete | ForEach-Object { $_.Value }) -join ' | '))"

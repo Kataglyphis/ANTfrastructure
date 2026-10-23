@@ -1,12 +1,13 @@
 #requires -Version 7.0
 # The patch helpers decide whether every upstream patch lands; a silent regression blows up mid-build.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.GitFixtures.psm1') -DisableNameChecking
+
 Describe 'Invoke-InlineRegexPatch' {
 
     It 'replaces a match, writes the file, and returns $true' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'c.cmake' = 'link ${DIR}/libfoo.a here' } -Body { param($dir)
             $f = Join-Path $dir 'c.cmake'
-            Set-Content -Path $f -Value 'link ${DIR}/libfoo.a here' -NoNewline
             $r = Invoke-InlineRegexPatch -Path $f -Pattern 'lib([a-z]+)\.a' -Replacement '$1.lib' -Description 'c'
             Assert-True $r 'should report a modification'
             Assert-Equal 'link ${DIR}/foo.lib here' (Get-Content $f -Raw)
@@ -14,9 +15,8 @@ Describe 'Invoke-InlineRegexPatch' {
     }
 
     It 'does nothing and returns $false when -Guard does not match' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'c.cmake' = 'libfoo.a' } -Body { param($dir)
             $f = Join-Path $dir 'c.cmake'
-            Set-Content -Path $f -Value 'libfoo.a' -NoNewline
             $r = Invoke-InlineRegexPatch -Path $f -Pattern 'libfoo\.a' -Replacement 'foo.lib' -Guard 'THIS_IS_ABSENT' -Description 'c'
             Assert-False $r 'guard miss must skip'
             Assert-Equal 'libfoo.a' (Get-Content $f -Raw) 'file must be untouched'
@@ -24,9 +24,8 @@ Describe 'Invoke-InlineRegexPatch' {
     }
 
     It 'applies when -Guard matches' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'c.cmake' = 'MARKER libfoo.a' } -Body { param($dir)
             $f = Join-Path $dir 'c.cmake'
-            Set-Content -Path $f -Value 'MARKER libfoo.a' -NoNewline
             $r = Invoke-InlineRegexPatch -Path $f -Pattern 'libfoo\.a' -Replacement 'foo.lib' -Guard 'MARKER' -Description 'c'
             Assert-True $r
             Assert-Equal 'MARKER foo.lib' (Get-Content $f -Raw)
@@ -34,9 +33,8 @@ Describe 'Invoke-InlineRegexPatch' {
     }
 
     It 'warns and returns $false when the pattern is present-but-unchanged (no-op)' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'c.cmake' = 'hello world' } -Body { param($dir)
             $f = Join-Path $dir 'c.cmake'
-            Set-Content -Path $f -Value 'hello world' -NoNewline
             $captured = & { Invoke-InlineRegexPatch -Path $f -Pattern 'no-such-token' -Replacement 'x' -Description 'c' } 3>&1
             $warns = @($captured | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
             Assert-True ($warns.Count -ge 1) 'a silent miss must surface a warning'
@@ -58,9 +56,8 @@ Describe 'Invoke-InlineRegexPatch' {
     }
 
     It 'replaces ALL occurrences, not just the first' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'c.cmake' = 'liba.a libb.a libc.a' } -Body { param($dir)
             $f = Join-Path $dir 'c.cmake'
-            Set-Content -Path $f -Value 'liba.a libb.a libc.a' -NoNewline
             [void](Invoke-InlineRegexPatch -Path $f -Pattern 'lib([a-z])\.a' -Replacement '$1.lib')
             Assert-Equal 'a.lib b.lib c.lib' (Get-Content $f -Raw)
         }
@@ -70,9 +67,8 @@ Describe 'Invoke-InlineRegexPatch' {
 Describe 'Add-FileBlockOnce' {
 
     It 'appends the block and returns $true on first application' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'patcher.cmake' = 'original' } -Body { param($dir)
             $f = Join-Path $dir 'patcher.cmake'
-            Set-Content -Path $f -Value 'original' -NoNewline
             $r = Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block" -Description 'p'
             Assert-True $r
             Assert-Match 'original' (Get-Content $f -Raw)
@@ -81,9 +77,8 @@ Describe 'Add-FileBlockOnce' {
     }
 
     It 'is idempotent: a second call with the marker present is a no-op' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'patcher.cmake' = 'original' } -Body { param($dir)
             $f = Join-Path $dir 'patcher.cmake'
-            Set-Content -Path $f -Value 'original' -NoNewline
             [void](Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block")
             $lenAfterFirst = (Get-Content $f -Raw).Length
             $r2 = Add-FileBlockOnce -Path $f -Marker 'WINFIX-A' -Content "`n# WINFIX-A block"
@@ -93,9 +88,8 @@ Describe 'Add-FileBlockOnce' {
     }
 
     It '-Prepend inserts the block before existing content' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'src.cc' = 'int main(){}' } -Body { param($dir)
             $f = Join-Path $dir 'src.cc'
-            Set-Content -Path $f -Value 'int main(){}' -NoNewline
             [void](Add-FileBlockOnce -Path $f -Marker 'PRAGMA-X' -Content "// PRAGMA-X`n" -Prepend)
             $raw = Get-Content $f -Raw
             Assert-True ($raw.IndexOf('PRAGMA-X') -lt $raw.IndexOf('int main')) 'prepended block must come first'
@@ -119,9 +113,8 @@ Describe 'Edit-SourceFile' {
 
     It 'preserves a literal $-bearing injection verbatim (the reason this exists, not Invoke-InlineRegexPatch)' {
         # -replace would read CMake's ${VAR} as a group reference; the scriptblock's literal .Replace keeps it.
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'b.cmake' = 'set(X ANCHOR)' } -Body { param($dir)
             $f = Join-Path $dir 'b.cmake'
-            Set-Content -Path $f -Value 'set(X ANCHOR)' -NoNewline
             $inject = 'set(FLATC "${FLATBUFFERS_INSTALL_PREFIX}/bin/flatc.exe")'
             Assert-False (Edit-SourceFile -Path $f -Guard absent -Transform { throw 'guard must skip callback' } -Quiet)
             [void](Edit-SourceFile -Path $f -Guard ANCHOR -Transform { param($c) $c.Replace('ANCHOR', ($inject + 'ANCHOR')) })
@@ -130,9 +123,8 @@ Describe 'Edit-SourceFile' {
     }
 
     It 'skips (returns $false) when -Marker is already present' {
-        Invoke-InTestDir { param($dir)
+        Invoke-InTestDir -Files @{ 'c.txt' = 'already MARKER here' } -Body { param($dir)
             $f = Join-Path $dir 'c.txt'
-            Set-Content -Path $f -Value 'already MARKER here' -NoNewline
             foreach ($quiet in $false, $true) {
                 $r = Edit-SourceFile -Path $f -Marker 'MARKER' -Transform { throw 'must not run' } -Quiet:$quiet
                 Assert-False $r 'marker present must skip'
@@ -162,7 +154,7 @@ Describe 'Invoke-SourcePatchWithFallback' {
         param([Parameter(Mandatory)][scriptblock]$Body, [switch]$Unmatched)
         $action = $Body
         Invoke-InTestDir { param($dir)
-            $null = & git -C $dir init 2>&1
+            $null = Invoke-TestGitCommand -Path $dir -ArgumentList init
             $patch = Join-Path $dir 'p.patch'
             $anchor = if ($Unmatched) { 'DOES NOT MATCH' } else { 'old' }
             Write-TestFileTree -Root $dir -Files @{ 't.txt' = "old`n"; 'p.patch' = "--- a/t.txt`n+++ b/t.txt`n@@ -1 +1 @@`n-$anchor`n+new`n" }
@@ -253,23 +245,19 @@ Describe 'Regex patch postconditions' {
 }
 
 Describe 'OpenCV ARM source patch verification' {
-    $ast = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OpencvFromSource.ps1'
-    $checks = @($ast.FindAll({ param($node)
-                $node -is [System.Management.Automation.Language.CommandAst] -and
-                $node.GetCommandName() -eq 'Assert-SourceFileContent' }, $true))
+    $checks = @(Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-OpencvFromSource.ps1' -Name Assert-SourceFileContent -ExpectedCount 2)
 
     function Invoke-OpencvArmVerificationCase {
         param([int]$Index, [string[]]$ValidText, [string]$InvalidText, [string]$MessagePattern)
-        Assert-Equal 2 $checks.Count 'both independent patch checks remain wired'
         Invoke-InTestDir { param($dir)
             $sfCpp = Join-Path $dir 'source.cpp'
             $mlasiH = $sfCpp
             foreach ($text in $ValidText) {
                 [IO.File]::WriteAllText($sfCpp, $text)
-                . ([scriptblock]::Create($checks[$Index].Extent.Text))
+                . $checks[$Index]
             }
             [IO.File]::WriteAllText($mlasiH, $InvalidText)
-            Assert-Throws { . ([scriptblock]::Create($checks[$Index].Extent.Text)) } -MessagePattern $MessagePattern
+            Assert-Throws { . $checks[$Index] } -MessagePattern $MessagePattern
         }
     }
 

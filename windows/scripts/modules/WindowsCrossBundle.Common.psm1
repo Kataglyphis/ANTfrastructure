@@ -5,9 +5,7 @@
 
 Set-StrictMode -Version Latest
 
-# Guarded, never -Force: a forced nested import unloads the caller's top-level copy.
-$targetArchPath = Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1'
-if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchPath -DisableNameChecking }
+Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1') -DisableNameChecking -ErrorAction Stop
 
 # Where the family images install the media stack's DLLs, for the target arch of the image.
 $script:ImageRuntimeBin = 'C:\runtime\bin'
@@ -91,20 +89,17 @@ function Get-PeImportClosure {
             if (-not $index.ContainsKey($key)) { $index[$key] = $dll.FullName }
         }
     }
-    $taken = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $queue = [System.Collections.Generic.Queue[string]]::new([string[]]$Path)
-    $found = [System.Collections.Generic.List[string]]::new()
-    while ($queue.Count -gt 0) {
-        foreach ($name in @(Get-PeImportNames -Path $queue.Dequeue() -IncludeDelayLoad)) {
-            $source = $index[$name.ToLowerInvariant()]
-            if (-not $source -or -not $taken.Add($name)) { continue }
-            $null = Assert-PeTargetMachine -Path $source -Arch $Arch -Context "closure DLL imported as $name, which the device could not load"
-            $found.Add($source)
-            $queue.Enqueue($source)
+    $assertMachine = Get-Command Assert-PeTargetMachine
+    $resolve = {
+        param($name)
+        $source = $index[$name.ToLowerInvariant()]
+        if ($source) {
+            $null = & $assertMachine -Path $source -Arch $Arch -Context "closure DLL imported as $name, which the device could not load"
+            return $source
         }
-    }
-    # Unrolled, so @(Get-PeImportClosure ...) is the flat list -- and empty when nothing was found.
-    return $found.ToArray()
+    }.GetNewClosure()
+    Get-DllDependencyGraph -Path $Path -SearchDirectory $SearchDirectory -ResolveImport $resolve -SkipImportPattern '' -SystemDirectoryPattern '' |
+        ForEach-Object { if ($_.Path) { $_.Path } }
 }
 
 function Copy-PeImportClosure {

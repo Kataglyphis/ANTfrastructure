@@ -8,7 +8,22 @@ Describe 'WindowsVulkanValidation.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsVulkanValidation.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:root = (New-Item -ItemType Directory -Path (Join-Path $env:TEMP ('vkvalidation-' + (Get-Random))) -Force).FullName
+    function Invoke-VulkanSettingsFixture {
+      param([Collections.IDictionary]$Files = @{}, [scriptblock]$WhileStaged, [scriptblock]$AfterRestore)
+      $inspectStaged = $WhileStaged; $inspectRestored = $AfterRestore
+      $copy = Get-Command Copy-VulkanLayerSettings
+      $restore = Get-Command Restore-VulkanLayerSettings
+      $source = Get-VulkanLayerSettingsDefaultPath
+      Invoke-InTestDir -Files $Files -Body { param($dir)
+        $path = Join-Path $dir 'vk_layer_settings.txt'
+        $staging = & $copy -SettingsPath $source -TargetDirectory $dir
+        try { & $inspectStaged $path $staging }
+        finally { & $restore -Staging $staging }
+        & $inspectRestored $path $staging
+      }.GetNewClosure()
+    }
+
+    $script:root = New-TestDir -Prefix 'vkvalidation-'
 
     $script:hazardLog = Join-Path $script:root 'hazard.log'
     Set-Content -Path $script:hazardLog -Value @(
@@ -68,31 +83,43 @@ Describe 'WindowsVulkanValidation.Common' {
     }
 
     It 'stages the settings file next to the executable and removes it again' {
-      $exeDir = (New-Item -ItemType Directory -Path (Join-Path $script:root ('stage-' + (Get-Random))) -Force).FullName
-      $staging = Copy-VulkanLayerSettings -SettingsPath (Get-VulkanLayerSettingsDefaultPath) -TargetDirectory $exeDir
-      $staged = Join-Path $exeDir 'vk_layer_settings.txt'
-
-      Test-Path $staged | Should -Be $true
-      $staging.StagedPath | Should -Be $staged
-      ($null -eq $staging.BackupPath) | Should -Be $true
-
-      Restore-VulkanLayerSettings -Staging $staging
-      Test-Path $staged | Should -Be $false
+      Invoke-VulkanSettingsFixture -WhileStaged { param($staged, $staging)
+        Test-Path $staged | Should -Be $true
+        $staging.StagedPath | Should -Be $staged
+        ($null -eq $staging.BackupPath) | Should -Be $true
+      } -AfterRestore { param($staged)
+        Test-Path $staged | Should -Be $false
+      }
     }
 
     It 'backs up and restores a pre-existing vk_layer_settings.txt' {
-      $exeDir = (New-Item -ItemType Directory -Path (Join-Path $script:root ('stage-' + (Get-Random))) -Force).FullName
-      $staged = Join-Path $exeDir 'vk_layer_settings.txt'
-      Set-Content -Path $staged -Value 'khronos_validation.validate_core = true' -NoNewline
+      Invoke-VulkanSettingsFixture -Files @{ 'vk_layer_settings.txt' = 'khronos_validation.validate_core = true' } -WhileStaged { param($staged, $staging)
+        ($null -ne $staging.BackupPath) | Should -Be $true
+        (Get-Content $staged -Raw) | Should -Match 'validate_sync'
+      } -AfterRestore { param($staged, $staging)
+        Test-Path $staged | Should -Be $true
+        (Get-Content $staged -Raw) | Should -Be 'khronos_validation.validate_core = true'
+        Test-Path $staging.BackupPath | Should -Be $false
+      }
+    }
 
-      $staging = Copy-VulkanLayerSettings -SettingsPath (Get-VulkanLayerSettingsDefaultPath) -TargetDirectory $exeDir
-      ($null -ne $staging.BackupPath) | Should -Be $true
-      (Get-Content $staged -Raw) | Should -Match 'validate_sync'
-
-      Restore-VulkanLayerSettings -Staging $staging
-      Test-Path $staged | Should -Be $true
-      (Get-Content $staged -Raw) | Should -Be 'khronos_validation.validate_core = true'
-      Test-Path $staging.BackupPath | Should -Be $false
+    It 'unwinds the staged settings when an inspecting assertion fails, with a fault control' {
+      $prelude = @'
+function Get-VulkanLayerSettingsDefaultPath { 'fixture settings' }
+function Copy-VulkanLayerSettings { param($SettingsPath, $TargetDirectory); $State.Calls.Add('copy'); [pscustomobject]@{ StagedPath = (Join-Path $TargetDirectory 'vk_layer_settings.txt') } }
+function Restore-VulkanLayerSettings { param($Staging); $State.Calls.Add('restore') }
+'@
+      $module = @{ ScriptPath = 'windows/scripts/tests/WindowsVulkanValidation.Common.Tests.ps1'; FunctionName = 'Invoke-VulkanSettingsFixture'
+        Prelude = $prelude; FixtureState = (New-TestCallState @{ After = $false }) }
+      Invoke-TestFunctionMutations -ModuleArguments $module -Find 'finally { & $restore -Staging $staging }' -Replace 'finally { }' `
+        -Expected 'a failed inspection must restore settings' -IncludeControl -Body { param($state)
+          $state.Calls.Clear(); $state.After = $false
+          Assert-Throws {
+            Invoke-MutVulkanSettingsFixture -WhileStaged { throw 'settings inspection sentinel' } -AfterRestore { $state.After = $true }
+          } -MessagePattern 'settings inspection sentinel'
+          Assert-Equal 'copy|restore' ($state.Calls -join '|') 'a failed inspection must restore settings'
+          Assert-False $state.After 'a failed inspection must not run the after-restore verdict'
+        }
     }
 
     It 'ignores a null staging handle so finally blocks are safe' {

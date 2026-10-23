@@ -158,6 +158,27 @@ function Assert-SourceFileContent {
     if ($verdict.Count -ne 1 -or $verdict[0] -isnot [bool] -or -not $verdict[0]) { throw $FailureMessage }
 }
 
+function Edit-SourceRegexText {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Map)
+    foreach ($edit in $Map) { $Text = [regex]::Replace($Text, $edit.Pattern, $edit.Replacement) }
+    return $Text
+}
+
+function Add-SourceRegexGuard {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Pattern,
+        [Parameter(Mandatory)][string]$Condition,
+        [string]$Comment = '',
+        [string]$Indent = ''
+    )
+    $prefix = "#if $Condition$(if ($Comment) { "  // $Comment" })`n$Indent"
+    $wrap = { param($match) $prefix + $match.Value + "`n#endif" }.GetNewClosure()
+    $map = @(foreach ($expression in $Pattern) { @{ Pattern = $expression; Replacement = [Text.RegularExpressions.MatchEvaluator]$wrap } })
+    Edit-SourceRegexText -Text $Text -Map $map
+}
+
 function Read-SourcePatchInput {
     param([string]$Path, [string]$Description, [string]$CallerName, [switch]$Require, [string]$Marker = '', [string]$Guard = '')
     if (-not (Test-Path $Path)) {
@@ -452,6 +473,8 @@ Export-ModuleMember -Function @(
     'Invoke-VerifiedSourceFilePatch',
     'Add-FileBlockOnce',
     'Edit-SourceFile',
+    'Add-SourceRegexGuard',
+    'Edit-SourceRegexText',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList',

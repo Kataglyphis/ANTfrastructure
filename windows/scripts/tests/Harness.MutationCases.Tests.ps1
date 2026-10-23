@@ -1,16 +1,16 @@
 #requires -Version 7.0
 # Child probes cover named registration, factories and control failures; operation assertions belong to their consumer suites.
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
+
 function Invoke-MutationCheckIsolationProbe {
     param([Parameter(Mandatory)][string]$HelperSource)
-    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($HelperSource))
     $harness = (Join-Path (Get-RepoRoot) 'windows/scripts/tests/TestHarness.psm1').Replace("'", "''")
     $probe = @'
 Import-Module '__HARNESS__' -ErrorAction Stop
-$source = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('__SOURCE__'))
 Invoke-InTestDir {
     param($dir)
-    $module = Import-FunctionModule -Text $source -Dir $dir -FunctionName Invoke-TestMutationChecks -Prefix Probe
+    $module = Import-FunctionModule -Text $FixtureSource -Dir $dir -FunctionName Invoke-TestMutationChecks -Prefix Probe
     try {
         Reset-TestState
         $calls = [Collections.Generic.List[string]]::new()
@@ -48,7 +48,7 @@ Invoke-InTestDir {
     } finally { Remove-Module $module -Force }
 }
 '@
-    Invoke-TestPwshProbe -Source $probe.Replace('__HARNESS__', $harness).Replace('__SOURCE__', $encoded)
+    Invoke-TestFunctionSourceProbe -FixtureSource $HelperSource -ProbeSource $probe.Replace('__HARNESS__', $harness)
 }
 
 Describe 'Named mutation operation checks' {
@@ -63,7 +63,6 @@ Describe 'Named mutation operation checks' {
         $needle = '& $execute @arguments -IncludeControl'
         Assert-TestScriptContains -ScriptPath 'windows/scripts/tests/WindowsTest.MutationCases.psm1' -Literal $needle
         $result = Invoke-MutationCheckIsolationProbe -HelperSource $definition.Replace($needle, '& $execute @arguments')
-        Assert-True ($result.ExitCode -ne 0) 'omitting the control must fail the probe'
-        Assert-Match 'a failed control remains a failure' $result.Output
+        Assert-TestPwshFailure -Probe $result -Pattern 'a failed control remains a failure' -Reason 'omitting the control must fail the probe'
     }
 }

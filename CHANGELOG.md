@@ -12,6 +12,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Windows graph, debugger and fixture lifetimes
+
+- Reuse the architecture DLL graph for cross bundles while preserving multi-root breadth-first order, machine checks and indexed API-set/system traversal.
+- Share LiteRT-LM regex guards and TVM artifact cardinality with existing source operations.
+- Share native output capture and CMake/smoke environment scopes with unchanged caller verdicts and fatal companion imports.
+- Share silo debugger transport and wininit queries; fix manual handle mode reading uninitialized debugger state and keep invasive argv intact.
+- Share checked local git setup, batch writers, file-tree initialization and AST readers across Windows suites.
+- Make shared source-probe children terminate on setup errors; retain portable consumer checks beside separately discovered native batch execution.
+- Remove four resolved Windows duplication exceptions (372 to 368) and lower five measured budgets without increasing limits or reducing scan coverage.
+- Pass all 2,467 Windows tests, strict lint across 451 files and 65 portable Linux cases; raise the discovery floor to 2,442.
+
 ## 2026-10-23 — share ONNX staging, Renovate reports and gate fixtures
 
 - Share ONNX cross-toolchain arguments and advisory filename-based library actions, retaining compiler order, copy/strip selectors, depths and repack decisions.

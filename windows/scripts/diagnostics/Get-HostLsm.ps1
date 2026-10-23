@@ -18,7 +18,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Only the setup is shared with the other LSM probes; the cdb command strings stay here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
@@ -34,7 +33,6 @@ $prot = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\LSM' -Name Lau
 if ($prot -and $prot.LaunchProtected) { throw "LSM runs protected (LaunchProtected=$($prot.LaunchProtected)); no attach possible" }
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-$sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
 
 # No .printf: it swallows the semicolons after it; gServer holds the session counters (a blind read, no private symbols).
 $cmds = @(
@@ -51,7 +49,7 @@ $cmds = @(
 
 function Invoke-HostLsmSnapshot([string]$tag) {
     $out = Join-Path $OutDir "host-lsm-$hostLsmPid-$stamp-$tag.txt"
-    & $cdb -pv -p $hostLsmPid -y $sym -c $cmds > $out 2>&1
+    Invoke-SiloDebugger -CdbPath $cdb -ProcessId $hostLsmPid -OutDir $OutDir -Command $cmds -LogPath $out
     $stacks = @(Select-String -Path $out -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     $bad = @(Select-String -Path $out -Pattern 'Bad register|Syntax error' -ErrorAction SilentlyContinue).Count
     Write-Host ("  [{0}] stacks={1} errors={2} -> {3}" -f $tag, $stacks, $bad, (Split-Path $out -Leaf))
@@ -63,7 +61,7 @@ function Invoke-HostLsmSnapshot([string]$tag) {
 Write-Host "snapshot A (idle) ..."
 $logA = Invoke-HostLsmSnapshot 'A-idle'
 
-$baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+$baseWininit = @(Get-SiloWininitId)
 Start-SiloBaitContainer -Tag 'hostlsm'
 Write-Host "bait started; waiting for its silo ..."
 

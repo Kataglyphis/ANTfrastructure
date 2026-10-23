@@ -26,7 +26,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Only the setup is shared with the other LSM probes; the R10 read and handle scan stay here.
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
 $OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir
@@ -81,11 +80,11 @@ function Get-ProcLabel([long]$procId) {
     return "pid $procId  $($p.Name)  (parent $ppid $pn)"
 }
 
-# 1. Locate the hung LSM svchost and the handle it waits on
+$cdb = $null
 if (-not $LsmPid -or -not $Handle) {
     $cdb = Get-CdbPath
 
-    $baseWininit = @(Get-CimInstance Win32_Process -Filter "Name='wininit.exe'" | Select-Object -ExpandProperty ProcessId)
+    $baseWininit = @(Get-SiloWininitId)
 
     if (-not $NoBait) {
         $bait = Start-SiloBaitContainer -Tag 'lsmbait' -PassThru
@@ -99,11 +98,10 @@ if (-not $LsmPid -or -not $Handle) {
     $svchosts = @(Get-SiloSvchost -ServicesParentPid $newWininit.ProcessId)
 
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-    $sym = "srv*$OutDir\sym*https://msdl.microsoft.com/download/symbols"
     foreach ($p in $svchosts) {
         $log = Join-Path $OutDir "holder-probe-$($p.ProcessId)-$stamp.txt"
         # Two passes: .printf swallows the semicolons after it, so a combined command prints no stack.
-        & $cdb -pv -p $p.ProcessId -y $sym -c '.reload /f; ~*kb; qd' > $log 2>&1
+        Invoke-SiloDebugger -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -Command '.reload /f; ~*kb; qd' -LogPath $log
         if (-not (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue)) { continue }
 
         # Bind the frame to its thread: the process's first wait is the SCM dispatcher's idle loop.
@@ -116,7 +114,7 @@ if (-not $LsmPid -or -not $Handle) {
 
         # The syscall stub does mov r10,rcx, so R10 holds the handle; kb's args-to-child columns are unreliable.
         $rlog = Join-Path $OutDir "holder-r10-$($p.ProcessId)-$stamp.txt"
-        & $cdb -pv -p $p.ProcessId -y $sym -c ".reload /f; ~$($idx)s; r r10; qd" > $rlog 2>&1
+        Invoke-SiloDebugger -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -Command ".reload /f; ~$($idx)s; r r10; qd" -LogPath $rlog
         $rm = Select-String -Path $rlog -Pattern 'r10=([0-9a-f`]+)' -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $rm) { Write-Warning "pid $($p.ProcessId): thread $idx is LSM but R10 was unreadable (see $rlog)"; continue }
         $Handle = [uint32][Convert]::ToUInt64(($rm.Matches[0].Groups[1].Value -replace '`', ''), 16)
@@ -149,7 +147,7 @@ $holders = @($rows | Where-Object { $_.Item3 -eq $obj })
 $detail = ''
 if ($cdb -and (Get-Process -Id $LsmPid -ErrorAction SilentlyContinue)) {
     $hlog = Join-Path $OutDir "handle-detail-$LsmPid-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
-    & $cdb -pv -p $LsmPid -y $sym -c ".reload /f; !handle $($Handle.ToString('x')) f; qd" > $hlog 2>&1
+    Invoke-SiloDebugger -CdbPath $cdb -ProcessId $LsmPid -OutDir $OutDir -Command ".reload /f; !handle $($Handle.ToString('x')) f; qd" -LogPath $hlog
     $detail = (Get-Content $hlog | Select-String -Pattern 'HandleCount|PointerCount|Event Type|Event is|Type ' | ForEach-Object { '    ' + $_.Line.Trim() }) -join "`n"
 }
 $report = Join-Path $OutDir "event-holders-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
