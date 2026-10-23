@@ -17866,5 +17866,101 @@
   "replace": "n=$(grep -c '^- \\[[xX]\\]' \"$backlog\" 2>/dev/null)",
   "test": "bash linux/scripts/tests/test-agentic-phases.sh",
   "why": "Pending and blocked counts must select the requested task state."
+ },
+ {
+  "id": "ort-chain.web-retry",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/50-build-js.sh",
+  "find": "sleep 5; npm ci;",
+  "replace": "sleep 5; true;",
+  "test": "bash linux/scripts/tests/test-onnx-web-build.sh",
+  "why": "The one retry must actually invoke npm ci and succeed before continuing."
+ },
+ {
+  "id": "ort-chain.web-failed-lock-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/50-build-js.sh",
+  "find": "|| err \"npm ci failed twice in ${label} (lockfile-exact install is mandatory)\"",
+  "replace": "|| true",
+  "test": "bash linux/scripts/tests/test-onnx-web-build.sh",
+  "why": "Two failed lockfile installs must stop the build in each package directory."
+ },
+ {
+  "id": "ort-chain.web-mjs-only",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/50-build-js.sh",
+  "find": "&& ! ls \"${directory}\"/*.mjs >/dev/null 2>&1",
+  "replace": "&& true",
+  "test": "bash linux/scripts/tests/test-onnx-web-build.sh",
+  "why": "An mjs-only bundle is valid even when no js files were produced."
+ },
+ {
+  "id": "ort-chain.web-source-artifacts",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/50-build-js.sh",
+  "find": "require_onnx_web_js \"${ORT_SRC_DIR}/js/web/dist\" \"No .js or .mjs files found in js/web/dist/ after build\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-web-build.sh",
+  "why": "Missing build artifacts must fail at the source verdict, before any success cleanup."
+ },
+ {
+  "id": "ort-chain.web-copied-artifacts",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/50-build-js.sh",
+  "find": "require_onnx_web_js \"${WASM_OUTPUT_DIR}\" \"JS artifacts copy failed: no .js/.mjs in ${WASM_OUTPUT_DIR} despite dist/ containing them\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-web-build.sh",
+  "why": "An unsuccessful copy must fail even after a successful build and source verdict."
+ },
+ {
+  "id": "gate-fixture.codec-map-difference-direction",
+  "target": "linux/scripts/tests/test-codec-so-map-convergence.sh",
+  "find": "LC_ALL=C comm -23 \\",
+  "replace": "LC_ALL=C comm -13 \\",
+  "test": "bash linux/scripts/tests/test-codec-so-map-convergence.sh",
+  "why": "Both codec ratchets depend on selecting left-only members, including empty inputs."
+ },
+ {
+  "id": "package.bundle-renderer-failure",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "    appimage) _app_packaging_bundle_appimage ;;",
+  "replace": "    appimage) _app_packaging_bundle_appimage || true ;;",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Renderer failures must propagate without suppressing errexit inside the renderer."
+ },
+ {
+  "id": "package.bundle-artifact-verdict",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  app_packaging_assert_artifact \"$artifact\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "All three format entry points must reject missing or empty artifacts."
+ },
+ {
+  "id": "package.bundle-facts-scope",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  local bundle_dir version package_name binary_name app_id icon_file icon_name out_dir artifact",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Shared bundle facts must remain local to each packaging invocation."
+ },
+ {
+  "id": "package.bundle-supported-architecture",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "    amd64|arm64) \"$mapper\" \"$raw\" ;;",
+  "replace": "    amd64|arm64|riscv64) \"$mapper\" \"$raw\" ;;",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Shared architecture mapping must retain the supported-format architecture set."
+ },
+ {
+  "id": "package.bundle-desktop-icon",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "    cp \"$6\" \"$7\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "The shared desktop staging operation must copy a provided icon to the requested destination."
+ },
+ {
+  "id": "package.bundle-hidden-files",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "  cp -a \"$source/.\" \"$destination/\"",
+  "replace": "  cp -a \"$source/\"* \"$destination/\"",
+  "test": "bash linux/scripts/tests/test-app-packaging-bundle-facts.sh",
+  "why": "Shared bundle staging must retain hidden files as well as symlinks and executable payloads."
  }
 ]

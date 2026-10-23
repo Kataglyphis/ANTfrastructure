@@ -90,6 +90,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
+   Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active.
+   ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts.
    Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results.
    Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255.
    Critical source-pattern checks share verdict handling; failed probes increment the aggregate and must reach the failing summary.

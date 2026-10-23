@@ -251,26 +251,23 @@ app_packaging_get_pubspec_version() {
   echo "$version"
 }
 
-app_packaging_map_arch_to_deb() {
-  local a="${1:?arch required}"
-  case "$(arch_normalize "$a")" in
-    amd64|arm64) arch_normalize "$a" ;;
+_app_packaging_arch_for_format() {
+  local format="$1" mapper="$2" raw="$3"
+  case "$(arch_normalize "$raw")" in
+    amd64|arm64) "$mapper" "$raw" ;;
     *)
-      echo "Error: unsupported architecture for .deb: $1" >&2
+      echo "Error: unsupported architecture for ${format}: ${raw}" >&2
       return 1
       ;;
   esac
 }
 
+app_packaging_map_arch_to_deb() {
+  _app_packaging_arch_for_format .deb arch_normalize "${1:?arch required}"
+}
+
 app_packaging_map_arch_to_appimage() {
-  local a="${1:?arch required}"
-  case "$(arch_normalize "$a")" in
-    amd64|arm64) arch_uname_name_for "$a" ;;
-    *)
-      echo "Error: unsupported architecture for AppImage: $1" >&2
-      return 1
-      ;;
-  esac
+  _app_packaging_arch_for_format AppImage arch_uname_name_for "${1:?arch required}"
 }
 
 # ostree too: Debian's flatpak depends on libostree, not the CLI the verdict runs.
@@ -305,14 +302,7 @@ app_packaging_assert_flatpak_committed() {
 }
 
 app_packaging_map_arch_to_flatpak() {
-  local a="${1:?arch required}"
-  case "$(arch_normalize "$a")" in
-    amd64|arm64) arch_uname_name_for "$a" ;;
-    *)
-      echo "Error: unsupported architecture for Flatpak: $1" >&2
-      return 1
-      ;;
-  esac
+  _app_packaging_arch_for_format Flatpak arch_uname_name_for "${1:?arch required}"
 }
 
 # appimagetool 1.9 never reads the runtime the image stages, so unnamed it fetches the moving continuous one.
@@ -414,15 +404,56 @@ app_packaging_resolve_bundle_facts() {
   mkdir -p "$out_dir"
 }
 
-app_packaging_package_linux_bundle_deb() {
-  local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
-  local app_name="${2:?app_name is required}"
-
-  local bundle_dir version package_name arch deb_root binary_name app_id icon_file icon_name output_name out_dir
+# Format callbacks see isolated bundle facts through Bash dynamic scope.
+_app_packaging_package_bundle() {
+  local format="$1"
+  shift
+  local matrix_arch="${1:?matrix_arch is required (x64|arm64)}" app_name="${2:?app_name is required}"
+  local bundle_dir version package_name binary_name app_id icon_file icon_name out_dir artifact
   app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
-  arch="$(app_packaging_map_arch_to_deb "$matrix_arch")"
   icon_name="$package_name"
+  # A conditional call would disable errexit throughout the format callback.
+  case "$format" in
+    deb) _app_packaging_bundle_deb ;;
+    appimage) _app_packaging_bundle_appimage ;;
+    flatpak) _app_packaging_bundle_flatpak ;;
+    *) return 2 ;;
+  esac
+  local render_rc=$?
+  [ "$render_rc" -eq 0 ] || return "$render_rc"
+  app_packaging_assert_artifact "$artifact"
+}
+
+app_packaging_package_linux_bundle_deb() {
+  _app_packaging_package_bundle deb "$@"
+}
+
+app_packaging_package_linux_bundle_appimage() {
+  _app_packaging_package_bundle appimage "$@"
+}
+
+app_packaging_package_linux_bundle_flatpak() {
+  _app_packaging_package_bundle flatpak "$@"
+}
+
+_app_packaging_copy_bundle() {
+  local source="$1" destination="$2"
+  mkdir -p "$destination" || return $?
+  cp -a "$source/." "$destination/"
+}
+
+_app_packaging_stage_desktop_icon() {
+  app_packaging_create_desktop_file "$1" "$2" "$3" "$4" "$5"
+  if [[ -n "$6" ]]; then
+    cp "$6" "$7"
+  fi
+}
+
+_app_packaging_bundle_deb() {
+  local arch deb_root output_name
+  arch="$(app_packaging_map_arch_to_deb "$matrix_arch")"
   output_name="${package_name}_${version}_${arch}.deb"
+  artifact="${out_dir}/${output_name}"
 
   if ! command -v dpkg-deb >/dev/null 2>&1; then
     echo "Error: dpkg-deb not found. Install package 'dpkg' to build .deb files." >&2
@@ -433,12 +464,11 @@ app_packaging_package_linux_bundle_deb() {
   deb_root="${KATAGLYPHIS_PACKAGING_WORKDIR:-/tmp/packaging-work}/deb"
   rm -rf "$deb_root"
   mkdir -p "$deb_root/DEBIAN"
-  mkdir -p "$deb_root/opt/$package_name"
   mkdir -p "$deb_root/usr/bin"
   mkdir -p "$deb_root/usr/share/applications"
   mkdir -p "$deb_root/usr/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps"
 
-  cp -a "$bundle_dir/." "$deb_root/opt/$package_name/"
+  _app_packaging_copy_bundle "$bundle_dir" "$deb_root/opt/$package_name"
 
   cat > "$deb_root/usr/bin/$package_name" <<EOF
 #!/usr/bin/env bash
@@ -447,16 +477,9 @@ exec /opt/${package_name}/${binary_name} "\$@"
 EOF
   chmod 0755 "$deb_root/usr/bin/$package_name"
 
-  app_packaging_create_desktop_file \
-    "$deb_root/usr/share/applications/${package_name}.desktop" \
-    "$app_id" \
-    "$app_name" \
-    "$package_name" \
-    "$icon_name"
-
-  if [[ -n "$icon_file" ]]; then
-    cp "$icon_file" "$deb_root/usr/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps/${package_name}.png"
-  fi
+  _app_packaging_stage_desktop_icon \
+    "$deb_root/usr/share/applications/${package_name}.desktop" "$app_id" "$app_name" "$package_name" "$icon_name" \
+    "$icon_file" "$deb_root/usr/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps/${package_name}.png"
 
   cat > "$deb_root/DEBIAN/control" <<EOF
 Package: ${package_name}
@@ -475,20 +498,15 @@ EOF
     echo "Error: dpkg-deb failed for ${out_dir}/${output_name}" >&2
     return 1
   fi
-  app_packaging_assert_artifact "${out_dir}/${output_name}"
 }
 
-app_packaging_package_linux_bundle_appimage() {
-  local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
-  local app_name="${2:?app_name is required}"
-
-  local bundle_dir version package_name arch binary_name app_id icon_file icon_name appdir output_name appimagetool_cmd out_dir runtime_file
-  app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
+_app_packaging_bundle_appimage() {
+  local arch appdir output_name appimagetool_cmd runtime_file
   arch="$(app_packaging_map_arch_to_appimage "$matrix_arch")"
-  icon_name="$package_name"
   # Container-native: appimagetool chmods its AppDir, which a bind-mounted drive refuses.
   appdir="${KATAGLYPHIS_PACKAGING_WORKDIR:-/tmp/packaging-work}/${package_name}.AppDir"
   output_name="${package_name}-${version}-${arch}.AppImage"
+  artifact="${out_dir}/${output_name}"
 
   if ! appimagetool_cmd="$(app_packaging_resolve_appimagetool)"; then
     return 1
@@ -496,9 +514,7 @@ app_packaging_package_linux_bundle_appimage() {
   runtime_file="$(app_packaging_appimage_runtime_file)"
 
   rm -rf "$appdir"
-  mkdir -p "$appdir/usr/lib/$package_name"
-
-  cp -a "$bundle_dir/." "$appdir/usr/lib/$package_name/"
+  _app_packaging_copy_bundle "$bundle_dir" "$appdir/usr/lib/$package_name"
 
   cat > "$appdir/AppRun" <<EOF
 #!/usr/bin/env bash
@@ -508,23 +524,15 @@ exec "\$SELF_DIR/usr/lib/${package_name}/${binary_name}" "\$@"
 EOF
   chmod 0755 "$appdir/AppRun"
 
-  app_packaging_create_desktop_file \
-    "$appdir/${app_id}.desktop" \
-    "$app_id" \
-    "$app_name" \
-    "AppRun" \
-    "$icon_name"
-
-  if [[ -n "$icon_file" ]]; then
-    cp "$icon_file" "$appdir/${icon_name}.png"
-  fi
+  _app_packaging_stage_desktop_icon \
+    "$appdir/${app_id}.desktop" "$app_id" "$app_name" "AppRun" "$icon_name" \
+    "$icon_file" "$appdir/${icon_name}.png"
 
   if ! APPIMAGE_EXTRACT_AND_RUN=1 NO_APPSTREAM=1 ARCH="$arch" \
       "$appimagetool_cmd" ${runtime_file:+--runtime-file "$runtime_file"} "$appdir" "${out_dir}/${output_name}"; then
     echo "Error: appimagetool failed for ${out_dir}/${output_name}" >&2
     return 1
   fi
-  app_packaging_assert_artifact "${out_dir}/${output_name}"
 }
 
 # KATAGLYPHIS_FLATPAK_FINISH_ARGS is appended, never replacing the four that keep network/wayland/dri.
@@ -545,12 +553,8 @@ app_packaging_flatpak_finish_args_block() {
   done
 }
 
-app_packaging_package_linux_bundle_flatpak() {
-  local matrix_arch="${1:?matrix_arch is required (x64|arm64)}"
-  local app_name="${2:?app_name is required}"
-
-  local bundle_dir version package_name app_id binary_name icon_file manifest_dir manifest_file repo_dir build_dir output_name flatpak_arch out_dir
-  app_packaging_resolve_bundle_facts "$matrix_arch" "$app_name"
+_app_packaging_bundle_flatpak() {
+  local manifest_dir manifest_file repo_dir build_dir output_name flatpak_arch
   # Everything flatpak touches needs fchmod, so stage container-native; only the bundle goes to out/.
   local flatpak_work="${KATAGLYPHIS_FLATPAK_WORKDIR:-/tmp/flatpak-work}"
   manifest_dir="${flatpak_work}/manifest"
@@ -559,26 +563,18 @@ app_packaging_package_linux_bundle_flatpak() {
   build_dir="${flatpak_work}/build-dir"
   mkdir -p "$flatpak_work"
   output_name="${out_dir}/${package_name}-${version}.flatpak"
+  artifact="$output_name"
   flatpak_arch="$(app_packaging_map_arch_to_flatpak "$matrix_arch")"
 
   app_packaging_require_flatpak_tools || return 1
 
   mkdir -p "$manifest_dir/files"
   rm -rf "$manifest_dir/files" "$repo_dir" "$build_dir"
-  mkdir -p "$manifest_dir/files"
+  _app_packaging_copy_bundle "$bundle_dir" "$manifest_dir/files"
 
-  cp -a "$bundle_dir/." "$manifest_dir/files/"
-
-  app_packaging_create_desktop_file \
-    "$manifest_dir/files/${app_id}.desktop" \
-    "$app_id" \
-    "$app_name" \
-    "$package_name" \
-    "$app_id"
-
-  if [[ -n "$icon_file" ]]; then
-    cp "$icon_file" "$manifest_dir/files/${app_id}.png"
-  fi
+  _app_packaging_stage_desktop_icon \
+    "$manifest_dir/files/${app_id}.desktop" "$app_id" "$app_name" "$package_name" "$app_id" \
+    "$icon_file" "$manifest_dir/files/${app_id}.png"
 
   # The bundle stays whole: a Flutter runner finds data/ beside /proc/self/exe, as in the AppImage.
   cat > "$manifest_file" <<EOF
@@ -622,7 +618,6 @@ EOF
   mkdir -p "$(dirname "$output_name")"
   cp -f "$staged_bundle" "$output_name"
 
-  app_packaging_assert_artifact "${output_name}"
 }
 
 # Shared by install and build: explicit arch, then flatpak's default, then the OCI mapping.

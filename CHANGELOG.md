@@ -12,6 +12,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux bundle packaging lifetime
+
+- Keep the three public packaging APIs and format layouts while sharing scoped facts, bundle copying, desktop/icon staging, architecture validation and the final artifact verdict.
+- Preserve renderer failures and Bash errexit, including an early AppImage copy failure; prevent stale artifacts from turning failed renderers green.
+- Add local dispatch, architecture and staging regressions with mutation proofs; retain existing archive and Flatpak checks, remove the packaging self-duplication exemption and lower the remaining cross-file budget.
+
+## 2026-10-23 — share ONNX web build and codec-ratchet operations
+
+- Share the three lockfile-exact npm retries and both JS artifact verdicts in the ONNX web step; retain directory order, diagnostics, fatal failures and extension-specific copies.
+- Exercise the full step with stubbed npm, sleep and cleanup, using the real logging library; verify the same 53 assertions against the previous implementation.
+- Share codec package set differences while preserving both directions of its ratchet; add mutation proofs and remove the resolved duplication exemptions.
+
 ## 2026-10-23 — share module visibility and ONNX smoke fixtures
 
 - Re-export and build-call closure suites share a fresh-session module probe; discover declarations through parsed ASTs and retain child exit codes, diagnostics and isolation.

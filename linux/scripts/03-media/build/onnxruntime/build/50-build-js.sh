@@ -67,6 +67,20 @@ EOF
   fi
 }
 
+install_onnx_web_lock() {
+  local label="$1"
+  # npm install would re-resolve ranges and bypass the lockfile's integrity hashes.
+  npm ci || { warn "npm ci failed in ${label} — retrying once"; sleep 5; npm ci; } \
+    || err "npm ci failed twice in ${label} (lockfile-exact install is mandatory)"
+}
+
+require_onnx_web_js() {
+  local directory="$1" message="$2"
+  if ! ls "${directory}"/*.js >/dev/null 2>&1 && ! ls "${directory}"/*.mjs >/dev/null 2>&1; then
+    err "${message}"
+  fi
+}
+
 if ! is_amd64_arch; then
 	info "Skipping JS/web build on non-amd64 architecture (arch=$(detect_target_arch))"
 	exit 0
@@ -96,31 +110,24 @@ if [ ! -f "${ORT_SRC_DIR}/js/web/dist/ort-wasm-simd-threaded.jspi.mjs" ] || \
 fi
 
 cd "${ORT_SRC_DIR}/js"
-# npm ci only: an `npm install` fallback would re-resolve ranges and bypass the lockfile's integrity hashes.
-npm ci || { warn "npm ci failed in js/ — retrying once"; sleep 5; npm ci; } \
-  || err "npm ci failed twice in js/ (lockfile-exact install is mandatory)"
+install_onnx_web_lock js/
 
 cd "${ORT_SRC_DIR}/js/common"
-npm ci || { warn "npm ci failed in js/common/ — retrying once"; sleep 5; npm ci; } \
-  || err "npm ci failed twice in js/common/ (lockfile-exact install is mandatory)"
+install_onnx_web_lock js/common/
 
 patch_web_build_targets "${skip_webgpu}" "${skip_jspi}"
 
 cd "${ORT_SRC_DIR}/js/web"
-npm ci || { warn "npm ci failed in js/web/ — retrying once"; sleep 5; npm ci; } \
-  || err "npm ci failed twice in js/web/ (lockfile-exact install is mandatory)"
+install_onnx_web_lock js/web/
 npm run build || err "npm run build failed in js/web/"
 
-if ! ls "${ORT_SRC_DIR}/js/web/dist"/*.js >/dev/null 2>&1 && ! ls "${ORT_SRC_DIR}/js/web/dist"/*.mjs >/dev/null 2>&1; then
-  err "No .js or .mjs files found in js/web/dist/ after build"
-fi
+require_onnx_web_js "${ORT_SRC_DIR}/js/web/dist" "No .js or .mjs files found in js/web/dist/ after build"
 
-# Either glob may match nothing, so the copy is judged by what lands.
-cp -v "${ORT_SRC_DIR}/js/web/dist"/*.js "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
-cp -v "${ORT_SRC_DIR}/js/web/dist"/*.mjs "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
-if ! ls "${WASM_OUTPUT_DIR}"/*.js >/dev/null 2>&1 && ! ls "${WASM_OUTPUT_DIR}"/*.mjs >/dev/null 2>&1; then
-  err "JS artifacts copy failed: no .js/.mjs in ${WASM_OUTPUT_DIR} despite dist/ containing them"
-fi
+# Either extension may be absent, so the destination verdict judges the copy.
+for extension in js mjs; do
+  cp -v "${ORT_SRC_DIR}/js/web/dist"/*."${extension}" "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+done
+require_onnx_web_js "${WASM_OUTPUT_DIR}" "JS artifacts copy failed: no .js/.mjs in ${WASM_OUTPUT_DIR} despite dist/ containing them"
 
 rm -rf "${ORT_SRC_DIR}/js/node_modules" \
 	"${ORT_SRC_DIR}/js/common/node_modules" \

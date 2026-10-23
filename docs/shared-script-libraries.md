@@ -1278,3 +1278,40 @@ parsed function declarations, including nested definitions, without executing
 the source. The fixture tests cover exported and missing commands, failed
 imports, apostrophes in paths and isolation from parent-session functions;
 they do not execute build entry points.
+
+### ONNX web installation and artifact verdicts
+
+`50-build-js.sh` shares `install_onnx_web_lock` across `js`, `js/common` and
+`js/web`. Each call runs in its original directory, retries `npm ci` once
+after five seconds and fails after a second error. There is no `npm install`
+fallback. `require_onnx_web_js` accepts either JavaScript extension and checks
+both `js/web/dist` and the final WASM output directory. The copy still treats
+an absent extension as optional, and a missing destination artifact is fatal.
+
+`test-onnx-web-build.sh` runs the actual step with local npm, sleep and cleanup
+stubs plus the production logger. It covers both extensions, retry success
+and failure in all three directories, failed builds, missing bundles and
+failed copies. It does not build real bundles, contact npm or validate the
+contents of upstream lockfiles. The fixture can take an earlier step file as
+its first argument for behavior comparison.
+
+### Shared bundle packaging lifetime
+
+The public deb, AppImage and Flatpak bundle entry points keep their arguments.
+They share a dispatcher that owns local bundle facts, the common icon name
+and the final nonempty-artifact verdict. Format callbacks retain their layout,
+commands, output names and diagnostics. A callback failure propagates before
+the final verdict, even when a previous artifact exists. The callback is
+invoked unconditionally: putting it in an `||` list would disable Bash errexit
+inside its staging operations. A local regression verifies that an early
+copy failure still stops an unconditional AppImage invocation.
+
+The format architecture wrappers share supported-architecture validation and
+retain their original alias conversions and format-specific refusal messages.
+Bundle copying preserves hidden files, symlinks and executable payloads through
+one shared staging operation. Desktop-entry and optional-icon staging has one owner; template adaptation and
+format-specific Exec, Icon and destination values remain with the caller.
+`test-app-packaging-bundle-facts.sh` exercises these contracts with local
+fixtures. The existing archive suite also builds and inspects a real deb; the
+Flatpak suite uses tool stubs. These checks do not validate real AppImage or
+Flatpak creation on a target machine.

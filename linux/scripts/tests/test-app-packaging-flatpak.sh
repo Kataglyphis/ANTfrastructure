@@ -200,7 +200,7 @@ t_assert_contains "${OUT}" "  - --filesystem=home"
 t_assert_eq "6" "$(printf '%s\n' "${OUT}" | grep -c '^  - ')"
 
 t_case "package_linux_bundle_flatpak: the manifest is emitted with the appendable block"
-t_assert_contains "$(t_fn_src "${LIB}" app_packaging_package_linux_bundle_flatpak)" \
+t_assert_contains "$(t_fn_src "${LIB}" _app_packaging_bundle_flatpak)" \
   '$(app_packaging_flatpak_finish_args_block)' \
   "the hook must reach the generated manifest, not just exist beside it"
 

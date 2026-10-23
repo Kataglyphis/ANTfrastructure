@@ -31,6 +31,18 @@ t_assert_ok test -f "${STV}"
 # A missing map only warns in validate-media-runtime.sh and silently empties resolution.
 t_assert_ok test -f "${MAP}"
 
+_package_set_difference() {
+  LC_ALL=C comm -23 \
+    <(printf '%s\n' "$1" | LC_ALL=C sort -u) \
+    <(printf '%s\n' "$2" | LC_ALL=C sort -u) | grep -v '^$' || true
+}
+
+t_case "package differences select only missing members, independent of order or duplicates"
+t_assert_eq beta "$(_package_set_difference $'beta\nalpha\nbeta' alpha)"
+t_assert_eq '' "$(_package_set_difference '' alpha)"
+t_assert_eq alpha "$(_package_set_difference alpha '')"
+t_assert_eq '' "$(_package_set_difference $'beta\nalpha' $'alpha\nbeta')"
+
 # Shared extractions
 
 # Data lines of the map (comments/blank stripped), and its mapped packages.
@@ -72,22 +84,16 @@ t_assert_eq "${dups_known}" "${dups_now}" \
   "duplicate-line set changed — dedupe so-package-map.txt or update KNOWN_DUP_LINES"
 
 # INV-2: the codec baseline converges on the so->package map
-unmapped_now="$(LC_ALL=C comm -23 \
-  <(printf '%s\n' "${baseline_pkgs}") \
-  <(printf '%s\n' "${map_pkgs}") | grep -v '^$' || true)"
+unmapped_now="$(_package_set_difference "${baseline_pkgs}" "${map_pkgs}")"
 unmapped_known="$(printf '%s\n' "${KNOWN_UNMAPPED[@]}" | LC_ALL=C sort -u)"
 
 t_case "INV-2: no NEW baseline package without a so-package-map entry"
-new_unmapped="$(LC_ALL=C comm -23 \
-  <(printf '%s\n' "${unmapped_now}") \
-  <(printf '%s\n' "${unmapped_known}") | grep -v '^$' || true)"
+new_unmapped="$(_package_set_difference "${unmapped_now}" "${unmapped_known}")"
 t_assert_eq "" "${new_unmapped}" \
   "codec baseline package(s) with NO soname mapping in so-package-map.txt — add the verified SONAME<TAB>package line (check a built image: dpkg -L <pkg>), or consciously append to KNOWN_UNMAPPED"
 
 t_case "INV-2 ratchet: KNOWN_UNMAPPED only lists entries that are still unmapped"
-stale_known="$(LC_ALL=C comm -13 \
-  <(printf '%s\n' "${unmapped_now}") \
-  <(printf '%s\n' "${unmapped_known}") | grep -v '^$' || true)"
+stale_known="$(_package_set_difference "${unmapped_known}" "${unmapped_now}")"
 t_assert_eq "" "${stale_known}" \
   "KNOWN_UNMAPPED entry(ies) now mapped or gone from the baseline — remove them so the ratchet keeps shrinking"
 

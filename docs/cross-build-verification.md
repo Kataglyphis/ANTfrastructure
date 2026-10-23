@@ -2006,3 +2006,12 @@ longer than 50 bytes, expose provider discovery and compare the inference
 result. Blank emitters, dropped environment payloads and missing output
 sentinels remain independent negative cases. This fixture validates smoke
 control flow; actual execution-provider compatibility still needs the image.
+
+### Codec map set differences
+
+The codec convergence suite uses one package-set difference operation for
+baseline packages absent from the SONAME map, new untracked omissions and
+stale known omissions. Reversing the operands distinguishes the two ratchet
+directions. Local fixtures cover duplicate and unordered inputs, empty sets
+and identical sets. This checks map bookkeeping; a new SONAME still needs
+verification in a built image before the map changes.
