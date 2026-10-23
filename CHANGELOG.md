@@ -18,6 +18,13 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-23 — share native compiler paths and test fixtures
+
+- Share native GCC system-path exports between Torch setup and the generated shell profile, preserving existing flags and expansion at profile sourcing time.
+- Carry the mandatory path helper through Android, package and Torch images; keep independent environment receipts and negative gate tests.
+- Use canonical truthiness in the FFmpeg fixture and share lifecycle fixture setup and cleanup while keeping explicit test assertions.
+- Remove two resolved duplication exceptions and lower the lifecycle budget from 12 to 11; retain the remaining independent retention assertions.
+
 ## 2026-10-23 — share push selection, compiler opt-ins and wheel manifests
 
 - Share runtime push selectors with unchanged accepted flags, assignment order, unset state and gates-only behavior.

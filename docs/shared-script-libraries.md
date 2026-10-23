@@ -1901,3 +1901,20 @@ Torch diagnostics retain their best-effort behavior and separate count/log polic
 Both imports require the canonical companion; Torch's early image COPY carries it.
 An independent three-file golden checks complete manifest bytes and hashes, beside
 original/current failure receipts and the existing host/image agreement check.
+
+### Native GCC system paths and test dependencies
+
+`01-core/native-gcc-system-paths.sh` owns the system include and library exports
+used by Torch setup and the native GCC shell profile. Torch retains directory
+discovery. The generated profile imports the same helper when sourced, so flags
+set after image construction still precede the appended paths. Repeated sourcing,
+empty values and the existing `_idaf` side effect retain their original behavior.
+Android and Torch copy the helper before use; the package image's full core copy
+also includes it. Independent environment receipts cover both callers.
+
+The FFmpeg TensorFlow fixture reads the canonical `is_truthy` function instead of
+maintaining its own implementation. Its expected flags and default-off assertions
+remain independent. Chain lifecycle fixtures share process cleanup and archive
+construction, while retaining explicit assertions for leaf termination, retained
+and removed run IDs, symlinks and foreign files. Cleanup tracks fixture processes
+without relying on the production subtree terminator under test.

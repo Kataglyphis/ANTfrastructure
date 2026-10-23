@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# chain-lifecycle.sh (O1/O2: run ids, pidfile, subtree kill) and build-cross-chain.sh's log and disk guards.
+# Fixture processes and local archives verify chain lifecycle guards without running a build or container engine.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CORE_DIR="${TESTS_DIR}/../01-core"
@@ -8,14 +8,18 @@ source "${CORE_DIR}/chain-lifecycle.sh"
 source "${CORE_DIR}/chain-storage.sh"
 
 workdir="$(mktemp -d)"
-_cleanup_lifecycle_fixture() {
+_stop_lifecycle_children() {
   local pid
-  for pid in "${_fixture_root_pid:-}" "${_fixture_sibling_pid:-}"; do
+  for pid in "$@"; do
     [ -n "$pid" ] || continue
-    chain_terminate_descendants TERM "$pid"
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   done
+}
+_cleanup_lifecycle_fixture() {
+  local leaf="${_fixture_leaf_pid:-}"
+  if [ -z "$leaf" ] && [ -s "${workdir}/leaf.pid" ]; then leaf="$(cat "${workdir}/leaf.pid")"; fi
+  _stop_lifecycle_children "$leaf" "${_fixture_root_pid:-}" "${_fixture_sibling_pid:-}"
   rm -rf "${workdir}"
 }
 trap _cleanup_lifecycle_fixture EXIT
@@ -71,15 +75,18 @@ _fixture_root_pid="${root}"
 _waited=0
 while [ ! -s "${workdir}/leaf.pid" ] && [ "${_waited}" -lt 20 ]; do sleep 0.1; _waited=$((_waited + 1)); done
 leaf="$(cat "${workdir}/leaf.pid" 2>/dev/null || true)"
+_fixture_leaf_pid="$leaf"
 t_assert_ok test -n "${leaf}"
 chain_terminate_descendants TERM "${root}"
 # The leaf (a descendant of root) must terminate; wait briefly for signal.
 _waited=0
 while kill -0 "${leaf}" 2>/dev/null && [ "${_waited}" -lt 25 ]; do sleep 0.1; _waited=$((_waited + 1)); done
 t_assert_fails kill -0 "${leaf}"
-kill "${root}" 2>/dev/null || true
-wait "${root}" 2>/dev/null || true
+_stop_lifecycle_children "${leaf}" "${root}"
+t_assert_rc 1 kill -0 "${root}"
 _fixture_root_pid=""
+_fixture_leaf_pid=""
+rm -f "${workdir}/leaf.pid"
 
 # STALE-LOG: build-cross-chain.sh runs main at the bottom, so its shipped text is evaluated piece by piece
 CHAIN_SH="${TESTS_DIR}/../build-cross-chain.sh"
@@ -209,9 +216,14 @@ _mk_archive() {
   done
 }
 
+_retention_fixture() {
+  LOG_DIR="${workdir}/$1"
+  shift
+  _mk_archive "${LOG_DIR}" "$@"
+}
+
 t_case "retention keeps the newest N run dirs and removes the older ones"
-LOG_DIR="${workdir}/ret-a"
-_mk_archive "${LOG_DIR}" 20260101-000000-a1 20260102-000000-a2 \
+_retention_fixture ret-a 20260101-000000-a1 20260102-000000-a2 \
                          20260103-000000-a3 20260104-000000-a4
 CROSS_LOG_ARCHIVE_KEEP=2
 CROSS_RUN_ID="20260105-000000-current"
@@ -222,8 +234,7 @@ t_assert_ok    test -f "${LOG_DIR}/archive/20260103-000000-a3/media-amd64.log"
 t_assert_ok    test -f "${LOG_DIR}/archive/20260104-000000-a4/media-amd64.log"
 
 t_case "the default keeps 5 run dirs with no env knob set at all"
-LOG_DIR="${workdir}/ret-f"
-_mk_archive "${LOG_DIR}" 20260101-000000-f1 20260102-000000-f2 20260103-000000-f3 \
+_retention_fixture ret-f 20260101-000000-f1 20260102-000000-f2 20260103-000000-f3 \
                          20260104-000000-f4 20260105-000000-f5 20260106-000000-f6 \
                          20260107-000000-f7
 unset CROSS_LOG_ARCHIVE_KEEP
@@ -235,8 +246,7 @@ t_assert_ok    test -d "${LOG_DIR}/archive/20260107-000000-f7"
 
 t_case "retention never touches a non-run-id sibling under archive/"
 # Neither may be a candidate, nor count against the keep budget.
-LOG_DIR="${workdir}/ret-b"
-_mk_archive "${LOG_DIR}" 20260101-000000-b1 20260102-000000-b2 20260103-000000-b3
+_retention_fixture ret-b 20260101-000000-b1 20260102-000000-b2 20260103-000000-b3
 mkdir -p "${LOG_DIR}/archive/wave5o-transcripts"
 printf 'x\n' > "${LOG_DIR}/archive/wave5o-transcripts/keep-me.log"
 printf 'x\n' > "${LOG_DIR}/archive/notes.txt"
@@ -250,8 +260,7 @@ t_assert_ok    test -f "${LOG_DIR}/archive/notes.txt"
 
 t_case 'a PID-named run dir (the ${CROSS_RUN_ID:-$$} fallback) is prunable by age'
 # A PID-named dir is a run dir too, and only mtime ranks it: by name a leading 3 sorts after every 2026 id.
-LOG_DIR="${workdir}/ret-h"
-_mk_archive "${LOG_DIR}" 365161 20260101-000000-h1 1847483 20260102-000000-h2
+_retention_fixture ret-h 365161 20260101-000000-h1 1847483 20260102-000000-h2
 CROSS_LOG_ARCHIVE_KEEP=2
 _chain_prune_archived_logs
 t_assert_fails test -e "${LOG_DIR}/archive/365161"
@@ -262,8 +271,7 @@ t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-h2"
 t_case "retention skips a symlinked run dir instead of following it"
 t_needs "real symlinks (ln -s copies under Git Bash)" t_posix_symlinks
 # Named to sort oldest, so a follow-the-link bug would delete it and its target first.
-LOG_DIR="${workdir}/ret-c"
-_mk_archive "${LOG_DIR}" 20260101-000000-c1 20260102-000000-c2
+_retention_fixture ret-c 20260101-000000-c1 20260102-000000-c2
 mkdir -p "${workdir}/outside-c"
 printf 'precious\n' > "${workdir}/outside-c/precious.log"
 ln -s "${workdir}/outside-c" "${LOG_DIR}/archive/20260100-000000-link"
@@ -275,8 +283,7 @@ t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-c1"
 t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-c2"
 
 t_case "the run dir of the CURRENT run is never a retention candidate"
-LOG_DIR="${workdir}/ret-g"
-_mk_archive "${LOG_DIR}" 20260101-000000-g1 20260102-000000-g2 20260103-000000-g3
+_retention_fixture ret-g 20260101-000000-g1 20260102-000000-g2 20260103-000000-g3
 CROSS_RUN_ID="20260101-000000-g1"      # oldest => first in line to be removed
 CROSS_LOG_ARCHIVE_KEEP=1
 _chain_prune_archived_logs
@@ -301,16 +308,14 @@ rm() { printf '%s\n' "$*" >> "${rmlog}"; }
 LOG_DIR=""
 ( cd "${decoy}" && _chain_prune_archived_logs )
 ( cd "${decoy}" && unset LOG_DIR && _chain_prune_archived_logs )
-LOG_DIR="${workdir}/ret-i"
-_mk_archive "${LOG_DIR}" 20260101-000000-i1 20260102-000000-i2
+_retention_fixture ret-i 20260101-000000-i1 20260102-000000-i2
 _chain_prune_archived_logs
 unset -f rm      # MUST come back: the suite's EXIT trap cleans up with rm -rf
 t_assert_eq "-rf -- ${workdir}/ret-i/archive/20260101-000000-i1" "$(cat "${rmlog}")" \
   "exactly one removal, of one validated run dir directly under archive/"
 
 t_case "--dry-run removes nothing (an rm -rf is not a recoverable preview)"
-LOG_DIR="${workdir}/ret-dry"
-_mk_archive "${LOG_DIR}" 20260101-000000-y1 20260102-000000-y2 20260103-000000-y3
+_retention_fixture ret-dry 20260101-000000-y1 20260102-000000-y2 20260103-000000-y3
 CROSS_LOG_ARCHIVE_KEEP=1
 DRY_RUN=1
 _chain_prune_archived_logs
@@ -322,8 +327,7 @@ t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-y1"
 t_assert_ok    test -d "${LOG_DIR}/archive/20260103-000000-y3"
 
 t_case "CROSS_LOG_ARCHIVE_KEEP=0 keeps everything, a non-numeric value is refused"
-LOG_DIR="${workdir}/ret-e"
-_mk_archive "${LOG_DIR}" 20260101-000000-e1 20260102-000000-e2 20260103-000000-e3
+_retention_fixture ret-e 20260101-000000-e1 20260102-000000-e2 20260103-000000-e3
 CROSS_LOG_ARCHIVE_KEEP=0
 _chain_prune_archived_logs
 t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
@@ -666,9 +670,9 @@ printf 'live output\n' > "${_sib_logs}/media-arm64.log"
 CROSS_RUN_ID=this-run _chain_archive_prev_logs >/dev/null 2>&1
 t_assert_ok test -f "${_sib_logs}/media-arm64.log"
 
-kill "${_sib_pid}" 2>/dev/null || true
-wait "${_sib_pid}" 2>/dev/null || true
-_fixture_sibling_pid=""
+_stop_lifecycle_children "${_sib_pid}"
+t_assert_rc 1 kill -0 "${_sib_pid}"
+if ! kill -0 "${_sib_pid}" 2>/dev/null; then _fixture_sibling_pid=""; fi
 rm -rf "${_sib_pf}" "${_sib_logs}"
 
 # B3: the between-stage guard aims at the next lane's need, not a fixed 40G floor that reclaims too late

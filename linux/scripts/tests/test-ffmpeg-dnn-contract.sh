@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# No -ltensorflow in FFmpeg's global --extra-libs: configure executes a test binary that cannot load it.
+# Fixture SDKs verify FFmpeg flags and canonical opt-ins without downloads or FFmpeg builds.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -74,18 +74,17 @@ t_assert_ok grep -qE '^\s*if ffmpeg_probe_libonnxruntime; then' "${BUILD}"
 
 # An empty cache so the cached-SDK short-circuit cannot pre-empt the gate; downloads always fail.
 _run_ensure() {
-  # $1 = FFMPEG_ENABLE_TF value ("" = unset -> default off)
-  local _cache; _cache="$(mktemp -d)"
-  bash -c "
-    set -uo pipefail
-    is_truthy() { case \"\${1:-}\" in 1|true|TRUE|yes|YES|on|ON) return 0;; *) return 1;; esac; }
+  local _cache _truthy
+  _truthy="$(t_fn_src "${TESTS_DIR}/../01-core/platform.sh" is_truthy)" || return $?
+  _cache="$(mktemp -d)"
+  t_run_sourced_module "${DNN}" "
+    set +e
+    ${_truthy}
     download_file() { return 1; }
     download_verified_file() { return 1; }
     FFMPEG_SDK_CACHE='${_cache}'
     ${1:+FFMPEG_ENABLE_TF='$1'}
-    source '${DNN}'
-    ensure_tensorflow_c_sdk 2>&1 || true
-  "
+  " 'ensure_tensorflow_c_sdk 2>&1 || true'
   rm -rf "${_cache}"
 }
 

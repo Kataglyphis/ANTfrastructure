@@ -21975,5 +21975,157 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
   "why": "Torch stage carries the minimal shared byte-manifest owner before execution"
+ },
+ {
+  "id": "lib.ffmpeg-dnn-canonical-truthiness",
+  "target": "linux/scripts/tests/test-ffmpeg-dnn-contract.sh",
+  "find": "_truthy=\"$(t_fn_src \"${TESTS_DIR}/../01-core/platform.sh\" is_truthy)\" || return $?",
+  "replace": "_truthy='is_truthy() { return 0; }'",
+  "test": "bash linux/scripts/tests/test-ffmpeg-dnn-contract.sh",
+  "why": "Actual canonical truthiness must guard both default-off and explicit TensorFlow SDK opt-ins in the fixture."
+ },
+ {
+  "id": "lib.native-gcc-env-cppflags",
+  "target": "linux/scripts/01-core/native-gcc-system-paths.sh",
+  "find": "export CPPFLAGS=",
+  "replace": "export LOST_CPPFLAGS=",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "each compiler language retains its consumer flags and system-header injection"
+ },
+ {
+  "id": "lib.native-gcc-env-cflags",
+  "target": "linux/scripts/01-core/native-gcc-system-paths.sh",
+  "find": "export CFLAGS=",
+  "replace": "export LOST_CFLAGS=",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "each compiler language retains its consumer flags and system-header injection"
+ },
+ {
+  "id": "lib.native-gcc-env-cxxflags",
+  "target": "linux/scripts/01-core/native-gcc-system-paths.sh",
+  "find": "export CXXFLAGS=",
+  "replace": "export LOST_CXXFLAGS=",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "each compiler language retains its consumer flags and system-header injection"
+ },
+ {
+  "id": "lib.native-gcc-env-include-order",
+  "target": "linux/scripts/01-core/native-gcc-system-paths.sh",
+  "find": "${1:+$1:}/usr/include",
+  "replace": "/usr/include${1:+:$1}",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "multiarch includes keep their original precedence after existing paths"
+ },
+ {
+  "id": "lib.native-gcc-env-library-order",
+  "target": "linux/scripts/01-core/native-gcc-system-paths.sh",
+  "find": "${2:+$2:}/usr/lib",
+  "replace": "/usr/lib${2:+:$2}",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "multiarch library paths keep their original precedence after existing paths"
+ },
+ {
+  "id": "lib.native-gcc-env-torch-import",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "source /opt/scripts/core/native-gcc-system-paths.sh || exit 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "Torch source-build setup carries the required pure setter"
+ },
+ {
+  "id": "lib.native-gcc-env-torch-binding",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "native_gcc_system_paths \"${_mi}\" \"${_ml}\"",
+  "replace": "native_gcc_system_paths \"${_ml}\" \"${_mi}\"",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "include and library discovery remain caller-specific arguments"
+ },
+ {
+  "id": "lib.native-gcc-env-profile-import",
+  "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+  "find": ". /opt/scripts/core/native-gcc-system-paths.sh || return 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "generated POSIX profiles require the shared companion at sourcing time"
+ },
+ {
+  "id": "lib.native-gcc-env-profile-binding",
+  "target": "linux/scripts/06-packaging/swap-native-gcc.sh",
+  "find": "native_gcc_system_paths /usr/include/${triplet} /usr/lib/${triplet}",
+  "replace": "native_gcc_system_paths /usr/include/${triplet} /usr/include/${triplet}",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "generated profiles bind the target library triplet independently of headers"
+ },
+ {
+  "id": "lib.native-gcc-env-android-copy",
+  "target": "linux/Dockerfile.android",
+  "find": "COPY --chmod=755 linux/scripts/01-core/native-gcc-system-paths.sh /opt/scripts/core/native-gcc-system-paths.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "both consumer stages carry the shared runtime profile dependency before execution"
+ },
+ {
+  "id": "lib.native-gcc-env-torch-copy",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/01-core/native-gcc-system-paths.sh /opt/scripts/core/native-gcc-system-paths.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-native-gcc-env.sh",
+  "why": "both consumer stages carry the shared runtime profile dependency before execution"
+ },
+ {
+  "id": "lib.native-gcc-env-cxx",
+  "target": "linux/scripts/01-core/native-gcc-system-paths.sh",
+  "find": "export CXXFLAGS=",
+  "replace": "export LOST_CXXFLAGS=",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "critical fix6 rejects a setter that only preserves C headers"
+ },
+ {
+  "id": "critical-fixes.native-gcc-env-torch-binding",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "-q '^native_gcc_system_paths ' \"${stv}\"",
+  "replace": "-q 'torch-missing' \"${stv}\"",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "fix6 checks the real Torch setter call rather than only a correct uncalled helper"
+ },
+ {
+  "id": "critical-fixes.native-gcc-env-torch-import",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "-q 'source /opt/scripts/core/native-gcc-system-paths.sh' \"${stv}\"",
+  "replace": "-q 'torch-missing' \"${stv}\"",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "fix6 rejects a missing Torch companion import"
+ },
+ {
+  "id": "critical-fixes.native-gcc-env-profile-import",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "-q '^\\. /opt/scripts/core/native-gcc-system-paths.sh' \"${swp}\"",
+  "replace": "-q 'native_gcc_system_paths /usr/include/' \"${swp}\"",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "fix6 rejects a generated profile with no setter import"
+ },
+ {
+  "id": "lib.lifecycle-fixture-sibling-reaped",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "_stop_lifecycle_children \"${_sib_pid}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "The independent fixture stop must reap its live sibling before clearing ownership; EXIT still cleans up a failed proof."
+ },
+ {
+  "id": "lib.lifecycle-retention-fixture-isolated",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "  LOG_DIR=\"${workdir}/$1\"",
+  "replace": "  LOG_DIR=\"${workdir}/ret-collapsed\"",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "Independent retention cases require distinct archive roots while keeping every explicit path expectation."
+ },
+ {
+  "id": "lib.lifecycle-descendant-death-verdict",
+  "target": "linux/scripts/01-core/chain-lifecycle.sh",
+  "find": "    kill \"-${sig}\" \"${kid}\" 2>/dev/null || true",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "The original descendant-death assertion stays red when production stops terminating children; fixture cleanup remains independent."
  }
 ]
