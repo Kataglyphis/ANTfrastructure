@@ -6,8 +6,9 @@
 Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     BeforeAll {
+        Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Test-TargetArch.ps1' `
-                -FunctionName 'Get-CoffMachine', 'Get-ArchiveMachine', 'Format-Machine')
+                -FunctionName 'Get-ArchiveMachine', 'Format-Machine')
 
         $script:tmp = New-TestDir -Prefix 'archgate-'
 
@@ -64,6 +65,12 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         Assert-Null $r 'missing file returns null, never throws'
     }
 
+    It 'Get-CoffObjectMachineFromBytes preserves unknown values for callers that compare them' {
+        $bytes = [BitConverter]::GetBytes([uint16]0x1234)
+        Assert-Null (Get-CoffObjectMachineFromBytes -Bytes $bytes) 'default raw COFF parsing rejects unknown machines'
+        Assert-Equal 0x1234 (Get-CoffObjectMachineFromBytes -Bytes $bytes -AllowUnknownMachine) 'toolchain probing keeps unknown machines as mismatches'
+    }
+
     It 'Get-CoffMachine returns null when e_lfanew points outside the file' {
         $p = Join-Path $script:tmp 'bad-pe.dll'
         New-ArchGateMachineFile -Path $p -Kind BadOffset
@@ -102,6 +109,27 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         $p = Join-Path $script:tmp 'with-linker.lib'
         New-ArchGateArchive -Path $p -Machine 0xAA64 -ShortImport -LinkerMember
         Assert-Equal 0xAA64 (Get-ArchiveMachine -LiteralPath $p) 'skipped "/" linker member and read the real member'
+    }
+
+    It 'Get-ArchiveMachine preserves an unknown short-import machine for the gate to report' {
+        $p = Join-Path $script:tmp 'unknown-short-import.lib'
+        New-ArchGateArchive -Path $p -Machine 0x1234 -ShortImport
+        Assert-Equal 0x1234 (Get-ArchiveMachine -LiteralPath $p) 'unknown short-import machine remains a mismatch, not unreadable'
+    }
+
+    It 'Get-ArchiveMachine returns null when a member lacks its machine bytes' {
+        $p = Join-Path $script:tmp 'truncated-member.lib'
+        $header = @('foo.obj'.PadRight(16), '0'.PadRight(12), '0'.PadRight(6), '0'.PadRight(6),
+            '100644'.PadRight(8), '20'.PadLeft(10), "`r`n") -join ''
+        $bytes = [System.Text.Encoding]::ASCII.GetBytes("!<arch>`n$header")
+        [IO.File]::WriteAllBytes($p, $bytes)
+        Assert-Null (Get-ArchiveMachine -LiteralPath $p) 'truncated member header has no readable machine'
+    }
+
+    It 'Get-ArchiveMachine returns null for an unknown raw COFF machine' {
+        $p = Join-Path $script:tmp 'unknown-raw.lib'
+        New-ArchGateArchive -Path $p -Machine 0x1234
+        Assert-Null (Get-ArchiveMachine -LiteralPath $p) 'unknown raw COFF machine remains unreadable'
     }
 
     It 'Get-ArchiveMachine returns null for a non-archive file' {
@@ -146,6 +174,14 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     It 'Format-Machine names an unrecognized machine type' {
         Assert-Equal '0x1234 (UNRECOGNIZED)' (Format-Machine 0x1234) 'unknown machine'
+    }
+}
+
+Describe 'Test-Toolchain ARM64 probe' {
+    It 'uses shared byte decoding while preserving unknown machines for mismatch checks' {
+        $calls = @(Get-TestScriptCommands -ScriptPath 'windows/scripts/build/Test-Toolchain.ps1' -Name Get-CoffObjectMachineFromBytes)
+        Assert-Equal 1 $calls.Count 'the ARM64 probe has one shared byte-decoder call'
+        Assert-Match 'Get-CoffObjectMachineFromBytes -Bytes \$objBytes -AllowUnknownMachine' $calls[0].Extent.Text 'unknown machine values reach the expected-architecture comparison'
     }
 }
 

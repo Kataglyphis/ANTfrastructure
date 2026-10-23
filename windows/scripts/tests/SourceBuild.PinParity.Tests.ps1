@@ -63,6 +63,13 @@ function Get-KnownPinSiteMap {
     return $found
 }
 
+function Assert-KnownPinSitesDiscovered {
+    param([object[]]$Sites, [scriptblock]$ResolveKey, [string[]]$Expected, [string]$Scanner)
+    $found = Get-KnownPinSiteMap -Sites $Sites -ResolveKey $ResolveKey
+    $missing = @($Expected | Where-Object { -not $found.ContainsKey($_) })
+    Assert-True ($missing.Count -eq 0) "scanner-rot guard [$Scanner] missed known site(s): $($missing -join ', ')"
+}
+
 # Every scanner must reject unmapped sites and stale exceptions through the same checks.
 function Assert-PinSiteMapping {
     param([object[]]$Sites, [string[]]$Allow, [scriptblock]$ResolveKey,
@@ -178,11 +185,10 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 
     It 'still discovers every known (script, key) pin site - scanner-rot guard' {
         $pins = Get-PinParityPins
-        $found = Get-KnownPinSiteMap -Sites @(Get-PinParitySite) -ResolveKey { param($site)
+        Assert-KnownPinSitesDiscovered -Sites @(Get-PinParitySite) -ResolveKey { param($site)
             $resolved = Resolve-PinParityKey -Site $site -Pins $pins
             if ($null -ne $resolved) { $resolved }
-        }
-        foreach ($expected in @(
+        } -Scanner 'Get-SourceBuildVersion' -Expected @(
                 # TVM_COMMIT wins key resolution; the default itself is compared against TVM_REF.
                 'Build-TvmFromSource.ps1|TVM_COMMIT',
                 'Build-IreeFromSource.ps1|IREE_VERSION',
@@ -198,9 +204,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 # The .pc writer's ORT pin must stay a W1 site: W1c cannot see a variable-indirected fallback.
                 'Build-GstreamerFromSource.ps1|ONNXRUNTIME_VERSION',
                 'Build-OnnxFromSource.ps1|ONNXRUNTIME_VERSION',
-                'Build-OnnxGenaiFromSource.ps1|ONNXRUNTIME_GENAI_VERSION')) {
-            Assert-True $found.ContainsKey($expected) "known pin site [$expected] no longer discovered - default removed, key renamed, or scanner broke; update this suite deliberately"
-        }
+                'Build-OnnxGenaiFromSource.ps1|ONNXRUNTIME_GENAI_VERSION')
     }
 
     It 'every literal -DefaultValue equals its canonical versions.env pin' {
@@ -314,18 +318,15 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
 
     It 'still discovers every known (script, env var) Resolve-ContainerImageValue pin site - scanner-rot guard' {
         $pins = Get-RcivPins
-        $found = Get-KnownPinSiteMap -Sites @(Get-RcivSite) -ResolveKey { param($site)
+        Assert-KnownPinSitesDiscovered -Sites @(Get-RcivSite) -ResolveKey { param($site)
             $resolved = Resolve-RcivExpected -Site $site -Pins $pins
             if ($null -ne $resolved) { $resolved.Key }
-        }
-        foreach ($expected in @(
+        } -Scanner 'Resolve-ContainerImageValue' -Expected @(
                 'Install-ScoopTools.ps1|GIT_VERSION',
                 'Install-ScoopTools.ps1|WIX_VERSION',
                 'Install-ScoopTools.ps1|WIX_UI_EXT_VERSION',
                 'Test-Toolchain.ps1|WIX_UI_EXT_VERSION',
-                'Install-Tensorrt.ps1|CUDA_VERSION_MAJOR_MINOR')) {
-            Assert-True $found.ContainsKey($expected) "known pin site [$expected] no longer discovered - default removed, key renamed, or scanner broke; update this suite (and any KnownDrift entry) deliberately"
-        }
+                'Install-Tensorrt.ps1|CUDA_VERSION_MAJOR_MINOR')
     }
 
     It 'every literal Resolve-ContainerImageValue -DefaultValue equals its canonical (or derived) pin - excluding tracked known drift' {
@@ -442,11 +443,9 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
 
     It 'scanner-rot guard: still discovers the known idiom sites' {
         $pins = Get-IdiomPins
-        $found = @{}
-        foreach ($s in @(Get-EnvElseLiteralSite)) {
-            if ($pins.Contains($s.Key)) { $found["$($s.Script)|$($s.Key)"] = $true }
-        }
-        foreach ($expected in @(
+        Assert-KnownPinSitesDiscovered -Sites @(Get-EnvElseLiteralSite) -ResolveKey { param($site)
+            if ($pins.Contains($site.Key)) { $site.Key }
+        } -Scanner 'env-else-literal' -Expected @(
                 'Build-FfmpegFromSource.ps1|NV_CODEC_HEADERS_REF',
                 'Build-LitertLmBazel.ps1|LITERT_LM_VERSION',
                 'Build-TorchApp.ps1|APP_REF',
@@ -454,13 +453,19 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
                 'Build-ToolchainAll.ps1|NUGET_VERSION',
                 'Install-Vcpkg.ps1|VCPKG_REF',
                 'Install-Vs.ps1|VISUAL_STUDIO_VERSION',
-                'Install-Vs.ps1|WINDOWS_SDK_BUILD')) {
-            Assert-True ($found.ContainsKey($expected)) "scanner no longer sees the known idiom site $expected - the scan broke or the site changed shape; update this suite deliberately"
-        }
+                'Install-Vs.ps1|WINDOWS_SDK_BUILD')
     }
 }
 
 Describe 'Pin parity shared validation contracts' {
+    It 'fails closed when a scanner omits a required known site' {
+        $site = [pscustomobject]@{ Script = 'fixture.ps1'; Key = 'PIN' }
+        Assert-Throws {
+            Assert-KnownPinSitesDiscovered -Sites @($site) -ResolveKey { param($entry) $entry.Key } `
+                -Expected @('fixture.ps1|PIN', 'missing.ps1|MISSING') -Scanner fixture
+        } -MessagePattern 'scanner-rot guard \[fixture\].*missing\.ps1\|MISSING'
+    }
+
     It 'aggregates every comparison failure while retaining empty verdicts as matches' {
         Assert-PinDefaultSites -Sites @('matching') -Compare { $null } -FailureLabel fixture
         Assert-Throws {

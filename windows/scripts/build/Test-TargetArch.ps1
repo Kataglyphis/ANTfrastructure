@@ -86,87 +86,28 @@ function Format-Machine {
     return ('0x{0:X4} ({1})' -f $Value, $name)
 }
 
-# COFF machine of a PE image or object; $null keeps "unreadable" apart from "wrong architecture".
-function Get-CoffMachine {
-    param([Parameter(Mandatory)][string]$LiteralPath)
-
-    try {
-        $fs = [System.IO.File]::OpenRead($LiteralPath)
-    } catch {
-        return $null
-    }
-    try {
-        $br = New-Object System.IO.BinaryReader($fs)
-        if ($fs.Length -lt 4) { return $null }
-
-        $mz = $br.ReadBytes(2)
-        if ($mz[0] -eq 0x4D -and $mz[1] -eq 0x5A) {
-            # e_lfanew at 0x3C points at "PE\0\0", followed by the COFF header whose first field is Machine.
-            if ($fs.Length -lt 0x40) { return $null }
-            $fs.Position = 0x3C
-            $peOffset = $br.ReadInt32()
-            if ($peOffset -le 0 -or ($peOffset + 6) -ge $fs.Length) { return $null }
-            $fs.Position = $peOffset
-            $sig = $br.ReadBytes(4)
-            if ($sig[0] -ne 0x50 -or $sig[1] -ne 0x45 -or $sig[2] -ne 0 -or $sig[3] -ne 0) { return $null }
-            return [int]$br.ReadUInt16()
-        }
-
-        # An unlinked COFF object starts with IMAGE_FILE_HEADER, whose first field is Machine.
-        $fs.Position = 0
-        $machine = [int]$br.ReadUInt16()
-        if ((Get-PeMachineName -Value $machine) -and $machine -ne 0) { return $machine }
-        return $null
-    } catch {
-        return $null
-    } finally {
-        $fs.Dispose()
-    }
-}
-
-# Machine of a COFF archive (.lib), which is not a PE file, read from its first real member.
+# Archive offsets cannot be interpreted as PE header offsets.
 function Get-ArchiveMachine {
     param([Parameter(Mandatory)][string]$LiteralPath)
-
-    try {
-        $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
-    } catch {
-        return $null
-    }
-    if ($bytes.Length -lt 8) { return $null }
-    $magic = [System.Text.Encoding]::ASCII.GetString($bytes, 0, 8)
-    if ($magic -ne "!<arch>`n") { return $null }
-
-    # A malformed archive must read as unreadable, never throw and abort the whole scan unnamed.
+    try { $bytes = [System.IO.File]::ReadAllBytes($LiteralPath) } catch { return $null }
+    if ($bytes.Length -lt 8 -or [System.Text.Encoding]::ASCII.GetString($bytes, 0, 8) -ne "!<arch>`n") { return $null }
     try {
         $pos = 8
         while (($pos + 60) -le $bytes.Length) {
             $sizeText = [System.Text.Encoding]::ASCII.GetString($bytes, $pos + 48, 10).Trim()
             [int]$size = 0
-            if (-not [int]::TryParse($sizeText, [ref]$size)) { return $null }
-            if ($size -lt 0) { return $null }
+            if (-not [int]::TryParse($sizeText, [ref]$size) -or $size -lt 0) { return $null }
             $name = [System.Text.Encoding]::ASCII.GetString($bytes, $pos, 16).Trim()
             $dataStart = $pos + 60
-
-            # Skip linker and ARM64EC symbol members; a short-import Machine field is bytes 6..7, hence +8.
-            if ($name -notmatch '^/{1,2}$' -and $name -ne '<ECSYMBOLS>' -and
-                $size -ge 20 -and ($dataStart + 8) -le $bytes.Length) {
-                $m0 = [int]$bytes[$dataStart] -bor ([int]$bytes[$dataStart + 1] -shl 8)
-                if ($m0 -eq 0x0000 -and ([int]$bytes[$dataStart + 2] -bor ([int]$bytes[$dataStart + 3] -shl 8)) -eq 0xFFFF) {
-                    # Short-import header: Sig1=0, Sig2=0xFFFF, Version, Machine.
-                    return [int]$bytes[$dataStart + 6] -bor ([int]$bytes[$dataStart + 7] -shl 8)
-                }
-                if ((Get-PeMachineName -Value $m0) -and $m0 -ne 0) { return $m0 }
+            if ($name -notmatch '^/{1,2}$' -and $name -ne '<ECSYMBOLS>' -and $size -ge 20 -and ($dataStart + 8) -le $bytes.Length) {
+                $machine = Get-CoffObjectMachineFromBytes -Bytes $bytes -Offset $dataStart -AllowShortImport
+                if ($null -ne $machine) { return $machine }
             }
-
-            # Members are 2-byte aligned.
             $next = $dataStart + $size + ($size % 2)
-            if ($next -le $pos) { return $null }   # no forward progress: refuse to spin
+            if ($next -le $pos) { return $null }
             $pos = $next
         }
-    } catch {
-        return $null
-    }
+    } catch { return $null }
     return $null
 }
 

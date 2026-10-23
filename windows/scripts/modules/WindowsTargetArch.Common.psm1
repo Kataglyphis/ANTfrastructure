@@ -229,6 +229,38 @@ function Get-PeFileMachine {
     } finally { $fs.Dispose() }
 }
 
+function Get-CoffObjectMachineFromBytes {
+    param([Parameter(Mandatory)][byte[]]$Bytes, [int]$Offset = 0, [switch]$AllowShortImport, [switch]$AllowUnknownMachine)
+    if ($Offset -lt 0 -or ($Offset + 2) -gt $Bytes.Length) { return $null }
+    $machine = [int][BitConverter]::ToUInt16($Bytes, $Offset)
+    if ($AllowShortImport -and $machine -eq 0 -and ($Offset + 8) -le $Bytes.Length -and
+        [BitConverter]::ToUInt16($Bytes, $Offset + 2) -eq 0xFFFF) {
+        return [int][BitConverter]::ToUInt16($Bytes, $Offset + 6)
+    }
+    if ($AllowUnknownMachine) { return $machine }
+    if ((Get-PeMachineName -Value $machine) -and $machine -ne 0) { return $machine }
+    return $null
+}
+
+function Get-CoffMachine {
+    param([Parameter(Mandatory)][string]$LiteralPath)
+    try { $fs = [System.IO.File]::OpenRead($LiteralPath) } catch { return $null }
+    try {
+        $br = [System.IO.BinaryReader]::new($fs)
+        if ($fs.Length -lt 4) { return $null }
+        $mz = $br.ReadBytes(2)
+        if ($mz[0] -eq 0x4D -and $mz[1] -eq 0x5A) {
+            try { return [int](Get-PeFileMachine -Path $LiteralPath) } catch { return $null }
+        }
+        $fs.Position = 0
+        return Get-CoffObjectMachineFromBytes -Bytes $br.ReadBytes([int][Math]::Min($fs.Length, 8))
+    } catch {
+        return $null
+    } finally {
+        $fs.Dispose()
+    }
+}
+
 <#
 .SYNOPSIS
     True when the PE carries the 'Rich' block MSVC's link.exe writes into the DOS stub; lld-link writes none.
@@ -658,6 +690,8 @@ Export-ModuleMember -Function @(
     'Get-VsDevCmdArch',
     'Get-PeMachineType',
     'Get-PeFileMachine',
+    'Get-CoffMachine',
+    'Get-CoffObjectMachineFromBytes',
     'Test-PeRichHeader',
     'Get-PeImportNames',
     'Get-PeExportNames',

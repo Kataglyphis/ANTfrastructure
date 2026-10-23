@@ -138,13 +138,11 @@ try {
     } elseif (-not (Test-Path $probeObj)) {
         $probeFailure = "clang-cl produced no object file for $armTriple"
     } else {
-        # An unlinked COFF object starts with IMAGE_FILE_HEADER, whose first two bytes are the Machine field.
         $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
         if ($objBytes.Length -lt 2) {
             $probeFailure = "clang-cl produced a truncated object file for $armTriple"
         } else {
-            # The [int] casts matter: -shl keeps the left operand's type, so [byte]0xAA -shl 8 is 0.
-            $objMachine = [int]$objBytes[0] -bor ([int]$objBytes[1] -shl 8)
+            $objMachine = Get-CoffObjectMachineFromBytes -Bytes $objBytes -AllowUnknownMachine
             if ($objMachine -ne $armMachine) {
                 $probeFailure = ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}).' -f $objMachine, $armMachine, $armTriple)
             } else {
