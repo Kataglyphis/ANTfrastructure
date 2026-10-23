@@ -6,20 +6,18 @@
 param(
     [string]$TensorRtVersion = '',
     [string]$TensorRtRoot = '',
-    [string]$LocalZipPath = ''
+    [string]$LocalZipPath = '',
+    [string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-# Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
-$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
-if (-not (Test-Path $sharedModulePath)) { throw "Required module not found: $sharedModulePath" }
-Import-Module $sharedModulePath -Force
+Import-Module (Join-Path $ModuleRoot 'modules\WindowsContainerImage.Bootstrap.psm1') -Force
+Import-Module (Resolve-ContainerImageModulePath -ModuleRoot $ModuleRoot -Name 'WindowsContainerImage.Common.psm1') -Force
 # For Assert-FileSha256, which WindowsContainerImage.Common does not re-export.
-$sharedHelpersPath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
+$sharedHelpersPath = Resolve-ContainerImageModulePath -ModuleRoot $ModuleRoot -Name 'WindowsScripts.Shared.psm1'
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedHelpersPath }
 # Shared helpers (Invoke-DownloadWithRetry, etc.) come through WindowsContainerImage.Common's re-export.
 

@@ -31,6 +31,9 @@
 - Delegate the CrossBundle package-architecture export to `WindowsTargetArch.Common`.
 - Share the bounded dual-stack TCP probe between URL checks and the BuildKit sccache guard while preserving malformed-URL and timeout behavior.
 - Share Dockerfile stage indexing and literal test-directory cleanup across Windows suites, preserving suite-specific stage rules and cleanup scopes.
+- Route the ORT WebGPU image probe through the shared Python JSON transport, preserving mode arguments and caller-owned findings for malformed or failed runs.
+- Resolve CUDA and TensorRT image installer modules through the shared container-image bootstrap, passing the flat BuildKit module root explicitly.
+- Share `SCCACHE_MAX_JOBS` defaulting across host-cache and CMake setup while preserving each caller's activation point and logging.
 
 ## 2026-10-23 — remove another Windows duplication wave
 

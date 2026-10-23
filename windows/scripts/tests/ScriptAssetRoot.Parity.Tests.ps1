@@ -68,7 +68,8 @@ Describe 'scriptAssetRoot resolver parity' {
 Describe 'mounted installer module roots' {
     It 'flat-mounted installers take their module root explicitly and default to the checkout (mutation)' {
         $paths = 'windows/scripts/build/Install-LlamaCpp.ps1', 'windows/scripts/build/Install-TorchRocm.ps1',
-            'windows/scripts/host/Install-Lavapipe.ps1', 'windows/scripts/host/Install-LavapipeHost.ps1'
+            'windows/scripts/host/Install-Lavapipe.ps1', 'windows/scripts/host/Install-LavapipeHost.ps1',
+            'windows/scripts/host/Install-Cuda.ps1', 'windows/scripts/host/Install-Tensorrt.ps1'
         $asts = @($paths | ForEach-Object { Get-TestScriptAst -ScriptPath $_ })
         foreach ($ast in $asts) { Assert-MountedModuleRootContract -Ast $ast }
         $needle = '[string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)'

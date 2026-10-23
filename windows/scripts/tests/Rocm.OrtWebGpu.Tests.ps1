@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsScripts.Shared.psm1') -DisableNameChecking
+Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsNative.Common.psm1') -DisableNameChecking
 
 # The rocm-lane WebGPU EP spike offline: plan, pins, fetch chain, Dawn patch and gates; no real build or GPU.
 
@@ -554,6 +555,49 @@ Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC DLLs and each inter
             Assert-Equal 2 $out.Count "gradable: $($out -join ' / ')"
             Assert-Match '^OrtWebGpu \[base\]: import onnxruntime failed: base shim$' $out[0] 'the base python on PATH is probed'
             Assert-Match '^OrtWebGpu \[venv\]: import onnxruntime failed: ModuleNotFoundError' $out[1] 'the app venv is probed with the real probe source'
+        }
+    }
+}
+
+Describe 'rocm-checks\OrtWebGpu.ps1: shared Python JSON transport' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtWebGpuCheck -FunctionName 'Get-OrtWebGpuProbeSource', 'Invoke-OrtWebGpuProbe', 'Get-OrtWebGpuInterpreterFinding')
+
+    function Invoke-OrtWebGpuProbeFixture {
+        param([Parameter(Mandatory)]$State, [Parameter(Mandatory)][scriptblock]$Body)
+        Invoke-WithTestNativeCommand -Name Invoke-OrtWebGpuFixturePython -FixtureState $State -Implementation {
+            param($state, $argumentList)
+            $state.Args = @($argumentList)
+            $state.Source = [IO.File]::ReadAllText($state.Args[0])
+            $state.Lines
+        } -Body $Body
+    }
+
+    It 'uses the shared transport for both modes and preserves failed probes as findings' {
+        $state = [pscustomobject]@{ Code = 0; Lines = @('diagnostic', '{"python":"fixture"}'); Args = @(); Source = '' }
+        Invoke-OrtWebGpuProbeFixture -State $state -Body {
+            param($state)
+            $report = Invoke-OrtWebGpuProbe -Python 'Invoke-OrtWebGpuFixturePython' -WebGpu $true
+            Assert-Equal 'fixture' $report.python 'the shared transport parses the report'
+            Assert-Equal 2 $state.Args.Count 'the helper receives the script path and mode'
+            Assert-Match '^rocm-ort-webgpu-.+\.py$' (Split-Path $state.Args[0] -Leaf) 'the helper owns its temporary source file'
+            Assert-Equal 'webgpu' $state.Args[1] 'WebGPU mode reaches Python'
+            Assert-Equal (Get-OrtWebGpuProbeSource) $state.Source 'the existing feature probe is preserved'
+
+            $state.Args = @()
+            $null = Invoke-OrtWebGpuProbe -Python 'Invoke-OrtWebGpuFixturePython' -WebGpu $false
+            Assert-Equal 'plain' $state.Args[1] 'plain mode reaches Python'
+
+            $state.Code = 7
+            $state.Lines = @('diagnostic', '{"python":"failed"}')
+            $failed = Invoke-OrtWebGpuProbe -Python 'Invoke-OrtWebGpuFixturePython' -WebGpu $true
+            Assert-Match 'probe failed: probe exit 7 without a report:.*failed' $failed 'a nonzero interpreter cannot supply a passing JSON report'
+            Assert-Match '^OrtWebGpu \[base\]: probe failed:' (Get-OrtWebGpuInterpreterFinding -Label 'base' -Report $failed -WebGpu $true) 'the failure remains a caller finding'
+
+            $state.Code = 0
+            $state.Lines = @('{malformed')
+            $malformed = Invoke-OrtWebGpuProbe -Python 'Invoke-OrtWebGpuFixturePython' -WebGpu $false
+            Assert-Match '^probe failed:' $malformed 'malformed JSON remains a failed probe'
+            Assert-Match '^OrtWebGpu \[venv\]: probe failed:' (Get-OrtWebGpuInterpreterFinding -Label 'venv' -Report $malformed -WebGpu $false) 'the check runner can aggregate it'
         }
     }
 }

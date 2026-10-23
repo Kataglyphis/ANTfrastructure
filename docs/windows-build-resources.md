@@ -343,6 +343,10 @@ bare, because its two plugin crates are cdylibs
 The first build populates the cache; subsequent `--no-cache` rebuilds and
 version bumps reuse unchanged object files.
 
+The host cache initializer and CMake build setup share one `SCCACHE_MAX_JOBS`
+defaulting helper. Each caller keeps its own activation point and log message;
+both preserve an explicit limit and fill an absent or empty value from the CPU count.
+
 **sccache is the OFFICIAL RELEASED 0.18.0 zip since 2026-09-18 — the source
 build at `SCCACHE_GIT_REV` is retired.** `Install-RustToolchain.ps1` downloads
 `sccache-v0.18.0-x86_64-pc-windows-msvc.zip`, verifies it against

@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# Real loopback sockets, refused and listening: see docs/windows-build-resources.md#the-consumer-side-probe
+# NOT covered: a live sccache server; socket probes: docs/windows-build-resources.md#the-consumer-side-probe
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 # Unforced, like WindowsMediaRuntime.Common.Tests.ps1: a -Force reload breaks Shared's guarded import.
@@ -258,6 +258,45 @@ Describe 'Clear-UnreachableSccacheEndpoint: the S3 level' {
 }
 
 Describe 'The launcher-wiring sites probe before they wire' {
+
+    It 'defaults SCCACHE_MAX_JOBS once and leaves an explicit limit unchanged' {
+        foreach ($initial in @($null, '')) {
+            Invoke-WithProbeEnv @{ SCCACHE_MAX_JOBS = $initial } {
+                Assert-True (Set-SccacheMaxJobsDefault -Default 13) 'an absent or empty limit gets the shared default'
+                Assert-Equal '13' $env:SCCACHE_MAX_JOBS
+                Assert-False (Set-SccacheMaxJobsDefault -Default 7) 'a second caller keeps the established limit'
+                Assert-Equal '13' $env:SCCACHE_MAX_JOBS
+            }
+        }
+        Invoke-WithProbeEnv @{ SCCACHE_MAX_JOBS = 'caller-limit' } {
+            Assert-False (Set-SccacheMaxJobsDefault -Default 13)
+            Assert-Equal 'caller-limit' $env:SCCACHE_MAX_JOBS
+        }
+    }
+
+    It 'detects a helper that reports a default without assigning it' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' `
+            -FunctionName Set-SccacheMaxJobsDefault -Find '$env:SCCACHE_MAX_JOBS = $Default.ToString()' `
+            -Replace '' -Expected 'max-jobs default must be assigned' -Body {
+            Invoke-WithProbeEnv @{ SCCACHE_MAX_JOBS = $null } {
+                Set-MutSccacheMaxJobsDefault -Default 13 | Out-Null
+                Assert-Equal '13' $env:SCCACHE_MAX_JOBS 'max-jobs default must be assigned'
+            }
+        }
+    }
+
+    It 'uses the shared max-jobs default at both original activation points' {
+        $build = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' `
+            -FunctionName Initialize-BuildCacheEnvironment).ToString()
+        $cmake = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsCMake.Common.psm1' `
+            -FunctionName Invoke-CmakeConfigureAndBuild).ToString()
+        $buildCall = $build.IndexOf('Set-SccacheMaxJobsDefault')
+        $buildEnabled = $build.IndexOf('elseif ($sccacheCmd)')
+        Assert-True ($buildCall -gt $buildEnabled) 'cache init keeps the default inside its sccache-found branch'
+        Assert-Match 'Set-SccacheMaxJobsDefault -Default \$cpuCount' $cmake 'CMake keeps its explicit CPU count'
+        Assert-True ($cmake.IndexOf('Set-SccacheMaxJobsDefault') -lt $cmake.IndexOf('if ($DisableSccache)')) `
+            'CMake keeps defaulting before its opt-out branch'
+    }
 
     It 'Enable-SccacheCompilerWrapper drops an unreachable endpoint and still wires the launchers' {
         $s = New-ClosedLoopbackPort

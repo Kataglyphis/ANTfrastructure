@@ -425,6 +425,12 @@ requires.
   installed wheel, capi's `dxcompiler.dll` equal to the staged hash, no `dxil.dll` there,
   and the DXC notice entry.
 
+**Image probe.** `rocm-checks\OrtWebGpu.ps1` runs the same Python source in the base
+interpreter and the app venv. It passes the `plain` or `webgpu` mode through
+`WindowsNative.Common.psm1`'s `Invoke-PythonJsonProbe`, which owns the temporary source file,
+argument forwarding, JSON parsing and failure diagnostics. A failed or malformed probe remains
+an `OrtWebGpu` finding for `Test-RocmImage.ps1` to aggregate.
+
 **Smoke (`rocm-checks\OrtWebGpu.ps1`, GPU-less).** It reads the marker and fails on a mode
 that does not match `EXPECT_ROCM_SPIKES` (a stale parent) or a DLL hash that does not
 match. With the spike off it requires no DXC leftovers. With it on, in the base `python`

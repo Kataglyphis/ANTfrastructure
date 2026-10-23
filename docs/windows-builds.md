@@ -2386,7 +2386,7 @@ Free-threaded wheel proofs share DLL search-path `sitecustomize.py` generation w
 
 CMake configure findings share `Get-CmakeCacheEntries` for raw lines, variable names, types and full values. Container CLI capture shares its native-call lifecycle while inspect keeps stderr-first diagnostics and ordinary probes discard stderr. Lavapipe registry writes share `Register-LavapipeIcd`; the image's amd64 condition and the host's elevation check stay with their callers.
 
-The lavapipe installers share module-path validation through `WindowsContainerImage.Bootstrap.psm1`. The merge Dockerfile keeps its flat installer mount and passes `-ModuleRoot` and `-ScriptDir` as separate roots for the mounted modules and `Import-Versions.ps1`.
+The lavapipe, CUDA and TensorRT installers share module-path validation through `WindowsContainerImage.Bootstrap.psm1`. The merge Dockerfile keeps its flat installer mount and passes `-ModuleRoot` and `-ScriptDir` as separate roots for the mounted modules and `Import-Versions.ps1`; the NVIDIA installer RUNs mount the bootstrap module and pass their flat script root as `-ModuleRoot`.
 
 LiteRT support grafts and CPython `pyconfig.h` staging share `Copy-SourceBuildFileIfAbsent`; each caller retains its own diagnostic.
 

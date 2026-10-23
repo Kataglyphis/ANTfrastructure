@@ -780,6 +780,13 @@ function Enable-SccacheCompilerWrapper {
     Set-CompilerWrapperEnvironment -Value $SccacheExe
 }
 
+function Set-SccacheMaxJobsDefault {
+    param([int]$Default = [Environment]::ProcessorCount)
+    if ($env:SCCACHE_MAX_JOBS) { return $false }
+    $env:SCCACHE_MAX_JOBS = $Default.ToString()
+    return $true
+}
+
 # Consumer API with no in-repo caller: see docs/consumer-inventory.md § Why a grep was not enough
 function Initialize-BuildCacheEnvironment {
     param(
@@ -824,8 +831,7 @@ function Initialize-BuildCacheEnvironment {
         Write-BuildLog -Context $Context -Message "DEBUG: sccache found at: $sccacheExe. Enabling compiler cache."
         Enable-SccacheCompilerWrapper -SccacheExe $sccacheExe
 
-        if (-not $env:SCCACHE_MAX_JOBS) {
-            $env:SCCACHE_MAX_JOBS = [Environment]::ProcessorCount.ToString()
+        if (Set-SccacheMaxJobsDefault) {
             Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$($env:SCCACHE_MAX_JOBS) (from Initialize-BuildCacheEnvironment)"
         }
     }
@@ -1131,7 +1137,7 @@ function Save-CiCompilerCache {
     return $ok
 }
 
-Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Invoke-BuildArtifactCopy, Sync-BuildArtifacts,
+Export-ModuleMember -Function Initialize-BuildCacheEnvironment, Enable-SccacheCompilerWrapper, Set-SccacheMaxJobsDefault, Clear-UnreachableSccacheEndpoint, Remove-BuildRoot, Show-SccacheStats, Assert-FlutterPluginsBuilt, Invoke-BuildArtifactCopy, Sync-BuildArtifacts,
     Test-SccacheModuleSafe, Restore-CiCompilerCache, Save-CiCompilerCache
 
 

@@ -13,6 +13,8 @@
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'modules\WindowsNative.Common.psm1')
+
 # The marker's KEY=value lines; $null when the build never wrote it.
 function Read-OrtWebGpuMarker {
     param([Parameter(Mandatory)][string]$Path)
@@ -129,15 +131,15 @@ print(json.dumps(r))
 '@
 }
 
-# Runs the probe on one interpreter (source on stdin): the report as a hashtable, or the failure as a string.
+# Runs the probe through the shared JSON transport: a report as a hashtable, or the failure as a string.
 function Invoke-OrtWebGpuProbe {
     param([Parameter(Mandatory)][string]$Python, [bool]$WebGpu)
     $mode = if ($WebGpu) { 'webgpu' } else { 'plain' }
-    $out = @(Get-OrtWebGpuProbeSource | & $Python - $mode 2>&1 | ForEach-Object { "$_" })
-    $exit = $LASTEXITCODE
-    $reports = @($out -match '^\{')
-    if ($exit -ne 0 -or $reports.Count -eq 0) { return "probe exit $exit, no JSON line: $(($out | Select-Object -Last 3) -join ' | ')" }
-    return ConvertFrom-Json -InputObject $reports[-1] -AsHashtable
+    try {
+        return Invoke-PythonJsonProbe -Python $Python -Source (Get-OrtWebGpuProbeSource) -Prefix 'rocm-ort-webgpu' -ArgumentList @($mode) -DiagnosticTail -FailurePrefix 'probe exit'
+    } catch {
+        return "probe failed: $($_.Exception.Message)"
+    }
 }
 
 # One interpreter's report ($Report: hashtable, or the probe's failure string) against the marker.

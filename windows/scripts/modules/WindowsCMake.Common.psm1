@@ -171,8 +171,7 @@ function Invoke-CmakeConfigureAndBuild {
   Write-BuildLog -Context $Context -Message "DEBUG: Preset: $Preset"
   Write-BuildLog -Context $Context -Message "DEBUG: Configuration: $Configuration"
 
-  if (-not $env:SCCACHE_MAX_JOBS) {
-    $env:SCCACHE_MAX_JOBS = $cpuCount.ToString()
+  if (Set-SccacheMaxJobsDefault -Default $cpuCount) {
     Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$cpuCount (was not set, defaulting to CPU count)"
   } else {
     Write-BuildLog -Context $Context -Message "DEBUG: SCCACHE_MAX_JOBS already set to: $env:SCCACHE_MAX_JOBS"

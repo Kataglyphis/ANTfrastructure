@@ -2,6 +2,7 @@
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -DisableNameChecking
 
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # The Windows ROCm sdk layer: guards, layout, ICD and loader install, env and PATH contract; no real downloads or hipcc.
 
@@ -281,10 +282,7 @@ Describe 'Dockerfile.rocm: PATH and pins' {
 }
 
 Describe 'Install-Rocm: TheRock''s OpenCL ICD, registered the way the Khronos loader reads it' {
-    BeforeAll {
-        Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1') -Force -DisableNameChecking
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-OpenClIcdRegistryFinding')
-    }
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-OpenClIcdRegistryFinding')
     # A throwaway HKCU key stands in for HKLM\SOFTWARE\Khronos\OpenCL\Vendors.
     function Invoke-InTestRegistry([scriptblock]$Body) {
         $root = 'Software\ANTfrastructure-test-' + [guid]::NewGuid().ToString('N')
