@@ -112,6 +112,17 @@ _artifact_source_check_swapped_gcc() {
   fi
 }
 
+_artifact_source_check_target_elf() {
+  local binary="$1" label="$2" gate="$3" version_failure="$4" machine expected_machine
+  machine="$(LC_ALL=C readelf -h "${binary}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+  expected_machine="$(arch_to_elf_machine "${_VCS_TARGET_ARCH}" 2>/dev/null || true)"
+  if [ -n "${expected_machine}" ] && echo "${machine}" | grep -qi "${expected_machine}"; then
+    echo "OK: ${label} is cross-built ELF for ${_VCS_TARGET_ARCH} (${machine})"
+  else
+    validate_fail "${gate}" "${version_failure}${machine:+ ELF: ${machine}}"
+  fi
+}
+
 _artifact_source_check_native_gcc() {
   local target_arch="${_VCS_TARGET_ARCH}"
   local gcc_prefix="${_VCS_GCC_PREFIX}"
@@ -119,18 +130,13 @@ _artifact_source_check_native_gcc() {
   if [ "${target_arch}" != "amd64" ]; then
     local native_gcc="/opt/gcc-${GCC_VERSION:-16.2.0}-native-${target_arch}"
     if [ -d "${native_gcc}" ] && [ -x "${native_gcc}/bin/gcc" ]; then
-      local native_ver native_elf expected_machine
+      local native_ver
       native_ver="$("${native_gcc}/bin/gcc" --version 2>/dev/null | head -1 || true)"
       if echo "${native_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
         echo "OK: target-native ${native_gcc}/bin/gcc reports ${native_ver}"
       else
-        native_elf="$(LC_ALL=C readelf -h "${native_gcc}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
-        expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
-        if [ -n "${expected_machine}" ] && echo "${native_elf}" | grep -qi "${expected_machine}"; then
-          echo "OK: target-native ${native_gcc}/bin/gcc is cross-built ELF for ${target_arch} (${native_elf})"
-        else
-          validate_fail "native-gcc" "${native_gcc}/bin/gcc --version: ${native_ver:-MISSING}${native_elf:+ ELF: ${native_elf}}"
-        fi
+        _artifact_source_check_target_elf "${native_gcc}/bin/gcc" "target-native ${native_gcc}/bin/gcc" \
+          native-gcc "${native_gcc}/bin/gcc --version: ${native_ver:-MISSING}"
       fi
     elif [ "${BUILD_MODE:-native}" = "cross" ]; then
       _artifact_source_check_swapped_gcc "${target_arch}" "${gcc_prefix}" "${native_gcc}"
@@ -157,14 +163,8 @@ _artifact_source_check_llvm() {
       echo "OK: target clang ${llvm_target} reports ${clang_ver}"
     else
       # A cross-built clang cannot run here and has no DEB metadata, so check its ELF arch.
-      local clang_elf expected_machine=""
-      clang_elf="$(LC_ALL=C readelf -h "${llvm_target}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
-      expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
-      if [ -n "${expected_machine}" ] && echo "${clang_elf}" | grep -qi "${expected_machine}"; then
-        echo "OK: target clang ${llvm_target} is cross-built ELF for ${target_arch} (${clang_elf})"
-      else
-        validate_fail "target-clang" "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)})${clang_elf:+ ELF: ${clang_elf}}"
-      fi
+      _artifact_source_check_target_elf "${llvm_target}" "target clang ${llvm_target}" \
+        target-clang "${llvm_target} --version: ${clang_ver:-MISSING} (expected ${LLVM_RELEASE:?LLVM_RELEASE must be set (versions.env)})"
     fi
   elif cross_build_is_active && [ -d /opt/llvm-target ]; then
     validate_fail "target-clang-missing" "${llvm_target} not executable in /opt/llvm-target"
@@ -234,6 +234,15 @@ validate_package() {
   fi
 }
 
+_cc_target_failure() {
+  local gate="$1" message="$2" fatal_message="$3"
+  if [ "${_VCS_CC_MODE}" = hard-fail ]; then
+    echo "ERROR: ${fatal_message}" >&2
+    exit 1
+  fi
+  validate_fail "${gate}" "${message}"
+}
+
 _cc_target_dumpmachine() {
   local target_arch="${_VCS_CC_TARGET_ARCH}"
   local mode="${_VCS_CC_MODE}"
@@ -259,13 +268,10 @@ _cc_target_dumpmachine() {
 
   if [ -n "${expected_pattern}" ]; then
     if ! echo "${cc_dump}" | grep -q "^${expected_pattern}"; then
-      if [ "${mode}" = "hard-fail" ]; then
-        echo "ERROR: /usr/bin/cc dumpmachine '${cc_dump}' does not match target arch ${target_arch}" >&2
-        exit 1
-      else
-        validate_fail "cc-arch" "/usr/bin/cc (${cc_path}) dumpmachine '${cc_dump}' != expected ${expected_pattern} for ${target_arch}"
-        return 0
-      fi
+      _cc_target_failure cc-arch \
+        "/usr/bin/cc (${cc_path}) dumpmachine '${cc_dump}' != expected ${expected_pattern} for ${target_arch}" \
+        "/usr/bin/cc dumpmachine '${cc_dump}' does not match target arch ${target_arch}"
+      return 0
     fi
     echo "Verified /usr/bin/cc target: ${cc_dump} (expected ${target_arch})"
   fi
@@ -273,7 +279,6 @@ _cc_target_dumpmachine() {
 
 _cc_target_elf_check() {
   local target_arch="${_VCS_CC_TARGET_ARCH}"
-  local mode="${_VCS_CC_MODE}"
   local cc_path="${_VCS_CC_PATH}"
   local cc_pattern="${_VCS_CC_PATTERN}"
   local cc_machine cc_elf
@@ -284,25 +289,16 @@ _cc_target_elf_check() {
     # || true: a non-ELF file would abort under set -e before the diagnostic below.
     cc_machine="$(elf_machine_name "${cc_elf}" || true)"
     if [ -z "${cc_machine}" ]; then
-      if [ "${mode}" = "hard-fail" ]; then
-        echo "ERROR: cannot read ELF machine type of cc (${cc_elf})" >&2
-        exit 1
-      else
-        validate_fail "cc-elf" "cannot read ELF machine of cc"
-        return 0
-      fi
+      _cc_target_failure cc-elf 'cannot read ELF machine of cc' "cannot read ELF machine type of cc (${cc_elf})"
+      return 0
     fi
     case "${cc_machine}" in
       *"${cc_pattern}"*)
         echo "Verified /usr/bin/cc ELF machine: '${cc_machine}' matches ${target_arch}" ;;
       *)
-        if [ "${mode}" = "hard-fail" ]; then
-          echo "ERROR: /usr/bin/cc (${cc_elf}) ELF machine '${cc_machine}' does not match '${cc_pattern}' for ${target_arch}" >&2
-          exit 1
-        else
-          validate_fail "cc-elf" "ELF machine '${cc_machine}' != '${cc_pattern}' for ${target_arch}"
-          return 0
-        fi
+        _cc_target_failure cc-elf "ELF machine '${cc_machine}' != '${cc_pattern}' for ${target_arch}" \
+          "/usr/bin/cc (${cc_elf}) ELF machine '${cc_machine}' does not match '${cc_pattern}' for ${target_arch}"
+        return 0
         ;;
     esac
   fi

@@ -186,7 +186,7 @@ fetch_tvm_source() {
 
   local _curr_ref; _curr_ref="$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)"
   log "Fetching + checking out ref: ${_tvm_want}"
-  git -C "$tvm_dir" fetch --depth 1 origin "${_tvm_want}" 2>/dev/null || git -C "$tvm_dir" fetch --depth 1 --tags 2>/dev/null || true
+  fetch_repository_ref_best_effort "$tvm_dir" "${_tvm_want}"
   git -C "$tvm_dir" checkout "${_tvm_want}"
   if [ "$_tvm_cloned" -eq 0 ] || [ "$_tvm_needs_submodules" -eq 1 ] \
      || [ "$_curr_ref" != "$(git -C "$tvm_dir" rev-parse HEAD 2>/dev/null || true)" ]; then

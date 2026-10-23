@@ -55,32 +55,30 @@ _parse_common_build_flags() {
   esac
 }
 
+_parse_named_build_flags() {
+  local _pnbf_rc=0
+  _parse_common_build_flags "$1" "$2" "$3" "$4" "$5" "$6" || _pnbf_rc=$?
+  if [ "${_pnbf_rc}" -ne 0 ]; then return "${_pnbf_rc}"; fi
+  [ -n "$5" ] || return 0
+  local -n _pnbf_options="$7"
+  local _pnbf_destination="${_pnbf_options[$5]:-}"
+  if [ -n "${_pnbf_destination}" ]; then
+    local -n _pnbf_value="${_pnbf_destination}"
+    _pnbf_value="$6"
+    return 2
+  fi
+  return 0
+}
+
 # The cross orchestrators' shared flags: seven namerefs, then the loop's $1 $2.
 parse_shared_orchestrator_args() {
-  local -n _psoa_target_arches=$1
-  local -n _psoa_use_fast_mirror=$2
-  local -n _psoa_fast_mirror_url=$3
-  local -n _psoa_fast_ports_url=$4
-  local -n _psoa_image_repo=$5
-  local -n _psoa_vulkan_version=$6
   local -n _psoa_push=$7
-  shift 7 || true
-  local arg="$1" val="$2"
-
-  local _rc=0
-  _parse_common_build_flags _psoa_target_arches _psoa_use_fast_mirror _psoa_fast_mirror_url _psoa_fast_ports_url "${arg}" "${val}" || _rc=$?
-  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
-
+  local -A _psoa_options=([--image-repo]="$5" [--vulkan-version]="$6")
+  local arg="$8" val="$9"
   case "${arg}" in
-    --image-repo)
-      _psoa_image_repo="${val}"; return 2 ;;
-    --vulkan-version)
-      _psoa_vulkan_version="${val}"; return 2 ;;
-    --push)
-      _psoa_push=1; return 1 ;;
-    *)
-      return 0 ;;
+    --push) _psoa_push=1; return 1 ;;
   esac
+  _parse_named_build_flags "$1" "$2" "$3" "$4" "${arg}" "${val}" _psoa_options
 }
 
 # Flags inert in one entry point (its ORCHESTRATOR_UNSUPPORTED_FLAGS) warn, never reject.
@@ -140,40 +138,13 @@ consume_dp_shift() {
 
 # The runtime scripts' shared flags: eleven namerefs, then the loop's $1 $2.
 parse_shared_runtime_args() {
-  local -n _target_arches=$1
-  local -n _artifact_image_prefix=$2
-  local -n _artifact_build_mode=$3
-  local -n _base_dockerfile=$4
-  local -n _package_dockerfile=$5
-  local -n _wrapper_dockerfile=$6
-  local -n _torch_app_mode=$7
-  local -n _use_fast_mirror=$8
-  local -n _fast_mirror_url=$9
-  local -n _fast_ports_url=${10}
+  local -A _psra_options=(
+    [--artifact-image-prefix]="$2" [--artifact-build-mode]="$3"
+    [--base-dockerfile]="$4" [--package-dockerfile]="$5"
+    [--wrapper-dockerfile]="$6" [--torch-dockerfile]="$6" [--torch-app-mode]="$7"
+  )
   local -n _push_intermediate=${11}
-  shift 11 || true
-  local arg="$1" val="$2"
-
-  local _rc=0
-  _parse_common_build_flags _target_arches _use_fast_mirror _fast_mirror_url _fast_ports_url "${arg}" "${val}" || _rc=$?
-  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
-
-  case "${arg}" in
-    --artifact-image-prefix)
-      _artifact_image_prefix="${val}"; return 2 ;;
-    --artifact-build-mode)
-      _artifact_build_mode="${val}"; return 2 ;;
-    --base-dockerfile)
-      _base_dockerfile="${val}"; return 2 ;;
-    --package-dockerfile)
-      _package_dockerfile="${val}"; return 2 ;;
-    --wrapper-dockerfile|--torch-dockerfile)
-      _wrapper_dockerfile="${val}"; return 2 ;;
-    --torch-app-mode)
-      _torch_app_mode="${val}"; return 2 ;;
-    *)
-      return 0 ;;
-  esac
+  _parse_named_build_flags "$1" "$8" "$9" "${10}" "${12}" "${13}" _psra_options
 }
 
 # runtime_post_parse_setup [arches_var] [image_prefix]: needs IMAGE_PREFIX or IMAGE_NAME set.

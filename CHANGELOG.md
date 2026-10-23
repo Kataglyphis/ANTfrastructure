@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — continue Linux duplication cleanup
+
+- Share named-option dispatch across Linux build parsers while preserving aliases, raw values, nameref destinations, consumption and diagnostics.
+- Share best-effort repository fetching through the existing download companion; keep generic and TVM checkout failure policies distinct.
+- Share compiler ELF fallback verdicts and fatal/advisory failure handling without changing diagnostics.
+- Share TVM argument fixtures and parallel-loop child setup while retaining independent expected results and failure cases.
+- Add characterization and mutation proofs; shrink duplication exceptions without editing Windows source or changing scan coverage.
+
 ## 2026-10-23 — expand parallel duplication cleanup
 
 - Share Torch wheelhouse preparation and collection; propagate previously swallowed sysconfig, wheel repair, retagging and copy failures.

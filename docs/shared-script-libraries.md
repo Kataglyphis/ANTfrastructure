@@ -1423,3 +1423,29 @@ Python application requirement hashing groups each requirement with its followin
 hash lines. Only matching hashed groups gain the built wheel hash; other lines,
 repeated groups and continuation bytes retain their order. A local lost-final-group
 mutation guards against silently omitting the final requirement.
+
+### Repository refresh and Linux parser fixtures
+
+`downloads.sh` owns the best-effort shallow fetch used by the generic repository
+helper and TVM: try the requested ref, then tags, tolerating failure of both.
+Checkout policy stays with each caller. The generic helper still tolerates a
+failed checkout and reports stale or missing HEAD; TVM still requires checkout
+success before refreshing submodules. TVM receives this helper through its
+existing `common.sh`/`downloads.sh` companions. Local fake-Git fixtures verify
+fetch order and checkout policy against both implementations without a network.
+
+The orchestrator and runtime CLI parsers share named-option assignment through
+caller-specific destination maps. Aliases, raw empty and option-shaped values,
+consumed-argument counts and common flag precedence retain their policies.
+Their public interfaces and nameref targets remain unchanged. Parser fixtures
+exercise every mapped option, help, positional inputs and dispatcher errors.
+
+Compiler validation shares target-native GCC/LLVM ELF fallback checks and the
+compiler target-failure verdict. Mandatory failures still exit immediately;
+advisory failures retain their aggregation and diagnostics. Local fixtures
+compare baseline and refactor outputs without executing target compilers.
+
+Parallel-loop fixtures share child-shell setup while retaining the strict
+caller-return scenario and separate fail-fast and keep-going expectations.
+They still invoke the actual loop library; mutations that omit it or invert
+its fixture predicate must fail. These tests launch only local stub workers.

@@ -18306,5 +18306,125 @@
   "replace": "finally { }",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-cleanup-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-cleanup-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
+ },
+ {
+  "id": "lib.parallel-loop-fixture-child-source",
+  "target": "linux/scripts/tests/test-parallel-loop.sh",
+  "find": "  printf 'source %q\\n' \"${CORE_DIR}/parallel-loop.sh\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "Caller and fail-fast fixtures must execute the real loop library in their child shell."
+ },
+ {
+  "id": "lib.parallel-loop-fixture-child-truthy",
+  "target": "linux/scripts/tests/test-parallel-loop.sh",
+  "find": "1|true|yes|on) return 0",
+  "replace": "1|true|yes|on) return 1",
+  "test": "bash linux/scripts/tests/test-parallel-loop.sh",
+  "why": "The shared child predicate must preserve fail-fast selection instead of running every architecture."
+ },
+ {
+  "id": "lib.repository-refresh-tags-fallback",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "|| git -C \"$1\" fetch --depth 1 --tags 2>/dev/null || true",
+  "replace": "|| true",
+  "test": "bash linux/scripts/tests/test-repository-refresh.sh",
+  "why": "An unavailable shallow ref must still attempt the existing tag-fetch fallback."
+ },
+ {
+  "id": "lib.repository-refresh-best-effort",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "|| git -C \"$1\" fetch --depth 1 --tags 2>/dev/null || true",
+  "replace": "|| git -C \"$1\" fetch --depth 1 --tags 2>/dev/null || return 1",
+  "test": "bash linux/scripts/tests/test-repository-refresh.sh",
+  "why": "Both callers tolerate failed fetch attempts and retain their distinct checkout policies."
+ },
+ {
+  "id": "probe.cli-named-assignment",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "    _pnbf_value=\"$6\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "every named project flag writes its designated caller variable, including raw empty and option-shaped values"
+ },
+ {
+  "id": "probe.cli-named-consumption",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "    _pnbf_value=\"$6\"\n    return 2",
+  "replace": "    _pnbf_value=\"$6\"\n    return 1",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "named value options consume two arguments so dispatcher validation rejects empty and swallowed values"
+ },
+ {
+  "id": "probe.cli-empty-unknown",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "  [ -n \"$5\" ] || return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "empty arguments remain quiet unknown inputs rather than becoming invalid associative subscripts"
+ },
+ {
+  "id": "probe.cli-runtime-wrapper-alias",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "[--torch-dockerfile]=\"$6\"",
+  "replace": "[--torch-dockerfile]=\"$5\"",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "the legacy torch Dockerfile alias writes the wrapper destination and leaves the package destination alone"
+ },
+ {
+  "id": "lib.compiler-target-fatal-verdict",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "    echo \"ERROR: ${fatal_message}\" >&2\n    exit 1",
+  "replace": "    echo \"ERROR: ${fatal_message}\" >&2\n    return 0",
+  "test": "bash linux/scripts/tests/test-compiler-target-verdicts.sh",
+  "why": "mandatory target mismatches must exit nonzero"
+ },
+ {
+  "id": "lib.compiler-target-advisory-accounting",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  validate_fail \"${gate}\" \"${message}\"",
+  "replace": "  : \"${gate}\" \"${message}\"",
+  "test": "bash linux/scripts/tests/test-compiler-target-verdicts.sh",
+  "why": "advisory target mismatches must increment aggregate compiler errors"
+ },
+ {
+  "id": "lib.compiler-target-artifact-elf",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "if [ -n \"${expected_machine}\" ] && echo \"${machine}\" | grep -qi \"${expected_machine}\"; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-compiler-target-verdicts.sh",
+  "why": "version fallback must reject a wrong target-native GCC or LLVM ELF machine"
+ },
+ {
+  "id": "lib.tvm-argv-fixture-vulkan-include-order",
+  "target": "linux/scripts/05-frameworks/tvm-config.sh",
+  "find": "-DVulkan_INCLUDE_DIR=\"${4}\"",
+  "replace": "-DVulkan_INCLUDE_DIR=\"${3}\"",
+  "test": "bash linux/scripts/tests/test-tvm-cmake-args.sh",
+  "why": "Shared fixtures retain complete ordered argv and global state assertions, including independent opt-outs and ambient precedence."
+ },
+ {
+  "id": "lib.tvm-argv-fixture-cuda-independent-optout",
+  "target": "linux/scripts/05-frameworks/tvm-config.sh",
+  "find": "${TVM_USE_CUBLAS:-1}",
+  "replace": "${TVM_USE_CUDNN:-1}",
+  "test": "bash linux/scripts/tests/test-tvm-cmake-args.sh",
+  "why": "Shared fixtures retain complete ordered argv and global state assertions, including independent opt-outs and ambient precedence."
+ },
+ {
+  "id": "lib.tvm-argv-fixture-ambient-llvm-order",
+  "target": "linux/scripts/05-frameworks/tvm-config.sh",
+  "find": "${3}${CMAKE_IGNORE_PATH:+;${CMAKE_IGNORE_PATH}}",
+  "replace": "${CMAKE_IGNORE_PATH:+${CMAKE_IGNORE_PATH};}${3}",
+  "test": "bash linux/scripts/tests/test-tvm-cmake-args.sh",
+  "why": "Shared fixtures retain complete ordered argv and global state assertions, including independent opt-outs and ambient precedence."
+ },
+ {
+  "id": "lib.tvm-argv-fixture-qnn-global-export",
+  "target": "linux/scripts/05-frameworks/tvm-config.sh",
+  "find": "TVM_QNN_HOME=\"$(resolve_qnn_sdk)\"",
+  "replace": "local TVM_QNN_HOME=\"$(resolve_qnn_sdk)\"",
+  "test": "bash linux/scripts/tests/test-tvm-cmake-args.sh",
+  "why": "Shared fixtures retain complete ordered argv and global state assertions, including independent opt-outs and ambient precedence."
  }
 ]

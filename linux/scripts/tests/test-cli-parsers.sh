@@ -15,6 +15,14 @@ _fake_parser() {
   esac
 }
 
+_select_cli_parser() {
+  case "$1" in
+    orchestrator) parser_call=(parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu) ;;
+    runtime) parser_call=(parse_shared_runtime_args _ta _ir _mode _base _package _wrapper _app _uf _fu _fp _intermediate) ;;
+    *) return 1 ;;
+  esac
+}
+
 t_case "two-arg flag with real value passes"
 t_assert_ok dispatch_parsed_args _fake_parser _x --two-arg somevalue
 dispatch_parsed_args _fake_parser _x --two-arg somevalue >/dev/null 2>&1
@@ -80,11 +88,7 @@ unset ORCHESTRATOR_UNSUPPORTED_FLAGS
 t_case "both public parsers share architecture aliases, mirrors, globals and help"
 for parser_kind in orchestrator runtime; do
   _mode='' _base='' _package='' _wrapper='' _app='' _intermediate=0
-  if [ "${parser_kind}" = orchestrator ]; then
-    parser_call=(parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu)
-  else
-    parser_call=(parse_shared_runtime_args _ta _ir _mode _base _package _wrapper _app _uf _fu _fp _intermediate)
-  fi
+  _select_cli_parser "${parser_kind}"
   for flag in --architectures --target-arches; do
     _ta=unchanged
     _rc=0
@@ -145,5 +149,65 @@ _rc=0
 parse_shared_runtime_args _ta _ir _mode _base _package _wrapper _app _uf _fu _fp _intermediate --torch-dockerfile 'fixture Dockerfile' || _rc=$?
 t_assert_eq 2 "${_rc}"
 t_assert_eq 'fixture Dockerfile' "${_wrapper}"
+
+t_case "named project options preserve destinations, raw values and dispatcher rejection"
+while read -r parser_kind option destination; do
+  _select_cli_parser "${parser_kind}"
+  for value in 'fixture value with spaces' '' --next-option; do
+    printf -v "${destination}" '%s' unchanged
+    _rc=0
+    "${parser_call[@]}" "${option}" "${value}" || _rc=$?
+    t_assert_eq 2 "${_rc}" "${option} consumes its raw value"
+    t_assert_eq "${value}" "${!destination}" "${option} writes its caller destination"
+    if [ -z "${value}" ] || [[ "${value}" == --* ]]; then
+      _rc=0
+      _DP_SHIFT=99
+      _error="$(dispatch_parsed_args "${parser_call[@]}" "${option}" "${value}" 2>&1)" || _rc=$?
+      t_assert_eq 1 "${_rc}"
+      t_assert_eq "ERROR: ${option} requires a value (got '${value}')" "${_error}"
+      dispatch_parsed_args "${parser_call[@]}" "${option}" "${value}" >/dev/null 2>&1 || :
+      t_assert_eq 0 "${_DP_SHIFT}" 'rejected values must not consume arguments'
+    fi
+  done
+  for unknown in '' positional --unknown; do
+    printf -v "${destination}" '%s' unchanged
+    _rc=0
+    "${parser_call[@]}" "${unknown}" sentinel || _rc=$?
+    t_assert_eq 0 "${_rc}"
+    t_assert_eq unchanged "${!destination}" 'unknown and positional arguments are left to the caller'
+    t_assert_eq '' "$("${parser_call[@]}" "${unknown}" sentinel 2>&1)" 'unhandled arguments stay quiet'
+  done
+done <<'OPTIONS'
+orchestrator --image-repo _ir
+orchestrator --vulkan-version _vv
+runtime --artifact-image-prefix _ir
+runtime --artifact-build-mode _mode
+runtime --base-dockerfile _base
+runtime --package-dockerfile _package
+runtime --wrapper-dockerfile _wrapper
+runtime --torch-dockerfile _wrapper
+runtime --torch-app-mode _app
+OPTIONS
+
+t_case "push consumes one argument and remains unknown to the runtime parser"
+_pu=0
+_rc=0
+parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu --push ignored || _rc=$?
+t_assert_eq 1 "${_rc}"
+t_assert_eq 1 "${_pu}"
+_rc=0
+parse_shared_runtime_args _ta _ir _mode _base _package _wrapper _app _uf _fu _fp _intermediate --push ignored || _rc=$?
+t_assert_eq 0 "${_rc}"
+
+t_case "help consumption prints usage and exits before caller continuation"
+t_assert_eq usage "$(bash -c '
+  source "$1"
+  fixture_usage() { printf "%s\n" usage; }
+  consume_shared_arg fixture_usage parse_shared_orchestrator_args ta uf fu fp ir vv pu --help ""
+  printf "%s\n" unexpected
+' bash "${TESTS_DIR}/../01-core/cli-parsers.sh")"
+
+t_case "nounset callers still require the explicit value slot even for push"
+t_assert_fails bash -uc 'source "$1"; parse_shared_orchestrator_args ta uf fu fp ir vv pu --push' bash "${TESTS_DIR}/../01-core/cli-parsers.sh"
 
 t_summary

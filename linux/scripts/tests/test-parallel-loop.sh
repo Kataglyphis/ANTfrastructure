@@ -18,13 +18,19 @@ t_case "arch_loop_flag_prefix honors TMPDIR and returns a bare prefix"
 t_assert_eq "/custom/tmp/cross-loop-flags" \
             "$(TMPDIR=/custom/tmp arch_loop_flag_prefix cross-loop-flags)"
 
+_parallel_loop_child_prelude() {
+  printf 'source %q\n' "${CORE_DIR}/parallel-loop.sh"
+  cat <<'CHILD'
+_bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
+warn() { :; }
+CHILD
+}
+
 # A child bash under the orchestrator's `set -euo pipefail`: the failure mode is the shell aborting.
 _run_caller_scenario() {
   bash -c '
     set -euo pipefail
-    source "'"${CORE_DIR}"'/parallel-loop.sh"
-    _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
-    warn() { :; }
+    '"$(_parallel_loop_child_prelude)"'
     worker() { return 0; }
     # Match the orchestrator enclosing function scope.
     caller_fn() {
@@ -103,9 +109,7 @@ _sequential_order_case() {
   : > "${workdir}/${name}"
   PARALLEL_ARCHS=0
   t_assert_fails env "$@" bash -c '
-    source "'"${CORE_DIR}"'/parallel-loop.sh"
-    _bool_truthy() { case "${1:-}" in 1|true|yes|on) return 0 ;; *) return 1 ;; esac; }
-    warn() { :; }
+    '"$(_parallel_loop_child_prelude)"'
     w() { printf "%s\n" "$1" >> "'"${workdir}/${name}"'"; [ "$1" != "amd64" ]; }
     run_parallel_arch_loop w "'"${workdir}/${name}"'.flags" 4 amd64 arm64 riscv64
   '

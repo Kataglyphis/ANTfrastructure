@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Golden argv for append_tvm_cmake_args: -D order is load-bearing, never tidy the expected blocks; see docs/cross-build-verification.md#the-linuxscriptstests-suites
+# Golden fixtures cover argument order and globals, not CMake configuration or TVM builds.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -31,295 +31,174 @@ _emit() {
   printf '%s\n' "${_got}"
 }
 
-# native-vulkan-off
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
-t_case "native build, Vulkan OFF, no LLVM_DIR, no launcher, no QNN"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 >/dev/null
-read -r -d "" _want <<'EOF' || true
+golden_release_cpu="$(cat <<'EOF'
 -G
 Ninja
 -DCMAKE_BUILD_TYPE=Release
 -DUSE_OPENCL=OFF
 -DUSE_CUDA=OFF
 -DTVM_BUILD_PYTHON_MODULE=OFF
+EOF
+)"
+golden_native_compilers="$(cat <<'EOF'
 -DCMAKE_C_COMPILER=/usr/bin/gcc
 -DCMAKE_CXX_COMPILER=/usr/bin/g++
+EOF
+)"
+golden_cross_compilers="$(cat <<'EOF'
+-DCMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc
+-DCMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++
+EOF
+)"
+golden_cross_system="$(cat <<'EOF'
+-DCMAKE_SYSTEM_NAME=Linux
+-DCMAKE_SYSTEM_PROCESSOR=aarch64
+-DUSE_ALTERNATIVE_LINKER=OFF
+EOF
+)"
+golden_cache_launchers="$(cat <<'EOF'
+-DCMAKE_C_COMPILER_LAUNCHER=/usr/bin/sccache
+-DCMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/sccache
+EOF
+)"
+
+golden_vulkan_loader="$(cat <<'EOF'
+-DUSE_VULKAN=ON
+-DVulkan_LIBRARY=/opt/vk/lib/libvulkan.so
+EOF
+)"
+
+_reset_fixture() {
+  STUB_CROSS="$1"
+  STUB_LAUNCHER="$2"
+  STUB_QNN="$3"
+  unset TVM_QNN_HOME
+}
+
+_emit_fixture() {
+  local python_module="$1" build_type="$2" cc="$3" cxx="$4"
+  local llvm="$5" llvm_dir="$6" ignore="$7" vulkan="$8"
+  shift 8
+  _emit --out arr --python-module "$python_module" --build-type "$build_type" \
+    --cc "$cc" --cxx "$cxx" --llvm-cmake-value "$llvm" --llvm-dir "$llvm_dir" \
+    --llvm-ignore-paths "$ignore" --use-vulkan "$vulkan" "$@" >/dev/null
+}
+
+_golden_case() {
+  local name="$1" qnn_home="$2" expected
+  shift 2
+  expected="$(cat)"
+  _emit_fixture "$@"
+  t_assert_eq "$expected" "${_got}" "$name: emitted CMake args drifted from the golden"
+  t_assert_eq "$qnn_home" "${TVM_QNN_HOME:-}" "$name: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
+}
+
+_native_golden_case() {
+  local name="$1" qnn="$2" python_module="$3" build_type="$4" llvm="$5" vulkan="$6"
+  shift 6
+  _golden_case "$name" "$qnn" "$python_module" "$build_type" /usr/bin/gcc /usr/bin/g++ "$llvm" '' '' "$vulkan" "$@"
+}
+
+# native-vulkan-off
+_reset_fixture 0 "" ""
+t_case "native build, Vulkan OFF, no LLVM_DIR, no launcher, no QNN"
+_native_golden_case native-vulkan-off '' OFF Release /usr/bin/llvm-config 0 <<EOF
+${golden_release_cpu}
+${golden_native_compilers}
 -DUSE_VULKAN=OFF
 -DUSE_LLVM=/usr/bin/llvm-config
 EOF
-t_assert_eq "${_want}" "${_got}" "native-vulkan-off: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "native-vulkan-off: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
 # native-vulkan-on
-STUB_CROSS=0; STUB_LAUNCHER="/usr/bin/sccache"; STUB_QNN=""
-unset TVM_QNN_HOME
+_reset_fixture 0 "/usr/bin/sccache" ""
 t_case "Vulkan ON emits all three Vulkan_* flags in LIBRARY, INCLUDE_DIR, SPIRV_TOOLS order"
-_emit \
-  --out arr \
-  --python-module ON \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 1 \
-  --use-cuda 0 \
-  --use-opencl 0 \
-  --spirv-tools-lib /opt/vulkan/lib/libSPIRV-Tools.a \
-  --cross-link-flags "" \
-  --vulkan-library /opt/vk/lib/libvulkan.so \
-  --vulkan-include /opt/vk/include >/dev/null
-read -r -d "" _want <<'EOF' || true
+_native_golden_case native-vulkan-on '' ON Release /usr/bin/llvm-config 1 \
+  --use-cuda 0 --use-opencl 0 --spirv-tools-lib /opt/vulkan/lib/libSPIRV-Tools.a --cross-link-flags '' --vulkan-library /opt/vk/lib/libvulkan.so --vulkan-include /opt/vk/include <<EOF
 -G
 Ninja
 -DCMAKE_BUILD_TYPE=Release
 -DUSE_OPENCL=OFF
 -DUSE_CUDA=OFF
 -DTVM_BUILD_PYTHON_MODULE=ON
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
--DCMAKE_C_COMPILER_LAUNCHER=/usr/bin/sccache
--DCMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/sccache
--DUSE_VULKAN=ON
--DVulkan_LIBRARY=/opt/vk/lib/libvulkan.so
+${golden_native_compilers}
+${golden_cache_launchers}
+${golden_vulkan_loader}
 -DVulkan_INCLUDE_DIR=/opt/vk/include
 -DVulkan_SPIRV_TOOLS_LIBRARY=/opt/vulkan/lib/libSPIRV-Tools.a
 -DUSE_LLVM=/usr/bin/llvm-config
 EOF
-t_assert_eq "${_want}" "${_got}" "native-vulkan-on: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "native-vulkan-on: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# cross-linkflags
-STUB_CROSS=1; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
-t_case "cross build: cross args, USE_ALTERNATIVE_LINKER=OFF, three *_LINKER_FLAGS"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/aarch64-linux-gnu-gcc \
-  --cxx /usr/bin/aarch64-linux-gnu-g++ \
-  --llvm-cmake-value OFF \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 \
-  --use-cuda 0 \
-  --use-opencl 0 \
-  --spirv-tools-lib "" \
-  --cross-link-flags "-L/usr/lib/aarch64-linux-gnu -L/lib/aarch64-linux-gnu" >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DCMAKE_SYSTEM_NAME=Linux
--DCMAKE_SYSTEM_PROCESSOR=aarch64
--DUSE_ALTERNATIVE_LINKER=OFF
+_cross_golden_case() {
+  local name="$1" description="$2" search_flags="$3" linker_expected
+  shift 3
+  linker_expected="$(cat)"
+  _reset_fixture 1 "" ""
+  t_case "$description"
+  _golden_case "$name" '' OFF Release /usr/bin/aarch64-linux-gnu-gcc /usr/bin/aarch64-linux-gnu-g++ OFF '' '' 0 \
+    "$@" --cross-link-flags "$search_flags" <<EOF
+${golden_release_cpu}
+${golden_cross_system}
+${linker_expected}
+${golden_cross_compilers}
+-DUSE_VULKAN=OFF
+-DUSE_LLVM=OFF
+EOF
+}
+
+_cross_golden_case cross-linkflags "cross build: cross args, USE_ALTERNATIVE_LINKER=OFF, three *_LINKER_FLAGS" \
+  '-L/usr/lib/aarch64-linux-gnu -L/lib/aarch64-linux-gnu' --use-cuda 0 --use-opencl 0 --spirv-tools-lib '' <<EOF
 -DCMAKE_EXE_LINKER_FLAGS=-L/usr/lib/aarch64-linux-gnu -L/lib/aarch64-linux-gnu
 -DCMAKE_SHARED_LINKER_FLAGS=-L/usr/lib/aarch64-linux-gnu -L/lib/aarch64-linux-gnu
 -DCMAKE_MODULE_LINKER_FLAGS=-L/usr/lib/aarch64-linux-gnu -L/lib/aarch64-linux-gnu
--DCMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc
--DCMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++
--DUSE_VULKAN=OFF
--DUSE_LLVM=OFF
 EOF
-t_assert_eq "${_want}" "${_got}" "cross-linkflags: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "cross-linkflags: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
-
-# cross-linkflags-ambient
-STUB_CROSS=1; STUB_LAUNCHER=""; STUB_QNN=""
 export CMAKE_EXE_LINKER_FLAGS="-Wl,-exe" CMAKE_SHARED_LINKER_FLAGS="-Wl,-shared" CMAKE_MODULE_LINKER_FLAGS="-Wl,-module"
-unset TVM_QNN_HOME
-t_case "ambient CMAKE_*_LINKER_FLAGS are appended after the cross search flags"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/aarch64-linux-gnu-gcc \
-  --cxx /usr/bin/aarch64-linux-gnu-g++ \
-  --llvm-cmake-value OFF \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 \
-  --cross-link-flags "-L/usr/lib/aarch64-linux-gnu" >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DCMAKE_SYSTEM_NAME=Linux
--DCMAKE_SYSTEM_PROCESSOR=aarch64
--DUSE_ALTERNATIVE_LINKER=OFF
+_cross_golden_case cross-linkflags-ambient "ambient CMAKE_*_LINKER_FLAGS are appended after the cross search flags" \
+  -L/usr/lib/aarch64-linux-gnu <<EOF
 -DCMAKE_EXE_LINKER_FLAGS=-L/usr/lib/aarch64-linux-gnu -Wl,-exe
 -DCMAKE_SHARED_LINKER_FLAGS=-L/usr/lib/aarch64-linux-gnu -Wl,-shared
 -DCMAKE_MODULE_LINKER_FLAGS=-L/usr/lib/aarch64-linux-gnu -Wl,-module
--DCMAKE_C_COMPILER=/usr/bin/aarch64-linux-gnu-gcc
--DCMAKE_CXX_COMPILER=/usr/bin/aarch64-linux-gnu-g++
--DUSE_VULKAN=OFF
--DUSE_LLVM=OFF
 EOF
-t_assert_eq "${_want}" "${_got}" "cross-linkflags-ambient: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "cross-linkflags-ambient: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
 
 # cross-nolinkflags
-STUB_CROSS=1; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
+_reset_fixture 1 "" ""
 t_case "cross build with empty --cross-link-flags emits NO *_LINKER_FLAGS"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc cc \
-  --cxx c++ \
-  --llvm-cmake-value OFF \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DCMAKE_SYSTEM_NAME=Linux
--DCMAKE_SYSTEM_PROCESSOR=aarch64
--DUSE_ALTERNATIVE_LINKER=OFF
+_golden_case cross-nolinkflags '' OFF Release cc c++ OFF '' '' 0 <<EOF
+${golden_release_cpu}
+${golden_cross_system}
 -DCMAKE_C_COMPILER=cc
 -DCMAKE_CXX_COMPILER=c++
 -DUSE_VULKAN=OFF
 -DUSE_LLVM=OFF
 EOF
-t_assert_eq "${_want}" "${_got}" "cross-nolinkflags: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "cross-nolinkflags: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
-# llvmdir-ignore
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
-t_case "--llvm-dir + --llvm-ignore-paths emit LLVM_DIR then CMAKE_IGNORE_PATH"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value ON \
-  --llvm-dir /opt/llvm/lib/cmake/llvm \
-  --llvm-ignore-paths "/usr/lib;/usr/local/lib" \
-  --use-vulkan 0 >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
+_llvm_golden_case() {
+  local name="$1" description="$2" ignore="$3" expected_ignore="$4"
+  _reset_fixture 0 "" ""
+  t_case "$description"
+  _golden_case "$name" '' OFF Release /usr/bin/gcc /usr/bin/g++ ON /opt/llvm/lib/cmake/llvm "$ignore" 0 <<EOF
+${golden_release_cpu}
 -DLLVM_DIR=/opt/llvm/lib/cmake/llvm
--DCMAKE_IGNORE_PATH=/usr/lib;/usr/local/lib
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
+${expected_ignore:+${expected_ignore}
+}${golden_native_compilers}
 -DUSE_VULKAN=OFF
 -DUSE_LLVM=ON
 EOF
-t_assert_eq "${_want}" "${_got}" "llvmdir-ignore: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "llvmdir-ignore: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
+}
 
-# llvmdir-ignore-ambient
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
+_llvm_golden_case llvmdir-ignore "--llvm-dir + --llvm-ignore-paths emit LLVM_DIR then CMAKE_IGNORE_PATH" \
+  '/usr/lib;/usr/local/lib' '-DCMAKE_IGNORE_PATH=/usr/lib;/usr/local/lib'
 export CMAKE_IGNORE_PATH="/ambient"
-unset TVM_QNN_HOME
-t_case "ambient CMAKE_IGNORE_PATH is appended with the ';' separator"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value ON \
-  --llvm-dir /opt/llvm/lib/cmake/llvm \
-  --llvm-ignore-paths /usr/lib \
-  --use-vulkan 0 >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DLLVM_DIR=/opt/llvm/lib/cmake/llvm
--DCMAKE_IGNORE_PATH=/usr/lib;/ambient
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
--DUSE_VULKAN=OFF
--DUSE_LLVM=ON
-EOF
-t_assert_eq "${_want}" "${_got}" "llvmdir-ignore-ambient: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "llvmdir-ignore-ambient: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
+_llvm_golden_case llvmdir-ignore-ambient "ambient CMAKE_IGNORE_PATH is appended with the ';' separator" \
+  /usr/lib '-DCMAKE_IGNORE_PATH=/usr/lib;/ambient'
 unset CMAKE_IGNORE_PATH
-
-# llvmdir-only
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
-t_case "empty --llvm-ignore-paths suppresses CMAKE_IGNORE_PATH entirely"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value ON \
-  --llvm-dir /opt/llvm/lib/cmake/llvm \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DLLVM_DIR=/opt/llvm/lib/cmake/llvm
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
--DUSE_VULKAN=OFF
--DUSE_LLVM=ON
-EOF
-t_assert_eq "${_want}" "${_got}" "llvmdir-only: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "llvmdir-only: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
+_llvm_golden_case llvmdir-only "empty --llvm-ignore-paths suppresses CMAKE_IGNORE_PATH entirely" '' ''
 
 # cuda-opencl
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
+_reset_fixture 0 "" ""
 t_case "--use-cuda 1 / --use-opencl 1 normalise to ON"
-_emit \
-  --out arr \
-  --python-module ON \
-  --build-type Debug \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 \
-  --use-cuda 1 \
-  --use-opencl 1 >/dev/null
-read -r -d "" _want <<'EOF' || true
+_native_golden_case cuda-opencl '' ON Debug /usr/bin/llvm-config 0 \
+  --use-cuda 1 --use-opencl 1 <<EOF
 -G
 Ninja
 -DCMAKE_BUILD_TYPE=Debug
@@ -328,157 +207,92 @@ Ninja
 -DTVM_BUILD_PYTHON_MODULE=ON
 -DUSE_CUDNN=ON
 -DUSE_CUBLAS=ON
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
+${golden_native_compilers}
 -DUSE_VULKAN=OFF
 -DUSE_LLVM=/usr/bin/llvm-config
 EOF
-t_assert_eq "${_want}" "${_got}" "cuda-opencl: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "cuda-opencl: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
+
+_emit_cuda_fixture() {
+  _emit_fixture ON Debug /usr/bin/gcc /usr/bin/g++ /usr/bin/llvm-config '' '' 0 --use-cuda "$1" --use-opencl 0
+}
 
 # CUDA companions: USE_CUDA alone leaves conv/gemm on generated kernels; cuDNN without CUDA fails configure
 t_case "the CUDA companions are ON by default, and only when CUDA is"
-_emit --out arr --python-module ON --build-type Debug \
-  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
-  --use-vulkan 0 --use-cuda 1 --use-opencl 0 >/dev/null
+_emit_cuda_fixture 1
 t_assert_contains "${_got}" "-DUSE_CUDNN=ON"  "cuDNN must default ON alongside CUDA"
 t_assert_contains "${_got}" "-DUSE_CUBLAS=ON" "cuBLAS must default ON alongside CUDA"
 
 t_case "CUDA OFF emits NO companion flags at all"
-_emit --out arr --python-module ON --build-type Debug \
-  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
-  --use-vulkan 0 --use-cuda 0 --use-opencl 0 >/dev/null
+_emit_cuda_fixture 0
 t_assert_eq "0" "$(printf '%s' "${_got}" | grep -c -- '-DUSE_CUDNN' || true)" \
   "cuDNN must not be requested without CUDA"
 t_assert_eq "0" "$(printf '%s' "${_got}" | grep -c -- '-DUSE_CUBLAS' || true)" \
   "cuBLAS must not be requested without CUDA"
 
-# No subshells: t_assert_* counts in the parent shell, so a subshell's FAIL would be lost.
-t_case "each companion has its own opt-out knob"
-# shellcheck disable=SC2034  # read by append_tvm_cmake_args (sourced), not visibly here
-TVM_USE_CUDNN=0
-_emit --out arr --python-module ON --build-type Debug \
-  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
-  --use-vulkan 0 --use-cuda 1 --use-opencl 0 >/dev/null
-unset TVM_USE_CUDNN
-t_assert_contains "${_got}" "-DUSE_CUDNN=OFF" "TVM_USE_CUDNN=0 must turn cuDNN off"
-t_assert_contains "${_got}" "-DUSE_CUBLAS=ON" "and must NOT drag cuBLAS off with it"
+_assert_companion_opt_out() {
+  local disabled="$1" retained="$2" disabled_reason="$3" retained_reason="$4"
+  _emit_cuda_fixture 1
+  t_assert_contains "${_got}" "-DUSE_${disabled}=OFF" "$disabled_reason"
+  t_assert_contains "${_got}" "-DUSE_${retained}=ON" "$retained_reason"
+}
 
-# shellcheck disable=SC2034  # read by append_tvm_cmake_args (sourced), not visibly here
-TVM_USE_CUBLAS=0
-_emit --out arr --python-module ON --build-type Debug \
-  --cc /usr/bin/gcc --cxx /usr/bin/g++ \
-  --llvm-cmake-value /usr/bin/llvm-config --llvm-dir "" --llvm-ignore-paths "" \
-  --use-vulkan 0 --use-cuda 1 --use-opencl 0 >/dev/null
-unset TVM_USE_CUBLAS
-t_assert_contains "${_got}" "-DUSE_CUBLAS=OFF" "TVM_USE_CUBLAS=0 must turn cuBLAS off"
-t_assert_contains "${_got}" "-DUSE_CUDNN=ON"  "and must NOT drag cuDNN off with it"
+t_case "each companion has its own opt-out knob"
+TVM_USE_CUDNN=0 _assert_companion_opt_out CUDNN CUBLAS \
+  "TVM_USE_CUDNN=0 must turn cuDNN off" "and must NOT drag cuBLAS off with it"
+TVM_USE_CUBLAS=0 _assert_companion_opt_out CUBLAS CUDNN \
+  "TVM_USE_CUBLAS=0 must turn cuBLAS off" "and must NOT drag cuDNN off with it"
 
 # qnn-on
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN="/opt/qairt/2.0"
-unset TVM_QNN_HOME
+_reset_fixture 0 "" "/opt/qairt/2.0"
 t_case "resolve_qnn_sdk hit emits NO QNN cmake flags but still exports TVM_QNN_HOME"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value OFF \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 0 >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
+_native_golden_case qnn-on /opt/qairt/2.0 OFF Release OFF 0 <<EOF
+${golden_release_cpu}
+${golden_native_compilers}
 -DUSE_VULKAN=OFF
 -DUSE_LLVM=OFF
 EOF
-t_assert_eq "${_want}" "${_got}" "qnn-on: emitted CMake args drifted from the golden"
-t_assert_eq "/opt/qairt/2.0" "${TVM_QNN_HOME:-}" "qnn-on: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
 # vulkan-lib-only
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
+_reset_fixture 0 "" ""
 t_case "Vulkan ON with only --vulkan-library emits just Vulkan_LIBRARY"
-_emit \
-  --out arr \
-  --python-module OFF \
-  --build-type Release \
-  --cc /usr/bin/gcc \
-  --cxx /usr/bin/g++ \
-  --llvm-cmake-value OFF \
-  --llvm-dir "" \
-  --llvm-ignore-paths "" \
-  --use-vulkan 1 \
-  --use-cuda 0 \
-  --use-opencl 0 \
-  --spirv-tools-lib "" \
-  --cross-link-flags "" \
-  --vulkan-library /opt/vk/lib/libvulkan.so >/dev/null
-read -r -d "" _want <<'EOF' || true
--G
-Ninja
--DCMAKE_BUILD_TYPE=Release
--DUSE_OPENCL=OFF
--DUSE_CUDA=OFF
--DTVM_BUILD_PYTHON_MODULE=OFF
--DCMAKE_C_COMPILER=/usr/bin/gcc
--DCMAKE_CXX_COMPILER=/usr/bin/g++
--DUSE_VULKAN=ON
--DVulkan_LIBRARY=/opt/vk/lib/libvulkan.so
+_native_golden_case vulkan-lib-only '' OFF Release OFF 1 \
+  --use-cuda 0 --use-opencl 0 --spirv-tools-lib '' --cross-link-flags '' --vulkan-library /opt/vk/lib/libvulkan.so <<EOF
+${golden_release_cpu}
+${golden_native_compilers}
+${golden_vulkan_loader}
 -DUSE_LLVM=OFF
 EOF
-t_assert_eq "${_want}" "${_got}" "vulkan-lib-only: emitted CMake args drifted from the golden"
-t_assert_eq "" "${TVM_QNN_HOME:-}" "vulkan-lib-only: TVM_QNN_HOME (non-local; tvm.sh stages from it)"
 
 # Argument validation, the point of the keyword interface
-STUB_CROSS=0; STUB_LAUNCHER=""; STUB_QNN=""
-unset TVM_QNN_HOME
+_reset_fixture 0 "" ""
 
 _common_args=( --out arr --python-module OFF --build-type Release
                --cc cc --cxx c++ --llvm-cmake-value OFF
                --llvm-dir "" --llvm-ignore-paths "" --use-vulkan 0 )
 
-t_case "an unknown option is a HARD error, never silently ignored"
-_out="$( (_emit "${_common_args[@]}" --use-vulcan 1) 2>&1 )" && _rc=0 || _rc=$?
-t_assert_eq "97" "${_rc}" "a misspelled option must abort via die"
-t_assert_contains "${_out}" "unknown option '--use-vulcan'"
+_assert_invalid_args() {
+  local description="$1" reason="$2" diagnostic="$3" output rc
+  shift 3
+  t_case "$description"
+  output="$( (_emit "$@") 2>&1 )" && rc=0 || rc=$?
+  t_assert_eq "97" "$rc" "$reason"
+  if [ -n "$diagnostic" ]; then t_assert_contains "$output" "$diagnostic"; fi
+}
 
-t_case "a dropped required option is a HARD error"
-_out="$( (_emit --out arr --python-module OFF --build-type Release \
-                --cc cc --cxx c++ --llvm-cmake-value OFF \
-                --llvm-dir "" --llvm-ignore-paths "") 2>&1 )" && _rc=0 || _rc=$?
-t_assert_eq "97" "${_rc}" "missing --use-vulkan must abort via die"
-t_assert_contains "${_out}" "missing required option '--use-vulkan'"
-
-t_case "an option without a value is a HARD error (never eats the next flag)"
-_out="$( (_emit "${_common_args[@]}" --vulkan-library) 2>&1 )" && _rc=0 || _rc=$?
-t_assert_eq "97" "${_rc}" "a value-less trailing option must abort via die"
-t_assert_contains "${_out}" "requires a value"
-
-t_case "--out is validated before the nameref binding"
-_out="$( (_emit --out "" --python-module OFF --build-type Release \
-                --cc cc --cxx c++ --llvm-cmake-value OFF \
-                --llvm-dir "" --llvm-ignore-paths "" --use-vulkan 0) 2>&1 )" && _rc=0 || _rc=$?
-t_assert_eq "97" "${_rc}" "an empty --out must abort via die"
+_assert_invalid_args "an unknown option is a HARD error, never silently ignored" \
+  "a misspelled option must abort via die" "unknown option '--use-vulcan'" "${_common_args[@]}" --use-vulcan 1
+_assert_invalid_args "a dropped required option is a HARD error" \
+  "missing --use-vulkan must abort via die" "missing required option '--use-vulkan'" "${_common_args[@]:0:${#_common_args[@]}-2}"
+_assert_invalid_args "an option without a value is a HARD error (never eats the next flag)" \
+  "a value-less trailing option must abort via die" 'requires a value' "${_common_args[@]}" --vulkan-library
+_assert_invalid_args "--out is validated before the nameref binding" \
+  "an empty --out must abort via die" '' --out "" "${_common_args[@]:2}"
 
 # Internals are _tvm_-prefixed so a caller array's name cannot collide with the nameref.
 t_case "a caller array named out_ref (or llvm_dir) no longer collides with the nameref"
 _collide() {
   local -a out_ref=( -G Ninja )
-  append_tvm_cmake_args --out out_ref --python-module OFF --build-type Release \
-    --cc cc --cxx c++ --llvm-cmake-value OFF --llvm-dir "" \
-    --llvm-ignore-paths "" --use-vulkan 0
+  append_tvm_cmake_args --out out_ref "${_common_args[@]:2}"
   printf '%s\n' "${out_ref[@]}"
 }
 _out="$(_collide 2>&1)" && _rc=0 || _rc=$?
@@ -502,10 +316,8 @@ STUB_CROSS=1
 unset CMAKE_EXE_LINKER_FLAGS CMAKE_SHARED_LINKER_FLAGS CMAKE_MODULE_LINKER_FLAGS
 t_case "_tvm_emit_cross_args: cross args, USE_ALTERNATIVE_LINKER, then EXE/SHARED/MODULE"
 _direct _tvm_emit_cross_args arr "-L/t"
-read -r -d "" _want <<'EOF' || true
--DCMAKE_SYSTEM_NAME=Linux
--DCMAKE_SYSTEM_PROCESSOR=aarch64
--DUSE_ALTERNATIVE_LINKER=OFF
+read -r -d "" _want <<EOF || true
+${golden_cross_system}
 -DCMAKE_EXE_LINKER_FLAGS=-L/t
 -DCMAKE_SHARED_LINKER_FLAGS=-L/t
 -DCMAKE_MODULE_LINKER_FLAGS=-L/t
@@ -514,10 +326,8 @@ t_assert_eq "${_want}" "${_got}" "cross emit block drifted"
 
 t_case "_tvm_emit_cross_args with empty flags stops after USE_ALTERNATIVE_LINKER"
 _direct _tvm_emit_cross_args arr ""
-read -r -d "" _want <<'EOF' || true
--DCMAKE_SYSTEM_NAME=Linux
--DCMAKE_SYSTEM_PROCESSOR=aarch64
--DUSE_ALTERNATIVE_LINKER=OFF
+read -r -d "" _want <<EOF || true
+${golden_cross_system}
 EOF
 t_assert_eq "${_want}" "${_got}" "cross emit block (no link flags) drifted"
 STUB_CROSS=0
@@ -529,7 +339,7 @@ t_assert_eq "" "${_got}" "an ignore-path without an LLVM_DIR must emit nothing"
 
 t_case "_tvm_emit_llvm_args emits LLVM_DIR then CMAKE_IGNORE_PATH"
 _direct _tvm_emit_llvm_args arr /opt/llvm "/a;/b"
-read -r -d "" _want <<'EOF' || true
+read -r -d "" _want <<EOF || true
 -DLLVM_DIR=/opt/llvm
 -DCMAKE_IGNORE_PATH=/a;/b
 EOF
@@ -544,9 +354,8 @@ t_assert_eq "" "${_got}" "no launcher must leave CMAKE_*_COMPILER_LAUNCHER unset
 STUB_LAUNCHER="/usr/bin/sccache"
 t_case "_tvm_emit_compiler_cache_args emits C then CXX launcher"
 _direct _tvm_emit_compiler_cache_args arr
-read -r -d "" _want <<'EOF' || true
--DCMAKE_C_COMPILER_LAUNCHER=/usr/bin/sccache
--DCMAKE_CXX_COMPILER_LAUNCHER=/usr/bin/sccache
+read -r -d "" _want <<EOF || true
+${golden_cache_launchers}
 EOF
 t_assert_eq "${_want}" "${_got}" "compiler-cache emit block drifted"
 STUB_LAUNCHER=""
@@ -558,7 +367,7 @@ t_assert_eq "-DUSE_VULKAN=OFF" "${_got}" "Vulkan OFF must ignore the three paths
 
 t_case "_tvm_emit_vulkan_args 1 emits ON then LIBRARY, INCLUDE_DIR, SPIRV_TOOLS"
 _direct _tvm_emit_vulkan_args arr 1 /l /i /s
-read -r -d "" _want <<'EOF' || true
+read -r -d "" _want <<EOF || true
 -DUSE_VULKAN=ON
 -DVulkan_LIBRARY=/l
 -DVulkan_INCLUDE_DIR=/i
@@ -591,9 +400,7 @@ _callsite_names() {
   append_tvm_cmake_args --out cmake_args --python-module OFF --build-type Release \
     --cc cc --cxx c++ --llvm-cmake-value OFF --llvm-dir /d --llvm-ignore-paths /i \
     --use-vulkan 1 --vulkan-library /l
-  append_tvm_cmake_args --out wheel_cmake_args --python-module ON --build-type Release \
-    --cc cc --cxx c++ --llvm-cmake-value OFF --llvm-dir "" --llvm-ignore-paths "" \
-    --use-vulkan 0
+  append_tvm_cmake_args --out wheel_cmake_args --python-module ON "${_common_args[@]:4}"
   printf '%s|%s\n' "${cmake_args[*]}" "${wheel_cmake_args[*]}"
 }
 STUB_CROSS=1; STUB_LAUNCHER="/l/sccache"

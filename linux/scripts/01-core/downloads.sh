@@ -128,6 +128,11 @@ download_verified_install() {
   return "${rc}"
 }
 
+fetch_repository_ref_best_effort() {
+  git -C "$1" fetch --depth 1 origin "$2" 2>/dev/null \
+    || git -C "$1" fetch --depth 1 --tags 2>/dev/null || true
+}
+
 clone_or_update_repo() {
   local repo_url="$1"
   local dest_dir="$2"
@@ -145,7 +150,7 @@ clone_or_update_repo() {
   fi
 
   if [ -d "${dest_dir}/.git" ]; then
-    git -C "${dest_dir}" fetch --depth 1 origin "${branch}" 2>/dev/null || git -C "${dest_dir}" fetch --depth 1 --tags 2>/dev/null || true
+    fetch_repository_ref_best_effort "${dest_dir}" "${branch}"
     if [ -n "${branch}" ]; then
       git -C "${dest_dir}" checkout "${branch}" 2>/dev/null || true
       # The fetch/checkout above tolerate failure on purpose, so say loudly when the ref did not land.
