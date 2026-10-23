@@ -248,29 +248,17 @@ if ($rtTarget.Count -gt 0) {
 } else {
     # Beside the host library, the directory clang and every consumer already search.
     $rtDestDir = $rtHost[0].Directory.FullName
-    $rtArchive = Join-Path $env:TEMP "clang+llvm-$LlvmVersion-aarch64-pc-windows-msvc.tar.xz"
     # %2B, not '+', which 404s; probe with a ranged GET, since GitHub refuses HEAD here.
     $rtUrl = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$LlvmVersion/clang%2Bllvm-$LlvmVersion-aarch64-pc-windows-msvc.tar.xz"
-    $rtExtractDir = Join-Path $env:TEMP 'llvm-aarch64-rt'
     try {
         Write-Host "Fetching aarch64 compiler-rt from $rtUrl (large, one-time; only clang_rt.builtins-aarch64.lib is kept)"
-        Invoke-DownloadWithRetry -Url $rtUrl -DestinationPath $rtArchive
         # Verified-or-warn: the key is empty here, since base runs before versions.env is baked.
         $rtSha = Resolve-ContainerImageValue -EnvironmentVariable 'LLVM_WINDOWS_AARCH64_RT_SHA256' -DefaultValue ''
-        $rtLibrary = $null
-        Expand-CompilerRtLibrary -ArchivePath $rtArchive -ExtractDirectory $rtExtractDir -LibraryPath ([ref]$rtLibrary) -ExpectedSha256 $rtSha
+        $rtLibrary = Install-AArch64CompilerRt -Url $rtUrl -DestinationDir $rtDestDir -ExpectedSha256 $rtSha -WorkDir $env:TEMP
         $global:LASTEXITCODE = 0
-        if ($rtLibrary) {
-            Copy-Item -LiteralPath $rtLibrary -Destination $rtDestDir -Force
-            Write-Host "compiler-rt builtins for aarch64 installed -> $(Join-Path $rtDestDir 'clang_rt.builtins-aarch64.lib')"
-        } else {
-            Write-Warning "clang_rt.builtins-aarch64.lib was not found inside $rtArchive - the upstream archive layout changed."
-        }
+        Write-Host "compiler-rt builtins for aarch64 installed -> $rtLibrary"
     } catch {
         Write-Warning "aarch64 compiler-rt fetch failed: $($_.Exception.Message)"
-    } finally {
-        Remove-Item -Path $rtArchive -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $rtExtractDir -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     $rtTarget = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmAppRoot)

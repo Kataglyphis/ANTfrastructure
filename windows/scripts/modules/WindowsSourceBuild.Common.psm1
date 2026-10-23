@@ -1968,57 +1968,6 @@ function Get-LlvmSourceTarball {
     return @{ Tarball = $tarball; SourceDir = $srcDir }
 }
 
-<#
-.SYNOPSIS
-    Mines clang_rt.builtins-aarch64.lib from the LLVM release archive beside the x86_64 builtins; returns its path.
-.DESCRIPTION
-    Throws on any failure: the caller owns the fail-open/fail-closed policy.
-.PARAMETER Url
-    The clang+llvm-<ver>-aarch64-pc-windows-msvc.tar.xz release URL.
-.PARAMETER DestinationDir
-    The x86_64 builtins directory, which clang and every consumer already search.
-.PARAMETER LibName
-    Archive member to mine.
-.PARAMETER ExpectedSha256
-    The versions.env pin; empty warns, never fails.
-.PARAMETER PinName
-    The versions.env key named in the verify messages.
-.PARAMETER WorkDir
-    Scratch dir for the archive and extraction (default TEMP_DIR, else TEMP).
-#>
-function Install-AArch64CompilerRt {
-    param(
-        [Parameter(Mandatory)][string]$Url,
-        [Parameter(Mandatory)][string]$DestinationDir,
-        [string]$LibName = 'clang_rt.builtins-aarch64.lib',
-        [string]$ExpectedSha256 = '',
-        [string]$PinName = 'LLVM_WINDOWS_AARCH64_RT_SHA256',
-        [string]$WorkDir = ''
-    )
-
-    if (-not (Test-Path $DestinationDir)) {
-        throw "aarch64 compiler-rt destination '$DestinationDir' does not exist - refusing a misplaced lib."
-    }
-    if (-not $WorkDir) { $WorkDir = if ($env:TEMP_DIR) { $env:TEMP_DIR } else { $env:TEMP } }
-    # Decode %2B to '+', the archive name the pin was measured on.
-    $archiveName = [IO.Path]::GetFileName($Url) -replace '%2B', '+'
-    $archive = Join-Path $WorkDir $archiveName
-    $extract = Join-Path $WorkDir 'llvm-aarch64-rt'
-    try {
-        Invoke-DownloadWithRetry -Url $Url -DestinationPath $archive -Description 'aarch64 compiler-rt archive'
-        $library = $null
-        Expand-CompilerRtLibrary -ArchivePath $archive -ExtractDirectory $extract -LibraryPath ([ref]$library) `
-            -LibraryName $LibName -ExpectedSha256 $ExpectedSha256 -PinName $PinName
-        if (-not $library) { throw "$LibName not found inside $archive - upstream archive layout changed." }
-        $dest = Join-Path $DestinationDir $LibName
-        Copy-Item -LiteralPath $library -Destination $dest -Force
-        return $dest
-    } finally {
-        Remove-Item -Path $archive -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $extract -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
 function Initialize-PythonPlatformTag {
     # Clang-built CPython misreports win32; the tag follows the host (pip resolves with it), EXT_SUFFIX the target.
     param(
@@ -2716,7 +2665,7 @@ Export-ModuleMember -Function @(
     # Called directly by Build-LlvmFromSource.ps1 and Build-TvmFromSource.ps1.
     'Get-LlvmSourceSha256',
     'Get-LlvmSourceTarball',
-    # Called directly by Build-LlvmFromSource.ps1 and Build-GstreamerFromSource.ps1.
+    # Re-exported from WindowsScripts.Shared for the source-build callers.
     'Install-AArch64CompilerRt',
     'Find-FirstTreeFile',
     'Initialize-BuildDirectory',

@@ -131,12 +131,6 @@ if ($qnnSdk) {
     [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $genaiInstallDir)
 }
 
-# Forward slashes, no quotes, no trailing separator: the form CMake prints the paths the ORT gates compare.
-function ConvertTo-GenaiCmakePath {
-    param([AllowEmptyString()][string]$Path)
-    $Path.Trim().Trim('"').Replace('\', '/').TrimEnd('/')
-}
-
 # ortlib.cmake wants include\ and lib\ with the DLL beside its import lib; the chain's layout differs, so this copy stands in.
 function New-GenaiOrtHome {
     param([Parameter(Mandatory)][string]$OrtRoot, [Parameter(Mandatory)][string]$ShimRoot)
@@ -151,14 +145,14 @@ function New-GenaiOrtHome {
     Initialize-BuildDirectory -Path $ShimRoot -Empty -ChildDirectory include, lib
     Copy-Item -Path (Join-Path $headerDir '*') -Destination (Join-Path $ShimRoot 'include') -Recurse -Force
     Copy-Item -LiteralPath $linkFiles -Destination (Join-Path $ShimRoot 'lib') -Force
-    ConvertTo-GenaiCmakePath $ShimRoot
+    ConvertTo-OrtGatePath $ShimRoot
 }
 
 # ORT_HOME is typed as ortlib.cmake reads it undeclared; both fetch fallbacks aim at an empty dir, so they fail configure.
 function Get-GenaiOrtCmakeArgs {
     param([Parameter(Mandatory)][string]$OrtHome, [Parameter(Mandatory)][string]$FetchBlockDir)
-    $blocked = ConvertTo-GenaiCmakePath $FetchBlockDir
-    "-DORT_HOME:PATH=$(ConvertTo-GenaiCmakePath $OrtHome)"
+    $blocked = ConvertTo-OrtGatePath $FetchBlockDir
+    "-DORT_HOME:PATH=$(ConvertTo-OrtGatePath $OrtHome)"
     "-DFETCHCONTENT_SOURCE_DIR_ORTLIB:PATH=$blocked"
     "-DFETCHCONTENT_SOURCE_DIR_ONNXRUNTIME:PATH=$blocked"
 }
@@ -172,8 +166,8 @@ function Get-GenaiOrtConfigureFinding {
         [Parameter(Mandatory)][string]$OrtHome,
         [Parameter(Mandatory)][string]$FetchBlockDir
     )
-    $shim = ConvertTo-GenaiCmakePath $OrtHome
-    $isPath = { param([string]$Seen, [string]$Want) (ConvertTo-GenaiCmakePath $Seen) -ieq $Want }
+    $shim = ConvertTo-OrtGatePath $OrtHome
+    $isPath = { param([string]$Seen, [string]$Want) (ConvertTo-OrtGatePath $Seen) -ieq $Want }
     $fetchMark = '(?i)Using ONNX Runtime package|ONNX Runtime URL:|pkgs\.dev\.azure\.com|Microsoft\.ML\.OnnxRuntime|onnxruntime/releases/download|/_deps/(ortlib|onnxruntime)-(src|subbuild|build)\b'
     $logLines = [string[]]@($ConfigureLog -split '\r?\n')
     $logLines | Where-Object { $_.Replace('\', '/') -match $fetchMark } | ForEach-Object { "configure names a downloaded ONNX Runtime: $($_.Trim())" }
@@ -190,7 +184,7 @@ function Get-GenaiOrtConfigureFinding {
     foreach ($entry in (Get-CmakeCacheEntries -Text $CMakeCache)) {
         if ($entry.Name) { $cacheVars[$entry.Name] = $entry.Value }
     }
-    $blocked = ConvertTo-GenaiCmakePath $FetchBlockDir
+    $blocked = ConvertTo-OrtGatePath $FetchBlockDir
     $pins = [ordered]@{ ORT_HOME = $shim; FETCHCONTENT_SOURCE_DIR_ORTLIB = $blocked; FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME = $blocked }
     if ($cacheVars.Count -eq 0) { 'CMakeCache.txt is missing or has no entries, so ORT_HOME and the fetch block cannot be checked' }
     else {
@@ -255,7 +249,7 @@ function Get-GenaiOrtTreeFinding {
         if ($leaf -match '(?i)^(microsoft\.ml\.)?onnxruntime(?![_-](genai|extensions)).*\.(zip|nupkg|tgz|txz|tar|gz|xz|bz2|7z|whl|aar)$') { "an ONNX Runtime archive sits in the tree: $file" }
         if (-not $chainSha.ContainsKey($leaf)) { continue }
         if ($ForbidCopies) { "an ONNX Runtime file ships inside the GenAI install: $file"; continue }
-        if ($chainSha[$leaf] -notcontains (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash) { "$file is not the chain's $leaf (foreign ONNX Runtime bytes)" }
+        Get-OrtGateNameFinding -Path $file -Index $chainIndex
     }
 }
 

@@ -112,7 +112,6 @@ function Get-MesonSetupFailureClass {
     )
     $all = @($Output) + @($LogLines)
     [string[]]$hard = @($all -match 'meson\.build:\d+:\d+: (ERROR|Exception)')
-    $logTotal = @($LogLines).Count
     [string[]]$scan = @($Output) + @(Get-MesonLogTail -Lines $LogLines -Count $NetworkTail)
     [string[]]$network = @($scan -match 'HTTP Error \d+|Failed to download|\bURLError\b|\bSSLError\b|urlopen error|\btimed out\b|connection timeout|actively refused|Temporary failure in name resolution')
     [pscustomobject]@{

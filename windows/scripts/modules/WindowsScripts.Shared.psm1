@@ -278,6 +278,45 @@ Export-ModuleMember -Function Expand-CompilerRtLibrary
 
 <#
 .SYNOPSIS
+    Mines clang_rt.builtins-aarch64.lib beside the installed x86_64 builtins.
+#>
+function Install-AArch64CompilerRt {
+    param(
+        [Parameter(Mandatory)][string]$Url,
+        [Parameter(Mandatory)][string]$DestinationDir,
+        [string]$LibName = 'clang_rt.builtins-aarch64.lib',
+        [string]$ExpectedSha256 = '',
+        [string]$PinName = 'LLVM_WINDOWS_AARCH64_RT_SHA256',
+        [string]$WorkDir = ''
+    )
+
+    if (-not (Test-Path $DestinationDir)) {
+        throw "aarch64 compiler-rt destination '$DestinationDir' does not exist - refusing a misplaced lib."
+    }
+    if (-not $WorkDir) { $WorkDir = if ($env:TEMP_DIR) { $env:TEMP_DIR } else { $env:TEMP } }
+    # Decode %2B to '+', the archive name the pin was measured on.
+    $archiveName = [IO.Path]::GetFileName($Url) -replace '%2B', '+'
+    $archive = Join-Path $WorkDir $archiveName
+    $extract = Join-Path $WorkDir 'llvm-aarch64-rt'
+    try {
+        Invoke-DownloadWithRetry -Url $Url -DestinationPath $archive -Description 'aarch64 compiler-rt archive'
+        $library = $null
+        Expand-CompilerRtLibrary -ArchivePath $archive -ExtractDirectory $extract -LibraryPath ([ref]$library) `
+            -LibraryName $LibName -ExpectedSha256 $ExpectedSha256 -PinName $PinName
+        if (-not $library) { throw "$LibName not found inside $archive - upstream archive layout changed." }
+        $dest = Join-Path $DestinationDir $LibName
+        Copy-Item -LiteralPath $library -Destination $dest -Force
+        return $dest
+    } finally {
+        Remove-Item -Path $archive -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $extract -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Export-ModuleMember -Function Install-AArch64CompilerRt
+
+<#
+.SYNOPSIS
     A pin from the environment, else from this hub's versions.env; throws rather than let the newest release win.
 .PARAMETER Name
     The versions.env key, e.g. CARGO_AUDIT_VERSION.

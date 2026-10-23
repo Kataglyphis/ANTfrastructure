@@ -5,7 +5,7 @@ function Invoke-CompilerRtArchiveFixture {
     param([Parameter(Mandatory)][scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
     $source = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsScripts.Shared.psm1' `
         -FunctionName Expand-CompilerRtLibrary, Assert-FileSha256, Find-FirstTreeFile).ToString()
-    $source += "`n" + (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsSourceBuild.Common.psm1' -FunctionName Install-AArch64CompilerRt).ToString()
+    $source += "`n" + (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsScripts.Shared.psm1' -FunctionName Install-AArch64CompilerRt).ToString()
     $exercise = $Body
     Invoke-InTestDir -Body { param($dir)
         $work = Join-Path $dir 'work space'
@@ -177,11 +177,14 @@ Describe 'Compiler-rt caller policies' {
         $warning = & $check -rtTarget @() -llvmAppRoot 'fixture LLVM' -armStrict 0 3>&1 | Out-String
         Assert-Match 'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure' $warning
         Assert-Throws { & $check -rtTarget @() -llvmAppRoot 'fixture LLVM' -armStrict 1 } -MessagePattern 'WINDOWS_ARM64_STRICT=1 made this a hard gate'
-        $calls = @(Get-TestAstCommands -Ast $ast -Name Expand-CompilerRtLibrary)
+        $calls = @(Get-TestAstCommands -Ast $ast -Name Install-AArch64CompilerRt)
         Assert-Equal 1 $calls.Count
         $arguments = Get-TestCommandArguments $calls[0]
-        Assert-Equal '$rtArchive' $arguments.ArchivePath
+        Assert-Equal '$rtUrl' $arguments.Url
+        Assert-Equal '$rtDestDir' $arguments.DestinationDir
         Assert-Equal '$rtSha' $arguments.ExpectedSha256
+        Assert-Equal '$env:TEMP' $arguments.WorkDir
+        Assert-Equal 0 @(Get-TestAstCommands -Ast $ast -Name Expand-CompilerRtLibrary) 'the host must use the shared acquisition operation'
         $imports = @(Get-TestAstCommands -Ast $ast -Name Import-Module | Where-Object { $_.Extent.Text -match '\$sharedHelpersPath' })
         Assert-Equal 1 $imports.Count
         Assert-Equal Stop (Get-TestCommandArguments $imports[0]).ErrorAction

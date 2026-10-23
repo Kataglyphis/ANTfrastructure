@@ -359,6 +359,6 @@ function Assert-ChainOrtOnly {
 }
 
 Export-ModuleMember -Function @(
-    'Get-OrtGateStampPath', 'Get-OrtGateDefaultCache', 'Get-OrtGateDirectoryIndex', 'Get-OrtGateChainIndex', 'Get-OrtGateTreeFinding', 'Get-OrtGatePathToken',
+    'ConvertTo-OrtGatePath', 'Get-OrtGateStampPath', 'Get-OrtGateDefaultCache', 'Get-OrtGateDirectoryIndex', 'Get-OrtGateNameFinding', 'Get-OrtGateChainIndex', 'Get-OrtGateTreeFinding', 'Get-OrtGatePathToken',
     'Get-OrtGateRecordToken', 'Get-OrtGateRecordFinding', 'Get-OrtGateLogFinding', 'Assert-ChainOrtOnly'
 )

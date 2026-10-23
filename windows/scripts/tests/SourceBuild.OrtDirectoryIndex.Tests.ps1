@@ -34,6 +34,26 @@ function Assert-OrtFlatRuntimeIndex {
 }
 
 Describe 'ORT chain directory indexing' {
+    It 'normalizes quoted Windows paths for CMake and provenance comparisons' {
+        Assert-Equal 'C:/runtime/lib' (ConvertTo-OrtGatePath ' "C:\runtime\lib\" ')
+        Assert-Equal '' (ConvertTo-OrtGatePath '')
+    }
+
+    It 'compares a known chain filename against the indexed bytes' {
+        Invoke-OrtDirectoryIndexFixture -Body {
+            param($dir)
+            $index = Get-OrtGateDirectoryIndex -OrtRoot $dir -Consumer Genai
+            $path = Join-Path $dir 'probe\onnxruntime.lib'
+            $null = New-Item -ItemType Directory -Path (Split-Path -Parent $path)
+            [IO.File]::WriteAllText($path, 'lib-a')
+            Assert-Equal 0 @(Get-OrtGateNameFinding -Path $path -Index $index).Count 'chain bytes pass'
+            [IO.File]::WriteAllText($path, 'foreign')
+            $finding = @(Get-OrtGateNameFinding -Path $path -Index $index)
+            Assert-Equal 1 $finding.Count 'foreign bytes fail'
+            Assert-Match ([regex]::Escape("$path is not the chain's onnxruntime.lib")) $finding[0]
+        }
+    }
+
     It 'indexes recursive code files, hidden files and multiple hashes under a case-insensitive name' {
         Invoke-OrtDirectoryIndexFixture -Body {
             param($dir)

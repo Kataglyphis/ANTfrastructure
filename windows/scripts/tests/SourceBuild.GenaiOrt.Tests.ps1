@@ -4,7 +4,7 @@
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsOrtProvenance.Build.psm1') -Force -DisableNameChecking
 
 $script:GenaiOrtScript = 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1'
-$script:GenaiOrtFns = @('ConvertTo-GenaiCmakePath', 'New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiOrtConfigureFinding',
+$script:GenaiOrtFns = @('New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiOrtConfigureFinding',
     'Get-GenaiOrtNinjaFinding', 'Get-GenaiOrtTreeFinding')
 $script:GenaiShim = 'C:/temp/onnx-genai-src/ort-home'
 $script:GenaiBlock = 'C:/temp/onnx-genai-src/ort-fetch-blocked'
