@@ -2,7 +2,16 @@
 # Shared defaults for build-runtime-artifacts.sh and build-runtime-manifest.sh.
 [ -n "${_RUNTIME_FLOW_COMMON_SH_LOADED:-}" ] && return 0
 _RUNTIME_FLOW_COMMON_SH_LOADED=1
-# Arch defaults stay with each caller, since the two name their arch variable differently.
+# Stage-specific architecture defaults remain caller policy.
+
+runtime_prepare_flow() {
+  export DRY_RUN
+  runtime_post_parse_setup TARGET_ARCHES "$1"
+  runtime_wheels_setup || exit $?
+  hailo_validate_knobs || exit 2
+  runtime_host_payload_arches >/dev/null || exit 2
+  return 0
+}
 
 init_runtime_flow_defaults() {
   [ -n "${RUNTIME_FLOW_DEFAULTS_INITIALIZED:-}" ] && return 0

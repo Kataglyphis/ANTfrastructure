@@ -9,6 +9,7 @@ trap 'rm -rf "${WORK}"' EXIT
 cat > "${WORK}/worker.sh" <<'WORKER'
 set -euo pipefail
 source "$1"
+source "$(dirname "$1")/shell-context-fixture.sh"
 owner="$2"; scenario="$3"; fixture="$4"; mode="${5:-direct}"
 if [ "${owner##*/}" = cross-stage-build.sh ]; then
   if grep -q '^_cross_stage_mark_built() {' "$owner"; then t_source_functions "$owner" _cross_stage_mark_built; fi
@@ -17,7 +18,8 @@ else
   source "$owner"
 fi
 run_case() { eval "$scenario"; }
-if [ "$mode" = conditional ]; then if run_case; then printf 'STATUS=0\n'; else printf 'STATUS=%s\n' "$?"; fi; else run_case; fi
+shell_fixture_run_context "$mode" case_status run_case
+if [ "$mode" = conditional ]; then printf 'STATUS=%s\n' "$case_status"; else exit "$case_status"; fi
 WORKER
 _owner_run() {
   local owner="$1" scenario="$2" mode="${3:-direct}"

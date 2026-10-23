@@ -4,7 +4,7 @@
 _CI_COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ../../, not ../: this file sits one level deeper than 02-toolchain/bootstrap.sh.
 # shellcheck source=/dev/null
-source "$_CI_COMMON_DIR/../../01-core/python_uv.sh"
+source "$_CI_COMMON_DIR/../../01-core/python_uv.sh" || return $?
 
 # <initial>, else pyproject's name, else the workspace basename; needs WORKSPACE_ROOT set.
 derive_package_name() {
@@ -17,9 +17,7 @@ derive_package_name() {
 
 # prepare_ci_workspace [--cd]: mutates WORKSPACE_ROOT (a bind-mounted /workspace wins).
 prepare_ci_workspace() {
-  if [ -d /workspace ] && [ -f /workspace/pyproject.toml ]; then
-    WORKSPACE_ROOT="/workspace"
-  fi
+  python_workspace_prefer_mount
   if [ "${1:-}" = "--cd" ]; then
     cd "$WORKSPACE_ROOT" || die "Cannot cd into workspace: $WORKSPACE_ROOT"
   fi

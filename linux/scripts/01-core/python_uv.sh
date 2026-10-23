@@ -5,10 +5,13 @@ _PYTHON_UV_LOADED="${_PYTHON_UV_LOADED:-}"
 
 if [ -z "$_PYTHON_UV_LOADED" ]; then
 set -euo pipefail
-_PYTHON_UV_LOADED=1
 
 _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
+# shellcheck source=linux/scripts/01-core/python-probe.sh
+source "$_MODULE_DIR/python-probe.sh" || return 1
+
+_PYTHON_UV_LOADED=1
 
 # X.Y of the pinned interpreter: the image's own ENV, else versions.env beside this file. docs/python-ci.md#upgrading-python
 python_pinned_major_minor() {
@@ -35,15 +38,21 @@ timestamp() {
   date +%Y%m%d-%H%M%S
 }
 
+python_workspace_prefer_mount() {
+  local mount="${1:-/workspace}"
+  if [ -d "$mount" ] && [ -f "$mount/pyproject.toml" ]; then
+    WORKSPACE_ROOT="$mount"
+  fi
+  return 0
+}
+
 detect_workspace() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)"
   local repo_root
   repo_root="$(cd "$script_dir/../.." 2>/dev/null && pwd || cd "$script_dir/.." && pwd)"
   WORKSPACE_ROOT="${WORKSPACE_ROOT:-$repo_root}"
-  if [ -d /workspace ] && [ -f /workspace/pyproject.toml ]; then
-    WORKSPACE_ROOT="/workspace"
-  fi
+  python_workspace_prefer_mount
   export WORKSPACE_ROOT
   info "Workspace: $WORKSPACE_ROOT"
 }
@@ -175,10 +184,8 @@ uv_pip_install_requirements() {
   local venv_path="${1:-.venv}"
   local requirements_file="${2:-requirements.txt}"
 
-  # Git Bash venvs carry Scripts/python.exe instead of bin/python.
-  local venv_python="$venv_path/bin/python"
-  [ -x "$venv_python" ] || venv_python="$venv_path/Scripts/python.exe"
-  if [ ! -x "$venv_python" ]; then
+  local venv_python
+  if ! venv_python="$(python_venv_executable "$venv_path")"; then
     die "No usable venv at $venv_path (neither bin/python nor Scripts/python.exe) - create it first with uv_venv_create"
   fi
   if [ ! -f "$requirements_file" ]; then

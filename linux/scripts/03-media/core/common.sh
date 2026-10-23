@@ -3,6 +3,16 @@
 
 set -euo pipefail
 
+media_missing_dev_symlink() {
+  local destination="$1" source_file="$2"
+  case "${source_file}" in
+    /*) ;;
+    *) source_file="${destination%/*}/${source_file}" ;;
+  esac
+  if [ ! -e "${destination}" ] && [ -e "${source_file}" ]; then return 0; fi
+  return 1
+}
+
 # The container's /opt/scripts/core first, else an upward walk for the repo's 01-core.
 _media_find_core_dir() {
   local d; d="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"

@@ -46,12 +46,8 @@ esac
 if [ -z "${_cuda_keyring_sha}" ] && [ -f "${_SETUP_CUDA_DIR}/versions.env" ]; then
   _cuda_keyring_sha="$(sed -n "s/^CUDA_KEYRING_DEB_SHA256_$(echo "${CUDA_ARCH}" | tr '[:lower:]' '[:upper:]')=//p" "${_SETUP_CUDA_DIR}/versions.env")"
 fi
-if [ -n "${_cuda_keyring_sha}" ]; then
-  download_verified_file "${KEYRING_URL}" "${_cuda_keyring_sha}" "/tmp/${KEYRING_PKG}"
-else
-  echo "WARNING: no CUDA keyring sha pin for ${CUDA_ARCH} — fetching the apt trust anchor UNVERIFIED" >&2
-  download_file "${KEYRING_URL}" "/tmp/${KEYRING_PKG}" 3
-fi
+download_optional_verified_file "${KEYRING_URL}" "${_cuda_keyring_sha}" "/tmp/${KEYRING_PKG}" \
+  "WARNING: no CUDA keyring sha pin for ${CUDA_ARCH} — fetching the apt trust anchor UNVERIFIED"
 dpkg -i "/tmp/${KEYRING_PKG}"
 rm "/tmp/${KEYRING_PKG}"
 

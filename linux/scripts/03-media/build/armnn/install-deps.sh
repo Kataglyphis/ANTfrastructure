@@ -24,7 +24,7 @@ install_target_packages "${target_packages[@]}"
 if is_cross 2>/dev/null; then
   _tri="$(cross_target_triplet 2>/dev/null || true)"
   _libdir="/usr/lib/${_tri}"
-  if [ -n "${_tri}" ] && [ -d "${_libdir}" ] && [ ! -e "${_libdir}/libgomp.so" ] && [ -e "${_libdir}/libgomp.so.1" ]; then
+  if [ -n "${_tri}" ] && [ -d "${_libdir}" ] && media_missing_dev_symlink "${_libdir}/libgomp.so" libgomp.so.1; then
     echo "Creating ${_libdir}/libgomp.so -> libgomp.so.1 (libgomp1 ships no dev symlink)"
     ln -sf libgomp.so.1 "${_libdir}/libgomp.so"
   fi

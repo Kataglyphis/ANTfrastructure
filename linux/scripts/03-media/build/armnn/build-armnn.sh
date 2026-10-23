@@ -21,12 +21,8 @@ clone_armnn() {
 }
 
 _armnn_link_openmp() {
-  local destination="$1" source="$2" message="$3" source_file="$2"
-  case "${source_file}" in
-    /*) ;;
-    *) source_file="${destination%/*}/${source_file}" ;;
-  esac
-  if [ -d "${destination%/*}" ] && [ ! -e "${destination}" ] && [ -e "${source_file}" ]; then
+  local destination="$1" source="$2" message="$3"
+  if [ -d "${destination%/*}" ] && media_missing_dev_symlink "${destination}" "${source}"; then
     ln -sf "${source}" "${destination}"
     info "${message}"
   fi

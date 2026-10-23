@@ -56,6 +56,5 @@ linux/scripts/05-frameworks/flutter/flutter-pin.sh	flutter_resolve_pin
 # webdav_download_tree from a site's content sync (#01-corewebdav-downloadsh).
 # wait_for_http's row went on 2026-10-21: flutter-nginx-integration-test.sh calls it. Each row goes STALE the day a caller lands here,
 # which is the signal that the hub grew one.
-linux/scripts/01-core/webdav-download.sh	webdav_download_tree
 linux/scripts/05-frameworks/flutter/lane-prologue.sh	flutter_build_web
 linux/scripts/05-frameworks/flutter/lane-prologue.sh	flutter_lane_prepare_env

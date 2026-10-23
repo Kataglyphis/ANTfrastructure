@@ -3,11 +3,13 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/python-ci-fixture.sh
+source "${TESTS_DIR}/python-ci-fixture.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 IMAGE_PY="$(sed -n 's/^PYTHON_VERSION=\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p' "${SCRIPTS}/01-core/versions.env")"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-t_python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
+python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
   02-toolchain/python/ci_tests.sh 02-toolchain/python/ci_build_docs.sh \
   02-toolchain/python/free-threaded-wheel.py || exit 1
 REC="${CALLS}"

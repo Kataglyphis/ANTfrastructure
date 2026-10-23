@@ -230,6 +230,7 @@ done
 t_assert_eq 87 "$(t_rc _parse_ort --unknown)"
 t_assert_eq 87 "$(t_rc _parse_ort --wasm-config invalid)"
 
+t_source_functions "${TESTS_DIR}/../03-media/core/common.sh" media_missing_dev_symlink || exit 1
 eval "$(t_fn_src "${TESTS_DIR}/../03-media/build/armnn/build-armnn.sh" _armnn_link_openmp)"
 mkdir -p "${WORK}/openmp links" "${WORK}/openmp-source"
 touch "${WORK}/openmp links/libgomp.so.1" "${WORK}/openmp-source/libgomp.so.1"
