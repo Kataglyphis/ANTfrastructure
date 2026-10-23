@@ -86,6 +86,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
+   Python CI driver tests use `t_python_ci_fixture` for isolated script trees and workspace detection; keep tool stubs in each suite.
    Verified downloads must propagate fetch failures even under conditional calls; a matching stale archive does not excuse a failed fetch.
 
 ## Container Architecture

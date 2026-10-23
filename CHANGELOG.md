@@ -12,6 +12,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share isolated Python CI test trees
+
+- Four Python CI suites share temporary script-tree creation, source copying and workspace detection through the test harness; each retains its tool stubs and assertions.
+- Harness regressions and four mutations cover paths, copied bytes, workspace binding and missing inputs; remove all six duplication exemptions between these suites.
+
 ## 2026-10-23 — share Android CMake target arguments
 
 - IREE, LiteRT and OpenCV use one array builder for NDK toolchain, ABI and API arguments, preserving project flags and failure policies.

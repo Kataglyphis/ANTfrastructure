@@ -17690,5 +17690,37 @@
   "replace": "-DCMAKE_TOOLCHAIN_FILE=${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
   "test": "bash linux/scripts/tests/test-android-cmake-target.sh",
   "why": "an NDK directory containing spaces must occupy one CMake argument"
+ },
+ {
+  "id": "probe.python-ci-fixture-copy",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "cp \"${fixture_scripts}/${relative}\" \"${TREE}/${relative}\" || return 1",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "fixture scripts must retain their source bytes rather than silently testing absent copies"
+ },
+ {
+  "id": "probe.python-ci-fixture-copy-failure",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "cp \"${fixture_scripts}/${relative}\" \"${TREE}/${relative}\" || return 1",
+  "replace": "cp \"${fixture_scripts}/${relative}\" \"${TREE}/${relative}\" || true",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "missing requested fixture inputs must fail even in a conditional caller"
+ },
+ {
+  "id": "probe.python-ci-fixture-workspace",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "mkdir -p \"${WS}\" \"${BIN}\" \"${TREE}/02-toolchain/python\" || return 1",
+  "replace": "mkdir -p \"${TREE}/02-toolchain/python\" || return 1",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "the shared fixture must create its isolated workspace and executable directory"
+ },
+ {
+  "id": "probe.python-ci-fixture-detection",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "detect_workspace() { export WORKSPACE_ROOT=\"${FIXTURE_WS}\"; }",
+  "replace": "detect_workspace() { :; }",
+  "test": "bash linux/scripts/tests/test-harness-guards.sh",
+  "why": "stubbed workspace detection must bind the caller fixture, never the real checkout"
  }
 ]

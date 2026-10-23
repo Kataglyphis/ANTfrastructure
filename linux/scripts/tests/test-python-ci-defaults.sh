@@ -7,19 +7,16 @@ SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 IMAGE_PY="$(sed -n 's/^PYTHON_VERSION=\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p' "${SCRIPTS}/01-core/versions.env")"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-WS="${_work}/ws"; REC="${_work}/calls"; TREE="${_work}/tree"
-mkdir -p "${WS}/docs" "${_work}/bin" "${TREE}/01-core" "${TREE}/02-toolchain/python"
-# versions.env sits beside python_uv.sh, as in every checkout: the drivers' defaults derive from it.
-cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${SCRIPTS}/01-core/versions.env" "${TREE}/01-core/"
-cp "${SCRIPTS}/02-toolchain/python/ci_tests.sh" "${SCRIPTS}/02-toolchain/python/ci_build_docs.sh" \
-  "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" "${TREE}/02-toolchain/python/"
+t_python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
+  02-toolchain/python/ci_tests.sh 02-toolchain/python/ci_build_docs.sh \
+  02-toolchain/python/free-threaded-wheel.py || exit 1
+REC="${CALLS}"
+mkdir -p "${WS}/docs"
 printf '#!/usr/bin/env bash\nprintf "make %%s\\n" "$*" >> "${REC}"\n' > "${_work}/bin/make"; chmod +x "${_work}/bin/make"
 # ci_build_docs.sh clicks the site's sidebar toggles through docs-site.sh; the stub records it (test-docs-sidebars.sh owns the check).
 printf '#!/usr/bin/env bash\necho "docs-site $*" >> "${REC}"\n' > "${TREE}/docs-site.sh"
 # The real python_uv.sh (is_experimental_python and its knob), with every uv and workspace effect recorded instead.
-cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
-detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
+cat >> "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 prepare_ci_workspace() { :; }
 derive_package_name() { printf 'pkg'; }
 uv_venv_create() { echo "interpreter $2" >> "${REC}"; _LEG="$2"; }

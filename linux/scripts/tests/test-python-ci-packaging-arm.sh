@@ -6,19 +6,16 @@ source "${TESTS_DIR}/test-harness.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-WS="${_work}/ws"; TREE="${_work}/tree"; CALLS="${_work}/calls"; OUT="${_work}/out"; BIN="${_work}/bin"; PYROOT="${_work}/pyroot"
+t_python_ci_fixture "${_work}" "${SCRIPTS}" 02-toolchain/python/free-threaded-wheel.py || exit 1
+PYROOT="${_work}/pyroot"
 SYSROOT_DIR="${_work}/sysroot"
-mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${TREE}/06-packaging" "${TREE}/lib" "${WS}/packaging" "${BIN}" "${PYROOT}" "${SYSROOT_DIR}/usr/include/python3.14"
+mkdir -p "${TREE}/06-packaging" "${TREE}/lib" "${WS}/packaging" "${PYROOT}" "${SYSROOT_DIR}/usr/include/python3.14"
 
-cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${TREE}/01-core/"
 # The image's /opt/scripts copies would win over this tree's stubs, so the copy looks nowhere there.
 sed "s#/opt/scripts/#${_work}/no-opt-scripts/#g" "${SCRIPTS}/02-toolchain/python/ci_packaging.sh" \
   > "${TREE}/02-toolchain/python/ci_packaging.sh"
-cp "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" "${TREE}/02-toolchain/python/"
 # The real ci-common gets its workspace glue stubbed, as test-python-ci-defaults does.
-cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
-detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
+cat >> "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 prepare_ci_workspace() { shift; cd "${WORKSPACE_ROOT:-${FIXTURE_WS}}" || :; }
 uv_venv_ensure() { :; }
 uv_venv_activate() { :; }

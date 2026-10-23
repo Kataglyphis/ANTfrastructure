@@ -81,4 +81,24 @@ t_assert_contains "${_out}" "rc=0"
 t_assert_contains "$(consumer_suite 't_assert_eq 1 2')" "rc=1"
 t_assert_contains "$(consumer_suite ':')" "ZERO ASSERTIONS"
 
+t_case "Python CI fixtures preserve paths and requested source bytes without workspace side effects"
+fixture_sources="${_tmp}/fixture sources"
+mkdir -p "${fixture_sources}/01-core" "${fixture_sources}/extra"
+printf 'fixture_uv_loaded=1\n' > "${fixture_sources}/01-core/python_uv.sh"
+printf 'fixture logging\n' > "${fixture_sources}/01-core/logging.sh"
+printf 'fixture driver\n' > "${fixture_sources}/extra/driver.sh"
+t_assert_ok t_python_ci_fixture "${_tmp}/python fixture" "${fixture_sources}" extra/driver.sh
+t_assert_eq "${_tmp}/python fixture/ws" "${WS}"
+t_assert_eq "${_tmp}/python fixture/tree" "${TREE}"
+t_assert_eq "${_tmp}/python fixture/calls" "${CALLS}"
+t_assert_eq "${_tmp}/python fixture/out" "${OUT}"
+t_assert_eq "${_tmp}/python fixture/bin" "${BIN}"
+t_assert_ok test -d "${WS}"
+t_assert_ok test -d "${BIN}"
+for relative in 01-core/python_uv.sh 01-core/logging.sh extra/driver.sh; do
+  t_assert_ok cmp "${fixture_sources}/${relative}" "${TREE}/${relative}"
+done
+t_assert_eq "1|${WS}" "$(FIXTURE_WS="${WS}" bash -c 'source "$1"; detect_workspace; printf "%s|%s" "$fixture_uv_loaded" "$WORKSPACE_ROOT"' _ "${TREE}/02-toolchain/python/ci-common.sh")"
+t_assert_fails t_python_ci_fixture "${_tmp}/missing source fixture" "${fixture_sources}" extra/missing.sh
+
 t_summary

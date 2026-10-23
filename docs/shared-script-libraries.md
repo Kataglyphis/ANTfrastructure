@@ -1191,3 +1191,13 @@ IREE, LiteRT and OpenCV expand that array into their target configuration; host
 configuration, project options, configure retries and failure policy remain with
 the caller. The argument suite checks three ABIs and an NDK path containing spaces;
 it does not invoke an NDK or build any of the projects.
+
+## Python CI test fixtures
+
+The test harness owns `t_python_ci_fixture <root> <scripts> [relative-script ...]`.
+It exports `WS`, `TREE`, `CALLS`, `OUT` and `BIN` for fixture subprocesses, creates isolated directories and copies
+`python_uv.sh`, logging and each requested script, then writes workspace detection
+that points to `FIXTURE_WS`. Missing inputs fail in conditional callers too.
+The four Python CI suites append their own preparation and uv stubs; their wheel,
+packaging and interpreter assertions remain unchanged. Harness fixtures verify
+source bytes, paths with spaces and workspace binding without invoking uv.

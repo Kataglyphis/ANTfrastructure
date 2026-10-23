@@ -8,15 +8,12 @@ SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 t_skip_unless "a POSIX python3 (the helper reads the fixture's pyproject.toml)" t_posix_python
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-WS="${_work}/ws"; TREE="${_work}/tree"; CALLS="${_work}/calls"; OUT="${_work}/out"; BIN="${_work}/bin"
-mkdir -p "${TREE}/01-core" "${TREE}/02-toolchain/python" "${WS}/tests/unit" "${WS}/fixture_app" "${BIN}"
-cp "${SCRIPTS}/01-core/python_uv.sh" "${SCRIPTS}/01-core/logging.sh" "${SCRIPTS}/01-core/versions.env" "${TREE}/01-core/"
-cp "${SCRIPTS}/02-toolchain/python/test-free-threaded-wheel.sh" "${SCRIPTS}/02-toolchain/python/free-threaded-wheel.py" \
-  "${SCRIPTS}/02-toolchain/python/free-threaded-wheel-tests.py" "${TREE}/02-toolchain/python/"
+t_python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
+  02-toolchain/python/test-free-threaded-wheel.sh 02-toolchain/python/free-threaded-wheel.py \
+  02-toolchain/python/free-threaded-wheel-tests.py || exit 1
+mkdir -p "${WS}/tests/unit" "${WS}/fixture_app"
 RUNNER="${TREE}/02-toolchain/python/free-threaded-wheel-tests.py"
-cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
-detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
+cat >> "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
 prepare_ci_workspace() { cd "${FIXTURE_WS}" || :; }
 CI_COMMON
 : > "${WS}/tests/unit/test_threads.py"

@@ -365,3 +365,22 @@ t_source_functions() {
     eval "${function_source}" || return $?
   done
 }
+
+t_python_ci_fixture() {
+  local fixture_root="$1" fixture_scripts="$2" relative
+  shift 2
+  export WS="${fixture_root}/ws"
+  export TREE="${fixture_root}/tree"
+  export CALLS="${fixture_root}/calls"
+  export OUT="${fixture_root}/out"
+  export BIN="${fixture_root}/bin"
+  mkdir -p "${WS}" "${BIN}" "${TREE}/02-toolchain/python" || return 1
+  for relative in 01-core/python_uv.sh 01-core/logging.sh "$@"; do
+    mkdir -p "${TREE}/$(dirname "${relative}")" || return 1
+    cp "${fixture_scripts}/${relative}" "${TREE}/${relative}" || return 1
+  done
+  cat > "${TREE}/02-toolchain/python/ci-common.sh" <<'CI_COMMON'
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh"
+detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
+CI_COMMON
+}
