@@ -3,6 +3,8 @@
 [ -n "${_LIB_RUNTIME_WHEELS_SH_LOADED:-}" ] && return 0
 _LIB_RUNTIME_WHEELS_SH_LOADED=1
 
+source "$(dirname "${BASH_SOURCE[0]}")/01-core/wheelhouse-manifest.sh" || exit 1
+
 # Prints image or export. An unknown value is rc 2, so a typo stops a lane at its start.
 runtime_wheels_source_mode() {
   case "${RUNTIME_WHEELS_SOURCE:-auto}" in
@@ -156,7 +158,7 @@ runtime_wheels_wrapper_args() {
 
 # The awk fixes the separator, which binary-mode sha256sum writes as " *".
 _runtime_wheels_manifest() {
-  (cd "$1" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum | awk '{print substr($0, 1, 64) "  " substr($0, 67)}')
+  wheelhouse_manifest "$1"
 }
 
 # setup-torch-venv.sh prints the same line, so both modes compare by eye. docs/cross-build-verification.md#measuring-the-torch-runs-wait-before-uv-venv

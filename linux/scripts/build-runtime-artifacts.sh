@@ -56,13 +56,10 @@ _build_one_artifact() {
 }
 
 _artifacts_extra_arg() {
-  # shellcheck disable=SC2034 # --push-all sets it for context-management.sh
   case "$1" in
     --output-root) OUTPUT_ROOT="$2"; _OARG_SHIFT=2 ;;
     --image-prefix) IMAGE_PREFIX="$2"; _OARG_SHIFT=2 ;;
-    --push) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
-    --push-all) PUSH_IMAGES=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
-    *) return 1 ;;
+    *) orchestrator_consume_runtime_push_arg artifacts "$1" ;;
   esac
 }
 

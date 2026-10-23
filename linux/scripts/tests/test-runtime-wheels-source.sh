@@ -279,7 +279,7 @@ t_case "setup-torch-venv.sh: the in-RUN wheelhouse line is never fatal and match
 _STV_FN="$(t_fn_src "${STV}" _stv_wheelhouse_line)" || exit 1
 _WH="$(mktemp -d)"
 printf a > "${_WH}/torch-2.9.0-cp314-cp314-linux_aarch64.whl"; printf bb > "${_WH}/onnxruntime-1.30.0-cp314-cp314-linux_aarch64.whl"
-_strict() { bash -c "set -Eeuo pipefail; trap 'echo ERR-TRAP' ERR"$'\n'"$1"$'\n'"${_STV_FN}"$'\n'"_stv_wheelhouse_line $(printf '%q' "$2"); echo \"rc=\$?\"" 2>&1; }
+_strict() { bash -c "set -Eeuo pipefail; trap 'echo ERR-TRAP' ERR"$'\n'"$1"$'\n'"source $(printf '%q' "${SCRIPTS}/01-core/wheelhouse-manifest.sh")"$'\n'"${_STV_FN}"$'\n'"_stv_wheelhouse_line $(printf '%q' "$2"); echo \"rc=\$?\"" 2>&1; }
 _out="$(_strict ':' "${_WH}/absent")"
 t_assert_eq $'[torch-venv] wheelhouse files=0 bytes=0 sha256=none\nrc=0' "${_out}" "a missing wheelhouse prints zeros"
 _out="$(_strict 'find() { command find "$@"; return 3; }' "${_WH}")"

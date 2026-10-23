@@ -79,6 +79,23 @@ runtime_flow_preamble() {
   TARGET_ARCHES="$(resolve_arch_list)"
 }
 
+orchestrator_consume_runtime_push_arg() {
+  local mode="$1" flag="$2"
+  case "$flag" in
+    --push|--push-all) : ;;
+    --push-images) [ "$mode" = manifest ] || return 1 ;;
+    *) return 1 ;;
+  esac
+  local -n _orp_images=PUSH_IMAGES _orp_intermediates=PUSH_INTERMEDIATE_IMAGES _orp_shift=_OARG_SHIFT
+  _orp_images=1
+  if [ "$mode" = manifest ] && [ "$flag" != --push-images ]; then
+    local -n _orp_manifest=PUSH_MANIFEST
+    _orp_manifest=1
+  fi
+  if [ "$flag" = --push-all ]; then _orp_intermediates=1; fi
+  _orp_shift=1
+}
+
 # <usage_fn> <case_fn> "$@"; both runtime scripts share the 11-nameref list, so it is fixed here.
 run_runtime_arg_loop() {
   local _usage_fn="$1" _case_fn="$2"

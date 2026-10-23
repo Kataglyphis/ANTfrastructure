@@ -31,6 +31,9 @@ source_required_symbol elf_unresolved_needed 'FATAL: platform.sh (elf_unresolved
 source_required_symbol clear_unmounted_apt_lists 'FATAL: package-image-wiring.sh (clear_unmounted_apt_lists) not found' \
   /opt/scripts/packaging/package-image-wiring.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/package-image-wiring.sh"
 
+source_required_symbol wheelhouse_manifest 'FATAL: wheelhouse-manifest.sh (wheelhouse_manifest) not found' \
+  /opt/scripts/core/wheelhouse-manifest.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/wheelhouse-manifest.sh"
+
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then
     echo "Skipping ${1:-torch step} in pure cross artifact mode"
@@ -406,8 +409,7 @@ _stv_wheelhouse_line() {
   local d="${1:-/opt/wheels}" counts="" digest=""
   if [ -d "${d}" ]; then
     counts="$(find "${d}" -type f -printf '%s\n' 2>/dev/null | awk '{n++; s+=$1} END {printf "files=%d bytes=%d", n, s}' || true)"
-    digest="$( (cd "${d}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum \
-      | awk '{print substr($0, 1, 64) "  " substr($0, 67)}' | sha256sum) 2>/dev/null || true)"
+    digest="$( (wheelhouse_manifest "${d}" | sha256sum) 2>/dev/null || true)"
   fi
   digest="${digest%% *}"
   echo "[torch-venv] wheelhouse ${counts:-files=0 bytes=0} sha256=${digest:-none}"

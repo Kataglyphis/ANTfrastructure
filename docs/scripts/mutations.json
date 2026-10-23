@@ -11398,16 +11398,16 @@
  {
   "id": "wheels-source.in-run-never-fatal",
   "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
-  "find": "      | awk '{print substr($0, 1, 64) \"  \" substr($0, 67)}' | sha256sum) 2>/dev/null || true)\"",
-  "replace": "      | awk '{print substr($0, 1, 64) \"  \" substr($0, 67)}' | sha256sum) 2>/dev/null)\"",
+  "find": "digest=\"$( (wheelhouse_manifest \"${d}\" | sha256sum) 2>/dev/null || true)\"",
+  "replace": "digest=\"$( (wheelhouse_manifest \"${d}\" | sha256sum) 2>/dev/null)\"",
   "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
   "why": "the wheelhouse line is diagnostics; under set -Eeuo pipefail it must never kill the torch RUN"
  },
  {
   "id": "wheels-source.in-run-digest-agrees",
   "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
-  "find": "find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum \\",
-  "replace": "find . -type f -print0 | LC_ALL=C sort -rz | xargs -0 -r sha256sum \\",
+  "find": "(wheelhouse_manifest \"${d}\" | sha256sum)",
+  "replace": "(wheelhouse_manifest \"${d}\" | sed -n '1p' | sha256sum)",
   "test": "bash linux/scripts/tests/test-runtime-wheels-source.sh",
   "why": "the in-RUN digest must equal the host's [wheels] digest, or the A/B cannot compare the two modes"
  },
@@ -19222,8 +19222,8 @@
  {
   "id": "lib.cache-utils-off-spellings",
   "target": "linux/scripts/01-core/compiler-cache-utils.sh",
-  "find": "0|false|FALSE|False|no|NO|off|OFF)",
-  "replace": "false)",
+  "find": "    False) [ \"${2:-}\" != tool ] ;;\n    0|false|FALSE|no|NO|off|OFF) return 0 ;;",
+  "replace": "    false) return 0 ;;",
   "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
   "why": "all previous off spellings disable cache and linker configuration while empty and unknown values retain their enabled policy"
  },
@@ -21809,5 +21809,171 @@
   "replace": ":",
   "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
   "why": "Each cross-lane entrypoint emits the canonical repository row in its complete independently frozen help output."
+ },
+ {
+  "id": "lib.runtime-push-selector-artifact-rejects-images-only",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "    --push-images) [ \"$mode\" = manifest ] || return 1 ;;",
+  "replace": "    --push-images) : ;;",
+  "test": "bash linux/scripts/tests/test-runtime-push-selectors.sh",
+  "timeout": 60,
+  "why": "Artifacts must reject the manifest-only images selector without materializing any push fields."
+ },
+ {
+  "id": "lib.runtime-push-selector-images-only-keeps-manifest",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  if [ \"$mode\" = manifest ] && [ \"$flag\" != --push-images ]; then",
+  "replace": "  if [ \"$mode\" = manifest ]; then",
+  "test": "bash linux/scripts/tests/test-runtime-push-selectors.sh",
+  "timeout": 60,
+  "why": "Images-only must retain the existing or unset manifest selector."
+ },
+ {
+  "id": "lib.runtime-push-selector-intermediates-only-for-all",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  if [ \"$flag\" = --push-all ]; then _orp_intermediates=1; fi",
+  "replace": "  if [ -n \"$flag\" ]; then _orp_intermediates=1; fi",
+  "test": "bash linux/scripts/tests/test-runtime-push-selectors.sh",
+  "timeout": 60,
+  "why": "Ordinary push selectors must preserve existing or unset intermediate policy."
+ },
+ {
+  "id": "lib.runtime-push-selector-assignment-order",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  _orp_images=1\n  if [ \"$mode\" = manifest ] && [ \"$flag\" != --push-images ]; then\n    local -n _orp_manifest=PUSH_MANIFEST\n    _orp_manifest=1\n  fi",
+  "replace": "  if [ \"$mode\" = manifest ] && [ \"$flag\" != --push-images ]; then\n    local -n _orp_manifest=PUSH_MANIFEST\n    _orp_manifest=1\n  fi\n  _orp_images=1",
+  "test": "bash linux/scripts/tests/test-runtime-push-selectors.sh",
+  "timeout": 60,
+  "why": "Manifest push retains images-before-manifest assignment order in caller dynamic scope."
+ },
+ {
+  "id": "lib.runtime-push-selector-consumed-one",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "  _orp_shift=1",
+  "replace": "  _orp_shift=2",
+  "test": "bash linux/scripts/tests/test-runtime-push-selectors.sh",
+  "timeout": 60,
+  "why": "A recognized push selector consumes exactly one argument; a wrong shift must fail the callback fixture without looping."
+ },
+ {
+  "id": "lib.runtime-push-selector-unknown-is-inert",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "    --push-images) [ \"$mode\" = manifest ] || return 1 ;;\n    *) return 1 ;;",
+  "replace": "    --push-images) [ \"$mode\" = manifest ] || return 1 ;;\n    *) PUSH_IMAGES=1; return 1 ;;",
+  "test": "bash linux/scripts/tests/test-runtime-push-selectors.sh",
+  "timeout": 60,
+  "why": "Unknown options must preserve all fields and the preexisting consumed count, including unset state."
+ },
+ {
+  "id": "lib.compiler-tool-toggle-titlecase-policy",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "_flag_disabled \"${2:-true}\" tool",
+  "replace": "_flag_disabled \"${2:-true}\"",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "Tool checks historically accept False while default cache setup disables it."
+ },
+ {
+  "id": "lib.compiler-tool-toggle-missing-tool",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "if command -v \"$1\" >/dev/null 2>&1; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "Missing optional tools must not enable linker or cache arguments."
+ },
+ {
+  "id": "lib.compiler-tool-toggle-tool-diagnostics",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "if command -v \"$1\" >/dev/null 2>&1; then",
+  "replace": "if command -v \"$1\"; then",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "Optional tool availability must suppress both lookup streams."
+ },
+ {
+  "id": "lib.compiler-tool-toggle-ffmpeg-delegation",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-probe-framework.sh",
+  "find": "if compiler_tool_enabled ld.lld \"${USE_LLD:-true}\"; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-ffmpeg-probes.sh",
+  "why": "Enabled lld is appended before compile and library flags in real FFmpeg probes."
+ },
+ {
+  "id": "lib.compiler-tool-toggle-ort-delegation",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "if compiler_tool_enabled ccache \"${USE_CCACHE:-true}\"; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-compiler-tool-toggles.sh",
+  "why": "Enabled ccache still configures the resolved compiler launcher in ONNX build arguments."
+ },
+ {
+  "id": "lib.compiler-tool-toggle-availability-status",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "    status=$?\n  fi\n  return \"$status\"",
+  "replace": "    status=1\n  fi\n  return \"$status\"",
+  "test": "bash linux/scripts/tests/test-compiler-cache-policy.sh",
+  "why": "Raw command availability failures remain observable to direct helper callers."
+ },
+ {
+  "id": "lib.wheelhouse-sorted-manifest",
+  "target": "linux/scripts/01-core/wheelhouse-manifest.sh",
+  "find": "LC_ALL=C sort -z",
+  "replace": "LC_ALL=C sort -rz",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "independent expected byte manifests retain lexical file order"
+ },
+ {
+  "id": "lib.wheelhouse-regular-files",
+  "target": "linux/scripts/01-core/wheelhouse-manifest.sh",
+  "find": "find . -type f -print0",
+  "replace": "find . -type f ! -name \"* *\" -print0",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "spaced file names remain in the null-safe manifest"
+ },
+ {
+  "id": "lib.wheelhouse-binary-separator",
+  "target": "linux/scripts/01-core/wheelhouse-manifest.sh",
+  "find": "\"  \" substr($0, 67)",
+  "replace": "\" *\" substr($0, 67)",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "binary sha256 separators normalize to the exact receipt protocol"
+ },
+ {
+  "id": "lib.wheelhouse-host-delegation",
+  "target": "linux/scripts/lib-runtime-wheels.sh",
+  "find": "  wheelhouse_manifest \"$1\"",
+  "replace": "  wheelhouse_manifest \"$1\" | sed -n '1p'",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "host manifests delegate without changing ordered bytes"
+ },
+ {
+  "id": "lib.wheelhouse-torch-delegation",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "(wheelhouse_manifest \"${d}\" | sha256sum)",
+  "replace": "(wheelhouse_manifest \"${d}\" | sed -n '1p' | sha256sum)",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "Torch diagnostic hashes keep the same ordered byte protocol"
+ },
+ {
+  "id": "lib.wheelhouse-host-required-import",
+  "target": "linux/scripts/lib-runtime-wheels.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/01-core/wheelhouse-manifest.sh\" || exit 1",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/01-core/wheelhouse-manifest.sh\" || return 1",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "missing mandatory host companion fails even under conditional import"
+ },
+ {
+  "id": "lib.wheelhouse-torch-required-import",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "source_required_symbol wheelhouse_manifest 'FATAL: wheelhouse-manifest.sh (wheelhouse_manifest) not found' \\\n  /opt/scripts/core/wheelhouse-manifest.sh \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/../01-core/wheelhouse-manifest.sh\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "Torch source closure rejects missing manifest companion before reaching setup"
+ },
+ {
+  "id": "lib.wheelhouse-docker-copy",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/01-core/wheelhouse-manifest.sh /opt/scripts/core/wheelhouse-manifest.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-wheelhouse-manifest.sh",
+  "why": "Torch stage carries the minimal shared byte-manifest owner before execution"
  }
 ]

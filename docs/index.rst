@@ -238,6 +238,7 @@ Common development targets:
    refactoring-backlog
    build-watch-list
    windows-refactor-backlog
+   changelog-archive-2026-10-22
    changelog-archive-2026-10-19
    changelog-archive-2026-10-18
    changelog-archive-2026-10-12

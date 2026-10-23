@@ -111,7 +111,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied ORT provenance and GStreamer ORT checks carry `path-helpers.sh` in their relative `01-core` layout.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
-   Copied Torch setup carries `package-image-wiring.sh` before its first execution.
+   Copied Torch setup carries `package-image-wiring.sh` and `wheelhouse-manifest.sh` before its first execution.
+   Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.

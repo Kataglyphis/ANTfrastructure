@@ -96,4 +96,22 @@ t_case 'standalone CMake cache policy does not initialize or export cache defaul
 state="$(env -u USE_CCACHE -u USE_SCCACHE -u CCACHE_DIR -u SCCACHE_DIR bash -c 'source "$1"; printf "%s|%s|%s|%s" "${USE_CCACHE-unset}" "${USE_SCCACHE-unset}" "${CCACHE_DIR-unset}" "${SCCACHE_DIR-unset}"' _ "${CMAKE}")"
 t_assert_eq 'unset|unset|unset|unset' "${state}"
 
+for command_status in 0 1 7 127; do
+  for tool_flag in true false False; do
+    t_case "optional compiler tool preserves raw availability status $command_status with flag '$tool_flag'"
+    expected_status="$command_status"
+    if [ "$command_status" = 0 ] && [ "$tool_flag" = false ]; then expected_status=1; fi
+    actual_status=0
+    actual_output="$(bash -c '
+      source "$1"
+      TOOL_COMMAND_STATUS="$2"
+      command() { printf "lookup stdout\n"; printf "lookup stderr\n" >&2; return "$TOOL_COMMAND_STATUS"; }
+      compiler_tool_enabled compiler "$3"
+    ' _ "$UTILS" "$command_status" "$tool_flag" 2> "$WORK/tool-err")" || actual_status=$?
+    t_assert_eq "$expected_status" "$actual_status"
+    t_assert_eq '' "$actual_output"
+    t_assert_eq '' "$(cat "$WORK/tool-err")"
+  done
+done
+
 t_summary

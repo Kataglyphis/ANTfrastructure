@@ -121,7 +121,7 @@ _ffmpeg_try_source_probe() {
             cmd+=("${cflags[@]}" -c "${source_file}" -o "${output_file}")
             ;;
         link)
-            if command -v ld.lld >/dev/null 2>&1 && { case "${USE_LLD:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
+            if compiler_tool_enabled ld.lld "${USE_LLD:-true}"; then
                 cmd+=(-fuse-ld=lld)
             fi
             cmd+=("${cflags[@]}" "${source_file}" -o "${output_file}" "${libs[@]}")
