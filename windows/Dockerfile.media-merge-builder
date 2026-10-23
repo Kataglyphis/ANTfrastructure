@@ -28,7 +28,7 @@ ENV WINDOWS_TARGET_ARCH=${WINDOWS_TARGET_ARCH}
 COPY windows\scripts\build\Copy-CudaRuntime.ps1 C:\Copy-CudaRuntime.ps1
 RUN pwsh -NoProfile -ExecutionPolicy Bypass -File C:\Copy-CudaRuntime.ps1
 
-# The four merge-only leaf modules live here, never in the media buildmods, whose edits would re-run every media compile.
+# The merge-only leaf modules live here; keeping them out of media buildmods prevents every media compile from re-running.
 FROM ${BASE_IMAGE} AS buildmods
 COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsScripts.Shared.psm1 `
@@ -37,6 +37,7 @@ COPY windows\scripts\modules\WindowsSourceBuild.Common.psm1 `
      windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsContainerImage.Common.psm1 `
+     windows\scripts\modules\WindowsContainerImage.Bootstrap.psm1 `
      windows\scripts\modules\WindowsInstaller.Common.psm1 `
      windows\scripts\modules\WindowsGstPlugins.Common.psm1 `
      windows\scripts\modules\WindowsMeson.Common.psm1 `
@@ -191,7 +192,7 @@ RUN --mount=type=bind,source=windows/scripts/build/Copy-Arm64TorchWheels.ps1,tar
 RUN --mount=type=bind,source=windows/scripts/host/Install-Lavapipe.ps1,target=C:\bkmnt\Install-Lavapipe.ps1 `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\Install-Lavapipe.ps1' -ScriptDir 'C:\bkmnt'
+    & 'C:\bkmnt\Install-Lavapipe.ps1' -ScriptDir 'C:\bkmnt' -ModuleRoot 'C:\bkmnt'
 # Mesa 26.2's BVH sort needs 8-lane subgroups; arm64's native 128 bits give 4 and SEGV (CON44).
 ENV LP_NATIVE_VECTOR_WIDTH=256
 

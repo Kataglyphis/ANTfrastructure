@@ -40,8 +40,7 @@ Describe 'Invoke-ClangFormatCheck' {
 
   It 'fails on a deviating file with -FailOnDeviation, and passes a clean tree' {
     Set-FormatStub -Files @($script:good, $script:bad)
-    { Invoke-Check -FailOnDeviation } |
-      Should -Throw -ExpectedMessage '1 of 2 file(s) deviate*'
+    Assert-Throws -MessagePattern '1 of 2 file\(s\) deviate' -Body { Invoke-Check -FailOnDeviation }
     Set-FormatStub -Files @($script:good)
     { Invoke-Check -FailOnDeviation } | Should -Not -Throw
   }
@@ -49,18 +48,17 @@ Describe 'Invoke-ClangFormatCheck' {
   It 'refuses a clang-format of another release with -ExpectedVersion' {
     Set-FormatStub -Files @($script:good)
     { Invoke-Check -ExpectedVersion '23.1.1' } | Should -Not -Throw
-    { Invoke-Check -ExpectedVersion '23.1' } |
-      Should -Throw -ExpectedMessage "*not clang-format 23.1"
+    Assert-Throws -MessagePattern 'not clang-format 23\.1' -Body { Invoke-Check -ExpectedVersion '23.1' }
   }
 
   It 'refuses another release by default: LLVM_WINDOWS_VERSION, else versions.env; an explicit empty version skips' {
     Set-FormatStub -Files @($script:good)
     $env:LLVM_WINDOWS_VERSION = '23.1.9'
     try {
-      { Invoke-Check } | Should -Throw -ExpectedMessage '*not clang-format 23.1.9'
+      Assert-Throws -MessagePattern 'not clang-format 23\.1\.9' -Body { Invoke-Check }
       $env:LLVM_WINDOWS_VERSION = $null
       $pinned = ((Get-Content (Join-Path $PSScriptRoot '..\..\..\linux\scripts\01-core\versions.env')) -match '^LLVM_WINDOWS_VERSION=') -replace '^LLVM_WINDOWS_VERSION=', ''
-      { Invoke-Check } | Should -Throw -ExpectedMessage "*not clang-format $pinned"
+      Assert-Throws -MessagePattern ('not clang-format ' + [regex]::Escape($pinned)) -Body { Invoke-Check }
       { Invoke-Check -ExpectedVersion '' } | Should -Not -Throw
     } finally {
       $env:LLVM_WINDOWS_VERSION = '23.1.1'
@@ -71,8 +69,7 @@ Describe 'Invoke-ClangFormatCheck' {
     Set-FormatStub -Files @($script:good)
     Mock -ModuleName WindowsFormatting.Common -CommandName Get-Command { $null }
     Mock -ModuleName WindowsFormatting.Common -CommandName Test-Path { $false }
-    { Invoke-Check -FailOnDeviation } |
-      Should -Throw -ExpectedMessage 'clang-format not found*'
+    Assert-Throws -MessagePattern 'clang-format not found' -Body { Invoke-Check -FailOnDeviation }
     { Invoke-Check } | Should -Not -Throw
   }
 }

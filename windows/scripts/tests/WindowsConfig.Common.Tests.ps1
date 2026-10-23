@@ -38,8 +38,9 @@ Describe 'WindowsConfig.Common' {
     }
 
     It 'throws on an unknown configuration' {
-      { Get-SelectedConfigurations -Configurations @('unknown') -AvailableConfigurations @('x') } |
-        Should -Throw
+      Assert-Throws -MessagePattern "Unknown configuration 'unknown'" -Body {
+        Get-SelectedConfigurations -Configurations @('unknown') -AvailableConfigurations @('x')
+      }
     }
 
     It 'returns the set itself for a single selection, and the cleared set selects nothing' {
@@ -73,8 +74,9 @@ Describe 'WindowsConfig.Common' {
     }
 
     It 'throws for a configuration the file does not define, naming the file' {
-      { Get-BuildConfigurationRow -Config $script:cfg -Name 'nope' -ConfigPath 'C:\x\Build-Windows.config.psd1' } |
-        Should -Throw -ExpectedMessage "Unknown build configuration 'nope' in C:\x\Build-Windows.config.psd1."
+      Assert-Throws -MessagePattern ([regex]::Escape("Unknown build configuration 'nope' in C:\x\Build-Windows.config.psd1.")) -Body {
+        Get-BuildConfigurationRow -Config $script:cfg -Name 'nope' -ConfigPath 'C:\x\Build-Windows.config.psd1'
+      }
     }
   }
 }

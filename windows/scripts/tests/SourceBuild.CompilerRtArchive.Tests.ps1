@@ -184,7 +184,7 @@ Describe 'Compiler-rt caller policies' {
         Assert-Equal '$rtDestDir' $arguments.DestinationDir
         Assert-Equal '$rtSha' $arguments.ExpectedSha256
         Assert-Equal '$env:TEMP' $arguments.WorkDir
-        Assert-Equal 0 @(Get-TestAstCommands -Ast $ast -Name Expand-CompilerRtLibrary) 'the host must use the shared acquisition operation'
+        Assert-Equal 0 (@(Get-TestAstCommands -Ast $ast -Name Expand-CompilerRtLibrary).Count) 'the host must use the shared acquisition operation'
         $imports = @(Get-TestAstCommands -Ast $ast -Name Import-Module | Where-Object { $_.Extent.Text -match '\$sharedHelpersPath' })
         Assert-Equal 1 $imports.Count
         Assert-Equal Stop (Get-TestCommandArguments $imports[0]).ErrorAction

@@ -40,7 +40,7 @@ Describe 'scriptAssetRoot resolver parity' {
 
     It 'finds the resolver population at all (guards the scan itself)' {
         # A convention rename fails loudly here instead of passing on an empty set.
-        Assert-True ($files.Count -ge 30) "expected >=30 scripts referencing `$scriptAssetRoot, found $($files.Count) — did the convention change?"
+        Assert-True ($files.Count -ge 30) ('expected >=30 scripts referencing $scriptAssetRoot, found {0} — did the convention change?' -f $files.Count)
     }
 
     It 'every consumer also defines it' {
@@ -66,13 +66,18 @@ Describe 'scriptAssetRoot resolver parity' {
 }
 
 Describe 'mounted installer module roots' {
-    It 'flat-mounted ROCm installers take their module root explicitly and default to the checkout (mutation)' {
-        $paths = 'windows/scripts/build/Install-LlamaCpp.ps1', 'windows/scripts/build/Install-TorchRocm.ps1'
+    It 'flat-mounted installers take their module root explicitly and default to the checkout (mutation)' {
+        $paths = 'windows/scripts/build/Install-LlamaCpp.ps1', 'windows/scripts/build/Install-TorchRocm.ps1',
+            'windows/scripts/host/Install-Lavapipe.ps1', 'windows/scripts/host/Install-LavapipeHost.ps1'
         $asts = @($paths | ForEach-Object { Get-TestScriptAst -ScriptPath $_ })
         foreach ($ast in $asts) { Assert-MountedModuleRootContract -Ast $ast }
         $needle = '[string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)'
         $mutated = $asts[0].Extent.Text.Replace($needle, '[string]$ModuleRoot = $PSScriptRoot')
         Assert-True ($mutated -cne $asts[0].Extent.Text) 'the default-root mutation applied'
         Assert-Throws { Assert-MountedModuleRootContract -Ast (ConvertTo-TestScriptAst -Text $mutated) } -MessagePattern 'checkout module-root default'
+
+        $merge = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-merge-builder'))
+        Assert-Match 'source=windows/scripts/host/Install-Lavapipe\.ps1,target=C:\\bkmnt\\Install-Lavapipe\.ps1' $merge 'the installer keeps its flat mount'
+        Assert-Match '& ''C:\\bkmnt\\Install-Lavapipe\.ps1'' -ScriptDir ''C:\\bkmnt'' -ModuleRoot ''C:\\bkmnt''' $merge 'the flat mount receives both asset roots explicitly'
     }
 }

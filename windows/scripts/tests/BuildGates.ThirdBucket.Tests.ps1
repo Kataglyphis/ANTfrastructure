@@ -5,21 +5,17 @@
 # The skip bucket, twin of gates.sh --tolerate-skips: see docs/shared-script-libraries.md#gate-aggregation-01-coregatessh
 
 $script:GateModule = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsBuild.Common.psm1'
+$script:gateContexts = @()
 # Not -Force: in a harness suite it unloads a module the runner's other imports are bound to.
 Import-Module $script:GateModule -DisableNameChecking
 
-# One owner for the throwaway directory both fixtures below need.
-function script:New-ScratchDir {
-    param([Parameter(Mandatory)][string]$Prefix)
-    New-TestDir -Prefix ($Prefix + '-')
-}
-
 # The log writer stays open so a gate's messages can be read back.
 function script:New-GateContext {
-    $dir = New-ScratchDir -Prefix 'gatebucket'
+    $dir = New-TestDir -Prefix 'gatebucket-'
     $ctx = New-BuildContext -Workspace $dir -LogDir $dir
     $ctx.SuppressConsoleOutput = $true
     Open-BuildLog -Context $ctx
+    $script:gateContexts += $ctx
     return $ctx
 }
 
@@ -52,6 +48,13 @@ function script:New-SkippedBatch {
 }
 
 Describe 'WindowsBuild.Common gates: the third bucket' {
+    AfterEach {
+        foreach ($ctx in $script:gateContexts) {
+            Close-BuildLog -Context $ctx
+            Remove-TestDir -Path $ctx.Workspace
+        }
+        $script:gateContexts = @()
+    }
 
     It 'Add-BuildGateSkip records the gate and its reason, and grades nothing' {
         $ctx = New-GateContext
@@ -137,7 +140,7 @@ Describe 'gate aggregation: the two halves, and the one place they differ' {
 
     It 'MEASURED: a gate that calls exit kills the PowerShell driver' {
         # PowerShell cannot contain `exit` in-process like bash's run_gate subshell, so a gate here must fail by throwing.
-        $dir = New-ScratchDir -Prefix 'gate-exit'
+        $dir = New-TestDir -Prefix 'gate-exit-'
         $driver = Join-Path $dir 'driver.ps1'
         $body = @"
 Import-Module '$script:GateModule' -DisableNameChecking
@@ -148,12 +151,15 @@ Invoke-BuildGate -Context `$ctx -Name 'exiting' -Script { exit 1 }
 Invoke-BuildGate -Context `$ctx -Name 'after'   -Script { }
 Write-Output ('REACHED gates=' + (`$ctx.Results['Gates'] -join ','))
 "@
-        Set-Content -LiteralPath $driver -Value $body -Encoding utf8
-        $out = ('' + (& pwsh -NoProfile -File $driver 2>&1 | Out-String))
-        $rc = $LASTEXITCODE
-        Assert-Equal 1 $rc 'the exit propagated out of the driver, which is the whole point of the case'
-        Assert-False ($out -match 'REACHED') `
-            'the driver survived exit: PowerShell now contains it, so run_gate has a twin here and the doc must stop calling this an asymmetry'
-        Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
+        try {
+            Set-Content -LiteralPath $driver -Value $body -Encoding utf8
+            $out = ('' + (& pwsh -NoProfile -File $driver 2>&1 | Out-String))
+            $rc = $LASTEXITCODE
+            Assert-Equal 1 $rc 'the exit propagated out of the driver, which is the whole point of the case'
+            Assert-False ($out -match 'REACHED') `
+                'the driver survived exit: PowerShell now contains it, so run_gate has a twin here and the doc must stop calling this an asymmetry'
+        } finally {
+            Remove-TestDir -Path $dir
+        }
     }
 }

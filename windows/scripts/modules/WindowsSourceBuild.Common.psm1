@@ -389,6 +389,18 @@ function Resolve-LlvmArchiver {
     return Resolve-LlvmToolPath -Name 'llvm-lib'
 }
 
+function Copy-SourceBuildFileIfAbsent {
+    param(
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string]$DestinationPath
+    )
+    if ((Test-Path $SourcePath) -and -not (Test-Path $DestinationPath)) {
+        Copy-Item $SourcePath $DestinationPath -Force
+        return $true
+    }
+    return $false
+}
+
 function Copy-CpythonPyConfigHeader {
     param(
         [string]$CpythonDir = ''
@@ -396,8 +408,7 @@ function Copy-CpythonPyConfigHeader {
     if ([string]::IsNullOrWhiteSpace($CpythonDir)) { $CpythonDir = Join-Path $env:TEMP_DIR 'cpython' }
     $src = Join-Path $CpythonDir 'PC\pyconfig.h'
     $dst = Join-Path $CpythonDir 'Include\pyconfig.h'
-    if ((Test-Path $src) -and -not (Test-Path $dst)) {
-        Copy-Item $src $dst -Force
+    if (Copy-SourceBuildFileIfAbsent -SourcePath $src -DestinationPath $dst) {
         Write-Host "Copied pyconfig.h to Include/ (from $src)"
     }
 }
@@ -2604,6 +2615,7 @@ Export-ModuleMember -Function @(
     'Enter-VsDevCmdEnvironment',
     'Get-MsvcToolsRoot',
     'Copy-CpythonPyConfigHeader',
+    'Copy-SourceBuildFileIfAbsent',
     'Select-CpythonImportLib',
     'Get-CpythonFreeThreadedRoot',
     'Get-CpythonFreeThreadedExeName',

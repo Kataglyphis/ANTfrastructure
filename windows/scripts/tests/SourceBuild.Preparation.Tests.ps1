@@ -37,6 +37,22 @@ function Assert-SourceCachePreparation {
     }
 }
 
+function Assert-SourceBuildCopyIfAbsent {
+    Invoke-InTestDir -Files @{
+        'source/present.txt' = 'new source bytes'
+        'destination/existing.txt' = 'keep destination bytes'
+    } -Body { param($dir)
+        $source = Join-Path $dir 'source/present.txt'
+        $destination = Join-Path $dir 'destination/copied.txt'
+        $existing = Join-Path $dir 'destination/existing.txt'
+        Assert-True (Copy-MutSourceBuildFileIfAbsent -SourcePath $source -DestinationPath $destination) 'a present source is copied to an absent destination'
+        Assert-Equal 'new source bytes' ([IO.File]::ReadAllText($destination))
+        Assert-False (Copy-MutSourceBuildFileIfAbsent -SourcePath (Join-Path $dir missing.txt) -DestinationPath (Join-Path $dir destination/missing.txt)) 'a missing source is a no-op'
+        Assert-False (Copy-MutSourceBuildFileIfAbsent -SourcePath $source -DestinationPath $existing) 'an existing destination is preserved'
+        Assert-Equal 'keep destination bytes' ([IO.File]::ReadAllText($existing)) 'copying never overwrites an existing destination'
+    }
+}
+
 function Assert-PortableZipPreparation {
     param($State)
     Invoke-InTestDir -Body { param($dir)
@@ -387,6 +403,10 @@ Describe 'Shared source-build preparation' {
     $patchModule = Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1'
     $patchPrelude = "Import-Module '$($patchModule.Replace("'", "''"))' -ErrorAction Stop"
     $scenarios = @(
+        @{ Name = 'copies source-build files only when the source exists and destination is absent'
+            FunctionName = @('Copy-SourceBuildFileIfAbsent'); Body = { Assert-SourceBuildCopyIfAbsent }; Mutation = @(
+                @{ Find = 'if ((Test-Path $SourcePath) -and -not (Test-Path $DestinationPath)) {'; Replace = 'if (Test-Path $SourcePath) {'; Expected = 'an existing destination is preserved' }
+            ) }
         @{ Name = 'gates compiler caching on remote configuration plus an executable and preserves the caller job limit'
             FunctionName = @('Get-SourceBuildSccache'); Body = { Assert-SourceCachePreparation }; Mutation = @(
                 @{ Find = 'if (-not $RemoteConfigured) { return $null }'; Replace = ''; Expected = 'remote backend is required' }
@@ -533,5 +553,14 @@ Describe 'Shared source-build preparation' {
                 Invoke-TestFunctionMutations @recipe -IncludeControl
             }
         }
+    }
+
+    It 'uses the shared copy-if-absent operation while keeping each caller diagnostic local' {
+        $graft = @(Get-TestScriptCommands -ScriptPath 'windows/scripts/build/Export-LitertLmBridge.ps1' -Name Copy-SourceBuildFileIfAbsent)
+        Assert-Equal 1 $graft.Count
+        $pyconfig = @(Get-TestScriptCommands -ScriptPath 'windows/scripts/modules/WindowsSourceBuild.Common.psm1' -Name Copy-SourceBuildFileIfAbsent)
+        Assert-Equal 1 $pyconfig.Count
+        Assert-Match 're-homed' ([IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/build/Export-LitertLmBridge.ps1')))
+        Assert-Match 'Copied pyconfig.h' ([IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Common.psm1')))
     }
 }

@@ -10,7 +10,8 @@ Describe 'Invoke-CodeQLProcess' {
     }
 
     It 'kills the process tree and throws when the budget runs out' {
-        { Invoke-CodeQLProcess -CodeQLExe 'pwsh' -Arguments @('-NoProfile', '-Command', 'Start-Sleep -Seconds 30') -Phase 'test' -TimeoutMinutes 0 } |
-            Should -Throw '*did not finish within 0 min*'
+        Assert-Throws -MessagePattern 'did not finish within 0 min' -Body {
+            Invoke-CodeQLProcess -CodeQLExe 'pwsh' -Arguments @('-NoProfile', '-Command', 'Start-Sleep -Seconds 30') -Phase 'test' -TimeoutMinutes 0
+        }
     }
 }

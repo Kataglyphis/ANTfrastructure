@@ -46,8 +46,8 @@ Describe 'WindowsWebDav.Common' {
 
     It 'refuses a ref that is not a full commit sha' {
       # A branch name would install whatever that branch was that day.
-      { Get-WebDavClientRequirement -Ref 'main' } | Should -Throw
-      { Get-WebDavClientRequirement -Ref 'fa9cb69' } | Should -Throw
+      Assert-Throws -MessagePattern 'Ref' -Body { Get-WebDavClientRequirement -Ref 'main' }
+      Assert-Throws -MessagePattern 'Ref' -Body { Get-WebDavClientRequirement -Ref 'fa9cb69' }
     }
   }
 }

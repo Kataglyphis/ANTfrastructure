@@ -118,8 +118,10 @@ Describe 'WindowsRepoHygiene.Common' {
 
       @(& git -C $repo ls-files -- '**/__pycache__/' 'build*/').Count | Should -Be 0
       foreach ($dead in '**/__pycache__/', 'build*/', ':(glob)**/__pycache__/', 'pkg/__pycache?/') {
-        { Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('logs/', $dead) } |
-          Should -Throw -ExpectedMessage "*matches no file: $dead. Write '$dead*'.*"
+        $pattern = 'matches no file: {0}\. Write ''{0}\*''\.' -f [regex]::Escape($dead)
+        Assert-Throws -MessagePattern $pattern -Body {
+          Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('logs/', $dead)
+        }
       }
       (@(Get-TrackedGeneratedArtifact -RepoRoot $repo -Pattern @('**/__pycache__/*', 'build*/*', 'pkg/__pycache__/')) -join ',') |
         Should -Be 'build-x/out.o,pkg/__pycache__/m.pyc'

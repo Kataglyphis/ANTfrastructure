@@ -16,19 +16,20 @@ param(
     [string]$TempDir = 'C:\temp',
     [string]$InstallDir = 'C:\runtime\lavapipe',
     [string]$TargetArch = '',
-    [string]$ScriptDir = ''
+    [string]$ScriptDir = '',
+    [string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$containerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
-if (-not (Test-Path $containerModulePath)) { throw "Required module not found: $containerModulePath" }
+$bootstrapModulePath = Join-Path $ModuleRoot 'modules\WindowsContainerImage.Bootstrap.psm1'
+Import-Module $bootstrapModulePath -Force
+$containerModulePath = Resolve-ContainerImageModulePath -ModuleRoot $ModuleRoot -Name 'WindowsContainerImage.Common.psm1'
 Import-Module $containerModulePath -Force
-$targetArchModulePath = Join-Path $scriptAssetRoot 'modules\WindowsTargetArch.Common.psm1'
-if ((Test-Path $targetArchModulePath) -and -not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchModulePath }
+$targetArchModulePath = Resolve-ContainerImageModulePath -ModuleRoot $ModuleRoot -Name 'WindowsTargetArch.Common.psm1' -Optional
+if ($targetArchModulePath -and -not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module $targetArchModulePath }
 
 # Import-Versions fills the process env from versions.env unless a build-arg already set it.
 if ($ScriptDir) { & (Join-Path $ScriptDir 'Import-Versions.ps1') }

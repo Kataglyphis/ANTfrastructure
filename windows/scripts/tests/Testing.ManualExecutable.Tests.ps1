@@ -54,8 +54,9 @@ Describe 'Invoke-ManualTestExecutable' {
             Mock -ModuleName 'WindowsTesting.Common' Write-BuildLogWarning { }
 
             Invoke-InTestDir -Prefix 'wtc-' -Files @{ 'x.exe' = "x$([Environment]::NewLine)" } -Body { param($root)
-                { Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'x.exe' } |
-                    Should -Throw
+                Assert-Throws -MessagePattern 'exit code 1' -Body {
+                    Invoke-ManualTestExecutable -Context ([pscustomobject]@{}) -BuildRoot $root -ExecutableName 'x.exe'
+                }
             }
         }
     }

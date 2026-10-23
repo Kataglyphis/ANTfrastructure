@@ -119,8 +119,7 @@ function Invoke-LiteRtLmSupportGraft {
     )
     foreach ($r in $relocations) {
         $from = Join-Path $SourceDir $r.From; $to = Join-Path $SourceDir $r.To
-        if ((Test-Path $from) -and -not (Test-Path $to)) {
-            Copy-Item $from $to -Force
+        if (Copy-SourceBuildFileIfAbsent -SourcePath $from -DestinationPath $to) {
             Write-Host "[LiteRTLM-winfix support-graft] re-homed $($r.From) -> $($r.To)"
         }
     }

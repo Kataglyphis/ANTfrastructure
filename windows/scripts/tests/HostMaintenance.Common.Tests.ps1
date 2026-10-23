@@ -58,7 +58,7 @@ function Invoke-HostMaintenanceFunctionMutations {
         [Parameter(Mandatory)][string[]]$FunctionName,
         [Parameter(Mandatory)][object[]]$Case,
         [Parameter(Mandatory)][scriptblock]$Body,
-        [scriptblock]$Prelude,
+        [string]$Prelude,
         [object]$FixtureState
     )
     $moduleArguments = @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1'; FunctionName = $FunctionName }

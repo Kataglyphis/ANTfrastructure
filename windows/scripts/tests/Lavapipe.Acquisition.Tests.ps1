@@ -119,7 +119,8 @@ Describe 'Shared lavapipe acquisition' {
     }
 
     It 'requires both loader binaries and detects dropping vulkaninfo' {
-        Invoke-LavapipeAcquisitionFixture -Find "@('vulkan-1.dll', 'vulkaninfo.exe')" -Replace "@('vulkan-1.dll')" -Expected 'both loader binaries are required'
+        Invoke-LavapipeAcquisitionFixture -Find "@('vulkan-1.dll', 'vulkaninfo.exe')" -Replace "@('vulkan-1.dll')" `
+            -Expected 'vulkaninfo\.exe is missing after the unpack|both loader binaries are required'
     }
 
     It 'cleans literal archive names and detects wildcard cleanup' {

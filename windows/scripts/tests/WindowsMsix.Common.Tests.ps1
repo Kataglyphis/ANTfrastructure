@@ -35,8 +35,9 @@ Describe 'WindowsMsix.Common' {
     It 'throws when an explicit override path does not exist' {
       Mock -ModuleName WindowsMsix.Common -CommandName Test-Path { return $false }
 
-      { Resolve-WindowsSdkToolPath -ToolName 'signtool.exe' -OverridePath 'C:\does\not\exist.exe' } |
-        Should -Throw -ExpectedMessage '*does not exist*'
+      Assert-Throws -MessagePattern 'does not exist' -Body {
+        Resolve-WindowsSdkToolPath -ToolName 'signtool.exe' -OverridePath 'C:\does\not\exist.exe'
+      }
     }
   }
 
@@ -99,10 +100,16 @@ Describe 'WindowsMsix.Common' {
 
     It 'throws with -Required instead of falling back to the default' {
       Invoke-InTestDir { param($ws)
-        { Get-PackageVersion -WorkspacePath $ws -Required } | Should -Throw -ExpectedMessage '*no version in*VERSION.txt*refuses the 0.0.1.0 fallback*'
-        { Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Required } | Should -Throw -ExpectedMessage '*no version in*pubspec.yaml*'
+        Assert-Throws -MessagePattern 'no version in.*VERSION\.txt.*refuses the 0\.0\.1\.0 fallback' -Body {
+          Get-PackageVersion -WorkspacePath $ws -Required
+        }
+        Assert-Throws -MessagePattern 'no version in.*pubspec\.yaml' -Body {
+          Get-PackageVersion -WorkspacePath $ws -VersionFile 'pubspec.yaml' -Required
+        }
         Write-TestFileTree -Root $ws -Files @{ 'Cargo.toml' = (ConvertTo-TestFileText -Line @('[package]', 'version.workspace = true')) }
-        { Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required } | Should -Throw -ExpectedMessage '*no version in*Cargo.toml*'
+        Assert-Throws -MessagePattern 'no version in.*Cargo\.toml' -Body {
+          Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' -Required
+        }
         Get-PackageVersion -WorkspacePath $ws -VersionFile 'Cargo.toml' | Should -Be '0.0.1.0'
       }
     }
@@ -153,10 +160,11 @@ Describe 'WindowsMsix.Common' {
       # Without this check the lane goes green and the artifact upload finds no file.
       $ws = Join-Path $script:tmp 'pkg2'
 
-      { Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $ws 'staging') `
+      Assert-Throws -MessagePattern 'produced no package' -Body {
+        Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir (Join-Path $ws 'staging') `
           -ManifestTemplatePath $script:bareTemplate -OutputPath (Join-Path $ws 'out\nothing.msix') `
-          -TokenMap @{} -GenerateTransparentLogos -InvokerScriptBlock { } } |
-        Should -Throw -ExpectedMessage '*produced no package*'
+          -TokenMap @{} -GenerateTransparentLogos -InvokerScriptBlock { }
+      }
     }
 
     # The certificate lives at the repository root, which only the caller knows.
@@ -164,11 +172,12 @@ Describe 'WindowsMsix.Common' {
       # Before the template is read, whose absence would otherwise be the error.
       $staging = Join-Path $script:tmp 'unrooted\staging'
 
-      { Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging `
+      Assert-Throws -MessagePattern '-SigningRoot' -Body {
+        Invoke-MsixPackage -Context ([pscustomobject]@{}) -StagingDir $staging `
           -ManifestTemplatePath (Join-Path $script:tmp 'no-such-template.xml') `
           -OutputPath (Join-Path $script:tmp 'unrooted\app.msix') `
-          -TokenMap @{} -Sign -InvokerScriptBlock $script:fakeMakeappx } |
-        Should -Throw -ExpectedMessage '*-SigningRoot*'
+          -TokenMap @{} -Sign -InvokerScriptBlock $script:fakeMakeappx
+      }
       Test-Path -LiteralPath $staging | Should -BeFalse -Because 'the check runs before any work'
     }
 
@@ -192,14 +201,14 @@ Describe 'WindowsMsix.Common' {
         OutputPath = (Join-Path $build 'app.msix'); TokenMap = @{}; GenerateTransparentLogos = $true; SigningRoot = $build
         InvokerScriptBlock = $script:fakeMakeappx; RequireSignature = $true; SignerSubject = 'CN=Pub' }
       Mock -ModuleName WindowsMsix.Common -CommandName Get-AuthenticodeSignature { [pscustomobject]@{ SignerCertificate = $null } }
-      { Invoke-MsixPackage @package } | Should -Throw -ExpectedMessage '*app.msix is not signed*'
+      Assert-Throws -MessagePattern 'app\.msix is not signed' -Body { Invoke-MsixPackage @package }
       Should -Invoke -ModuleName WindowsMsix.Common -CommandName Invoke-MsixSign -Times 1 -Exactly
       Mock -ModuleName WindowsMsix.Common -CommandName Get-AuthenticodeSignature { [pscustomobject]@{ SignerCertificate = [pscustomobject]@{ Subject = 'CN=Other' } } }
-      { Invoke-MsixPackage @package } | Should -Throw -ExpectedMessage '*signed by CN=Other, not CN=Pub'
+      Assert-Throws -MessagePattern 'signed by CN=Other, not CN=Pub' -Body { Invoke-MsixPackage @package }
       Mock -ModuleName WindowsMsix.Common -CommandName Get-AuthenticodeSignature { [pscustomobject]@{ SignerCertificate = [pscustomobject]@{ Subject = 'CN=Pub' } } }
       Invoke-MsixPackage @package | Should -Be $package.OutputPath
       $package.Remove('SigningRoot')
-      { Invoke-MsixPackage @package } | Should -Throw -ExpectedMessage '*-SigningRoot*'
+      Assert-Throws -MessagePattern '-SigningRoot' -Body { Invoke-MsixPackage @package }
     }
   }
 
@@ -247,26 +256,29 @@ Describe 'WindowsMsix.Common' {
     }
 
     It 'throws when wix build reports success and writes nothing' {
-      { Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\none.msi') -InvokerScriptBlock { } } |
-        Should -Throw -ExpectedMessage '*wix reported success but produced no package*'
+      Assert-Throws -MessagePattern 'wix reported success but produced no package' -Body {
+        Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\none.msi') -InvokerScriptBlock { }
+      }
     }
 
     It 'names the missing input before it runs anything' {
       $script:wixCall = $null
-      { Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\x.msi') -LicenseFile 'C:\no\License.rtf' } |
-        Should -Throw -ExpectedMessage '*the license*'
+      Assert-Throws -MessagePattern 'the license' -Body {
+        Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\x.msi') -LicenseFile 'C:\no\License.rtf'
+      }
       $script:wixCall | Should -BeNullOrEmpty
     }
 
     It 'refuses a payload list without a fragment path' {
-      { Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\y.msi') -PayloadFiles @([pscustomobject]@{ Source = 'a'; Subdirectory = '' }) } |
-        Should -Throw -ExpectedMessage '*-FragmentPath*'
+      Assert-Throws -MessagePattern '-FragmentPath' -Body {
+        Invoke-MsiPackage @script:msiArgs -OutFile (Join-Path $script:tmp 'msi-out\y.msi') -PayloadFiles @([pscustomobject]@{ Source = 'a'; Subdirectory = '' })
+      }
     }
   }
 
   Context 'Resolve-WixExe' {
     It 'throws when an explicit path does not exist' {
-      { Resolve-WixExe -OverridePath 'C:\does\not\wix.exe' } | Should -Throw -ExpectedMessage '*does not exist*'
+      Assert-Throws -MessagePattern 'does not exist' -Body { Resolve-WixExe -OverridePath 'C:\does\not\wix.exe' }
     }
 
     It 'takes wix.exe from $env:WIX before PATH' {

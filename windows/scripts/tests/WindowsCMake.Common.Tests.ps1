@@ -7,8 +7,7 @@ Describe 'WindowsCMake.Common' {
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsCMake.Common.psm1'
     Import-Module $modulePath -Force
 
-    $script:buildRoot = (New-Item -ItemType Directory `
-        -Path (Join-Path $env:TEMP ('cmake-common-' + (Get-Random))) -Force).FullName
+    $script:buildRoot = New-TestDir -Prefix 'cmake-common-'
   }
 
   AfterAll {
@@ -20,8 +19,9 @@ Describe 'WindowsCMake.Common' {
       # An unscoped mock never reaches Test-Path inside the module, so the test would hit the real filesystem.
       Mock -ModuleName WindowsCMake.Common -CommandName Test-Path { return $false }
 
-      { Get-CompileCommandsDatabase -Context ([pscustomobject]@{ }) -BuildRoot $script:buildRoot } |
-        Should -Throw -ExpectedMessage '*compile_commands.json not found*'
+      Assert-Throws -MessagePattern 'compile_commands\.json not found' -Body {
+        Get-CompileCommandsDatabase -Context ([pscustomobject]@{ }) -BuildRoot $script:buildRoot
+      }
     }
 
     It 'returns the existing compile_commands.json when present' {
@@ -54,22 +54,26 @@ Describe 'WindowsCMake.Common' {
   Context 'Get-SanitizerRuntimeDlls' {
     It 'stages the runtime Get-AsanRuntimeDirs selects, not clang-cl-on-PATH' {
       # Sanitizers.cmake links Microsoft's ASan runtime; staging LLVM's DLL fails every tool with STATUS_ENTRYPOINT_NOT_FOUND.
-      $fakeDir = Join-Path ([System.IO.Path]::GetTempPath()) ("kataglyphis-asan-fake-" + $PID)
-      $null = New-Item -ItemType Directory -Path $fakeDir -Force
+      $fakeDir = New-TestDir -Prefix 'kataglyphis-asan-fake-'
       $fakeDll = Join-Path $fakeDir 'clang_rt.asan_dynamic-x86_64.dll'
       Set-Content -Path $fakeDll -Value 'x'
 
       try {
-        InModuleScope WindowsCMake.Common {
-          $dir = Join-Path ([System.IO.Path]::GetTempPath()) ("kataglyphis-asan-fake-" + $PID)
-          Mock Get-AsanRuntimeDirs { @($dir) }
+        InModuleScope WindowsCMake.Common -Parameters @{ FixtureDir = $fakeDir } -ScriptBlock {
+          param($FixtureDir)
+          $script:asanFixtureDir = $FixtureDir
+          try {
+            Mock Get-AsanRuntimeDirs { @($script:asanFixtureDir) }
 
-          $result = @(Get-SanitizerRuntimeDlls)
-          $result.Count | Should -Be 1
-          $result[0].FullName | Should -Be (Join-Path $dir 'clang_rt.asan_dynamic-x86_64.dll')
+            $result = @(Get-SanitizerRuntimeDlls)
+            $result.Count | Should -Be 1
+            $result[0].FullName | Should -Be (Join-Path $FixtureDir 'clang_rt.asan_dynamic-x86_64.dll')
+          } finally {
+            Remove-Variable -Name asanFixtureDir -Scope Script -ErrorAction SilentlyContinue
+          }
         }
       } finally {
-        Remove-Item -LiteralPath $fakeDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-TestDir -Path $fakeDir
       }
     }
 

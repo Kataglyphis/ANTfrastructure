@@ -183,17 +183,12 @@ Describe 'Assert-SccacheEndpoint' {
         Assert-True $true 'a deliberate cache-less build passes without an endpoint'
     }
 
-    It 'media without an endpoint throws with the one-time host setup hint' {
-        Assert-Throws { Assert-SccacheEndpoint -Stages @('media') -SccacheEndpoint '' } `
-            -MessagePattern 'scoop install dufs' `
-            'the failure must carry the dufs setup recipe, not just "missing endpoint"'
-    }
-
-    It 'media with an unreachable endpoint throws naming the endpoint (closed localhost port)' {
-        # Nothing listens on 127.0.0.1:1, so the probe is refused without touching the network.
-        Assert-Throws { Assert-SccacheEndpoint -Stages @('media') -SccacheEndpoint 'http://127.0.0.1:1' } `
-            -MessagePattern 'not reachable' `
-            'a dead endpoint must fail the gate before hours of uncached compiling'
+    It 'media endpoint <Scenario> fails with its required diagnostic' -ForEach @(
+        @{ Scenario = 'missing'; Endpoint = ''; Pattern = 'scoop install dufs'; Why = 'the failure must carry the dufs setup recipe, not just "missing endpoint"' }
+        @{ Scenario = 'unreachable at a closed localhost port'; Endpoint = 'http://127.0.0.1:1'; Pattern = 'not reachable'; Why = 'a dead endpoint must fail the gate before hours of uncached compiling' }
+    ) {
+        Assert-Throws { Assert-SccacheEndpoint -Stages @('media') -SccacheEndpoint $Endpoint } `
+            -MessagePattern $Pattern $Why
     }
 }
 

@@ -180,7 +180,7 @@ Describe 'Resolve-PythonLegList and Get-NativeWheelCheck (New-Arm64PythonTestSta
 
     It 'shares comma and whitespace parsing across wheel legs and staged inputs' {
         Assert-Equal 'tests/unit|pytest.ini|setup.cfg' ((Split-PythonCiList -Value 'tests/unit, pytest.ini  setup.cfg') -join '|') 'separators and repeated whitespace'
-        Assert-Equal 0 @(Split-PythonCiList -Value ' ,  ') 'blank entries are dropped'
+        Assert-Equal 0 (@(Split-PythonCiList -Value ' ,  ').Count) 'blank entries are dropped'
     }
 
     It 'reads empty as the pinned X.Y, pinned and pinnedt as it and its twin, and either separator' {

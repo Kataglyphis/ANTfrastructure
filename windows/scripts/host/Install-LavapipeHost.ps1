@@ -15,19 +15,18 @@
 #>
 param(
     [string]$ToolDir = (Join-Path ($env:RUNNER_TEMP ?? [IO.Path]::GetTempPath()) 'lavapipe'),
-    [ValidateSet('', 'amd64', 'arm64')][string]$Arch = ''
+    [ValidateSet('', 'amd64', 'arm64')][string]$Arch = '',
+    [string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$containerModulePath = Join-Path $scriptAssetRoot 'modules\WindowsContainerImage.Common.psm1'
-if (-not (Test-Path $containerModulePath)) { throw "Required module not found: $containerModulePath" }
+$bootstrapModulePath = Join-Path $ModuleRoot 'modules\WindowsContainerImage.Bootstrap.psm1'
+Import-Module $bootstrapModulePath -Force
+$containerModulePath = Resolve-ContainerImageModulePath -ModuleRoot $ModuleRoot -Name 'WindowsContainerImage.Common.psm1'
 Import-Module $containerModulePath -Force
-$sharedModulePath = Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1'
-if ((Test-Path $sharedModulePath) -and -not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedModulePath }
 
 if (-not $Arch) {
     $Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
@@ -37,7 +36,7 @@ if (-not $Arch) {
     }
 }
 
-$hubRoot = Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent
+$hubRoot = Split-Path (Split-Path $ModuleRoot -Parent) -Parent
 $versionsPath = Join-Path $hubRoot 'linux\scripts\01-core\versions.env'
 if (-not (Test-Path -LiteralPath $versionsPath)) { throw "Install-LavapipeHost: no versions.env at $versionsPath" }
 $pins = ConvertFrom-VersionsEnv -Path $versionsPath
