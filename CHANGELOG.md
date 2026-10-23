@@ -12,6 +12,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — repair Linux baselines for Windows batch fixtures
+
+- Keep ASCII/CRLF, argument and exit-line assertions active on every host while exercising native batch execution on Windows.
+- Prevent Linux from sending `.cmd` fixture files through its desktop opener; retain every test and mutation check.
+
 ## 2026-10-23 — continue Windows source and workspace cleanup
 
 - Remove three private ROCm suite path resolvers in favor of the shared source reader and isolated script workspace.

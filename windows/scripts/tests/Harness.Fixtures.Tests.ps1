@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Local filesystem and exception fixtures cover harness contracts, not Windows tools or image builds.
+# Byte and lifecycle probes run on every host; native batch quoting and exit semantics require Windows.
 
 Describe 'Harness fixture lifecycle' {
     It 'creates unique directories with the existing default prefix' {
@@ -69,11 +69,16 @@ Describe 'Native batch fixtures' {
             $path = New-TestBatchTool -Directory (Join-Path $dir 'missing parent') -Name 'fixture tool.cmd' -Line $lines -ExitCode 7
             $expected = "@echo off`r`necho ARG1=[%~1] ARG2=[%~2]`r`nexit /b 7`r`n"
             Assert-Equal ([Convert]::ToHexString([Text.Encoding]::ASCII.GetBytes($expected))) ([Convert]::ToHexString([IO.File]::ReadAllBytes($path)))
-            Assert-Match 'ARG1=\[a b\] ARG2=\[second value\]' ((& $path 'a b' 'second value') | Out-String)
-            Assert-Equal 7 $global:LASTEXITCODE
+            if ($IsWindows) {
+                Assert-Match 'ARG1=\[a b\] ARG2=\[second value\]' ((& $path 'a b' 'second value') | Out-String)
+                Assert-Equal 7 $global:LASTEXITCODE
+            }
             $early = New-TestBatchTool -Directory $dir -Name early.cmd -Line 'exit /b 3' -ExitCode 7
-            & $early
-            Assert-Equal 3 $global:LASTEXITCODE 'caller branches can override the appended fallback'
+            Assert-Equal "@echo off`r`nexit /b 3`r`nexit /b 7`r`n" ([IO.File]::ReadAllText($early))
+            if ($IsWindows) {
+                & $early
+                Assert-Equal 3 $global:LASTEXITCODE 'caller branches can override the appended fallback'
+            }
         }
     }
 
@@ -86,10 +91,14 @@ Describe 'Native batch fixtures' {
                 -Case $fault -Body {
                     Invoke-InTestDir { param($dir)
                         $path = New-MutTestBatchTool -Directory $dir -Name fail.cmd -Line 'echo caller-marker' -ExitCode 7
-                        $output = (& $path) | Out-String
-                        $code = $global:LASTEXITCODE
-                        Assert-Match caller-marker $output
-                        Assert-Equal 7 $code
+                        Assert-Match '(?m)^echo caller-marker\r?$' ([IO.File]::ReadAllText($path))
+                        Assert-Equal 'exit /b 7' ([IO.File]::ReadAllLines($path)[-1])
+                        if ($IsWindows) {
+                            $output = (& $path) | Out-String
+                            $code = $global:LASTEXITCODE
+                            Assert-Match caller-marker $output
+                            Assert-Equal 7 $code
+                        }
                     }
                 }
         }

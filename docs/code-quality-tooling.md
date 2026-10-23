@@ -554,6 +554,10 @@ scan coverage requires explicit owner authorization. Existing rationales explain
 current debt; they do not authorize more. Remove an entry when its finding is fixed.
 A duplication report may identify shared syntax rather than shared behavior; inspect
 `--explain` before extracting a helper, and keep any remaining exception narrowly scoped.
+The Windows harness also runs as Linux mutation baselines. Its batch-tool tests
+assert exact ASCII/CRLF artifacts and mutation-sensitive lines on every host;
+only Windows executes the emitted `.cmd` files. A Linux desktop-opener failure
+cannot replace a valid baseline or count as a killed mutation.
 
 The cleanup separates SBOM construction and comparison, Python extraction, package-index
 fetching, dependency dispatch, option parsing and smoke probes from their drivers. Shared
