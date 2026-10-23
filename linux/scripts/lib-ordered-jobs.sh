@@ -62,7 +62,8 @@ _oj_restore_signal() {
 }
 
 _oj_wait_gone() {
-  local target="$1" deadline=$((SECONDS + $2))
+  local target="$1" deadline
+  deadline=$((SECONDS + $2))
   while kill -0 -- "${target}" 2>/dev/null; do
     [ "${SECONDS}" -lt "${deadline}" ] || return 1
     sleep 0.01
@@ -138,7 +139,8 @@ _oj_spawn_command() {
 }
 
 _oj_start_watchdog() {
-  local index="$1" end=$((SECONDS + OJ_TIMEOUT))
+  local index="$1" end
+  end=$((SECONDS + OJ_TIMEOUT))
   OJ_LAUNCHING=1
   set -m
   (

@@ -68,7 +68,7 @@ t_case "interruption during PGID publication cannot leave a supervising worker o
 mkfifo "${_WORK}/release"
 exec {release_fd}<>"${_WORK}/release"
 cat > "${_WORK}/barrier.sh" <<'BASH'
-if [ -z "${REAP_FIXTURE_OWNER:-}" ]; then export REAP_FIXTURE_OWNER=$BASHPID; fi
+if [ -z "${REAP_FIXTURE_OWNER:-}" ]; then REAP_FIXTURE_OWNER=$BASHPID; export REAP_FIXTURE_OWNER; fi
 printf() {
   local caller_pid=$BASHPID target
   target="$(readlink "/proc/$caller_pid/fd/1" 2>/dev/null || true)"
@@ -88,6 +88,8 @@ kill() {
 }
 BASH
 _suite test-d-race.sh "sleep 300 & echo \$! > '${_WORK}/race.pid'; wait"
+REAP_FIXTURE_OWNER=""
+export REAP_FIXTURE_OWNER
 _launch_runner "${_WORK}/race.out" REAP_FIXTURE_ROOT="${_WORK}" BASH_ENV="${_WORK}/barrier.sh"
 _require_file "${_WORK}/publication.ready"
 kill -TERM "$runner"
