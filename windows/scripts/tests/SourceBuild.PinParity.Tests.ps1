@@ -83,6 +83,59 @@ function Get-CanonicalPins {
     }
     return (ConvertFrom-VersionsEnv -Path $envPath)
 }
+function Get-KnownPinSiteMap {
+    param([object[]]$Sites, [scriptblock]$ResolveKey)
+    $found = @{}
+    foreach ($site in $Sites) {
+        $key = & $ResolveKey $site
+        if ($null -ne $key) { $found["$($site.Script)|$key"] = $true }
+    }
+    return $found
+}
+
+# Every scanner must reject unmapped sites and stale exceptions through the same checks.
+function Assert-PinSiteMapping {
+    param([object[]]$Sites, [string[]]$Allow, [scriptblock]$ResolveKey,
+        [scriptblock]$SiteId, [scriptblock]$DescribeUnknown, [string]$Label)
+    $seenAllow = @{}
+    $unknown = @()
+    foreach ($site in $Sites) {
+        if ($null -ne (& $ResolveKey $site)) { continue }
+        $id = & $SiteId $site
+        if ($Allow -contains $id) { $seenAllow[$id] = $true; continue }
+        $unknown += & $DescribeUnknown $site
+    }
+    Assert-True ($unknown.Count -eq 0) ("unmapped $Label site(s) - hardcoded values must not bypass the canonical pins:`n  " + ($unknown -join "`n  "))
+    foreach ($id in $Allow) {
+        Assert-True $seenAllow.ContainsKey($id) "stale allowlist entry [$id]: no such call site exists anymore - remove it"
+    }
+}
+
+function Get-PinDefaultMismatch {
+    param($Site, [string]$Key, [string]$Expected, [string]$Note = '',
+        [ValidateSet('None', 'Single', 'All')][string]$TrimMode = 'None', [string]$Hint)
+    if (-not $Site.DefaultIsLiteral) {
+        return "$($Site.Script):$($Site.Line): -DefaultValue for $Key is not a string literal ($($Site.Default)) - parity cannot be verified statically; use a literal"
+    }
+    $actual = $Site.Default
+    $comparedExpected = $Expected
+    switch ($TrimMode) {
+        Single {
+            $comparedExpected = $comparedExpected -replace '^v', ''
+            $actual = $actual -replace '^v', ''
+            $Note = " (compared after StripVPrefix: '$actual' vs '$comparedExpected')"
+        }
+        All {
+            $comparedExpected = $comparedExpected.TrimStart('v')
+            $actual = $actual.TrimStart('v')
+            $Note += " (compared after TrimVPrefix: '$actual' vs '$comparedExpected')"
+        }
+    }
+    if ($actual -cne $comparedExpected) {
+        return "$($Site.Script):$($Site.Line): -DefaultValue '$($Site.Default)' != versions.env ${Key}=$Expected$Note - $Hint"
+    }
+}
+
 Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' {
 
     function Get-PinParityPins { return (Get-CanonicalPins -Label 'PinParity') }
@@ -145,10 +198,9 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
 
     It 'still discovers every known (script, key) pin site - scanner-rot guard' {
         $pins = Get-PinParityPins
-        $found = @{}
-        foreach ($s in @(Get-PinParitySite)) {
-            $key = Resolve-PinParityKey -Site $s -Pins $pins
-            if ($null -ne $key) { $found["$($s.Script)|$key"] = $true }
+        $found = Get-KnownPinSiteMap -Sites @(Get-PinParitySite) -ResolveKey { param($site)
+            $resolved = Resolve-PinParityKey -Site $site -Pins $pins
+            if ($null -ne $resolved) { $resolved }
         }
         foreach ($expected in @(
                 # TVM_COMMIT wins key resolution; the default itself is compared against TVM_REF.
@@ -177,24 +229,12 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         foreach ($s in @(Get-PinParitySite)) {
             $key = Resolve-PinParityKey -Site $s -Pins $pins
             if ($null -eq $key) { continue }   # handled by the unknown-site guard below
-            if (-not $s.DefaultIsLiteral) {
-                $failures += "$($s.Script):$($s.Line): -DefaultValue for $key is not a string literal ($($s.Default)) - parity cannot be verified statically; use a literal"
-                continue
-            }
             $defaultKey = Resolve-DefaultValueKey -Site $s -ResolvedKey $key
-            $expected = [string]$pins[$defaultKey]
-            $cmpExpected = $expected
-            $cmpActual = $s.Default
             $note = if ($defaultKey -ne $key) { " (DefaultValue is the $defaultKey tag fallback, not the $key commit override)" } else { '' }
-            if ($s.StripV) {
-                # The script strips the leading v from whichever value wins.
-                $cmpExpected = $cmpExpected -replace '^v', ''
-                $cmpActual = $cmpActual -replace '^v', ''
-                $note = " (compared after StripVPrefix: '$cmpActual' vs '$cmpExpected')"
-            }
-            if ($cmpActual -cne $cmpExpected) {
-                $failures += "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $defaultKey=$expected$note - update the script default (and any twin site) to the canonical pin"
-            }
+            $finding = Get-PinDefaultMismatch -Site $s -Key $defaultKey -Expected ([string]$pins[$defaultKey]) -Note $note `
+                -TrimMode $(if ($s.StripV) { 'Single' } else { 'None' }) `
+                -Hint 'update the script default (and any twin site) to the canonical pin'
+            if ($finding) { $failures += $finding }
         }
         Assert-True ($failures.Count -eq 0) ("hardcoded default(s) drifted from versions.env:`n  " + ($failures -join "`n  "))
     }
@@ -202,20 +242,10 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
     It 'unknown-site guard: every site maps to a versions.env key or the explicit non-version allowlist' {
         $pins = Get-PinParityPins
         $allow = @(Get-PinParityAllowlist)
-        $seenAllow = @{}
-        $unknown = @()
-        foreach ($s in @(Get-PinParitySite)) {
-            $key = Resolve-PinParityKey -Site $s -Pins $pins
-            if ($null -ne $key) { continue }
-            $id = "$($s.Script)|$(@($s.EnvVars) -join ',')"
-            if ($allow -contains $id) { $seenAllow[$id] = $true; continue }
-            $unknown += "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' resolves via [$(@($s.EnvVars) -join ', ')] and none is a versions.env key - add the pin to versions.env, or (non-version values ONLY) extend Get-PinParityAllowlist in this suite"
-        }
-        Assert-True ($unknown.Count -eq 0) ("unmapped -DefaultValue site(s) - hardcoded values must not bypass the canonical pins:`n  " + ($unknown -join "`n  "))
-        # Keep the allowlist honest: a vanished site means a stale entry.
-        foreach ($id in $allow) {
-            Assert-True $seenAllow.ContainsKey($id) "stale allowlist entry [$id]: no such call site exists anymore - remove it"
-        }
+        Assert-PinSiteMapping -Sites @(Get-PinParitySite) -Allow $allow -Label '-DefaultValue' `
+            -ResolveKey { param($site) Resolve-PinParityKey -Site $site -Pins $pins } `
+            -SiteId { param($site) "$($site.Script)|$(@($site.EnvVars) -join ',')" } `
+            -DescribeUnknown { param($site) "$($site.Script):$($site.Line): -DefaultValue '$($site.Default)' resolves via [$(@($site.EnvVars) -join ', ')] and none is a versions.env key - add the pin to versions.env, or (non-version values ONLY) extend Get-PinParityAllowlist in this suite" }
     }
 
     It 'LITERT_VERSION twin defaults (Build-LitertFromSource.ps1 + Export-LitertLmBridge.ps1) both equal the canonical tag' {
@@ -307,10 +337,9 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
 
     It 'still discovers every known (script, env var) Resolve-ContainerImageValue pin site - scanner-rot guard' {
         $pins = Get-RcivPins
-        $found = @{}
-        foreach ($s in @(Get-RcivSite)) {
-            $resolved = Resolve-RcivExpected -Site $s -Pins $pins
-            if ($null -ne $resolved) { $found["$($s.Script)|$($resolved.Key)"] = $true }
+        $found = Get-KnownPinSiteMap -Sites @(Get-RcivSite) -ResolveKey { param($site)
+            $resolved = Resolve-RcivExpected -Site $site -Pins $pins
+            if ($null -ne $resolved) { $resolved.Key }
         }
         foreach ($expected in @(
                 'Install-ScoopTools.ps1|GIT_VERSION',
@@ -330,22 +359,10 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
             $resolved = Resolve-RcivExpected -Site $s -Pins $pins
             if ($null -eq $resolved) { continue }   # handled by the unknown-site guard below
             if ($knownIds -contains "$($s.Script)|$($s.EnvVar)") { continue }   # handled by the pending It below
-            if (-not $s.DefaultIsLiteral) {
-                $failures += "$($s.Script):$($s.Line): -DefaultValue for $($resolved.Key) is not a string literal ($($s.Default)) - parity cannot be verified statically; use a literal"
-                continue
-            }
-            $cmpExpected = $resolved.Expected
-            $cmpActual = $s.Default
-            $note = $resolved.Derivation
-            if ($s.TrimV) {
-                # The helper TrimStart('v')s whichever value wins.
-                $cmpExpected = $cmpExpected.TrimStart('v')
-                $cmpActual = $cmpActual.TrimStart('v')
-                $note += " (compared after TrimVPrefix: '$cmpActual' vs '$cmpExpected')"
-            }
-            if ($cmpActual -cne $cmpExpected) {
-                $failures += "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $($resolved.Key)=$($resolved.Expected)$note - update the script default to the canonical pin (or, ONLY while a rebuild window blocks the fix, add a KnownDriftAwaitingRebuildWindow entry)"
-            }
+            $finding = Get-PinDefaultMismatch -Site $s -Key $resolved.Key -Expected $resolved.Expected -Note $resolved.Derivation `
+                -TrimMode $(if ($s.TrimV) { 'All' } else { 'None' }) `
+                -Hint 'update the script default to the canonical pin (or, ONLY while a rebuild window blocks the fix, add a KnownDriftAwaitingRebuildWindow entry)'
+            if ($finding) { $failures += $finding }
         }
         Assert-True ($failures.Count -eq 0) ("hardcoded Resolve-ContainerImageValue default(s) drifted from versions.env:`n  " + ($failures -join "`n  "))
     }
@@ -353,20 +370,10 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     It 'unknown-site guard: every Resolve-ContainerImageValue site maps to a versions.env pin, a derived pin, or the explicit non-version allowlist' {
         $pins = Get-RcivPins
         $allow = @(Get-RcivAllowlist)
-        $seenAllow = @{}
-        $unknown = @()
-        foreach ($s in @(Get-RcivSite)) {
-            $resolved = Resolve-RcivExpected -Site $s -Pins $pins
-            if ($null -ne $resolved) { continue }
-            $id = "$($s.Script)|$($s.EnvVar)"
-            if ($allow -contains $id) { $seenAllow[$id] = $true; continue }
-            $unknown += "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' resolves via [$($s.EnvVar)] which is no versions.env key - add the pin to versions.env, or (non-version values ONLY) extend Get-RcivAllowlist in this suite"
-        }
-        Assert-True ($unknown.Count -eq 0) ("unmapped Resolve-ContainerImageValue -DefaultValue site(s) - hardcoded values must not bypass the canonical pins:`n  " + ($unknown -join "`n  "))
-        # Keep the allowlist honest: a vanished site means a stale entry.
-        foreach ($id in $allow) {
-            Assert-True $seenAllow.ContainsKey($id) "stale allowlist entry [$id]: no such call site exists anymore - remove it"
-        }
+        Assert-PinSiteMapping -Sites @(Get-RcivSite) -Allow $allow -Label 'Resolve-ContainerImageValue -DefaultValue' `
+            -ResolveKey { param($site) Resolve-RcivExpected -Site $site -Pins $pins } `
+            -SiteId { param($site) "$($site.Script)|$($site.EnvVar)" } `
+            -DescribeUnknown { param($site) "$($site.Script):$($site.Line): -DefaultValue '$($site.Default)' resolves via [$($site.EnvVar)] which is no versions.env key - add the pin to versions.env, or (non-version values ONLY) extend Get-RcivAllowlist in this suite" }
     }
 
     It 'known drifted defaults (backlog W1b) are tracked as PENDING until the rebuild window - and must be delisted the moment they are fixed' {
@@ -476,5 +483,47 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
                 'Install-Vs.ps1|WINDOWS_SDK_BUILD')) {
             Assert-True ($found.ContainsKey($expected)) "scanner no longer sees the known idiom site $expected - the scan broke or the site changed shape; update this suite deliberately"
         }
+    }
+}
+
+Describe 'Pin parity shared validation contracts' {
+    $site = [pscustomobject]@{ Script = 'fixture.ps1'; Line = 1; Key = 'PIN'; Default = 'v1'; DefaultIsLiteral = $true }
+    $resolve = { param($entry) if ($entry.Key -eq 'PIN') { $entry.Key } }
+    $idOf = { param($entry) "$($entry.Script)|$($entry.Key)" }
+    $describe = { param($entry) "unmapped $($entry.Key)" }
+
+    It 'records only resolved known sites' {
+        $unknown = [pscustomobject]@{ Script = 'other.ps1'; Key = 'UNKNOWN' }
+        $map = Get-KnownPinSiteMap -Sites @($site, $unknown) -ResolveKey $resolve
+        Assert-Equal 1 $map.Count
+        Assert-True $map.ContainsKey('fixture.ps1|PIN')
+    }
+
+    It 'accepts known and explicitly excepted sites' {
+        $excepted = [pscustomobject]@{ Script = 'other.ps1'; Key = 'PATH' }
+        Assert-PinSiteMapping -Sites @($site, $excepted) -Allow @('other.ps1|PATH') `
+            -ResolveKey $resolve -SiteId $idOf -DescribeUnknown $describe -Label fixture
+    }
+
+    It 'rejects an unknown site and a stale exception independently' {
+        $unknown = [pscustomobject]@{ Script = 'other.ps1'; Key = 'UNKNOWN' }
+        Assert-Throws { Assert-PinSiteMapping -Sites @($unknown) -Allow @() `
+                -ResolveKey $resolve -SiteId $idOf -DescribeUnknown $describe -Label fixture } -MessagePattern 'unmapped UNKNOWN'
+        Assert-Throws { Assert-PinSiteMapping -Sites @($site) -Allow @('absent.ps1|PATH') `
+                -ResolveKey $resolve -SiteId $idOf -DescribeUnknown $describe -Label fixture } -MessagePattern 'stale allowlist'
+    }
+
+    It 'compares literal defaults case-sensitively and refuses dynamic defaults' {
+        Assert-Null (Get-PinDefaultMismatch -Site $site -Key PIN -Expected v1 -Hint fix)
+        Assert-Match '!= versions.env PIN=V1' (Get-PinDefaultMismatch -Site $site -Key PIN -Expected V1 -Hint fix)
+        $dynamic = [pscustomobject]@{ Script = 'fixture.ps1'; Line = 2; Default = '$computed'; DefaultIsLiteral = $false }
+        Assert-Match 'not a string literal' (Get-PinDefaultMismatch -Site $dynamic -Key PIN -Expected v1 -Hint fix)
+    }
+
+    It 'keeps single-prefix stripping distinct from TrimStart semantics' {
+        $repeated = [pscustomobject]@{ Script = 'fixture.ps1'; Line = 3; Default = 'vv1'; DefaultIsLiteral = $true }
+        Assert-NotNull (Get-PinDefaultMismatch -Site $repeated -Key PIN -Expected v1 -TrimMode Single -Hint fix)
+        Assert-Null (Get-PinDefaultMismatch -Site $repeated -Key PIN -Expected v1 -TrimMode All -Hint fix)
+        Assert-Null (Get-PinDefaultMismatch -Site $site -Key PIN -Expected 1 -TrimMode Single -Hint fix)
     }
 }

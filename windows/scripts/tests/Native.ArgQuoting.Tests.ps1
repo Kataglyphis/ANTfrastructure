@@ -8,10 +8,7 @@ Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsLint
 
 function script:Get-ArgQuotingAstFromText {
     param([Parameter(Mandatory)][string]$Text)
-    $tokens = $null; $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$tokens, [ref]$parseErrors)
-    if ($parseErrors -and $parseErrors.Count -gt 0) { throw "positive-control snippet failed to parse: $($parseErrors[0].Message)" }
-    return $ast
+    ConvertTo-TestScriptAst -Text $Text -ErrorLabel 'positive-control'
 }
 
 Describe 'Native.ArgQuoting detector positive controls' {

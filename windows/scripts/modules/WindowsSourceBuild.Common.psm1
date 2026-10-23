@@ -2523,6 +2523,7 @@ Export-ModuleMember -Function @(
     'Invoke-OnnxDmlClangClPatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
+    'Assert-SourceFileContent',
     'Add-FileBlockOnce',
     'Edit-SourceFile',
     'Invoke-NinjaBuildWithRetry',

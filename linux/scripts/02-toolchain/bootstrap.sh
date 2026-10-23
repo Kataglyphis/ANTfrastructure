@@ -49,11 +49,20 @@ source_toolchain_build_helpers_or_fallback() {
     return 0
   done
 
-  strip_elf_tree() {
-    local dir jobs strip_bin; dir="$1"; jobs="${2:-$(nproc)}"; strip_bin="${3:-strip}"
-      [ -d "${dir}" ] || return 0
-    ${SUDO:-} find "${dir}" -type f -exec file {} + 2>/dev/null \
-      | awk -F': *' '/ELF/{print $1}' \
-      | xargs -r -P"${jobs}" "${strip_bin}" --strip-all 2>/dev/null || true
-  }
+  source_toolchain_elf_strip "${script_dir}"
+}
+
+source_toolchain_elf_strip() {
+  local script_dir="$1" candidate
+  for candidate in \
+    "${script_dir}/elf-strip.sh" \
+    "${script_dir}/../01-core/elf-strip.sh" \
+    "/opt/scripts/core/elf-strip.sh"; do
+    [ -f "${candidate}" ] || continue
+    # shellcheck disable=SC1090
+    source "${candidate}"
+    return 0
+  done
+  printf 'ERROR: toolchain bootstrap requires elf-strip.sh\n' >&2
+  return 1
 }

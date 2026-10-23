@@ -545,6 +545,8 @@ collision, flagged dead where it appears.
 
 ### `softfloat.cpp` typedef → macro (OpenCV)
 
+The postcondition uses `Assert-SourceFileContent`; see [source patch policy](windows-builds.md#source-patch-policy) for its predicate contract.
+
 **Genuine upstream bug**, see below.
 
 ### `WITH_IPP=OFF`, `BUILD_IPP_IW=OFF` (OpenCV)
@@ -572,6 +574,8 @@ An **LLVM AArch64 codegen limitation**, not a bug in any of the affected librari
 The existing Windows skip was gated on `WIN32 AND _MLAS_REQUIRES_ASM`, and upstream derives that flag from `MLAS_X86_64` / `MLAS_ARM64` / … — whose detection does **not** fire for a `CMAKE_SYSTEM_PROCESSOR=ARM64` cross configure. The skip silently did nothing on the arm64 lane, MLAS built a C++-only subset whose objects still referenced the GAS-only assembly kernels, and it failed at **link** with `undefined symbol: MlasGemvFloatKernel` / `MlasHGemmSupported`. amd64 is unchanged — `_MLAS_REQUIRES_ASM` is TRUE there, so both forms of the condition fire identically, and that lane already skipped MLAS.
 
 ### `mlasi.h` MSVC intrinsic remap guarded by `!defined(__clang__)` (OpenCV)
+
+Its shared file-content gate accepts an absent remap or a clang guard and rejects an unguarded remap.
 
 Bundled MLAS assumes *"`_M_ARM64` implies the MSVC compiler"* and remaps two ACLE reduction intrinsics onto MSVC's private spellings: `#define vmaxvq_f32(src) neon_fmaxv(src)`. clang-cl defines `_M_ARM64` too, but implements the ACLE names and has no `neon_fmaxv` at all. The upstream `#ifndef vmaxvq_f32` guard does not help — clang provides it as a *function*, not a macro, so the guard is true and MLAS shadows the real intrinsic. The condition being corrected is *which compiler*, not *which architecture*, so each `#define` is wrapped rather than deleted. **Dead code (audited 2026-08-24):** patch `003`'s `WIN32` `return()` fires first, so OpenCV never compiles MLAS — or this header — on either lane; the patch is retained as documentation of the collision, not as a live fix.
 

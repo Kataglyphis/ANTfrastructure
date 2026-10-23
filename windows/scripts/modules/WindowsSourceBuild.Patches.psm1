@@ -155,6 +155,43 @@ function Invoke-SourcePatchWithFallback {
     return $ok
 }
 
+# Verify the written file, since a successful replacement call alone cannot prove the required fix landed.
+function Assert-SourceFileContent {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][scriptblock]$Condition,
+        [Parameter(Mandatory)][string]$FailureMessage)
+    $text = [System.IO.File]::ReadAllText($Path)
+    $verdict = @(& $Condition $text)
+    if ($verdict.Count -ne 1 -or $verdict[0] -isnot [bool] -or -not $verdict[0]) { throw $FailureMessage }
+}
+
+function Read-SourcePatchInput {
+    param([string]$Path, [string]$Description, [string]$CallerName, [switch]$Require)
+    if (-not (Test-Path $Path)) {
+        if ($Require) { throw "${CallerName}: file not found: $Path" }
+        return $null
+    }
+    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
+    [pscustomobject]@{ Description = $Description; Text = [System.IO.File]::ReadAllText($Path) }
+}
+
+# Regex and callback patches share write/no-change verdicts without sharing their transformation semantics.
+function Save-SourcePatchText {
+    param([string]$Path, [string]$Original, [string]$Patched, [string]$Description,
+        [string]$WarnMessage, [string]$NoChangeReason, [string]$AssertGone = '')
+    if ($Patched -eq $Original) {
+        if ($AssertGone -and ($Original -match $AssertGone)) { throw "$Description : pattern not found and '$AssertGone' still present in $Path -- upstream layout changed, refusing to continue" }
+        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
+            $WarnMessage = "$Description : $NoChangeReason; upstream layout may have changed. Verify $Path."
+        }
+        Write-Warning $WarnMessage
+        return $false
+    }
+    [System.IO.File]::WriteAllText($Path, $Patched)
+    if ($AssertGone -and ($Patched -match $AssertGone)) { throw "$Description : '$AssertGone' still present after patching $Path -- the replacement did not remove it" }
+    Write-Host "Patched $Description ($Path)"
+    return $true
+}
+
 function Invoke-InlineRegexPatch {
     param(
         [Parameter(Mandatory)]
@@ -171,12 +208,10 @@ function Invoke-InlineRegexPatch {
         # Throws when the file still matches this after writing, or when the pattern was never found.
         [string]$AssertGone = ''
     )
-    if (-not (Test-Path $Path)) {
-        if ($Require -or $AssertGone) { throw "Invoke-InlineRegexPatch: file not found: $Path" }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    $text = [System.IO.File]::ReadAllText($Path)
+    $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Invoke-InlineRegexPatch' -Require:($Require -or [bool]$AssertGone)
+    if ($null -eq $patchInput) { return $false }
+    $Description = $patchInput.Description
+    $text = $patchInput.Text
     if ($SkipIfMatch -and ($text -match $SkipIfMatch)) {
         Write-Host "$Description already applied ($Path)"
         return $true
@@ -186,18 +221,8 @@ function Invoke-InlineRegexPatch {
         return $false
     }
     $patched = $text -replace $Pattern, $Replacement
-    if ($patched -eq $text) {
-        if ($AssertGone -and ($text -match $AssertGone)) { throw "$Description : pattern not found and '$AssertGone' still present in $Path -- upstream layout changed, refusing to continue" }
-        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
-            $WarnMessage = "$Description : pattern not found; upstream layout may have changed. Verify $Path."
-        }
-        Write-Warning $WarnMessage
-        return $false
-    }
-    [System.IO.File]::WriteAllText($Path, $patched)
-    if ($AssertGone -and ($patched -match $AssertGone)) { throw "$Description : '$AssertGone' still present after patching $Path -- the replacement did not remove it" }
-    Write-Host "Patched $Description ($Path)"
-    return $true
+    Save-SourcePatchText -Path $Path -Original $text -Patched $patched -Description $Description `
+        -WarnMessage $WarnMessage -NoChangeReason 'pattern not found' -AssertGone $AssertGone
 }
 
 <#
@@ -373,24 +398,14 @@ function Edit-SourceFile {
         [switch]$Require,
         [string]$Description = ''
     )
-    if (-not (Test-Path $Path)) {
-        if ($Require) { throw "Edit-SourceFile: file not found: $Path" }
-        return $false
-    }
-    if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    $text = [System.IO.File]::ReadAllText($Path)
+    $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Edit-SourceFile' -Require:$Require
+    if ($null -eq $patchInput) { return $false }
+    $Description = $patchInput.Description
+    $text = $patchInput.Text
     if ($Marker -and ($text -match $Marker)) { return $false }
     $patched = [string](& $Transform $text)
-    if ($patched -eq $text) {
-        if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
-            $WarnMessage = "$Description : transform made no change; upstream layout may have changed. Verify $Path."
-        }
-        Write-Warning $WarnMessage
-        return $false
-    }
-    [System.IO.File]::WriteAllText($Path, $patched)
-    Write-Host "Patched $Description ($Path)"
-    return $true
+    Save-SourcePatchText -Path $Path -Original $text -Patched $patched -Description $Description `
+        -WarnMessage $WarnMessage -NoChangeReason 'transform made no change'
 }
 
 Export-ModuleMember -Function @(
@@ -400,6 +415,7 @@ Export-ModuleMember -Function @(
     'Invoke-SourcePatch',
     'Invoke-SourcePatchWithFallback',
     'Invoke-InlineRegexPatch',
+    'Assert-SourceFileContent',
     'Add-FileBlockOnce',
     'Edit-SourceFile',
     'Resolve-DirectoryPath',

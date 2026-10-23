@@ -222,3 +222,77 @@ Describe 'Invoke-SourcePatchWithFallback' {
         }
     }
 }
+
+Describe 'Assert-SourceFileContent' {
+    It 'verifies written bytes and preserves the caller diagnostic on failure' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'patched.cpp'
+            [IO.File]::WriteAllText($path, 'required macro')
+            Assert-SourceFileContent -Path $path -Condition { param($text) $text -eq 'required macro' } -FailureMessage 'patch missing'
+            [IO.File]::WriteAllText($path, 'upstream drift')
+            Assert-Throws { Assert-SourceFileContent -Path $path -Condition { param($text) $text -eq 'required macro' } -FailureMessage 'patch missing' } -MessagePattern 'patch missing'
+        }
+    }
+
+    It 'refuses empty, textual and multiple predicate results' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'patched.cpp'
+            [IO.File]::WriteAllText($path, 'content')
+            foreach ($condition in @({ }, { 'true' }, { $true; $false })) {
+                Assert-Throws { Assert-SourceFileContent -Path $path -Condition $condition -FailureMessage 'invalid verdict' } -MessagePattern 'invalid verdict'
+            }
+        }
+    }
+
+    It 'cannot report success for an absent file' {
+        Invoke-InTestDir { param($dir)
+            Assert-Throws { Assert-SourceFileContent -Path (Join-Path $dir 'missing.cpp') -Condition { $true } -FailureMessage 'missing' }
+        }
+    }
+}
+
+Describe 'Regex patch postconditions' {
+    It 'refuses missing files, missing anchors and partially removed required patterns' {
+        Invoke-InTestDir { param($dir)
+            $path = Join-Path $dir 'source.cpp'
+            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern old -AssertGone old } -MessagePattern 'file not found'
+            [IO.File]::WriteAllText($path, 'old old')
+            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern absent -AssertGone old } -MessagePattern 'pattern not found'
+            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern old -Guard absent -AssertGone old } -MessagePattern 'guard not found'
+            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern '^old' -Replacement new -AssertGone old } -MessagePattern 'still present after patching'
+            Assert-Equal 'new old' ([IO.File]::ReadAllText($path)) 'the postcondition checks the transformed text'
+        }
+    }
+}
+
+Describe 'OpenCV ARM source patch verification' {
+    $ast = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OpencvFromSource.ps1'
+    $checks = @($ast.FindAll({ param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Assert-SourceFileContent' }, $true))
+
+    function Invoke-OpencvArmVerificationCase {
+        param([int]$Index, [string[]]$ValidText, [string]$InvalidText, [string]$MessagePattern)
+        Assert-Equal 2 $checks.Count 'both independent patch checks remain wired'
+        Invoke-InTestDir { param($dir)
+            $sfCpp = Join-Path $dir 'source.cpp'
+            $mlasiH = $sfCpp
+            foreach ($text in $ValidText) {
+                [IO.File]::WriteAllText($sfCpp, $text)
+                . ([scriptblock]::Create($checks[$Index].Extent.Text))
+            }
+            [IO.File]::WriteAllText($mlasiH, $InvalidText)
+            Assert-Throws { . ([scriptblock]::Create($checks[$Index].Extent.Text)) } -MessagePattern $MessagePattern
+        }
+    }
+
+    It 'requires the softfloat macro in the actual caller predicate' {
+        Invoke-OpencvArmVerificationCase -Index 0 -ValidText @('#define float32_t softfloat') `
+            -InvalidText 'typedef softfloat float32_t;' -MessagePattern 'typedefs were not converted'
+    }
+
+    It 'allows an absent remap or guarded remap and rejects an unguarded remap' {
+        Invoke-OpencvArmVerificationCase -Index 1 -ValidText @('no remap', "#if !defined(__clang__)`nneon_fmaxv`n#endif") `
+            -InvalidText 'neon_fmaxv' -MessagePattern 'was not guarded for clang'
+    }
+}

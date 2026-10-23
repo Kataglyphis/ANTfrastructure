@@ -260,6 +260,29 @@ function Get-ModuleImportClosure {
     return @(@($seen) | Sort-Object)
 }
 
+# Parsing declarations must never execute the build script being inspected.
+function Resolve-TestParseResult {
+    param($Ast, [object[]]$ParseError, [string]$FailurePrefix)
+    if ($ParseError -and $ParseError.Count -gt 0) { throw "${FailurePrefix}: $($ParseError[0].Message)" }
+    return $Ast
+}
+
+function Get-TestScriptAst {
+    param([Parameter(Mandatory)][string]$ScriptPath, [string]$ErrorLabel = 'Get-TestScriptAst')
+    $full = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
+    if (-not (Test-Path $full -PathType Leaf)) { throw "${ErrorLabel}: script not found: $full" }
+    $tokens = $null; $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($full, [ref]$tokens, [ref]$parseErrors)
+    Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "${ErrorLabel}: parse errors in $full"
+}
+
+function ConvertTo-TestScriptAst {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text, [string]$ErrorLabel = 'Get-TestScriptAst')
+    $tokens = $null; $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$tokens, [ref]$parseErrors)
+    Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "$ErrorLabel snippet failed to parse"
+}
+
 <#
 .SYNOPSIS
     Returns the named functions of a build script as one scriptblock for a suite to dot-source.
@@ -280,10 +303,7 @@ function Get-ScriptFunctionDefinition {
         [Parameter(Mandatory)][string[]]$FunctionName
     )
     $full = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
-    if (-not (Test-Path $full -PathType Leaf)) { throw "Get-ScriptFunctionDefinition: script not found: $full" }
-    $tokens = $null; $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($full, [ref]$tokens, [ref]$parseErrors)
-    if ($parseErrors -and $parseErrors.Count -gt 0) { throw "Get-ScriptFunctionDefinition: parse errors in ${full}: $($parseErrors[0].Message)" }
+    $ast = Get-TestScriptAst -ScriptPath $full -ErrorLabel 'Get-ScriptFunctionDefinition'
     $bodies = foreach ($name in $FunctionName) {
         $fn = @($ast.FindAll({ param($n)
             $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $n.Name -eq $name }, $true)) | Select-Object -First 1
@@ -344,6 +364,6 @@ function Start-LoopbackListener {
     return $listener
 }
 
-Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, `
+Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, Get-TestScriptAst, ConvertTo-TestScriptAst, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim

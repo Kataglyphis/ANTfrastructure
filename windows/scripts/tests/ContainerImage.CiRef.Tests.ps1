@@ -25,9 +25,7 @@ Describe 'Get-CiImageReference' {
 }
 
 Describe 'Container smoke canonical image helpers' {
-    $smokePath = Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-Container.ps1'
-    $tokens = $null; $errors = $null
-    $smokeAst = [System.Management.Automation.Language.Parser]::ParseFile($smokePath, [ref]$tokens, [ref]$errors)
+    $smokeAst = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Test-Container.ps1'
     $imports = @($smokeAst.FindAll({ param($node)
                 $node -is [System.Management.Automation.Language.CommandAst] -and
                 $node.GetCommandName() -eq 'Import-Module' -and

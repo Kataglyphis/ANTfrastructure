@@ -1104,3 +1104,19 @@ A missing `<target>` is not an error: a docs step that produced nothing has
 nothing to hand back. `lib/dartdoc-build.sh`'s `dartdoc_build_fix_ownership` is
 the older blanket `chown -R` form over one fixed tree and predates this;
 `tests/test-bind-mount-ownership.sh` pins all three decisions.
+
+## ELF stripping in media and toolchain builds
+
+`01-core/elf-strip.sh` owns `strip_elf_files` and `strip_elf_tree`. Media build
+helpers source this companion; copy it beside `build-helpers.sh`. A minimal
+`02-toolchain/bootstrap.sh` also needs the companion in its directory, the adjacent
+`01-core` directory or `/opt/scripts/core`. It reports a missing companion rather
+than defining a private strip implementation. GCC and LLVM's narrow Dockerfile
+closures both mount the leaf explicitly.
+
+Tree stripping still selects ELF files, uses the requested tool and parallelism,
+and treats strip errors as quiet best-effort work. GCC retains its narrower
+executable/shared-object selection and invokes both host and target strip tools.
+The shared invocation uses NUL separators, preserving filenames containing spaces;
+an empty selection invokes no tool. `test-elf-strip.sh` uses stubbed file and strip
+tools, not real ELF mutation or a compiler build.
