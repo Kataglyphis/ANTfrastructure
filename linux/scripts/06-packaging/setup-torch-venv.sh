@@ -24,16 +24,10 @@ export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
 export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
 
 # Hard-require platform.sh: it feeds a fail-loud gate that a silent skip would disarm.
-for _stv_platform in /opt/scripts/core/platform.sh \
-                     "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"; do
-  if [ -f "${_stv_platform}" ]; then
-    # shellcheck disable=SC1090
-    source "${_stv_platform}"
-    break
-  fi
-done
-command -v elf_unresolved_needed >/dev/null 2>&1 \
-  || { echo "FATAL: platform.sh (elf_unresolved_needed) not found" >&2; exit 1; }
+# shellcheck source=linux/scripts/01-core/module-bootstrap.sh
+source /opt/scripts/core/module-bootstrap.sh
+source_required_symbol elf_unresolved_needed 'FATAL: platform.sh (elf_unresolved_needed) not found' \
+  /opt/scripts/core/platform.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"
 
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then

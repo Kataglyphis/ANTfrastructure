@@ -47,6 +47,7 @@ RUN set -euo pipefail; \
 # Vulkan SDK: the transitive source closure of setup-dependencies.sh, which sources its modules at file scope.
 COPY --chmod=755 \
     linux/scripts/01-core/modules.sh \
+    linux/scripts/01-core/module-bootstrap.sh \
     linux/scripts/01-core/common.sh \
     linux/scripts/01-core/sccache-server-address.sh \
     linux/scripts/01-core/load-versions-env.sh \

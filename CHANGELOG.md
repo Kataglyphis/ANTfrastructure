@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux initialization and web probes
+
+- Share toolchain companion lookup and compiler-cache launcher fixtures while preserving per-caller precedence, fallback and source failure behavior.
+- Share required framework/platform initialization with explicit build companions and narrow Dockerfile wiring.
+- Share Flutter HTTP and size probes while preserving diagnostics, strict thresholds and curl exit codes; add baseline characterization and mutations.
+- Remove resolved Linux duplication exemptions and two obsolete ShellCheck warning freezes without increasing budgets or changing Windows source.
+
 ## 2026-10-23 ? reduce Windows behavior duplication
 
 - Share source-archive extraction while keeping strict failures, pinned dangerous-link checks and optional tar cleanup.

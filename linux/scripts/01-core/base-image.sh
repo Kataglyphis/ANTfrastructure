@@ -2,18 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_FOUND_MODULES=0
-# shellcheck disable=SC1091
-for _bs_path in "/opt/scripts/core/modules.sh" "${SCRIPT_DIR}/modules.sh"; do
-  if [ -f "${_bs_path}" ]; then
-    source "${_bs_path}"
-    source_modules_framework "${SCRIPT_DIR}"
-    _FOUND_MODULES=1
-    break
-  fi
-done
-[ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
-unset _bs_path _FOUND_MODULES
+# shellcheck source=linux/scripts/01-core/module-bootstrap.sh
+source "${SCRIPT_DIR}/module-bootstrap.sh"
+bootstrap_script_modules "${SCRIPT_DIR}" \
+  /opt/scripts/core/modules.sh "${SCRIPT_DIR}/modules.sh"
 
 : "${NODE_RISCV64_MAJOR_REQUIRED:=0}"
 

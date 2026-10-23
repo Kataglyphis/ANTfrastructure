@@ -163,3 +163,8 @@ sudo ufw reload
 ```
 
 After this, the container should be accessible from other devices using the host's IP address (e.g., `http://192.168.x.x`).
+
+The integration smoke shares HTTP-status and download-size probes. Exact size
+thresholds and curl failures are covered by
+`linux/scripts/tests/test-flutter-smoke-test.sh` using a local curl fixture;
+those tests do not run a webserver or browser.

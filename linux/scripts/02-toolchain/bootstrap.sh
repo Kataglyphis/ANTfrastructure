@@ -1,19 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-source_toolchain_common_or_fallback() {
-  local script_dir="$1"
-  local candidate
-
-  for candidate in \
-    "${script_dir}/common.sh" \
-    "/opt/scripts/core/common.sh" \
-    "${script_dir}/../01-core/common.sh"; do
-    [ -f "${candidate}" ] || continue
+_source_toolchain_first_available() {
+  local -n _toolchain_source_result="$1"
+  local script_dir="$2" leaf="$3" priority="${4:-core-first}" candidate
+  local candidates=("${script_dir}/${leaf}")
+  if [ "$priority" = mounted-first ]; then
+    candidates+=("/opt/scripts/core/${leaf}" "${script_dir}/../01-core/${leaf}")
+  else
+    candidates+=("${script_dir}/../01-core/${leaf}" "/opt/scripts/core/${leaf}")
+  fi
+  _toolchain_source_result=0
+  for candidate in "${candidates[@]}"; do
+    [ -f "$candidate" ] || continue
     # shellcheck disable=SC1090
-    source "${candidate}"
+    source "$candidate"
+    _toolchain_source_result=1
     return 0
   done
+  return 0
+}
+
+source_toolchain_common_or_fallback() {
+  local script_dir="$1" _toolchain_source_matched=0
+
+  _source_toolchain_first_available _toolchain_source_matched "$script_dir" common.sh mounted-first
+  [ "$_toolchain_source_matched" -eq 0 ] || return 0
 
   info() { printf '[INFO] %s\n' "$*"; }
   warn() { printf '[WARN] %s\n' "$*" >&2; }
@@ -36,33 +48,18 @@ source_toolchain_common_or_fallback() {
 
 # common.sh does not pull in build-helpers.sh, so the from-source builders load it here, with a minimal fallback.
 source_toolchain_build_helpers_or_fallback() {
-  local script_dir="$1"
-  local candidate
+  local script_dir="$1" _toolchain_source_matched=0
 
-  for candidate in \
-    "${script_dir}/build-helpers.sh" \
-    "${script_dir}/../01-core/build-helpers.sh" \
-    "/opt/scripts/core/build-helpers.sh"; do
-    [ -f "${candidate}" ] || continue
-    # shellcheck disable=SC1090
-    source "${candidate}"
-    return 0
-  done
+  _source_toolchain_first_available _toolchain_source_matched "$script_dir" build-helpers.sh
+  [ "$_toolchain_source_matched" -eq 0 ] || return 0
 
   source_toolchain_elf_strip "${script_dir}"
 }
 
 source_toolchain_elf_strip() {
-  local script_dir="$1" candidate
-  for candidate in \
-    "${script_dir}/elf-strip.sh" \
-    "${script_dir}/../01-core/elf-strip.sh" \
-    "/opt/scripts/core/elf-strip.sh"; do
-    [ -f "${candidate}" ] || continue
-    # shellcheck disable=SC1090
-    source "${candidate}"
-    return 0
-  done
+  local script_dir="$1" _toolchain_source_matched=0
+  _source_toolchain_first_available _toolchain_source_matched "$script_dir" elf-strip.sh
+  [ "$_toolchain_source_matched" -eq 0 ] || return 0
   printf 'ERROR: toolchain bootstrap requires elf-strip.sh\n' >&2
   return 1
 }

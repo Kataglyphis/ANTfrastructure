@@ -1510,3 +1510,33 @@ Critical-fix source checks share compound predicates and record parsing while
 retaining independent patterns, diagnostics and fatal/advisory policies. Existing
 mutation IDs are retargeted to their shared owners when the protected behavior
 moves, so extraction cannot silently retire a regression proof.
+
+### Toolchain companion and web-smoke probes
+
+Toolchain common, build-helper and ELF-strip loading share candidate construction
+and source lifecycle. Common loading keeps its mounted-core preference; the
+build-helper and ELF-strip paths keep repository-core preference after an
+adjacent companion. The shared source call stays unconditional so ordinary
+errexit remains effective. Existing conditional callers retain their prior
+source-status policy, and missing ELF fallback remains fatal. Local fixtures
+exercise precedence, missing companions and source failure without building.
+
+Flutter integration smokes share HTTP-200 verdicts and download-size probing.
+Callers retain their exact success and failure messages. JavaScript and bootstrap
+sizes remain strictly greater than their distinct thresholds; a failed download
+retains curl's exit code even when it emits a plausible size. Existing HTTP
+probes keep their guarded curl behavior. Fixture sites cover size boundaries,
+missing assets, CSP, local engine and fallback fonts without HTTP access.
+
+`01-core/module-bootstrap.sh` owns framework initialization and required-symbol
+loading. Base and setup-dependencies keep their distinct module candidate lists;
+media validation and Torch setup retain their ordered platform candidates and
+fail if the required symbol is still absent. Source calls remain unconditional
+so selected-module and framework initialization failures retain the caller's
+normal errexit behavior, including existing conditional-call semantics.
+
+The companion is a separate read-only bind mount in all six base RUNs and both
+setup-dependencies toolchain RUNs. SDK's explicit core COPY and Torch's explicit
+core COPY carry it into later stages. No whole-core mount replaces these narrow
+inputs. Fixtures validate candidate order, selected-source failures, missing
+symbols and each required Dockerfile closure without apt operations or builds.

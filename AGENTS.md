@@ -92,6 +92,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
    Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts.
+   Base, toolchain and required-platform entry points carry `module-bootstrap.sh` in copied and mounted closures; keep the per-file mounts narrow.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.

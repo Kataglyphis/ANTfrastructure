@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# flutter_integration_smoke_test.sh against a stub curl serving a fixture site: the CSP host check and the shared shell check.
+# Local curl fixtures cover HTTP, sizes, CSP and assets; no live webserver or browser runs.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-SMOKE="$(cd "${TESTS_DIR}/../.." && pwd)/webserver/scripts/flutter_integration_smoke_test.sh"
+SMOKE="${1:-$(cd "${TESTS_DIR}/../.." && pwd)/webserver/scripts/flutter_integration_smoke_test.sh}"
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
 
@@ -22,6 +22,10 @@ while [ $# -gt 0 ]; do
   esac
 done
 path="${url#http://site}"; path="${path#/}"; file="${SITE}/${path:-index.html}"
+if [ -n "${CURL_FAIL_PATH:-}" ] && [ "${path:-/}" = "$CURL_FAIL_PATH" ]; then
+  printf '%s' "${CURL_PARTIAL:-}"
+  exit 7
+fi
 if [ "${head}" -eq 1 ]; then
   [ -f "${file}" ] || exit 0
   case "${path}" in *.wasm) printf 'Content-Type: application/wasm\r\n' ;; *) printf 'Content-Type: text/html\r\n' ;; esac
@@ -98,5 +102,32 @@ for font in $(awk '!/^#/ && NF == 3 { sub("https://fonts.gstatic.com/s/", "", $3
 done
 t_assert_contains "$(CHECK_FALLBACK_FONTS=1 t_out _smoke)" "PASS: all ${FONT_ROWS} locked fallback fonts served under fallback-fonts/"
 t_assert_rc 0 env CHECK_FALLBACK_FONTS=1 PATH="${work}/bin:${PATH}" SITE="${work}/site" bash "${SMOKE}" http://site
+
+_assert_smoke_outcome() {
+  local expected="$1" message="$2" output status=0
+  output="$(_smoke 2>&1)" || status=$?
+  t_assert_eq "$expected" "$status"
+  t_assert_contains "$output" "$message"
+}
+
+t_case "JavaScript sizes remain strictly above their distinct thresholds"
+for spec in 'main.dart.js:10000:too small or missing (10000 bytes)' 'flutter_bootstrap.js:100:missing'; do
+  IFS=: read -r asset limit failure <<< "$spec"
+  cp "${work}/site/$asset" "${work}/saved-asset"
+  head -c "$limit" /dev/zero > "${work}/site/$asset"
+  _assert_smoke_outcome 1 "FAIL: $asset $failure"
+  mv "${work}/saved-asset" "${work}/site/$asset"
+done
+_assert_smoke_outcome 0 '=== All critical checks passed ==='
+
+t_case "index status failures retain their diagnostic"
+mv "${work}/site/index.html" "${work}/saved-index"
+_assert_smoke_outcome 1 'FAIL: index.html returned HTTP 404'
+mv "${work}/saved-index" "${work}/site/index.html"
+
+t_case "failed downloads remain fatal even when curl writes a plausible size"
+CURL_FAIL_PATH=main.dart.js CURL_PARTIAL='' _assert_smoke_outcome 7 '--- Testing: main.dart.js exists ---'
+CURL_FAIL_PATH=main.dart.js CURL_PARTIAL=20000 _assert_smoke_outcome 7 '--- Testing: main.dart.js exists ---'
+CURL_FAIL_PATH=/ CURL_PARTIAL='' _assert_smoke_outcome 1 'FAIL: index.html returned HTTP '
 
 t_summary

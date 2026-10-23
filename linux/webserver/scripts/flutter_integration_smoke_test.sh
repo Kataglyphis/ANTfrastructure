@@ -23,25 +23,37 @@ expect_wasm() {
   fi
 }
 
+expect_http_200() {
+  local path="$1" label="$2" status
+  status="$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/$path" || true)"
+  if [ "$status" != 200 ]; then
+    echo "FAIL: $label returned HTTP $status"
+    exit 1
+  fi
+  return 0
+}
+
+download_size_exceeds() {
+  local -n result="$3"
+  result="$(curl -s -o /dev/null -w "%{size_download}" "$BASE_URL/$1")" || exit "$?"
+  if [ "$result" -gt "$2" ]; then return 0; fi
+  return 1
+}
+
 echo "=== Integration Smoke Test ==="
 echo "Target: $BASE_URL"
 echo ""
 
 # `|| true` on the probes, or set -e kills the script before its FAIL diagnostics print.
 echo "--- Testing: index.html loads ---"
-STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/" || true)
-if [ "$STATUS" != "200" ]; then
-  echo "FAIL: index.html returned HTTP $STATUS"
-  exit 1
-fi
+expect_http_200 '' index.html
 echo "PASS: index.html HTTP 200"
 
 echo "--- Testing: main.dart.wasm MIME type ---"
 expect_wasm main.dart.wasm
 
 echo "--- Testing: main.dart.js exists ---"
-JS_SIZE=$(curl -s -o /dev/null -w "%{size_download}" "$BASE_URL/main.dart.js")
-if [ "$JS_SIZE" -gt 10000 ]; then
+if download_size_exceeds main.dart.js 10000 JS_SIZE; then
   echo "PASS: main.dart.js served ($JS_SIZE bytes)"
 else
   echo "FAIL: main.dart.js too small or missing ($JS_SIZE bytes)"
@@ -49,8 +61,7 @@ else
 fi
 
 echo "--- Testing: flutter_bootstrap.js exists ---"
-BOOT_SIZE=$(curl -s -o /dev/null -w "%{size_download}" "$BASE_URL/flutter_bootstrap.js")
-if [ "$BOOT_SIZE" -gt 100 ]; then
+if download_size_exceeds flutter_bootstrap.js 100 BOOT_SIZE; then
   echo "PASS: flutter_bootstrap.js served ($BOOT_SIZE bytes)"
 else
   echo "FAIL: flutter_bootstrap.js missing"
@@ -125,11 +136,7 @@ if [ "$CHECK_FALLBACK_FONTS" = "1" ]; then
     case "$_sha" in "" | \#*) continue ;; esac
     url="${url%$'\r'}"
     font="${FONT_BASE%/}/${url#https://fonts.gstatic.com/s/}"
-    FONT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/${font#/}" || true)
-    if [ "$FONT_STATUS" != "200" ]; then
-      echo "FAIL: ${font#/} returned HTTP $FONT_STATUS"
-      exit 1
-    fi
+    expect_http_200 "${font#/}" "${font#/}"
     FONT_COUNT=$((FONT_COUNT + 1))
   done < "$FALLBACK_FONTS_LOCK"
   echo "PASS: all ${FONT_COUNT} locked fallback fonts served under ${FONT_BASE}"
@@ -147,13 +154,8 @@ if [ "$CHECK_LOADING_SHELL" = "1" ]; then
     fi
   done
   for asset in javascript/utils.js javascript/cookies.js javascript/init.js css/cookie.css css/loading_animation.css; do
-    ASSET_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/$asset" || true)
-    if [ "$ASSET_STATUS" = "200" ]; then
-      echo "PASS: $asset served"
-    else
-      echo "FAIL: $asset returned HTTP $ASSET_STATUS"
-      exit 1
-    fi
+    expect_http_200 "$asset" "$asset"
+    echo "PASS: $asset served"
   done
 fi
 

@@ -2,18 +2,17 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-_FOUND_MODULES=0
-# shellcheck disable=SC1091
-for _bs_path in "/opt/scripts/core/modules.sh" "${SCRIPT_DIR}/modules.sh" "${SCRIPT_DIR}/../01-core/modules.sh"; do
-  if [ -f "${_bs_path}" ]; then
-    source "${_bs_path}"
-    source_modules_framework "${SCRIPT_DIR}"
-    _FOUND_MODULES=1
-    break
-  fi
-done
-[ "${_FOUND_MODULES}" -eq 1 ] || { echo "Error: modules.sh not found" >&2; exit 1; }
-unset _bs_path _FOUND_MODULES
+_bootstrap_path="${SCRIPT_DIR}/../01-core/module-bootstrap.sh"
+if [ -f /opt/scripts/core/module-bootstrap.sh ]; then
+  _bootstrap_path=/opt/scripts/core/module-bootstrap.sh
+elif [ -f "${SCRIPT_DIR}/module-bootstrap.sh" ]; then
+  _bootstrap_path="${SCRIPT_DIR}/module-bootstrap.sh"
+fi
+# shellcheck source=linux/scripts/01-core/module-bootstrap.sh
+source "${_bootstrap_path}"
+unset _bootstrap_path
+bootstrap_script_modules "${SCRIPT_DIR}" \
+  /opt/scripts/core/modules.sh "${SCRIPT_DIR}/modules.sh" "${SCRIPT_DIR}/../01-core/modules.sh"
 
 # cmake.sh, vulkan.sh and llvm.sh load lazily in their own arms, so an LLVM edit never invalidates the GCC layer.
 source_module common.sh

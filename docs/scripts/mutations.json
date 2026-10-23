@@ -17038,8 +17038,8 @@
  {
   "id": "web-smoke.fallback-fonts-served",
   "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
-  "find": "    if [ \"$FONT_STATUS\" != \"200\" ]; then",
-  "replace": "    if false; then",
+  "find": "    expect_http_200 \"${font#/}\" \"${font#/}\"",
+  "replace": "    :",
   "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
   "why": "a build without its fonts 404s every emoji the engine falls back for"
  },
@@ -18778,5 +18778,125 @@
   "replace": "  else\n    echo \"$4\"\n  fi\n  echo \"\"\n}",
   "test": "bash linux/scripts/tests/test-runtime-probe-transport.sh",
   "why": "missing ENTRYPOINT must increment failures while missing WORKDIR and VOLUME remain informational"
+ },
+ {
+  "id": "web-smoke.size-strict-boundary",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "if [ \"$result\" -gt \"$2\" ]; then",
+  "replace": "if [ \"$result\" -ge \"$2\" ]; then",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "JavaScript artifacts exactly at their distinct minimum sizes remain too small."
+ },
+ {
+  "id": "web-smoke.size-download-failure",
+  "target": "linux/webserver/scripts/flutter_integration_smoke_test.sh",
+  "find": "result=\"$(curl -s -o /dev/null -w \"%{size_download}\" \"$BASE_URL/$1\")\" || exit \"$?\"",
+  "replace": "result=\"$(curl -s -o /dev/null -w \"%{size_download}\" \"$BASE_URL/$1\")\" || true",
+  "test": "bash linux/scripts/tests/test-flutter-smoke-test.sh",
+  "why": "A failed curl must preserve its exit status even when it emits a plausible byte count."
+ },
+ {
+  "id": "lib.bootstrap-adjacent-companion",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "local candidates=(\"${script_dir}/${leaf}\")",
+  "replace": "local candidates=()",
+  "test": "bash linux/scripts/tests/test-toolchain-bootstrap.sh",
+  "why": "Shared toolchain bootstrap preserves adjacent and caller-specific companion precedence, required ELF fallback and normal errexit behavior."
+ },
+ {
+  "id": "lib.bootstrap-common-precedence",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "\"$script_dir\" common.sh mounted-first",
+  "replace": "\"$script_dir\" common.sh",
+  "test": "bash linux/scripts/tests/test-toolchain-bootstrap.sh",
+  "why": "Shared toolchain bootstrap preserves adjacent and caller-specific companion precedence, required ELF fallback and normal errexit behavior."
+ },
+ {
+  "id": "lib.bootstrap-build-helper-precedence",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "\"$script_dir\" build-helpers.sh",
+  "replace": "\"$script_dir\" build-helpers.sh mounted-first",
+  "test": "bash linux/scripts/tests/test-toolchain-bootstrap.sh",
+  "why": "Shared toolchain bootstrap preserves adjacent and caller-specific companion precedence, required ELF fallback and normal errexit behavior."
+ },
+ {
+  "id": "lib.bootstrap-elf-fallback",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  source_toolchain_elf_strip \"${script_dir}\"",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-toolchain-bootstrap.sh",
+  "why": "Shared toolchain bootstrap preserves adjacent and caller-specific companion precedence, required ELF fallback and normal errexit behavior."
+ },
+ {
+  "id": "lib.bootstrap-source-failure",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "    source \"$candidate\"",
+  "replace": "    source \"$candidate\" || true",
+  "test": "bash linux/scripts/tests/test-toolchain-bootstrap.sh",
+  "why": "Shared toolchain bootstrap preserves adjacent and caller-specific companion precedence, required ELF fallback and normal errexit behavior."
+ },
+ {
+  "id": "lib.required-platform-symbol",
+  "target": "linux/scripts/01-core/module-bootstrap.sh",
+  "find": "  command -v \"${symbol}\" >/dev/null 2>&1 \\",
+  "replace": "  true \\",
+  "test": "bash linux/scripts/tests/test-media-platform-bootstrap.sh",
+  "why": "selected platform candidates missing elf_unresolved_needed must fail closed without trying another platform"
+ },
+ {
+  "id": "lib.torch-bootstrap-copy",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/01-core/module-bootstrap.sh linux/scripts/01-core/logging.sh",
+  "replace": "COPY --chmod=755 linux/scripts/01-core/logging.sh",
+  "test": "bash linux/scripts/tests/test-media-platform-bootstrap.sh",
+  "why": "Torch must ship the bootstrap companion its venv gate sources before requiring the ELF walker"
+ },
+ {
+  "id": "lib.module-bootstrap-source-runs",
+  "target": "linux/scripts/01-core/module-bootstrap.sh",
+  "find": "      source \"${_bsf_candidate}\"",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
+  "why": "the first existing module is sourced before framework or required-symbol validation"
+ },
+ {
+  "id": "lib.module-bootstrap-first-existing-wins",
+  "target": "linux/scripts/01-core/module-bootstrap.sh",
+  "find": "      break",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
+  "why": "later candidates must not hide the selected installed module or replace its framework"
+ },
+ {
+  "id": "lib.module-bootstrap-framework-initializes",
+  "target": "linux/scripts/01-core/module-bootstrap.sh",
+  "find": "  source_modules_framework \"${caller_dir}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
+  "why": "module bootstrap initializes exactly the selected framework with the original caller directory"
+ },
+ {
+  "id": "lib.module-bootstrap-missing-module-fatal",
+  "target": "linux/scripts/01-core/module-bootstrap.sh",
+  "find": "  [ \"${_bsm_found}\" -eq 1 ]",
+  "replace": "  true",
+  "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
+  "why": "no existing module must retain the exact fatal diagnostic instead of continuing into imports"
+ },
+ {
+  "id": "lib.module-bootstrap-selected-flag",
+  "target": "linux/scripts/01-core/module-bootstrap.sh",
+  "find": "      _bsf_found=1",
+  "replace": "      _bsf_found=0",
+  "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
+  "why": "successful selection must be reported through the output flag without making source conditional"
+ },
+ {
+  "id": "lib.module-bootstrap-sdk-companion-copy",
+  "target": "linux/Dockerfile.sdk",
+  "find": "    linux/scripts/01-core/module-bootstrap.sh \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
+  "why": "the SDK must ship the bootstrap companion used before setup-dependencies loads its modules"
  }
 ]

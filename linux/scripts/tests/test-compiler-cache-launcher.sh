@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# compiler_cache_launcher's stdout becomes CC/CXX, so it must be a bare name; info() writes to fd 1.
+# Stubbed launcher fixtures cover stdout and address routing, not real cache servers or compilation.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+WORK="$(mktemp -d)"
+trap 'rm -rf "${WORK}"' EXIT
 
 # Only the function, helpers stubbed; [dir] stands in for _COMMON_SH_DIR, which extraction leaves unset under set -u.
 _load_launcher() {
-  _COMMON_SH_DIR="${1:-${TMPDIR:-/tmp}/ccl-empty.$$}"
+  _COMMON_SH_DIR="${1:-${WORK}/empty}"
   mkdir -p "${_COMMON_SH_DIR}"
   # shellcheck disable=SC1090
   source "${TESTS_DIR}/../01-core/logging.sh"
@@ -15,40 +17,31 @@ _load_launcher() {
     | sed "s#/opt/scripts/core#${_COMMON_SH_DIR}#g")"
 }
 
+_launcher_stdout() (
+  local status="$1" sccache_message="$2" ccache_message="$3"
+  _load_launcher "${4:-}"
+  ensure_sccache_env() { info "$sccache_message"; return "$status"; }
+  ensure_ccache_env() { info "$ccache_message"; return 0; }
+  command() { if [ "${2:-}" = ccache ]; then return 0; fi; builtin command "$@"; }
+  compiler_cache_launcher 2>/dev/null
+)
+
 # ── the leak that actually happened ──────────────────────────────────────────
 t_case "sccache branch: stdout carries ONLY the launcher name"
-(
-  _load_launcher
-  ensure_sccache_env() { info "Using sccache with SCCACHE_DIR=/var/cache/sccache (cap 30G)"; return 0; }
-  ensure_ccache_env()  { info "Using ccache"; return 0; }
-  compiler_cache_launcher 2>/dev/null
-) > "${TMPDIR:-/tmp}/ccl_out.$$" 2>/dev/null
-_out="$(cat "${TMPDIR:-/tmp}/ccl_out.$$")"; rm -f "${TMPDIR:-/tmp}/ccl_out.$$"
+_out="$(_launcher_stdout 0 'Using sccache with SCCACHE_DIR=/var/cache/sccache (cap 30G)' 'Using ccache' 2>/dev/null)"
 t_assert_eq "${_out}" "sccache"
 
 t_case "ccache fallback: stdout carries ONLY the launcher name"
-(
-  _load_launcher
-  ensure_sccache_env() { info "sccache unavailable"; return 1; }
-  ensure_ccache_env()  { info "Using ccache with CCACHE_DIR=/var/cache/ccache"; return 0; }
-  command() { if [ "${2:-}" = "ccache" ]; then return 0; fi; builtin command "$@"; }
-  compiler_cache_launcher 2>/dev/null
-) > "${TMPDIR:-/tmp}/ccl_out2.$$" 2>/dev/null
-_out2="$(cat "${TMPDIR:-/tmp}/ccl_out2.$$")"; rm -f "${TMPDIR:-/tmp}/ccl_out2.$$"
+_out2="$(_launcher_stdout 1 'sccache unavailable' 'Using ccache with CCACHE_DIR=/var/cache/ccache' 2>/dev/null)"
 t_assert_eq "${_out2}" "ccache"
 
 # ── the preference the whole migration rests on ──────────────────────────────
 t_case "guarded launcher WINS over bare sccache when it is reachable"
-_gl_dir="${TMPDIR:-/tmp}/ccl-guarded.$$"
+_gl_dir="${WORK}/guarded"
 mkdir -p "${_gl_dir}"
 printf '#!/bin/sh\nexec sccache "$@"\n' > "${_gl_dir}/sccache-launcher.sh"
 chmod +x "${_gl_dir}/sccache-launcher.sh"
-(
-  _load_launcher "${_gl_dir}"
-  ensure_sccache_env() { info "Using sccache"; return 0; }
-  compiler_cache_launcher 2>/dev/null
-) > "${TMPDIR:-/tmp}/ccl_out3.$$" 2>/dev/null
-_out3="$(cat "${TMPDIR:-/tmp}/ccl_out3.$$")"; rm -f "${TMPDIR:-/tmp}/ccl_out3.$$"
+_out3="$(_launcher_stdout 0 'Using sccache' '' "${_gl_dir}" 2>/dev/null)"
 t_assert_eq "${_out3}" "${_gl_dir}/sccache-launcher.sh"
 rm -rf "${_gl_dir}"
 
@@ -116,7 +109,7 @@ _env_rc="$(
 t_assert_eq "${_env_rc}" "survived" "it runs under the caller's set -e, before the launcher is resolved"
 
 t_case "USE_SCCACHE=0 never probes for a server"
-_probe_mark="${TMPDIR:-/tmp}/ccl-probed.$$"
+_probe_mark="${WORK}/probed"
 rm -f "${_probe_mark}"
 (
   _load_env_fn
@@ -166,8 +159,8 @@ t_assert_eq "" "${_unguarded}" "unguarded call site(s) would abort the stage ins
 
 # ── media half (F3): an out-variable, not $( ). See docs/cross-build-verification.md#the-media-compile-cache-launcher
 _MEDIA_COMMON="${TESTS_DIR}/../03-media/core/common.sh"
-_MW="$(mktemp -d)"
-trap 'rm -rf "${_MW}"' EXIT
+_MW="${WORK}/media"
+mkdir -p "${_MW}"
 
 # One call with the collaborators faked. $1 is shell run before the call.
 _media_launcher() {

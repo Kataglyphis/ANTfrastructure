@@ -8,15 +8,15 @@ fi
 
 # Hard-require platform.sh's NEEDED walk: a silent fallback would gut the missing-deps scan.
 _VMR_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-for _vmr_platform in /opt/scripts/core/platform.sh "${_VMR_SELF_DIR}/../../01-core/platform.sh"; do
-  if [ -f "${_vmr_platform}" ]; then
-    # shellcheck disable=SC1090
-    source "${_vmr_platform}"
-    break
-  fi
-done
-command -v elf_unresolved_needed >/dev/null 2>&1 \
-  || { echo "FATAL: platform.sh (elf_needed_sonames/elf_unresolved_needed) not found" >&2; exit 1; }
+if [ -f /opt/scripts/core/module-bootstrap.sh ]; then
+  # shellcheck source=linux/scripts/01-core/module-bootstrap.sh
+  source /opt/scripts/core/module-bootstrap.sh
+else
+  # shellcheck source=linux/scripts/01-core/module-bootstrap.sh
+  source "${_VMR_SELF_DIR}/../../01-core/module-bootstrap.sh"
+fi
+source_required_symbol elf_unresolved_needed 'FATAL: platform.sh (elf_needed_sonames/elf_unresolved_needed) not found' \
+  /opt/scripts/core/platform.sh "${_VMR_SELF_DIR}/../../01-core/platform.sh"
 
 ARTIFACTS=(
   "${GSTREAMER_PREFIX:-/opt/gstreamer}/bin/gst-launch-1.0"
