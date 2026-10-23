@@ -8,13 +8,11 @@ umask 022
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck disable=SC1091
-source "${_SCRIPT_DIR}/bootstrap.sh"
+source "${_SCRIPT_DIR}/bootstrap-import.sh" || exit "$?"
 source_toolchain_common_or_fallback "${_SCRIPT_DIR}"
 source_toolchain_elf_strip "${_SCRIPT_DIR}"
-_gcc_cache_utils_loaded=0
-_source_toolchain_first_available _gcc_cache_utils_loaded "${_SCRIPT_DIR}" compiler-cache-utils.sh
-[ "${_gcc_cache_utils_loaded}" -eq 1 ] || { printf 'ERROR: toolchain bootstrap requires compiler-cache-utils.sh\n' >&2; exit 1; }
-unset _gcc_cache_utils_loaded
+source_toolchain_required "${_SCRIPT_DIR}" compiler-cache-utils.sh exit
+source_toolchain_required "${_SCRIPT_DIR}" load-versions-env.sh exit core-first version_has_numeric_parts
 install_err_trap
 
 usage() {
@@ -147,7 +145,7 @@ if [ -z "${GCC_VERSION}" ]; then
 fi
 
 # Validate version format
-if ! [[ "${GCC_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if ! version_has_numeric_parts "${GCC_VERSION}" 3; then
   warn "GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 16.1.0)"
 fi
 

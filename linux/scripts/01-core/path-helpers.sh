@@ -2,6 +2,16 @@
 [ -n "${_PATH_HELPERS_SH_LOADED:-}" ] && return 0
 _PATH_HELPERS_SH_LOADED=1
 
+# SUDO expands only when a link is needed, with each caller retaining its required or optional policy.
+path_symlink_missing() {
+  [ ! -e "$2" ] || return 0
+  if [ "$4" = required ]; then
+    $SUDO ln "$3" "$1" "$2"
+  else
+    ${SUDO:-} ln "$3" "$1" "$2"
+  fi
+}
+
 _path_contains() {
   local var="$1" cand="$2"
   [ -n "$var" ] || return 1

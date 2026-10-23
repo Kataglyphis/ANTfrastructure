@@ -48,6 +48,7 @@ RUN set -euo pipefail; \
 COPY --chmod=755 \
     linux/scripts/01-core/modules.sh \
     linux/scripts/01-core/module-bootstrap.sh \
+    linux/scripts/01-core/path-helpers.sh \
     linux/scripts/01-core/common.sh \
     linux/scripts/01-core/sccache-server-address.sh \
     linux/scripts/01-core/load-versions-env.sh \
@@ -69,6 +70,7 @@ COPY --chmod=644 linux/scripts/01-core/versions.env /opt/scripts/core/versions.e
 COPY --chmod=755 \
     linux/scripts/02-toolchain/setup-dependencies.sh \
     linux/scripts/02-toolchain/bootstrap.sh \
+    linux/scripts/02-toolchain/bootstrap-import.sh \
     linux/scripts/02-toolchain/core.sh \
     linux/scripts/02-toolchain/cmake.sh \
     linux/scripts/02-toolchain/llvm.sh \

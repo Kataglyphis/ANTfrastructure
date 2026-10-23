@@ -26,7 +26,7 @@ def loader(text):
     if old in text:
         start = text.index(old)
         return text[start:text.index('\nfi', start) + 3]
-    start = text.index('# shellcheck source=bootstrap.sh')
+    start = text.index('# shellcheck source=bootstrap')
     last = 'source_toolchain_downloads "${BASH_SOURCE[0]}"'
     end = text.index(last, start) + len(last)
     return text[start:end]
@@ -50,6 +50,8 @@ def prepare(work, row, blocks, bootstrap, actual):
     caller = directory / row['caller']
     caller.write_text('set -euo pipefail\n' + blocks[row['caller']].replace('/opt/scripts/core', str(installed)) + '\n')
     companion = directory / 'bootstrap.sh'
+    initializer = ROOT / 'linux/scripts/02-toolchain/bootstrap-import.sh'
+    (directory / 'bootstrap-import.sh').write_text(initializer.read_text())
     if row.get('bootstrap') != 'missing':
         body = bootstrap.replace('/opt/scripts/core', str(installed))
         if row.get('bootstrap') == 'return-error':
@@ -134,6 +136,11 @@ def copy_mappings(stage):
             continue
         destination = line.split()[-1]
         for source in sources:
+            if (ROOT / source).is_dir():
+                for child in (ROOT / source).iterdir():
+                    if child.is_file():
+                        actual[destination.rstrip('/') + '/' + child.name] = (str(child.relative_to(ROOT)), '--chmod=755' in line.split())
+                continue
             target = destination
             if len(sources) > 1 or destination.endswith('/'):
                 target = destination.rstrip('/') + '/' + pathlib.PurePosixPath(source).name
@@ -143,11 +150,14 @@ def copy_mappings(stage):
 
 def copied_companions():
     expected = {
-        'android': {'/opt/scripts/android-sdk.sh': 'android-sdk.sh', '/opt/scripts/bootstrap.sh': 'bootstrap.sh'},
-        'package': {'/opt/scripts/android-sdk.sh': 'android-sdk.sh', '/opt/scripts/bootstrap.sh': 'bootstrap.sh'},
-        'sdk': {'/opt/scripts/toolchain/vulkan.sh': 'vulkan.sh', '/opt/scripts/toolchain/bootstrap.sh': 'bootstrap.sh'},
+        'android': {'/opt/scripts/android-sdk.sh': 'android-sdk.sh', '/opt/scripts/bootstrap.sh': 'bootstrap.sh',
+                    '/opt/scripts/bootstrap-import.sh': 'bootstrap-import.sh'},
+        'package': {'/opt/scripts/android-sdk.sh': 'android-sdk.sh', '/opt/scripts/bootstrap.sh': 'bootstrap.sh',
+                    '/opt/scripts/bootstrap-import.sh': 'bootstrap-import.sh'},
+        'sdk': {'/opt/scripts/toolchain/vulkan.sh': 'vulkan.sh', '/opt/scripts/toolchain/bootstrap.sh': 'bootstrap.sh',
+                '/opt/scripts/toolchain/bootstrap-import.sh': 'bootstrap-import.sh'},
         'torch': {'/usr/local/bin/vulkan.sh': 'vulkan.sh', '/usr/local/bin/bootstrap.sh': 'bootstrap.sh',
-                  '/usr/local/bin/vulkan-install.sh': 'vulkan-install.sh'},
+                  '/usr/local/bin/vulkan-install.sh': 'vulkan-install.sh', '/usr/local/bin/bootstrap-import.sh': 'bootstrap-import.sh'},
     }
     failures = []
     assertions = 0
@@ -165,10 +175,17 @@ def copied_vulkan_probe():
     mappings = copy_mappings('torch')
     with tempfile.TemporaryDirectory(prefix='ant copied Vulkan ') as directory:
         work = pathlib.Path(directory)
-        for leaf in ('vulkan.sh', 'bootstrap.sh', 'vulkan-install.sh'):
+        for leaf in ('vulkan.sh', 'bootstrap.sh', 'bootstrap-import.sh', 'vulkan-install.sh'):
             source = mappings.get('/usr/local/bin/' + leaf)
             if source is not None:
                 (work / leaf).write_bytes((ROOT / source[0]).read_bytes())
+        core = work / 'core'
+        core.mkdir()
+        source = mappings.get('/opt/scripts/core/path-helpers.sh')
+        if source is not None:
+            (core / 'path-helpers.sh').write_bytes((ROOT / source[0]).read_bytes())
+        bootstrap = work / 'bootstrap.sh'
+        bootstrap.write_text(bootstrap.read_text().replace('/opt/scripts/core', str(core)))
         script = ('dirname() { builtin command /usr/bin/dirname "$@"; }; download_file() { :; }; '
                   'PATH=/no-external-commands; source "$1" || exit $?; '
                   'declare -F install_vulkan_sdk install_vulkan_prereqs >/dev/null')

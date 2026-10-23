@@ -1988,3 +1988,49 @@ package copies refresh it and Android's flattened layout includes it. Torch's
 function definitions and shell options; the downloads module's actual top-level
 state remains global when selected. Source calls keep their original strict and
 conditional failure behavior, and no private download fallback is restored.
+
+### Numeric versions, guarded links and raw pin lookup
+
+`version_has_numeric_parts` in `load-versions-env.sh` owns three- and four-part
+numeric shape checks. Its constructed expression has no capture groups, preserving
+`BASH_REMATCH`. It checks shape rather than version ranges or tool availability.
+Callers retain their policies: GCC selects its fallback, the builder warns,
+Dartdoc rejects invalid pins, and Rust appends the fourth part or selects its
+existing fallback. The Rust version utility carries the canonical core loader
+beside its existing logging companion.
+
+`path_symlink_missing` checks destination presence and performs the caller's
+link action. Source checks and basename calls stay in their original callers,
+so a source disappearing after that check keeps its original link behavior.
+GCC retains required `SUDO` and `ln -sfn`; Vulkan retains optional `SUDO` and `ln -s`. Expansion stays
+lazy, including when a destination exists. Fresh per-file Toolchain mounts and
+SDK copies carry the owner; Torch's full core copy refreshes it before use.
+
+`load_raw_pin_if_empty` shares Android/Rust's raw lookup without sourcing pin data.
+It retains all matching lines, quotes, whitespace, target export state and read
+status, including the original command substitution handling of trailing newlines.
+It does not replace the whole-file loader, whose parsing policy differs,
+or Package's existing separate policy. The Android copy and Rust mount carry a
+fresh owner even when their parent image contains an older loader.
+
+`source_toolchain_required` accepts the required leaf, the action when it is
+missing, lookup priority and optional expected function. Calls that name an
+expected function validate it and preserve a selected file's nonzero status.
+Calls that require only a file retain their historical result policy. Source transport
+and required-loader calls remain unconditional so strict failures keep their
+original effect. Missing cache helpers still exit; the ELF wrapper retains its
+return policy. `bootstrap-import.sh` owns the initial bootstrap source and dispatcher check
+at source scope. It returns failures explicitly, and each entrypoint retains its
+exit or return policy; selected-leaf calls remain separate and unconditional.
+Older bootstraps cannot hide a missing dispatcher in conditional source contexts. Tests cover missing files and exports, stale loaded guards,
+partial definitions followed by failure, and complete copied entrypoints.
+
+The tag and numeric suites share `stream-receipt-fixture.sh` for stream capture,
+byte comparison, return markers and serialization. Their expected consumer data
+remains separate and literal. A small contract suite checks NUL and trailing
+newline bytes, nonzero capture status and mismatches beyond the initial bytes.
+
+The initializer is carried beside both the entrypoint and `bootstrap.sh` in
+standalone bundles and fresh per-stage copy/mount closures. It is sourced directly
+rather than invoked through a function that an older bootstrap may not provide.
+This shares the import policy without changing source scope or using `eval`.

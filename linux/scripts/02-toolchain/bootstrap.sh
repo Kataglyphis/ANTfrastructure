@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# An optional status output observes source failures without suppressing direct errexit.
 _source_toolchain_first_available() {
   local -n _toolchain_source_result="$1"
-  local script_dir="$2" leaf="$3" priority="${4:-core-first}" candidate
+  local script_dir="$2" leaf="$3" priority="${4:-core-first}" candidate source_status status_output="${5:-}"
+  if [ -n "$status_output" ]; then
+    local -n _toolchain_status_result="$status_output"
+    _toolchain_status_result=0
+  fi
   local candidates=()
   [ "$priority" = core-paths-only ] || candidates=("${script_dir}/${leaf}")
   if [ "$priority" = mounted-first ]; then
@@ -16,6 +21,8 @@ _source_toolchain_first_available() {
     [ -f "$candidate" ] || continue
     # shellcheck disable=SC1090
     source "$candidate"
+    source_status=$?
+    if [ -n "$status_output" ]; then _toolchain_status_result="$source_status"; fi
     _toolchain_source_result=1
     return 0
   done
@@ -57,12 +64,24 @@ source_toolchain_build_helpers_or_fallback() {
   source_toolchain_elf_strip "${script_dir}"
 }
 
+# Expected exports require successful sourcing; file-only callers retain their historical normalization.
+source_toolchain_required() {
+  local script_dir="$1" leaf="$2" missing="${3:-return}" priority="${4:-core-first}" symbol="${5:-}" _toolchain_source_matched=0 _toolchain_status=0 failure=1
+  _source_toolchain_first_available _toolchain_source_matched "$script_dir" "$leaf" "$priority" _toolchain_status
+  if [ "$_toolchain_source_matched" -eq 0 ]; then
+    printf 'ERROR: toolchain bootstrap requires %s\n' "$leaf" >&2
+  elif [ -n "$symbol" ] && [ "$_toolchain_status" -ne 0 ]; then
+    printf 'ERROR: toolchain bootstrap source %s failed with status %s\n' "$leaf" "$_toolchain_status" >&2
+    failure="$_toolchain_status"
+  elif [ -n "$symbol" ] && ! declare -F "$symbol" >/dev/null; then
+    printf 'ERROR: toolchain bootstrap requires %s from %s\n' "$symbol" "$leaf" >&2
+  else return 0; fi
+  if [ "$missing" = exit ]; then exit "$failure"; fi
+  return "$failure"
+}
+
 source_toolchain_elf_strip() {
-  local script_dir="$1" _toolchain_source_matched=0
-  _source_toolchain_first_available _toolchain_source_matched "$script_dir" elf-strip.sh
-  [ "$_toolchain_source_matched" -eq 0 ] || return 0
-  printf 'ERROR: toolchain bootstrap requires elf-strip.sh\n' >&2
-  return 1
+  source_toolchain_required "$1" elf-strip.sh
 }
 
 toolchain_cache_usage() {

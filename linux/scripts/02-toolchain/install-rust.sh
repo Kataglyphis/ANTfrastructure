@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# shellcheck source=../01-core/load-versions-env.sh
+source /opt/scripts/core/load-versions-env.sh
+_rust_pin_source_status=$?
+if [ "${_rust_pin_source_status}" -ne 0 ]; then
+  printf 'ERROR: Rust installer failed to source load-versions-env.sh (status %s)\n' "${_rust_pin_source_status}" >&2
+  exit "${_rust_pin_source_status}"
+fi
+unset _rust_pin_source_status
+if ! declare -F load_raw_pin_if_empty >/dev/null 2>&1; then
+  printf 'ERROR: Rust installer requires load_raw_pin_if_empty from load-versions-env.sh\n' >&2
+  exit 1
+fi
+
 # Also rerun on foreign-arch runtime images. docs/failure-modes.md#the-copied-rust-toolchain-is-the-builders-arch
 
 if [ -f /opt/scripts/core/platform.sh ]; then
@@ -31,9 +44,7 @@ fi
 : "${CARGO_C_VERSION:=0.10.24}"
 
 # Download to a file, never curl | sh (a truncated stream runs half a script); RUSTUP_INIT_SHA256 pins it.
-if [ -z "${RUSTUP_INIT_SHA256:-}" ] && [ -f /opt/scripts/core/versions.env ]; then
-  RUSTUP_INIT_SHA256="$(sed -n 's/^RUSTUP_INIT_SHA256=//p' /opt/scripts/core/versions.env)"
-fi
+load_raw_pin_if_empty RUSTUP_INIT_SHA256 RUSTUP_INIT_SHA256 /opt/scripts/core/versions.env
 rustup_init="$(mktemp "${TMPDIR:-/tmp}/rustup-init-XXXXXX.sh")"
 curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "${rustup_init}" https://sh.rustup.rs
 if [ -n "${RUSTUP_INIT_SHA256:-}" ]; then

@@ -21,6 +21,8 @@ done
 
 t_case 'the GCC bootstrap refuses a missing cache utility before later initialization'
 mkdir "${WORK}/toolchain" "${WORK}/01-core" "${WORK}/mounted"
+cp "${TESTS_DIR}/../01-core/load-versions-env.sh" "${WORK}/01-core/"
+cp "${TESTS_DIR}/../02-toolchain/bootstrap-import.sh" "${WORK}/toolchain/"
 sed "s|/opt/scripts/core|${WORK}/mounted|g" "${TESTS_DIR}/../02-toolchain/bootstrap.sh" > "${WORK}/toolchain/bootstrap.sh"
 cat >> "${WORK}/toolchain/bootstrap.sh" <<'BASH'
 source_toolchain_common_or_fallback() { :; }

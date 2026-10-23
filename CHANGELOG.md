@@ -18,6 +18,14 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-24 — share version shape, guarded links and raw pin lookup
+
+- Share three- and four-part numeric version checks while preserving exact match state, compiler defaults, builder warnings, docs failures and Rust normalization.
+- Share guarded GCC/Vulkan link actions with unchanged source-probe order, link flags, lazy sudo policy and failure behavior.
+- Share Android/Rust raw pin lookup while retaining empty/unset/export state, all matching lines, whitespace and read-failure behavior.
+- Require fresh canonical companions and expected exports; selected-file failures stay failures in conditional contexts.
+- Remove seven resolved duplication exceptions while keeping literal test oracles and the scanner settings unchanged.
+
 ## 2026-10-23 — share artifact refusal, media probes and download initialization
 
 - Share unsupported artifact-mode diagnostics while preserving exact stderr, status and lazy branch behavior.
