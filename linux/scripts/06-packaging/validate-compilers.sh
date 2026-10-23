@@ -22,18 +22,9 @@ validate_resolve_arch() {
 }
 
 
-# Embedded DEB metadata first: running clang can load apt's libclang-cpp instead of ours.
+# Validator probes report missing metadata through validate_fail rather than errexit.
 _vc_clang_embedded_version() {
-  local _bin="$1" _ver
-  _ver="$( strings "${_bin}" 2>/dev/null \
-      | grep -o '"version":"[^"]*"' \
-      | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
-  if [ -z "${_ver}" ]; then
-    _ver="$( "${_bin}" --version 2>/dev/null \
-        | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
-        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true )"
-  fi
-  printf '%s' "${_ver}"
+  clang_embedded_deb_version "$1" || true
 }
 
 validate_fail() {

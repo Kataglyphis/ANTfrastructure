@@ -432,3 +432,17 @@ version_major_minor() {
     *) return 1 ;;
   esac
 }
+
+# --version can identify apt's loaded libclang-cpp instead of the selected binary.
+clang_embedded_deb_version() {
+    local _bin="$1" _ver=""
+    # --version reports the runtime libclang-cpp, which apt's copy in /usr/lib shadows.
+    _ver="$( strings "${_bin}" 2>/dev/null \
+        | grep -o '"version":"[^"]*"' \
+        | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
+    [ -n "${_ver}" ] && printf '%s' "${_ver}" && return 0
+    _ver="$( "${_bin}" --version 2>/dev/null \
+        | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 )"
+    printf '%s' "${_ver}"
+}

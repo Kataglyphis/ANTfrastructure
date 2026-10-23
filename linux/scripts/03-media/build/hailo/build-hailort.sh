@@ -78,21 +78,18 @@ fetch_sources() {
   HAILORT_SRC="${WORK}/hailort-${HAILORT_VERSION}"
   if [ ! -f "${HAILORT_SRC}/CMakeLists.txt" ]; then
     info "fetching hailo-ai/hailort v${HAILORT_VERSION}"
-    download_verified_file \
+    hailo_unpack_source_archive \
       "https://github.com/hailo-ai/hailort/archive/refs/tags/v${HAILORT_VERSION}.tar.gz" \
-      "${HAILORT_SOURCE_SHA256}" "${WORK}/hailort.tar.gz"
-    tar -xf "${WORK}/hailort.tar.gz" -C "${WORK}"
+      "${HAILORT_SOURCE_SHA256}" "${WORK}/hailort.tar.gz" "${WORK}"
   fi
 
   # The literal path HailoRT's external cmake builds from: FETCHCONTENT_SOURCE_DIR_* does not reach execute_cmake.
   HAILO_PROTOBUF_SRC="${HAILORT_SRC}/hailort/external/protobuf-src"
   if [ ! -f "${HAILO_PROTOBUF_SRC}/CMakeLists.txt" ]; then
     info "fetching protobuf v${HAILO_PROTOBUF_VERSION}"
-    download_verified_file \
+    hailo_unpack_source_archive \
       "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v${HAILO_PROTOBUF_VERSION}.tar.gz" \
-      "${HAILO_PROTOBUF_SHA256}" "${WORK}/protobuf.tar.gz"
-    mkdir -p "${HAILO_PROTOBUF_SRC}"
-    tar -xf "${WORK}/protobuf.tar.gz" -C "${HAILO_PROTOBUF_SRC}" --strip-components=1
+      "${HAILO_PROTOBUF_SHA256}" "${WORK}/protobuf.tar.gz" "${HAILO_PROTOBUF_SRC}" 1
   fi
 
   stage_remaining_externals
@@ -121,10 +118,7 @@ stage_remaining_externals() {
       continue
     fi
     info "staging external ${name} @ ${commit:0:10}"
-    git clone --quiet --filter=blob:none --no-checkout "${url}" "${dir}" \
-      || git clone --quiet --no-checkout "${url}" "${dir}"
-    git -C "${dir}" checkout --quiet "${commit}"
-    [ "$(git -C "${dir}" rev-parse HEAD)" = "${commit}" ] \
+    clone_pinned_repository "${url}" "${dir}" "${commit}" \
       || die "external ${name} is not ${commit}"
     git -C "${dir}" submodule update --init --recursive --quiet
   done
@@ -280,10 +274,9 @@ fetch_tappas() {
   TAPPAS_SRC="${WORK}/tappas-${TAPPAS_VERSION}"
   if [ ! -f "${TAPPAS_SRC}/core/hailo/meson.build" ]; then
     info "fetching hailo-ai/tappas v${TAPPAS_VERSION}"
-    download_verified_file \
+    hailo_unpack_source_archive \
       "https://github.com/hailo-ai/tappas/archive/refs/tags/v${TAPPAS_VERSION}.tar.gz" \
-      "${TAPPAS_SOURCE_SHA256}" "${WORK}/tappas.tar.gz"
-    tar -xf "${WORK}/tappas.tar.gz" -C "${WORK}"
+      "${TAPPAS_SOURCE_SHA256}" "${WORK}/tappas.tar.gz" "${WORK}"
   fi
 
   local spec name url commit dest subdir sentinel src
@@ -295,10 +288,7 @@ fetch_tappas() {
     info "staging TAPPAS external ${name} @ ${commit:0:10}"
     src="${WORK}/tappas-ext-${name}"
     rm -rf "${src}"
-    git clone --quiet --filter=blob:none --no-checkout "${url}" "${src}" \
-      || git clone --quiet --no-checkout "${url}" "${src}"
-    git -C "${src}" checkout --quiet "${commit}"
-    [ "$(git -C "${src}" rev-parse HEAD)" = "${commit}" ] \
+    clone_pinned_repository "${url}" "${src}" "${commit}" \
       || die "TAPPAS external ${name} is not ${commit}"
     mkdir -p "${TAPPAS_SRC}/core/open_source/${dest}"
     cp -r "${src}/${subdir}/." "${TAPPAS_SRC}/core/open_source/${dest}/"
@@ -314,11 +304,9 @@ build_libzmq() {
   fi
   if [ ! -f "${src}/CMakeLists.txt" ]; then
     info "fetching libzmq v${HAILO_LIBZMQ_VERSION}"
-    download_verified_file \
+    hailo_unpack_source_archive \
       "https://github.com/zeromq/libzmq/releases/download/v${HAILO_LIBZMQ_VERSION}/zeromq-${HAILO_LIBZMQ_VERSION}.tar.gz" \
-      "${HAILO_LIBZMQ_SHA256}" "${WORK}/zeromq.tar.gz"
-    mkdir -p "${src}"
-    tar -xf "${WORK}/zeromq.tar.gz" -C "${src}" --strip-components=1
+      "${HAILO_LIBZMQ_SHA256}" "${WORK}/zeromq.tar.gz" "${src}" 1
   fi
   rm -rf "${build}"
   info "building libzmq"

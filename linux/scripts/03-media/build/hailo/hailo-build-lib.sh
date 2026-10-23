@@ -245,3 +245,13 @@ hailo_check_pyext() {
   _hailo_fail "${_HAILO_PYEXT_WHY}"
   return 1
 }
+
+# Keep verified source archives in the build cache while callers own readiness checks.
+hailo_unpack_source_archive() {
+  local url="$1" sha="$2" archive="$3" destination="$4" strip="${5:-}"
+  download_verified_file "${url}" "${sha}" "${archive}" || return 1
+  mkdir -p "${destination}" || return 1
+  local -a args=(-xf "${archive}" -C "${destination}")
+  if [ -n "${strip}" ]; then args+=(--strip-components="${strip}"); fi
+  tar "${args[@]}"
+}

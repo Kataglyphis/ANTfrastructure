@@ -471,3 +471,22 @@ The plan as first written, with what became of each phase:
 - Pin pyhailort's build backend, `scikit-build-core` and `pybind11` 2.x, at the
   next planned `versions.env` re-key, with a real build
   ([why it floats](#pyhailort)).
+
+## Shared verified source staging on Linux
+
+HailoRT externals and TAPPAS header dependencies use `clone_pinned_repository` from
+`01-core/downloads.sh`. Filter fallback, exact checkout and HEAD verification have
+one owner. HailoRT retains recursive submodules; TAPPAS retains include-subdirectory
+copies and per-header sentinels. Existing staged-tree checks remain at their callers.
+
+HailoRT, protobuf, TAPPAS and libzmq tarballs share `hailo_unpack_source_archive` in
+`hailo-build-lib.sh`. Their existing URLs, SHA pins and archive cache paths stay at
+the call sites. The helper verifies before extracting and preserves each caller's
+strip count. A failed fetch stops before hashing or extracting a valid stale cache
+entry; explicit status propagation covers conditional-call contexts too.
+
+`test-pinned-repository.sh` and `test-hailo-source-staging.sh` use stubbed fetches,
+real local Git and tarball fixtures. They cover fallback, exact pins, failure paths,
+submodule/header boundaries, cached inputs and extraction layout. They perform no
+network download, native SDK build or accelerator smoke test. Targeted mutations
+must reject lost checkout/HEAD checks, bypassed checksums and removed strip flags.

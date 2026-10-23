@@ -167,20 +167,6 @@ install_dev_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "$@"
 }
 
-# A clang binary's version from its embedded DEB metadata, --version as the fallback.
-clang_embedded_deb_version() {
-    local _bin="$1" _ver=""
-    # --version reports the runtime libclang-cpp, which apt's copy in /usr/lib shadows.
-    _ver="$( strings "${_bin}" 2>/dev/null \
-        | grep -o '"version":"[^"]*"' \
-        | head -1 | tr -d \" | cut -d: -f3 | cut -d~ -f1 || true )"
-    [ -n "${_ver}" ] && printf '%s' "${_ver}" && return 0
-    _ver="$( "${_bin}" --version 2>/dev/null \
-        | grep -oiE 'clang version [0-9]+\.[0-9]+\.[0-9]+' \
-        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 )"
-    printf '%s' "${_ver}"
-}
-
 pin_clang_alternatives() {
     # clang must equal LLVM_RELEASE: the matching candidate wins, source first; amd64's copy can lag apt.
     local _want_llvm _llvm_major _cand _chosen=""

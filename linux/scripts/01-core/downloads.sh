@@ -66,7 +66,7 @@ download_verified_file() {
   local hash_mode="${4:-file}"
   local checksum_output actual
 
-  download_file "$url" "$dest"
+  download_file "$url" "$dest" || return 1
   if [ "${hash_mode}" = "stream" ]; then
     actual="$(gunzip -c "$dest" 2>/dev/null | sha256sum | awk '{print $1}')"
     [ "${actual}" = "${expected_sha256}" ] || {
@@ -181,4 +181,15 @@ clone_or_update_repo() {
   else
     git clone --depth 1 "${repo_url}" "${dest_dir}"
   fi
+}
+
+# Explicit failures keep exact-commit staging safe even when a caller disables errexit.
+clone_pinned_repository() {
+  local url="$1" destination="$2" commit="$3" actual
+  git clone --quiet --filter=blob:none --no-checkout "${url}" "${destination}" \
+    || git clone --quiet --no-checkout "${url}" "${destination}" || return 1
+  git -C "${destination}" checkout --quiet "${commit}" || return 1
+  actual="$(git -C "${destination}" rev-parse HEAD)" || return 1
+  if [ "${actual}" = "${commit}" ]; then return 0; fi
+  return 1
 }

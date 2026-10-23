@@ -1974,3 +1974,12 @@ and wrapper generation use that module rather than private fallback copies. The
 existing core mount contains its closure. Probe fixtures retain the resolver status,
 unique wrapper directories, `/usr/bin:/bin` PATH and `-B/usr/bin/` argument; they do
 not establish foreign-toolchain behavior.
+
+## Clang binary identity during package assembly
+
+Package setup and compiler validation use `platform.sh`'s embedded-version reader.
+It prefers the selected binary's Debian metadata over `--version`, whose runtime
+library can come from the distro. This keeps alternative selection and validation
+on the same identity without changing their failure policies. Fixture tests retain
+independent expected versions and check that metadata avoids executing the binary;
+they do not prove an installed compiler or target runtime works.

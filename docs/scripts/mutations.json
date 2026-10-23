@@ -17554,5 +17554,77 @@
   "replace": "nerdctl forbidden-call >/dev/null 2>&1 || true\nt_assert_eq '' \"$(cat \"${VARIANT_CONTAINER_CALLS}\")\"",
   "test": "bash linux/scripts/tests/test-gpu-variant.sh",
   "why": "a container command hidden by an advisory exit status must still fail the dry-run fixture"
+ },
+ {
+  "id": "probe.clang-embedded-metadata-first",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    _ver=\"$( strings \"${_bin}\" 2>/dev/null \\\n        | grep -o",
+  "replace": "    _ver=\"$( printf '' \\\n        | grep -o",
+  "test": "bash linux/scripts/tests/test-clang-embedded-version.sh",
+  "why": "embedded metadata must beat a different runtime-library version without executing the compiler"
+ },
+ {
+  "id": "probe.clang-embedded-epoch",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "| cut -d: -f3 | cut -d~ -f1",
+  "replace": "| cut -d: -f2 | cut -d~ -f1",
+  "test": "bash linux/scripts/tests/test-clang-embedded-version.sh",
+  "why": "the Debian epoch is removed before comparing the pinned compiler version"
+ },
+ {
+  "id": "probe.clang-validator-nonfatal",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  clang_embedded_deb_version \"$1\" || true",
+  "replace": "  clang_embedded_deb_version \"$1\"",
+  "test": "bash linux/scripts/tests/test-clang-embedded-version.sh",
+  "why": "validator probes retain their nonfatal empty-version verdict under errexit"
+ },
+ {
+  "id": "probe.pinned-clone-filter-fallback",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "    || git clone --quiet --no-checkout \"${url}\" \"${destination}\" || return 1",
+  "replace": "    || return 1",
+  "test": "bash linux/scripts/tests/test-pinned-repository.sh",
+  "why": "servers rejecting partial-clone filters must retain the existing unfiltered fallback"
+ },
+ {
+  "id": "probe.pinned-clone-checkout-fatal",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "  git -C \"${destination}\" checkout --quiet \"${commit}\" || return 1",
+  "replace": "  git -C \"${destination}\" checkout --quiet \"${commit}\" || true",
+  "test": "bash linux/scripts/tests/test-pinned-repository.sh",
+  "why": "checkout failure must propagate even when a surrounding conditional disables errexit"
+ },
+ {
+  "id": "probe.pinned-clone-head-checked",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "  actual=\"$(git -C \"${destination}\" rev-parse HEAD)\" || return 1",
+  "replace": "  actual=\"${commit}\"",
+  "test": "bash linux/scripts/tests/test-pinned-repository.sh",
+  "why": "a checkout that did not land the exact commit must never be accepted"
+ },
+ {
+  "id": "probe.verified-download-failure-fatal",
+  "target": "linux/scripts/01-core/downloads.sh",
+  "find": "  download_file \"$url\" \"$dest\" || return 1",
+  "replace": "  download_file \"$url\" \"$dest\" || true",
+  "test": "bash linux/scripts/tests/test-hailo-source-staging.sh",
+  "why": "a failed fetch cannot silently reuse a previously cached archive through conditional-call errexit suppression"
+ },
+ {
+  "id": "probe.hailo-archive-verified",
+  "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+  "find": "  download_verified_file \"${url}\" \"${sha}\" \"${archive}\" || return 1",
+  "replace": "  download_file \"${url}\" \"${archive}\" || return 1",
+  "test": "bash linux/scripts/tests/test-hailo-source-staging.sh",
+  "why": "all shared archive extraction must verify the supplied source hash"
+ },
+ {
+  "id": "probe.hailo-archive-strip",
+  "target": "linux/scripts/03-media/build/hailo/hailo-build-lib.sh",
+  "find": "  if [ -n \"${strip}\" ]; then args+=(--strip-components=\"${strip}\"); fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-hailo-source-staging.sh",
+  "why": "flat protobuf and libzmq sources retain their requested strip-components layout"
  }
 ]

@@ -12,6 +12,16 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — consolidate compiler identity and pinned Hailo sources
+
+- Share Clang embedded-version parsing in `platform.sh`; preserve metadata priority,
+  Debian epoch handling, CLI fallback and the validator's nonfatal probe policy.
+- Share Hailo/TAPPAS exact-commit cloning and verified archive extraction; preserve
+  submodule, header-copy, cache and strip-component policies. Remove both resolved
+  duplication exemptions without changing detector thresholds or coverage.
+- Propagate download failures explicitly before hashing; a conditional caller may
+  not extract a stale cached archive after a failed fetch, even if its hash matches.
+
 ## 2026-10-23 — restore library baselines and bound runtime heartbeats
 
 - Load shared logging from `project-env.sh` when sourced standalone, restoring the

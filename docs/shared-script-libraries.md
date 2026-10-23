@@ -1157,3 +1157,28 @@ Core-only cross detection lives in `core_cross_build_is_active` in `common.sh`;
 its source-time selector preserves a loaded canonical guard or compatibility hook.
 The fallback suite tests this approximation directly, including native architecture
 aliases, while GStreamer tests the mandatory canonical guard at its own boundary.
+
+## Compiler identity and pinned source staging
+
+`platform.sh` owns `clang_embedded_deb_version`, used by package setup and compiler
+validation. Embedded Debian metadata identifies the selected binary even when a
+loaded distro `libclang-cpp` changes its `--version` output. The existing epoch and
+suffix parsing and CLI fallback remain unchanged. The validator wrapper keeps an
+empty result nonfatal under `errexit`; setup retains its existing failure policy.
+`test-clang-embedded-version.sh` checks these boundaries with executable fixtures,
+not a real Clang installation.
+
+`downloads.sh` owns `clone_pinned_repository`: try a filtered clone, fall back to
+an unfiltered clone, check out the requested commit and compare HEAD exactly.
+Each failure propagates in a conditional caller. HailoRT initializes submodules
+after cloning; TAPPAS copies its selected include tree and uses its own sentinel.
+The pinned-repository suite exercises those policies with a stub and a real local
+Git repository; it accesses no remote repository.
+
+`hailo-build-lib.sh` owns `hailo_unpack_source_archive`. Callers retain their
+readiness checks, URLs, hashes and cache paths. The helper verifies before
+extraction, creates the destination, applies the requested strip count and keeps
+the archive for cache reuse. The archive suite uses real local tarballs and hashes,
+including corrupted archives and a failed download over a valid stale archive.
+`download_verified_file` stops on fetch failure even when its caller disables
+`errexit`; checksum success alone cannot turn a failed fetch green.
