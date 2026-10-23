@@ -15,11 +15,11 @@ Describe 'WindowsContainerImage.Bootstrap' {
             -Expected 'expected an exception but none was thrown' -Body {
                 Invoke-InTestDir -Files @{ 'modules/WindowsContainerImage.Common.psm1' = '' } -Body { param($root)
                     $expected = Join-Path $root 'modules\WindowsContainerImage.Common.psm1'
-                    Assert-Equal $expected (MutResolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsContainerImage.Common.psm1')
+                    Assert-Equal $expected (Resolve-MutContainerImageModulePath -ModuleRoot $root -Name 'WindowsContainerImage.Common.psm1')
                     Assert-Throws -MessagePattern 'Required module not found' -Body {
-                        MutResolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1'
+                        Resolve-MutContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1'
                     }
-                    Assert-Null (MutResolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1' -Optional)
+                    Assert-Null (Resolve-MutContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1' -Optional)
                 }
             }
     }

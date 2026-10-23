@@ -2326,12 +2326,17 @@ and remove recursion; each must fail the suite.
 parameter binding. `Get-TestAstCommands` includes nested scopes; callers retain
 their lane/ancestor checks. `Get-TestScriptCommands` combines file loading and a
 command query. `Get-TestCommandArguments` returns the original argument source,
-including quotes, rather than evaluating it. The parser helpers reject malformed
-input and never execute the inspected script.
+including quotes, rather than evaluating it. `ConvertTo-TestScriptParseResult`
+returns the validated AST and lexer tokens from one parse, so comment-aware scans
+cannot inspect declarations after a parse error. The parser helpers never execute
+the inspected script.
 
 OpenCV wiring tests use these queries and the shared binder. Structural driver,
-Python, ROCm and smoke suites use the parser helpers. `Harness.Ast.Tests.ps1`
-checks nested queries, exact names, unparameterized commands and non-execution.
+Python, ROCm and smoke suites use the parser helpers; the Torch app census uses the
+parse result's tokens for comment-aware scans, and GenAI's unconditional-site check
+uses shared ancestor traversal with its own guard types. `Harness.Ast.Tests.ps1`
+checks nested queries, exact names, unparameterized commands and non-execution, and
+mutation-tests the parse-error check.
 `Get-TestDockerfileStages` indexes named, unnamed and global instructions; strict
 header matching stays available for structural stage-boundary checks while each
 suite keeps its policy assertions.

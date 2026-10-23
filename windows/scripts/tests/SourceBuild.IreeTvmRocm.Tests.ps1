@@ -495,11 +495,12 @@ Describe 'Dockerfile.media-builder: the TVM_ROCM switch' {
 }
 
 Describe 'rocm-checks\IREE.ps1' {
+    Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
     . (Get-ScriptFunctionDefinition -ScriptPath $script:IreeCheck -FunctionName 'Get-ElfHeaderRecord', 'Get-AmdgpuCodeObjectFinding', 'Get-IreeHipSearchPathFinding', 'Get-IreeRocmGateMlir', 'Get-IreeRocmPythonProbe', 'Get-IreeRocmFinding')
 
     # Models dynamic_symbols.c on the 3.11.0 CLI, where --hip_dylib_path after --list_devices=hip is ignored.
     function New-FakeIreeInvoke {
-        param([string]$ListOutput, [byte[]]$Vmfb, [string]$Report, [int]$CompileExit = 0, [string]$Search = 'reset')
+        param([string]$ListOutput, [byte[]]$Vmfb, [string]$Report, [int]$CompileExit = 0, [int]$PythonExit = 0, [string]$Search = 'reset')
         $SearchNames = if ($Search -eq 'legacy') { , 'amdhip64.dll' } else { 'amdhip64_7.dll', 'amdhip64_6.dll', 'amdhip64.dll' }
         return {
             param([string]$Exe, [string[]]$ArgList)
@@ -524,19 +525,21 @@ Describe 'rocm-checks\IREE.ps1' {
                 }
                 default {
                     [System.IO.File]::WriteAllBytes($ArgList[2], $Vmfb)
-                    return @{ Exit = 0; Output = "iree warming up`n$Report`n" }
+                    return @{ Exit = $PythonExit; Output = "iree warming up`n$Report`n" }
                 }
             }
         }.GetNewClosure()
     }
     function New-FakeIreeInstall([string]$Root, [bool]$Patched = $true, [string[]]$BitcodeNames = @('ocml.bc', 'ockl.bc')) {
         $bin = Join-Path $Root 'iree\bin'
-        New-Item -ItemType Directory -Force -Path (Join-Path $bin 'iree_platform_libs\rocm') | Out-Null
-        [System.IO.File]::WriteAllText((Join-Path $bin 'iree-compile.exe'), 'MZ compile')
-        [System.IO.File]::WriteAllText((Join-Path $bin 'iree-run-module.exe'), "MZ run $(if ($Patched) { 'amdhip64_7.dll' }) amdhip64.dll")
-        foreach ($bc in $BitcodeNames) { [System.IO.File]::WriteAllText((Join-Path $bin "iree_platform_libs\rocm\$bc"), 'BC') }
+        $files = [ordered]@{
+            'iree/bin/iree-compile.exe' = 'MZ compile'
+            'iree/bin/iree-run-module.exe' = "MZ run $(if ($Patched) { 'amdhip64_7.dll' }) amdhip64.dll"
+        }
+        foreach ($bc in $BitcodeNames) { $files["iree/bin/iree_platform_libs/rocm/$bc"] = 'BC' }
+        Write-TestFileTree -Root $Root -Files $files
         $scratch = Join-Path $Root 'scratch'
-        New-Item -ItemType Directory -Force -Path $scratch | Out-Null
+        [void][IO.Directory]::CreateDirectory($scratch)
         return @{ Bin = $bin; Scratch = $scratch }
     }
     $script:GoodList = "# Available HAL drivers`n            cuda: CUDA HAL driver (via dylib)`n             hip: HIP HAL driver (via dylib)`n      local-task: Local execution`n"
@@ -593,7 +596,8 @@ Describe 'rocm-checks\IREE.ps1' {
                 @{ N = 'python lacks hip'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report ($script:GoodReport -replace '"hip", ', '')); P = 'iree.runtime lists no hip' }
                 @{ N = 'pyd unpatched'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report ($script:GoodReport -replace 'true', 'false')); P = 'extension .+ does not look for amdhip64_7' }
                 @{ N = 'python compile error'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report ($script:GoodReport -replace '\}$', ', "compile_error": "RuntimeError: boom"}')); P = 'iree.compiler rocm compile failed: RuntimeError: boom' }
-                @{ N = 'python no report'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report 'Traceback'); P = 'python probe exited 0 without a report' }
+                @{ N = 'python no report'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report 'Traceback'); P = '^IREE: the python probe exited 0 without a report$' }
+                @{ N = 'python failed with a report'; Inv = (New-FakeIreeInvoke -ListOutput $script:GoodList -Vmfb $vmfb -Report $script:GoodReport -PythonExit 7); P = '^IREE: the python probe exited 7 without a report$' }
             )
             foreach ($c in $cases) {
                 $got = @(Get-IreeRocmFinding -IreeBin $i.Bin -ScratchDir $i.Scratch -Invoke $c.Inv)
@@ -630,16 +634,25 @@ Describe 'rocm-checks\IREE.ps1' {
         Assert-Match 'b"amdhip64_7\.dll"' $probe 'patched name'
         Assert-Match ([regex]::Escape((Get-IreeRocmGateMlir))) $probe 'same MLIR as the CLI check'
     }
+
+    It 'uses the common report parser and retains IREE''s no-tail finding contract' {
+        $src = Get-Content -Raw (Join-Path (Get-RepoRoot) $script:IreeCheck)
+        Assert-Match 'ConvertFrom-PythonJsonProbeOutput -Lines.+-ExitCode \$ran\.Exit' $src 'shared parser keeps the injectable runner'
+        Assert-False ($src -match 'ConvertFrom-Json|Select-Object -Last 1') 'IREE has no private report parser'
+        Assert-Match 'WindowsNative\.Common\.psm1.*ErrorAction Stop' ($src -replace "`r?`n", ' ') 'the parser module is required in the check scope'
+    }
 }
 
 Describe 'rocm-checks\TVM.ps1' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Get-TvmRocmSidecarFinding', 'Get-TvmRocmRuntimeFinding', 'Get-TvmRocmCodegenFinding', 'Get-TvmRocmCodegenProbe', 'ConvertFrom-TvmRocmProbeOutput', 'Get-TvmRocmRuntimeProbe', 'Get-TvmRocmMarkerFinding', 'Get-TvmRocmLlvmTargetFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TvmCheck -FunctionName 'Get-TvmRocmSidecarFinding', 'Get-TvmRocmRuntimeFinding', 'Get-TvmRocmCodegenFinding', 'Get-TvmRocmCodegenProbe', 'Get-TvmRocmRuntimeProbe', 'Get-TvmRocmMarkerFinding', 'Get-TvmRocmLlvmTargetFinding')
 
-    It 'reads the last JSON report of a probe and names a probe that gave none' {
-        $r = ConvertFrom-TvmRocmProbeOutput -Probe 'runtime' -ExitCode 0 -Lines @('Unable to detect ROCm version', '{"opencl": false}', '{"opencl": true, "rocm": true}')
-        Assert-True ($r -is [hashtable] -and $r['opencl'] -and $r['rocm']) 'last report wins'
-        Assert-Match 'the codegen probe exited 1 without a report: .*Traceback' (ConvertFrom-TvmRocmProbeOutput -Probe 'codegen' -ExitCode 1 -Lines @('{"size": 0}', 'Traceback')) 'non-zero exit'
-        Assert-Match 'the runtime probe exited 0 without a report' (ConvertFrom-TvmRocmProbeOutput -Probe 'runtime' -ExitCode 0 -Lines @()) 'no report'
+    It 'uses the shared JSON transport for parsing and per-probe cleanup' {
+        $src = Get-Content -Raw (Join-Path (Get-RepoRoot) $script:TvmCheck)
+        Assert-Match 'Invoke-PythonJsonProbe -Python \$Python -Source \$Source -Prefix "tvm-rocm-\$Probe"' $src 'the shared helper owns process and temp-file lifetime'
+        Assert-Match '-ArgumentList \$ArgumentList -DiagnosticTail -FailurePrefix "TVM: the \$Probe probe exited"' $src 'TVM retains argv, stderr diagnostics and finding labels'
+        Assert-Match "Import-Module \(Join-Path \`$modules 'WindowsNative.Common.psm1'\) -ErrorAction Stop" $src 'the required transport module fails loudly when absent'
+        Assert-Match "Import-Module \(Join-Path \`$modules 'WindowsTargetArch.Common.psm1'\) -ErrorAction Stop" $src 'the architecture reader imports into the check scope'
+        Assert-False ($src -match 'ConvertFrom-TvmRocmProbeOutput|CreateTempSubdirectory') 'TVM has no private JSON parser or temp-directory lifecycle'
     }
 
     function New-FakeTvmLib([string]$Root, [string[]]$Dlls = @('tvm_runtime_opencl.dll', 'tvm_runtime_rocm.dll')) {
@@ -722,7 +735,13 @@ Describe 'rocm-checks\TVM.ps1' {
             Invoke-InTestDir {
                 param($d)
                 Set-Content -Path (Join-Path $d 'ROCM-FEATURES.txt') -Encoding ascii -Value (Get-TvmRocmFeatureMarker -Plan (Get-TvmRocmPlan -GpuEnv $script:RocmEnv -Cross $false -SpikeFlag '1') -LlvmTargets $case.Targets)
-                [System.IO.File]::WriteAllText((Join-Path $d 'python.cmd'), "@type ""%~dp0%~n1.json""`r`n")
+                $pythonShim = @'
+@echo off
+echo %~n1|findstr /B /L /C:"tvm-rocm-runtime-" >nul
+if not errorlevel 1 (type "%~dp0tvm_rocm_runtime.json") else (type "%~dp0tvm_rocm_codegen.json")
+'@
+                $pythonShim = $pythonShim -replace '\r?\n', "`r`n"
+                [System.IO.File]::WriteAllText((Join-Path $d 'python.cmd'), $pythonShim)
                 [System.IO.File]::WriteAllText((Join-Path $d 'tvm_rocm_runtime.json'), (@{ opencl = $true; rocm = $true; llvm_targets = $case.Linked } | ConvertTo-Json -Compress))
                 [System.IO.File]::WriteAllText((Join-Path $d 'tvm_rocm_codegen.json'), $hsaco)
                 $out = @(Invoke-WithEnv @{ PATH = $d; TVM_ROOT = $d; TVM_LIBRARY_PATH = $null; HIP_PATH = $null } { & (Join-Path (Get-RepoRoot) $script:TvmCheck) 6>$null })

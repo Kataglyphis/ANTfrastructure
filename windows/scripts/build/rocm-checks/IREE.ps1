@@ -144,15 +144,20 @@ function Get-IreeRocmFinding {
     [System.IO.File]::WriteAllText($probe, (Get-IreeRocmPythonProbe))
     $pyVmfb = Join-Path $ScratchDir 'abs-hip-py.vmfb'
     $ran = & $Invoke $Python @($probe, $Arch, $pyVmfb)
-    $json = @("$($ran.Output)" -split '\r?\n' | Where-Object { $_.StartsWith('{') }) | Select-Object -Last 1
-    if ($ran.Exit -ne 0 -or -not $json) { return "IREE: the python probe exited $($ran.Exit) without a report" }
-    $report = $json | ConvertFrom-Json -AsHashtable
+    $parsed = ConvertFrom-PythonJsonProbeOutput -Lines @("$($ran.Output)" -split '\r?\n') -ExitCode $ran.Exit
+    if ($parsed.Failure) { return "IREE: the python probe exited $($parsed.Failure)" }
+    $report = $parsed.Report
     if ('hip' -notin @($report['drivers'])) { "IREE: iree.runtime lists no hip driver ($(@($report['drivers']) -join ', '))" }
     if (-not $report['pyd_patched']) { "IREE: the iree.runtime extension ($($report['pyds']) pyd) does not look for amdhip64_7.dll" }
     if ($report.ContainsKey('compile_error')) { "IREE: iree.compiler rocm compile failed: $($report['compile_error'])" }
     elseif (-not (Test-Path -LiteralPath $pyVmfb -PathType Leaf)) { 'IREE: iree.compiler wrote no rocm vmfb' }
     else { Get-AmdgpuCodeObjectFinding -Bytes ([System.IO.File]::ReadAllBytes($pyVmfb)) -What "the iree.compiler $Arch vmfb" -Mach $Mach }
 }
+
+$modules = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'modules'
+$common = Join-Path $modules 'WindowsNative.Common.psm1'
+if (-not (Test-Path -LiteralPath $common -PathType Leaf)) { throw 'WindowsNative.Common.psm1 not found beside the IREE ROCm check' }
+Import-Module $common -ErrorAction Stop
 
 $ireeBin = if ($env:IREE_BIN) { $env:IREE_BIN } else { 'C:\runtime\iree\bin' }
 $scratch = [System.IO.Directory]::CreateTempSubdirectory('rocm-check-iree-').FullName

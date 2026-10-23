@@ -573,7 +573,7 @@ Describe 'rocm-checks\OrtWebGpu.ps1: shared Python JSON transport' {
     }
 
     It 'uses the shared transport for both modes and preserves failed probes as findings' {
-        $state = [pscustomobject]@{ Code = 0; Lines = @('diagnostic', '{"python":"fixture"}'); Args = @(); Source = '' }
+        $state = [pscustomobject]@{ Code = 0; Lines = @('diagnostic', '{"python":"fixture"}'); Calls = [Collections.Generic.List[object]]::new(); Args = @(); Source = '' }
         Invoke-OrtWebGpuProbeFixture -State $state -Body {
             param($state)
             $report = Invoke-OrtWebGpuProbe -Python 'Invoke-OrtWebGpuFixturePython' -WebGpu $true

@@ -234,8 +234,7 @@ Describe 'Build-TorchApp.ps1: the census gates install and verify' {
     # Every whole-word mention of $Word in function $In outside comments, as file offset and line.
     function Find-TorchAppMention([string]$In, [string]$Word) {
         $fn = $script:TorchAppFns[$In].Extent
-        $tokens = $null
-        [void][System.Management.Automation.Language.Parser]::ParseInput($fn.Text, [ref]$tokens, [ref]$null)
+        $tokens = (ConvertTo-TestScriptParseResult -Text $fn.Text -ErrorLabel "Find-TorchAppMention $In").Tokens
         $code = $fn.Text.ToCharArray()
         foreach ($c in @($tokens | Where-Object Kind -EQ 'Comment')) { for ($i = $c.Extent.StartOffset; $i -lt $c.Extent.EndOffset; $i++) { $code[$i] = ' ' } }
         [regex]::Matches(-join $code, "(?i)(?<!\w)$Word(?!\w)") | ForEach-Object {

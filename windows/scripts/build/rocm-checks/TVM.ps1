@@ -186,24 +186,16 @@ function Get-TvmRocmCodegenFinding {
     }
 }
 
-<#
-.SYNOPSIS
-    The probe's report (its last JSON line) as a hashtable, or a finding naming the probe.
-#>
-function ConvertFrom-TvmRocmProbeOutput {
-    param([Parameter(Mandatory)][string]$Probe, [int]$ExitCode, [AllowEmptyCollection()][string[]]$Lines = @())
-    $report = @($Lines | Where-Object { $_.StartsWith('{') })
-    if ($ExitCode -eq 0 -and $report.Count -gt 0) { return ($report[-1] | ConvertFrom-Json -AsHashtable) }
-    return "TVM: the $Probe probe exited $ExitCode without a report: $(@($Lines | Select-Object -Last 3) -join ' | ')"
-}
-
 function Invoke-TvmRocmProbe {
-    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Directory,
-        [Parameter(Mandatory)][string]$Probe, [Parameter(Mandatory)][string]$Source, [string[]]$ArgumentList = @())
-    $path = Join-Path $Directory "tvm_rocm_$Probe.py"
-    [System.IO.File]::WriteAllText($path, $Source)
-    $out = @(& $Python $path @ArgumentList 2>&1 | ForEach-Object { "$_" })
-    ConvertFrom-TvmRocmProbeOutput -Probe $Probe -ExitCode $LASTEXITCODE -Lines $out
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Probe,
+        [Parameter(Mandatory)][string]$Source, [string[]]$ArgumentList = @())
+    try {
+        return Invoke-PythonJsonProbe -Python $Python -Source $Source -Prefix "tvm-rocm-$Probe" `
+            -ArgumentList $ArgumentList -DiagnosticTail -FailurePrefix "TVM: the $Probe probe exited"
+    } catch {
+        if ($_.Exception.Message -match '^TVM: the .+ probe exited \d+ without a report') { return $_.Exception.Message }
+        throw
+    }
 }
 
 $tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { 'C:\runtime\lib\tvm' }
@@ -220,25 +212,22 @@ Get-TvmRocmMarkerFinding -Features $features
 $modules = @((Join-Path $PSScriptRoot '..\..\modules'), (Join-Path $PSScriptRoot '..\modules')) |
     Where-Object { Test-Path -LiteralPath (Join-Path $_ 'WindowsTargetArch.Common.psm1') } | Select-Object -First 1
 if (-not $modules) { 'TVM: WindowsTargetArch.Common.psm1 not found next to the checks'; return }
-if (-not (Get-Module -Name 'WindowsTargetArch.Common')) { Import-Module (Join-Path $modules 'WindowsTargetArch.Common.psm1') }
+if (-not (Test-Path -LiteralPath (Join-Path $modules 'WindowsNative.Common.psm1'))) { throw 'WindowsNative.Common.psm1 not found beside the TVM ROCm check' }
+Import-Module (Join-Path $modules 'WindowsNative.Common.psm1') -ErrorAction Stop
+Import-Module (Join-Path $modules 'WindowsTargetArch.Common.psm1') -ErrorAction Stop
 Get-TvmRocmSidecarFinding -LibDir $libDir -Features $features -GetImports { param($p) Get-PeImportNames -Path $p }
 
 $python = Get-Command python -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $python) { 'TVM: python is not on PATH -- the tvm package cannot be checked'; return }
-$probes = [System.IO.Directory]::CreateTempSubdirectory('rocm-check-tvm-').FullName
-try {
-    # Probe 1 gets TheRock's bin as its DLL dir: no AMD driver puts amdhip64_7.dll in System32 here.
-    $hipBin = if ($env:HIP_PATH) { Join-Path $env:HIP_PATH 'bin' } else { '' }
-    $runtime = Invoke-TvmRocmProbe -Python $python.Source -Directory $probes -Probe runtime -Source (Get-TvmRocmRuntimeProbe) -ArgumentList @($hipBin)
-    if ($runtime -is [string]) { $runtime } else {
-        Get-TvmRocmRuntimeFinding -Report $runtime -Features $features
-        Get-TvmRocmLlvmTargetFinding -Report $runtime -Features $features
-    }
+# Probe 1 gets TheRock's bin as its DLL dir: no AMD driver puts amdhip64_7.dll in System32 here.
+$hipBin = if ($env:HIP_PATH) { Join-Path $env:HIP_PATH 'bin' } else { '' }
+$runtime = Invoke-TvmRocmProbe -Python $python.Source -Probe runtime -Source (Get-TvmRocmRuntimeProbe) -ArgumentList @($hipBin)
+if ($runtime -is [string]) { $runtime } else {
+    Get-TvmRocmRuntimeFinding -Report $runtime -Features $features
+    Get-TvmRocmLlvmTargetFinding -Report $runtime -Features $features
+}
 
-    if ($features['TVM_ROCM'] -eq '1') {
-        $codegen = Invoke-TvmRocmProbe -Python $python.Source -Directory $probes -Probe codegen -Source (Get-TvmRocmCodegenProbe) -ArgumentList @('gfx1201')
-        if ($codegen -is [string]) { $codegen } else { Get-TvmRocmCodegenFinding -Report $codegen }
-    }
-} finally {
-    Remove-Item -LiteralPath $probes -Recurse -Force -ErrorAction SilentlyContinue
+if ($features['TVM_ROCM'] -eq '1') {
+    $codegen = Invoke-TvmRocmProbe -Python $python.Source -Probe codegen -Source (Get-TvmRocmCodegenProbe) -ArgumentList @('gfx1201')
+    if ($codegen -is [string]) { $codegen } else { Get-TvmRocmCodegenFinding -Report $codegen }
 }

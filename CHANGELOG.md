@@ -31,7 +31,10 @@
 - Delegate the CrossBundle package-architecture export to `WindowsTargetArch.Common`.
 - Share the bounded dual-stack TCP probe between URL checks and the BuildKit sccache guard while preserving malformed-URL and timeout behavior.
 - Share Dockerfile stage indexing and literal test-directory cleanup across Windows suites, preserving suite-specific stage rules and cleanup scopes.
+- Return validated snippet ASTs and lexer tokens from one harness parse, so comment-aware structural scans reject malformed input before inspecting declarations; reuse harness ancestor traversal in GenAI wiring checks.
 - Route the ORT WebGPU image probe through the shared Python JSON transport, preserving mode arguments and caller-owned findings for malformed or failed runs.
+- Route TVM ROCm runtime and codegen probes through the shared Python JSON transport, preserving TVM finding labels and child diagnostics.
+- Share Python report selection, exit verdict and decoding with the injectable IREE ROCm runner, preserving its no-tail finding policy.
 - Resolve CUDA and TensorRT image installer modules through the shared container-image bootstrap, passing the flat BuildKit module root explicitly.
 - Share `SCCACHE_MAX_JOBS` defaulting across host-cache and CMake setup while preserving each caller's activation point and logging.
 

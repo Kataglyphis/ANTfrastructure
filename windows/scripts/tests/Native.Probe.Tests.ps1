@@ -72,6 +72,16 @@ $process = [Diagnostics.Process]::Start($info)
 }
 
 Describe 'Python JSON probe report transport' {
+    It 'shares last-report selection and exit/no-report verdicts across callers' {
+        $parsed = ConvertFrom-PythonJsonProbeOutput -Lines @('diagnostic', '{"value":1}', '{"value":2}') -ExitCode 0
+        Assert-Equal 2 $parsed.Report.value 'the last JSON report wins'
+        Assert-Null $parsed.Failure 'a successful report has no failure'
+        $failed = ConvertFrom-PythonJsonProbeOutput -Lines @('{"value":2}') -ExitCode 7
+        Assert-Equal '7 without a report' $failed.Failure 'a valid report cannot excuse a failed process'
+        $missing = ConvertFrom-PythonJsonProbeOutput -Lines @('diagnostic') -ExitCode 0 -DiagnosticTail
+        Assert-Equal '0 without a report: diagnostic' $missing.Failure 'diagnostic tails are opt-in'
+    }
+
     It 'preserves interpreter/source/argument order, takes the last report and cleans the source even on nonzero exits' {
         $state = New-TestCallState @{ Code = 0; Source = ''; Path = '' }
         Invoke-WithTestNativeCommand -Name Invoke-JsonFixtureInterpreter -Implementation { param($state, $ArgumentList)
@@ -91,8 +101,16 @@ Describe 'Python JSON probe report transport' {
         }
     }
 
+    It 'detects accepting JSON from a failed interpreter in the shared parser' {
+        Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows\scripts\modules\WindowsNative.Common.psm1'; FunctionName = @('ConvertFrom-PythonJsonProbeOutput') } `
+            -Find '$ExitCode -ne 0 -or -not $json' -Replace '-not $json' -Expected 'nonzero exit status must suppress JSON' -IncludeControl -Body {
+                $parsed = Invoke-MutConvertFromPythonJsonProbeOutput -Lines @('{"ok":true}') -ExitCode 4
+                Assert-NotNull $parsed.Failure 'nonzero exit status must suppress JSON'
+            }
+    }
+
     It 'detects accepting valid JSON from a failed interpreter' {
-        Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsNative.Common.psm1' -FunctionName Invoke-PythonJsonProbe -Find '$code -ne 0 -or -not $json' -Replace '-not $json' -Body {
+        Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsNative.Common.psm1' -FunctionName Invoke-PythonJsonProbe -Find '$parsed.Failure' -Replace '$false' -Body {
             Invoke-WithTestFunction -Name Invoke-FailedJsonFixture -Definition { '{"ok":true}'; $global:LASTEXITCODE = 4 } -Body {
                 Assert-Throws {
                     Assert-Throws { Invoke-MutPythonJsonProbe -Python Invoke-FailedJsonFixture -Source 'fixture' -Prefix json-mutant } -MessagePattern 'exit 4'

@@ -325,11 +325,13 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
     # Unconditional wiring = a statement no function body, if or loop encloses.
     $always = {
         param($Node)
-        for ($up = $Node.Parent; $null -ne $up; $up = $up.Parent) {
-            if ($up -is [System.Management.Automation.Language.FunctionDefinitionAst] -or $up -is [System.Management.Automation.Language.IfStatementAst] -or
-                $up -is [System.Management.Automation.Language.LoopStatementAst]) { return $false }
+        $guard = Get-TestAstAncestor -Node $Node -First -Predicate {
+            param($ancestor)
+            $ancestor -is [System.Management.Automation.Language.FunctionDefinitionAst] -or
+                $ancestor -is [System.Management.Automation.Language.IfStatementAst] -or
+                $ancestor -is [System.Management.Automation.Language.LoopStatementAst]
         }
-        $true
+        $null -eq $guard
     }
     $callsOf = { param([string]$Name) @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name $Name | Where-Object { & $always $_ }) }
     $assignsTo = { param([string]$Var) @(& $find { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $Var }) }

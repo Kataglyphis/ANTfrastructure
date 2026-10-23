@@ -25,7 +25,7 @@ function Invoke-TestEnvironmentCases {
 
 function New-TestCmakeExecutionModuleArguments {
     $state = New-TestCallState @{ Runtime = $null; Paths = [Collections.Generic.List[object]]::new(); Logs = [Collections.Generic.List[string]]::new(); Code = 0; Throw = $false }
-    $text = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Write-BuildCommandOutput).ToString() + "`n" +
+    $text = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Write-BuildCommandOutput, Set-SccacheMaxJobsDefault).ToString() + "`n" +
         (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsCMake.Common.psm1' -FunctionName Invoke-CmakeConfigureAndBuild).ToString()
     return @{ Text = $text; FixtureState = $state; Prelude = @'
 function Get-CimInstance { [pscustomobject]@{ NumberOfLogicalProcessors = 1 } }

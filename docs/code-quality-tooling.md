@@ -3253,9 +3253,13 @@ fail; these fixtures do not prove an OpenCV build or upstream patch applicabilit
 
 `Get-TestScriptAst` and `ConvertTo-TestScriptAst` in the PowerShell test harness
 own file and snippet parsing with shared parse-error validation.
-Missing files and parse errors fail with caller labels; it never runs the source.
-Function extraction, native-argument positive controls and source-verification
-fixtures use it. The AST fixture suite covers malformed inputs and non-execution.
+`ConvertTo-TestScriptParseResult` also returns the lexer tokens from that same
+validated snippet parse for comment-aware structural scans. Missing files and parse
+errors fail with caller labels; the harness never runs the source. Function
+extraction, native-argument positive controls and source-verification fixtures use
+these readers. Suites use `Get-TestAstAncestor` for nearest-first guard checks
+instead of repeating parent walks. The AST fixture suite mutation-tests malformed-
+input rejection and covers non-execution.
 
 Renovate drivers share argument policies and Git discovery in
 [`renovate-cli.sh` and `renovate-git.sh`](dependency-updates.md#shared-driver-helpers).

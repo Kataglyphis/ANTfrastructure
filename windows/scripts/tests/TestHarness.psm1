@@ -555,11 +555,17 @@ function Get-TestCommandArguments {
     return $arguments
 }
 
-function ConvertTo-TestScriptAst {
+function ConvertTo-TestScriptParseResult {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Text, [string]$ErrorLabel = 'Get-TestScriptAst')
     $tokens = $null; $parseErrors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$tokens, [ref]$parseErrors)
-    Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "$ErrorLabel snippet failed to parse"
+    $ast = Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "$ErrorLabel snippet failed to parse"
+    [pscustomobject]@{ Ast = $ast; Tokens = @($tokens) }
+}
+
+function ConvertTo-TestScriptAst {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text, [string]$ErrorLabel = 'Get-TestScriptAst')
+    (ConvertTo-TestScriptParseResult -Text $Text -ErrorLabel $ErrorLabel).Ast
 }
 
 <#
@@ -830,4 +836,4 @@ function Assert-TestAstCommand {
     }
 }
 
-Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand
+Export-ModuleMember -Function Get-TestAstAncestor, Assert-TestAstCommand, ConvertTo-TestScriptParseResult

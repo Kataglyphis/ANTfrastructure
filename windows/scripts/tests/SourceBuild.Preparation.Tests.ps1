@@ -327,35 +327,36 @@ function Assert-OrtRegexFallbackOperation {
 }
 
 function Assert-TvmProbeOperation {
-    Invoke-InTestDir -Body { param($dir)
-        $state = New-TestCallState @{ Code = 0; Mode = 'report'; Source = '' }
-        Invoke-WithTestNativeCommand -Name Invoke-TvmFixturePython -FixtureState $state -Implementation {
-            param($State, $ArgumentList)
-            $State.Source = [IO.File]::ReadAllText($ArgumentList[0])
-            if ($State.Mode -eq 'empty') { return }
-            'probe noise'
-            '{"value": 1}'
-            Write-Error 'probe stderr detail' -ErrorAction Continue
-            '{"value": 7}'
-        } -Body { param($State)
-            $options = @{ Python = 'Invoke-TvmFixturePython'; Directory = $dir; Probe = 'runtime'; Source = "print('runtime')`n"; ArgumentList = @('', 'C:\HIP bin', '--literal=one;two') }
-            $report = @(Invoke-MutTvmRocmProbe @options)
-            Assert-Equal 1 $report.Count 'probe diagnostics do not contaminate the report stream'
-            Assert-Equal 7 $report[0].value 'the last JSON line wins'
-            Assert-Equal $options.Source $State.Source 'the source file preserves every byte'
-            Assert-Equal (Join-Path $dir tvm_rocm_runtime.py) $State.Calls[0][0] 'the probe retains its source filename'
-            Assert-Equal 4 $State.Calls[0].Count 'empty and spaced arguments remain separate'
-            Assert-Equal '|C:\HIP bin|--literal=one;two' ($State.Calls[0][1..3] -join '|') 'the native argument order survives'
-            $State.Code = 9
-            $failure = Invoke-MutTvmRocmProbe @options
-            Assert-Match 'runtime probe exited 9 without a report: .*probe stderr detail.*value' $failure 'nonzero exit overrides a JSON-looking report and retains the diagnostic tail'
-            $State.Code = 0; $State.Mode = 'empty'; $options.Probe = 'codegen'
-            Assert-Match 'codegen probe exited 0 without a report' (Invoke-MutTvmRocmProbe @options) 'an empty success cannot pass'
-            $options.Directory = Join-Path $dir absent
-            $before = $State.Calls.Count
-            Assert-Throws { Invoke-MutTvmRocmProbe @options } -MessagePattern 'absent'
-            Assert-Equal $before $State.Calls.Count 'a source write failure prevents launching the probe'
+    $state = New-TestCallState @{ Fail = $false; ExitCode = 9; Error = ''; }
+    Invoke-WithTestFunction -Name Invoke-PythonJsonProbe -FixtureState $state -Definition {
+        param($Python, $Source, $Prefix, $ArgumentList, [switch]$DiagnosticTail, $FailurePrefix)
+        $State.Calls.Add(@{
+            Python = $Python; Source = $Source; Prefix = $Prefix; ArgumentList = @($ArgumentList)
+            DiagnosticTail = $DiagnosticTail.IsPresent; FailurePrefix = $FailurePrefix
+        })
+        if ($State.Error) { throw $State.Error }
+        if ($State.Fail) { throw "$FailurePrefix $($State.ExitCode) without a report: probe stderr detail | value=7" }
+        return @{ value = 7 }
+    } -Body { param($State)
+        $options = @{ Python = 'python-fixture'; Probe = 'runtime'; Source = "print('runtime')`n"; ArgumentList = @('', 'C:\HIP bin', '--literal=one;two') }
+        $report = Invoke-MutTvmRocmProbe @options
+        Assert-Equal 7 $report.value 'shared transport report reaches TVM findings'
+        Assert-Equal $options.Python $State.Calls[0].Python 'interpreter reaches shared transport'
+        Assert-Equal $options.Source $State.Calls[0].Source 'source bytes reach shared transport'
+        Assert-Equal 'tvm-rocm-runtime' $State.Calls[0].Prefix 'TVM keeps a component-specific temp-file prefix'
+        Assert-True $State.Calls[0].DiagnosticTail 'TVM failures retain the child diagnostic tail'
+        Assert-Equal 'TVM: the runtime probe exited' $State.Calls[0].FailurePrefix 'TVM findings keep their failure label'
+        Assert-Equal '|C:\HIP bin|--literal=one;two' ($State.Calls[0].ArgumentList -join '|') 'empty and spaced arguments remain separate'
+        $State.Fail = $true
+        foreach ($code in 9, 0) {
+            $State.ExitCode = $code
+            $thrown = $null
+            try { $failure = Invoke-MutTvmRocmProbe @options } catch { $thrown = $_.Exception.Message }
+            Assert-Null $thrown 'failed child probes stay findings instead of aborting Test-RocmImage'
+            Assert-Match "TVM: the runtime probe exited $code without a report: .*probe stderr detail.*value" $failure 'nonzero or empty reports preserve the caller finding and diagnostic tail'
         }
+        $State.Fail = $false; $State.Error = 'python is not executable'
+        Assert-Throws { Invoke-MutTvmRocmProbe @options } -MessagePattern 'python is not executable'
     }
 }
 
@@ -479,11 +480,12 @@ Describe 'Shared source-build preparation' {
                 @{ Find = '-SourceDir $SourceDir -FallbackNote'; Replace = '-SourceDir (Join-Path $SourceDir absent) -FallbackNote'; Expected = 'reviewable patch takes precedence' }
             ) }
         @{ Name = 'preserves TVM source bytes, argv, merged diagnostics and failed or empty probe verdicts'
-            ScriptPath = 'windows/scripts/build/rocm-checks/TVM.ps1'; FunctionName = @('Invoke-TvmRocmProbe', 'ConvertFrom-TvmRocmProbeOutput')
+            ScriptPath = 'windows/scripts/build/rocm-checks/TVM.ps1'; FunctionName = @('Invoke-TvmRocmProbe')
             Body = { Assert-TvmProbeOperation }; Mutation = @(
-                @{ Find = '-ExitCode $LASTEXITCODE'; Replace = '-ExitCode 0'; Expected = 'nonzero exit overrides a JSON-looking report' }
-                @{ Find = '$path @ArgumentList 2>&1'; Replace = '$path 2>&1'; Expected = 'empty and spaced arguments remain separate' }
-                @{ Find = '[System.IO.File]::WriteAllText($path, $Source)'; Replace = "[System.IO.File]::WriteAllText(`$path, 'wrong source')"; Expected = 'source file preserves every byte' }
+                @{ Find = '-ArgumentList $ArgumentList'; Replace = ''; Expected = 'empty and spaced arguments remain separate' }
+                @{ Find = '-DiagnosticTail'; Replace = ''; Expected = 'TVM failures retain the child diagnostic tail' }
+                @{ Find = '-FailurePrefix "TVM: the $Probe probe exited"'; Replace = '-FailurePrefix $Probe'; Expected = 'TVM findings keep their failure label' }
+                @{ Find = 'if ($_.Exception.Message -match ''^TVM: the .+ probe exited \d+ without a report'')'; Replace = 'if ($false)'; Expected = 'failed child probes stay findings instead of aborting Test-RocmImage' }
             ) }
         @{ Name = 'preserves the percent-decoded URL final segment and both wheel builder bindings'
             ScriptPath = 'windows/scripts/modules/WindowsScripts.Shared.psm1'; FunctionName = @('Get-UrlFileName')

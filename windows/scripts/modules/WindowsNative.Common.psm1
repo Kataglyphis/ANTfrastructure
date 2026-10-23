@@ -73,6 +73,19 @@ function Invoke-NativeProbeProcess {
 
 Export-ModuleMember -Function Invoke-NativeProbeProcess
 
+function ConvertFrom-PythonJsonProbeOutput {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Lines,
+        [Parameter(Mandatory)][int]$ExitCode, [switch]$DiagnosticTail)
+    $json = $Lines | Where-Object { "$_".StartsWith('{') } | Select-Object -Last 1
+    if ($ExitCode -ne 0 -or -not $json) {
+        $detail = if ($DiagnosticTail) { ': ' + (($Lines | Select-Object -Last 3) -join ' | ') } else { '' }
+        return [pscustomobject]@{ Report = $null; Failure = "$ExitCode without a report$detail" }
+    }
+    return [pscustomobject]@{ Report = ($json | ConvertFrom-Json -AsHashtable); Failure = $null }
+}
+
+Export-ModuleMember -Function ConvertFrom-PythonJsonProbeOutput
+
 function Invoke-PythonJsonProbe {
     param(
         [Parameter(Mandatory)][string]$Python,
@@ -91,12 +104,9 @@ function Invoke-PythonJsonProbe {
         $lines = if ($DiscardStandardError) { @(& $Python @probeArgs 2>$null) } else { @(& $Python @probeArgs 2>&1 | ForEach-Object { "$_" }) }
         $code = $LASTEXITCODE
     } finally { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue }
-    $json = $lines | Where-Object { "$_".StartsWith('{') } | Select-Object -Last 1
-    if ($code -ne 0 -or -not $json) {
-        $detail = if ($DiagnosticTail) { ': ' + (($lines | Select-Object -Last 3) -join ' | ') } else { '' }
-        throw "$FailurePrefix $code without a report$detail"
-    }
-    return ($json | ConvertFrom-Json -AsHashtable)
+    $parsed = ConvertFrom-PythonJsonProbeOutput -Lines $lines -ExitCode $code -DiagnosticTail:$DiagnosticTail
+    if ($parsed.Failure) { throw "$FailurePrefix $($parsed.Failure)" }
+    return $parsed.Report
 }
 
 Export-ModuleMember -Function Invoke-PythonJsonProbe

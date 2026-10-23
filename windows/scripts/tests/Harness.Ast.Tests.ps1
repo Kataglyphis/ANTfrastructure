@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# AST fixtures check path/error handling and declaration parsing; no script or native build is executed.
+# NOT covered: production execution or Pester lifecycle; this suite validates AST parsing and queries only.
 
 function Get-AstFixtureCommand {
     param([string]$Text, [string]$Name)
@@ -110,6 +110,34 @@ Describe 'ConvertTo-TestScriptAst' {
         Assert-NotNull $ast
         Assert-Throws { ConvertTo-TestScriptAst -Text 'function Broken {' -ErrorLabel fixture } -MessagePattern 'fixture snippet failed to parse'
         Assert-NotNull (ConvertTo-TestScriptAst -Text '')
+    }
+}
+
+Describe 'ConvertTo-TestScriptParseResult' {
+    It 'returns the validated AST and tokens from one snippet parse' {
+        $parsed = ConvertTo-TestScriptParseResult -Text 'function Get-Fixture { Get-Item -LiteralPath sample } # keep comment'
+        Assert-NotNull $parsed.Ast
+        Assert-Match 'Get-Fixture' (($parsed.Tokens | ForEach-Object Text) -join ' ')
+        Assert-Equal 1 @(Get-TestAstCommands -Ast $parsed.Ast -Name Get-Item).Count
+        Assert-True (@($parsed.Tokens | Where-Object Kind -EQ Comment).Count -eq 1) 'the token stream retains comments for scanners'
+    }
+
+    It 'fails before malformed declarations can be inspected (mutation)' {
+        $mutArgs = @{
+            ScriptPath = 'windows/scripts/tests/TestHarness.psm1'
+            FunctionName = @('Resolve-TestParseResult', 'ConvertTo-TestScriptParseResult')
+            Find = '-ParseError $parseErrors'
+            Replace = '-ParseError @()'
+            Expected = 'expected an exception but none was thrown'
+            IncludeControl = $true
+            Body = {
+                Assert-Throws {
+                    $parsed = ConvertTo-MutTestScriptParseResult -Text 'function Broken {' -ErrorLabel fixture
+                    Assert-NotNull $parsed.Ast 'a malformed declaration must not reach inspection'
+                } -MessagePattern 'fixture snippet failed to parse'
+            }
+        }
+        Invoke-TestFunctionMutations @mutArgs
     }
 }
 
