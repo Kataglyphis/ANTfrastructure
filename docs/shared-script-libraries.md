@@ -1881,3 +1881,23 @@ and argument consumption through `orchestrator_set_cross_targets`; compiler targ
 remain distinct from the chain's per-stage architecture list. Independent fixtures
 exercise empty values, commas, spaces, literal shell text and newlines inside
 caller-local variables. Complete help receipts also cover both cross entrypoints.
+
+### Runtime selectors, compiler tools and wheel manifests
+
+`orchestrator_consume_runtime_push_arg` owns the shared runtime push selectors.
+Each entrypoint keeps its accepted flag set and unique options. The helper keeps
+assignment order and argument consumption; untouched fields remain unset or keep
+the caller's existing value. Gates-only handling stays in the manifest caller.
+
+`compiler_tool_enabled` probes availability before checking its explicit tool
+policy and retains suppressed lookup output and original lookup status. FFmpeg
+and ORT retain the historical off spellings `0`, `false`, `FALSE`, `no`, `NO`,
+`off`, `OFF`; their `False` input still enables the optional tool. Other cache
+readers retain their established default handling, including `False` as disabled.
+
+`wheelhouse-manifest.sh` owns sorted, null-safe regular-file discovery and binary
+hash-separator normalization. The host library retains strict failure behavior;
+Torch diagnostics retain their best-effort behavior and separate count/log policy.
+Both imports require the canonical companion; Torch's early image COPY carries it.
+An independent three-file golden checks complete manifest bytes and hashes, beside
+original/current failure receipts and the existing host/image agreement check.

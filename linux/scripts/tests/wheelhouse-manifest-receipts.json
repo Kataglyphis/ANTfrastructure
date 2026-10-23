@@ -1,0 +1,212 @@
+{
+  "_runtime_wheels_manifest:none:strict": {
+    "status": 0,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:none:conditional": {
+    "status": 0,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:find:strict": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:find:conditional": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:sort:strict": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:sort:conditional": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:xargs:strict": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:xargs:conditional": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:sha256sum:strict": {
+    "status": 0,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:sha256sum:conditional": {
+    "status": 0,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:awk:strict": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:awk:conditional": {
+    "status": 17,
+    "stdout": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb  ./a.whl\na4888af4e46c129c695ee32775a8c233f113c82e7cd4e6fd3cbb1fda5659f36a  ./sub/middle.whl\n71fcbb297f519f82ab367cf8562930923a5388b6e702f5302cf6a9cc460d2cfd  ./z wheel.whl\n",
+    "stderr": ""
+  },
+  "_runtime_wheels_manifest:absent:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "SOURCE: line @LINE@: cd: WORK/absent: No such file or directory\n"
+  },
+  "_runtime_wheels_manifest:absent:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "SOURCE: line @LINE@: cd: WORK/absent: No such file or directory\n"
+  },
+  "runtime_wheels_digest_line:none:strict": {
+    "status": 0,
+    "stdout": "files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:none:conditional": {
+    "status": 0,
+    "stdout": "files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:find:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:find:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:sort:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:sort:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:xargs:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:xargs:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:sha256sum:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:sha256sum:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:awk:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:awk:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": ""
+  },
+  "runtime_wheels_digest_line:absent:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "find: \u2018WORK/absent\u2019: No such file or directory\nSOURCE: line @LINE@: cd: WORK/absent: No such file or directory\n"
+  },
+  "runtime_wheels_digest_line:absent:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "find: \u2018WORK/absent\u2019: No such file or directory\nSOURCE: line @LINE@: cd: WORK/absent: No such file or directory\n"
+  },
+  "_stv_wheelhouse_line:none:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:none:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:find:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:find:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:sort:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:sort:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:xargs:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:xargs:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:sha256sum:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:sha256sum:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:awk:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:awk:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=3 bytes=15 sha256=0b378f0060d3a5457e47866b46026f249475b79cd533f8dbeb8e4ca80820a12e\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:absent:strict": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=0 bytes=0 sha256=none\n",
+    "stderr": ""
+  },
+  "_stv_wheelhouse_line:absent:conditional": {
+    "status": 0,
+    "stdout": "[torch-venv] wheelhouse files=0 bytes=0 sha256=none\n",
+    "stderr": ""
+  }
+}

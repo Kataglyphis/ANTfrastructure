@@ -216,18 +216,14 @@ _manifest_accept_and_promote() {
 }
 
 _manifest_extra_arg() {
-  # shellcheck disable=SC2034 # --push-all sets it for context-management.sh
   case "$1" in
     --image) IMAGE_NAME="$2"; _OARG_SHIFT=2 ;;
-    --push-images) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
     --push-manifest) PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
     --skip-manifest) CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --manifest-only|--repair) BUILD_IMAGES=0; _OARG_SHIFT=1 ;;
     --gates-only) GATES_ONLY=1; BUILD_IMAGES=0; CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --force) FORCE_MANIFEST=1; _OARG_SHIFT=1 ;;
-    --push) PUSH_IMAGES=1; PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
-    --push-all) PUSH_IMAGES=1; PUSH_MANIFEST=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
-    *) return 1 ;;
+    *) orchestrator_consume_runtime_push_arg manifest "$1" ;;
   esac
 }
 

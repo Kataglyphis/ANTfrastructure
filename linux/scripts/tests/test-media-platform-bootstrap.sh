@@ -15,6 +15,8 @@ if [ -f "${BOOTSTRAP}" ]; then
 fi
 cp "${TESTS_DIR}/../06-packaging/package-image-wiring.sh" "${WORK}/packaging/package-image-wiring.sh"
 cp "${TESTS_DIR}/../06-packaging/package-image-wiring.sh" "${WORK}/linux/scripts/06-packaging/package-image-wiring.sh"
+cp "${TESTS_DIR}/../01-core/wheelhouse-manifest.sh" "${WORK}/core/wheelhouse-manifest.sh"
+cp "${TESTS_DIR}/../01-core/wheelhouse-manifest.sh" "${WORK}/linux/scripts/01-core/wheelhouse-manifest.sh"
 printf 'echo POISON\nelf_unresolved_needed() { :; }\n' > "${WORK}/poison/01-core/platform.sh"
 write_platform() {
   printf 'echo "%s"\nelf_unresolved_needed() { :; }\n' "$2" > "$1"
