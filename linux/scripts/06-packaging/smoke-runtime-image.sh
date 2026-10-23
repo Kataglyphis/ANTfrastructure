@@ -19,6 +19,10 @@ inspect_image_config() {
   "${NERDCTL_BIN}" image inspect "${image_tag}" 2>/dev/null | python3 -c "$1" 2>/dev/null || true
 }
 
+_rt_image_config_value() {
+  inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('$1',''))"
+}
+
 # Leading -e/--network pairs go to nerdctl run; reads the caller's ${image_tag}/${target_arch}.
 _rt_run() {
   local -a _opts=()
@@ -28,6 +32,12 @@ _rt_run() {
   done
   "${NERDCTL_BIN}" run --rm --platform "linux/${target_arch}" \
     ${_opts[@]+"${_opts[@]}"} "${image_tag}" "$@"
+}
+
+_rt_run_shell_probe() {
+  local variable="$1" marker="$2" program="$3" command
+  command="$(printf 'if [ -z "${%s:-}" ]; then echo "%s"; exit 4; fi\nprintf "%%s\\n" "${%s}" | bash' "${variable}" "${marker}" "${variable}")"
+  _rt_run -e "${variable}=${program}" bash -lc "${command}"
 }
 
 # Env wins over versions.env; EMPTY on a miss means "not asserted" (docs/gen1-riscv64-genai.md).
@@ -74,18 +84,22 @@ check_trivial_command() {
   echo ""
 }
 
+_rt_config_value_verdict() {
+  if [ -n "$1" ] && [ "$1" != "${5:-}" ]; then
+    pass "$2: $1"
+  else
+    "$3" "$4"
+  fi
+  echo ""
+}
+
 check_entrypoint() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- Entrypoint ---"
   local config
-  config="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('Entrypoint',''))")"
-  if [ -n "${config}" ]; then
-    pass "Entrypoint configured: ${config}"
-  else
-    fail "No entrypoint configured"
-  fi
-  echo ""
+  config="$(_rt_image_config_value Entrypoint)"
+  _rt_config_value_verdict "${config}" 'Entrypoint configured' fail 'No entrypoint configured'
 }
 
 # Default boot runs no argv, so the shipped ENTRYPOINT runs the shipped CMD; exit 42 proves status propagates.
@@ -179,13 +193,8 @@ check_workdir() {
   local target_arch="$2"
   echo "--- WORKDIR ---"
   local workdir
-  workdir="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('WorkingDir',''))")"
-  if [ -n "${workdir}" ]; then
-    pass "WORKDIR: ${workdir}"
-  else
-    echo "  INFO: No WORKDIR set"
-  fi
-  echo ""
+  workdir="$(_rt_image_config_value WorkingDir)"
+  _rt_config_value_verdict "${workdir}" WORKDIR echo '  INFO: No WORKDIR set'
 }
 
 check_volume() {
@@ -194,12 +203,7 @@ check_volume() {
   echo "--- VOLUME ---"
   local volumes
   volumes="$(inspect_image_config "import sys,json; vols=json.load(sys.stdin)[0].get('Config',{}).get('Volumes',''); print(':'.join(vols.keys()) if vols and isinstance(vols,dict) else 'NONE')")"
-  if [ -n "${volumes}" ] && [ "${volumes}" != "NONE" ]; then
-    pass "VOLUME: ${volumes}"
-  else
-    echo "  INFO: No VOLUME set"
-  fi
-  echo ""
+  _rt_config_value_verdict "${volumes}" VOLUME echo '  INFO: No VOLUME set' NONE
 }
 
 check_oci_labels() {
@@ -1030,10 +1034,8 @@ check_consumer_contract() {
   local target_arch="$2"
   local probe want stop verb row rest asserted=""
   echo "--- CONSUMER CONTRACT (${target_arch}) ---"
-  want="$(inspect_image_config "import sys,json; print(json.load(sys.stdin)[0].get('Config',{}).get('User',''))")"
-  probe="$(_rt_run -e "RT_CONTRACT_SH=$(_consumer_contract_probe)" \
-    bash -lc 'if [ -z "${RT_CONTRACT_SH:-}" ]; then echo "CCPROBE_EMPTY"; exit 4; fi
-printf "%s\n" "${RT_CONTRACT_SH}" | bash' 2>/dev/null)" || true
+  want="$(_rt_image_config_value User)"
+  probe="$(_rt_run_shell_probe RT_CONTRACT_SH CCPROBE_EMPTY "$(_consumer_contract_probe)" 2>/dev/null)" || true
   stop="$(_consumer_probe_verdict "${probe}" "${want}")"
   if [ -n "${stop}" ]; then
     fail "CONSUMER CONTRACT (${target_arch}): ${stop}"
@@ -1795,9 +1797,7 @@ run_shipped_truth_probe() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- SHIPPED-TRUTH probe (${target_arch}) ---"
-  _SHIPPED_TRUTH_PROBE="$(_rt_run -e "RT_PROBE_SH=$(_shipped_truth_probe)" \
-    bash -lc 'if [ -z "${RT_PROBE_SH:-}" ]; then echo "RTPROBE_EMPTY"; exit 4; fi
-printf "%s\n" "${RT_PROBE_SH}" | bash' 2>/dev/null)" || true
+  _SHIPPED_TRUTH_PROBE="$(_rt_run_shell_probe RT_PROBE_SH RTPROBE_EMPTY "$(_shipped_truth_probe)" 2>/dev/null)" || true
   if printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | grep -qxF -- 'RTPROBE_DONE'; then
     _SHIPPED_TRUTH_PROBE_RC=0
     echo "  probe completed: $(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | grep -c '^PKG ' || true) venv distributions, $(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | grep -c '^REQ ' || true) requirement edges"

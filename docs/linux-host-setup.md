@@ -603,6 +603,12 @@ never guesses what is legacy. Both dry-run by default
 (`GHCR_PRUNE_CONFIRM=1` / `GHCR_DELETE_TAGS_CONFIRM=1` perform), and both take
 the PAT from a docker login or `GHCR_TOKEN`.
 
+Keep `ghcr_metadata.py` beside both scripts and `ghcr-common.sh` when copying
+them. It owns version-tag extraction and inventory output using only Python's
+standard library. A missing companion must stop the tool before deletion.
+Offline fixtures cover inventory and candidate protection; they do not perform
+registry operations.
+
 **The shared Accept header is a safety property, not tidiness.** Listing the
 index media types makes a multi-arch tag resolve to its INDEX, so its children
 are visible; omitting them collapses the tag to a single platform manifest, and

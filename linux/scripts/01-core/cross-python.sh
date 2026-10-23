@@ -100,11 +100,6 @@ cross_target_python_major_minor() {
     return 0
   fi
 
-  if [ -n "${PYTHON_MAJOR_MINOR:-}" ]; then
-    printf '%s' "${PYTHON_MAJOR_MINOR}"
-    return 0
-  fi
-
   host_python_major_minor
 }
 

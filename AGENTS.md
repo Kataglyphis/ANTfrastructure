@@ -91,6 +91,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
+   Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
@@ -1077,7 +1078,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   from source; the native RVA23 triple; an apt step that needs interactive sudo):
   [`linux-host-setup.md` § D4](docs/linux-host-setup.md#d4-python-cli-tools-that-build-from-source-on-riscv64).
 
-- **ghcr REGISTRY hygiene: two tools over `ghcr-common.sh`, and NEVER "delete all untagged" by
+- **ghcr REGISTRY hygiene: two tools over `ghcr-common.sh` and `ghcr_metadata.py`, and NEVER "delete all untagged" by
   hand.** `ghcr-prune-package.sh` deletes UNTAGGED versions; `ghcr-delete-tags.sh` deletes NAMED
   tags from an explicit list and never guesses what is legacy. The per-arch entries of a
   multi-arch index are themselves untagged manifests, and a pushing chain creates untagged

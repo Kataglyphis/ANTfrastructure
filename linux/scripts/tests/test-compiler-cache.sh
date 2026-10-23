@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# compiler-cache.sh (F2): the framework resolver and the standalone bootstrap must pick the same launcher.
+# Stubbed compiler-cache fixtures cover launcher and address routing, not real cache servers or compilation.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 
 CCSH="${TESTS_DIR}/../01-core/compiler-cache.sh"
+CACHE_FIXTURE_WORK="$(mktemp -d)"
+trap 'rm -rf "${CACHE_FIXTURE_WORK}"' EXIT
 
 # _path_without <tool>: PATH minus every dir holding that executable; the image ships a real sccache.
 _path_without() {
@@ -17,7 +19,7 @@ _path_without() {
 
 # _mk_fakes <sccache: ok|dead|absent> <ccache: present|absent>: stub binaries first on PATH.
 _mk_fakes() {
-  _fake_bin="${TMPDIR:-/tmp}/cc-test-bin.$$"
+  _fake_bin="${CACHE_FIXTURE_WORK}/bin"
   rm -rf "${_fake_bin}"; mkdir -p "${_fake_bin}"
   case "${1:-ok}" in
     absent) PATH="$(_path_without sccache)" ;;
@@ -33,130 +35,79 @@ _mk_fakes() {
   printf '%s' "${_fake_bin}"
 }
 
-# Framework path: 01-core is loaded, so compiler_cache_launcher exists.
-t_case "setup_ccache (framework path) honors the resolver's guarded-launcher verdict"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
+_cache_fixture() (
+  local health="$1" resolver="$2" environment="$3" setup="$4" output="$5" address="${6:-preserve}"
+  _mk_fakes "$health" present >/dev/null
+  case "$environment" in
+    cc) export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G ;;
+    rust) export USE_SCCACHE=true SCCACHE_DIR=/tmp/sc SCCACHE_CACHE_SIZE=1G ;;
+    both) export USE_CCACHE=true USE_SCCACHE=true ;;
+  esac
+  case "$resolver" in
+    bootstrap) unset -f compiler_cache_launcher 2>/dev/null || true ;;
+    inherit|sabotage) ;;
+    *) compiler_cache_launcher() { printf '%s' "$resolver"; } ;;
+  esac
+  if [ "$address" != preserve ]; then
+    unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
+    if [ "$address" = port ]; then export SCCACHE_SERVER_PORT=24226; fi
+  fi
   # shellcheck disable=SC1090
   source "${CCSH}"
   _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_ccache
-  printf '%s' "${CMAKE_C_COMPILER_LAUNCHER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out1.$$" 2>/dev/null
-_out1="$(cat "${TMPDIR:-/tmp}/ccf_out1.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out1.$$"
+  if [ "$resolver" = sabotage ]; then
+    _resolve_compiler_cache_launcher() {
+      command -v sccache >/dev/null 2>&1 || { printf '%s' ccache; return 0; }
+      if sccache --show-stats >/dev/null 2>&1; then printf '%s' sccache; else printf '%s' ccache; fi
+    }
+  fi
+  if [ "$address" = subshell ]; then
+    local inner
+    inner="$(sccache_export_server_address; printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}")"
+    printf '%s|%s' "$inner" "${SCCACHE_SERVER_UDS:-UNSET}"
+    return
+  fi
+  "$setup"
+  local missing=EMPTY
+  if [ "$address" != preserve ]; then missing=UNSET; fi
+  printf '%s' "${!output-$missing}"
+  if [ "$address" = port ]; then printf '|%s' "$SCCACHE_SERVER_PORT"; fi
+)
+
+# Framework path: 01-core is loaded, so compiler_cache_launcher exists.
+t_case "setup_ccache (framework path) honors the resolver's guarded-launcher verdict"
+_out1="$( _cache_fixture ok /opt/scripts/core/sccache-launcher.sh cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
 t_assert_eq "${_out1}" "/opt/scripts/core/sccache-launcher.sh"
 
 t_case "setup_ccache (framework path) falls back to ccache on a dead-server verdict"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  compiler_cache_launcher() { printf '%s' ccache; }
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_ccache
-  printf '%s' "${CMAKE_C_COMPILER_LAUNCHER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out2.$$" 2>/dev/null
-_out2="$(cat "${TMPDIR:-/tmp}/ccf_out2.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out2.$$"
+_out2="$( _cache_fixture ok ccache cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
 t_assert_eq "${_out2}" "ccache"
 
 # Bootstrap path (android preamble): the guarded launcher beside compiler-cache.sh beats bare sccache.
 t_case "setup_ccache (bootstrap path) resolves the guarded launcher when sccache answers"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  unset -f compiler_cache_launcher 2>/dev/null || true
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_ccache
-  printf '%s' "${CMAKE_C_COMPILER_LAUNCHER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out3.$$" 2>/dev/null
-_out3="$(cat "${TMPDIR:-/tmp}/ccf_out3.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out3.$$"
+_out3="$( _cache_fixture ok bootstrap cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
 t_assert_eq "${_out3}" "$(cd "$(dirname "${CCSH}")" && pwd)/sccache-launcher.sh"
 
 t_case "setup_ccache (bootstrap path) falls back to ccache when the server is dead"
-(
-  set -u
-  _mk_fakes dead present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_ccache
-  printf '%s' "${CMAKE_C_COMPILER_LAUNCHER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out4.$$" 2>/dev/null
-_out4="$(cat "${TMPDIR:-/tmp}/ccf_out4.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out4.$$"
+_out4="$( _cache_fixture dead inherit cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
 t_assert_eq "${_out4}" "ccache"
 
 t_case "setup_ccache (bootstrap path) stays ccache when sccache is absent"
-(
-  set -u
-  _mk_fakes absent present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_ccache
-  printf '%s' "${CMAKE_C_COMPILER_LAUNCHER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out5.$$" 2>/dev/null
-_out5="$(cat "${TMPDIR:-/tmp}/ccf_out5.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out5.$$"
+_out5="$( _cache_fixture absent inherit cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
 t_assert_eq "${_out5}" "ccache"
 
 # Rust has no ccache fallback, so a ccache verdict keeps RUSTC_WRAPPER sccache-class.
 t_case "setup_sccache keeps RUSTC_WRAPPER sccache-class on a ccache verdict"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_SCCACHE=true SCCACHE_DIR=/tmp/sc SCCACHE_CACHE_SIZE=1G
-  compiler_cache_launcher() { printf '%s' ccache; }
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_sccache
-  printf '%s' "${RUSTC_WRAPPER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out6.$$" 2>/dev/null
-_out6="$(cat "${TMPDIR:-/tmp}/ccf_out6.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out6.$$"
+_out6="$( _cache_fixture ok ccache rust setup_sccache RUSTC_WRAPPER 2>/dev/null )"
 t_assert_eq "${_out6}" "sccache"
 
 t_case "setup_sccache (bootstrap) resolves the guarded launcher for RUSTC_WRAPPER"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_SCCACHE=true SCCACHE_DIR=/tmp/sc SCCACHE_CACHE_SIZE=1G
-  unset -f compiler_cache_launcher 2>/dev/null || true
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  setup_sccache
-  printf '%s' "${RUSTC_WRAPPER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out7.$$" 2>/dev/null
-_out7="$(cat "${TMPDIR:-/tmp}/ccf_out7.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out7.$$"
+_out7="$( _cache_fixture ok bootstrap rust setup_sccache RUSTC_WRAPPER 2>/dev/null )"
 t_assert_eq "${_out7}" "$(cd "$(dirname "${CCSH}")" && pwd)/sccache-launcher.sh"
 
 # Mutation check: the bootstrap guarded-launcher preference is load-bearing.
 t_case "MUTATION: bootstrap path must NOT fall to bare sccache when the launcher is present"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { printf "[CACHE] %s\n" "$*" >&2; }
-  # Sabotage: no guarded launcher, so a healthy sccache must yield bare sccache, not ccache.
-  _resolve_compiler_cache_launcher() {
-    command -v sccache >/dev/null 2>&1 || { printf '%s' ccache; return 0; }
-    if sccache --show-stats >/dev/null 2>&1; then printf '%s' sccache; else printf '%s' ccache; fi
-  }
-  setup_ccache
-  printf '%s' "${CMAKE_C_COMPILER_LAUNCHER:-EMPTY}"
-) > "${TMPDIR:-/tmp}/ccf_out8.$$" 2>/dev/null
-_out8="$(cat "${TMPDIR:-/tmp}/ccf_out8.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_out8.$$"
+_out8="$( _cache_fixture ok sabotage cc setup_ccache CMAKE_C_COMPILER_LAUNCHER 2>/dev/null )"
 t_assert_eq "${_out8}" "sccache"
 
 # Dockerfile.package repeats the cache dirs, as the rootfs export drops the parent config. See docs/build-cache-tiers.md#the-shipped-images-cache-dirs
@@ -194,65 +145,19 @@ t_assert_eq "$(_pkg_env_dirs CCACHE_DIR SCCACHE_DIR | grep -c -e '/workspace' ||
 _expected_uds="/tmp/sccache-$(id -u).sock"
 
 t_case "setup_ccache exports the server address to its CALLER"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
-  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { :; }
-  setup_ccache
-  printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}"
-) > "${TMPDIR:-/tmp}/ccf_uds1.$$" 2>/dev/null
-_uds1="$(cat "${TMPDIR:-/tmp}/ccf_uds1.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds1.$$"
+_uds1="$( _cache_fixture ok /opt/scripts/core/sccache-launcher.sh cc setup_ccache SCCACHE_SERVER_UDS uds 2>/dev/null )"
 t_assert_eq "${_uds1}" "${_expected_uds}"
 
 t_case "setup_sccache exports the server address to its CALLER"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true
-  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
-  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { :; }
-  setup_sccache
-  printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}"
-) > "${TMPDIR:-/tmp}/ccf_uds2.$$" 2>/dev/null
-_uds2="$(cat "${TMPDIR:-/tmp}/ccf_uds2.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds2.$$"
+_uds2="$( _cache_fixture ok /opt/scripts/core/sccache-launcher.sh both setup_sccache SCCACHE_SERVER_UDS uds 2>/dev/null )"
 t_assert_eq "${_uds2}" "${_expected_uds}"
 
 t_case "MUTATION: setting the address inside \$( ) loses it — the 2026-08-30 regression"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  unset SCCACHE_SERVER_UDS SCCACHE_SERVER_PORT
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _inner="$(sccache_export_server_address; printf '%s' "${SCCACHE_SERVER_UDS:-UNSET}")"
-  printf '%s|%s' "${_inner}" "${SCCACHE_SERVER_UDS:-UNSET}"
-) > "${TMPDIR:-/tmp}/ccf_uds3.$$" 2>/dev/null
-_uds3="$(cat "${TMPDIR:-/tmp}/ccf_uds3.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds3.$$"
+_uds3="$( _cache_fixture ok inherit none : SCCACHE_SERVER_UDS subshell 2>/dev/null )"
 t_assert_eq "${_uds3}" "${_expected_uds}|UNSET"
 
 t_case "an address the caller already chose is never overridden"
-(
-  set -u
-  _mk_fakes ok present >/dev/null
-  export USE_CCACHE=true USE_SCCACHE=true CCACHE_DIR=/tmp/cc CCACHE_MAXSIZE=1G
-  unset SCCACHE_SERVER_UDS
-  export SCCACHE_SERVER_PORT=24226
-  compiler_cache_launcher() { printf '%s' /opt/scripts/core/sccache-launcher.sh; }
-  # shellcheck disable=SC1090
-  source "${CCSH}"
-  _cc_info() { :; }
-  setup_ccache
-  printf '%s|%s' "${SCCACHE_SERVER_UDS:-UNSET}" "${SCCACHE_SERVER_PORT}"
-) > "${TMPDIR:-/tmp}/ccf_uds4.$$" 2>/dev/null
-_uds4="$(cat "${TMPDIR:-/tmp}/ccf_uds4.$$")"; rm -f "${TMPDIR:-/tmp}/ccf_uds4.$$"
+_uds4="$( _cache_fixture ok /opt/scripts/core/sccache-launcher.sh cc setup_ccache SCCACHE_SERVER_UDS port 2>/dev/null )"
 t_assert_eq "${_uds4}" "UNSET|24226"
 
 

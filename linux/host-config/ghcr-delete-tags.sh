@@ -11,6 +11,8 @@ CONFIRM="${GHCR_DELETE_TAGS_CONFIRM:-0}"
 
 err() { printf '[ghcr-del] ERROR: %s\n' "$*" >&2; exit 1; }
 
+[ -r "${_GHCR_SH_DIR}/ghcr_metadata.py" ] || err "missing companion ghcr_metadata.py"
+
 DELETE_TAGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -32,8 +34,10 @@ printf '%s\n' "${DELETE_TAGS[@]}" > /tmp/ghcr-del-list.$$
 export DEL_FILE="/tmp/ghcr-del-list.$$"
 trap 'rm -f "${DEL_FILE}"' EXIT
 
-python3 - <<'PY'
+python3 - "${_GHCR_SH_DIR}" <<'PY'
 import json, os, subprocess, sys, datetime
+sys.path.insert(0, sys.argv[1])
+from ghcr_metadata import version_tags
 TOK=os.environ["TOKEN"]; RTOK=os.environ["REG_TOKEN"]
 OWN=os.environ["GHCR_OWNER"]; PKG=os.environ["GHCR_PKG"]
 KEEP_DAYS=int(os.environ["KEEP_DAYS"]); CONFIRM=os.environ["CONFIRM"]=="1"
@@ -63,7 +67,7 @@ while True:
 print(f"[ghcr-del]   {len(versions)} versions total")
 
 all_tags=set()
-for v in versions: all_tags |= set(v.get("metadata",{}).get("container",{}).get("tags",[]))
+for v in versions: all_tags |= set(version_tags(v))
 missing=delete_tags-all_tags
 if missing: print(f"[ghcr-del]   note: {len(missing)} named tag(s) not present: {', '.join(sorted(missing))}")
 
@@ -84,7 +88,7 @@ print(f"[ghcr-del]   keep-set: {len(keep_digests)} child digest(s) from kept ind
 cutoff=(datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(days=KEEP_DAYS))
 cands=[]; skipped=[]
 for v in versions:
-    tags=set(v.get("metadata",{}).get("container",{}).get("tags",[]))
+    tags=set(version_tags(v))
     if not (tags & delete_tags): continue
     extra=tags-delete_tags
     if extra: skipped.append((v["name"][:19],f"also carries kept tag(s): {', '.join(sorted(extra))}")); continue

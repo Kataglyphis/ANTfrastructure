@@ -141,30 +141,28 @@ code_quality_find_cmake_files() {
   find "${find_args[@]}"
 }
 
-# Extensions come from CODE_QUALITY_CPP_FORMAT_EXTENSIONS.
-code_quality_find_cpp_files() {
+_code_quality_find_extension_sources() {
+  local configured_name="$1" defaults="$2"
+  shift 2
   [[ $# -gt 0 ]] || return 0
 
-  local exts=("${CODE_QUALITY_CPP_FORMAT_EXTENSIONS[@]:-}")
+  local -n configured="$configured_name"
+  local exts=("${configured[@]:-}")
   if [[ -z "${exts[0]:-}" ]]; then
-    exts=(c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp)
+    IFS=' ' read -r -a exts <<< "$defaults"
   fi
-
   _code_quality_name_predicate "${exts[@]}"
   _code_quality_find_sources "$@"
 }
 
+# Extensions come from CODE_QUALITY_CPP_FORMAT_EXTENSIONS.
+code_quality_find_cpp_files() {
+  _code_quality_find_extension_sources CODE_QUALITY_CPP_FORMAT_EXTENSIONS 'c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp' "$@"
+}
+
 # Headers are excluded: clang-tidy needs a compile-DB entry.
 code_quality_find_clang_tidy_files() {
-  [[ $# -gt 0 ]] || return 0
-
-  local exts=("${CODE_QUALITY_CLANG_TIDY_EXTENSIONS[@]:-}")
-  if [[ -z "${exts[0]:-}" ]]; then
-    exts=(c cc cpp cxx)
-  fi
-
-  _code_quality_name_predicate "${exts[@]}"
-  _code_quality_find_sources "$@"
+  _code_quality_find_extension_sources CODE_QUALITY_CLANG_TIDY_EXTENSIONS 'c cc cpp cxx' "$@"
 }
 
 # Tracked files, not `dart format .`: CI installs Flutter inside the workspace, and the walk would reformat it.

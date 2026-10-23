@@ -7,14 +7,42 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=linux/scripts/06-packaging/smoke-common.sh
 source "${REPO_ROOT}/linux/scripts/06-packaging/smoke-common.sh"
 
-_critical_source_pattern() {
-  local success="$1" failure="$2"
-  shift 2
-  if grep "$@" 2>/dev/null; then
+_critical_source_verdict() {
+  local success="$1" failure="$2" diagnostics="$3" result=0
+  shift 3
+  if [ "${diagnostics}" = quiet ]; then
+    "$@" 2>/dev/null || result=$?
+  else
+    "$@" || result=$?
+  fi
+  if [ "${result}" -eq 0 ]; then
     pass "${success}"
   else
     fail "${failure}"
   fi
+}
+
+_critical_source_pattern() {
+  _critical_source_verdict "$1" "$2" quiet grep "${@:3}"
+}
+
+_critical_source_all_grep() {
+  while [ "$#" -gt 0 ]; do
+    grep "$1" -- "$2" "$3" || return $?
+    shift 3
+  done
+}
+
+_critical_source_patterns() {
+  while [ "$#" -gt 0 ]; do
+    _critical_source_pattern "$1" "$2" "$3" "$4" "$5"
+    shift 5
+  done
+}
+
+_critical_source_no_match() {
+  if grep "$@"; then return 1; fi
+  return 0
 }
 
 fix5_gst_geometry_include() {
@@ -58,12 +86,9 @@ fix6_native_gcc_system_paths() {
   local dep="${REPO_ROOT}/linux/scripts/03-media/runtime/install-deps.sh"
 
   # -idirafter must reach C AND C++ in both the in-script env and profile.d (CPATH alone doesn't fix C++ #include_next).
-  if grep -q 'idirafter /usr/include' "${stv}" 2>/dev/null && \
-     grep -qE 'export CXXFLAGS=.*idaf|CXXFLAGS.*idirafter' "${stv}" 2>/dev/null; then
-    pass "setup-torch-venv.sh injects -idirafter into CXXFLAGS (C++ #include_next)"
-  else
-    fail "setup-torch-venv.sh lost the -idirafter CXXFLAGS injection (bug D regression)"
-  fi
+  _critical_source_verdict "setup-torch-venv.sh injects -idirafter into CXXFLAGS (C++ #include_next)" \
+    "setup-torch-venv.sh lost the -idirafter CXXFLAGS injection (bug D regression)" quiet _critical_source_all_grep \
+    -q 'idirafter /usr/include' "${stv}" -qE 'export CXXFLAGS=.*idaf|CXXFLAGS.*idirafter' "${stv}"
   _critical_source_pattern "swap-native-gcc.sh profile.d writes -idirafter system paths" \
     "swap-native-gcc.sh lost the -idirafter profile.d injection (bug D regression)" \
     -q 'idirafter /usr/include' "${swp}"
@@ -72,11 +97,9 @@ fix6_native_gcc_system_paths() {
     "install-deps.sh no longer installs libjpeg-dev (bug D regression)" \
     -qE '^[[:space:]]*libjpeg-dev' "${dep}"
   # apt numpy must NOT be seeded into the venv (collides with uv's built wheel).
-  if grep -qE 'for pkg in .*\bnumpy\b' "${stv}" 2>/dev/null; then
-    fail "setup-torch-venv.sh re-seeds apt numpy into the venv (bug E regression)"
-  else
-    pass "setup-torch-venv.sh does not seed apt numpy into the venv"
-  fi
+  _critical_source_verdict "setup-torch-venv.sh does not seed apt numpy into the venv" \
+    "setup-torch-venv.sh re-seeds apt numpy into the venv (bug E regression)" quiet _critical_source_no_match \
+    -qE 'for pkg in .*\bnumpy\b' "${stv}"
 }
 
 fix7_hardening_2026_07() {
@@ -98,11 +121,10 @@ fix7_hardening_2026_07() {
     # Assert the decision (always some sccache, never empty), not the spelling.
     if grep -qE '(RUSTC_WRAPPER|CMAKE_C(XX)?_COMPILER_LAUNCHER)="\$\{[A-Za-z_]+:-\}"' "${ccsh}" 2>/dev/null; then
       fail "compiler-cache.sh can leave a launcher EMPTY; the standing decision is always-sccache"
-    elif grep -q '_sc_launcher="sccache"' "${ccsh}" 2>/dev/null \
-         && grep -q 'sccache-launcher.sh' "${ccsh}" 2>/dev/null; then
-      pass "compiler-cache.sh resolves the guarded launcher and falls back to sccache, never to uncached"
     else
-      fail "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback"
+      _critical_source_verdict "compiler-cache.sh resolves the guarded launcher and falls back to sccache, never to uncached" \
+        "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback" quiet _critical_source_all_grep \
+        -q '_sc_launcher="sccache"' "${ccsh}" -q 'sccache-launcher.sh' "${ccsh}"
     fi
     # Repo-wide: launchers use compiler_cache_launcher() or ${...:-sccache}, never a bare ="sccache".
     local _bad_sccache
@@ -113,12 +135,9 @@ fix7_hardening_2026_07() {
       pass "no bare sccache launcher exports in linux/scripts/ (all go through compiler_cache_launcher)"
     fi
   # Base: the only floating external base must be digest-pinned (multi-arch list).
-  if grep -qE '^FROM ubuntu:\$\{UBUNTU_VERSION\}@\$\{UBUNTU_DIGEST\}' "${dbase}" 2>/dev/null && \
-     grep -qE '^UBUNTU_DIGEST=sha256:' "${venv}" 2>/dev/null; then
-    pass "Dockerfile.base pins ubuntu by manifest-list digest (UBUNTU_DIGEST)"
-  else
-    fail "Dockerfile.base ubuntu base is no longer digest-pinned"
-  fi
+  _critical_source_verdict "Dockerfile.base pins ubuntu by manifest-list digest (UBUNTU_DIGEST)" \
+    "Dockerfile.base ubuntu base is no longer digest-pinned" quiet _critical_source_all_grep \
+    -qE '^FROM ubuntu:\$\{UBUNTU_VERSION\}@\$\{UBUNTU_DIGEST\}' "${dbase}" -qE '^UBUNTU_DIGEST=sha256:' "${venv}"
   # Non-root: the runtime user must own its WORKDIR/VOLUME.
   _critical_source_pattern "Dockerfile.torch chowns WORKDIR to the non-root user" \
     "Dockerfile.torch no longer chowns WORKDIR (non-root user cannot write it)" \
@@ -128,11 +147,9 @@ fix7_hardening_2026_07() {
     "base-image.sh lost the image-wide apt retry config" \
     -q 'apt.conf.d/80-retries' "${bimg}"
   # A whole-tree scripts bind mount folds every script's checksum into the base cache key.
-  if grep -qE -- '--mount=type=bind,source=linux/scripts,target' "${dbase}" 2>/dev/null; then
-    fail "Dockerfile.base re-introduced a whole-tree scripts bind mount (busts base cache)"
-  else
-    pass "Dockerfile.base bind-mounts only the script sub-trees it uses"
-  fi
+  _critical_source_verdict "Dockerfile.base bind-mounts only the script sub-trees it uses" \
+    "Dockerfile.base re-introduced a whole-tree scripts bind mount (busts base cache)" quiet _critical_source_no_match \
+    -qE -- '--mount=type=bind,source=linux/scripts,target' "${dbase}"
   # smoke-vulkan probes a full Vulkan SDK that build stages never install.
   if grep -rlE 'bash .*smoke-vulkan\.sh' "${REPO_ROOT}"/linux/Dockerfile.* 2>/dev/null | grep -q .; then
     fail "a Dockerfile RUNs smoke-vulkan.sh (no full Vulkan SDK here -> always fails)"
@@ -148,11 +165,9 @@ fix8_push_retry_2026_07() {
   local brm="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
 
   # Stage build+push retries transient failures.
-  if grep -q '_cross_stage_push_error_is_transient' "${csb}" && grep -q 'PUSH_MAX_ATTEMPTS' "${csb}"; then
-    pass "cross-stage-build.sh retries transient pushes (A1)"
-  else
-    fail "cross-stage-build.sh lost the transient push-retry (A1 regression)"
-  fi
+  _critical_source_verdict "cross-stage-build.sh retries transient pushes (A1)" \
+    "cross-stage-build.sh lost the transient push-retry (A1 regression)" loud _critical_source_all_grep \
+    -q '_cross_stage_push_error_is_transient' "${csb}" -q 'PUSH_MAX_ATTEMPTS' "${csb}"
 
   # Runtime pushes go through runtime_push_tag (which retries), not bare push.
   local _bare_pushes
@@ -195,11 +210,9 @@ fix8_push_retry_2026_07() {
   fi
 
   # Per-run stage-log truncation (guarded by the .run marker / CROSS_RUN_ID).
-  if grep -q 'CROSS_RUN_ID' "${csb}" && grep -q '\.run' "${csb}"; then
-    pass "cross-stage-build.sh truncates stage logs per run (B1)"
-  else
-    fail "cross-stage-build.sh lost per-run log truncation (B1 regression)"
-  fi
+  _critical_source_verdict "cross-stage-build.sh truncates stage logs per run (B1)" \
+    "cross-stage-build.sh lost per-run log truncation (B1 regression)" loud _critical_source_all_grep \
+    -q 'CROSS_RUN_ID' "${csb}" -q '\.run' "${csb}"
 }
 
 fix9_riscv_isaspec_and_noise_2026_07() {
@@ -210,13 +223,9 @@ fix9_riscv_isaspec_and_noise_2026_07() {
   local swap="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
 
   # The riscv64 --with-isa-spec pin keeps the native GCC's default -march assembler-compatible.
-  if grep -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" && \
-     grep -q -- '--with-isa-spec=' "${gcc}" && \
-     grep -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"; then
-    pass "build-gcc.sh pins riscv64 --with-isa-spec (default 20191213) (A2)"
-  else
-    fail "build-gcc.sh lost the riscv64 ISA-spec pin (A2 regression)"
-  fi
+  _critical_source_verdict "build-gcc.sh pins riscv64 --with-isa-spec (default 20191213) (A2)" \
+    "build-gcc.sh lost the riscv64 ISA-spec pin (A2 regression)" loud _critical_source_all_grep \
+    -qE '^[[:space:]]*riscv64-\*\)' "${gcc}" -q '--with-isa-spec=' "${gcc}" -q 'RISCV_GCC_ISA_SPEC-20191213' "${gcc}"
 
   # The riscv64 torch-wheel fallback drops a sentinel the runtime smoke keys on.
   _critical_source_pattern "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)" \
@@ -224,10 +233,11 @@ fix9_riscv_isaspec_and_noise_2026_07() {
     -qF '.torch-missing' "${venv}"
 
   # Expected build noise stays classified as NOTE, not surfaced as failure.
-  _critical_source_pattern "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)" \
+  _critical_source_patterns \
+    "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)" \
     "repair-wheels.sh lost the benign-auditwheel classifier (B2 regression)" \
-    -q 'too-recent versioned symbols' "${rw}"
-  _critical_source_pattern "swap-native-gcc.sh classifies benign riscv64 -march skew (B2)" \
+    -q 'too-recent versioned symbols' "${rw}" \
+    "swap-native-gcc.sh classifies benign riscv64 -march skew (B2)" \
     "swap-native-gcc.sh lost the benign -march classifier (B2 regression)" \
     -q 'invalid -march=' "${swap}"
 }
@@ -235,17 +245,14 @@ fix9_riscv_isaspec_and_noise_2026_07() {
 fix10_libstdcxx_nostdinc_2026_08() {
   # The self-retiring PR100017 -nostdinc++ patch; see docs/upstream-libstdcxx-c++23-nostdinc++.md
   local bg="${REPO_ROOT}/linux/scripts/02-toolchain/build-gcc.sh"
-  if grep -q "src/c++23/Makefile.in" "${bg}" \
-     && grep -q -- "-std=gnu++23 -nostdinc++" "${bg}"; then
-    pass "build-gcc.sh carries the PR100017 -nostdinc++ c++23 module sed (fix10)"
-  else
-    fail "build-gcc.sh LOST the PR100017 -nostdinc++ patch block — Canadian-cross std module would silently ship EMPTY (fix10 regression)"
-  fi
-  _critical_source_pattern "the -nostdinc++ sed still dies loud on GCC layout change (fix10)" \
+  _critical_source_verdict "build-gcc.sh carries the PR100017 -nostdinc++ c++23 module sed (fix10)" \
+    "build-gcc.sh LOST the PR100017 -nostdinc++ patch block — Canadian-cross std module would silently ship EMPTY (fix10 regression)" loud _critical_source_all_grep \
+    -q 'src/c++23/Makefile.in' "${bg}" -q '-std=gnu++23 -nostdinc++' "${bg}"
+  _critical_source_patterns \
+    "the -nostdinc++ sed still dies loud on GCC layout change (fix10)" \
     "the -nostdinc++ sed lost its loud-failure die (fix10 regression)" \
-    -q "AM_CXXFLAGS layout changed" "${bg}"
-  # The idempotence gate is what makes the patch self-retiring on a fixed GCC.
-  _critical_source_pattern "the -nostdinc++ sed is idempotence-gated / self-retiring (fix10)" \
+    -q "AM_CXXFLAGS layout changed" "${bg}" \
+    "the -nostdinc++ sed is idempotence-gated / self-retiring (fix10)" \
     "the -nostdinc++ sed lost its idempotence gate (fix10 regression)" \
     -qE '!\s*grep -q -- .-nostdinc\+\+' "${bg}"
 }
@@ -336,15 +343,26 @@ _f11_count() {
   _f11_rule count "$1" "$3" '' '' '' "^${2//./\\.}\$"
 }
 
+_f11_record_fields_awk() {
+  cat <<'AWK'
+  function corpus_record(line,   rest) {
+    p = substr(line, 1, index(line, ":") - 1)
+    rest = substr(line, index(line, ":") + 1)
+    ln = substr(rest, 1, index(rest, ":") - 1)
+    t = tolower(substr(rest, index(rest, ":") + 1))
+  }
+AWK
+}
+
 # _f11_judge <corpus>: loops rules outside lines, since gawk recompiles a dynamic regex whenever it changes.
 _f11_judge() {
   local rules="$1.rules" out="$1.verdicts" v m n seen=0
   printf '%s\n' "${_F11_RULES[@]}" > "${rules}"
-  awk -v RF="${rules}" '
+  awk -v RF="${rules}" "$(_f11_record_fields_awk)"'
     FILENAME == RF { RULE[++nr] = $0; next }
-    { p = substr($0, 1, index($0, ":") - 1); t = substr($0, index($0, ":") + 1)
+    { corpus_record($0)
       if (p != cur) { FP[++nf] = cur = p; FA[nf] = FNR }
-      FZ[nf] = FNR; T[FNR] = tolower(substr(t, index(t, ":") + 1)); L[FNR] = $0 }
+      FZ[nf] = FNR; T[FNR] = t; L[FNR] = $0 }
     END { for (r = 1; r <= nr; r++) judge(RULE[r]) }
     function judge(row,   F, f, i, n, fn, fb, hits, bad) {
       split(row, F, "\t"); RE = F[3]; RE2 = F[4]; RE3 = F[5]; NOT = F[6]; PI = F[7]; PX = F[8]; B = F[11]
@@ -444,7 +462,7 @@ fix11_ort_fetch_denylist() {
 # _f11_env_writes <corpus>: "<path>:<line>: <name>=<value>" per ort-sys variable set in any syntax; value lower-cased.
 _f11_env_writes() {
   awk -v N='(ort_lib_path|ort_lib_location|ort_dylib_path|ort_strategy|ort_skip_download|cargo_net_offline|ort_offline)' \
-      -v Q="[\"']" -v V="^[^\"'[:space:]\`;),}|&<>]*" '
+      -v Q="[\"']" -v V="^[^\"'[:space:]\`;),}|&<>]*" "$(_f11_record_fields_awk)"'
     BEGIN {
       KV = "(^|[^a-z0-9_])" N "[}]?[[:space:]]*:?="
       IX = Q N Q "[[:space:]]*[]][[:space:]]*="
@@ -464,8 +482,7 @@ _f11_env_writes() {
         : k == 5 ? match(s, SETX) : k == 6 ? match(s, MAP) : match(s, DKR) }
     function each(k, s,   m) {
       while (hit(k, s)) { m = substr(s, RSTART, RLENGTH); s = substr(s, RSTART + RLENGTH); if (s !~ /^[=~]/) emit(m, s) } }
-    { p = substr($0, 1, index($0, ":") - 1); r = substr($0, index($0, ":") + 1)
-      ln = substr(r, 1, index(r, ":") - 1); t = tolower(substr(r, index(r, ":") + 1))
+    { corpus_record($0)
       if (t !~ N) next
       each(1, t); each(2, t); each(3, t); each(4, t); each(5, t)
       if (p ~ /\.(ya?ml|py|json)$/) each(6, t)

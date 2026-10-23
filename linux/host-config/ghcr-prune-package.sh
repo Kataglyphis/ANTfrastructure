@@ -13,6 +13,8 @@ API="${GHCR_API}"
 log()  { printf '[ghcr-prune] %s\n' "$*"; }
 err()  { printf '[ghcr-prune] ERROR: %s\n' "$*" >&2; exit 1; }
 
+[ -r "${_GHCR_SH_DIR}/ghcr_metadata.py" ] || err "missing companion ghcr_metadata.py"
+
 # Auth
 TOKEN="$(ghcr_pat)" || err "no ghcr credential (docker login ghcr.io, or set GHCR_TOKEN)"
 [ -n "${TOKEN}" ] || err "empty ghcr token"
@@ -34,11 +36,7 @@ while :; do
     || err "version listing failed on page ${page} (needs read:packages)"
   n="$(printf '%s' "${resp}" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')"
   [ "${n}" -eq 0 ] && break
-  printf '%s' "${resp}" | python3 -c '
-import sys, json
-for v in json.load(sys.stdin):
-    tags = ",".join(v.get("metadata", {}).get("container", {}).get("tags", []))
-    print("%s\t%s\t%s\t%s" % (v["id"], v["name"], v["created_at"], tags))' >> "${WORK}/versions.tsv"
+  printf '%s' "${resp}" | python3 "${_GHCR_SH_DIR}/ghcr_metadata.py" inventory >> "${WORK}/versions.tsv"
   page=$((page + 1))
 done
 TOTAL="$(wc -l < "${WORK}/versions.tsv")"
@@ -127,7 +125,7 @@ SKIPPED=0
 while IFS=$'\t' read -r vid digest created; do
   # A tag may have landed here since the snapshot: skip on any tag now, or when the re-read fails.
   _now_tags="$(_api "${API}/user/packages/container/${GHCR_PKG}/versions/${vid}" 2>/dev/null \
-    | python3 -c 'import sys,json;print(len(json.load(sys.stdin).get("metadata",{}).get("container",{}).get("tags",[])))' 2>/dev/null || echo x)"
+    | python3 "${_GHCR_SH_DIR}/ghcr_metadata.py" tag-count 2>/dev/null || echo x)"
   if [ "${_now_tags}" != "0" ]; then
     SKIPPED=$((SKIPPED + 1)); continue
   fi

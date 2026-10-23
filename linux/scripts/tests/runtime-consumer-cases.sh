@@ -249,6 +249,8 @@ _cc_gate() {
     '"${_CC_PARTS}"'
     '"${_CC_PROBE_FNS}"'
     '"$(_extract _consumer_contract_symptom)"'
+    '"$(_extract _rt_image_config_value)"'
+    '"$(_extract _rt_run_shell_probe)"'
     '"$(_extract check_consumer_contract)"'
     [ -z "${CC_ROWS}" ] || _CONSUMER_CONTRACT_ROWS="${CC_ROWS}"
     check_consumer_contract img '"${3:-amd64}"'
@@ -324,6 +326,8 @@ _CC_UNK="$(CC_V="WHAT ccache-dir x" bash -c '
     inspect_image_config() { printf "kataglyphis"; }
     _rt_run() { printf "WHO 1001 kataglyphis\nCCPROBE_DONE\n"; }
     '"$(_extract _consumer_contract_symptom)"'
+    '"$(_extract _rt_image_config_value)"'
+    '"$(_extract _rt_run_shell_probe)"'
     '"$(_extract check_consumer_contract)"'
     check_consumer_contract img amd64' 2>&1)"
 t_assert_contains "${_CC_UNK}" "unknown verdict" "an unhandled verb is a silently dropped row"

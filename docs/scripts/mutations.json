@@ -5826,16 +5826,16 @@
  {
   "id": "critical-fixes.numpy-reseed-ban",
   "target": "linux/scripts/verify-critical-fixes.sh",
-  "find": "  if grep -qE 'for pkg in .*\\bnumpy\\b' \"${stv}\" 2>/dev/null; then",
-  "replace": "  if false; then",
+  "find": "quiet _critical_source_no_match \\\n    -qE 'for pkg in .*\\bnumpy\\b'",
+  "replace": "quiet true \\\n    -qE 'for pkg in .*\\bnumpy\\b'",
   "test": "bash linux/scripts/tests/test-critical-fixes.sh",
   "why": "apt numpy seeded into the venv collides with uv's built wheel (bug E)"
  },
  {
   "id": "critical-fixes.base-mount-scope",
   "target": "linux/scripts/verify-critical-fixes.sh",
-  "find": "  if grep -qE -- '--mount=type=bind,source=linux/scripts,target' \"${dbase}\" 2>/dev/null; then",
-  "replace": "  if false; then",
+  "find": "quiet _critical_source_no_match \\\n    -qE -- '--mount=type=bind,source=linux/scripts,target'",
+  "replace": "quiet true \\\n    -qE -- '--mount=type=bind,source=linux/scripts,target'",
   "test": "bash linux/scripts/tests/test-critical-fixes.sh",
   "why": "a whole-tree scripts bind mount folds every script's checksum into the base cache key and busts the base layer on every edit"
  },
@@ -15686,16 +15686,16 @@
  {
   "id": "lib.cpp-walk-skips-untracked-trees",
   "target": "linux/scripts/lib/code-quality.sh",
-  "find": "    exts=(c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  _code_quality_find_sources \"$@\"\n",
-  "replace": "    exts=(c cc cpp cxx h hh hpp hxx ixx cppm ccm cxxm mpp)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  find \"$@\" -type f \"${_CODE_QUALITY_NAME_PREDICATE[@]}\"\n",
+  "find": "  _code_quality_name_predicate \"${exts[@]}\"\n  _code_quality_find_sources \"$@\"",
+  "replace": "  _code_quality_name_predicate \"${exts[@]}\"\n  find \"$@\" -type f \"${_CODE_QUALITY_NAME_PREDICATE[@]}\"",
   "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
   "why": "the clang-format walk must apply the untracked-tree list, or a consumer passing . grades every dependency's C++"
  },
  {
   "id": "lib.tidy-walk-skips-untracked-trees",
   "target": "linux/scripts/lib/code-quality.sh",
-  "find": "    exts=(c cc cpp cxx)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  _code_quality_find_sources \"$@\"\n",
-  "replace": "    exts=(c cc cpp cxx)\n  fi\n\n  _code_quality_name_predicate \"${exts[@]}\"\n  find \"$@\" -type f \"${_CODE_QUALITY_NAME_PREDICATE[@]}\"\n",
+  "find": "  _code_quality_name_predicate \"${exts[@]}\"\n  _code_quality_find_sources \"$@\"",
+  "replace": "  _code_quality_name_predicate \"${exts[@]}\"\n  find \"$@\" -type f \"${_CODE_QUALITY_NAME_PREDICATE[@]}\"",
   "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
   "why": "the clang-tidy walk must skip the same trees as the format walk, or it tidies dependency sources no compile DB knows"
  },
@@ -17206,8 +17206,8 @@
  {
   "id": "probe.shared-python-payload-guard",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "if [ -z \"${%s:-}\" ]; then",
-  "replace": "if false; then",
+  "find": "_rt_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ]; then",
+  "replace": "_rt_python_probe_command() {\n  printf 'if [ -z \"${%s:-}\" ] && false; then",
   "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
   "why": "an empty environment crossing must exit with the ABSENT sentinel before Python runs"
  },
@@ -17758,8 +17758,8 @@
  {
   "id": "critical-fixes.source-pattern-probe-runs",
   "target": "linux/scripts/verify-critical-fixes.sh",
-  "find": "  if grep \"$@\" 2>/dev/null; then",
-  "replace": "  if true; then",
+  "find": "_critical_source_verdict \"$1\" \"$2\" quiet grep \"${@:3}\"",
+  "replace": "_critical_source_verdict \"$1\" \"$2\" quiet true \"${@:3}\"",
   "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
   "why": "a missing match, missing file and invalid expression must not produce a success verdict"
  },
@@ -17774,8 +17774,8 @@
  {
   "id": "critical-fixes.source-pattern-arguments",
   "target": "linux/scripts/verify-critical-fixes.sh",
-  "find": "  if grep \"$@\" 2>/dev/null; then",
-  "replace": "  if grep \"${@:1:2}\" 2>/dev/null; then",
+  "find": "_critical_source_verdict \"$1\" \"$2\" quiet grep \"${@:3}\"",
+  "replace": "_critical_source_verdict \"$1\" \"$2\" quiet grep \"${@:3:2}\"",
   "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
   "why": "the selected grep mode, literal pattern and source path including spaces must reach the probe intact"
  },
@@ -18570,5 +18570,213 @@
   "replace": "_fail_arg_consistency() {\n  printf '%s\\n' \"$@\"\n  return 0",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "fatal default, GCC-literal and hand-forward verdicts must terminate before subsequent sections"
+ },
+ {
+  "id": "lib.host-arch-argument-first",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "  _platform_arch_or_host \"${1:-${TARGETARCH:-}}\"",
+  "replace": "  _platform_arch_or_host \"${TARGETARCH:-${1:-}}\"",
+  "test": "bash linux/scripts/tests/test-host-arch-resolution.sh",
+  "why": "An explicit target argument must take precedence over the environment architecture."
+ },
+ {
+  "id": "lib.host-arch-build-platform",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    raw=\"${BUILDPLATFORM##*/}\"",
+  "replace": "    raw=\"${TARGETARCH:-}\"",
+  "test": "bash linux/scripts/tests/test-host-arch-resolution.sh",
+  "why": "Build architecture follows BUILDPLATFORM independently of the target architecture."
+ },
+ {
+  "id": "lib.host-arch-uname-fallback",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    raw=\"$(uname -m 2>/dev/null || echo unknown)\"",
+  "replace": "    raw=unknown",
+  "test": "bash linux/scripts/tests/test-host-arch-resolution.sh",
+  "why": "Missing or failed dpkg must fall back to uname while preserving empty and partial probe output."
+ },
+ {
+  "id": "lib.cross-python-version-delegation",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "  host_python_major_minor\n}",
+  "replace": "  host_python_bin\n}",
+  "test": "bash linux/scripts/tests/test-cross-python-version.sh",
+  "why": "The target Python version must delegate shared pin handling and host-version probing to the existing host-version owner."
+ },
+ {
+  "id": "lib.code-quality-extension-config",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "local -n configured=\"$configured_name\"",
+  "replace": "local -n configured=CODE_QUALITY_CPP_FORMAT_EXTENSIONS",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
+ },
+ {
+  "id": "lib.code-quality-extension-roots",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  _code_quality_find_sources \"$@\"",
+  "replace": "  _code_quality_find_sources \"$1\"",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
+ },
+ {
+  "id": "lib.code-quality-extension-empty-root",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "  shift 2\n  [[ $# -gt 0 ]] || return 0",
+  "replace": "  shift 2",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
+ },
+ {
+  "id": "lib.code-quality-extension-caller-array",
+  "target": "linux/scripts/lib/code-quality.sh",
+  "find": "local exts=(\"${configured[@]:-}\")",
+  "replace": "local -n exts=\"$configured_name\"",
+  "test": "bash linux/scripts/tests/test-code-quality-walk.sh",
+  "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
+ },
+ {
+  "id": "lib.compiler-cache-guarded-fixture",
+  "target": "linux/scripts/01-core/compiler-cache.sh",
+  "find": "if [ -x \"${_scl}\" ]; then printf '%s' \"${_scl}\"; return 0; fi",
+  "replace": "if [ -x \"${_scl}\" ]; then printf '%s' sccache; return 0; fi",
+  "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+  "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
+ },
+ {
+  "id": "lib.compiler-cache-caller-address-fixture",
+  "target": "linux/scripts/01-core/compiler-cache.sh",
+  "find": "mkdir -p \"${SCCACHE_DIR}\" 2>/dev/null || true\n  sccache_export_server_address || return 1",
+  "replace": "mkdir -p \"${SCCACHE_DIR}\" 2>/dev/null || true\n  (sccache_export_server_address) || return 1",
+  "test": "bash linux/scripts/tests/test-compiler-cache.sh",
+  "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
+ },
+ {
+  "id": "lib.runtime-probe-environment",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "_rt_run -e \"${variable}=${program}\" bash -lc \"${command}\"",
+  "replace": "_rt_run -e \"${variable}=\" bash -lc \"${command}\"",
+  "test": "bash linux/scripts/tests/test-runtime-probe-transport.sh",
+  "why": "probe scripts must cross the image environment boundary unchanged"
+ },
+ {
+  "id": "lib.runtime-probe-empty-marker",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "then echo \"%s\"; exit 4; fi",
+  "replace": "then echo \"mutated-%s\"; exit 4; fi",
+  "test": "bash linux/scripts/tests/test-runtime-probe-transport.sh",
+  "why": "empty probe transport preserves discriminating per-probe markers instead of silent stdin success"
+ },
+ {
+  "id": "lib.runtime-config-property",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": ".get('$1','')",
+  "replace": ".get('WorkingDir','')",
+  "test": "bash linux/scripts/tests/test-runtime-probe-transport.sh",
+  "why": "metadata reads must use the requested Config field; entrypoint and image USER are required independently of WORKDIR"
+ },
+ {
+  "id": "lib.llvm-builder-priority",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "\"${script_dir}/build-clang.sh\" /opt/scripts/toolchain/build-clang.sh",
+  "replace": "/opt/scripts/toolchain/build-clang.sh \"${script_dir}/build-clang.sh\"",
+  "test": "bash linux/scripts/tests/test-llvm-builder-path.sh",
+  "why": "LLVM builder discovery must prefer its sibling script over the installed container fallback."
+ },
+ {
+  "id": "critical-fixes.all-patterns-probed",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    grep \"$1\" -- \"$2\" \"$3\" || return $?",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "compound success requires every grep clause to execute and match"
+ },
+ {
+  "id": "critical-fixes.all-patterns-short-circuit",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    grep \"$1\" -- \"$2\" \"$3\" || return $?",
+  "replace": "    grep \"$1\" -- \"$2\" \"$3\" || :",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "a missing earlier clause must fail the compound and stop later probes"
+ },
+ {
+  "id": "critical-fixes.batch-retains-later-verdicts",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    shift 5",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "batched positive checks keep later verdicts observable after an earlier failure"
+ },
+ {
+  "id": "critical-fixes.quiet-probe-diagnostics",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    \"$@\" 2>/dev/null || result=$?",
+  "replace": "    \"$@\" || result=$?",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "quiet source probes retain their stderr suppression while still recording the failure"
+ },
+ {
+  "id": "critical-fixes.corpus-record-path",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    p = substr(line, 1, index(line, \":\") - 1)",
+  "replace": "    p = \"\"",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "both corpus consumers preserve the source path while sharing record parsing"
+ },
+ {
+  "id": "critical-fixes.corpus-record-case",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    t = tolower(substr(rest, index(rest, \":\") + 1))",
+  "replace": "    t = substr(rest, index(rest, \":\") + 1)",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "both the rule judge and environment-write reader normalize source text before case-insensitive matching"
+ },
+ {
+  "id": "lib.ghcr-version-tag-lookup",
+  "target": "linux/host-config/ghcr_metadata.py",
+  "find": "    return version.get(\"metadata\", {}).get(\"container\", {}).get(\"tags\", [])",
+  "replace": "    return []",
+  "test": "bash linux/scripts/tests/test-ghcr-prune-keepset.sh",
+  "why": "tagged inventory versions must remain visible to the keep-set and minimum-tag sanity gate"
+ },
+ {
+  "id": "lib.ghcr-inventory-tag-column",
+  "target": "linux/host-config/ghcr_metadata.py",
+  "find": "            tags = \",\".join(version_tags(version))",
+  "replace": "            tags = \"\"",
+  "test": "bash linux/scripts/tests/test-ghcr-prune-keepset.sh",
+  "why": "the shared inventory renderer preserves every tag and alias in the TSV column"
+ },
+ {
+  "id": "lib.ghcr-current-tag-count",
+  "target": "linux/host-config/ghcr_metadata.py",
+  "find": "        print(len(version_tags(payload)))",
+  "replace": "        print(0)",
+  "test": "bash linux/scripts/tests/test-ghcr-prune-keepset.sh",
+  "why": "the immediate pre-delete reread must skip a version that gained a tag after inventory"
+ },
+ {
+  "id": "lib.ghcr-delete-metadata-companion",
+  "target": "linux/host-config/ghcr-delete-tags.sh",
+  "find": "[ -r \"${_GHCR_SH_DIR}/ghcr_metadata.py\" ] || err \"missing companion ghcr_metadata.py\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-ghcr-delete-tags.sh",
+  "why": "a copied delete tool missing its metadata companion refuses before credential exchange or registry requests"
+ },
+ {
+  "id": "lib.ghcr-prune-metadata-companion",
+  "target": "linux/host-config/ghcr-prune-package.sh",
+  "find": "[ -r \"${_GHCR_SH_DIR}/ghcr_metadata.py\" ] || err \"missing companion ghcr_metadata.py\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-ghcr-delete-tags.sh",
+  "why": "a copied prune tool missing its metadata companion refuses before credential exchange or registry requests"
+ },
+ {
+  "id": "lib.runtime-config-missing-verdict",
+  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "find": "  else\n    \"$3\" \"$4\"\n  fi\n  echo \"\"\n}",
+  "replace": "  else\n    echo \"$4\"\n  fi\n  echo \"\"\n}",
+  "test": "bash linux/scripts/tests/test-runtime-probe-transport.sh",
+  "why": "missing ENTRYPOINT must increment failures while missing WORKDIR and VOLUME remain informational"
  }
 ]

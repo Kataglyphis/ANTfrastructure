@@ -9,19 +9,14 @@ set -euo pipefail
 : "${LLVM_INSTALL_PROFILE:=minimal}"
 
 llvm_build_script() {
-  local script_dir
-
+  local script_dir candidate
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  if [ -f "${script_dir}/build-clang.sh" ]; then
-    printf '%s' "${script_dir}/build-clang.sh"
-    return 0
-  fi
-
-  if [ -f "/opt/scripts/toolchain/build-clang.sh" ]; then
-    printf '%s' "/opt/scripts/toolchain/build-clang.sh"
-    return 0
-  fi
-
+  for candidate in "${script_dir}/build-clang.sh" /opt/scripts/toolchain/build-clang.sh; do
+    if [ -f "${candidate}" ]; then
+      printf '%s' "${candidate}"
+      return 0
+    fi
+  done
   return 1
 }
 

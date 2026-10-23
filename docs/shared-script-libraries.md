@@ -1478,3 +1478,35 @@ Disk-guard and Renovate-audit fixtures share cache setup, audit command capture
 and rollback verdicts. Independent sizes, modification times, JSON errors and
 failure inputs remain explicit. The fixtures perform no real cache pruning,
 registry access or build-daemon operations.
+
+### Host architecture resolution and shared quality probes
+
+`platform.sh` shares host probing after the caller selects its preferred raw
+architecture. Target resolution retains explicit argument then `TARGETARCH`;
+build resolution retains `BUILDARCH` then the final `BUILDPLATFORM` component.
+Only an empty selection probes dpkg, then uname. Partial output from failed dpkg,
+empty successful uname output and the failed-uname `unknown` fallback retain
+their behavior. The target Python version helper delegates its shared pin and
+host-probe fallback to the existing host-version owner after its target override.
+LLVM builder discovery uses one ordered candidate loop and still prefers the
+sibling builder over the installed container path, including non-executable
+regular files. Local fixtures check probe order, status and baseline behavior.
+No new companion is introduced for these helpers.
+
+C++ quality and tidy file discovery share extension predicates and filesystem
+traversal while retaining distinct configuration defaults, multi-root inputs,
+exclusions and caller-array ownership. Compiler-cache tests share their fixture
+bootstrap while retaining launcher selection and server-address assertions.
+
+Runtime consumer and shipped-content probes share their shell transport and
+scalar container configuration lookup. Tests compare generated shell wrappers
+and payload environment bytes, including empty-Python guards and caller-owned
+sentinel verdicts. Consumer metadata checks keep required entrypoint failures
+separate from advisory working-directory differences. Config verdicts also share
+volume handling; only the volume check treats `NONE` as absent, while a literal
+`NONE` working directory remains an advertised value.
+
+Critical-fix source checks share compound predicates and record parsing while
+retaining independent patterns, diagnostics and fatal/advisory policies. Existing
+mutation IDs are retargeted to their shared owners when the protected behavior
+moves, so extraction cannot silently retire a regression proof.

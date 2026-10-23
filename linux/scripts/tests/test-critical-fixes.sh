@@ -3,7 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-GATE="${TESTS_DIR}/../verify-critical-fixes.sh"
+GATE="${1:-${TESTS_DIR}/../verify-critical-fixes.sh}"
 IMAGE_SMOKE="${TESTS_DIR}/../06-packaging/smoke-critical-fixes.sh"
 PKG="${TESTS_DIR}/../06-packaging"
 CSB="${TESTS_DIR}/../01-core/cross-stage-build.sh"
@@ -415,7 +415,7 @@ PASS	[features]\nort = ["dep:ort"]\n[dependencies]\nort = { version = "=2.0.0-rc
 CARGO
 
 t_case "fix11 — every way to SET an ort-sys variable is read, and a READ is not a write (mutation)"
-_envw="$(t_fn_src "${GATE}" _f11_env_writes)" || exit 1
+_envw="$(t_fn_src "${GATE}" _f11_record_fields_awk)"$'\n'"$(t_fn_src "${GATE}" _f11_env_writes)" || exit 1
 while IFS="$(printf '\t')" read -r _line _want; do
   [ -n "${_line}" ] || continue
   printf '%s\n' "${_line}" > "${_work}/corpus"

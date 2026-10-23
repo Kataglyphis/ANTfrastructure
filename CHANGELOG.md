@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — continue Linux quality and runtime deduplication
+
+- Share host architecture probing with unchanged target/build precedence and failure fallbacks; reuse host Python version selection and ordered LLVM builder discovery.
+- Share C++/tidy file traversal and compiler-cache fixtures while preserving configuration, exclusion, launcher and environment policies.
+- Share runtime shell transport and scalar metadata lookup, retaining wrapper bytes, Python guards and required/advisory verdicts.
+- Share critical-fix predicates and record parsing; preserve regression proofs through mutation retargeting and add local characterization tests.
+- Share GHCR version metadata through a required standard-library companion; retain dry-run, age and kept-index protection, verified with offline fixtures.
+- Remove resolved Linux duplication exemptions and lower remaining budgets; Windows source remains untouched.
+
 ## 2026-10-23 — share Linux smoke and verification behavior
 
 - Share Android/compiler object probe lifecycle while preserving C programs and ELF verdict policies; reject allocation and cleanup failures.

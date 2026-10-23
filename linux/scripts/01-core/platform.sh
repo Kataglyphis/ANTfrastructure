@@ -257,26 +257,19 @@ _platform_raw_target_arch() {
   canonical_resolve_arch "${TARGET_ARCH:-${TARGETARCH:-}}"
 }
 
-canonical_resolve_arch() {
+_platform_arch_or_host() {
   local raw="${1:-}"
-
-  if [ -n "${raw}" ]; then
-    printf '%s' "${raw}"
-    return 0
-  fi
-
-  if [ -n "${TARGETARCH:-}" ]; then
-    printf '%s' "${TARGETARCH}"
-    return 0
-  fi
-
-  if command -v dpkg >/dev/null 2>&1; then
+  if [ -z "${raw}" ] && command -v dpkg >/dev/null 2>&1; then
     raw="$(dpkg --print-architecture 2>/dev/null || true)"
   fi
   if [ -z "${raw}" ]; then
     raw="$(uname -m 2>/dev/null || echo unknown)"
   fi
   printf '%s' "${raw}"
+}
+
+canonical_resolve_arch() {
+  _platform_arch_or_host "${1:-${TARGETARCH:-}}"
 }
 
 canonical_target_arch() {
@@ -291,13 +284,7 @@ _platform_raw_build_arch() {
   if [ -z "${raw}" ] && [ -n "${BUILDPLATFORM:-}" ]; then
     raw="${BUILDPLATFORM##*/}"
   fi
-  if [ -z "${raw}" ] && command -v dpkg >/dev/null 2>&1; then
-    raw="$(dpkg --print-architecture 2>/dev/null || true)"
-  fi
-  if [ -z "${raw}" ]; then
-    raw="$(uname -m 2>/dev/null || echo unknown)"
-  fi
-  printf '%s' "${raw}"
+  _platform_arch_or_host "${raw}"
 }
 
 arch_oci() {
