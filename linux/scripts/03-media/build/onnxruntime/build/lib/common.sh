@@ -281,6 +281,26 @@ maybe_build_source_wheel() {
   fi
 }
 
+run_onnx_native_build() {
+  local build_dir="$1" config="$2" failure="$3"
+  shift 3
+  if ! "$@"; then
+    if cross_build_is_active; then
+      warn "${failure}; rerunning single-threaded verbose build for diagnostics"
+      cmake --build "${build_dir}/${config}" --config "${config}" --parallel 1 --verbose || true
+    fi
+    exit 1
+  fi
+}
+
+collect_onnx_native_wheels() {
+  local build_dir="$1" output_dir="$2" python="$3" wheel_label="$4" source_label="$5"
+  collect_wheels_from_tree "${build_dir}" "${output_dir}" "${wheel_label}"
+  if [ -z "$(ls -A "${output_dir}/wheels" 2>/dev/null || true)" ] && { ! cross_build_is_active; }; then
+    maybe_build_source_wheel "${ORT_SRC_DIR}" "${output_dir}" "${python}" "${source_label}"
+  fi
+}
+
 copy_onnx_headers_to_output() {
   local output_dir="${1:?output dir required}"
   local search_dir header_path

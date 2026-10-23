@@ -37,9 +37,9 @@ for kind in compile link; do
     t_assert_contains "$(cat "${WORK}/source")" 'int answer(void){return 42;}'
     t_assert_contains "$(cat "${WORK}/output")" "ELF [${WORK}/probe/cc1smoke.o]"
   else
-    t_assert_fails rg -q '^-c$' "${WORK}/args"
+    t_assert_rc 1 grep -Eq '^-c$' "${WORK}/args"
     t_assert_contains "$(cat "${WORK}/source")" 'int main(void){return 0;}'
-    t_assert_fails rg -q 'ELF' "${WORK}/output"
+    t_assert_rc 1 grep -Fq 'ELF' "${WORK}/output"
   fi
   t_case "${kind}: advisory failure reports its own gate and cleans up"
   t_assert_eq 0 "$(run_smoke "${kind}" smoke 7)"

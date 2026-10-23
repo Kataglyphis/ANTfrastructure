@@ -93,6 +93,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
    Host probing preserves target/build precedence and failed/empty probe behavior; shared runtime transports retain Python guards and caller sentinel verdicts.
    Base, toolchain and required-platform entry points carry `module-bootstrap.sh` in copied and mounted closures; keep the per-file mounts narrow.
+   Cross-verification shares target selection without merging caller fallback, skip-diagnostic or architecture-restoration policies.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
@@ -297,6 +298,7 @@ that `grep -r` walks, and it skips binaries.
   what you are looking for.
 - A script that may run where `rg` is absent (a CI runner, an older image) keeps `grep`, or checks
   `command -v rg` first.
+- Negative search assertions require the no-match status `1`; missing-tool `127` and search-error `2` must fail the fixture.
 
 ### Where does knowledge belong? (docs, not just code)
 

@@ -2357,3 +2357,8 @@ It owns fake-tool setup, child status, call-log reset and plain error text. The
 callers keep tool-specific scripts, summaries and path normalization. Transport
 fixtures check arguments with spaces and colons, environment/location restoration,
 failed exits and stale logs; the existing consumer suites retain their assertions.
+
+The harness file-tree writer joins relative fixture paths with `Join-Path` so
+Windows separators retain their directory meaning when structural suites run on
+Linux. `Harness.Fixtures.Tests.ps1` keeps its nested path, bracket and content
+checks; all cases remain included in the lifted-module mutation baselines.

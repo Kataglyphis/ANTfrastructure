@@ -169,16 +169,14 @@ verify_cross_llvm_targets() {
 
   cross_mode_requested || return 0
 
-  if declare -F cross_effective_targets_raw >/dev/null 2>&1; then
-    targets_raw="$(cross_effective_targets_raw)"
-  else
-    targets_raw="${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-amd64,arm64,riscv64}}"
-  fi
-  [ -n "${targets_raw}" ] || return 0
-  targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || {
+  local targets_state
+  _resolve_cross_verification_targets targets_raw targets_state \
+    "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-amd64,arm64,riscv64}}"
+  [ "${targets_state}" != empty ] || return 0
+  if [ "${targets_state}" = invalid ]; then
     log "Skipping unsupported LLVM cross verification target list: ${targets_raw}"
     return 0
-  }
+  fi
 
   # amd64 is skipped by default; verify_cross_llvm_target runs per target.
   for_each_cross_target verify_cross_llvm_target "${targets_raw}"

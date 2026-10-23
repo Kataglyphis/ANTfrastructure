@@ -58,7 +58,7 @@ t_assert_contains "$(cat "${PROBE_SOURCE}")" 'ffmpeg_probe_cos() & 0xFFFF'
 _reset
 t_case "link probes preserve the lld opt-out and failed compiler verdict"
 t_assert_eq 1 "$(PROBE_LLD=1 USE_LLD=off PROBE_STATUS=7 t_rc ffmpeg_try_link_probe '' missing)"
-t_assert_fails rg -q -- '-fuse-ld=lld' "${PROBE_CALLS}"
+t_assert_rc 1 grep -Fq -- '-fuse-ld=lld' "${PROBE_CALLS}"
 _reset
 t_case "compile debug captures diagnostics but the regular compile owns the verdict"
 FFMPEG_PROBE_DEBUG=1 ffmpeg_try_cpp_condition '' 1

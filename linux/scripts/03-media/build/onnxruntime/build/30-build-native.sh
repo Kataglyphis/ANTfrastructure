@@ -120,20 +120,10 @@ _ort_build_attempt() {
   "${BUILD_SH}" "${BUILD_ARGS[@]}"
 }
 
-# Execute build (with retry for transient network errors like GitHub download failures)
-if ! retry 3 10 "ONNX Runtime CPU build" _ort_build_attempt; then
-  if cross_build_is_active; then
-    warn "ONNX Runtime build failed; rerunning single-threaded verbose build for diagnostics"
-    cmake --build "${NATIVE_CPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true
-  fi
-  exit 1
-fi
+run_onnx_native_build "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" 'ONNX Runtime build failed' \
+  retry 3 10 "ONNX Runtime CPU build" _ort_build_attempt
 
-collect_wheels_from_tree "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_OUTPUT_DIR}" "ONNX Runtime wheel"
-
-if [ -z "$(ls -A "${NATIVE_CPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! cross_build_is_active; }; then
-  maybe_build_source_wheel "${ORT_SRC_DIR}" "${NATIVE_CPU_OUTPUT_DIR}" "${HOST_PYTHON}" "ONNX Runtime"
-fi
+collect_onnx_native_wheels "${NATIVE_CPU_BUILD_DIR}" "${NATIVE_CPU_OUTPUT_DIR}" "${HOST_PYTHON}" 'ONNX Runtime wheel' 'ONNX Runtime'
 
 copy_onnx_headers_to_output "${NATIVE_CPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_CPU_BUILD_DIR}"
 info "Listing copied headers:"

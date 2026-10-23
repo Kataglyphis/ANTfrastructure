@@ -18288,7 +18288,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "-ArgumentList $ArgumentList\n        try",
   "replace": "-ArgumentList @()\n        try",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-module-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-module-arguments-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-module-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-module-arguments-result.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -18296,7 +18296,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "& $mutantBody @BodyArgumentList",
   "replace": "& $mutantBody",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-body-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-body-arguments-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-body-arguments-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-body-arguments-result.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -18304,7 +18304,7 @@
   "target": "windows/scripts/tests/TestHarness.psm1",
   "find": "finally { Remove-Module $m -Force }",
   "replace": "finally { }",
-  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-cleanup-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-cleanup-result.json\")); assert d[\"Total\"] >= 8 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
+  "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness.lifted-cleanup-result.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness.lifted-cleanup-result.json\")); assert d[\"Total\"] >= 9 and d[\"Total\"] == d[\"Passed\"] and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "Lifted module fixtures preserve constructor arguments, body arguments and module cleanup."
  },
  {
@@ -18898,5 +18898,229 @@
   "replace": "",
   "test": "bash linux/scripts/tests/test-module-bootstrap.sh",
   "why": "the SDK must ship the bootstrap companion used before setup-dependencies loads its modules"
+ },
+ {
+  "id": "lib.cross-verification-override",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    _rcvt_targets=\"$(cross_effective_targets_raw)\"",
+  "replace": "    _rcvt_targets=\"$3\"",
+  "test": "bash linux/scripts/tests/test-cross-verification-targets.sh",
+  "why": "An available resolver overrides legacy fallback arguments, including an explicitly empty resolved list."
+ },
+ {
+  "id": "lib.cross-verification-normalize",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "if _rcvt_targets=\"$(arch_list_csv_normalize \"${_rcvt_targets}\")\"; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-cross-verification-targets.sh",
+  "why": "Verification dispatch must normalize aliases and reject unsupported lists before invoking per-target checks."
+ },
+ {
+  "id": "lib.cross-verification-resolver-status",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    _rcvt_targets=\"$(cross_effective_targets_raw)\"",
+  "replace": "    _rcvt_targets=\"$(cross_effective_targets_raw || true)\"",
+  "test": "bash linux/scripts/tests/test-cross-verification-targets.sh",
+  "why": "Resolver failures must preserve ordinary errexit even when they produce a partial target list."
+ },
+ {
+  "id": "lib.onnx-native-build-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "cmake --build \"${build_dir}/${config}\" --config \"${config}\" --parallel 1 --verbose || true\n    fi\n    exit 1",
+  "replace": "cmake --build \"${build_dir}/${config}\" --config \"${config}\" --parallel 1 --verbose || true\n    fi\n    return 0",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "native CPU and AMD build failures remain fatal after advisory cross diagnostics"
+ },
+ {
+  "id": "lib.onnx-native-collect-failure",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "  collect_wheels_from_tree \"${build_dir}\" \"${output_dir}\" \"${wheel_label}\"",
+  "replace": "  collect_wheels_from_tree \"${build_dir}\" \"${output_dir}\" \"${wheel_label}\" || true",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "wheel collection failures must not silently continue to source fallback"
+ },
+ {
+  "id": "lib.onnx-native-cross-no-source-wheel",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/lib/common.sh",
+  "find": "if [ -z \"$(ls -A \"${output_dir}/wheels\" 2>/dev/null || true)\" ] && { ! cross_build_is_active; }; then",
+  "replace": "if [ -z \"$(ls -A \"${output_dir}/wheels\" 2>/dev/null || true)\" ]; then",
+  "test": "bash linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "why": "source wheel fallback is native-only even when a cross build produced no wheel"
+ },
+ {
+  "id": "lib.litert-web-core-subdir",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "\"${output}${subdir:+/${subdir}}\"",
+  "replace": "\"${output}\"",
+  "test": "bash linux/scripts/tests/test-litert-web-vendor.sh",
+  "why": "Shared vendoring retains required and optional package policy, clean destinations, independent output layouts and actionable wasm diagnostics."
+ },
+ {
+  "id": "lib.litert-web-clears-stale",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "  rm -rf \"$output\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-litert-web-vendor.sh",
+  "why": "Shared vendoring retains required and optional package policy, clean destinations, independent output layouts and actionable wasm diagnostics."
+ },
+ {
+  "id": "lib.litert-web-wasm-required",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "find \"$output\" -name '*.wasm'",
+  "replace": "find \"$output\" -name '*.js'",
+  "test": "bash linux/scripts/tests/test-litert-web-vendor.sh",
+  "why": "Shared vendoring retains required and optional package policy, clean destinations, independent output layouts and actionable wasm diagnostics."
+ },
+ {
+  "id": "lib.litert-web-required-fetch",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "\"${LITERT_WEB_OUTPUT_DIR}\" core || return 1",
+  "replace": "\"${LITERT_WEB_OUTPUT_DIR}\" core || true",
+  "test": "bash linux/scripts/tests/test-litert-web-vendor.sh",
+  "why": "Shared vendoring retains required and optional package policy, clean destinations, independent output layouts and actionable wasm diagnostics."
+ },
+ {
+  "id": "lib.litert-web-optional-companion",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "warn \"tfjs-interop ${LITERTJS_VERSION} unavailable; continuing (core is sufficient to serve)\"",
+  "replace": "return 1",
+  "test": "bash linux/scripts/tests/test-litert-web-vendor.sh",
+  "why": "Shared vendoring retains required and optional package policy, clean destinations, independent output layouts and actionable wasm diagnostics."
+ },
+ {
+  "id": "lib.litert-web-genai-diagnostic",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "_require_vendored_wasm \"${LITERT_LM_WEB_OUTPUT_DIR}\" ' (genai wasm expected)'",
+  "replace": "_require_vendored_wasm \"${LITERT_LM_WEB_OUTPUT_DIR}\"",
+  "test": "bash linux/scripts/tests/test-litert-web-vendor.sh",
+  "why": "Shared vendoring retains required and optional package policy, clean destinations, independent output layouts and actionable wasm diagnostics."
+ },
+ {
+  "id": "lib.lint-consumer-docker-gitlink",
+  "target": "linux/scripts/tests/lint-consumer-fixture.sh",
+  "find": "t_consumer_fixture \"${_work}\" _lint_consumer_plant \"$@\"",
+  "replace": "t_consumer_fixture \"${_work}\" _lint_consumer_plant \"$1\"",
+  "test": "bash linux/scripts/tests/test-dockerfile-env-order.sh",
+  "why": "The shared consumer fixture must actually plant its requested broken vendored checkout before asserting that lint scope excludes it."
+ },
+ {
+  "id": "lib.lint-consumer-python-gitlink",
+  "target": "linux/scripts/tests/lint-consumer-fixture.sh",
+  "find": "t_consumer_fixture \"${_work}\" _lint_consumer_plant \"$@\"",
+  "replace": "t_consumer_fixture \"${_work}\" _lint_consumer_plant \"$1\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "The shared consumer fixture must actually plant its requested broken vendored checkout before asserting that lint scope excludes it."
+ },
+ {
+  "id": "lib.native-builder-release-https",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "wget -c --https-only --retry-connrefused",
+  "replace": "wget -c --retry-connrefused",
+  "test": "bash linux/scripts/tests/test-gcc-release-downloads.sh",
+  "why": "every GCC tarball and proof transfer retains HTTPS-only transport"
+ },
+ {
+  "id": "lib.native-builder-release-timeouts",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "--read-timeout=20 --timeout=20 -t \"${attempts}\"",
+  "replace": "--read-timeout=1 --timeout=1 -t \"${attempts}\"",
+  "test": "bash linux/scripts/tests/test-gcc-release-downloads.sh",
+  "why": "shared release transfers retain both bounded twenty-second timeout flags"
+ },
+ {
+  "id": "lib.native-builder-release-attempts",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "-t \"${attempts}\" \"${url}\"",
+  "replace": "-t 99 \"${url}\"",
+  "test": "bash linux/scripts/tests/test-gcc-release-downloads.sh",
+  "why": "mirror transfers retain three attempts while canonical tarballs and proofs retain five"
+ },
+ {
+  "id": "lib.native-builder-release-extra-args",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "\"${url}\" \"$@\"",
+  "replace": "\"${url}\"",
+  "test": "bash linux/scripts/tests/test-gcc-release-downloads.sh",
+  "why": "the output destination arguments follow the original URL without splitting paths or dropping -O"
+ },
+ {
+  "id": "lib.native-builder-release-failure-status",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t \"${attempts}\" \"${url}\" \"$@\"",
+  "replace": "  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t \"${attempts}\" \"${url}\" \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-gcc-release-downloads.sh",
+  "why": "download failure must trigger mirror fallback or remain fatal for proofs and the canonical transfer"
+ },
+ {
+  "id": "lib.native-builder-cache-help-alias",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "'DEPRECATED alias for --compiler-cache'",
+  "replace": "'cache alias'",
+  "test": "bash linux/scripts/tests/test-native-builder-cache-cli.sh",
+  "why": "both builders retain their exact public deprecated-cache-alias help contract"
+ },
+ {
+  "id": "lib.native-builder-unknown-option-fatal",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "toolchain_unknown_option() {\n  warn \"Unknown option: $1\"\n  usage >&2\n  exit 1",
+  "replace": "toolchain_unknown_option() {\n  warn \"Unknown option: $1\"\n  usage >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-native-builder-cache-cli.sh",
+  "why": "unknown options retain nonzero status instead of silently permitting an incorrect build invocation"
+ },
+ {
+  "id": "lib.native-builder-unknown-option-stderr",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  usage >&2\n  exit 1",
+  "replace": "  usage\n  exit 1",
+  "test": "bash linux/scripts/tests/test-native-builder-cache-cli.sh",
+  "why": "unknown-option usage remains on stderr with the warning and does not pollute stdout"
+ },
+ {
+  "id": "lib.fixture-portability-compiler-helper",
+  "target": "linux/scripts/tests/test-compiler-target-verdicts.sh",
+  "find": "if grep -Eq \"^${helper}\\(\\)\"",
+  "replace": "if rg -q \"^${helper}\\(\\)\"",
+  "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
+  "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
+ },
+ {
+  "id": "lib.fixture-portability-runtime-helper",
+  "target": "linux/scripts/tests/test-runtime-probe-transport.sh",
+  "find": "if grep -Eq \"^${helper}\\(\\)\"",
+  "replace": "if rg -q \"^${helper}\\(\\)\"",
+  "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
+  "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
+ },
+ {
+  "id": "lib.fixture-portability-onnx-negative",
+  "target": "linux/scripts/tests/test-onnx-native-lifecycle.sh",
+  "find": "t_assert_rc 1 grep -Eq '^collect|^fallback'",
+  "replace": "t_assert_rc 1 rg -q '^collect|^fallback'",
+  "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
+  "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
+ },
+ {
+  "id": "lib.fixture-portability-smoke-negative",
+  "target": "linux/scripts/tests/test-compiler-smoke-command.sh",
+  "find": "t_assert_rc 1 grep -Eq '^-c$'",
+  "replace": "t_assert_rc 1 rg -q '^-c$'",
+  "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
+  "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
+ },
+ {
+  "id": "lib.fixture-portability-media-negative",
+  "target": "linux/scripts/tests/test-media-platform-bootstrap.sh",
+  "find": "t_assert_rc 1 grep -Eq '^POISON$'",
+  "replace": "t_assert_rc 1 rg -q '^POISON$'",
+  "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
+  "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
+ },
+ {
+  "id": "lib.fixture-portability-ffmpeg-negative",
+  "target": "linux/scripts/tests/test-ffmpeg-probes.sh",
+  "find": "t_assert_rc 1 grep -Fq -- '-fuse-ld=lld'",
+  "replace": "t_assert_rc 1 rg -q -- '-fuse-ld=lld'",
+  "test": "bash linux/scripts/tests/test-fixture-tool-portability.sh",
+  "why": "Every fixture assertion must run on a CI host without optional ripgrep; a missing search tool must not masquerade as a successful negative assertion."
  }
 ]

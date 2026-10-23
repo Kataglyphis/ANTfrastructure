@@ -34,8 +34,9 @@ Options:
   --skip-system-registration
                             Skip update-alternatives, loader, and profile updates
   --no-strip                Do not strip binaries after install
-  --compiler-cache                  Enable the compiler cache (sccache first, ccache fallback)
-  --ccache                          DEPRECATED alias for --compiler-cache
+USAGE
+  toolchain_cache_usage 36
+  cat <<'USAGE'
   -h, --help                Show this help
 
 Environment (used as defaults when CLI args are omitted):
@@ -129,7 +130,7 @@ while [ "$#" -gt 0 ]; do
       exit 0
       ;;
     *)
-      warn "Unknown option: $1"; usage >&2; exit 1
+      toolchain_unknown_option "$1"
       ;;
   esac
 done
@@ -305,6 +306,12 @@ _gcc_gpg_require_or_warn() {
   fi
 }
 
+_gcc_download_release_asset() {
+  local url="$1" attempts="$2"
+  shift 2
+  wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t "${attempts}" "${url}" "$@"
+}
+
 # Several release managers sign; a missing key (NO_PUBKEY) takes the skip path, a bad signature is fatal. GCC_GPG_KEYS overrides.
 verify_gcc_gpg_signature() {
   # Fingerprints from https://gcc.gnu.org/mirrors.html ("release keys").
@@ -319,7 +326,7 @@ verify_gcc_gpg_signature() {
   fi
 
   echo "Signature available at ${SIG_URL} (downloading)..."
-  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SIG_URL}"; then
+  if ! _gcc_download_release_asset "${SIG_URL}" 5; then
     echo "ERROR: signature exists on server but could not be downloaded; refusing to continue unverified." >&2
     exit 1
   fi
@@ -385,8 +392,8 @@ fetch_gcc_tarball() {
   fi
   if [ ! -f "${TARBALL}" ]; then
     # Mirror redirector first, canonical gcc.gnu.org as fallback.
-    wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 3 "${MIRROR_TARBALL_URL}" -O "${TARBALL}" \
-      || wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${TARBALL_URL}"
+    _gcc_download_release_asset "${MIRROR_TARBALL_URL}" 3 -O "${TARBALL}" \
+      || _gcc_download_release_asset "${TARBALL_URL}" 5
   else
     echo "Tarball already exists: ${TARBALL}"
   fi
@@ -411,7 +418,7 @@ verify_gcc_sha512() {
     _gcc_sha_unverified_or_die "sha512.sum not reachable at ${SHA_URL} (absent, or the host did not answer)"
     return 0
   fi
-  if ! wget -c --https-only --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=20 -t 5 "${SHA_URL}" -O sha512.sum; then
+  if ! _gcc_download_release_asset "${SHA_URL}" 5 -O sha512.sum; then
     echo "ERROR: sha512.sum exists on server but could not be downloaded; refusing to continue unverified." >&2
     exit 1
   fi

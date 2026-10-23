@@ -3,11 +3,11 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-BUILD_GCC="${TESTS_DIR}/../02-toolchain/build-gcc.sh"
+BUILD_GCC="${1:-${TESTS_DIR}/../02-toolchain/build-gcc.sh}"
 
 # build-gcc.sh is a top-level script, so its helpers are extracted rather than sourced.
 _lib="$(mktemp)"; trap 'rm -f "${_lib}"' EXIT
-for _fn in _gcc_probe_url _gcc_sha_unverified_or_die verify_gcc_sha512 _gcc_gpg_require_or_warn; do
+for _fn in _gcc_probe_url _gcc_download_release_asset _gcc_sha_unverified_or_die verify_gcc_sha512 _gcc_gpg_require_or_warn; do
   awk -v f="${_fn}" '$0 ~ "^"f"\\(\\) \\{" {p=1} p {print} p && /^\}/ {exit}' \
     "${BUILD_GCC}" >> "${_lib}"
 done

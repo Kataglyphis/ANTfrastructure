@@ -63,3 +63,15 @@ source_toolchain_elf_strip() {
   printf 'ERROR: toolchain bootstrap requires elf-strip.sh\n' >&2
   return 1
 }
+
+toolchain_cache_usage() {
+  local description_column="$1"
+  printf '  %-*s %s\n' "$((description_column - 3))" --compiler-cache 'Enable the compiler cache (sccache first, ccache fallback)'
+  printf '  %-*s %s\n' "$((description_column - 3))" --ccache 'DEPRECATED alias for --compiler-cache'
+}
+
+toolchain_unknown_option() {
+  warn "Unknown option: $1"
+  usage >&2
+  exit 1
+}

@@ -293,6 +293,27 @@ must say what it does not cover — is in
 along with the second half of this same incident: with injection finally
 working, the obvious `rc == 1` assertion still passed on every mutation.
 
+### Extracted fixture helpers disappear only on the CI runner
+
+**Symptom.** Compiler-verdict and runtime-transport suites pass locally but fail
+unmutated in Linux CI, with missing verdict accounting or incomplete probe
+results. Mutation jobs correctly reject these failing baselines.
+
+**Cause.** Optional helper discovery used `rg`, which was absent on the runner.
+The condition skipped the shared helper definitions after command-not-found;
+negative assertions that accepted any nonzero status also treated missing tools
+as a successful no-match. A related harness fixture joined Windows relative
+paths with .NET `Path.Combine`, which leaves backslashes literal on Linux while
+the PowerShell reader normalizes them.
+
+**Fix.** Fixture source discovery and searches use portable grep. Negative probes
+require status `1`, so errors and absent commands cannot pass. A restricted-PATH
+regression runs all six affected Linux suites without ripgrep and verifies their
+full assertion counts. The shared PowerShell file-tree writer uses `Join-Path`;
+its unchanged full fixture suite and three lifecycle mutations run on Linux.
+These checks prove local fixture portability, not native compiler or Windows
+container behavior.
+
 ### `GENAI-BIND SKIP` reported green while the native binding is broken
 
 **Symptom.** The runtime-image smoke prints

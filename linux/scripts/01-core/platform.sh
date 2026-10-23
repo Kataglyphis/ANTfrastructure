@@ -249,6 +249,22 @@ default_target_arch() {
   printf '%s' "${1:-${TARGET_ARCH:-${TARGETARCH:-${ARCH:-}}}}"
 }
 
+_resolve_cross_verification_targets() {
+  local -n _rcvt_targets="$1" _rcvt_state="$2"
+  _rcvt_state=empty
+  if declare -F cross_effective_targets_raw >/dev/null 2>&1; then
+    _rcvt_targets="$(cross_effective_targets_raw)"
+  else
+    _rcvt_targets="$3"
+  fi
+  [ -n "${_rcvt_targets}" ] || return 0
+  if _rcvt_targets="$(arch_list_csv_normalize "${_rcvt_targets}")"; then
+    _rcvt_state=ready
+  else
+    _rcvt_state=invalid
+  fi
+}
+
 cross_targets_effective_raw() {
   printf '%s' "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
 }

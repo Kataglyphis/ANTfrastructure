@@ -56,14 +56,14 @@ for caller in validator torch; do
       incomplete|missing)
         t_assert_eq 1 "${status}"
         t_assert_contains "${out}" 'FATAL: platform.sh ('
-        t_assert_fails rg -q '^completed$' "${WORK}/output" ;;
+        t_assert_rc 1 grep -Eq '^completed$' "${WORK}/output" ;;
       failed)
         t_assert_eq 7 "${status}"
         t_assert_contains "${out}" failed
-        t_assert_fails rg -q '^completed$' "${WORK}/output" ;;
+        t_assert_rc 1 grep -Eq '^completed$' "${WORK}/output" ;;
     esac
-    t_assert_fails rg -q '^POISON$' "${WORK}/output"
-    if [ "${scenario}" = installed ] || [ "${scenario}" = incomplete ]; then t_assert_fails rg -q '^repo$' "${WORK}/output"; fi
+    t_assert_rc 1 grep -Eq '^POISON$' "${WORK}/output"
+    if [ "${scenario}" = installed ] || [ "${scenario}" = incomplete ]; then t_assert_rc 1 grep -Eq '^repo$' "${WORK}/output"; fi
   done
 done
 t_case 'Torch explicitly ships the bootstrap beside its required platform and logging companions'

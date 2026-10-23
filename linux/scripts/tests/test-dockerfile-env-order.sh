@@ -112,8 +112,8 @@ t_case "build-tools stays off PATH: it ships an lld that would front /usr/bin/ll
 t_assert_fails grep -q 'ANDROID_HOME}/build-tools' "${PKG}"
 
 # --root, as for lint-shell.sh, lint-python.sh and lint-workflows.sh: in a consumer the default root is the hub.
-_work="$(mktemp -d)"
-trap 'rm -rf "${_work}"' EXIT
+# shellcheck source=linux/scripts/tests/lint-consumer-fixture.sh
+source "${TESTS_DIR}/lint-consumer-fixture.sh"
 # `vendored` carries the ENV defect, so a green verdict with it proves the scope excluded it.
 _plant() {  # <dir> <shape>
   case "$2" in
@@ -121,11 +121,10 @@ _plant() {  # <dir> <shape>
                      mkdir -p "$1/svc"
                      printf 'FROM scratch\nENV B=1\n' > "$1/svc/Dockerfile.web" ;;
     broken|vendored) printf '%s\n' "$(_two_keys '    ')" > "$1/Dockerfile" ;;
-    empty)           printf 'no dockerfiles here\n' > "$1/README.md" ;;
   esac
 }
 # _consumer <clean|broken|empty> [vendored] -> a consumer checkout.
-_consumer() { t_consumer_fixture "${_work}" _plant "$@"; }
+
 # The advisory buildx pass needs a daemon and grades nothing; off for every case.
 _at_root() { LINT_DOCKERFILES_BUILD_CHECK=0 bash "${LINTER}" --root "$1" 2>&1; }
 _rc_at_root() {
@@ -149,6 +148,7 @@ t_assert_contains "${_out}" "ENV instruction ordering on 2 Dockerfile(s)" \
 
 t_case "a vendored checkout inside the consumer is a gitlink, and is not graded"
 _c_vendored="$(_consumer clean vendored)"
+t_assert_ok test -f "${_c_vendored}/${T_VENDORED}/Dockerfile"
 t_assert_eq "0" "$(_rc_at_root "${_c_vendored}")" \
   "grading the vendored hub AS the consumer is the same wrong-tree bug from the other direction"
 t_assert_eq "1" "$(t_rc "${PY}" "${GATE}" "${_c_vendored}/${T_VENDORED}/Dockerfile")" \

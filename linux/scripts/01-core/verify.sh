@@ -116,13 +116,10 @@ verify_all_cross_target_versions() {
 
   verify_cross_mode_requested || return 0
 
-  if declare -F cross_effective_targets_raw >/dev/null 2>&1; then
-    targets_raw="$(cross_effective_targets_raw)"
-  else
-    targets_raw="${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
-  fi
-  [ -n "${targets_raw}" ] || return 0
-  targets_raw="$(arch_list_csv_normalize "${targets_raw}")" || return 0
+  local targets_state
+  _resolve_cross_verification_targets targets_raw targets_state \
+    "${VERIFY_CROSS_TARGETS:-${CROSS_TARGETS:-${ARCH:-${TARGETARCH:-${TARGET_ARCH:-}}}}}"
+  [ "${targets_state}" = ready ] || return 0
 
   # IFS=',' read: callers run with IFS=$'\n\t', where ${targets_raw//,/ } would not split.
   local -a _verify_targets=()

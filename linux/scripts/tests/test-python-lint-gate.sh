@@ -145,15 +145,14 @@ t_case "the gate is registered in preflight"
 t_assert_contains "$(cat "${S}/preflight.sh")" "python-lint" "an unwired gate is not a gate"
 
 # The consumer root (--root): the SHIPPED gate over a throwaway consumer, the invocation a submodule checkout needs.
-_work="$(mktemp -d)"
-trap 'rm -rf "${_work}"' EXIT
+# shellcheck source=linux/scripts/tests/lint-consumer-fixture.sh
+source "${TESTS_DIR}/lint-consumer-fixture.sh"
 # Heredoc openers are printf ARGUMENTS so this suite is not itself a target.
 _plant() {  # <dir> <shape>
   case "$2" in
     broken)   printf 'print(nope_in_consumer)\n' > "$1/app.py" ;;
     vendored) printf 'print(nope_in_vendored)\n' > "$1/vendored.py" ;;
     clean)    printf 'print("ok")\n' > "$1/app.py" ;;
-    empty)    printf 'no python here\n' > "$1/README.md" ;;
     heredoc)  printf 'print("ok")\n' > "$1/app.py"
               { printf 'probe() {\n'
                 printf '  python3 - %s\n' "<<'PY'"
@@ -162,7 +161,7 @@ _plant() {  # <dir> <shape>
   esac
 }
 # _consumer <clean|broken|empty|heredoc> [vendored] -> a consumer checkout.
-_consumer() { t_consumer_fixture "${_work}" _plant "$@"; }
+
 _at_root() { bash "${S}/lint-python.sh" --root "$1" 2>&1; }
 
 t_case "--root decides WHICH tree is graded, and the verdicts follow the argument"
@@ -183,6 +182,7 @@ t_assert_contains "${_out}" ": 1 file(s)" \
 
 t_case "a vendored checkout inside the consumer is a gitlink, and is not graded"
 _c_vendored="$(_consumer clean vendored)"
+t_assert_ok test -f "${_c_vendored}/${T_VENDORED}/vendored.py"
 t_assert_eq "0" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_vendored}")" \
   "grading the vendored hub AS the consumer is the same wrong-tree bug from the other direction"
 t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" \

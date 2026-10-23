@@ -123,7 +123,7 @@ function Invoke-InTestDir {
 function Write-TestFileTree {
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][System.Collections.IDictionary]$Files)
     foreach ($entry in $Files.GetEnumerator()) {
-        $path = [IO.Path]::Combine($Root, [string]$entry.Key)
+        $path = Join-Path $Root ([string]$entry.Key)
         $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($path))
         [IO.File]::WriteAllText($path, [string]$entry.Value)
     }

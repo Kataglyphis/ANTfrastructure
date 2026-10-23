@@ -47,10 +47,22 @@ _fetch_npm_package() {
   info "vendored ${spec}@${version} -> ${dest}"
 }
 
+_vendor_primary_npm_runtime() {
+  local spec="$1" version="$2" output="$3" subdir="${4:-}"
+  rm -rf "$output"
+  mkdir -p "$output"
+  _fetch_npm_package "$spec" "$version" "${output}${subdir:+/${subdir}}"
+}
+
+_require_vendored_wasm() {
+  local output="$1" detail="${2:-}"
+  [ -n "$(find "$output" -name '*.wasm' -print -quit 2>/dev/null)" ] \
+    || { warn "no .wasm found in ${output}${detail}"; return 1; }
+}
+
 vendor_litertjs() {
   info "Vendoring LiteRT.js web runtime (@litertjs/core ${LITERTJS_VERSION})"
-  rm -rf "${LITERT_WEB_OUTPUT_DIR}"; mkdir -p "${LITERT_WEB_OUTPUT_DIR}"
-  _fetch_npm_package "@litertjs/core" "${LITERTJS_VERSION}" "${LITERT_WEB_OUTPUT_DIR}/core" || return 1
+  _vendor_primary_npm_runtime "@litertjs/core" "${LITERTJS_VERSION}" "${LITERT_WEB_OUTPUT_DIR}" core || return 1
   # tfjs-interop / wasm-utils track core's version; tolerate a minor skew.
   _fetch_npm_package "@litertjs/tfjs-interop" "${LITERTJS_VERSION}" "${LITERT_WEB_OUTPUT_DIR}/tfjs-interop" || \
     warn "tfjs-interop ${LITERTJS_VERSION} unavailable; continuing (core is sufficient to serve)"
@@ -60,16 +72,13 @@ vendor_litertjs() {
   if [ -d "${LITERT_WEB_OUTPUT_DIR}/core/wasm" ]; then
     ln -sfn core/wasm "${LITERT_WEB_OUTPUT_DIR}/wasm"
   fi
-  [ -n "$(find "${LITERT_WEB_OUTPUT_DIR}" -name '*.wasm' -print -quit 2>/dev/null)" ] \
-    || { warn "no .wasm found in ${LITERT_WEB_OUTPUT_DIR}"; return 1; }
+  _require_vendored_wasm "${LITERT_WEB_OUTPUT_DIR}"
 }
 
 vendor_litert_lm_web() {
   info "Vendoring LiteRT-LM web runtime (@mediapipe/tasks-genai ${MEDIAPIPE_GENAI_VERSION})"
-  rm -rf "${LITERT_LM_WEB_OUTPUT_DIR}"; mkdir -p "${LITERT_LM_WEB_OUTPUT_DIR}"
-  _fetch_npm_package "@mediapipe/tasks-genai" "${MEDIAPIPE_GENAI_VERSION}" "${LITERT_LM_WEB_OUTPUT_DIR}" || return 1
-  [ -n "$(find "${LITERT_LM_WEB_OUTPUT_DIR}" -name '*.wasm' -print -quit 2>/dev/null)" ] \
-    || { warn "no .wasm found in ${LITERT_LM_WEB_OUTPUT_DIR} (genai wasm expected)"; return 1; }
+  _vendor_primary_npm_runtime "@mediapipe/tasks-genai" "${MEDIAPIPE_GENAI_VERSION}" "${LITERT_LM_WEB_OUTPUT_DIR}" || return 1
+  _require_vendored_wasm "${LITERT_LM_WEB_OUTPUT_DIR}" ' (genai wasm expected)'
 }
 
 main() {

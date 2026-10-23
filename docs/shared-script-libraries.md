@@ -1540,3 +1540,35 @@ setup-dependencies toolchain RUNs. SDK's explicit core COPY and Torch's explicit
 core COPY carry it into later stages. No whole-core mount replaces these narrow
 inputs. Fixtures validate candidate order, selected-source failures, missing
 symbols and each required Dockerfile closure without apt operations or builds.
+
+### Native ONNX builds and cross-verification targets
+
+Native CPU and AMD ONNX Runtime builds share invocation failure handling and
+wheel collection through their existing `build/lib/common.sh` companion. CPU
+keeps its retry count and delay; AMD keeps its direct invocation. Cross-build
+verbose diagnostics remain advisory, while the failed original build remains
+fatal. Native-only missing-wheel fallback, labels, output directories, header
+and provenance order and final free-threaded work retain their policies.
+Fresh child-shell fixtures exercise collection failures under ordinary errexit
+without invoking a real compiler or fetching packages.
+
+`platform.sh` shares cross-verification target selection and normalization.
+An available resolver wins even when it returns an empty list. Without that
+resolver, the tool-version and LLVM wrappers keep their distinct legacy
+fallbacks. Resolver errors retain ordinary errexit; normalization failure keeps
+the existing quiet versus logged skip policies. The tool-version wrapper still
+restores its architecture variables, while LLVM retains its dispatcher contract.
+Fixtures compare both original wrappers and the shared implementation with a
+nondefault IFS, aliases, missing/empty targets and failed resolver/callback paths.
+
+LiteRT web vendoring shares repeated asset handling without changing pinned
+inputs or payload layout. Lint consumer fixtures share repository creation and
+vendored file construction; tests prove those files exist before checking that
+a gate excludes them. They use cached lint tools and perform no network work.
+
+GCC release assets share bounded wget invocation while retaining per-asset retry
+counts, timeouts, additional flags, argument order and failure status. GCC and
+Clang share compiler-cache help rendering and unknown-option rejection through
+their already-required toolchain bootstrap. Each builder retains its help spacing,
+cache options and remaining parser behavior. Offline argv and byte comparisons
+exercise the original and refactored builders without downloading or compiling.

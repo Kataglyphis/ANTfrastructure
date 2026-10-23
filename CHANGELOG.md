@@ -12,6 +12,21 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — repair portable CI fixture baselines
+
+- Remove accidental ripgrep requirements from six Linux fixture suites and require exact no-match status in negative searches.
+- Add a restricted-PATH regression with all 244 existing assertions and mutation proofs for missing search tools.
+- Normalize the approved Windows harness file-tree join through the PowerShell provider; retain all nine fixture cases and three lifecycle mutation proofs.
+- Preserve the Linux duplication cleanup while fixing the failing develop preflight and mutation baselines, without skips or relaxed gates.
+
+## 2026-10-23 — share native builds and verification targets
+
+- Share native ONNX build and wheel collection while preserving CPU retries, AMD invocation and original failure status.
+- Share cross-verification target selection and normalization; preserve caller fallbacks, diagnostics, resolver failures and architecture restoration.
+- Share LiteRT web vendoring and real lint-consumer fixtures with independent expected results.
+- Share bounded GCC release downloads, compiler-cache help and unknown-option diagnostics while retaining caller arguments and command policies.
+- Add characterization and mutation proofs; remove resolved Linux duplication exemptions without changing Windows source or gate thresholds.
+
 ## 2026-10-23 — share Linux initialization and web probes
 
 - Share toolchain companion lookup and compiler-cache launcher fixtures while preserving per-caller precedence, fallback and source failure behavior.

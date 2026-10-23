@@ -34,8 +34,9 @@ Options:
   --keep-build      Keep build directory after install
   --jobs N          Number of parallel jobs (auto-detected if not specified)
   --targets LIST    LLVM targets to build (default: native; e.g., "RISCV;X86;AArch64")
-  --compiler-cache          Enable the compiler cache (sccache first, ccache fallback)
-  --ccache                  DEPRECATED alias for --compiler-cache
+USAGE
+  toolchain_cache_usage 28
+  cat <<'USAGE'
   -h, --help        Show this help message
 
 Examples:
@@ -106,7 +107,7 @@ while [ "$#" -gt 0 ]; do
         -h|--help)
             usage; exit 0 ;;
         *)
-            warn "Unknown option: $1"; usage >&2; exit 1 ;;
+            toolchain_unknown_option "$1" ;;
     esac
 done
 

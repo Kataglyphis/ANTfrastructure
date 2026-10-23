@@ -95,20 +95,11 @@ append_onnx_ccache_build_args BUILD_ARGS
 export PATH="${MIGRAPHX_HOME}/bin:${PATH}"
 export LD_LIBRARY_PATH="${_migraphx_prefix}/lib:${MIGRAPHX_HOME}/lib:${MIGRAPHX_HOME}/lib64:${LD_LIBRARY_PATH:-}"
 
-if ! "${BUILD_SH}" "${BUILD_ARGS[@]}"; then
-  if cross_build_is_active; then
-    warn "ONNX Runtime MIGraphX build failed; rerunning single-threaded verbose build for diagnostics"
-    cmake --build "${NATIVE_GPU_BUILD_DIR}/${NATIVE_CPU_CONFIG}" --config "${NATIVE_CPU_CONFIG}" --parallel 1 --verbose || true
-  fi
-  exit 1
-fi
+run_onnx_native_build "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" 'ONNX Runtime MIGraphX build failed' \
+  "${BUILD_SH}" "${BUILD_ARGS[@]}"
 
 info "Searching for MIGraphX wheel files..."
-collect_wheels_from_tree "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "MIGraphX wheel"
-
-if [ -z "$(ls -A "${NATIVE_GPU_OUTPUT_DIR}/wheels" 2>/dev/null || true)" ] && { ! cross_build_is_active; }; then
-  maybe_build_source_wheel "${ORT_SRC_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "${HOST_PYTHON}" "ONNX Runtime MIGraphX"
-fi
+collect_onnx_native_wheels "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_GPU_OUTPUT_DIR}" "${HOST_PYTHON}" 'MIGraphX wheel' 'ONNX Runtime MIGraphX'
 
 copy_onnx_headers_to_output "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}" "${NATIVE_GPU_BUILD_DIR}"
 finalize_onnx_native_output "${NATIVE_GPU_BUILD_DIR}" "${NATIVE_CPU_CONFIG}" "${NATIVE_GPU_OUTPUT_DIR}" "${ORT_SRC_DIR}"
