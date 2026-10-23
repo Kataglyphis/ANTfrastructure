@@ -70,6 +70,13 @@ function Get-PythonWheelAbiTag {
     return (Split-PythonWheelName -Name $Name)[-2]
 }
 
+function Split-PythonCiList {
+    <# .SYNOPSIS Splits comma or whitespace separated Python CI input, dropping empty entries. #>
+    [OutputType([string[]])]
+    param([AllowNull()][string]$Value = '')
+    return [string[]]@($Value -split '[,\s]+' | Where-Object { $_ })
+}
+
 function Resolve-PythonLegList {
     <#
     .SYNOPSIS
@@ -93,7 +100,7 @@ function Resolve-PythonLegList {
         $mm = (Get-PinnedPythonVersion -VersionsEnvPath $VersionsEnvPath).MajorMinor
         $PythonVersions = if ($PythonVersions) { $PythonVersions -creplace 'pinned', $mm } else { $mm }
     }
-    $legs = @($PythonVersions -split '[,\s]+' | Where-Object { $_ })
+    $legs = @(Split-PythonCiList -Value $PythonVersions)
     if ($legs.Count -eq 0) { throw '-PythonVersions names no leg' }
     return $legs
 }
@@ -436,7 +443,7 @@ function Get-WheelMemberDifference {
     }
 }
 
-Export-ModuleMember -Function Resolve-SharedLinuxScriptFile, Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Get-PythonWheelAbiTag, Get-PyprojectBuildInfo, Find-UvPython,
+Export-ModuleMember -Function Resolve-SharedLinuxScriptFile, Resolve-FreeThreadedWheelMode, Get-FreeThreadedTarget, Get-PinnedPythonVersion, Split-PythonCiList, Get-PythonWheelAbiTag, Get-PyprojectBuildInfo, Find-UvPython,
     Invoke-PythonAbiProbe,
     Resolve-PythonLegList, Get-NativeWheelCheck,
     Get-FreeThreadedWheelPlan, Select-FreeThreadedWheel, Add-PythonLibPath, Invoke-FreeThreadedWheelProof,

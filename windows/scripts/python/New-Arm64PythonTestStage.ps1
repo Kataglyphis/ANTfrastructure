@@ -39,9 +39,6 @@ foreach ($m in 'WindowsSourceBuild.Common', 'WindowsPythonWheel.Common', 'Window
     Import-Module (Join-Path $PSScriptRoot "..\modules\$m.psm1") -DisableNameChecking
 }
 
-# Comma or space separated, as the workflow inputs are.
-function Split-StageList([string]$Value) { return @($Value -split '[,\s]+' | Where-Object { $_ }) }
-
 # The leg's wheel ABI tag: 3.15 is cp315, 3.15t cp315t.
 function Get-StageAbiTag([string]$Leg) { return 'cp' + ($Leg -replace '\.|t$', '') + $(if ($Leg.EndsWith('t')) { 't' }) }
 
@@ -52,7 +49,7 @@ function Get-StageTestFile {
     #>
     [OutputType([string[]])]
     param([Parameter(Mandatory)][string]$RepoRoot, [string]$TestFiles = '')
-    $listed = @(Split-StageList $TestFiles)
+    $listed = @(Split-PythonCiList -Value $TestFiles)
     if ($listed.Count -gt 0) { return [string[]]$listed }
     return [string[]]@('tests', 'pytest.ini', 'pyproject.toml', 'setup.cfg', 'tox.ini', 'conftest.py' | Where-Object { Test-Path -LiteralPath (Join-Path $RepoRoot $_) })
 }
@@ -134,7 +131,7 @@ foreach ($leg in $legs) {
     $wheel = @(Get-PythonAppWheelFile -Directory $wheels | Where-Object { $_.Name -match "-($abi|none)-[^-]+\.whl$" })[0]
     if (-not $wheel) { throw "no $abi or pure wheel for Python $leg in $wheels" }
     $hostPython = if ($ft) { (Get-SourceBuildPython -FreeThreaded).Exe } else { $gil.Exe }
-    $legExtras = @(Split-StageList $(if ($ft -and $FreeThreadedExtras) { $FreeThreadedExtras } else { $Extras }))
+    $legExtras = @(Split-PythonCiList -Value $(if ($ft -and $FreeThreadedExtras) { $FreeThreadedExtras } else { $Extras }))
     $legWork = Join-Path $work "site-$leg"
     Initialize-PythonAppDirectory -Path $legWork
     $stores = @(if ($ft) { Join-Path (Get-FreeThreadedWheelStore) 'deps' }) + $Store
@@ -145,8 +142,8 @@ foreach ($leg in $legs) {
     $binary = $wheel.Name -notmatch '-none-any\.whl$'
     # The proof's check, load or prove, and a refusal of any wheel but this leg's cpXY[t] one for the target.
     $check = if ($binary) { Get-NativeWheelCheck -Name $wheel.Name -Leg $leg -Platform (Get-PythonWheelTag) } else { 'load' }
-    $scripts = New-StageLegScript -Leg $leg -Exe $exe[0].Name -Distribution $distribution -Check $check -TestEnv (Split-StageList $TestEnv) `
-        -TestPaths (Split-StageList $TestPaths)
+    $scripts = New-StageLegScript -Leg $leg -Exe $exe[0].Name -Distribution $distribution -Check $check -TestEnv (Split-PythonCiList -Value $TestEnv) `
+        -TestPaths (Split-PythonCiList -Value $TestPaths)
     Set-Content -LiteralPath (Join-Path $out "run-pytest-$leg.cmd") -Value $scripts.Run -Encoding ascii
     $manifest.Add([ordered]@{ exe = "run-pytest-$leg.cmd"; args = @(); kind = 'pytest' })
     if ($binary) {

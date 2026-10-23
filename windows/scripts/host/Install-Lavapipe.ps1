@@ -38,14 +38,13 @@ if ($ScriptDir) { & (Join-Path $ScriptDir 'Import-Versions.ps1') }
 $arch = if ([string]::IsNullOrWhiteSpace($TargetArch)) { Get-WindowsTargetArch } else { $TargetArch }
 if ($arch -notin 'amd64', 'arm64') { throw "Install-Lavapipe: -TargetArch must be amd64 or arm64; got '$arch'" }
 
-$runtime = Install-LavapipeRuntime -Arch $arch -Lookup { param([string]$name) [Environment]::GetEnvironmentVariable($name) } -ArchiveDirectory $TempDir -Destination $InstallDir
+$runtime = Install-LavapipeRuntime -Arch $arch -Lookup { param([string]$name) [Environment]::GetEnvironmentVariable($name) } `
+    -ArchiveDirectory $TempDir -Destination $InstallDir `
+    -RequiredFile @('vulkan_lvp.dll', 'vulkan-1.dll', 'vulkaninfo.exe')
 $icdName = $runtime.IcdName
 $icd = Join-Path $InstallDir $icdName
 $driver = Join-Path $InstallDir 'vulkan_lvp.dll'
 $loader = Join-Path $InstallDir 'vulkan-1.dll'
-foreach ($f in $icd, $driver, $loader, (Join-Path $InstallDir 'vulkaninfo.exe')) {
-    if (-not (Test-Path -LiteralPath $f)) { throw "Install-Lavapipe: $f is missing after the unpack" }
-}
 $machine = if ($arch -eq 'amd64') { 0x8664 } else { 0xAA64 }
 foreach ($f in $driver, $loader) {
     $actual = Get-PeFileMachine -Path $f

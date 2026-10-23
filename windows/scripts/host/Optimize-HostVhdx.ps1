@@ -63,8 +63,10 @@ function Get-GuestVolumeInfo {
     }
 }
 
-$physicalBefore = (Get-Item $VhdxPath).Length
-$freeBefore = (Get-PSDrive (Split-Path $VhdxPath -Qualifier).TrimEnd(':')).Free
+$snapshotArgs = @{ Path = $VhdxPath; Drive = (Split-Path $VhdxPath -Qualifier).TrimEnd(':') }
+$before = Get-HostMaintenanceVhdxSnapshot @snapshotArgs
+$physicalBefore = $before.PhysicalBytes
+$freeBefore = $before.HostFreeBytes
 
 Write-HostStep -Log $hostLog ('VHDX      : {0}' -f $VhdxPath)
 Write-HostStep -Log $hostLog ('physical  : {0:N1} GB' -f ($physicalBefore / 1GB))
@@ -151,8 +153,9 @@ try {
 
 # --- 4) result ----------------------------------------------------------------
 
-$physicalAfter = (Get-Item $VhdxPath).Length
-$freeAfter = (Get-PSDrive (Split-Path $VhdxPath -Qualifier).TrimEnd(':')).Free
+$after = Get-HostMaintenanceVhdxSnapshot @snapshotArgs
+$physicalAfter = $after.PhysicalBytes
+$freeAfter = $after.HostFreeBytes
 $reclaimed = ($physicalBefore - $physicalAfter) / 1GB
 
 Write-HostStep -Log $hostLog ('--- after: VHDX {0:N1} GB physical | host free {1:N1} GB' -f ($physicalAfter / 1GB), ($freeAfter / 1GB))
@@ -164,8 +167,7 @@ if ($reclaimed -lt 1 -and $volume -and $volume.FileSystem -eq 'ReFS') {
 }
 
 if ($VerifyPath) {
-    $ok = Test-Path $VerifyPath
-    Write-HostStep -Log $hostLog ("verify path {0}: {1}" -f $VerifyPath, $ok) $(if ($ok) { 'Green' } else { 'Red' })
+    $ok = Test-HostMaintenanceVerifyPath -Log $hostLog -Path $VerifyPath
     if (-not $ok) { Write-HostStep -Log $hostLog 'the volume did not come back with its drive letter — check Disk Management.' 'Red' }
 }
 

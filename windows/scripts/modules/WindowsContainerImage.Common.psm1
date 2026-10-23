@@ -371,7 +371,9 @@ function Install-LavapipeRuntime {
         [Parameter(Mandatory)][ValidateSet('amd64', 'arm64')][string]$Arch,
         [Parameter(Mandatory)][scriptblock]$Lookup,
         [Parameter(Mandatory)][string]$ArchiveDirectory,
-        [Parameter(Mandatory)][string]$Destination
+        [Parameter(Mandatory)][string]$Destination,
+        [ValidateNotNullOrEmpty()][string]$Operation = 'Install-Lavapipe',
+        [Parameter(Mandatory)][ValidateNotNullOrEmpty()][string[]]$RequiredFile
     )
     $pins = Get-LavapipePinValues -Arch $Arch -Lookup $Lookup
     $assets = Resolve-LavapipeAssets -Arch $Arch -MesaVersion $pins.MesaVersion -VulkanVersion $pins.VulkanVersion -MesaSha256 $pins.MesaSha256 -LoaderSha256 $pins.LoaderSha256
@@ -384,6 +386,13 @@ function Install-LavapipeRuntime {
     Invoke-DownloadWithRetry -Url $assets.LoaderUrl -DestinationPath $loaderZip -Description "Vulkan Runtime Components $($pins.VulkanVersion)" -ExpectSignature PK -ExpectedSha256 $pins.LoaderSha256
     Expand-VulkanRuntimeComponents -ZipPath $loaderZip -Destination $Destination -BinPrefix $assets.BinPrefix -BinNames @('vulkan-1.dll', 'vulkaninfo.exe')
     Remove-Item -LiteralPath $mesaArchive, $loaderZip -Force -ErrorAction SilentlyContinue
+    $requiredFiles = @($assets.IcdName) + $RequiredFile
+    foreach ($file in $requiredFiles) {
+        $path = Join-Path $Destination $file
+        if (-not (Test-Path -LiteralPath $path -ErrorAction Stop)) {
+            throw ("{0}: {1} is missing after the unpack" -f $Operation, $path)
+        }
+    }
     return @{ MesaVersion = $pins.MesaVersion; VulkanVersion = $pins.VulkanVersion; IcdName = $assets.IcdName }
 }
 

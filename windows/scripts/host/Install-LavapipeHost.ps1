@@ -44,14 +44,12 @@ $pins = ConvertFrom-VersionsEnv -Path $versionsPath
 
 $lavapipeDir = Join-Path $ToolDir 'lavapipe'
 New-Item -ItemType Directory -Force -Path $lavapipeDir | Out-Null
-$runtime = Install-LavapipeRuntime -Arch $Arch -Lookup { param([string]$name) $pins[$name] } -ArchiveDirectory $ToolDir -Destination $lavapipeDir
+$runtime = Install-LavapipeRuntime -Arch $Arch -Lookup { param([string]$name) $pins[$name] } `
+    -ArchiveDirectory $ToolDir -Destination $lavapipeDir -Operation 'Install-LavapipeHost' `
+    -RequiredFile @('vulkaninfo.exe', 'vulkan-1.dll')
 $icdName = $runtime.IcdName
 $icd = Join-Path $lavapipeDir $icdName
 $vulkanInfo = Join-Path $lavapipeDir 'vulkaninfo.exe'
-foreach ($f in $icd, $vulkanInfo, (Join-Path $lavapipeDir 'vulkan-1.dll')) {
-    if (-not (Test-Path -LiteralPath $f)) { throw "Install-LavapipeHost: $f is missing after the unpack" }
-}
-
 $env:VK_DRIVER_FILES = $icd
 $env:VK_LOADER_DRIVERS_SELECT = '*lvp_icd*'
 if (Test-Elevated) {

@@ -180,17 +180,13 @@ Describe 'WindowsAgenticLoop.Common' {
             $count | Should -Be 0
         }
 
-        It 'does not count - [X] (uppercase) as unchecked' {
-            $mixedPath = Join-Path $script:testDir 'mixed-case.md'
-            @('- [ ] Task', '- [X] DONE', '- [x] done') | Set-Content $mixedPath
-            $count = Get-UncheckedTaskCount -BacklogPath $mixedPath
-            $count | Should -Be 1  # only the lowercase x is counted by the regex
-        }
-
-        It 'does not count blocked - [b] tasks as unchecked' {
-            $blockedPath = Join-Path $script:testDir 'with-blocked.md'
-            @('- [ ] Actionable task', '- [b] Blocked task', '- [B] Also blocked') | Set-Content $blockedPath
-            $count = Get-UncheckedTaskCount -BacklogPath $blockedPath
+        It 'does not count <Scenario> as unchecked tasks' -ForEach @(
+            @{ Scenario = 'uppercase checked markers'; Name = 'mixed-case.md'; Lines = @('- [ ] Task', '- [X] DONE', '- [x] done') }
+            @{ Scenario = 'blocked markers'; Name = 'with-blocked.md'; Lines = @('- [ ] Actionable task', '- [b] Blocked task', '- [B] Also blocked') }
+        ) {
+            $path = Join-Path $script:testDir $_.Name
+            $_.Lines | Set-Content $path
+            $count = Get-UncheckedTaskCount -BacklogPath $path
             $count | Should -Be 1
         }
     }
@@ -208,10 +204,13 @@ Describe 'WindowsAgenticLoop.Common' {
             $count | Should -Be 0
         }
 
-        It 'returns 0 when no tasks are blocked' {
-            $nonePath = Join-Path $script:testDir 'no-blocked.md'
-            @('- [ ] Open task', '- [x] Done task') | Set-Content $nonePath
-            $count = Get-BlockedTaskCount -BacklogPath $nonePath
+        It 'returns 0 for <Scenario>' -ForEach @(
+            @{ Scenario = 'a missing file'; Name = 'nonexistent-blocked.md'; Lines = $null }
+            @{ Scenario = 'a file without blocked tasks'; Name = 'no-blocked.md'; Lines = @('- [ ] Open task', '- [x] Done task') }
+        ) {
+            $path = Join-Path $script:testDir $_.Name
+            if ($null -ne $_.Lines) { $_.Lines | Set-Content $path }
+            $count = Get-BlockedTaskCount -BacklogPath $path
             $count | Should -Be 0
         }
     }
@@ -229,14 +228,11 @@ Describe 'WindowsAgenticLoop.Common' {
             Get-UsageLimitWaitSeconds -Output "You've hit your usage limit for now" | Should -Be 1800
         }
 
-        It 'parses a pm reset time into a positive wait no longer than a day' {
-            $wait = Get-UsageLimitWaitSeconds -Output "You've hit your session limit · resets 11pm (Europe/Berlin)"
-            $wait | Should -BeGreaterThan 0
-            ($wait -le (24 * 3600 + 120)) | Should -Be $true
-        }
-
-        It 'parses a reset time with minutes' {
-            $wait = Get-UsageLimitWaitSeconds -Output "You've hit your session limit · resets 6:30am (Europe/Berlin)"
+        It 'parses <Scenario> into a positive wait no longer than a day' -ForEach @(
+            @{ Scenario = 'a pm reset time'; Output = "You've hit your session limit · resets 11pm (Europe/Berlin)" }
+            @{ Scenario = 'a reset time with minutes'; Output = "You've hit your session limit · resets 6:30am (Europe/Berlin)" }
+        ) {
+            $wait = Get-UsageLimitWaitSeconds -Output $_.Output
             $wait | Should -BeGreaterThan 0
             ($wait -le (24 * 3600 + 120)) | Should -Be $true
         }
@@ -446,16 +442,13 @@ Plain text after the block.
             $ec.ExecutorModel | Should -Be 'e-model'
         }
 
-        It 'throws for an unknown engine' {
+        It 'throws for <Scenario>' -ForEach @(
+            @{ Scenario = 'an unknown engine'; Config = @{ engine = 'bogus'; models = @{ planner = 'p'; executor = 'e' } } }
+            @{ Scenario = 'missing models'; Config = @{ engine = 'claude' } }
+        ) {
             # try/catch, not Should Throw: Pester 3.x misses throws from module-scoped advanced functions.
             $threw = $false
-            try { $null = Resolve-AgenticEngine -Config @{ engine = 'bogus'; models = @{ planner = 'p'; executor = 'e' } } -RepoRoot $script:testDir } catch { $threw = $true }
-            $threw | Should -Be $true
-        }
-
-        It 'throws when no models are configured' {
-            $threw = $false
-            try { $null = Resolve-AgenticEngine -Config @{ engine = 'claude' } -RepoRoot $script:testDir } catch { $threw = $true }
+            try { $null = Resolve-AgenticEngine -Config $_.Config -RepoRoot $script:testDir } catch { $threw = $true }
             $threw | Should -Be $true
         }
     }

@@ -57,6 +57,15 @@ function Invoke-MesonBuildSubprojectPatch {
     return $true
 }
 
+function Get-MesonLogTail {
+    param([AllowEmptyCollection()][string[]]$Lines = @(), [int]$Count = 0)
+    $total = @($Lines).Count
+    $tailCount = [Math]::Min($Count, $total)
+    [string[]]$tail = @()
+    if ($tailCount -gt 0) { $tail = @($Lines[($total - $tailCount)..($total - 1)]) }
+    return ,$tail
+}
+
 # meson-log.txt runs to 800k lines; keep diagnostic lines, sanity-check blocks and the tail, never probe `error:` noise.
 function Select-MesonLogExcerpt {
     param(
@@ -83,10 +92,7 @@ function Select-MesonLogExcerpt {
             $picked.Add(('{0,7}: {1}' -f ($i + 1), $line))
         }
     }
-    $tailCount = [Math]::Min($TailLines, $total)
-    # Explicit empty array: `$x = if (...) { } else { @() }` hands back $null.
-    [string[]]$tail = @()
-    if ($tailCount -gt 0) { $tail = @($Lines[($total - $tailCount)..($total - 1)]) }
+    $tail = Get-MesonLogTail -Lines $Lines -Count $TailLines
     [pscustomobject]@{
         Total           = $total
         DiagnosticTotal = $diagCount
@@ -107,9 +113,7 @@ function Get-MesonSetupFailureClass {
     $all = @($Output) + @($LogLines)
     [string[]]$hard = @($all -match 'meson\.build:\d+:\d+: (ERROR|Exception)')
     $logTotal = @($LogLines).Count
-    $tailCount = [Math]::Min($NetworkTail, $logTotal)
-    [string[]]$scan = @($Output)
-    if ($tailCount -gt 0) { $scan += @($LogLines[($logTotal - $tailCount)..($logTotal - 1)]) }
+    [string[]]$scan = @($Output) + @(Get-MesonLogTail -Lines $LogLines -Count $NetworkTail)
     [string[]]$network = @($scan -match 'HTTP Error \d+|Failed to download|\bURLError\b|\bSSLError\b|urlopen error|\btimed out\b|connection timeout|actively refused|Temporary failure in name resolution')
     [pscustomobject]@{
         HardError    = $hard

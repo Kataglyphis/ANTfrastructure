@@ -87,9 +87,11 @@ $sourceVolume = $sourcePart | Get-Volume
 $sourceLetter = $sourcePart.DriveLetter
 $sourceRoot = "${sourceLetter}:\"
 
-$physicalBefore = (Get-Item $VhdxPath).Length
+$snapshotArgs = @{ Path = $VhdxPath; Drive = $hostDrive }
+$before = Get-HostMaintenanceVhdxSnapshot @snapshotArgs
+$physicalBefore = $before.PhysicalBytes
 $usedBytes = $sourceVolume.Size - $sourceVolume.SizeRemaining
-$freeBefore = (Get-PSDrive $hostDrive).Free
+$freeBefore = $before.HostFreeBytes
 
 Write-HostStep -Log $hostLog ('source VHDX : {0}' -f $VhdxPath)
 Write-HostStep -Log $hostLog ('physical    : {0:N1} GB' -f ($physicalBefore / 1GB))
@@ -259,12 +261,12 @@ try {
 
 $verified = $true
 if ($VerifyPath) {
-    $verified = Test-Path $VerifyPath
-    Write-HostStep -Log $hostLog ('verify path {0}: {1}' -f $VerifyPath, $verified) $(if ($verified) { 'Green' } else { 'Red' })
+    $verified = Test-HostMaintenanceVerifyPath -Log $hostLog -Path $VerifyPath
 }
 
-$physicalAfter = (Get-Item $VhdxPath).Length
-$freeAfter = (Get-PSDrive $hostDrive).Free
+$after = Get-HostMaintenanceVhdxSnapshot @snapshotArgs
+$physicalAfter = $after.PhysicalBytes
+$freeAfter = $after.HostFreeBytes
 Write-HostStep -Log $hostLog ('replacement : {0:N1} GB physical (was {1:N1} GB)' -f ($physicalAfter / 1GB), ($physicalBefore / 1GB))
 Write-HostStep -Log $hostLog ('host {0}: free : {1:N1} GB (was {2:N1} GB)' -f $hostDrive, ($freeAfter / 1GB), ($freeBefore / 1GB))
 

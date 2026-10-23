@@ -26,6 +26,11 @@ function Add-MediaRuntimeDirectory {
     if (-not $Directories.Contains($resolved)) { $Directories.Add($resolved) }
 }
 
+function Get-MediaRuntimeOnnxDll {
+    param([Parameter(Mandatory)][string]$Path)
+    Get-OnnxRuntimeFile -Path $Path | Where-Object { $_.Extension -eq '.dll' }
+}
+
 # The chain directories are resolved FIRST (a bad root throws before anything is listed) and staged LAST.
 function Resolve-MediaRuntimeClosure {
     param(
@@ -52,7 +57,7 @@ function Resolve-MediaRuntimeClosure {
     }
     foreach ($dir in @($directories)) {
         if ($chain -contains $dir) { [void]$directories.Remove($dir); continue }
-        $foreign = @(Get-OnnxRuntimeFile -Path $dir | Where-Object { $_.Extension -eq '.dll' })
+        $foreign = @(Get-MediaRuntimeOnnxDll -Path $dir)
         if ($foreign.Count -gt 0) {
             throw ("ONNX Runtime DLLs outside the chain install would be staged from {0}: {1}. Only ONNX_ROOT and " +
                 "ONNX_GENAI_ROOT may supply them (owner rule 2026-09-23).") -f $dir, (($foreign | ForEach-Object { $_.Name }) -join ', ')
@@ -72,11 +77,11 @@ function Assert-MediaRuntimeOnnxFromChain {
 
     $chainHash = @{}
     foreach ($dir in $ChainDirectory) {
-        foreach ($file in @(Get-OnnxRuntimeFile -Path $dir | Where-Object { $_.Extension -eq '.dll' })) {
+        foreach ($file in @(Get-MediaRuntimeOnnxDll -Path $dir)) {
             $chainHash[$file.Name] = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
         }
     }
-    $offenders = @(foreach ($file in @(Get-OnnxRuntimeFile -Path $TargetDir | Where-Object { $_.Extension -eq '.dll' })) {
+    $offenders = @(foreach ($file in @(Get-MediaRuntimeOnnxDll -Path $TargetDir)) {
             $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
             if (-not $chainHash.ContainsKey($file.Name) -or $chainHash[$file.Name] -ne $hash) { $file.Name }
         })

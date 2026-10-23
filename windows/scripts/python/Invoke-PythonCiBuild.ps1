@@ -103,7 +103,7 @@ function Invoke-TestLeg([string]$Version, [string]$Extras) {
         try { Sync-UvProjectDependencies -UseLocked:(Test-Path -LiteralPath 'uv.lock') @uv }
         finally { Remove-Item Env:UV_SYNC_EXTRAS -ErrorAction SilentlyContinue }
         $out = 'docs/test_results'
-        Invoke-BuildExternal -Context $context -File 'uv' -Parameters (@('run', 'pytest') + @($TestPaths -split '[,\s]+' | Where-Object { $_ }) + @(
+        Invoke-BuildExternal -Context $context -File 'uv' -Parameters (@('run', 'pytest') + @(Split-PythonCiList -Value $TestPaths) + @(
                 '-v', "--cov=$PackageName", '--cov-report=term-missing', "--cov-report=html:$out/coverage-html-$Version",
                 "--cov-report=xml:$out/coverage-$Version.xml", "--junitxml=$out/report-$Version.xml",
                 "--html=$out/pytest-report-$Version.html", '--self-contained-html', '--md-report', '--md-report-verbose=1',

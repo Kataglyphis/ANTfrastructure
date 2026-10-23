@@ -53,11 +53,25 @@ function Get-ChildItem {
 '@
 }
 
+function Invoke-HostMaintenanceFunctionMutations {
+    param(
+        [Parameter(Mandatory)][string[]]$FunctionName,
+        [Parameter(Mandatory)][object[]]$Case,
+        [Parameter(Mandatory)][scriptblock]$Body,
+        [scriptblock]$Prelude,
+        [object]$FixtureState
+    )
+    $moduleArguments = @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1'; FunctionName = $FunctionName }
+    if ($PSBoundParameters.ContainsKey('Prelude')) { $moduleArguments.Prelude = $Prelude }
+    if ($PSBoundParameters.ContainsKey('FixtureState')) { $moduleArguments.FixtureState = $FixtureState }
+    Invoke-TestFunctionMutations -ModuleArguments $moduleArguments -IncludeControl -Case $Case -Body $Body
+}
+
 function Assert-HostTreeStatsPolicyMutations {
     $cases = [System.Collections.Generic.List[object]]::new()
     $cases.Add(@{ Find = '-not ($ExcludeDir | Where-Object { $parts -contains $_ })'; Replace = '$true'; Expected = 'excluded files must not contribute bytes' })
     $cases.Add(@{ Find = '-ErrorVariable ev'; Replace = ''; Expected = 'unreadable paths must remain observable' })
-    Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1'; FunctionName = 'Get-HostMaintenanceTreeStats'; Prelude = (New-HostTreeStatsPrelude) } -IncludeControl -Case $cases.ToArray() -Body {
+    Invoke-HostMaintenanceFunctionMutations -FunctionName 'Get-HostMaintenanceTreeStats' -Prelude (New-HostTreeStatsPrelude) -Case $cases.ToArray() -Body {
         $stats = Get-MutHostMaintenanceTreeStats -Root 'C:\fixture' -ExcludeDir '$RECYCLE.BIN'
         Assert-Equal 5 $stats.Bytes 'excluded files must not contribute bytes'
         Assert-Equal 1 $stats.Files 'excluded files must not contribute to the count'
@@ -66,7 +80,7 @@ function Assert-HostTreeStatsPolicyMutations {
 }
 
 function Assert-HostTreeRecursionMutation {
-    Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1'; FunctionName = 'Get-HostMaintenanceTreeStats' } -IncludeControl -Find '-Recurse' -Replace '' -Expected 'expected nested file count' -Body {
+    Invoke-HostMaintenanceFunctionMutations -FunctionName 'Get-HostMaintenanceTreeStats' -Case @(@{ Find = '-Recurse'; Replace = ''; Expected = 'expected nested file count' }) -Body {
         Invoke-InTestDir -Files @{ 'top.bin' = 'abc'; 'nested\deep.bin' = '123456' } -Body {
             param($dir)
             $stats = Get-MutHostMaintenanceTreeStats -Root $dir
@@ -76,7 +90,28 @@ function Assert-HostTreeRecursionMutation {
     }
 }
 
+function Assert-HostVhdxHelpers {
+    $state = [pscustomobject]@{ Path = ''; Drive = ''; Exists = $true; Lines = [Collections.Generic.List[string]]::new() }
+    $prelude = 'function Get-Item { param($Path) $State.Path = $Path; [pscustomobject]@{ Length = 17 } }; function Get-PSDrive { param($Name) $State.Drive = $Name; [pscustomobject]@{ Free = 23 } }; function Test-Path { param($Path) $State.Path = $Path; $State.Exists }; function Write-HostStep { param($Log, $Message, $Color) $Log.Add("$Message|$Color") }'
+    Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName @('Get-HostMaintenanceVhdxSnapshot', 'Test-HostMaintenanceVerifyPath') -Prelude $prelude -FixtureState $state -Body {
+        $snapshot = Get-MutHostMaintenanceVhdxSnapshot -Path 'C:\fixture.vhdx' -Drive C
+        Assert-Equal 'C:\fixture.vhdx' $state.Path 'snapshot reads the requested VHDX'
+        Assert-Equal C $state.Drive 'snapshot reads free space from the requested host volume'
+        Assert-Equal 17 $snapshot.PhysicalBytes 'physical bytes come from the VHDX file'
+        Assert-Equal 23 $snapshot.HostFreeBytes 'free bytes come from the host volume'
+        $state.Exists = $true
+        Assert-True (Test-MutHostMaintenanceVerifyPath -Log $state.Lines -Path 'C:\fixture\sentinel') 'existing verify path must pass'
+        Assert-Equal 'C:\fixture\sentinel' $state.Path
+        Assert-Equal 'verify path C:\fixture\sentinel: True|Green' $state.Lines[-1]
+        $state.Exists = $false
+        Assert-False (Test-MutHostMaintenanceVerifyPath -Log $state.Lines -Path 'C:\fixture\missing') 'missing path remains a caller-visible false verdict'
+        Assert-Equal 'verify path C:\fixture\missing: False|Red' $state.Lines[-1]
+    }
+}
+
 Describe 'Host maintenance contexts and live-process guard' {
+    It 'checks host VHDX snapshots and verification paths' { Assert-HostVhdxHelpers }
+
     It 'isolates transcript contexts and preserves idle, force, diagnostics and save-before-throw policies' {
         $probeCommands = @(foreach ($script in @('Reset-ContainerLocks', 'Reset-ContainerStores', 'Set-BuildkitdGcpolicy')) {
             Get-TestScriptCommands -ScriptPath "windows/scripts/host/$script.ps1" -Name Write-HostMaintenanceProbe | ForEach-Object { $_.Extent.Text }

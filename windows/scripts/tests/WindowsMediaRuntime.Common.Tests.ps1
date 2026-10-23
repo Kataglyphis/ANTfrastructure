@@ -10,7 +10,8 @@ Describe 'WindowsMediaRuntime.Common' {
     Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsMediaRuntime.Common.psm1') -Force -DisableNameChecking
 
     $files = @{ 'gst-a/bin/gstreamer-1.0-0.dll' = "a$([Environment]::NewLine)"; 'gst-a/bin/glib-2.0-0.dll' = "a$([Environment]::NewLine)"
-        'gst-a/bin/notes.txt' = "a$([Environment]::NewLine)"; 'gst-b/bin/gstreamer-1.0-0.dll' = "b$([Environment]::NewLine)"
+        'gst-a/bin/notes.txt' = "a$([Environment]::NewLine)"; 'gst-a/bin/onnxruntime_c_api.h' = 'header'; 'gst-a/bin/onnxruntime.lib' = 'import-lib'
+        'gst-b/bin/gstreamer-1.0-0.dll' = "b$([Environment]::NewLine)"
         'gst-foreign/bin/gstreamer-1.0-0.dll' = "f$([Environment]::NewLine)" }
     Invoke-InTestDir -Prefix 'mediart-' -Files $files -Body { param($root)
     $gstA = Join-Path $root 'gst-a\bin'
@@ -125,6 +126,11 @@ Describe 'WindowsMediaRuntime.Common' {
                 -MessagePattern 'outside the chain install' 'no ONNX_ROOT does not make a bundled ORT acceptable'
             Assert-Throws { Get-MediaRuntimeDirectory -GStreamerRoot @((Join-Path $root 'gst-genai\bin')) -OnnxRoot $ortRoot -OnnxGenAiRoot $genRoot } `
                 -MessagePattern 'outside the chain install.*onnxruntime-genai\.dll' 'a bundled GenAI is as foreign as a bundled ORT'
+        }
+
+        It 'ignores ONNX headers and import libraries in a GStreamer root during foreign-DLL checks' {
+            $r = @(Get-MediaRuntimeDirectory -GStreamerRoot @($gstA) -OnnxRoot $ortRoot)
+            Assert-True ($r -contains (Resolve-Path -LiteralPath $gstA).Path)
         }
 
         It 'accepts a chain directory passed as a GStreamer root and still lists it last' {

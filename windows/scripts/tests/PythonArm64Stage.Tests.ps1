@@ -6,7 +6,8 @@
 Describe 'New-Arm64PythonTestStage: what windows-11-arm runs (CON113)' {
 
     $script:stagePath = 'windows\scripts\python\New-Arm64PythonTestStage.ps1'
-    foreach ($fn in 'Split-StageList', 'Get-StageAbiTag', 'Get-StageTestFile', 'New-StageLegScript') {
+    Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
+    foreach ($fn in 'Get-StageAbiTag', 'Get-StageTestFile', 'New-StageLegScript') {
         . (Get-ScriptFunctionDefinition -ScriptPath $script:stagePath -FunctionName $fn)
     }
 

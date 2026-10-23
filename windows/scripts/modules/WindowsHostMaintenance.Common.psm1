@@ -161,6 +161,21 @@ function Get-HostMaintenanceTreeStats {
     return [pscustomobject]@{ Bytes = $bytes; Files = $files; Errors = $errors }
 }
 
+function Get-HostMaintenanceVhdxSnapshot {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Drive)
+    return [pscustomobject]@{
+        PhysicalBytes = (Get-Item $Path).Length
+        HostFreeBytes = (Get-PSDrive $Drive).Free
+    }
+}
+
+function Test-HostMaintenanceVerifyPath {
+    param([Parameter(Mandatory)]$Log, [Parameter(Mandatory)][string]$Path)
+    $exists = Test-Path $Path
+    Write-HostStep -Log $Log ("verify path {0}: {1}" -f $Path, $exists) $(if ($exists) { 'Green' } else { 'Red' })
+    return $exists
+}
+
 function Get-HostMaintenanceBuildCtlPath {
     param([switch]$SearchPath, [switch]$IncludeCProgramFilesFallback)
     $candidates = @("$env:ProgramFiles\Stevedore\bin\buildctl.exe", 'D:\Stevedore\bin\buildctl.exe')
@@ -179,6 +194,8 @@ Export-ModuleMember -Function @(
     'Start-HostServices',
     'Get-HostMaintenanceProcess',
     'Get-HostMaintenanceTreeStats',
+    'Get-HostMaintenanceVhdxSnapshot',
+    'Test-HostMaintenanceVerifyPath',
     'Get-HostMaintenanceBuildCtlPath',
     'Write-HostMaintenanceFailure',
     'Write-HostMaintenanceError',
