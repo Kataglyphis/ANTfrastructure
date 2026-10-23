@@ -1,0 +1,704 @@
+{
+  "gcc:fresh:strict": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/link.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:fresh:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/link.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:existing:strict": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "file:prefix/fixture-target/lib/directory:keep",
+      "file:prefix/fixture-target/lib/file.so:keep",
+      "file:prefix/fixture-target/lib/link.so:keep",
+      "file:prefix/fixture-target/lib/space lib.so:keep"
+    ]
+  },
+  "gcc:existing:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "file:prefix/fixture-target/lib/directory:keep",
+      "file:prefix/fixture-target/lib/file.so:keep",
+      "file:prefix/fixture-target/lib/link.so:keep",
+      "file:prefix/fixture-target/lib/space lib.so:keep"
+    ]
+  },
+  "gcc:dangling-dest:strict": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/link.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:dangling-dest:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/link.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:missing-source:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "trace": "",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": []
+  },
+  "gcc:missing-source:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "trace": "",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": []
+  },
+  "gcc:prefix:strict": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/prefix/fixture-target/lib\nmkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/link.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:prefix:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/prefix/fixture-target/lib\nmkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/link.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:prefix-failure:strict": {
+    "status": 43,
+    "stdout": "",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/prefix/fixture-target/lib\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced"
+    ]
+  },
+  "gcc:prefix-failure:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nsudo\n--scope\nfixture\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced"
+    ]
+  },
+  "gcc:ln-failure:strict": {
+    "status": 41,
+    "stdout": "",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced"
+    ]
+  },
+  "gcc:ln-failure:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/link.so\nln\n-sfn\nWORK/usr/fixture-target/lib/link.so\nWORK/prefix/fixture-target/lib/link.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced"
+    ]
+  },
+  "gcc:unset-sudo:strict": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "WORK/function.sh: line 10: SUDO: unbound variable\n",
+    "trace": "",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced"
+    ]
+  },
+  "gcc:unset-sudo:conditional": {
+    "status": 1,
+    "stdout": "",
+    "stderr": "WORK/function.sh: line 10: SUDO: unbound variable\n",
+    "trace": "",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "file:usr/fixture-target/lib/file.so:payload",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "file:usr/fixture-target/lib/space lib.so:spaced"
+    ]
+  },
+  "gcc:vanished-source:strict": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "gcc:vanished-source:conditional": {
+    "status": 0,
+    "stdout": "LOG:Staged target sysroot libs for fixture-target into WORK/prefix/fixture-target/lib\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/prefix/fixture-target/lib\nbasename\nWORK/usr/fixture-target/lib/directory\nln\n-sfn\nWORK/usr/fixture-target/lib/directory\nWORK/prefix/fixture-target/lib/directory\nbasename\nWORK/usr/fixture-target/lib/file.so\nln\n-sfn\nWORK/usr/fixture-target/lib/file.so\nWORK/prefix/fixture-target/lib/file.so\nbasename\nWORK/usr/fixture-target/lib/space lib.so\nln\n-sfn\nWORK/usr/fixture-target/lib/space lib.so\nWORK/prefix/fixture-target/lib/space lib.so\n",
+    "state": "SDK_ARCHDIR=<unset>\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/fixture-target/lib/broken.so->WORK/usr/fixture-target/lib/absent",
+      "link:usr/fixture-target/lib/link.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/directory->WORK/usr/fixture-target/lib/directory",
+      "link:prefix/fixture-target/lib/file.so->WORK/usr/fixture-target/lib/file.so",
+      "link:prefix/fixture-target/lib/space lib.so->WORK/usr/fixture-target/lib/space lib.so"
+    ]
+  },
+  "vulkan:fresh:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:fresh:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:existing:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nbasename\nWORK/usr/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "file:usr/fixture-target/include/X11:keep",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "file:usr/fixture-target/include/wayland-client.h:keep",
+      "file:usr/fixture-target/include/wayland-link.h:keep",
+      "file:usr/fixture-target/include/xf86drm spaced.h:keep",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:existing:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nbasename\nWORK/usr/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "file:usr/fixture-target/include/X11:keep",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "file:usr/fixture-target/include/wayland-client.h:keep",
+      "file:usr/fixture-target/include/wayland-link.h:keep",
+      "file:usr/fixture-target/include/xf86drm spaced.h:keep",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:dangling-dest:strict": {
+    "status": 1,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\n",
+    "stderr": "ln: failed to create symbolic link 'WORK/usr/fixture-target/include/X11': Already exists\n",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=X11\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/absent-target",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/absent-target",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/absent-target",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/absent-target",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:dangling-dest:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "ln: failed to create symbolic link 'WORK/usr/fixture-target/include/X11': Already exists\nln: failed to create symbolic link 'WORK/usr/fixture-target/include/wayland-client.h': Already exists\nln: failed to create symbolic link 'WORK/usr/fixture-target/include/wayland-link.h': Already exists\nln: failed to create symbolic link 'WORK/usr/fixture-target/include/xf86drm spaced.h': Already exists\n",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/absent-target",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/absent-target",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/absent-target",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/absent-target",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:missing-source:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:missing-source:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:prefix:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nsudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nsudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:prefix:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nsudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nsudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:prefix-failure:strict": {
+    "status": 43,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:prefix-failure:conditional": {
+    "status": 43,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "sudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nsudo\n--scope\nfixture\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nsudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nsudo\n--scope\nfixture\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nsudo\n--scope\nfixture\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nsudo\n--scope\nfixture\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:ln-failure:strict": {
+    "status": 41,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=X11\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:ln-failure:conditional": {
+    "status": 41,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:unset-sudo:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:unset-sudo:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:vanished-source:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:vanished-source:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "mkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/requested/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/requested/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/requested/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/requested/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/requested/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/requested/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/requested/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "link:usr/local/include/vk_video->WORK/sdk/requested/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/requested/include/vulkan"
+    ]
+  },
+  "vulkan:fallback-arch:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/fixture-host\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "uname\n-m\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/fixture-host/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/fixture-host/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/fixture-host/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/fixture-host/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/fixture-host/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/fixture-host/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/fixture-host\nCMAKE_PREFIX_PATH=WORK/sdk/fixture-host:WORK/sdk/fixture-host/share/cmake:WORK/sdk/fixture-host/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/fixture-host/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/fixture-host/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/fixture-host/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/fixture-host/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/fixture-host/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/fixture-host/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/fixture-host/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/fixture-host/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/fixture-host/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/fixture-host/include/vulkan"
+    ]
+  },
+  "vulkan:fallback-arch:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/fixture-host\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "uname\n-m\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nln\n-s\nWORK/usr/include/X11\nWORK/usr/fixture-target/include/X11\nbasename\nWORK/usr/include/wayland-client.h\nln\n-s\nWORK/usr/include/wayland-client.h\nWORK/usr/fixture-target/include/wayland-client.h\nbasename\nWORK/usr/include/wayland-link.h\nln\n-s\nWORK/usr/include/wayland-link.h\nWORK/usr/fixture-target/include/wayland-link.h\nbasename\nWORK/usr/include/xf86drm spaced.h\nln\n-s\nWORK/usr/include/xf86drm spaced.h\nWORK/usr/fixture-target/include/xf86drm spaced.h\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vulkan\nWORK/usr/local/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nln\n-s\nWORK/sdk/fixture-host/include/vulkan\nWORK/usr/include/vulkan\nln\n-s\nWORK/sdk/fixture-host/include/vulkan\nWORK/usr/local/include/vulkan\nln\n-s\nWORK/sdk/fixture-host/include/vulkan\nWORK/usr/fixture-target/include/vulkan\nmkdir\n-p\nWORK/usr/include\nWORK/usr/local/include\nWORK/usr/fixture-target/include\nrm\n-rf\nWORK/usr/include/vk_video\nWORK/usr/local/include/vk_video\nWORK/usr/fixture-target/include/vk_video\nln\n-s\nWORK/sdk/fixture-host/include/vk_video\nWORK/usr/include/vk_video\nln\n-s\nWORK/sdk/fixture-host/include/vk_video\nWORK/usr/local/include/vk_video\nln\n-s\nWORK/sdk/fixture-host/include/vk_video\nWORK/usr/fixture-target/include/vk_video\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/fixture-host\nCMAKE_PREFIX_PATH=WORK/sdk/fixture-host:WORK/sdk/fixture-host/share/cmake:WORK/sdk/fixture-host/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=WORK/sdk/fixture-host/include:WORK/usr/include:prior includes\nCPATH=WORK/sdk/fixture-host/include:prior cpath\nC_INCLUDE_PATH=WORK/sdk/fixture-host/include:prior c\nCPLUS_INCLUDE_PATH=WORK/sdk/fixture-host/include:prior c++\nentry=GLES3\n",
+    "files": [
+      "link:usr/fixture-target/include/X11->WORK/usr/include/X11",
+      "link:usr/fixture-target/include/vk_video->WORK/sdk/fixture-host/include/vk_video",
+      "link:usr/fixture-target/include/vulkan->WORK/sdk/fixture-host/include/vulkan",
+      "link:usr/fixture-target/include/wayland-client.h->WORK/usr/include/wayland-client.h",
+      "link:usr/fixture-target/include/wayland-link.h->WORK/usr/include/wayland-link.h",
+      "link:usr/fixture-target/include/xf86drm spaced.h->WORK/usr/include/xf86drm spaced.h",
+      "link:usr/include/vk_video->WORK/sdk/fixture-host/include/vk_video",
+      "link:usr/include/vulkan->WORK/sdk/fixture-host/include/vulkan",
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced",
+      "link:usr/local/include/vk_video->WORK/sdk/fixture-host/include/vk_video",
+      "link:usr/local/include/vulkan->WORK/sdk/fixture-host/include/vulkan"
+    ]
+  },
+  "vulkan:missing-sdk:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "trace": "uname\n-m\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/fixture-host\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:missing-sdk:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "trace": "uname\n-m\n",
+    "state": "SDK_ARCHDIR=WORK/sdk/fixture-host\nCMAKE_PREFIX_PATH=prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:no-include:strict": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  },
+  "vulkan:no-include:conditional": {
+    "status": 0,
+    "stdout": "LOG:Preferring Vulkan SDK headers and CMake packages from WORK/sdk/requested\nLOG:Replacing standard Vulkan include paths with SDK headers\n",
+    "stderr": "",
+    "trace": "",
+    "state": "SDK_ARCHDIR=WORK/sdk/requested\nCMAKE_PREFIX_PATH=WORK/sdk/requested:WORK/sdk/requested/share/cmake:WORK/sdk/requested/lib/cmake:prior cmake\nCMAKE_INCLUDE_PATH=prior includes\nCPATH=prior cpath\nC_INCLUDE_PATH=prior c\nCPLUS_INCLUDE_PATH=prior c++\nentry=<unset>\n",
+    "files": [
+      "link:usr/include/wayland-broken.h->WORK/usr/include/absent",
+      "file:usr/include/wayland-client.h:payload",
+      "link:usr/include/wayland-link.h->WORK/usr/include/wayland-client.h",
+      "file:usr/include/xf86drm spaced.h:spaced"
+    ]
+  }
+}

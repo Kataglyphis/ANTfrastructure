@@ -102,13 +102,16 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
+   Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
    Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
-   Minimal toolchain bootstraps still carry `elf-strip.sh`; keep the narrow GCC/LLVM mounts.
-   Standalone `android-sdk.sh` and `vulkan.sh` carry toolchain `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence.
+   Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts.
+   New required toolchain imports validate their expected export and preserve selected-file failures; legacy file-only imports retain their caller policy.
+   Copied GCC/Vulkan modules carry fresh `path-helpers.sh`; copied Rust version utilities carry `load-versions-env.sh` beside the existing core companions.
+   Standalone Android, GCC and Vulkan entries carry `bootstrap-import.sh` and `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence.
    Copied ORT provenance and GStreamer ORT checks carry `path-helpers.sh` in their relative `01-core` layout.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.

@@ -5282,8 +5282,8 @@
  {
   "id": "sccache.toolchain-mounts-the-guard",
   "target": "linux/Dockerfile.toolchain",
-  "find": "    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh",
-  "replace": "    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
   "test": "bash linux/scripts/tests/test-compiler-cache-launcher.sh",
   "why": "these stages mount 01-core per FILE; without sccache-launcher.sh beside common.sh the GCC/LLVM stages run BARE sccache, where an sccache fault aborts the build instead of costing a cache entry"
  },
@@ -19286,16 +19286,16 @@
  {
   "id": "lib.cache-utils-gcc-required",
   "target": "linux/scripts/02-toolchain/build-gcc.sh",
-  "find": "[ \"${_gcc_cache_utils_loaded}\" -eq 1 ]",
-  "replace": "true",
+  "find": "source_toolchain_required \"${_SCRIPT_DIR}\" compiler-cache-utils.sh exit",
+  "replace": ":",
   "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
   "why": "native GCC must reject a missing utility before error-trap initialization or any build action"
  },
  {
   "id": "lib.cache-utils-toolchain-mount",
   "target": "linux/Dockerfile.toolchain",
-  "find": "    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
-  "replace": "    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
   "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
   "why": "the LLVM build RUN must carry the cache utility used by its native GCC builder without relying on a stale ancestor"
  },
@@ -21645,8 +21645,8 @@
  {
   "id": "lib.image-ref-toolchain-closure",
   "target": "linux/Dockerfile.toolchain",
-  "find": "    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
-  "replace": "    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
   "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
   "why": "both minimal compiler mount closures carry the mandatory leaf"
  },
@@ -22667,24 +22667,24 @@
  {
   "id": "lib.toolchain-downloads-android-bootstrap-required",
   "target": "linux/scripts/02-toolchain/android-sdk.sh",
-  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\" || exit $?",
-  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\"",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\" || exit $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\"",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The executable installer stops on a missing or failed mandatory bootstrap before loading downloads."
  },
  {
   "id": "lib.toolchain-downloads-vulkan-bootstrap-required",
   "target": "linux/scripts/02-toolchain/vulkan.sh",
-  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\" || return $?",
-  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\"",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\" || return $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\"",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The source-only Vulkan module returns a failed bootstrap before loading downloads."
  },
  {
   "id": "lib.toolchain-downloads-android-copy",
   "target": "linux/Dockerfile.android",
-  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/",
-  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The flattened Android installer carries the canonical bootstrap beside its copied bytes."
  },
@@ -22707,25 +22707,529 @@
  {
   "id": "lib.toolchain-downloads-torch-bootstrap",
   "target": "linux/Dockerfile.torch",
-  "find": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
-  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap-import.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The copied Vulkan runtime entry requires the canonical bootstrap beside it."
  },
  {
   "id": "lib.toolchain-downloads-torch-install-library",
   "target": "linux/Dockerfile.torch",
-  "find": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
-  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh /usr/local/bin/",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /usr/local/bin/",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The real copied Vulkan entry must source its sibling provisioning declarations without executing them."
  },
  {
   "id": "lib.toolchain-downloads-package-bootstrap",
   "target": "linux/Dockerfile.package",
-  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/",
-  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/",
   "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
   "why": "The package stage also refreshes the canonical bootstrap beside its flattened Android installer."
+ },
+ {
+  "id": "lib.numeric-version-capture-shape",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "regex='^[0-9]+'",
+  "replace": "regex='^([0-9]+)'",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "Numeric validation must retain only the original full-match BASH_REMATCH member, never introduce capture groups."
+ },
+ {
+  "id": "lib.numeric-version-literal-dots",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "regex+='\\.[0-9]+'",
+  "replace": "regex+='.[0-9]+'",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "Separators are literal dots; equal-length nonnumeric separators must not pass numeric version validation."
+ },
+ {
+  "id": "lib.numeric-version-supported-parts",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "  case \"$parts\" in 3|4) ;; *) return 2 ;; esac",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "Unsupported component counts must fail before matching and retain the existing BASH_REMATCH array."
+ },
+ {
+  "id": "lib.numeric-gcc-fallback-policy",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "  if ! version_has_numeric_parts \"${full}\" 3; then",
+  "replace": "  if version_has_numeric_parts \"${full}\" 3; then",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "GCC retains exact three-part input or returns its caller-provided fallback without normalizing either."
+ },
+ {
+  "id": "lib.numeric-rust-four-part-policy",
+  "target": "linux/scripts/02-toolchain/rust/version_util.sh",
+  "find": "    if ! version_has_numeric_parts \"$version\" 4; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "Rust normalizes three-part versions then still validates four parts before choosing its historical fallback."
+ },
+ {
+  "id": "lib.numeric-builder-advisory-policy",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "  warn \"GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 16.1.0)\"",
+  "replace": "  warn \"GCC_VERSION '${GCC_VERSION}' does not match expected format X.Y.Z (e.g., 16.1.0)\"; exit 1",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "The GCC version-format check remains advisory; invalid formatting must not become a new fatal build condition."
+ },
+ {
+  "id": "lib.numeric-dartdoc-required-pin",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "    err \"No exact DARTDOC_VERSION in tool-pins.env.\"",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-numeric-version-policy.sh",
+  "why": "A malformed documentation-tool pin must fail before any pub action rather than become a successful empty generation."
+ },
+ {
+  "id": "lib.numeric-required-export-check",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  elif [ -n \"$symbol\" ] && ! declare -F \"$symbol\" >/dev/null; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "Present-but-old modules and stale loaded guards cannot satisfy the new required-export contract."
+ },
+ {
+  "id": "lib.numeric-required-source-status",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  elif [ -n \"$symbol\" ] && [ \"$_toolchain_status\" -ne 0 ]; then",
+  "replace": "  elif false; then",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "A module defining the requested function and then failing must not become a successful conditional import."
+ },
+ {
+  "id": "lib.numeric-gcc-bootstrap-failure",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\" || exit \"$?\"",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\"",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "Preexisting bootstrap functions cannot hide a missing or failed GCC bootstrap import under conditional sourcing."
+ },
+ {
+  "id": "lib.numeric-gcc-required-export",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "source_toolchain_required \"$(dirname \"${BASH_SOURCE[0]}\")\" load-versions-env.sh exit core-first version_has_numeric_parts",
+  "replace": "source_toolchain_required \"$(dirname \"${BASH_SOURCE[0]}\")\" load-versions-env.sh exit core-first",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "The numeric caller must request the new exported predicate rather than accept a file-only legacy loader."
+ },
+ {
+  "id": "lib.numeric-builder-required-export",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "source_toolchain_required \"${_SCRIPT_DIR}\" load-versions-env.sh exit core-first version_has_numeric_parts",
+  "replace": "source_toolchain_required \"${_SCRIPT_DIR}\" load-versions-env.sh exit core-first",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "The numeric caller must request the new exported predicate rather than accept a file-only legacy loader."
+ },
+ {
+  "id": "lib.numeric-rust-export-guard",
+  "target": "linux/scripts/02-toolchain/rust/version_util.sh",
+  "find": "declare -F version_has_numeric_parts >/dev/null || err 'Required version_has_numeric_parts missing from load-versions-env.sh.'",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "The Rust utility must diagnose a missing numeric API instead of silently printing its normal invalid-input fallback."
+ },
+ {
+  "id": "lib.numeric-dartdoc-export-guard",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  declare -F version_has_numeric_parts >/dev/null || err 'Required version_has_numeric_parts missing from load-versions-env.sh.'",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "A missing documentation validator must retain the required-export diagnostic, not be misreported as an invalid pin."
+ },
+ {
+  "id": "lib.numeric-rust-source-status",
+  "target": "linux/scripts/02-toolchain/rust/version_util.sh",
+  "find": "if [ \"$_rust_version_loader_status\" -ne 0 ]; then exit \"$_rust_version_loader_status\"; fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "A failed Rust version-module source must remain failed even if it defined the requested predicate before returning."
+ },
+ {
+  "id": "lib.numeric-dartdoc-source-status",
+  "target": "linux/scripts/lib/dartdoc-build.sh",
+  "find": "  if [ \"$loader_status\" -ne 0 ]; then return \"$loader_status\"; fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "Documentation generation must not run after a failed version-module source under conditional invocation."
+ },
+ {
+  "id": "lib.numeric-bootstrap-dispatcher",
+  "target": "linux/scripts/02-toolchain/bootstrap-import.sh",
+  "find": "declare -F source_toolchain_required >/dev/null || {\n  printf 'ERROR: bootstrap.sh does not provide source_toolchain_required\\n' >&2\n  return 1\n}",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "An older bootstrap must fail its dispatcher capability check before conditional callers can ignore unknown commands."
+ },
+ {
+  "id": "lib.numeric-bootstrap-source-status",
+  "target": "linux/scripts/02-toolchain/bootstrap-import.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\" || return \"$?\"",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\"",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "Functions-only bootstrap source failures must propagate even when the caller already provides all helper functions."
+ },
+ {
+  "id": "lib.numeric-builder-bootstrap-failure",
+  "target": "linux/scripts/02-toolchain/build-gcc.sh",
+  "find": "source \"${_SCRIPT_DIR}/bootstrap-import.sh\" || exit \"$?\"",
+  "replace": "source \"${_SCRIPT_DIR}/bootstrap-import.sh\"",
+  "test": "bash linux/scripts/tests/test-numeric-version-imports.sh",
+  "why": "A missing or failed bootstrap remains fatal when caller-provided legacy helpers would otherwise permit conditional initialization."
+ },
+ {
+  "id": "lib.stream-receipt-raw-exit",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "  t_run_fixture_worker \"$worker\" \"$@\" > \"$directory/out\" 2> \"$directory/err\" || _tsc_status=$?",
+  "replace": "  t_run_fixture_worker \"$worker\" \"$@\" > \"$directory/out\" 2> \"$directory/err\" || true",
+  "test": "bash linux/scripts/tests/test-stream-receipt-fixture.sh",
+  "why": "Separate-stream capture must transfer the child failure to the caller instead of manufacturing status zero."
+ },
+ {
+  "id": "lib.stream-receipt-comparison",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "    t_assert_eq \"$(t_stream_hex \"$directory/expected.$field\")\" \"$(t_stream_hex \"$directory/$field\")\"",
+  "replace": "    t_assert_eq \"$(t_stream_hex \"$directory/$field\")\" \"$(t_stream_hex \"$directory/$field\")\"",
+  "test": "bash linux/scripts/tests/test-stream-receipt-fixture.sh",
+  "why": "Independent expected bytes must be compared against actual output; matching prefixes or self-comparison are insufficient."
+ },
+ {
+  "id": "lib.stream-receipt-full-bytes",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "od -An -v -tx1 \"$1\"",
+  "replace": "od -An -v -N 1 -tx1 \"$1\"",
+  "test": "bash linux/scripts/tests/test-stream-receipt-fixture.sh",
+  "why": "Byte receipts preserve embedded NUL and trailing newlines and must inspect every byte."
+ },
+ {
+  "id": "lib.stream-receipt-conditional-return",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "  if [ \"${4:-0}\" -eq 1 ] || { [ \"$1\" = strict ] && [ \"$2\" = direct ]; }; then return 0; fi",
+  "replace": "  if [ \"${4:-0}\" -eq 1 ] || [ \"$1\" = strict ]; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-stream-receipt-fixture.sh",
+  "why": "Conditional calls retain a return marker after nonfatal failure even when the surrounding worker enables errexit."
+ },
+ {
+  "id": "lib.guarded-link-existing-destination",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "  [ ! -e \"$2\" ] || return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "existing destination files must survive staging unchanged"
+ },
+ {
+  "id": "lib.guarded-link-dangling-destination",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "  [ ! -e \"$2\" ] || return 0",
+  "replace": "  [ ! -e \"$2\" ] && [ ! -L \"$2\" ] || return 0",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "dangling destinations still attempt the caller-specific ln operation"
+ },
+ {
+  "id": "lib.guarded-link-source-check-timing",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "path_symlink_missing() {",
+  "replace": "path_symlink_missing() {\n  [ -e \"$1\" ] || return 0",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "callers retain the original source check before basename without a new race-changing recheck"
+ },
+ {
+  "id": "lib.guarded-link-lazy-sudo",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "path_symlink_missing() {",
+  "replace": "path_symlink_missing() {\n  : \"$SUDO\"",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "an already present destination must not expand a missing required SUDO variable"
+ },
+ {
+  "id": "lib.guarded-link-required-sudo",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "    $SUDO ln \"$3\" \"$1\" \"$2\"",
+  "replace": "    ${SUDO:-} ln \"$3\" \"$1\" \"$2\"",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "GCC keeps its required SUDO expansion rather than accepting an unset prefix"
+ },
+ {
+  "id": "lib.guarded-link-optional-sudo",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "    ${SUDO:-} ln \"$3\" \"$1\" \"$2\"",
+  "replace": "    $SUDO ln \"$3\" \"$1\" \"$2\"",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "Vulkan accepts an unset optional SUDO prefix"
+ },
+ {
+  "id": "lib.guarded-link-ln-status",
+  "target": "linux/scripts/01-core/path-helpers.sh",
+  "find": "    $SUDO ln \"$3\" \"$1\" \"$2\"",
+  "replace": "    $SUDO ln \"$3\" \"$1\" \"$2\" || true",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "unconditional GCC staging propagates link failure while conditional callers retain their historical continuation"
+ },
+ {
+  "id": "lib.guarded-link-gcc-flags",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "path_symlink_missing \"${entry}\" \"${dst_dir}/${base}\" -sfn required",
+  "replace": "path_symlink_missing \"${entry}\" \"${dst_dir}/${base}\" -s required",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "GCC replaces a dangling target with its original force and no-dereference flags"
+ },
+ {
+  "id": "lib.guarded-link-vulkan-flags",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "path_symlink_missing \"/usr/include/${entry}\" \"${target_include_dir}/${entry}\" -s optional",
+  "replace": "path_symlink_missing \"/usr/include/${entry}\" \"${target_include_dir}/${entry}\" -sfn optional",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "Vulkan retains its failing ln -s behavior on a dangling destination"
+ },
+ {
+  "id": "lib.guarded-link-gcc-required-export",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "path-helpers.sh exit core-paths-only path_symlink_missing",
+  "replace": "path-helpers.sh exit core-paths-only",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "copied old helpers and stale loaded guards cannot silently omit the required link function"
+ },
+ {
+  "id": "lib.guarded-link-gcc-conditional-import",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "path-helpers.sh exit core-paths-only path_symlink_missing",
+  "replace": "path-helpers.sh return core-paths-only path_symlink_missing",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "conditional library imports cannot swallow a missing required companion or export"
+ },
+ {
+  "id": "lib.guarded-link-vulkan-required-export",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "path-helpers.sh exit core-paths-only path_symlink_missing",
+  "replace": "path-helpers.sh exit core-paths-only",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "copied old helpers and stale loaded guards cannot silently omit the required link function"
+ },
+ {
+  "id": "lib.guarded-link-vulkan-conditional-import",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "path-helpers.sh exit core-paths-only path_symlink_missing",
+  "replace": "path-helpers.sh return core-paths-only path_symlink_missing",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "conditional library imports cannot swallow a missing required companion or export"
+ },
+ {
+  "id": "lib.guarded-link-sdk-fresh-copy",
+  "target": "linux/Dockerfile.sdk",
+  "find": "    linux/scripts/01-core/path-helpers.sh \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "the SDK refreshes the exact shared helper beside the newly copied callers"
+ },
+ {
+  "id": "lib.guarded-link-toolchain-mount-1",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "each minimal compiler RUN independently carries the current link helper"
+ },
+ {
+  "id": "lib.guarded-link-toolchain-mount-2",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "each minimal compiler RUN independently carries the current link helper"
+ },
+ {
+  "id": "lib.guarded-link-torch-fresh-core",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/01-core/ /opt/scripts/core/",
+  "replace": "COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "the fresh loose Vulkan bundle cannot depend on an inherited older path helper API"
+ },
+ {
+  "id": "lib.guarded-link-vulkan-dispatcher",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\" || return $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\"",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "the source-only Vulkan caller propagates initializer failure under conditional import instead of swallowing a missing dispatcher"
+ },
+ {
+  "id": "lib.guarded-link-sdk-initializer-copy",
+  "target": "linux/Dockerfile.sdk",
+  "find": "    linux/scripts/02-toolchain/bootstrap-import.sh \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "the SDK carries the shared initializer beside its freshly copied bootstrap and Vulkan modules"
+ },
+ {
+  "id": "lib.guarded-link-toolchain-initializer-1",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "each minimal compiler RUN carries the shared bootstrap initializer"
+ },
+ {
+  "id": "lib.guarded-link-toolchain-initializer-2",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/02-toolchain/build-clang.sh,target=/opt/scripts/toolchain/build-clang.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "each minimal compiler RUN carries the shared bootstrap initializer"
+ },
+ {
+  "id": "lib.guarded-link-torch-initializer-copy",
+  "target": "linux/Dockerfile.torch",
+  "find": "linux/scripts/02-toolchain/bootstrap-import.sh ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-guarded-links.sh",
+  "why": "the loose Vulkan runtime bundle includes its adjacent initializer rather than relying on inherited files elsewhere"
+ },
+ {
+  "id": "lib.raw-pin-operator-value-wins",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "if [ -z \"${_rpi_value:-}\" ] && [ -f \"${_rpi_file}\" ]; then",
+  "replace": "if [ -f \"${_rpi_file}\" ]; then",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Existing nonempty operator values prevent file reads and remain unchanged."
+ },
+ {
+  "id": "lib.raw-pin-unset-target-safe",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "[ -z \"${_rpi_value:-}\" ]",
+  "replace": "[ -z \"${_rpi_value}\" ]",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Unset targets remain safe under nounset, including when the pins file is missing."
+ },
+ {
+  "id": "lib.raw-pin-regular-file-guard",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "[ -f \"${_rpi_file}\" ]",
+  "replace": "[ -e \"${_rpi_file}\" ]",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Directories are skipped exactly as the original regular-file guard required."
+ },
+ {
+  "id": "lib.raw-pin-all-matching-lines",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "s/^${_rpi_key}=//p",
+  "replace": "s/^${_rpi_key}=//p;q",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "All matching lines are retained, including leading empty records and duplicate values."
+ },
+ {
+  "id": "lib.raw-pin-raw-read-status",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "    _rpi_status=$?",
+  "replace": "    _rpi_status=0",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Conditional and relaxed calls retain raw sed failure codes and partial assignment state."
+ },
+ {
+  "id": "lib.raw-pin-read-diagnostics",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "    _rpi_value=\"$(sed -n \"s/^${_rpi_key}=//p\" \"${_rpi_file}\")\"",
+  "replace": "    _rpi_value=\"$(sed -n \"s/^${_rpi_key}=//p\" \"${_rpi_file}\" 2>/dev/null)\"",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Raw sed diagnostics remain on stderr instead of being swallowed."
+ },
+ {
+  "id": "lib.raw-pin-data-not-sourced",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "    _rpi_value=\"$(sed -n \"s/^${_rpi_key}=//p\" \"${_rpi_file}\")\"",
+  "replace": "    . \"${_rpi_file}\"",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Pin values stay literal data; harmless fixture shell syntax must never execute."
+ },
+ {
+  "id": "lib.raw-pin-single-key-only",
+  "target": "linux/scripts/01-core/load-versions-env.sh",
+  "find": "    _rpi_value=\"$(sed -n \"s/^${_rpi_key}=//p\" \"${_rpi_file}\")\"",
+  "replace": "    load_versions_env \"${_rpi_file}\"",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "The whole-file loader changes quoting, duplicate-line and export behavior and cannot replace a raw single-key read."
+ },
+ {
+  "id": "lib.raw-pin-android-key-binding",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "load_raw_pin_if_empty ANDROID_CMDLINE_TOOLS_SHA256 ANDROID_CMDLINE_TOOLS_SHA256 /opt/scripts/core/versions.env",
+  "replace": "load_raw_pin_if_empty ANDROID_CMDLINE_TOOLS_SHA256 RUSTUP_INIT_SHA256 /opt/scripts/core/versions.env",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Android reads its own command-line tools digest without borrowing the Rust pin."
+ },
+ {
+  "id": "lib.raw-pin-rust-key-binding",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "load_raw_pin_if_empty RUSTUP_INIT_SHA256 RUSTUP_INIT_SHA256 /opt/scripts/core/versions.env",
+  "replace": "load_raw_pin_if_empty RUSTUP_INIT_SHA256 ANDROID_CMDLINE_TOOLS_SHA256 /opt/scripts/core/versions.env",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Rust reads its own rustup-init digest without borrowing the Android pin."
+ },
+ {
+  "id": "lib.raw-pin-android-required-export",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "source_toolchain_required \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\" load-versions-env.sh exit core-paths-only load_raw_pin_if_empty",
+  "replace": "source_toolchain_required \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\" load-versions-env.sh exit core-paths-only",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Android rejects a present or cached owner that does not provide the raw pin function."
+ },
+ {
+  "id": "lib.raw-pin-rust-required-export",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "if ! declare -F load_raw_pin_if_empty >/dev/null 2>&1; then",
+  "replace": "if ! declare -F version_has_numeric_parts >/dev/null 2>&1; then",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "An older numeric-only owner cannot satisfy the installer raw pin API requirement."
+ },
+ {
+  "id": "lib.raw-pin-rust-import-status",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "_rust_pin_source_status=$?",
+  "replace": "_rust_pin_source_status=0",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "A module that defines the function but returns failure remains fatal under a conditional caller."
+ },
+ {
+  "id": "lib.raw-pin-android-fresh-copy",
+  "target": "linux/Dockerfile.android",
+  "find": "COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/load-versions-env.sh /opt/scripts/core/",
+  "replace": "COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "The Android child refreshes the canonical raw pin API instead of inheriting an old owner."
+ },
+ {
+  "id": "lib.raw-pin-rust-fresh-mount",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/install-rust.sh,target=/opt/scripts/toolchain/install-rust.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/02-toolchain/install-rust.sh,target=/opt/scripts/toolchain/install-rust.sh,ro \\\n",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "The Rust RUN mounts the current owner read-only before executing the new API call."
+ },
+ {
+  "id": "lib.raw-pin-android-initializer",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap-import.sh\" || exit $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\" || exit $?",
+  "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
+  "why": "Android must initialize the required dispatcher through the fail-closed shared import protocol, including with an older bootstrap."
+ },
+ {
+  "id": "lib.raw-pin-android-initializer-copy",
+  "target": "linux/Dockerfile.android",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/\n",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/\n",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The flattened Android SDK entry must carry its canonical initializer beside bootstrap.sh."
+ },
+ {
+  "id": "lib.raw-pin-package-initializer-copy",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/\n",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/\n",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The flattened Android SDK entry must carry its canonical initializer beside bootstrap.sh."
  }
 ]

@@ -4,6 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-workspace-fixture.sh"
 t_fixture_workspace_init WORK
+source "${TESTS_DIR}/stream-receipt-fixture.sh"
 subject="${1:-${TESTS_DIR}/../01-core/tag-naming.sh}"
 receipt="${2:-}"
 [ -z "$receipt" ] || : > "$receipt"
@@ -30,14 +31,9 @@ printf '%s\n' "$status" > "$work/returned"
 exit "$status"
 BASH_WORKER
 
-_tag_aborts_on_failure() {
-  if [ "$1" = strict ] && [ "$2" = direct ] && [ "$3" -ne 0 ]; then return 0; fi
-  return 1
-}
-
 _tag_probe_expectation() {
   expected_err=$'probe stderr\n'; expected_trace=$'cross_build_platform\n'
-  if _tag_aborts_on_failure "$1" "$2" "$3"; then
+  if t_stream_should_abort "$1" "$2" "$3"; then
     expected_status="$3"
   elif [ -z "$4" ]; then
     expected_status=1
@@ -56,34 +52,22 @@ _tag_case_expectation() {
       else expected_out='registry/prefix with spaces:$literal'; fi ;;
     *) expected_status=1; printf -v expected_err '[ERROR] Unsupported artifact build mode: %s\n' "$mode" ;;
   esac
-  expected_returned="$expected_status"$'\n'
-  if _tag_aborts_on_failure "$strict" "$context" "$expected_status"; then expected_returned=absent; fi
+  expected_returned="$(t_stream_expected_return "$expected_status" "$context" "$strict")"
 }
 
-_tag_hex() { od -An -v -tx1 "$1" | tr -d ' \n'; }
-
 _tag_assert_case() {
-  local function_name="$1" mode="$2" context="$3" strict="$4" output="$5" probe_rc="$6" status=0 field actual_returned=absent
+  local function_name="$1" mode="$2" context="$3" strict="$4" output="$5" probe_rc="$6" status=0
   local expected_status=0 expected_out="" expected_err="" expected_trace="" expected_returned=""
   _tag_case_expectation "$function_name" "$mode" "$context" "$strict" "$probe_rc" "$7"
   t_case "$function_name $mode $context $strict probe=$probe_rc"
-  : > "$WORK/trace"; rm -f "$WORK/returned"
-  t_run_fixture_worker "$WORK/worker.sh" "$subject" "$function_name" "$mode" "$context" "$strict" "$output" "$probe_rc" "$WORK" > "$WORK/out" 2> "$WORK/err" || status=$?
+  t_stream_capture status "$WORK" "$WORK/worker.sh" "$subject" "$function_name" "$mode" "$context" "$strict" "$output" "$probe_rc" "$WORK"
   t_assert_eq "$expected_status" "$status"
   printf '%s' "$expected_out" > "$WORK/expected.out"
   printf '%s' "$expected_err" > "$WORK/expected.err"
   printf '%s' "$expected_trace" > "$WORK/expected.trace"
-  for field in out err trace; do
-    t_assert_eq "$(_tag_hex "$WORK/expected.$field")" "$(_tag_hex "$WORK/$field")"
-  done
-  if [ -f "$WORK/returned" ]; then actual_returned="$(_tag_hex "$WORK/returned")"; fi
-  if [ "$expected_returned" != absent ]; then
-    printf '%s' "$expected_returned" > "$WORK/expected"
-    expected_returned="$(_tag_hex "$WORK/expected")"
-  fi
-  t_assert_eq "$expected_returned" "$actual_returned"
-  t_record_fixture_receipt "$receipt" "$function_name" "$mode" "$context" "$strict" "$output" "$probe_rc" "$status" \
-    "$(_tag_hex "$WORK/out")" "$(_tag_hex "$WORK/err")" "$(_tag_hex "$WORK/trace")" "$actual_returned"
+  t_stream_assert_files "$WORK" out err trace
+  t_stream_assert_return "$WORK" "$expected_returned"
+  t_stream_record "$receipt" "$WORK" 'out err trace' "$function_name" "$mode" "$context" "$strict" "$output" "$probe_rc" "$status"
 }
 
 for context in direct conditional; do

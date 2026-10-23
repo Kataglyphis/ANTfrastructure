@@ -3,14 +3,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../01-core/logging.sh"
+# shellcheck source=../../01-core/load-versions-env.sh
+source "$SCRIPT_DIR/../../01-core/load-versions-env.sh"
+_rust_version_loader_status=$?
+if [ "$_rust_version_loader_status" -ne 0 ]; then exit "$_rust_version_loader_status"; fi
+unset _rust_version_loader_status
+declare -F version_has_numeric_parts >/dev/null || err 'Required version_has_numeric_parts missing from load-versions-env.sh.'
 
 normalize_version() {
     local version="$1"
     version="${version#v}"
-    if [[ $version =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if version_has_numeric_parts "$version" 3; then
         version="$version.0"
     fi
-    if [[ ! $version =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    if ! version_has_numeric_parts "$version" 4; then
         version="0.1.0.0"
     fi
     echo "$version"
