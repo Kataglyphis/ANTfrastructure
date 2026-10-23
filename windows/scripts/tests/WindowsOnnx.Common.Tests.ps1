@@ -3,40 +3,39 @@
 # SPDX-License-Identifier: MIT
 # NOT covered: real nuget.exe or network (a global `nuget` stand-in answers), byte provenance of a chain install.
 
-# Lays out files relative to a root, creating directories; content is irrelevant to every check here.
-function Write-OnnxTestTree([string]$Root, [string[]]$Relative) {
-    $files = @{}
-    foreach ($rel in $Relative) { $files[$rel] = $rel }
-    Write-TestFileTree -Root $Root -Files $files
+BeforeAll {
+    function Write-OnnxTestTree([string]$Root, [string[]]$Relative) {
+        $files = @{}
+        foreach ($rel in $Relative) { $files[$rel] = $rel }
+        Write-TestFileTree -Root $Root -Files $files
+    }
 }
 
 Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
+    BeforeAll {
+        Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsOnnx.Common.psm1') -Force -DisableNameChecking
 
-    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsOnnx.Common.psm1') -Force -DisableNameChecking
-
-    # Stands in for nuget.exe: logs each call, 'list' answers ONNX_TEST_NUGET_OFFER, 'install' lays out ONNX_TEST_NUGET_LAYOUT.
-    function global:nuget {
-        Add-Content -LiteralPath $env:ONNX_TEST_NUGET_LOG -Value ($args -join ' ')
-        if ($args[0] -eq 'list') { return $env:ONNX_TEST_NUGET_OFFER }
-        if ($args[0] -ne 'install') { return }
-        $out = $args[[array]::IndexOf($args, '-OutputDirectory') + 1]
-        $files = @{}
-        foreach ($rel in @($env:ONNX_TEST_NUGET_LAYOUT -split ';' | Where-Object { $_ })) { $files[$rel] = 'nupkg' }
-        Write-TestFileTree -Root $out -Files $files
-    }
-    # Runs $Body with the stand-in answering $Offer/$Layout; $Body gets the output directory and the call log.
-    function Invoke-WithNuGetStandIn([string]$Offer, [string[]]$Layout, [scriptblock]$Body) {
-        Invoke-InTestDir { param($dir)
-            $log = Join-Path $dir 'nuget-calls.log'
-            Invoke-WithEnv @{ ONNX_TEST_NUGET_OFFER = $Offer; ONNX_TEST_NUGET_LAYOUT = ($Layout -join ';'); ONNX_TEST_NUGET_LOG = $log } {
-                & $Body (Join-Path $dir 'out') $log
+        function global:nuget {
+            Add-Content -LiteralPath $env:ONNX_TEST_NUGET_LOG -Value ($args -join ' ')
+            if ($args[0] -eq 'list') { return $env:ONNX_TEST_NUGET_OFFER }
+            if ($args[0] -ne 'install') { return }
+            $out = $args[[array]::IndexOf($args, '-OutputDirectory') + 1]
+            $files = @{}
+            foreach ($rel in @($env:ONNX_TEST_NUGET_LAYOUT -split ';' | Where-Object { $_ })) { $files[$rel] = 'nupkg' }
+            Write-TestFileTree -Root $out -Files $files
+        }
+        function Invoke-WithNuGetStandIn([string]$Offer, [string[]]$Layout, [scriptblock]$Body) {
+            Invoke-InTestDir { param($dir)
+                $log = Join-Path $dir 'nuget-calls.log'
+                Invoke-WithEnv @{ ONNX_TEST_NUGET_OFFER = $Offer; ONNX_TEST_NUGET_LAYOUT = ($Layout -join ';'); ONNX_TEST_NUGET_LOG = $log } {
+                    & $Body (Join-Path $dir 'out') $log
+                }
             }
         }
+        $okPackage = @('Some.Package.1.0.0\Some.Package.1.0.0.nupkg', 'Some.Package.1.0.0\lib\native\some.dll')
     }
-    $okPackage = @('Some.Package.1.0.0\Some.Package.1.0.0.nupkg', 'Some.Package.1.0.0\lib\native\some.dll')
 
-    try {
-        It 'refuses every ONNX Runtime package id before any NuGet call (mutation)' {
+    It 'refuses every ONNX Runtime package id before any NuGet call (mutation)' {
             foreach ($id in 'Microsoft.ML.OnnxRuntime', 'Microsoft.ML.OnnxRuntime.DirectML', 'Microsoft.ML.OnnxRuntime.Gpu.Windows',
                 'microsoft.ml.onnxruntimegenai.directml', 'Microsoft.ML.OnnxRuntimeGenAI.Cuda', 'Intel.ML.OnnxRuntime.OpenVino',
                 'Microsoft.AI.MachineLearning', 'Microsoft.Windows.AI.MachineLearning') {
@@ -92,31 +91,38 @@ Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
                 Assert-False (Install-OptionalNuGetPackage -PackageId 'Some.Package' -Version '9.9.9' -OutputDirectory $out)
                 Assert-False (Test-Path -LiteralPath $out)
             }
-        }
-    } finally {
+    }
+
+    AfterAll {
         Remove-Item -LiteralPath 'function:global:nuget' -ErrorAction SilentlyContinue
     }
 }
 
 Describe 'WindowsOnnx.Common: the chain layout' {
+    BeforeAll {
+        Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsOnnx.Common.psm1') -Force -DisableNameChecking
 
-    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsOnnx.Common.psm1') -Force -DisableNameChecking
+        $previousTargetArch = $env:WINDOWS_TARGET_ARCH
+        $previousOnnxRoot = $env:ONNX_ROOT
+        $previousGenAiRoot = $env:ONNX_GENAI_ROOT
+        $env:WINDOWS_TARGET_ARCH = $null
+        $env:ONNX_ROOT = $null
+        $env:ONNX_GENAI_ROOT = $null
 
-    $script:root = New-TestDir -Prefix 'onnxchain-'
-    $chain = Join-Path $script:root 'onnxruntime-source'
-    New-TestPeFile (Join-Path $chain 'bin\onnxruntime.dll') -Tag 'chain'
-    Write-OnnxTestTree -Root $chain -Relative @('lib\onnxruntime.lib', 'include\onnxruntime\onnxruntime_c_api.h')
-    $genai = Join-Path $script:root 'onnxruntime-genai-source'
-    New-TestPeFile (Join-Path $genai 'lib\onnxruntime-genai.dll') -Tag 'genai'
-    Write-OnnxTestTree -Root $genai -Relative @('include\ort_genai.h')
-    $zip = Join-Path $script:root 'onnxruntime-win-x64-1.25.1'
-    New-TestPeFile (Join-Path $zip 'lib\onnxruntime.dll') -Tag 'release-zip'
-    $nuget = Join-Path $script:root 'nuget'
-    New-TestPeFile (Join-Path $nuget 'Microsoft.ML.OnnxRuntime.1.2.3\runtimes\win-x64\native\onnxruntime.dll') -Tag 'nuget'
-    $arm = Join-Path $script:root 'ort-arm64'
-    New-TestPeFile (Join-Path $arm 'bin\onnxruntime.dll') -Machine 0xAA64 -Tag 'arm64'
-
-    Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = $null; ONNX_ROOT = $null; ONNX_GENAI_ROOT = $null } {
+        $root = New-TestDir -Prefix 'onnxchain-'
+        $chain = Join-Path $root 'onnxruntime-source'
+        New-TestPeFile (Join-Path $chain 'bin\onnxruntime.dll') -Tag 'chain'
+        Write-OnnxTestTree -Root $chain -Relative @('lib\onnxruntime.lib', 'include\onnxruntime\onnxruntime_c_api.h')
+        $genai = Join-Path $root 'onnxruntime-genai-source'
+        New-TestPeFile (Join-Path $genai 'lib\onnxruntime-genai.dll') -Tag 'genai'
+        Write-OnnxTestTree -Root $genai -Relative @('include\ort_genai.h')
+        $zip = Join-Path $root 'onnxruntime-win-x64-1.25.1'
+        New-TestPeFile (Join-Path $zip 'lib\onnxruntime.dll') -Tag 'release-zip'
+        $nuget = Join-Path $root 'nuget'
+        New-TestPeFile (Join-Path $nuget 'Microsoft.ML.OnnxRuntime.1.2.3\runtimes\win-x64\native\onnxruntime.dll') -Tag 'nuget'
+        $arm = Join-Path $root 'ort-arm64'
+        New-TestPeFile (Join-Path $arm 'bin\onnxruntime.dll') -Machine 0xAA64 -Tag 'arm64'
+    }
 
         It 'Get-OnnxPackageLayout refuses in both call shapes and points at the chain (mutation)' {
             Assert-Throws { Get-OnnxPackageLayout -OnnxRoot $nuget -OnnxVersion '1.2.3' -OnnxGenAiVersion '0.1.0' -OnnxDirectMlVersion '1.2.3' } `
@@ -205,7 +211,11 @@ Describe 'WindowsOnnx.Common: the chain layout' {
             Assert-Equal 'Get-OnnxChainLayout,Get-OnnxPackageLayout,Get-OnnxRuntimeFile,Install-OptionalNuGetPackage,Test-NuGetPackageVersionAvailable' `
                 (($m.ExportedFunctions.Keys | Sort-Object) -join ',')
         }
-    }
 
-    AfterAll { Remove-TestDir -Path $script:root }
+    AfterAll {
+        $env:WINDOWS_TARGET_ARCH = $previousTargetArch
+        $env:ONNX_ROOT = $previousOnnxRoot
+        $env:ONNX_GENAI_ROOT = $previousGenAiRoot
+        Remove-TestDir -Path $root
+    }
 }

@@ -4,15 +4,16 @@
 # The device gate unpacks what this packs: a zip without the two markers is a bundle the device cannot run.
 
 Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
-
+    BeforeAll {
     $exportScript = Join-Path $PSScriptRoot '..\build\Export-Arm64Bundle.ps1'
-    $script:work = New-TestDir -Prefix 'export-arm64bundle-'
-    $real = Join-Path $script:work 'real'
-    $empty = Join-Path $script:work 'empty'
-    $out = Join-Path $script:work 'out'
+    $work = New-TestDir -Prefix 'export-arm64bundle-'
+    $real = Join-Path $work 'real'
+    $empty = Join-Path $work 'empty'
+    $out = Join-Path $work 'out'
     [void](New-Item -ItemType Directory -Force -Path (Join-Path $real 'python'), $empty)
     $null = New-Item -ItemType File -Force -Path (Join-Path $real 'BUNDLE-ENV.ps1')
     Set-Content -LiteralPath (Join-Path $real 'python\python.exe') -Value 'fake'
+    }
 
     It 'refuses a root without BUNDLE-ENV.ps1' {
         Assert-Throws { & $exportScript -BundleRoot $empty -OutDir $out } 'empty root' -MessagePattern 'BUNDLE-ENV'
@@ -38,11 +39,11 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
     }
 
     It 'the zip expands to the bundle markers' {
-        $dest = Join-Path $script:work 'extract'
+        $dest = Join-Path $work 'extract'
         Expand-Archive -LiteralPath (Join-Path $out 'bundle.zip') -DestinationPath $dest -Force
         Assert-True (Test-Path (Join-Path $dest 'BUNDLE-ENV.ps1')) 'BUNDLE-ENV.ps1 extracts'
         Assert-True (Test-Path (Join-Path $dest 'python\python.exe')) 'python extracts'
     }
 
-    AfterAll { Remove-TestDir -Path $script:work }
+    AfterAll { Remove-TestDir -Path $work }
 }

@@ -160,7 +160,7 @@ Describe 'Consumer runtime file and interpreter lookups' {
             -Expected 'shared Python ABI probes must run isolated' -Body {
                 param($fixture)
                 $probe = Invoke-MutPythonAbiProbe -Python fixture -Runner $fixture.Runner -Isolated
-                Assert-Equal 'fixture|-I|-c|fixture ABI code' $fixture.Calls[0] 'shared Python ABI probes must run isolated'
+                Assert-Equal 'fixture/-I|-c|fixture ABI code' $fixture.Calls[0] 'shared Python ABI probes must run isolated'
                 Assert-Equal 19 $probe.ExitCode 'shared Python ABI probe exit status must survive'
                 Assert-Equal 'fixture failure' ($probe.Output -join '|') 'shared Python ABI probe keeps diagnostics'
             }

@@ -34,7 +34,7 @@ Describe 'Host maintenance buildctl lookup' {
                 $state.CheckedPaths.Clear()
                 $state.ExistsPath = 'C:\Program Files\Stevedore\bin\buildctl.exe'
                 $resolved = Get-MutHostMaintenanceBuildCtlPath -IncludeCProgramFilesFallback
-                Assert-Equal $state.ExistsPath $resolved 'the lock reset retains its explicit C fallback'
+                Assert-Equal $state.ExistsPath $resolved 'C fallback must precede D; the lock reset retains its explicit C fallback'
                 Assert-Equal "$programFiles|C:\Program Files\Stevedore\bin\buildctl.exe" ($state.CheckedPaths -join '|') 'C stays ahead of D only for the lock reset'
 
                 $state.CheckedPaths.Clear()

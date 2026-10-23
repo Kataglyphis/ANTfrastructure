@@ -21,7 +21,7 @@ Describe 'Add-CodecPcSystemLib (x265 4.2 static lib needs advapi32)' {
         Assert-Equal $want (Invoke-OnPc $pc -Times 2) 'appended exactly once across two runs; Libs.private untouched'
     }
 
-    It 'treats only the whole -l<name> as present (a longer name is not it)' {
+    It 'treats only the whole -l`<name> as present (a longer name is not it)' {
         Assert-Equal "Libs: -lx265 -ladvapi32x -ladvapi32`n" (Invoke-OnPc "Libs: -lx265 -ladvapi32x`n") 'a prefix match does not count'
     }
 

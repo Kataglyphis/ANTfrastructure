@@ -569,7 +569,7 @@ Describe 'Harness fixture mutation proofs' {
     }
     It 'detects a cleanup mutant that treats bracketed paths as wildcard patterns' {
         Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName Remove-TestDir `
-            -Find '-LiteralPath $Path' -Replace '-Path $Path' -Expected 'literal fixture root remains' -IncludeControl -Body {
+            -Find '-LiteralPath $Path' -Replace '-Path $Path' -Expected 'wildcard sibling was removed' -IncludeControl -Body {
             $fixture = New-RemoveTestDirProbeFixture
             try {
                 Remove-MutTestDir -Path $fixture.Path
