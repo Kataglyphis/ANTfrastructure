@@ -1835,8 +1835,15 @@ entrypoints and SDK help. The environment contract renders runtime help before
 checking its names against runtime consumers; documentation functions and SDK-only
 references cannot make a dead runtime override appear live.
 
-Torch venv setup shares best-effort missing-marker writes and cache-aware apt-list
-cleanup inside `setup-torch-venv.sh`. Caller-specific marker reasons, neutral-cwd
-imports, OpenCV fallback, package choices and warning/fatal policies remain local.
-Offline lifecycle receipts cover failed marker operations and mounted, unmounted
-and failed mount probes without running apt or installing packages.
+Torch venv setup shares best-effort missing-marker writes inside
+`setup-torch-venv.sh`; cache-aware apt-list cleanup lives in
+`package-image-wiring.sh` and is also called by package setup. Copied Torch setup
+requires that companion before its first execution, including the early selective
+image COPY. Marker reasons, neutral-cwd imports, OpenCV fallback, package choices
+and warning/fatal policies remain local. Offline receipts cover failed marker
+operations and mount probes without running apt or installing packages.
+
+The Python payload emitted by `smoke-common.sh` uses one exception recorder for
+native Tensor and generation failures. Existing operation labels, exception names,
+`str` formatting and final defect counts remain unchanged; the recorder does not
+invoke custom exception formatting methods.

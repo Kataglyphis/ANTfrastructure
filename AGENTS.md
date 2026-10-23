@@ -109,6 +109,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
+   Copied Torch setup carries `package-image-wiring.sh` before its first execution.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
@@ -728,7 +729,8 @@ transcript. Each was a child that outlived whatever started it. So:
 3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
    `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
    `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
-   EXIT trap, when the run is interrupted. The mutation gate ends each test's session after it, and
+   EXIT trap, when the run is interrupted. Register ownership before suite work starts; cancellation
+   covers pending launches and joins owned supervisors and watchdogs. The mutation gate ends each test's session after it, and
    every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
    runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
    `test-mutation-gate.sh`).

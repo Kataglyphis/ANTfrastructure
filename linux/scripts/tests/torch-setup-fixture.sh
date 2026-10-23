@@ -5,6 +5,7 @@ TORCH_SETUP_SUBJECT="${1:-${_T_SCRIPTS}/06-packaging/setup-torch-venv.sh}"
 export TORCH_SETUP_RECEIPT="${2:-}"
 TORCH_SETUP_WORK="$(mktemp -d)"
 trap 'rm -rf "$TORCH_SETUP_WORK"' EXIT
+t_source_functions "${_T_SCRIPTS}/06-packaging/package-image-wiring.sh" clear_unmounted_apt_lists
 for name in _torch_write_missing_marker _torch_clear_unmounted_apt_lists; do
   if grep -q "^${name}()" "$TORCH_SETUP_SUBJECT"; then t_source_functions "$TORCH_SETUP_SUBJECT" "$name"; fi
 done
@@ -63,7 +64,7 @@ _install_cv2_runtime_apt() { trace_call cv2-deps; }
 _install_ffmpeg_runtime_codecs() { trace_call ffmpeg-deps; }
 _assert_ffmpeg_so_closure() { trace_call closure; return "$CLOSURE_STATUS"; }
 BASH
-  t_emit_optional_functions _torch_write_missing_marker _torch_clear_unmounted_apt_lists torch_wheel_missing_fallback verify_torch_import_or_fail setup_torch_deps install_riscv64_runtime_libs cross_skip venv_site_packages \
+  t_emit_optional_functions clear_unmounted_apt_lists _torch_write_missing_marker _torch_clear_unmounted_apt_lists torch_wheel_missing_fallback verify_torch_import_or_fail setup_torch_deps install_riscv64_runtime_libs cross_skip venv_site_packages \
     | sed 's|/var/lib/apt/lists/|"${work}/apt/lists/"|g' >> "$TORCH_CASE/worker.sh"
   cat >> "$TORCH_CASE/worker.sh" <<'BASH'
 trap 'builtin printf %s "$LD_LIBRARY_PATH" > "$work/ld"' EXIT

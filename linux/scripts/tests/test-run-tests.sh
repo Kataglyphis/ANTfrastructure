@@ -17,10 +17,11 @@ _suite() {
 }
 # _runner [VAR=VAL...]: rc and what the peers said, one per line, then the output of the copied runner.
 _runner() {
-  local out rc
+  local out rc bound=120
+  if [ "${1:-}" = --timeout ]; then bound="$2"; shift 2; fi
   rm -rf "${_WORK}/meet"; mkdir -p "${_WORK}/meet"; : > "${_WORK}/meet/said"
   # A runner that never ends is a verdict too: rc 124.
-  out="$(env MEET="${_WORK}/meet" MEET_SECS=20 "$@" timeout 120 bash "${_WORK}/tests/run-tests.sh" 2>&1)"; rc=$?
+  out="$(env MEET="${_WORK}/meet" MEET_SECS=20 "$@" timeout "$bound" bash "${_WORK}/tests/run-tests.sh" 2>&1)"; rc=$?
   printf 'RC=%s\nSAID=%s\n%s\n' "${rc}" "$(sort "${_WORK}/meet/said" | tr '\n' ' ' | sed 's/ $//')" "${out}"
 }
 _blocks() { printf '%s\n' "$1" | sed -n 's/^== \(.*\) ==$/\1/p' | tr '\n' ' ' | sed 's/ $//'; }
@@ -64,7 +65,7 @@ t_assert_contains "$(_runner RUN_TESTS_JOBS=2)" "RC=0"
 
 t_case "a jobs value that is not a positive integer is a usage error"
 for _bad in 0 x -1; do
-  t_assert_contains "$(_runner RUN_TESTS_JOBS="${_bad}")" "RC=2"
+  t_assert_contains "$(_runner --timeout 10 RUN_TESTS_JOBS="${_bad}")" "RC=2"
 done
 
 t_summary
