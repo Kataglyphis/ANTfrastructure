@@ -45,16 +45,16 @@ Describe 'BuildKit module closure' {
             param([string]$DockerfilePath)
             $stages = @{}
             $parents = @{}
-            $current = ''
-            foreach ($line in (Get-TestDockerLogicalLine -LiteralPath $DockerfilePath)) {
-                if ($line -match '^FROM\s+(\S+)\s+AS\s+([\w.-]+)') {
-                    $current = $Matches[2]
-                    $parents[$current] = $Matches[1]
-                    if (-not $stages.ContainsKey($current)) { $stages[$current] = @() }
-                    continue
-                }
-                if ($current -and $line -match '^COPY\s' -and $line -match 'bkmods') {
-                    $stages[$current] += @([regex]::Matches($line, '(?i)modules[\\/]([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
+            $parsed = Get-TestDockerfileStages -Text ([IO.File]::ReadAllText($DockerfilePath)) -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
+            foreach ($stage in $parsed.Stages) {
+                $name = $stage.Name
+                if (-not $name -or $name -notmatch '^[\w.-]+$') { continue }
+                $parents[$name] = $stage.From
+                if (-not $stages.ContainsKey($name)) { $stages[$name] = @() }
+                foreach ($line in $stage.Lines) {
+                    if ($line -match '^COPY\s' -and $line -match 'bkmods') {
+                        $stages[$name] += @([regex]::Matches($line, '(?i)modules[\\/]([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
+                    }
                 }
             }
             # inherit through FROM <stage> AS <derived>
