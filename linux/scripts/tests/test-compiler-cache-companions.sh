@@ -7,12 +7,13 @@ CACHE="${1:-${TESTS_DIR}/../01-core/compiler-cache.sh}"
 CMAKE="${2:-${TESTS_DIR}/../01-core/cmake-cache-linker.sh}"
 GCC="${3:-${TESTS_DIR}/../02-toolchain/build-gcc.sh}"
 DOCKER_ROOT="${4:-${TESTS_DIR}/../../..}"
+COMMON="${5:-${TESTS_DIR}/../01-core/common.sh}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
 t_case 'cache modules reject a missing companion even when source runs under if'
 mkdir "${WORK}/missing"
-for module in "${CACHE}" "${CMAKE}"; do
+for module in "${CACHE}" "${CMAKE}" "${COMMON}"; do
   install -m 0644 "${module}" "${WORK}/missing/${module##*/}"
   result="$(bash -c 'if source "$1" 2>/dev/null; then printf GREEN; else printf REJECTED; fi; if source "$1" 2>/dev/null; then printf GREEN; else printf REJECTED; fi' _ "${WORK}/missing/${module##*/}")"
   t_assert_eq REJECTEDREJECTED "${result}" 'a failed load cannot mark the module successfully loaded'
@@ -40,6 +41,9 @@ import sys
 sys.path.insert(0, sys.argv[2])
 from verify_dockerfile_env_order import instructions
 root = Path(sys.argv[1])
+base_runs = [line for _, line in instructions(root / 'linux/Dockerfile.base') if line.startswith('RUN ') and 'source=linux/scripts/01-core/common.sh,' in line]
+assert len(base_runs) == 6
+assert all('source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro' in run for run in base_runs)
 runs = [line for _, line in instructions(root / 'linux/Dockerfile.toolchain') if line.startswith('RUN ') and 'source=linux/scripts/02-toolchain/build-gcc.sh,' in line]
 assert len(runs) == 2
 assert all('source=linux/scripts/01-core/compiler-cache-utils.sh,' in run for run in runs)

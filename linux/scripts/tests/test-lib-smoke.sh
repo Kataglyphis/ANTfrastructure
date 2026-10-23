@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/sourced-module-fixture.sh
+source "${TESTS_DIR}/sourced-module-fixture.sh"
 LIB_DIR="${TESTS_DIR}/../lib"
 
 for mod in "${LIB_DIR}"/*.sh; do
@@ -27,38 +29,26 @@ done
 # cmake_build_parse_args: flags win; a positional becomes the preset only without --preset.
 
 t_case "cmake_build_parse_args: explicit flags are parsed into their variables"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --preset linux-release --build-dir bld \
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --preset linux-release --build-dir bld \
     --parallel 7 --mb-per-job 1234 --skip-configure --allow-prebuild-failure \
     extra-positional
-  printf '%s|%s|%s|%s|%s|%s|%s' \
-    \"\${PRESET}\" \"\${BUILD_DIR}\" \"\${PARALLEL_JOBS}\" \"\${MB_PER_JOB}\" \
-    \"\${SKIP_CONFIGURE}\" \"\${ALLOW_PREBUILD_FAILURE}\" \
-    \"\${CMAKE_BUILD_POSITIONAL[0]}\"")"
+  t_fixture_variables PRESET BUILD_DIR PARALLEL_JOBS MB_PER_JOB \
+    SKIP_CONFIGURE ALLOW_PREBUILD_FAILURE 'CMAKE_BUILD_POSITIONAL[0]'")"
 t_assert_eq "linux-release|bld|7|1234|true|true|extra-positional" "${_out}"
 
 t_case "cmake_build_parse_args: no args yields the documented defaults"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args
-  printf '%s|%s|%s|%s|%s' \
-    \"\${BUILD_DIR}\" \"\${MB_PER_JOB}\" \"\${CLEAN_BUILD_DIR}\" \
-    \"\${SKIP_CONFIGURE}\" \"\${ALLOW_PREBUILD_FAILURE}\"")"
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args
+  t_fixture_variables BUILD_DIR MB_PER_JOB CLEAN_BUILD_DIR SKIP_CONFIGURE ALLOW_PREBUILD_FAILURE")"
 t_assert_eq "build|4000|false|false|false" "${_out}"
 
 t_case "cmake_build_parse_args: a bare positional is accepted as the preset"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args my-preset
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args my-preset
   printf '%s' \"\${PRESET}\"")"
 t_assert_eq "my-preset" "${_out}"
 
 t_case "cmake_build_parse_args: an empty positional preserves the empty preset"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args ''
-  printf '%s|%s|%s' \"\${PRESET}\" \"\${#CMAKE_BUILD_POSITIONAL[@]}\" \
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args ''
+  t_fixture_fields \"\${PRESET}\" \"\${#CMAKE_BUILD_POSITIONAL[@]}\" \
     \"\${CMAKE_BUILD_POSITIONAL[0]}\"")"
 t_assert_eq "|1|" "${_out}"
 
@@ -66,11 +56,8 @@ t_assert_eq "|1|" "${_out}"
 # Vulkan: flag, then env, then the caller default, adopted only if its setup script exists.
 
 t_case "cmake_build_parse_args: --vulkan-* flags beat the inherited environment"
-_out="$(bash -c "set -euo pipefail
-  export VULKAN_VERSION=1.0.0 VULKAN_SDK=/inherited
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --vulkan-version 2.2.2 --vulkan-sdk /flag
-  printf '%s|%s' \"\${VULKAN_VERSION}\" \"\${VULKAN_SDK}\"")"
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" 'export VULKAN_VERSION=1.0.0 VULKAN_SDK=/inherited' "  cmake_build_parse_args --vulkan-version 2.2.2 --vulkan-sdk /flag
+  t_fixture_fields \"\${VULKAN_VERSION}\" \"\${VULKAN_SDK}\"")"
 t_assert_eq "2.2.2|/flag" "${_out}"
 
 t_case "cmake_build_parse_args: an absent caller-default setup script is not adopted"
@@ -102,78 +89,58 @@ t_assert_eq "/explicit/setup-env.sh" "${_out}"
 rm -f "${_setup_script}"
 
 t_case "cmake_build_parse_args: --skip-configure takes a value but never eats the next flag"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --skip-configure false --parallel 3
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --skip-configure false --parallel 3
   printf '%s|%s|' \"\${SKIP_CONFIGURE}\" \"\${PARALLEL_JOBS}\"
   cmake_build_parse_args --skip-configure --parallel 5
-  printf '%s|%s' \"\${SKIP_CONFIGURE}\" \"\${PARALLEL_JOBS}\"")"
+  t_fixture_fields \"\${SKIP_CONFIGURE}\" \"\${PARALLEL_JOBS}\"")"
 t_assert_eq "false|3|true|5" "${_out}"
 
 t_case "cmake_build_parse_args: an unknown flag is fatal"
-t_assert_fails bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --no-such-flag"
+t_assert_fails t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --no-such-flag"
 
 
 # --configure-arg: parsing alone proves nothing, so a stub cmake's argv shows it reaches the configure.
 
 t_case "cmake_build_parse_args: --configure-arg is repeatable and keeps its order"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --preset p \
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --preset p \
     --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE \
     --configure-arg -DCPACK_ENABLE_APPIMAGE=ON
-  printf '%s|%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[*]}\"")"
+  t_fixture_fields \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[*]}\"")"
 t_assert_eq "2|-DCMAKE_LINK_WHAT_YOU_USE=FALSE -DCPACK_ENABLE_APPIMAGE=ON" "${_out}"
 
 t_case "cmake_build_parse_args: a -D value is not mistaken for the next flag"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --configure-arg -DFOO=BAR --parallel 9
-  printf '%s|%s' \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\" \"\${PARALLEL_JOBS}\"")"
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --configure-arg -DFOO=BAR --parallel 9
+  t_fixture_fields \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\" \"\${PARALLEL_JOBS}\"")"
 t_assert_eq "-DFOO=BAR|9" "${_out}"
 
 t_case "cmake_build_parse_args: a value containing a space stays ONE argument"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --configure-arg '-DCMAKE_CXX_FLAGS=-O2 -g'
-  printf '%s|%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\"")"
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --configure-arg '-DCMAKE_CXX_FLAGS=-O2 -g'
+  t_fixture_fields \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\"")"
 t_assert_eq "1|-DCMAKE_CXX_FLAGS=-O2 -g" "${_out}"
 
 t_case "cmake_build_parse_args: no --configure-arg leaves the list EMPTY, not unset"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --preset p
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --preset p
   printf '%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\"")"
 t_assert_eq "0" "${_out}"
 
 t_case "cmake_build_parse_args: a second parse does not inherit the first call's -D"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --configure-arg -DFIRST=1
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --configure-arg -DFIRST=1
   cmake_build_parse_args --configure-arg -DSECOND=2
-  printf '%s|%s' \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\"")"
+  t_fixture_fields \"\${#CMAKE_BUILD_CONFIGURE_ARGS[@]}\" \"\${CMAKE_BUILD_CONFIGURE_ARGS[0]}\"")"
 t_assert_eq "1|-DSECOND=2" "${_out}"
 
 t_case "cmake_build_parse_args: CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS seeds the list"
-_out="$(bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS=(-DFROM_DEFAULT=1)
+_out="$(t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  CMAKE_BUILD_DEFAULT_CONFIGURE_ARGS=(-DFROM_DEFAULT=1)
   cmake_build_parse_args --configure-arg -DFROM_FLAG=1
   printf '%s' \"\${CMAKE_BUILD_CONFIGURE_ARGS[*]}\"")"
 t_assert_eq "-DFROM_DEFAULT=1 -DFROM_FLAG=1" "${_out}"
 
 t_case "cmake_build_parse_args: --configure-arg without a value is fatal"
-t_assert_fails bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --configure-arg"
+t_assert_fails t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --configure-arg"
 
 # The empty value is what the guard is for; `set -u` already catches a missing one.
 t_case "cmake_build_parse_args: --configure-arg with an EMPTY value is fatal"
-t_assert_fails bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --configure-arg ''"
+t_assert_fails t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --configure-arg ''"
 
 # The forwarding half, via a stub cmake that records each invocation.
 _cmake_stub_dir="$(mktemp -d)"
@@ -185,9 +152,7 @@ chmod +x "${_cmake_stub_dir}/cmake"
 
 t_case "cmake_build_run: the extra arguments reach the CONFIGURE command, in order"
 _cmake_log="$(mktemp)"
-PATH="${_cmake_stub_dir}:${PATH}" STUB_CMAKE_LOG="${_cmake_log}" bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --preset linux-release-clang --build-dir bld --parallel 2 \
+PATH="${_cmake_stub_dir}:${PATH}" STUB_CMAKE_LOG="${_cmake_log}" t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --preset linux-release-clang --build-dir bld --parallel 2 \
     --configure-arg -DCMAKE_LINK_WHAT_YOU_USE=FALSE --configure-arg -DCPACK_ENABLE_APPIMAGE=ON
   cmake_build_run" >/dev/null 2>&1
 t_assert_eq "cmake -B bld --preset linux-release-clang -DCMAKE_LINK_WHAT_YOU_USE=FALSE -DCPACK_ENABLE_APPIMAGE=ON" \
@@ -199,9 +164,7 @@ t_assert_contains "$(tail -1 "${_cmake_log}")" "cmake --build bld"
 
 t_case "cmake_build_run: with no --configure-arg the configure line is unchanged"
 _cmake_log2="$(mktemp)"
-PATH="${_cmake_stub_dir}:${PATH}" STUB_CMAKE_LOG="${_cmake_log2}" bash -c "set -euo pipefail
-  source '${LIB_DIR}/cmake-build.sh'
-  cmake_build_parse_args --preset p --build-dir bld --parallel 2
+PATH="${_cmake_stub_dir}:${PATH}" STUB_CMAKE_LOG="${_cmake_log2}" t_run_sourced_module "${LIB_DIR}/cmake-build.sh" '' "  cmake_build_parse_args --preset p --build-dir bld --parallel 2
   cmake_build_run" >/dev/null 2>&1
 t_assert_eq "cmake -B bld --preset p" "$(head -1 "${_cmake_log2}")"
 

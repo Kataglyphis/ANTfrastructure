@@ -17382,8 +17382,8 @@
  {
   "id": "gate-fixture.harness-capture-stub-status",
   "target": "linux/scripts/tests/test-harness.sh",
-  "find": "2>&1)\" || _tcs_status=$?",
-  "replace": "2>&1)\" || _tcs_status=0",
+  "find": "2>&1)\" || _tcc_status=$?",
+  "replace": "2>&1)\" || _tcc_status=0",
   "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
   "why": "a failing library call must retain its exit status for the fatal-path assertions"
  },
@@ -18637,9 +18637,9 @@
  },
  {
   "id": "lib.compiler-cache-guarded-fixture",
-  "target": "linux/scripts/01-core/compiler-cache.sh",
-  "find": "if [ -x \"${_scl}\" ]; then printf '%s' \"${_scl}\"; return 0; fi",
-  "replace": "if [ -x \"${_scl}\" ]; then printf '%s' sccache; return 0; fi",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "      printf '%s' \"${_scl}\"",
+  "replace": "      printf '%s' sccache",
   "test": "bash linux/scripts/tests/test-compiler-cache.sh",
   "why": "Shared fixtures retain configured extension isolation, all roots, caller arrays, guarded launchers and parent-shell address exports."
  },
@@ -19882,5 +19882,325 @@
   "replace": "    $null = $Path",
   "test": "pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1 -Only Harness.Fixtures.Tests.ps1 -ResultFile /tmp/ant-harness-batch-byte-verdict.json && python3 -c 'import json; d=json.load(open(\"/tmp/ant-harness-batch-byte-verdict.json\")); assert d[\"Total\"] == 38 and d[\"Passed\"] == 38 and not d[\"Failed\"] and not d[\"PesterFailures\"] and not d[\"Skipped\"]'",
   "why": "The byte verdict must reject changed caller lines and requested exit codes rather than let writer mutants survive."
+ },
+ {
+  "id": "code-dupes.explain-reversed-files",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "if a_file != b_file or x < y:",
+  "replace": "if x < y:",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "Diagnostic overlap counts must remain visible when the caller supplies the two files in reverse lexical order."
+ },
+ {
+  "id": "code-dupes.explain-self-once",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "if a_file != b_file or x < y:",
+  "replace": "if True:",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "Same-file diagnostics must report each distinct unit pair once and must not compare a function with itself."
+ },
+ {
+  "id": "lib.deb-control-empty-homepage",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "if [ \"$#\" -gt 8 ]; then",
+  "replace": "if [ -n \"${9:-}\" ]; then",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "Python bundles retain an explicitly empty Homepage field while native bundles omit the optional field entirely."
+ },
+ {
+  "id": "lib.deb-control-required-fields",
+  "target": "linux/scripts/lib/app-packaging.sh",
+  "find": "\\nPriority: optional\\n",
+  "replace": "\\n",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "Both Debian control renderers must retain every required metadata line and exact control bytes."
+ },
+ {
+  "id": "lib.fixture-command-status",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "_tcc_status=$?",
+  "replace": "_tcc_status=0",
+  "test": "bash linux/scripts/tests/test-deb-control-rendering.sh",
+  "why": "Merged-output fixture capture must preserve both raw builder failures and caller-normalized errors rather than report every worker as successful."
+ },
+ {
+  "id": "lib.cache-readiness-health-required",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "  sccache --show-stats >/dev/null 2>&1\n}",
+  "replace": "  return 0\n}",
+  "test": "bash linux/scripts/tests/test-cache-readiness.sh",
+  "why": "A started or stale server must answer stats before the compiler launcher is selected."
+ },
+ {
+  "id": "lib.cache-readiness-stats-quiet",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "  sccache --show-stats >/dev/null 2>&1\n}",
+  "replace": "  sccache --show-stats\n}",
+  "test": "bash linux/scripts/tests/test-cache-readiness.sh",
+  "why": "Health-probe output must not contaminate launcher stdout or diagnostics."
+ },
+ {
+  "id": "lib.cache-readiness-hook-policy",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "  if [ \"$1\" = hook ]; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-cache-readiness.sh",
+  "why": "Compiler cache initialization retains its configured S3 startup hook."
+ },
+ {
+  "id": "lib.cache-readiness-start-best-effort",
+  "target": "linux/scripts/01-core/compiler-cache-utils.sh",
+  "find": "  else\n    sccache --start-server >/dev/null 2>&1 || true",
+  "replace": "  else\n    sccache --start-server >/dev/null 2>&1 || return $?",
+  "test": "bash linux/scripts/tests/test-cache-readiness.sh",
+  "why": "A failed start request may still have a healthy running server and must reach the health check."
+ },
+ {
+  "id": "lib.cache-readiness-probe-direct",
+  "target": "linux/scripts/02-toolchain/probe-sccache.sh",
+  "find": "if ! compiler_cache_sccache_ready direct; then",
+  "replace": "if ! compiler_cache_sccache_ready hook; then",
+  "test": "bash linux/scripts/tests/test-cache-readiness.sh",
+  "why": "The standalone diagnostic must retain direct startup rather than invoke the build S3 hook."
+ },
+ {
+  "id": "lib.cache-readiness-common-companion",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "source \"${_COMMON_SH_DIR}/compiler-cache-utils.sh\" || return 1",
+  "replace": "source \"${_COMMON_SH_DIR}/compiler-cache-utils.sh\" || true",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "Common initialization cannot succeed without the utility it now requires, including repeated conditional sourcing."
+ },
+ {
+  "id": "lib.cache-readiness-base-companion",
+  "target": "linux/Dockerfile.base",
+  "find": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
+  "replace": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "Every narrow common RUN closure must carry its side-effect-free utility."
+ },
+ {
+  "id": "lib.media-deps-python-ready",
+  "target": "linux/scripts/01-core/install-deps-preamble.sh",
+  "find": "&& cross_target_python_dev_ready; then",
+  "replace": "; then",
+  "test": "bash linux/scripts/tests/test-media-python-dependencies.sh",
+  "why": "A present readiness helper that rejects missing staged headers must select the unavailable diagnostic."
+ },
+ {
+  "id": "lib.media-deps-python-explicit-empty",
+  "target": "linux/scripts/01-core/install-deps-preamble.sh",
+  "find": "if [ \"$#\" -ge 4 ]; then",
+  "replace": "if [ \"$#\" -ge 4 ] && [ -n \"$4\" ]; then",
+  "test": "bash linux/scripts/tests/test-media-python-dependencies.sh",
+  "why": "An explicitly empty OpenCV version must not trigger the GST/LiteRT lazy fallback."
+ },
+ {
+  "id": "lib.media-deps-pkgconfig-library",
+  "target": "linux/scripts/03-media/build/gstreamer/common/pre-setup.sh",
+  "find": "-l${library}",
+  "replace": "-lwrong",
+  "test": "bash linux/scripts/tests/test-media-python-dependencies.sh",
+  "why": "Both metadata records must retain their own library names and exact bytes."
+ },
+ {
+  "id": "lib.media-deps-sdk-source-side-effect",
+  "target": "linux/scripts/03-media/build/gstreamer/common/pre-setup.sh",
+  "find": "    source_vulkan_sdk_env \"${prefix}\" sanitize-libs >/dev/null 2>&1 || true",
+  "replace": "    : \"${prefix}\"",
+  "test": "bash linux/scripts/tests/test-media-python-dependencies.sh",
+  "why": "SDK selection must inspect the environment after attempting SDK setup, including an advisory failed setup."
+ },
+ {
+  "id": "lib.media-deps-vulkan-import",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "    source /opt/scripts/toolchain/vulkan.sh",
+  "replace": "    : /opt/scripts/toolchain/vulkan.sh",
+  "test": "bash linux/scripts/tests/test-media-python-dependencies.sh",
+  "why": "Optional toolchain imports must publish environment state and propagate a present module failure."
+ },
+ {
+  "id": "lib.fixture-module-setup-before-import",
+  "target": "linux/scripts/tests/sourced-module-fixture.sh",
+  "find": "    printf '%s\\n' \"$setup\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "the setup must initialize values before the sourced module reads them"
+ },
+ {
+  "id": "lib.fixture-module-import-failure",
+  "target": "linux/scripts/tests/sourced-module-fixture.sh",
+  "find": "printf 'set -euo pipefail\\n'",
+  "replace": "printf 'set -uo pipefail\\n'",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "a failing import must stop the body and retain its failing status"
+ },
+ {
+  "id": "lib.fixture-module-pipeline-failure",
+  "target": "linux/scripts/tests/sourced-module-fixture.sh",
+  "find": "set -euo pipefail",
+  "replace": "set -eu",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "setup pipelines must fail when an earlier command fails"
+ },
+ {
+  "id": "lib.fixture-preflight-selected-function",
+  "target": "linux/scripts/tests/preflight-gate-fixture.sh",
+  "find": "source \"$1\"; \"$2\"",
+  "replace": "source \"$1\"; true",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "the extracted gate must execute rather than only define its function"
+ },
+ {
+  "id": "lib.fixture-preflight-consumer-directory",
+  "target": "linux/scripts/tests/preflight-gate-fixture.sh",
+  "find": "cd \"$directory\"",
+  "replace": "cd \"${_PREFLIGHT_FIXTURE_WORK}\"",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "the extracted gate must inspect its consumer tree rather than the helper workspace"
+ },
+ {
+  "id": "lib.fixture-preflight-failing-status",
+  "target": "linux/scripts/tests/preflight-gate-fixture.sh",
+  "find": "  status=$?",
+  "replace": "  status=0",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "captured gate failures must remain visible to their assertions"
+ },
+ {
+  "id": "lib.fixture-preflight-stderr-capture",
+  "target": "linux/scripts/tests/preflight-gate-fixture.sh",
+  "find": "\"${_PREFLIGHT_FIXTURE_FUNCTION}\" 2>&1",
+  "replace": "\"${_PREFLIGHT_FIXTURE_FUNCTION}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "captured diagnostics must retain stderr alongside stdout"
+ },
+ {
+  "id": "lib.fixture-cmake-parent-template",
+  "target": "linux/scripts/tests/cmake-project-fixture.sh",
+  "find": "mktemp -d \"$2\"",
+  "replace": "mktemp -d",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "caller-owned project templates keep generated trees inside their cleanup scope"
+ },
+ {
+  "id": "lib.fixture-cmake-project-body",
+  "target": "linux/scripts/tests/cmake-project-fixture.sh",
+  "find": "\"$1\" > \"${dir}/CMakeLists.txt\"",
+  "replace": "'' > \"${dir}/CMakeLists.txt\"",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "the generated CMake project must retain the caller module invocation"
+ },
+ {
+  "id": "lib.fixture-cmake-no-compilers",
+  "target": "linux/scripts/tests/cmake-project-fixture.sh",
+  "find": "project(p NONE)",
+  "replace": "project(p)",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "module policy fixtures must avoid discovering compilers or building code"
+ },
+ {
+  "id": "lib.fixture-field-empty-boundaries",
+  "target": "linux/scripts/tests/sourced-module-fixture.sh",
+  "find": "    separator='|'",
+  "replace": "    separator=''",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "field receipts must preserve empty leading and trailing fields and embedded spaces"
+ },
+ {
+  "id": "lib.fixture-named-value-order",
+  "target": "linux/scripts/tests/sourced-module-fixture.sh",
+  "find": "values+=(\"${!name}\")",
+  "replace": "values=(\"${!name}\" \"${values[@]}\")",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "named field snapshots preserve caller ordering after importing the module"
+ },
+ {
+  "id": "lib.fixture-module-caller-stdin",
+  "target": "linux/scripts/tests/sourced-module-fixture.sh",
+  "find": "  )\"",
+  "replace": "  )\" </dev/null",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "isolated imports retain the input stream available to the original bash child"
+ },
+ {
+  "id": "lib.fixture-workspace-exit-cleanup",
+  "target": "linux/scripts/tests/test-workspace-fixture.sh",
+  "find": "    trap 'rm -rf \"${_TEST_FIXTURE_WORKSPACE}\"' EXIT",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "disposable suite inputs must be removed when the child shell exits"
+ },
+ {
+  "id": "lib.fixture-preflight-caller-shell-options",
+  "target": "linux/scripts/tests/preflight-gate-fixture.sh",
+  "find": "${4:-set -u}",
+  "replace": "set -u",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "the CRLF gate must execute under actual preflight options, including pipefail"
+ },
+ {
+  "id": "lib.fixture-function-installation",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "    eval \"${function_source}\" || return $?",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "named fixture functions must be installed without executing unrelated module top-level code"
+ },
+ {
+  "id": "lib.fixture-missing-function-is-fatal",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "function_source=\"$(t_fn_src \"${source_file}\" \"${function_name}\")\" || return $?",
+  "replace": "function_source=\"$(t_fn_src \"${source_file}\" \"${function_name}\")\" || true",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "a missing extracted fixture definition must fail initialization rather than leave a vacuous suite"
+ },
+ {
+  "id": "lib.fixture-explicit-repository-root",
+  "target": "linux/scripts/tests/test-workspace-fixture.sh",
+  "find": "${BASH_SOURCE[0]%/*}/../../..",
+  "replace": "${BASH_SOURCE[0]%/*}/../..",
+  "test": "bash linux/scripts/tests/test-fixture-drivers.sh",
+  "why": "explicit repository-root outputs must resolve the hub rather than its Linux subtree"
+ },
+ {
+  "id": "critical-fixes.cache-contract-invoked",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "quiet _critical_cache_launcher_contract \\\n        \"${ccsh}\"",
+  "replace": "quiet true \\\n        \"${ccsh}\"",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "The cross-build guard must invoke shared launcher verification and aggregate its failures."
+ },
+ {
+  "id": "critical-fixes.cache-companion-required",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "  grep -qE '^source .*compiler-cache-utils\\.sh.*\\|\\| return 1$' \"${module}\" || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "The shared selector dependency must remain required by the compiler module."
+ },
+ {
+  "id": "critical-fixes.cache-delegation-required",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "  grep -qE '^[[:space:]]*compiler_cache_guarded_launcher[[:space:]]' \"${module}\" || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "The compiler module must delegate selection to its shared owner."
+ },
+ {
+  "id": "critical-fixes.cache-selector-behavior",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    [ \"$(compiler_cache_guarded_launcher \"${fixture}/local\")\" = \"${expected}\" ] || return 1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "The extracted selector must reject unusable candidates, prefer its local executable and retain bare fallback."
+ },
+ {
+  "id": "critical-fixes.cache-rust-fallback",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "      [ \"${RUSTC_WRAPPER}\" = \"${expected}\" ] || return 1",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-critical-fixes.sh",
+  "why": "Rust must retain the guarded choice or sccache when the resolver yields ccache or an empty value."
  }
 ]

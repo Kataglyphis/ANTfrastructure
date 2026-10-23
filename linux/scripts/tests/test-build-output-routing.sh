@@ -2,12 +2,11 @@
 # run_nerdctl_build with RUN_NERDCTL_LOG: BuildKit's output goes to the arch log, the chain log keeps a failure's tail only.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-BH="${TESTS_DIR}/../01-core/build-helpers.sh"
-_work="$(mktemp -d)"
-trap 'rm -rf "${_work}"' EXIT
-eval "$(t_fn_src "${BH}" run)" || exit 1
-eval "$(t_fn_src "${BH}" run_nerdctl_build)" || exit 1
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare _work
+t_fixture_workspace_init _work || exit 1
+t_source_functions "${TESTS_DIR}/../01-core/build-helpers.sh" run run_nerdctl_build || exit 1
 append_buildkit_host_arg() { :; }
 
 # A stand-in for nerdctl: prints five layer lines and exits with FAKE_RC.

@@ -2,14 +2,11 @@
 # check_crlf_guard judges working-tree bytes only; see docs/code-quality-tooling.md#crlf-guard-the-worked-example
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
-
-FN_SRC="$(t_fn_src "${REPO_ROOT}/linux/scripts/preflight.sh" check_crlf_guard)" || exit 1
+# shellcheck source=linux/scripts/tests/preflight-gate-fixture.sh
+source "${TESTS_DIR}/preflight-gate-fixture.sh"
+declare WORK
+preflight_gate_fixture_init WORK check_crlf_guard || exit 1
 SET_LINE="$(grep -m1 -e '^set -' "${REPO_ROOT}/linux/scripts/preflight.sh")"
-WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"' EXIT
-printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
 
 REPO=""
 _repo() {
@@ -35,12 +32,7 @@ _repo() {
 _eol() { git -C "${REPO}" ls-files --eol -- "$1" | awk -F'\t' -v n="$2" '{split($1,c,/[ \t]+/); print c[n]}'; }
 
 OUT=""; rc=0
-_guard() {
-  OUT="$(cd "${1:-${REPO}}" && bash -c "${SET_LINE}"'
-source "$1"
-check_crlf_guard' _ "${WORK}/guard.sh" 2>&1)"
-  rc=$?
-}
+_guard() { preflight_gate_fixture_run OUT rc "${1:-${REPO}}" "${SET_LINE}"; }
 
 _named() { printf '%s' "${OUT}" | grep -c "$1"; }
 

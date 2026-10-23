@@ -2,13 +2,10 @@
 # preflight's check_shared_config: the manifest declares the assets, and undeclared ones are never mentioned; see shared/config/README.md
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
-
-FN_SRC="$(t_fn_src "${REPO_ROOT}/linux/scripts/preflight.sh" check_shared_config)" || exit 1
-WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"' EXIT
-printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
+# shellcheck source=linux/scripts/tests/preflight-gate-fixture.sh
+source "${TESTS_DIR}/preflight-gate-fixture.sh"
+declare WORK
+preflight_gate_fixture_init WORK check_shared_config || exit 1
 
 TREE=""
 # _tree <name>: the real shared/config set, including the sync script check_shared_config shells out to.
@@ -29,12 +26,8 @@ _tree() {
 }
 
 OUT=""; rc=0
-_guard() {
-  OUT="$(cd "${TREE}" && bash -c 'set -u
-source "$1"
-check_shared_config' _ "${WORK}/guard.sh" 2>&1)"
-  rc=$?
-}
+_guard() { preflight_gate_fixture_run OUT rc "${TREE}"; }
+
 
 t_case "a root copy identical to canonical passes; the other four are not mentioned"
 _tree clean; _guard

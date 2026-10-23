@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # common.sh - shared helpers and configuration
 [ -n "${_COMMON_SH_LOADED:-}" ] && return 0
-_COMMON_SH_LOADED=1
-
 _COMMON_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=linux/scripts/01-core/compiler-cache-utils.sh
+source "${_COMMON_SH_DIR}/compiler-cache-utils.sh" || return 1
+_COMMON_SH_LOADED=1
 
 # Values already in the environment (forwarded ARG/ENV) win over versions.env.
 # shellcheck disable=SC1091
@@ -345,8 +346,7 @@ ensure_sccache_env() {
   # Direct mode re-reads inputs that CMake TryCompile already deleted: docs/build-cache-tiers.md#the-rules-as-agentsmd-carried-them-with-their-reasons
   export SCCACHE_DIRECT="${SCCACHE_DIRECT:-false}"
   export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache.log}"
-  sccache_start_server || sccache --start-server >/dev/null 2>&1 || true
-  if ! sccache --show-stats >/dev/null 2>&1; then
+  if ! compiler_cache_sccache_ready hook; then
     warn "sccache server did not answer — caller should fall back to ccache"
     return 1
   fi
@@ -358,14 +358,7 @@ ensure_sccache_env() {
 # Echoes sccache, else ccache, for CC/CXX; stdout is the value, so helpers log to stderr (info() writes to fd 1).
 compiler_cache_launcher() {
   if [ "${USE_SCCACHE:-1}" != "0" ] && ensure_sccache_env >&2; then
-    # The guarded launcher survives sccache's own fatal errors; bare sccache where it is not mounted.
-    for _scl in "${_COMMON_SH_DIR}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
-      if [ -x "${_scl}" ]; then
-        printf '%s' "${_scl}"
-        return 0
-      fi
-    done
-    printf '%s' sccache
+    compiler_cache_guarded_launcher "${_COMMON_SH_DIR}"
     return 0
   fi
   if ensure_ccache_env >&2 2>/dev/null && command -v ccache >/dev/null 2>&1; then

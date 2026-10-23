@@ -2,8 +2,10 @@
 # ENV ordering gate, its lint wiring and the runtime image's Android env; see docs/code-quality-tooling.md#env-instruction-ordering-dockerfile-lint
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare REPO_ROOT
+t_fixture_workspace_init '' REPO_ROOT
 GATE="${REPO_ROOT}/linux/scripts/verify_dockerfile_env_order.py"
 LINTER="${REPO_ROOT}/linux/scripts/lint-dockerfiles.sh"
 PKG="${REPO_ROOT}/linux/Dockerfile.package"

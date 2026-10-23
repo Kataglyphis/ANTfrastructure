@@ -431,7 +431,7 @@ def _explain_counts(owners, a_file, b_file):
             continue
         for x in left:
             for y in right:
-                if x < y:   # skip a unit against itself and the mirror of a seen pair
+                if a_file != b_file or x < y:
                     (idiom if len(holders) > MAX_OWNERS else counted)[(x, y)] += 1
     return counted, idiom
 

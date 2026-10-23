@@ -47,8 +47,8 @@ for kind in salvage runtime watch; do
       for policy in normal dry force; do
         t_case "${kind} threshold '${threshold}' measurement '${measured}' ${policy}"
         rm -f "${WORK}/probes" "${WORK}/watch"
-        out="$(bash "${WORK}/worker.sh" "${TESTS_DIR}/test-harness.sh" "${CORE}" "${CHAIN}" "$kind" "$threshold" "$measured" "$policy" "$WORK" 2>&1)"
-        if [ -n "${RECEIPT}" ]; then printf '%q %q\n' "${kind}/${threshold}/${measured}/${policy}" "${out}" >> "${RECEIPT}"; fi
+        out="$(t_run_fixture_worker "${WORK}/worker.sh" "${CORE}" "${CHAIN}" "$kind" "$threshold" "$measured" "$policy" "$WORK" 2>&1)"
+        t_record_fixture_receipt "${RECEIPT}" "${kind}/${threshold}/${measured}/${policy}" "${out}"
         expected_status=0
         if [ "$threshold" = 10 ] && [ "$measured" = 5 ]; then
           case "$kind/$policy" in salvage/*) expected_status=1 ;; runtime/normal) expected_status=8 ;; esac

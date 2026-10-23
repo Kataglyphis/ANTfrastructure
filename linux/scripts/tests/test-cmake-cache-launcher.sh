@@ -2,8 +2,9 @@
 # Cache.cmake hands sccache to CMake through the guarded launcher off Windows, so a dead server compiles directly.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-HUB_CMAKE="$(cd "${TESTS_DIR}/../../../cmake" && pwd)"
+# shellcheck source=linux/scripts/tests/cmake-project-fixture.sh
+source "${TESTS_DIR}/cmake-project-fixture.sh"
+HUB_CMAKE="$(cmake_fixture_module_root)"
 GUARDED="$(cd "${TESTS_DIR}/../01-core" && pwd)/sccache-launcher.sh"
 
 t_skip_unless "a Linux cmake (WIN32 keeps the bare sccache)" sh -c '[ "$(uname -s)" = Linux ] && command -v cmake'
@@ -19,9 +20,9 @@ done
 # _launcher <COMPILER_CACHE>: the CXX launcher a compiler-less project ends up with.
 _launcher() {
   local proj
-  proj="$(mktemp -d "${_w}/p.XXXXXX")"
-  printf 'cmake_minimum_required(VERSION 3.20)\nproject(p NONE)\ninclude("%s/Cache.cmake")\nmyproject_enable_cache()\nmessage(STATUS "LAUNCHER=[${CMAKE_CXX_COMPILER_LAUNCHER}]")\n' \
-    "${HUB_CMAKE}" > "${proj}/CMakeLists.txt"
+  proj="$(_cmake_project "include(\"${HUB_CMAKE}/Cache.cmake\")
+myproject_enable_cache()
+message(STATUS \"LAUNCHER=[\${CMAKE_CXX_COMPILER_LAUNCHER}]\")" "${_w}/p.XXXXXX")"
   PATH="${_w}/bin:${PATH}" cmake -S "${proj}" -B "${proj}/b" -DCOMPILER_CACHE="$1" 2>&1 | sed -n 's/^-- LAUNCHER=\[\(.*\)\]$/\1/p'
 }
 

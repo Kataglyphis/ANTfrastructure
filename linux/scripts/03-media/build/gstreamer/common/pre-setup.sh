@@ -5,10 +5,7 @@ _PRE_SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_PRE_SETUP_DIR}/../../../core/common.sh"
 media_common_init "${_PRE_SETUP_DIR}"
 
-if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/toolchain/vulkan.sh
-fi
+media_load_vulkan_toolchain
 
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
@@ -40,18 +37,29 @@ if cross_build_is_active && \
   prefer_toolchain_vulkan=true
 fi
 
+_gstreamer_write_pkgconfig() {
+  local libdir="$1" includedir="$2" name="$3" description="$4" version="$5" library="$6"
+  printf '%s\n' \
+    "prefix=/usr" \
+    "exec_prefix=\${prefix}" \
+    "libdir=${libdir}" \
+    "includedir=${includedir}" \
+    "" \
+    "Name: ${name}" \
+    "Description: ${description}" \
+    "Version: ${version}" \
+    "Libs: -L\${libdir} -l${library}" \
+    "Cflags: -I\${includedir}"
+}
+
 find_toolchain_vulkan_sdk_dir() {
   local prefix host_arch candidate version_dir
 
   prefix="${vulkan_prefix}"
   host_arch="$(uname -m)"
 
-  if declare -F source_vulkan_sdk_env >/dev/null 2>&1 && \
-     source_vulkan_sdk_env "${prefix}" sanitize-libs >/dev/null 2>&1; then
-    if [ -n "${VULKAN_SDK:-}" ] && [ -d "${VULKAN_SDK}" ]; then
-      printf '%s' "${VULKAN_SDK}"
-      return 0
-    fi
+  if declare -F source_vulkan_sdk_env >/dev/null 2>&1; then
+    source_vulkan_sdk_env "${prefix}" sanitize-libs >/dev/null 2>&1 || true
   fi
 
   if [ -n "${VULKAN_SDK:-}" ] && [ -d "${VULKAN_SDK}" ]; then
@@ -111,17 +119,8 @@ setup_toolchain_vulkan_cross_metadata() {
   sdk_version="$(basename "$(dirname "${sdk_dir}")")"
   pcdir="${target_libdir}/pkgconfig"
   mkdir -p "${pcdir}"
-  printf '%s\n' \
-    "prefix=/usr" \
-    "exec_prefix=\${prefix}" \
-    "libdir=${target_libdir}" \
-    "includedir=${sdk_dir}/include" \
-    "" \
-    "Name: Vulkan" \
-    "Description: Vulkan loader using toolchain SDK headers" \
-    "Version: ${sdk_version}" \
-    "Libs: -L\${libdir} -lvulkan" \
-    "Cflags: -I\${includedir}" \
+  _gstreamer_write_pkgconfig "${target_libdir}" "${sdk_dir}/include" \
+    Vulkan "Vulkan loader using toolchain SDK headers" "${sdk_version}" vulkan \
     > "${pcdir}/vulkan.pc"
 
   echo "Configured Vulkan cross metadata with SDK headers from ${sdk_dir} and loader from ${target_libdir}"
@@ -460,18 +459,8 @@ if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ]; then
     libdir="/usr/lib"
   fi
   mkdir -p "$pcdir"
-  # The escaped \${...} stay literal: pkg-config expands them itself.
-  printf '%s\n' \
-    "prefix=/usr" \
-    "exec_prefix=\${prefix}" \
-    "libdir=${libdir}" \
-    "includedir=/usr/include/csound" \
-    "" \
-    "Name: Csound" \
-    "Description: Csound audio and music processing system" \
-    "Version: 6.18.1" \
-    "Libs: -L\${libdir} -lcsound64" \
-    "Cflags: -I\${includedir}" \
+  _gstreamer_write_pkgconfig "$libdir" /usr/include/csound \
+    Csound "Csound audio and music processing system" 6.18.1 csound64 \
     > "$pcdir/csound.pc" || true
   # Verify that pkg-config can discover csound; fail with diagnostics if not.
   if [ "${MEDIA_SKIP_CSOUND:-0}" != "1" ] && ! PKG_CONFIG_PATH="${pcdir}${PKG_CONFIG_PATH:+:${PKG_CONFIG_PATH}}" pkg-config --exists csound 2>/dev/null; then

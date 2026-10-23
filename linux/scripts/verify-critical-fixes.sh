@@ -102,6 +102,68 @@ fix6_native_gcc_system_paths() {
     -qE 'for pkg in .*\bnumpy\b' "${stv}"
 }
 
+_critical_cache_selector_behavior() {
+  local selector="$1" fixture="$2" phase expected
+  eval "${selector//\/opt\/scripts\/core/${fixture}/installed}" || return 1
+  mkdir -p "${fixture}/local" "${fixture}/installed" || return 1
+  for phase in absent nonexecutable installed local; do
+    expected=sccache
+    case "${phase}" in
+      nonexecutable) touch "${fixture}/local/sccache-launcher.sh" || return 1 ;;
+      installed) touch "${fixture}/installed/sccache-launcher.sh" || return 1
+                 chmod +x "${fixture}/installed/sccache-launcher.sh" || return 1
+                 expected="${fixture}/installed/sccache-launcher.sh" ;;
+      local) chmod +x "${fixture}/local/sccache-launcher.sh" || return 1
+             expected="${fixture}/local/sccache-launcher.sh" ;;
+    esac
+    [ "$(compiler_cache_guarded_launcher "${fixture}/local")" = "${expected}" ] || return 1
+  done
+  return 0
+}
+
+_critical_cache_export_behavior() {
+  local setup="$1" fixture="$2" resolved existing expected
+  eval "${setup}" || return 1
+  _flag_disabled() { return 1; }
+  _sccache_available() { return 0; }
+  sccache_export_server_address() { return 0; }
+  sccache_start_server() { return 0; }
+  sccache() { return 99; }
+  _cc_info() { :; }
+  _resolve_compiler_cache_launcher() { printf '%s' "${resolved}"; }
+  export USE_SCCACHE=1 SCCACHE_DIR="${fixture}/cache" SCCACHE_CACHE_SIZE=1G
+  for resolved in "${fixture}/local/sccache-launcher.sh" sccache ccache ''; do
+    expected=sccache
+    case "${resolved}" in *sccache*) expected="${resolved}" ;; esac
+    for existing in '' existing-launcher; do
+      unset RUSTC_WRAPPER
+      CMAKE_C_COMPILER_LAUNCHER="${existing}" CMAKE_CXX_COMPILER_LAUNCHER="${existing}"
+      setup_sccache || return 1
+      [ "${RUSTC_WRAPPER}" = "${expected}" ] || return 1
+      [ "${CMAKE_C_COMPILER_LAUNCHER}" = "${existing:-${expected}}" ] || return 1
+      [ "${CMAKE_CXX_COMPILER_LAUNCHER}" = "${existing:-${expected}}" ] || return 1
+    done
+  done
+  return 0
+}
+
+_critical_cache_launcher_contract() {
+  local module="$1" utility="$2" selector setup fixture result=0
+  grep -qE '^source .*compiler-cache-utils\.sh.*\|\| return 1$' "${module}" || return 1
+  grep -qE '^[[:space:]]*compiler_cache_guarded_launcher[[:space:]]' "${module}" || return 1
+  selector="$(sed -n '/^compiler_cache_guarded_launcher() {/,/^}/p' "${utility}")"
+  setup="$(sed -n '/^setup_sccache() {/,/^}/p' "${module}")"
+  [ -n "${selector}" ] && [ -n "${setup}" ] || return 1
+  fixture="$(mktemp -d)" || return 1
+  (
+    # Extracted functions use disposable candidates and stubbed cache calls, never real daemon startup.
+    _critical_cache_selector_behavior "${selector}" "${fixture}" || exit 1
+    _critical_cache_export_behavior "${setup}" "${fixture}" || exit 1
+  ) || result=$?
+  rm -rf "${fixture}"
+  return "${result}"
+}
+
 fix7_hardening_2026_07() {
   echo "--- Fix 7: cross-build hardening (cache, base pin, non-root, apt retry, mount scope) ---"
   local csb="${REPO_ROOT}/linux/scripts/01-core/cross-stage-build.sh"
@@ -123,8 +185,8 @@ fix7_hardening_2026_07() {
       fail "compiler-cache.sh can leave a launcher EMPTY; the standing decision is always-sccache"
     else
       _critical_source_verdict "compiler-cache.sh resolves the guarded launcher and falls back to sccache, never to uncached" \
-        "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback" quiet _critical_source_all_grep \
-        -q '_sc_launcher="sccache"' "${ccsh}" -q 'sccache-launcher.sh' "${ccsh}"
+        "compiler-cache.sh no longer resolves a guarded launcher with an sccache fallback" quiet _critical_cache_launcher_contract \
+        "${ccsh}" "${REPO_ROOT}/linux/scripts/01-core/compiler-cache-utils.sh"
     fi
     # Repo-wide: launchers use compiler_cache_launcher() or ${...:-sccache}, never a bare ="sccache".
     local _bad_sccache

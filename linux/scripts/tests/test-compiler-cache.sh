@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/../01-core/compiler-cache-utils.sh"
 
 CCSH="${1:-${TESTS_DIR}/../01-core/compiler-cache.sh}"
 CACHE_UTILS="${2:-${TESTS_DIR}/../01-core/compiler-cache-utils.sh}"

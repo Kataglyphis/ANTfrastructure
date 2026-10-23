@@ -48,7 +48,7 @@ sccache_export_server_address() {
   sccache_configure_server_address
 }
 
-# Defers to common.sh's compiler_cache_launcher; the inline copy serves the standalone android preamble, and a test keeps them equal.
+# Standalone callers share readiness and launcher selection without sourcing common.sh's environment defaults.
 _resolve_compiler_cache_launcher() {
   if command -v compiler_cache_launcher >/dev/null 2>&1; then
     printf '%s' "$(compiler_cache_launcher 2>/dev/null || true)"
@@ -56,13 +56,8 @@ _resolve_compiler_cache_launcher() {
   fi
   if command -v sccache >/dev/null 2>&1; then
     sccache_export_server_address || return 1
-    sccache_start_server || sccache --start-server >/dev/null 2>&1 || true
-    if sccache --show-stats >/dev/null 2>&1; then
-      # The guarded launcher survives sccache's own fatal errors, which abort a bare sccache build.
-      for _scl in "${_CC_SH_DIR:-}/sccache-launcher.sh" /opt/scripts/core/sccache-launcher.sh; do
-        if [ -x "${_scl}" ]; then printf '%s' "${_scl}"; return 0; fi
-      done
-      printf '%s' sccache
+    if compiler_cache_sccache_ready hook; then
+      compiler_cache_guarded_launcher "${_CC_SH_DIR:-}"
       return 0
     fi
   fi

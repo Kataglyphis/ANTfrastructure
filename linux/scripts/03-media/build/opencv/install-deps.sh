@@ -96,11 +96,7 @@ fi
 
 if [ "${WITH_PYTHON}" = "true" ]; then
     if is_cross; then
-        if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
-            echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
-        else
-            echo "[WARN] Target Python ${OPENCV_PYTHON_VERSION} development files are missing for $(cross_target_triplet 2>/dev/null || echo target); disabling OpenCV Python bindings for this cross build"
-        fi
+        report_cross_python_development "[INFO] " "[WARN] " "disabling OpenCV Python bindings" "${OPENCV_PYTHON_VERSION}"
     else
         echo "[INFO] Python dependencies are satisfied via source build and uv."
     fi

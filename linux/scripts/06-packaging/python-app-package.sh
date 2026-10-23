@@ -148,18 +148,8 @@ package_deb() {
     mkdir -p "${root}/usr/share/icons/hicolor/${size}/apps"
     cp "${ICON}" "${root}/usr/share/icons/hicolor/${size}/apps/${APP_ID}.png"
   fi
-  cat > "${root}/DEBIAN/control" <<EOF
-Package: ${APP_ID}
-Version: ${VERSION}
-Section: utils
-Priority: optional
-Architecture: ${DEB_ARCH}
-Maintainer: ${MAINTAINER}
-Homepage: ${HOMEPAGE}
-Depends: ${depends}
-Description: ${APP_NAME}
- ${DESCRIPTION}
-EOF
+  app_packaging_write_deb_control "${root}/DEBIAN/control" "${APP_ID}" "${VERSION}" "${DEB_ARCH}" \
+    "${MAINTAINER}" "${depends}" "${APP_NAME}" "${DESCRIPTION}" "${HOMEPAGE}"
   chmod 0755 "${root}/DEBIAN"
   dpkg-deb --root-owner-group --build "${root}" "${output}" > /dev/null
   app_packaging_assert_artifact "${output}"

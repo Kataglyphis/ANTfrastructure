@@ -21,6 +21,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
     --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
@@ -87,6 +88,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
     --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
@@ -110,6 +112,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
     --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
@@ -134,6 +137,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
     --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
@@ -157,6 +161,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
     --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \
@@ -179,6 +184,7 @@ RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scr
     --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \
+    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \
     --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \
     --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \

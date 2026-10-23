@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/sourced-module-fixture.sh
+source "${TESTS_DIR}/sourced-module-fixture.sh"
 DNN="${TESTS_DIR}/../03-media/build/ffmpeg/ffmpeg-dnn-backends.sh"
 
 t_case "ffmpeg-dnn-backends.sh exists and parses"
@@ -17,14 +19,12 @@ touch "${_sdk}/tensorflow-c/lib/libtensorflow.so" \
 
 # _run_probe <0 = pkg-config path | 1 = synth-pkgconfig path>: prints the exported flag vars.
 _run_probe() {
-  bash -c "
-    set -euo pipefail
+  t_run_sourced_module "${DNN}" "
     FFMPEG_SDK_CACHE='${_sdk}'
     ffmpeg_probe_pkg_config_feature() { return $1; }
     ffmpeg_enable_via_synth_pkgconfig() { return 0; }
-    source '${DNN}'
-    ffmpeg_probe_libtensorflow >/dev/null
-    printf '%s|%s|%s|%s' \
+  " "    ffmpeg_probe_libtensorflow >/dev/null
+    t_fixture_fields \
       \"\${_FFMPEG_TF_EXTRA_CFLAGS:-}\" \"\${_FFMPEG_TF_EXTRA_LDFLAGS:-}\" \
       \"\${_FFMPEG_TF_EXTRA_LIBS:-}\" \"\${LD_LIBRARY_PATH:-}\"
   "

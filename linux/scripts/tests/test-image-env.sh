@@ -2,15 +2,15 @@
 # No build-host setting may reach a published image's env; see docs/build-cache-tiers.md#the-shipped-image-carries-no-build-host-setting
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare _work REPO_ROOT
+t_fixture_workspace_init _work REPO_ROOT || exit 1
 PY="${PREFLIGHT_PYTHON:-python3}"
 CASES="${TESTS_DIR}/image-env-cases.json"
 GATE="${REPO_ROOT}/linux/scripts/verify_image_env.py"
 MANIFEST="${REPO_ROOT}/linux/scripts/build-runtime-manifest.sh"
 
-_work="$(mktemp -d)"
-trap 'rm -rf "${_work}"' EXIT
 
 # _df <name> <content> -> path of a fixture Dockerfile
 _df() { printf '%s\n' "$2" > "${_work}/$1"; printf '%s' "${_work}/$1"; }

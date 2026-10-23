@@ -56,6 +56,7 @@ fi
 printf 'completed\n'
 WORKER
 
+output='' status=0
 for runtime in armnn opencv; do
   prefix="${work}/arm nn"
   install_events=installed
@@ -63,8 +64,7 @@ for runtime in armnn opencv; do
   for mode in absent present failing; do
     t_case "${runtime}: ${mode} strip remains best-effort after install and before listing"
     : > "${work}/events"
-    status=0
-    output="$(bash "${work}/worker" "${COMMON}" "${work}" "${runtime}" "${mode}" 2>&1)" || status=$?
+    t_capture_command output status bash "${work}/worker" "${COMMON}" "${work}" "${runtime}" "${mode}"
     t_assert_eq 0 "${status}" "${output}"
     t_assert_contains "${output}" completed
     expected="${install_events}"

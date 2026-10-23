@@ -671,7 +671,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2485 entries** over **281 distinct test commands**; both digits are
+manifest holds **2525 entries** over **285 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1927,7 +1927,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 835 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 848 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1938,7 +1938,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **340** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **342** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -2238,7 +2238,9 @@ first-freeze tool.
 `--report` gives a pair and a number; deciding whether that number is a deliberate
 twin or a real copy needs the units behind it. `--explain` prints them: which unit in
 A overlaps which unit in B, on which lines, the longest identical run, and the head of
-each. One path for a self-pair, two for a cross-file pair.
+each. One path for a self-pair, two for a cross-file pair. Cross-file diagnostics
+accept either path order; self-pairs report each distinct unit pair once. These
+diagnostic rules do not change enforcement counts or thresholds.
 
 It also prints the half the count hides. Shingles held by more than `MAX_OWNERS`
 units are dropped as idiom BEFORE the pair is counted, so a pair can look small while
@@ -2480,7 +2482,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-19 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
+21 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,
@@ -3039,6 +3041,11 @@ single-source denylist, joined on 2026-09-23) and stays the slug,
 `06-packaging/smoke-critical-fixes.sh` takes fix1–fix4 and is run against a
 shipped image by hand. `test-critical-fixes.sh` then proves BOTH halves — the
 host gate in a fixture tree, the image probes under `CF_SMOKE_ROOT`.
+
+The cache launcher guard checks shared-utility loading and delegation, then executes
+extracted selector/setup functions with disposable launcher paths and stubbed cache
+operations. It verifies executable precedence, the sccache fallback and caller
+launcher preservation; it does not start or prove a real cache daemon.
 
 The split was decided by MEASURING first, not by reasoning about testability, and
 the measurement is why it is right. Run in the shipped images for the first time,

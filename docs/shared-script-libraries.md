@@ -31,6 +31,33 @@ The Slang twins accept additional pinned source roots and import an owner's
 WGSL manifest without a copied definition; their caller parameters and ownership
 rules are in [`slang-shader-compilation.md`](slang-shader-compilation.md#caller-variables).
 
+## Shared cache, dependency and packaging operations
+
+`01-core/compiler-cache-utils.sh` supplies launcher selection and start/health probes
+without initializing defaults or starting a server when sourced. Copy it beside
+`common.sh`, `compiler-cache.sh` and standalone cache probes. Base-image steps use
+narrow companion mounts. Callers retain hook versus direct startup, stream routing,
+S3 defaults and failure policy.
+
+`install-deps-preamble.sh` reports staged target Python development readiness;
+GStreamer, LiteRT and OpenCV retain their native/cross decisions and version lookup
+policy, including an explicitly empty OpenCV version. Media core owns optional
+Vulkan toolchain import. GStreamer pre-setup shares pkg-config rendering while
+retaining fatal Vulkan and advisory Csound write failures and SDK precedence.
+
+`app_packaging_write_deb_control` renders control metadata for native and Python
+packagers. Its optional ninth argument distinguishes an omitted Homepage field from
+an explicitly empty one. Caller defaults, multiline descriptions, builder arguments
+and failure status remain caller policy.
+
+Linux test fixtures share compilerless CMake projects, source-module invocations,
+preflight extraction and disposable workspaces. The workspace loads the test harness;
+function extraction uses its existing `t_source_functions`. Harness receipt writers
+preserve ordered shell-quoted fields, and worker invocations pass the harness path
+explicitly. `t_capture_command` captures merged output and raw failure status for
+assertions; it does not turn a failed command into a successful test. These fixtures
+exercise stubbed operations and do not prove live cache servers or package builds.
+
 ## The tree, as AGENTS.md drew it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since

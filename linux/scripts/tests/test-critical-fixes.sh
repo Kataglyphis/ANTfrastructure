@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verify-critical-fixes.sh greps a repo tree, so each row knocks one line out of a fixture tree; see docs/cross-build-verification.md#the-in-image-half-of-critical-fixes
+# Disposable source trees cover critical source contracts and stubbed launcher behavior, not image contents or live cache servers.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -47,10 +47,8 @@ F
     printf 'stage_log="${dir}/${CROSS_RUN_ID}.run"\n'
     printf '%s\n' "${_classifier}"
   } | _write "${d}/linux/scripts/01-core/cross-stage-build.sh"
-  _write "${d}/linux/scripts/01-core/compiler-cache.sh" <<'F'
-_sc_launcher="sccache"
-[ -x "${dir}/sccache-launcher.sh" ] && _sc_launcher="${dir}/sccache-launcher.sh"
-F
+  install -D -m 0644 "${TESTS_DIR}/../01-core/compiler-cache.sh" "${d}/linux/scripts/01-core/compiler-cache.sh"
+  install -D -m 0644 "${TESTS_DIR}/../01-core/compiler-cache-utils.sh" "${d}/linux/scripts/01-core/compiler-cache-utils.sh"
   _write "${d}/linux/scripts/01-core/runtime-build-fns.sh" <<'F'
 runtime_push_tag() {
   _runtime_push_attempt "$1"
@@ -288,8 +286,14 @@ fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/03-
 fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/setup-torch-venv.sh	1i for pkg in numpy pillow; do :; done	re-seeds apt numpy into the venv
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/cross-stage-build.sh	s|type=local,dest="${dir}"|type=registry,ref=${tag}-buildcache|	reverted to the self-defeating registry -buildcache
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	1i RUSTC_WRAPPER="${_sc_launcher:-}"	can leave a launcher EMPTY
-fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	s|sccache-launcher.sh|sccache|g	no longer resolves a guarded launcher
-fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	s|^_sc_launcher="sccache"$|@LHS@"sccache"|	bare sccache launcher export found
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache-utils.sh	s|sccache-launcher.sh|sccache|g	no longer resolves a guarded launcher
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	s|^  _sc_launcher="sccache"$|  @LHS@"sccache"|	bare sccache launcher export found
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	/compiler-cache-utils.sh/d	no longer resolves a guarded launcher
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	/^[[:space:]]*compiler_cache_guarded_launcher /d	no longer resolves a guarded launcher
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache-utils.sh	s|printf '%s' sccache|printf '%s' ccache|	no longer resolves a guarded launcher
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache-utils.sh	s|\[ -x |[ -e |	no longer resolves a guarded launcher
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	s|^  _sc_launcher="sccache"$|  _sc_launcher=""|	no longer resolves a guarded launcher
+fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/compiler-cache.sh	s|export RUSTC_WRAPPER="${_sc_launcher}"|export RUSTC_WRAPPER="wrong-wrapper"|	no longer resolves a guarded launcher
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/Dockerfile.base	s|^FROM ubuntu:.*|FROM ubuntu:${UBUNTU_VERSION}|	ubuntu base is no longer digest-pinned
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/versions.env	s|^UBUNTU_DIGEST=sha256:|UBUNTU_DIGEST=|	ubuntu base is no longer digest-pinned
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/Dockerfile.torch	s|chown -R kataglyphis:kataglyphis|chown -R root:root|	no longer chowns WORKDIR

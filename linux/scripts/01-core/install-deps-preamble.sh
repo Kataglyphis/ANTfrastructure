@@ -82,3 +82,17 @@ if ! command -v host_python_major_minor >/dev/null 2>&1; then
     printf '%s\n' "${BASH_REMATCH[0]}"
   }
 fi
+
+report_cross_python_development() {
+  local ready_prefix="$1" missing_prefix="$2" missing_action="$3" version
+  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
+    echo "${ready_prefix}Using staged target Python headers from $(cross_target_python_include_dir)"
+  else
+    if [ "$#" -ge 4 ]; then
+      version="$4"
+    else
+      version="${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)}"
+    fi
+    echo "${missing_prefix}Target Python ${version} development files are missing for $(cross_target_triplet 2>/dev/null || echo target); ${missing_action} for this cross build"
+  fi
+}

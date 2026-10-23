@@ -16,10 +16,15 @@ meh()  { printf '  \033[0;33mNOCACHE\033[0m %s\n' "$*"; }
 command -v sccache >/dev/null 2>&1 || { say "sccache not found — nothing to probe"; exit 0; }
 say "sccache: $(sccache --version 2>/dev/null || echo unknown)"
 
+_probe_cache_utils="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/compiler-cache-utils.sh"
+[ -f "${_probe_cache_utils}" ] || _probe_cache_utils=/opt/scripts/core/compiler-cache-utils.sh
+# shellcheck source=linux/scripts/01-core/compiler-cache-utils.sh
+source "${_probe_cache_utils}" || exit 1
+unset _probe_cache_utils
+
 export SCCACHE_IDLE_TIMEOUT="${SCCACHE_IDLE_TIMEOUT:-0}"
 export SCCACHE_ERROR_LOG="${SCCACHE_ERROR_LOG:-/tmp/sccache-probe.log}"
-sccache --start-server >/dev/null 2>&1 || true
-if ! sccache --show-stats >/dev/null 2>&1; then
+if ! compiler_cache_sccache_ready direct; then
   say "sccache server does not answer — this alone would break every compile"
   exit 1
 fi

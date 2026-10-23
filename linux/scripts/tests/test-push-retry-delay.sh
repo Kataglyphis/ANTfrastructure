@@ -2,12 +2,11 @@
 # push_retry_delay: one linear backoff for both push paths; no retry after the last attempt or a permanent error.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-CSB="${TESTS_DIR}/../01-core/cross-stage-build.sh"
-_work="$(mktemp -d)"
-trap 'rm -rf "${_work}"' EXIT
-eval "$(t_fn_src "${CSB}" _cross_stage_push_error_is_transient)" || exit 1
-eval "$(t_fn_src "${CSB}" push_retry_delay)" || exit 1
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare _work
+t_fixture_workspace_init _work || exit 1
+t_source_functions "${TESTS_DIR}/../01-core/cross-stage-build.sh" _cross_stage_push_error_is_transient push_retry_delay || exit 1
 printf 'dial tcp: i/o timeout\n' > "${_work}/transient.log"
 printf 'denied: requested access to the resource is denied\n' > "${_work}/permanent.log"
 

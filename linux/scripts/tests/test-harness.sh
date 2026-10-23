@@ -160,9 +160,8 @@ t_capture_stubbed() {
   [ "$#" -gt 0 ] || { printf 't_capture_stubbed: missing -- delimiter\n' >&2; return 1; }
   shift
   _tcs_log="$(mktemp "${_tcs_directory}/log.XXXXXX")" || return 1
-  _tcs_status=0
-  _tcs_output="$(STUB_LOG="${_tcs_log}" env "${_tcs_environment[@]}" \
-    bash -c "$(t_stubbed_script "${_tcs_library}" "$@")" 2>&1)" || _tcs_status=$?
+  STUB_LOG="${_tcs_log}" t_capture_command _tcs_output _tcs_status env "${_tcs_environment[@]}" \
+    bash -c "$(t_stubbed_script "${_tcs_library}" "$@")"
 }
 
 # t_rt_sandbox: a dir holding the runtime smoke minus its main() call (rt.sh), beside every sibling it sources.
@@ -391,4 +390,29 @@ t_emit_optional_functions() {
   for name in "$@"; do
     if declare -F "${name}" >/dev/null; then declare -f "${name}"; fi
   done
+}
+
+# Optional receipts retain exact fixture fields without conflating shell whitespace with data.
+t_record_fixture_receipt() {
+  local receipt="$1"
+  shift
+  [ -n "${receipt}" ] || return 0
+  printf '%q ' "$@" >> "${receipt}"
+  printf '\n' >> "${receipt}"
+}
+
+# Fixture workers receive the harness before their scenario argv, with streams and status left to the caller.
+t_run_fixture_worker() {
+  local worker="$1"
+  shift
+  bash "${worker}" "${BASH_SOURCE[0]}" "$@"
+}
+
+# Captured failures stay observable as data for the caller's assertions.
+t_capture_command() {
+  local -n _tcc_output="$1" _tcc_status="$2"
+  shift 2
+  _tcc_status=0
+  _tcc_output="$("$@" 2>&1)" || _tcc_status=$?
+  return 0
 }

@@ -125,6 +125,13 @@ media_prepare_cross_compilers() {
   return 0
 }
 
+media_load_vulkan_toolchain() {
+  if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
+    # shellcheck disable=SC1091
+    source /opt/scripts/toolchain/vulkan.sh
+  fi
+}
+
 # install-deps.sh bootstrap. Usage: source this file, then media_install_deps_init "${SCRIPT_DIR}".
 media_install_deps_init() {
   local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"

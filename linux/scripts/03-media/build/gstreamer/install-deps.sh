@@ -6,10 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../../core/common.sh"
 media_install_deps_init "${SCRIPT_DIR}"
 
-if [ -f /opt/scripts/toolchain/vulkan.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/toolchain/vulkan.sh
-fi
+media_load_vulkan_toolchain
 
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
@@ -35,11 +32,7 @@ if is_cross; then
 fi
 
 if is_cross; then
-  if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
-    echo "Using staged target Python headers from $(cross_target_python_include_dir)"
-  else
-    echo "Target Python ${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)} development files are missing for $(cross_target_triplet 2>/dev/null || echo target); disabling gst-python for this cross build"
-  fi
+  report_cross_python_development "" "" "disabling gst-python"
 fi
 
 # Pre-setup dependencies

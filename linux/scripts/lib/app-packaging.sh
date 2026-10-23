@@ -449,6 +449,16 @@ _app_packaging_stage_desktop_icon() {
   fi
 }
 
+app_packaging_write_deb_control() {
+  local path="$1" package="$2" version="$3" arch="$4" maintainer="$5" depends="$6" name="$7" description="$8"
+  {
+    printf 'Package: %s\nVersion: %s\nSection: utils\nPriority: optional\nArchitecture: %s\nMaintainer: %s\n' \
+      "${package}" "${version}" "${arch}" "${maintainer}"
+    if [ "$#" -gt 8 ]; then printf 'Homepage: %s\n' "${9}"; fi
+    printf 'Depends: %s\nDescription: %s\n %s\n' "${depends}" "${name}" "${description}"
+  } > "${path}"
+}
+
 _app_packaging_bundle_deb() {
   local arch deb_root output_name
   arch="$(app_packaging_map_arch_to_deb "$matrix_arch")"
@@ -481,17 +491,9 @@ EOF
     "$deb_root/usr/share/applications/${package_name}.desktop" "$app_id" "$app_name" "$package_name" "$icon_name" \
     "$icon_file" "$deb_root/usr/share/icons/hicolor/$(app_packaging_icon_size "$icon_file")/apps/${package_name}.png"
 
-  cat > "$deb_root/DEBIAN/control" <<EOF
-Package: ${package_name}
-Version: ${version}
-Section: utils
-Priority: optional
-Architecture: ${arch}
-Maintainer: ${APP_PACKAGING_MAINTAINER:-Unknown <dev@localhost>}
-Depends: ${APP_PACKAGING_DEB_DEPENDS:-libc6, libstdc++6, libgtk-3-0}
-Description: ${app_name}
- ${APP_PACKAGING_DESCRIPTION:-${app_name} desktop application.}
-EOF
+  app_packaging_write_deb_control "$deb_root/DEBIAN/control" "$package_name" "$version" "$arch" \
+    "${APP_PACKAGING_MAINTAINER:-Unknown <dev@localhost>}" "${APP_PACKAGING_DEB_DEPENDS:-libc6, libstdc++6, libgtk-3-0}" \
+    "$app_name" "${APP_PACKAGING_DESCRIPTION:-${app_name} desktop application.}"
 
   chmod 0755 "$deb_root/DEBIAN"
   if ! dpkg-deb --build "$deb_root" "${out_dir}/${output_name}"; then

@@ -2,13 +2,10 @@
 # Tests for check_cmake_format, the inline preflight gate over the repo's own CMake files.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-REPO_ROOT="$(cd "${TESTS_DIR}/../../.." && pwd)"
-
-FN_SRC="$(t_fn_src "${REPO_ROOT}/linux/scripts/preflight.sh" check_cmake_format)" || exit 1
-WORK="$(mktemp -d)"
-trap 'rm -rf "${WORK}"' EXIT
-printf '%s\n' "${FN_SRC}" > "${WORK}/guard.sh"
+# shellcheck source=linux/scripts/tests/preflight-gate-fixture.sh
+source "${TESTS_DIR}/preflight-gate-fixture.sh"
+declare WORK
+preflight_gate_fixture_init WORK check_cmake_format || exit 1
 
 # One tree, one venv: the first run provisions cmake-format via uv, later ones reuse it.
 TREE="${WORK}/tree"
@@ -27,12 +24,8 @@ _clean_corpus() {
 _clean_corpus
 
 OUT=""; rc=0
-_guard() {
-  OUT="$(cd "${TREE}" && bash -c 'set -u
-source "$1"
-check_cmake_format' _ "${WORK}/guard.sh" 2>&1)"
-  rc=$?
-}
+_guard() { preflight_gate_fixture_run OUT rc "${TREE}"; }
+
 
 t_case "a well-formatted corpus passes (cmake-format bootstrapped via uv)"
 _guard

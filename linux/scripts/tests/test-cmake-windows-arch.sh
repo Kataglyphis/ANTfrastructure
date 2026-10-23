@@ -2,17 +2,9 @@
 # The hub cmake/ follows a Windows cross build's CMAKE_SYSTEM_PROCESSOR. See docs/windows-cross-builds.md#consumer-cross-lanes-container-ci-windowsyml
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-# Windows form on Git Bash (pwd -W): a native cmake cannot read /c/... from a file.
-HUB_CMAKE="$(cd "${TESTS_DIR}/../../../cmake" && { pwd -W 2>/dev/null || pwd; })"
-
-# _cmake_project <body> -> a fresh compiler-less project plus <body>; the caller removes it.
-_cmake_project() {
-  local dir
-  dir="$(mktemp -d)"
-  printf 'cmake_minimum_required(VERSION 3.20)\nproject(p NONE)\n%s\n' "$1" > "${dir}/CMakeLists.txt"
-  printf '%s' "${dir}"
-}
+# shellcheck source=linux/scripts/tests/cmake-project-fixture.sh
+source "${TESTS_DIR}/cmake-project-fixture.sh"
+HUB_CMAKE="$(cmake_fixture_module_root --native)"
 
 # _hardening_link_options <CMAKE_SYSTEM_PROCESSOR> -> the link options an MSVC target gets
 _hardening_link_options() {

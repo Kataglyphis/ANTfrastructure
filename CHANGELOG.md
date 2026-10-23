@@ -12,6 +12,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux cache, dependency and packaging behavior
+
+- Remove 14 measured duplication exemptions through shared cache probes, staged Python reporting, Debian metadata and test fixtures; keep scanner thresholds and scan scope unchanged.
+- Carry cache utility companions in narrow base-image mounts and preserve caller startup, version, output and failure policies.
+- Preserve exact metadata bytes, fixture status and existing assertions, with mutation proofs for the new shared behavior.
+- Fix reversed-path duplication diagnostics and guard unique self-pair reports without changing enforcement counts.
+
 ## 2026-10-23 — share Windows preparation and environment lifetimes
 
 - Share compiler-rt verification, extraction and library discovery while retaining base-stage warnings and source-build failures.

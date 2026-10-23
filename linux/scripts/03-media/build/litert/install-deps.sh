@@ -14,11 +14,7 @@ target_packages=(
 )
 
 if is_cross; then
-    if command -v cross_target_python_dev_ready >/dev/null 2>&1 && cross_target_python_dev_ready; then
-        echo "[INFO] Using staged target Python headers from $(cross_target_python_include_dir)"
-    else
-        echo "[WARN] Target Python ${PYTHON_MAJOR_MINOR:-$(host_python_major_minor 2>/dev/null || echo unknown)} development files are missing for $(cross_target_triplet 2>/dev/null || echo target); skipping LiteRT Python wheel support for this cross build"
-    fi
+  report_cross_python_development "[INFO] " "[WARN] " "skipping LiteRT Python wheel support"
 fi
 
 install_deps_preamble build-essential cmake git pkg-config curl unzip cpio gfortran ninja-build
