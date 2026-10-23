@@ -644,7 +644,7 @@ main() {
 
     # Clean only committed dirs: the apt cache mounts never reach the layer and siblings reuse them.
     mountpoint -q /var/cache/apt || apt-get clean
-    mountpoint -q /var/lib/apt   || rm -rf /var/lib/apt/lists/*
+    clear_unmounted_apt_lists
 }
 
 main "$@"

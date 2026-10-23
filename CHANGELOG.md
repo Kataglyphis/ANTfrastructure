@@ -43,6 +43,13 @@
 - Resolve CUDA and TensorRT image installer modules through the shared container-image bootstrap, passing the flat BuildKit module root explicitly.
 - Share `SCCACHE_MAX_JOBS` defaulting across host-cache and CMake setup while preserving each caller's activation point and logging.
 
+## 2026-10-23 — close the ordered-worker cancellation race
+
+- Register and gate scheduled work before it can escape cancellation; join only owned supervisors and their suite/watchdog groups.
+- Preserve caller signal policies and ordered reports while recording failed supervision or cleanup as a failed job.
+- Exercise interruption during blocked PGID publication, nested runner cancellation, timeout cleanup and unrelated caller jobs with deterministic fixtures.
+- Share apt-list cleanup between package and Torch setup with the early image companion, and retain exact GenAI exception reporting through one emitted recorder.
+
 ## 2026-10-23 — share fetch and runtime validation lifecycles
 
 - Share missing-checkout clone preparation while preserving exact ORT and GenAI retry, submodule, cwd and Python requirement policies.

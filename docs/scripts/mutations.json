@@ -6994,8 +6994,8 @@
  {
   "id": "ordered-jobs.reap-job-group",
   "target": "linux/scripts/lib-ordered-jobs.sh",
-  "find": "    kill -KILL -- \"-${pid}\" 2>/dev/null || true",
-  "replace": "    :",
+  "find": "  if _oj_stop_owned \"${_OJ_COMMAND_PID:-}\"; then",
+  "replace": "  if true; then",
   "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
   "why": "a child a suite leaves behind outlives the run: a spinning fixture held a core for 2.8 days and 24 headless Chromes 22 GB"
  },
@@ -16694,8 +16694,8 @@
  {
   "id": "ordered-jobs.side-by-side",
   "target": "linux/scripts/lib-ordered-jobs.sh",
-  "find": "    _oj_start \"${i}\" &",
-  "replace": "    _oj_start \"${i}\"",
+  "find": "    _oj_launch \"${i}\"\n    launched=$((launched + 1))",
+  "replace": "    _oj_launch \"${i}\"; _oj_join \"${i}\"\n    launched=$((launched + 1))",
   "test": "bash linux/scripts/tests/test-run-tests.sh",
   "why": "the suites run side by side; one at a time cost 754 s in :latest on 2026-10-21"
  },
@@ -21381,7 +21381,7 @@
  },
  {
   "id": "lib.torch-setup-mounted-lists-preserved",
-  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
   "find": "mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*",
   "replace": "mountpoint -q /var/lib/apt && rm -rf /var/lib/apt/lists/*",
   "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
@@ -21389,7 +21389,7 @@
  },
  {
   "id": "lib.torch-setup-cleanup-status",
-  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "target": "linux/scripts/06-packaging/package-image-wiring.sh",
   "find": "mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*",
   "replace": "mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/* || true",
   "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
@@ -21402,5 +21402,132 @@
   "replace": "printf '%s %s\\n' \"${arch}\" \"${reason}\"",
   "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
   "why": "The shared marker writer retains each caller exact architecture/reason payload and newline."
+ },
+ {
+  "id": "ordered-jobs.returning-signal-policy",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  eval \"${policy}\"",
+  "replace": "  exit \"${pending}\"",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "ordered-jobs.restore-caller-traps",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  if [ -n \"${original}\" ]; then eval \"${original}\"; else trap - \"${signal}\"; fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "ordered-jobs.cleanup-failure-reaches-report",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  if ! _oj_worker_reap; then verdict=1; supervisor_status=1; fi",
+  "replace": "  _oj_worker_reap || true",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "ordered-jobs.missing-completion-fails",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "    _oj_recover_worker \"${index}\" || return 1\n    return 1",
+  "replace": "    return 0",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "ordered-jobs.groupless-timeout-policy",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  if [ \"${OJ_GROUPS}\" -ne 0 ] && [ -n \"${OJ_TIMEOUT:-}\" ]; then _oj_start_watchdog \"${index}\"; fi",
+  "replace": "  if [ -n \"${OJ_TIMEOUT:-}\" ]; then _oj_start_watchdog \"${index}\"; fi",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "ordered-jobs.supervisor-ignores-group-interrupt",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  trap ':' INT QUIT\n  trap '_oj_signal 124' USR1",
+  "replace": "  trap '_oj_signal 130' INT\n  trap '_oj_signal 124' USR1",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "ordered-jobs.publication-barrier-required",
+  "target": "linux/scripts/tests/test-run-tests-reaping.sh",
+  "find": "      builtin printf ready > \"$REAP_FIXTURE_ROOT/publication.ready\"",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
+  "timeout": 90,
+  "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
+ },
+ {
+  "id": "lib.genai-exception-records-failure",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    fails.append(\"%s raised %s: %s\" % (operation, type(exc).__name__, exc))",
+  "replace": "    pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "Every native or generation exception must reach the failing aggregate summary."
+ },
+ {
+  "id": "lib.genai-exception-native-delegates",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "        record_exception(\"og.Tensor round-trip\", exc)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "Tensor execution errors remain fatal and retain their operation-specific diagnostic."
+ },
+ {
+  "id": "lib.genai-exception-generation-delegates",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "        record_exception(\"generate()\", exc)",
+  "replace": "        pass",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "Generation errors remain fatal even when all native binding checks passed."
+ },
+ {
+  "id": "lib.genai-exception-str-format",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    fails.append(\"%s raised %s: %s\" % (operation, type(exc).__name__, exc))",
+  "replace": "    fails.append(f\"{operation} raised {type(exc).__name__}: {exc}\")",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "Exception diagnostics preserve str conversion without invoking custom exception __format__."
+ },
+ {
+  "id": "lib.apt-cleanup-mandatory-companion-import",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "source_required_symbol clear_unmounted_apt_lists 'FATAL: package-image-wiring.sh (clear_unmounted_apt_lists) not found' \\\n  /opt/scripts/packaging/package-image-wiring.sh \"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)/package-image-wiring.sh\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-apt-list-cleanup.sh",
+  "why": "standalone Torch setup copies must import the actual cleanup companion without a private fallback"
+ },
+ {
+  "id": "lib.apt-cleanup-torch-delegation",
+  "target": "linux/scripts/06-packaging/setup-torch-venv.sh",
+  "find": "_torch_clear_unmounted_apt_lists() {\n  clear_unmounted_apt_lists",
+  "replace": "_torch_clear_unmounted_apt_lists() {\n  :",
+  "test": "bash linux/scripts/tests/test-torch-setup-lifecycle.sh",
+  "why": "both Torch apt phases must invoke shared mount-safe cleanup"
+ },
+ {
+  "id": "lib.apt-cleanup-docker-companion-copy",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/06-packaging/package-image-wiring.sh /opt/scripts/packaging/package-image-wiring.sh",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-apt-list-cleanup.sh",
+  "why": "the required helper must be refreshed before the image executes Torch setup"
+ },
+ {
+  "id": "lib.apt-cleanup-package-delegation",
+  "target": "linux/scripts/06-packaging/setup-package-image.sh",
+  "find": "    clear_unmounted_apt_lists",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-apt-list-cleanup.sh",
+  "why": "the package main must retain the shared list cleanup after its separate archive-cache cleanup"
  }
 ]

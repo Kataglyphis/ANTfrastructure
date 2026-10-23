@@ -26,6 +26,7 @@ Two neighbours, so you land on the right page:
 
 **Linux and cross-lane**
 
+- [Interrupted test run leaves a child alive](#interrupted-test-run-leaves-a-child-alive)
 - [`exec format error` on a foreign-arch build](#exec-format-error-on-a-foreign-arch-build)
 - [`no space left on device`](#no-space-left-on-device)
 - [Stale downstream images](#stale-downstream-images)
@@ -186,6 +187,21 @@ the store · Stevedore and the docker service · build content and toolchain.
 ---
 
 ## Linux and cross-lane
+
+### Interrupted test run leaves a child alive
+
+**Symptom.** `an interrupted run left its suite's child running`, or the
+`script-tests.reap-on-interrupt` mutation reports a failing unmutated baseline.
+
+**Cause.** A suite could publish its own child PID before the scheduler recorded
+its process group. An interrupt in that window missed the worker. Competing
+shutdown paths can also interrupt a nested runner's exit cleanup.
+
+**Fix.** Use the scheduler's registered-worker startup gate and owned cleanup
+path. Reproduce with `test-run-tests-reaping.sh`; its publication barrier exposes
+the race without relying on machine load. Keep the child-death assertions and
+verify nested runners as well as the outer job; see
+[parallel gate workers](code-quality-tooling.md#the-gates-run-side-by-side).
 
 ### `exec format error` on a foreign-arch build
 

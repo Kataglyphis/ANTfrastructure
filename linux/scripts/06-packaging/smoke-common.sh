@@ -438,6 +438,10 @@ ELF_MACHINE = {"amd64": (62, "X86-64"), "arm64": (183, "AArch64"),
 proven, unproven, fails = [], [], []
 
 
+def record_exception(operation, exc):
+    fails.append("%s raised %s: %s" % (operation, type(exc).__name__, exc))
+
+
 def genai_dist_version():
     # Any GenAI flavour is the GenAI: an nvidia image ships onnxruntime-genai-cuda / -trt-rtx.
     import importlib.metadata as M
@@ -589,7 +593,7 @@ if np is not None and hasattr(og, "Tensor"):
         else:
             proven.append("og.Tensor round-tripped a float32 buffer through the native library")
     except Exception as exc:
-        fails.append("og.Tensor round-trip raised %s: %s" % (type(exc).__name__, exc))
+        record_exception("og.Tensor round-trip", exc)
 
 # A non-model path must be rejected BY THE LIBRARY: TypeError/AttributeError
 # means the binding refused it (ABI mismatch), anything else means native code.
@@ -638,7 +642,7 @@ else:
             proven.append("generate() produced %d new tokens from %s: %r ... decoded %r"
                           % (len(new), MODEL_DIR, new[:8], tok.decode(new)[:80]))
     except Exception as exc:
-        fails.append("generate() raised %s: %s" % (type(exc).__name__, exc))
+        record_exception("generate()", exc)
 
 GENAI_PY_T4
 }

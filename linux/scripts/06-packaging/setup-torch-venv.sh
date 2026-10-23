@@ -28,6 +28,8 @@ export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
 source /opt/scripts/core/module-bootstrap.sh
 source_required_symbol elf_unresolved_needed 'FATAL: platform.sh (elf_unresolved_needed) not found' \
   /opt/scripts/core/platform.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"
+source_required_symbol clear_unmounted_apt_lists 'FATAL: package-image-wiring.sh (clear_unmounted_apt_lists) not found' \
+  /opt/scripts/packaging/package-image-wiring.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/package-image-wiring.sh"
 
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then
@@ -182,7 +184,7 @@ _assert_ffmpeg_so_closure() {
 }
 
 _torch_clear_unmounted_apt_lists() {
-  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+  clear_unmounted_apt_lists
 }
 
 _torch_write_missing_marker() {
