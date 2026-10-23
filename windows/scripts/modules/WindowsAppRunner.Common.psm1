@@ -7,6 +7,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1')
+
 # Tries the flat build root, bin\ and per-configuration dirs before a recursive search.
 function Resolve-AppExecutablePath {
   param(
@@ -17,31 +19,12 @@ function Resolve-AppExecutablePath {
     [string[]]$Configurations = @('Debug')
   )
 
-  $candidateRelativePaths = @(
-    $ExecutableName,
-    (Join-Path 'bin' $ExecutableName)
-  )
+  $relativeDirs = @('', 'bin')
   foreach ($configuration in $Configurations) {
-    $candidateRelativePaths += @(
-      (Join-Path 'bin' (Join-Path $configuration $ExecutableName)),
-      (Join-Path $configuration $ExecutableName)
-    )
+    $relativeDirs += @((Join-Path 'bin' $configuration), $configuration)
   }
-
-  foreach ($relativePath in $candidateRelativePaths) {
-    $candidate = Join-Path $BuildRoot $relativePath
-    if (Test-Path $candidate) {
-      return (Resolve-Path $candidate).Path
-    }
-  }
-
-  $foundExecutable = Get-ChildItem -Path $BuildRoot -Filter $ExecutableName -File -Recurse -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-  if ($foundExecutable) {
-    return $foundExecutable.FullName
-  }
-
-  return $null
+  return Resolve-BuildExecutable -BuildRoot $BuildRoot -ExecutableName $ExecutableName `
+    -RelativeDirectory $relativeDirs -ResolveCandidatePath
 }
 
 # Throws when no executable is found; otherwise $LASTEXITCODE holds the exit code, 1 if the process never started.

@@ -14,6 +14,22 @@
 
 ## 2026-10-23 — preserve failure paths while reducing quality freezes
 
+- Share shell CLI value parsing across app, CMake and CTest runners; retain argument
+  policies and fail promptly on missing values. Share Windows ORT lock parsing and
+  carry its module into the image. Remove the two resolved duplication exemptions.
+- Require FFmpeg's existing compiler-resolution module and remove its private host
+  resolver/wrapper fallbacks. Preserve isolated PATH, tool prefix and resolver failures.
+- Remove private Windows smoke version/VS helper copies; require the canonical module
+  already shipped in the image and live smoke mount. Test incomplete-closure refusal.
+- Share stubbed-library capture and command logs between Flatpak and ownership tests,
+  retaining their expected results and per-case environment overrides.
+- Share pin-scanner command/default discovery and compiler smoke command cleanup;
+  retain environment AST policies, object ELF checks and failure diagnostics.
+
+- Share Windows app/test executable lookup while preserving caller-specific directory
+  order and path normalization. Remove its duplication exemption; add four fixture cases
+  and verify ordering, normalization and recursive-fallback mutations fail.
+
 - Share Vulkan header/loader SDK search order, including paths with spaces.
 - Share FFmpeg compile/link probe setup and cleanup; retain compile-only, debug and cross flags.
 - Remove runtime path-helper copies, share Android SDK retries, lint release bootstrap

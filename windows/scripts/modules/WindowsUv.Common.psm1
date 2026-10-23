@@ -5,6 +5,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsUvLock.Common.psm1')
+
 $sharedPath = Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1'
 # No -Force: see docs/windows-build-invariants.md § Import-Module -Force only at entry-script top level.
 if (-not (Get-Module -Name 'WindowsScripts.Shared')) { Import-Module $sharedPath }
@@ -321,14 +323,7 @@ function Get-UvLockOrtName {
     [OutputType([string[]])]
     param([Parameter(Mandatory)][string]$LockPath)
     if (-not (Test-Path -LiteralPath $LockPath -PathType Leaf)) { return @() }
-    $text = [System.IO.File]::ReadAllText($LockPath)
-    $tables = [regex]::Matches($text, '(?m)^\[\[package\]\]\r?$').Count
-    $names = @([regex]::Matches($text, '(?m)^name = "([^"\r\n]*)"\r?$') | ForEach-Object { ($_.Groups[1].Value -replace '[-_.]+', '-').ToLowerInvariant() })
-    if (-not $tables -or $names.Count -ne $tables) { throw "chain ORT: cannot read the packages of ${LockPath}: $($names.Count) name(s) for $tables [[package]] table(s)" }
-    $ort = @($names | Where-Object { $_ -cmatch '^onnxruntime(-|$)' } | Sort-Object -Unique)
-    $bad = @($ort | Where-Object { $_ -cnotmatch '^[a-z0-9]+(-[a-z0-9]+)*$' })
-    if ($bad.Count) { throw "chain ORT: ${LockPath} pins an ORT name uv sync cannot be handed: $($bad -join ', ')" }
-    return $ort
+    return Get-OrtLockPackageName -LockPath $LockPath -DiagnosticPrefix 'chain ORT: '
 }
 
 function Sync-UvProjectDependencies {

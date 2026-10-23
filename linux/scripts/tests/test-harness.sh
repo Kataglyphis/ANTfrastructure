@@ -147,6 +147,24 @@ t_stubbed_script() {
   printf 'set -uo pipefail\nsource %q\n%s\n' "${_lib}" "${_args}"
 }
 
+# t_capture_stubbed <out-var> <rc-var> <log-var> <log-dir> <library> <env...> -- <fn...>.
+t_capture_stubbed() {
+  local -n _tcs_output="$1" _tcs_status="$2" _tcs_log="$3"
+  local _tcs_directory="$4" _tcs_library="$5"
+  shift 5
+  local -a _tcs_environment=()
+  while [ "$#" -gt 0 ] && [ "$1" != -- ]; do
+    _tcs_environment+=("$1")
+    shift
+  done
+  [ "$#" -gt 0 ] || { printf 't_capture_stubbed: missing -- delimiter\n' >&2; return 1; }
+  shift
+  _tcs_log="$(mktemp "${_tcs_directory}/log.XXXXXX")" || return 1
+  _tcs_status=0
+  _tcs_output="$(STUB_LOG="${_tcs_log}" env "${_tcs_environment[@]}" \
+    bash -c "$(t_stubbed_script "${_tcs_library}" "$@")" 2>&1)" || _tcs_status=$?
+}
+
 # t_rt_sandbox: a dir holding the runtime smoke minus its main() call (rt.sh), beside every sibling it sources.
 t_rt_sandbox() {
   local _d; _d="$(mktemp -d)"

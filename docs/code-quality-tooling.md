@@ -666,7 +666,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2168 entries** over **207 distinct test commands**; both digits are
+manifest holds **2175 entries** over **209 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1922,7 +1922,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 748 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 750 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1933,7 +1933,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **284** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **286** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -3199,3 +3199,16 @@ optionally captures a separate debug invocation; the link probe retains library
 ordering and its lld switch. `test-ffmpeg-probes.sh` checks these contracts with a
 stub compiler and tiny native C programs. The same assertions pass against the
 previous implementation. This does not establish cross-toolchain or codec support.
+
+Windows app and test executable resolution share `Resolve-BuildExecutable` in
+`WindowsScripts.Shared`; their search orders and return-path forms stay distinct.
+The fixture suite and its runtime boundary are described in
+[Shared executable lookup](windows-builds.md#shared-executable-lookup).
+
+Shell app, CMake and CTest value parsing shares a cursor loop in
+`cli-value-options.sh`; [the library contract](shared-script-libraries.md#shared-cli-value-parsing)
+keeps caller policies explicit. Windows image assembly and consumer sync share
+ORT lock parsing in `WindowsUvLock.Common`. The pin-parity suite shares command
+and default discovery while retaining its different rules for environment arrays
+and direct environment literals. Compiler smoke execution shares setup and cleanup;
+its [stubbed coverage](cross-build-verification.md) preserves compile/link boundaries.

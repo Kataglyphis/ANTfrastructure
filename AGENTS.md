@@ -79,7 +79,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    entries are debt; remove them when the underlying finding is fixed. The function-size, complexity, comment-size
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
-   Copied runtime environment scripts carry their shared core modules; do not restore private fallbacks.
+   Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
 
 ## Container Architecture
 

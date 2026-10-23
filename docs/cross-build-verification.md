@@ -63,6 +63,11 @@ claiming a real compiler or ELF test.
   checks refuse an unset `LLVM_RELEASE` (`${LLVM_RELEASE:?…}`); the
   `${GCC_VERSION:-16.2.0}` fallback literals in `validate-compilers.sh` are dead in
   the build path. Extend here for the compile smoke test.
+  The compile-to-object and link probes share command execution and temporary-tree
+  cleanup. Compile mode retains `-c` and the object ELF check; link mode retains its
+  startup-file diagnostic. Both modes keep advisory error accounting and mandatory
+  failure exits. `test-compiler-smoke-command.sh` checks those paths with a stub
+  compiler; it does not prove a target compiler or linker works.
 - **Smoke framework:** `06-packaging/smoke-common.sh` (`pass`/`fail`/`FAILURES`);
   smoke tests are `06-packaging/smoke-<thing>.sh` and `source smoke-common.sh`.
 - **Static host verifiers wired into `linux/host-config/git-hooks/pre-commit`:** the hook
@@ -1954,3 +1959,9 @@ checks: active SDK, x86_64, aarch64, then riscv64. The two checks retain their o
 file predicates and failure messages. `test-vulkan-sdk-smoke-paths.sh` checks each
 fallback and missing payloads, including paths containing spaces. It does not
 load Vulkan or exercise a GPU.
+
+FFmpeg requires `compiler-resolution.sh` after the media bootstrap. Host C selection
+and wrapper generation use that module rather than private fallback copies. The
+existing core mount contains its closure. Probe fixtures retain the resolver status,
+unique wrapper directories, `/usr/bin:/bin` PATH and `-B/usr/bin/` argument; they do
+not establish foreign-toolchain behavior.

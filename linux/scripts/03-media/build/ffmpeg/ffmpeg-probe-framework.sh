@@ -67,55 +67,14 @@ ffmpeg_append_cross_search_flags() {
 }
 
 resolve_ffmpeg_host_compiler() {
-    if command -v resolve_host_compiler_for_lang >/dev/null 2>&1; then
-        resolve_host_compiler_for_lang c
-        return $?
-    fi
-
-    local triplet=""
-    local candidate
-    local resolved=""
-
-    if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-        resolved="$(resolve_build_gcc_tool gcc 2>/dev/null || true)"
-        [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool cc 2>/dev/null || true)"
-        [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
-    fi
-
-    if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
-        triplet="$(build_deb_multiarch_triplet)"
-    fi
-
-    for candidate in \
-        "/usr/bin/${triplet}-gcc" \
-        /usr/bin/gcc \
-        /usr/bin/cc; do
-        [ -x "${candidate}" ] && { printf '%s' "${candidate}"; return 0; }
-    done
-
-    command -v gcc 2>/dev/null || command -v cc 2>/dev/null || true
+    resolve_host_compiler_for_lang c
 }
 
 prepare_ffmpeg_host_compiler_wrapper() {
-    local compiler="$1"
     local wrapper_dir
     : "${FFMPEG_HOST_TOOLCHAIN_DIR:=/tmp/ffmpeg-host-toolchain}"
-    wrapper_dir="$(mktemp -d "${FFMPEG_HOST_TOOLCHAIN_DIR}.XXXXXX")"
-    local wrapper_path="${wrapper_dir}/host-gcc"
-
-    if command -v make_named_host_compiler_wrapper >/dev/null 2>&1; then
-        make_named_host_compiler_wrapper "${wrapper_dir}" host-gcc "${compiler}" >/dev/null
-        printf '%s' "${wrapper_path}"
-        return 0
-    fi
-
-    mkdir -p "${wrapper_dir}"
-    cat > "${wrapper_path}" <<EOF
-#!/usr/bin/env bash
-exec env PATH="/usr/bin:/bin" "${compiler}" "\$@"
-EOF
-    chmod +x "${wrapper_path}"
-    printf '%s' "${wrapper_path}"
+    wrapper_dir="$(mktemp -d "${FFMPEG_HOST_TOOLCHAIN_DIR}.XXXXXX")" || return 1
+    prepare_host_compiler_wrapper "$1" host-gcc "${wrapper_dir}"
 }
 
 _ffmpeg_condition_source() {

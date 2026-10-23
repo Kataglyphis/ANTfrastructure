@@ -168,24 +168,7 @@ function Resolve-TestExecutable {
 
   $relativeDirs = @('', 'Debug', 'Release', 'RelWithDebInfo') + $AdditionalRelativeDirectory
 
-  foreach ($relative in $relativeDirs) {
-    $candidate = if ([string]::IsNullOrEmpty($relative)) {
-      Join-Path $BuildRoot $ExecutableName
-    } else {
-      Join-Path $BuildRoot (Join-Path $relative $ExecutableName)
-    }
-    if (Test-Path $candidate) {
-      return $candidate
-    }
-  }
-
-  $found = Get-ChildItem -Path $BuildRoot -Filter $ExecutableName -File -Recurse -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-  if ($found) {
-    return $found.FullName
-  }
-
-  return $null
+  return Resolve-BuildExecutable -BuildRoot $BuildRoot -ExecutableName $ExecutableName -RelativeDirectory $relativeDirs
 }
 
 function Invoke-WithAsanOptions {

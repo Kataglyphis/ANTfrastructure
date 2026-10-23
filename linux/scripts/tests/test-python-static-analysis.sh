@@ -45,11 +45,7 @@ OUT=""; rc=0
 LOG=""
 # _run [failing-invocation-substring]
 _run() {
-  LOG="$(mktemp "${_work}/log.XXXXXX")"
-  OUT="$(cd "${_work}" && STUB_LOG="${LOG}" STUB_WORKSPACE="${_work}" \
-    STUB_FAIL="${1:-__nothing_fails__}" \
-    bash "${TREE}/02-toolchain/python/ci_static_analysis.sh" 2>&1)"
-  rc=$?
+  _run_env STUB_FAIL="${1:-__nothing_fails__}"
 }
 
 # _run_env VAR=VAL...: the same run with operator knobs such as STATIC_ANALYSIS_EXTRA_PATHS set.

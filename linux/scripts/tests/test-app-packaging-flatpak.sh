@@ -94,22 +94,16 @@ PROJECT="KataglyphisCppProject"
 OUT=""; rc=0; LOG=""; FLATPAK_WORK=""
 # _call <env-assignments...> -- <function> <args...>: one library function in its own shell, stubs first on PATH.
 _call() {
-  local -a env_pairs=()
-  while [ $# -gt 0 ] && [ "$1" != "--" ]; do env_pairs+=("$1"); shift; done
-  shift
-  LOG="$(mktemp "${_work}/log.XXXXXX")"
   FLATPAK_WORK="$(mktemp -d "${_work}/fpwork.XXXXXX")"
   # Every switch has its default here, so none is owned only by a stub or parked in lint-env-knobs.allow.
-  OUT="$(PATH="${BIN}:${PATH}" STUB_LOG="${LOG}" STUB_APP_ID="${APP_ID}" \
+  PATH="${BIN}:${PATH}" STUB_APP_ID="${APP_ID}" \
     STUB_PROJECT="${PROJECT}" KATAGLYPHIS_FLATPAK_WORKDIR="${FLATPAK_WORK}" \
     STUB_DEFAULT_ARCH=x86_64 STUB_USER_REMOTE=1 STUB_SYSTEM_REMOTE=1 \
     STUB_USER_REMOTE_ADD_RC=0 STUB_USER_HAS_REF=1 STUB_SYSTEM_HAS_REF=1 \
     STUB_USER_INSTALL_RC=0 STUB_SYSTEM_INSTALL_RC=0 \
     STUB_FB_RC=0 STUB_OSTREE_EMPTY=0 STUB_BUNDLE_RC=0 STUB_EMPTY_BUNDLE=0 \
     STUB_CMAKE_RC=0 STUB_CMAKE_NO_BIN=0 \
-    env "${env_pairs[@]+"${env_pairs[@]}"}" \
-    bash -c "$(t_stubbed_script "${LIB}" "$@")" 2>&1)"
-  rc=$?
+    t_capture_stubbed OUT rc LOG "${_work}" "${LIB}" "$@"
 }
 
 # ── app_packaging_require_flatpak_tools ──────────────────────────────────────

@@ -99,6 +99,7 @@ Describe 'Build-TorchApp.ps1: the census runner' {
 }
 
 Describe 'Build-TorchApp.ps1: uv sync leaves the lock''s ORT to the chain wheels' {
+    Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsUvLock.Common.psm1')
     . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchAppPath -FunctionName 'Get-TorchAppLockOrtName', 'Get-TorchAppOrtFamily', 'Get-TorchAppOrtSyncArg')
     # A uv.lock of one [[package]] table per name; the indented references must never count as packages.
     $newLock = { param([string]$Dir, [string[]]$Name)
