@@ -82,6 +82,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
+   Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.

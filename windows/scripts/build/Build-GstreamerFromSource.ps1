@@ -234,6 +234,27 @@ function Format-MesonExeList {
     return (@($words) | ForEach-Object { "'" + ($_ -replace '\\', '/') + "'" }) -join ', '
 }
 
+function ConvertTo-GstOpenCv5Text {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    $includeMap = @(
+        @{ Pattern = 'CascadeClassifier|CASCADE_DO_CANNY_PRUNING|CASCADE_SCALE_IMAGE'; Add = @('opencv2/xobjdetect.hpp') },
+        @{ Pattern = 'contourArea|approxPolyDP|convexHull';                            Add = @('opencv2/geometry.hpp') },
+        @{ Pattern = 'findChessboardCorners|findCirclesGrid|CALIB_CB_';                Add = @('opencv2/calib.hpp', 'opencv2/objdetect.hpp') }
+    )
+    foreach ($map in $includeMap) {
+        if ($Text -match $map.Pattern) {
+            foreach ($hdr in $map.Add) {
+                if ($Text -notmatch [regex]::Escape($hdr)) {
+                    # Instance Replace accepts a match count; the static fourth argument is regex options.
+                    $include = [regex]::new('(#include <opencv2/[^>]+>\r?\n)', [Text.RegularExpressions.RegexOptions]::IgnoreCase)
+                    $Text = $include.Replace($Text, "`${1}#include <$hdr>`n", 1)
+                }
+            }
+        }
+    }
+    $Text -replace '\bftello\b', '_ftelli64' -replace '\bfseeko\b', '_fseeki64'
+}
+
 function Get-GstRocmMissingArtifact {
     param([Parameter(Mandatory)][string]$InstallDir)
     $plugins = foreach ($p in 'gsthip', 'gstamfcodec', 'gstd3d11', 'gstd3d12') { "lib\gstreamer-1.0\$p.dll" }
@@ -614,9 +635,7 @@ int _isatty(int);
     # c++11 pins become c++17: VS 18's MSVC STL uses C++14 constructs that clang-cl rejects in C++11 mode.
     $cppStdPatched = 0
     Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        $content = [System.IO.File]::ReadAllText($_.FullName)
-        if ($content -match 'cpp_std=c\+\+11') {
-            [System.IO.File]::WriteAllText($_.FullName, ($content -replace 'cpp_std=c\+\+11', 'cpp_std=c++17'))
+        if (Invoke-InlineRegexPatch -Path $_.FullName -Pattern 'cpp_std=c\+\+11' -Replacement 'cpp_std=c++17' -Require -Quiet) {
             $cppStdPatched++
         }
     }
@@ -627,36 +646,21 @@ int _isatty(int);
 
     # The opencv plugin targets OpenCV 4; OpenCV 5 moved the same APIs to new headers, so add those.
     $ocvExtDir = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\opencv'
-    $ocv5IncludeMap = @(
-        @{ Pattern = 'CascadeClassifier|CASCADE_DO_CANNY_PRUNING|CASCADE_SCALE_IMAGE'; Add = @('opencv2/xobjdetect.hpp') },
-        @{ Pattern = 'contourArea|approxPolyDP|convexHull';                            Add = @('opencv2/geometry.hpp') },
-        @{ Pattern = 'findChessboardCorners|findCirclesGrid|CALIB_CB_';                Add = @('opencv2/calib.hpp', 'opencv2/objdetect.hpp') }
-    )
     $ocvPortPatched = 0
     Get-ChildItem -Path $ocvExtDir -Include '*.cpp', '*.h', '*.hpp' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-        $c = [System.IO.File]::ReadAllText($_.FullName)
-        $orig = $c
-        foreach ($map in $ocv5IncludeMap) {
-            if ($c -match $map.Pattern) {
-                foreach ($hdr in $map.Add) {
-                    if ($c -notmatch [regex]::Escape($hdr)) {
-                        # Insert after the FIRST #include <opencv2/...> line in the file.
-                        $c = [regex]::Replace($c, "(#include <opencv2/[^>]+>\r?\n)", "`${1}#include <$hdr>`n", 1)
-                    }
-                }
-            }
+        if (Edit-SourceFile -Path $_.FullName -Transform ${function:ConvertTo-GstOpenCv5Text} -Require -Quiet) {
+            $ocvPortPatched++
+            log "OpenCV5 port -> $($_.Name)"
         }
-        # The Windows CRT has no POSIX ftello/fseeko.
-        $c = $c -replace '\bftello\b', '_ftelli64' -replace '\bfseeko\b', '_fseeki64'
-        if ($c -ne $orig) { [System.IO.File]::WriteAllText($_.FullName, $c); $ocvPortPatched++; log "OpenCV5 port -> $($_.Name)" }
     }
     log "OpenCV 5 header port applied to $ocvPortPatched gst ext/opencv file(s)"
     # gst hardcodes Linux's unversioned -lopencv_tracking; opencv4.pc already brings the versioned Windows lib.
     $ocvMeson = Join-Path $ocvExtDir 'meson.build'
-    if (Test-Path $ocvMeson) {
-        $mc = [System.IO.File]::ReadAllText($ocvMeson)
-        $mc2 = $mc -replace "\s*,\s*'-lopencv_tracking'", '' -replace "'-lopencv_tracking'\s*,\s*", '' -replace "'-lopencv_tracking'", ''
-        if ($mc2 -ne $mc) { [System.IO.File]::WriteAllText($ocvMeson, $mc2); log 'Removed hardcoded -lopencv_tracking from ext/opencv/meson.build (opencv4.pc provides the versioned lib)' }
+    if (Edit-SourceFile -Path $ocvMeson -Quiet -Transform {
+            param($text)
+            $text -replace "\s*,\s*'-lopencv_tracking'", '' -replace "'-lopencv_tracking'\s*,\s*", '' -replace "'-lopencv_tracking'", ''
+        }) {
+        log 'Removed hardcoded -lopencv_tracking from ext/opencv/meson.build (opencv4.pc provides the versioned lib)'
     }
 
     # Mandatory plugin pre-flight; .pc files authored here spare the costly OpenCV/ORT layers. See docs/windows-builds.md § Mandatory GStreamer plugins (the contract)
@@ -1121,11 +1125,11 @@ cpp_link_args = [$buildLinkArgs]
             '\.m128_f32\[', '\.m128d_f64\[', '\.m128i_(?:i|u)(?:8|16|32|64)\['
         )
         Get-ChildItem -Path $wrtcDir.FullName -Recurse -Include '*.cc', '*.h' | ForEach-Object {
-            $content = [System.IO.File]::ReadAllText($_.FullName)
-            $patched = $content
-            foreach ($p in $simdMemberPatterns) { $patched = $patched -replace $p, '[' }
-            if ($patched -ne $content) {
-                [System.IO.File]::WriteAllText($_.FullName, $patched)
+            if (Edit-SourceFile -Path $_.FullName -Require -Quiet -Transform {
+                    param($text)
+                    foreach ($pattern in $simdMemberPatterns) { $text = $text -replace $pattern, '[' }
+                    $text
+                }) {
                 log "Patched MSVC SIMD member access for clang-cl: $($_.Name)"
             }
         }

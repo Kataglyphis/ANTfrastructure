@@ -422,10 +422,10 @@ $engineCmake = Join-Path $SourceDir 'runtime\engine\CMakeLists.txt'
         "`$1`n  cpu_affinity_utils.cc  # [LiteRTLM-winfix cpu_affinity] compiled by Bazel but omitted from the CMake target`n  ../conversation/channel_util.cc  # [LiteRTLM-winfix orphans]`n  ../components/preprocessor/image_preprocessor_utils.cc`n  ../conversation/model_data_processor/fastvlm_data_processor.cc`n  ../conversation/model_data_processor/gemma4_data_processor.cc`n  ../util/litert_util.cc`n  ../components/constrained_decoding/llg_tool_call_utils.cc`n  ../components/model_resources_streaming.cc`n  ../core/session_advanced.cc`n  ../executor/litert/kv_cache.cc`n  ../executor/llm_litert_npu_compiled_model_executor_utils.cc`n  ../framework/execution_queue.cc`n  ../framework/resource_management/context_handler/context_handler.cc`n  ../framework/resource_management/resource_manager.cc`n  ../framework/resource_management/serial_execution_manager.cc`n  ../framework/resource_management/threaded_execution_manager.cc`n  ../framework/resource_management/utils/resource_manager_utils.cc`n  ../util/data_stream.cc`n  ../util/file_data_stream.cc`n  ../util/litert_lm_streaming_loader.cc`n  ../util/log_tensor_buffer.cc")
 })
 # v0.14 orphans/subsystems/deps live in the export bridge; the caller owns the write cycle.
-$engineTxt = [System.IO.File]::ReadAllText($engineCmake)
-$engineBridged = Add-LiteRtLmV014OrphanSources -EngineCmakeText $engineTxt -SourceDir $SourceDir
-if ($engineBridged -ne $engineTxt) {
-    [System.IO.File]::WriteAllText($engineCmake, $engineBridged)
+if (Edit-SourceFile -Path $engineCmake -Require -Quiet -Transform {
+        param($text)
+        Add-LiteRtLmV014OrphanSources -EngineCmakeText $text -SourceDir $SourceDir
+    }) {
     Write-Host '[LiteRTLM-winfix orphans] engine lib source list updated'
 }
 
@@ -599,12 +599,12 @@ $protoCmake = Join-Path $SourceDir 'cmake\packages\protobuf\protobuf.cmake'
 
 # An INTERFACE runtime_util_logging never compiles logging.cc's SetMinLogSeverity; STATIC with PUBLIC requirements does.
 $utilCmake = Join-Path $SourceDir 'runtime\util\CMakeLists.txt'
-if ((Test-Path $utilCmake) -and ((Get-Content -Raw $utilCmake) -match 'add_litertlm_library\(runtime_util_logging INTERFACE\)')) {
-    $uc = [System.IO.File]::ReadAllText($utilCmake)
-    $uc = [regex]::Replace($uc, 'add_litertlm_library\(runtime_util_logging INTERFACE\)', "add_litertlm_library(runtime_util_logging STATIC`n  logging.cc`n)")
-    $uc = [regex]::Replace($uc, '(target_include_directories\(runtime_util_logging\s+)INTERFACE', '${1}PUBLIC')
-    $uc = [regex]::Replace($uc, '(target_link_libraries\(runtime_util_logging\s+)INTERFACE', '${1}PUBLIC')
-    [System.IO.File]::WriteAllText($utilCmake, $uc)
+if (Edit-SourceFile -Path $utilCmake -Quiet -Guard 'add_litertlm_library\(runtime_util_logging INTERFACE\)' -Transform {
+        param($text)
+        $text = [regex]::Replace($text, 'add_litertlm_library\(runtime_util_logging INTERFACE\)', "add_litertlm_library(runtime_util_logging STATIC`n  logging.cc`n)")
+        $text = [regex]::Replace($text, '(target_include_directories\(runtime_util_logging\s+)INTERFACE', '${1}PUBLIC')
+        [regex]::Replace($text, '(target_link_libraries\(runtime_util_logging\s+)INTERFACE', '${1}PUBLIC')
+    }) {
     Write-Host 'Patched runtime/util/CMakeLists.txt: runtime_util_logging INTERFACE -> STATIC (compile logging.cc for SetMinLogSeverity)'
 }
 

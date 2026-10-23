@@ -2251,3 +2251,18 @@ yet in a VC Tools release the image ships.
 **Fix.** `find_if` with a predicate, which is a plain loop; or a hand-written `operator==`,
 which is not trivially comparable. Drop the workaround once the image's VC Tools carry the
 fix.
+
+### A regex patch inserts the same header after every include
+
+**Symptom.** GStreamer's OpenCV 5 port adds repeated `geometry.hpp` or other
+required headers when an upstream file already has several OpenCV includes.
+
+**Cause.** The fourth argument of static `[regex]::Replace(text, pattern,
+replacement, 1)` is regex options, not a replacement count. The value `1` enables
+case-insensitive matching and replaces every match.
+
+**Fix.** `ConvertTo-GstOpenCv5Text` constructs a case-insensitive regex instance
+and calls its count-limited `Replace` overload. It inserts each required header
+once after the first OpenCV include, retains existing headers and remains
+idempotent. `SourceBuild.PatchQuiet.Tests.ps1` covers multi-include input and a
+replace-all mutant; it does not compile GStreamer or OpenCV.

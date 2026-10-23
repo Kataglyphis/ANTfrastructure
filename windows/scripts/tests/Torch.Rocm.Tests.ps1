@@ -78,17 +78,18 @@ function Get-TorchDockerfileStage {
     $stages = [System.Collections.Generic.List[object]]::new()
     $global = [System.Collections.Generic.List[string]]::new()
     $current = $null
+    $byName = @{}
     foreach ($line in $lines) {
         if ($line -match '^FROM\s+(?<from>\S+)(\s+AS\s+(?<name>\S+))?') {
             $current = [pscustomobject]@{ From = $Matches.from; Name = "$($Matches['name'])"; Lines = [System.Collections.Generic.List[string]]::new() }
             $stages.Add($current)
+            if ($current.Name) { $byName[$current.Name] = $current }
         } elseif ($null -eq $current) {
             $global.Add($line.Trim())
         } else {
             $current.Lines.Add($line.Trim())
         }
     }
-    $byName = @{}; foreach ($s in $stages) { if ($s.Name) { $byName[$s.Name] = $s } }
     return [pscustomobject]@{ Global = @($global); Stages = @($stages); ByName = $byName }
 }
 
@@ -896,5 +897,40 @@ Describe 'Driver contract: TORCH_ROCM reaches Dockerfile.torch on the rocm lane 
         foreach ($lane in '', 'nvidia') { $sent[$lane] = Get-BkRocmStageArg -Variant $lane -Stage 'torch' -VersionTable $pins }
         Assert-Equal '' (@($new | Where-Object { $sent.rocm[$_] -cne $pins[$_] }) -join ',') 'rocm must forward these with their versions.env values'
         Assert-Equal '0,0' (('', 'nvidia' | ForEach-Object { $sent[$_].Count }) -join ',') 'cpu, nvidia: no torch build-arg even with the full pin table'
+    }
+}
+
+Describe 'Torch Dockerfile stage indexing' {
+    It 'indexes stages as they are parsed while retaining global and unnamed instructions' {
+        $parsed = Get-TorchDockerfileStage -Text @'
+# fixture
+ARG GLOBAL=1
+FROM base AS compile
+RUN compile `
+  source
+FROM compile
+RUN unnamed
+FROM compile AS final
+RUN first
+RUN second
+'@
+        Assert-Equal 'ARG GLOBAL=1' ($parsed.Global -join ',')
+        Assert-Equal 3 $parsed.Stages.Count
+        Assert-Equal 2 $parsed.ByName.Count
+        Assert-Equal 'RUN compile source' ($parsed.ByName.compile.Lines -join ',')
+        Assert-Equal 'RUN unnamed' ($parsed.Stages[1].Lines -join ',')
+        Assert-Equal 'RUN first,RUN second' ($parsed.ByName.final.Lines -join ',')
+        Assert-True ([object]::ReferenceEquals($parsed.Stages[2], $parsed.ByName.final))
+    }
+}
+
+Describe 'Torch stage index mutation proof' {
+    It 'detects a parser that no longer indexes its parsed stage objects' {
+        $source = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/tests/Torch.Rocm.Tests.ps1'))
+        Invoke-WithFunctionModule -Text $source -FunctionName Get-TorchDockerfileStage `
+            -Find 'if ($current.Name) { $byName[$current.Name] = $current }' -Replace 'if ($false) { $byName[$current.Name] = $current }' -Body {
+            $parsed = Get-MutTorchDockerfileStage -Text "FROM base AS final`nRUN fixture"
+            Assert-Throws { Assert-Equal 1 $parsed.ByName.Count } -MessagePattern 'Assert-Equal'
+        }
     }
 }

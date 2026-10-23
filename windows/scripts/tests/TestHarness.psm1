@@ -290,10 +290,10 @@ function Get-TestScriptCommands {
 }
 
 function Get-TestCommandArguments {
-    param([System.Management.Automation.Language.CommandAst]$Command)
+    param([System.Management.Automation.Language.CommandAst]$Command, [switch]$AsAst)
     $bound = [System.Management.Automation.Language.StaticParameterBinder]::BindCommand($Command, $false).BoundParameters
     $arguments = @{}
-    foreach ($name in $bound.Keys) { $arguments[$name] = $bound[$name].Value.Extent.Text }
+    foreach ($name in $bound.Keys) { $arguments[$name] = if ($AsAst) { $bound[$name].Value } else { $bound[$name].Value.Extent.Text } }
     return $arguments
 }
 
@@ -388,3 +388,30 @@ function Start-LoopbackListener {
 Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, Get-TestScriptAst, ConvertTo-TestScriptAst, Get-TestAstCommands, Get-TestCommandArguments, Get-TestScriptCommands, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim
+
+function Invoke-SourceFileDiagnosticCase {
+    param([string]$InitialText, [scriptblock]$Transform, [string]$ExpectedText, [bool]$Changed)
+    Invoke-InTestDir { param($dir)
+        $path = Join-Path $dir 'source.txt'
+        foreach ($quiet in $false, $true) {
+            [IO.File]::WriteAllText($path, $InitialText)
+            [IO.File]::SetLastWriteTimeUtc($path, [datetime]'2001-01-01Z')
+            $stamp = [IO.File]::GetLastWriteTimeUtc($path)
+            $records = @(& { Edit-SourceFile -Path $path -Transform $Transform -WarnMessage 'anchor not found' -Quiet:$quiet } *>&1)
+            Assert-Equal $(if ($quiet) { 1 } else { 2 }) $records.Count
+            Assert-True ($records[-1] -is [bool])
+            Assert-Equal $Changed $records[-1]
+            if (-not $quiet) {
+                $type = if ($Changed) { [Management.Automation.InformationRecord] } else { [Management.Automation.WarningRecord] }
+                Assert-True ($records[0] -is $type)
+            }
+            Assert-Equal $ExpectedText ([IO.File]::ReadAllText($path))
+            if (-not $Changed) { Assert-Equal $stamp ([IO.File]::GetLastWriteTimeUtc($path)) }
+            Assert-Throws { Edit-SourceFile -Path $path -Transform { throw 'fixture callback failed' } -Quiet:$quiet } -MessagePattern 'fixture callback failed'
+            Assert-Equal $ExpectedText ([IO.File]::ReadAllText($path))
+        }
+    }
+}
+
+
+Export-ModuleMember -Function Invoke-SourceFileDiagnosticCase

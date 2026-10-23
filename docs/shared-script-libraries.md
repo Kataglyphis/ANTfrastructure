@@ -1243,3 +1243,24 @@ installation left executable tools behind. The Canadian link-probe skip remains
 opt-in and happens before the builder. Local fake tools exercise argument order,
 environment, job counts and fatal/skip paths; they do not compile GCC or inspect
 real compiler ELF files.
+
+## Shared Windows source edit cycles
+
+`WindowsSourceBuild.Patches` owns optional/must-exist file loading, callback marker
+skips and write/no-change verdicts. Regex and callback transformations keep their
+own semantics. Their optional `-Quiet` mode leaves logging and aggregate change
+counts with the caller while preserving missing-input errors, transform failures
+and regex postconditions. Existing calls keep their default warning behavior.
+
+GStreamer, IREE, LiteRT-LM, C++ keyword conversion and Ninja cleanup use this common cycle.
+The GStreamer OpenCV 5 transformation is a pure text function so fixtures can check
+header insertion and Windows CRT substitutions without running a source build.
+`Get-TestCommandArguments -AsAst` exposes typed argument nodes so fixtures can
+exercise the actual caller callbacks without executing the build entry scripts.
+The test harness's `Invoke-SourceFileDiagnosticCase` exercises changed/unchanged
+transforms in normal and quiet modes, including output types, file bytes, failure
+propagation and no-op timestamps.
+
+Torch's Dockerfile test parser indexes stage objects as it reads them, retaining
+global instructions, unnamed stages and references to the final instruction lists.
+Its fixture and mutation proof cover indexing without invoking a container build.

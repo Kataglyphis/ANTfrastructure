@@ -79,13 +79,9 @@ function Get-IreeCompilerRtCmakeArgs {
 function Edit-IreeCleanEggInfo {
     param([Parameter(Mandatory)][string]$BuildDir)
     foreach ($setupPy in @((Join-Path $BuildDir 'compiler\setup.py'), (Join-Path $BuildDir 'runtime\setup.py'))) {
-        if (Test-Path $setupPy) {
-            $content = [System.IO.File]::ReadAllText($setupPy)
-            $patched = $content -replace 'shutil\.rmtree\(d, ignore_errors=True\)', 'print(f"kataglyphis: keeping fresh egg-info {d}")'
-            if ($patched -ne $content) {
-                [System.IO.File]::WriteAllText($setupPy, $patched)
-                Write-Host "Neutralized CleanEggInfo rmtree in $setupPy"
-            }
+        if (Invoke-InlineRegexPatch -Path $setupPy -Pattern 'shutil\.rmtree\(d, ignore_errors=True\)' `
+                -Replacement 'print(f"kataglyphis: keeping fresh egg-info {d}")' -Quiet) {
+            Write-Host "Neutralized CleanEggInfo rmtree in $setupPy"
         }
     }
 }

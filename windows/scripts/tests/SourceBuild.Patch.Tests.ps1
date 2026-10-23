@@ -113,13 +113,8 @@ Describe 'Add-FileBlockOnce' {
 Describe 'Edit-SourceFile' {
 
     It 'runs the transform, writes the file, and returns $true' {
-        Invoke-InTestDir { param($dir)
-            $f = Join-Path $dir 'a.txt'
-            Set-Content -Path $f -Value 'hello world' -NoNewline
-            $r = Edit-SourceFile -Path $f -Transform { param($c) $c.Replace('world', 'there') }
-            Assert-True $r 'should report a modification'
-            Assert-Equal 'hello there' (Get-Content $f -Raw)
-        }
+        Invoke-SourceFileDiagnosticCase -InitialText 'hello world' -ExpectedText 'hello there' -Changed $true `
+            -Transform { param($text) $text.Replace('world', 'there') }
     }
 
     It 'preserves a literal $-bearing injection verbatim (the reason this exists, not Invoke-InlineRegexPatch)' {
@@ -128,7 +123,8 @@ Describe 'Edit-SourceFile' {
             $f = Join-Path $dir 'b.cmake'
             Set-Content -Path $f -Value 'set(X ANCHOR)' -NoNewline
             $inject = 'set(FLATC "${FLATBUFFERS_INSTALL_PREFIX}/bin/flatc.exe")'
-            [void](Edit-SourceFile -Path $f -Transform { param($c) $c.Replace('ANCHOR', ($inject + 'ANCHOR')) })
+            Assert-False (Edit-SourceFile -Path $f -Guard absent -Transform { throw 'guard must skip callback' } -Quiet)
+            [void](Edit-SourceFile -Path $f -Guard ANCHOR -Transform { param($c) $c.Replace('ANCHOR', ($inject + 'ANCHOR')) })
             Assert-Equal ('set(X ' + $inject + 'ANCHOR)') (Get-Content $f -Raw)
         }
     }
@@ -137,27 +133,25 @@ Describe 'Edit-SourceFile' {
         Invoke-InTestDir { param($dir)
             $f = Join-Path $dir 'c.txt'
             Set-Content -Path $f -Value 'already MARKER here' -NoNewline
-            $r = Edit-SourceFile -Path $f -Marker 'MARKER' -Transform { param($c) $c.Replace('here', 'THERE') }
-            Assert-False $r 'marker present must skip'
-            Assert-Equal 'already MARKER here' (Get-Content $f -Raw) 'file must be untouched'
+            foreach ($quiet in $false, $true) {
+                $r = Edit-SourceFile -Path $f -Marker 'MARKER' -Transform { throw 'must not run' } -Quiet:$quiet
+                Assert-False $r 'marker present must skip'
+                Assert-Equal 'already MARKER here' (Get-Content $f -Raw) 'file must be untouched'
+            }
         }
     }
 
-    It 'warns and returns $false when the transform makes no change (anchor absent)' {
-        Invoke-InTestDir { param($dir)
-            $f = Join-Path $dir 'd.txt'
-            Set-Content -Path $f -Value 'unchanged' -NoNewline
-            $captured = & { Edit-SourceFile -Path $f -Transform { param($c) $c.Replace('ZZZ', 'QQQ') } -WarnMessage 'anchor not found' } 3>&1
-            $warns = @($captured | Where-Object { $_ -is [System.Management.Automation.WarningRecord] })
-            Assert-True ($warns.Count -ge 1) 'a no-op transform must surface a warning'
-            Assert-Equal 'unchanged' (Get-Content $f -Raw) 'file must be unchanged on no-op'
-        }
+    It 'warns on a no-op by default and returns only the verdict when quiet' {
+        Invoke-SourceFileDiagnosticCase -InitialText unchanged -ExpectedText unchanged -Changed $false `
+            -Transform { param($text) $text.Replace('ZZZ', 'QQQ') }
     }
 
     It 'returns $false for a missing file, throws with -Require' {
         Invoke-InTestDir { param($dir)
-            Assert-False (Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c })
-            Assert-Throws { Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c } -Require }
+            foreach ($quiet in $false, $true) {
+                Assert-False (Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c } -Quiet:$quiet)
+                Assert-Throws { Edit-SourceFile -Path (Join-Path $dir 'ghost') -Transform { param($c) $c } -Require -Quiet:$quiet }
+            }
         }
     }
 }
@@ -253,14 +247,16 @@ Describe 'Assert-SourceFileContent' {
 
 Describe 'Regex patch postconditions' {
     It 'refuses missing files, missing anchors and partially removed required patterns' {
-        Invoke-InTestDir { param($dir)
-            $path = Join-Path $dir 'source.cpp'
-            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern old -AssertGone old } -MessagePattern 'file not found'
-            [IO.File]::WriteAllText($path, 'old old')
-            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern absent -AssertGone old } -MessagePattern 'pattern not found'
-            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern old -Guard absent -AssertGone old } -MessagePattern 'guard not found'
-            Assert-Throws { Invoke-InlineRegexPatch -Path $path -Pattern '^old' -Replacement new -AssertGone old } -MessagePattern 'still present after patching'
-            Assert-Equal 'new old' ([IO.File]::ReadAllText($path)) 'the postcondition checks the transformed text'
+        foreach ($quiet in $false, $true) {
+            Invoke-InTestDir { param($dir)
+                $path = Join-Path $dir 'source.cpp'
+                Assert-Throws { Invoke-InlineRegexPatch -Quiet:$quiet -Path $path -Pattern old -AssertGone old } -MessagePattern 'file not found'
+                [IO.File]::WriteAllText($path, 'old old')
+                Assert-Throws { Invoke-InlineRegexPatch -Quiet:$quiet -Path $path -Pattern absent -AssertGone old } -MessagePattern 'pattern not found'
+                Assert-Throws { Invoke-InlineRegexPatch -Quiet:$quiet -Path $path -Pattern old -Guard absent -AssertGone old } -MessagePattern 'guard not found'
+                Assert-Throws { Invoke-InlineRegexPatch -Quiet:$quiet -Path $path -Pattern '^old' -Replacement new -AssertGone old } -MessagePattern 'still present after patching'
+                Assert-Equal 'new old' ([IO.File]::ReadAllText($path)) 'the postcondition checks the transformed text'
+            }
         }
     }
 }

@@ -64,3 +64,16 @@ Get-ItemProperty -LiteralPath ignored
         Assert-Equal 0 $bound.Count
     }
 }
+
+Describe 'Typed command arguments' {
+    It 'retains literal and callback AST nodes for source fixtures without executing the input' {
+        $tree = ConvertTo-TestScriptAst -Text "Edit-SourceFile -Path 'fixture' -Guard 'anchor' -Transform { param(`$text) `$text + ' suffix' }"
+        $command = @(Get-TestAstCommands -Ast $tree -Name Edit-SourceFile)[0]
+        $arguments = Get-TestCommandArguments -Command $command -AsAst
+        Assert-True ($arguments.Guard -is [Management.Automation.Language.StringConstantExpressionAst])
+        Assert-Equal anchor $arguments.Guard.Value
+        Assert-True ($arguments.Transform -is [Management.Automation.Language.ScriptBlockExpressionAst])
+        Assert-Equal 'fixture suffix' (& ($arguments.Transform.ScriptBlock.GetScriptBlock()) fixture)
+        Assert-Equal "'anchor'" (Get-TestCommandArguments -Command $command)['Guard']
+    }
+}

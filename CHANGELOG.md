@@ -12,6 +12,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — consolidate Windows source patch families
+
+- GStreamer, IREE, LiteRT-LM, C++ keyword conversion and Ninja cleanup share the patch API's file and verdict handling; keep default warnings and caller-owned counters with an optional diagnostic-only quiet mode.
+- Fix repeated OpenCV 5 header insertion by using the instance regex match-count overload; cover it with local fixtures and a replace-all mutation.
+- Share patch diagnostic fixtures and index Dockerfile stages during parsing; preserve existing platform failures and remove resolved duplication exemptions.
+
 ## 2026-10-23 — share cross and Canadian GCC builder invocation
 
 - Cross GCC and Canadian native GCC share builder argument construction and invocation, retaining environment, job counts, sysroot, caching and host distinctions.

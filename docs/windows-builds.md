@@ -34,6 +34,16 @@ remove directory" or "(os error 32)".
 
 Regex and callback edits share file reads and write/no-change verdicts in
 `WindowsSourceBuild.Patches`; their transformations and idempotence rules stay separate.
+Callback edits also accept `-Guard` to skip before transformation when the input
+does not match, sharing input selection with their marker handling.
+`Edit-SourceFile` and `Invoke-InlineRegexPatch` accept `-Quiet` for callers that
+already own change counters and diagnostics. It suppresses informational and
+no-change messages; required-input errors, callback exceptions and `AssertGone`
+postconditions still throw. Defaults retain their existing warnings. GStreamer's
+zero-match C++ standard warning remains at the caller. C++ keyword conversion,
+Ninja cleanup, IREE egg-info edits and LiteRT-LM CMake edits use the same
+write/no-change machinery.
+
 `Assert-SourceFileContent`, also re-exported by `WindowsSourceBuild.Common`, verifies
 the written file with a caller predicate and diagnostic. The predicate must return
 exactly one Boolean true; empty, textual or multiple results fail. OpenCV's ARM

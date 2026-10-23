@@ -15,11 +15,10 @@ function Edit-CppKeywordAlternatives {
         [Parameter(Mandatory)]
         [string]$Path
     )
-    if (-not (Test-Path $Path)) { return }
-    $content = [System.IO.File]::ReadAllText($Path)
-    $patched = $content -replace '\bor\b', '||' -replace '\band\b', '&&' -replace '\bnot\b', '!'
-    if ($content -ne $patched) {
-        [System.IO.File]::WriteAllText($Path, $patched)
+    if (Edit-SourceFile -Path $Path -Quiet -Transform {
+            param($content)
+            $content -replace '\bor\b', '||' -replace '\band\b', '&&' -replace '\bnot\b', '!'
+        }) {
         Write-Host "Patched keyword alternatives in: $Path"
     }
 }
@@ -30,23 +29,18 @@ function Update-NinjaFile {
         [string]$NinjaFile,
         [string[]]$StripPatterns = @()
     )
-    if (-not (Test-Path $NinjaFile)) { return }
-    $original = [System.IO.File]::ReadAllText($NinjaFile)
-    # Line-scoped: a global '  +' -> ' ' would rewrite every multi-space run in build.ninja.
-    $lines = $original -split '(?<=\n)'
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        $stripped = $line
-        foreach ($pattern in $StripPatterns) {
-            $stripped = $stripped -replace $pattern, ''
-        }
-        if ($stripped -ne $line) {
-            $lines[$i] = $stripped -replace '  +', ' '
-        }
-    }
-    $text = -join $lines
-    if ($text -ne $original) {
-        [System.IO.File]::WriteAllText($NinjaFile, $text)
+    if (Edit-SourceFile -Path $NinjaFile -Quiet -Transform {
+            param($original)
+            # Collapsing whitespace outside changed lines would corrupt paths embedded in build.ninja.
+            $lines = $original -split '(?<=\n)'
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+                $line = $lines[$i]
+                $stripped = $line
+                foreach ($pattern in $StripPatterns) { $stripped = $stripped -replace $pattern, '' }
+                if ($stripped -ne $line) { $lines[$i] = $stripped -replace '  +', ' ' }
+            }
+            -join $lines
+        }) {
         Write-Host "Patched build.ninja for clang-cl compatibility: $NinjaFile"
     }
 }
@@ -165,30 +159,32 @@ function Assert-SourceFileContent {
 }
 
 function Read-SourcePatchInput {
-    param([string]$Path, [string]$Description, [string]$CallerName, [switch]$Require)
+    param([string]$Path, [string]$Description, [string]$CallerName, [switch]$Require, [string]$Marker = '', [string]$Guard = '')
     if (-not (Test-Path $Path)) {
         if ($Require) { throw "${CallerName}: file not found: $Path" }
         return $null
     }
     if ([string]::IsNullOrWhiteSpace($Description)) { $Description = Split-Path $Path -Leaf }
-    [pscustomobject]@{ Description = $Description; Text = [System.IO.File]::ReadAllText($Path) }
+    $text = [System.IO.File]::ReadAllText($Path)
+    if (($Marker -and ($text -match $Marker)) -or ($Guard -and ($text -notmatch $Guard))) { return $null }
+    [pscustomobject]@{ Description = $Description; Text = $text }
 }
 
 # Regex and callback patches share write/no-change verdicts without sharing their transformation semantics.
 function Save-SourcePatchText {
     param([string]$Path, [string]$Original, [string]$Patched, [string]$Description,
-        [string]$WarnMessage, [string]$NoChangeReason, [string]$AssertGone = '')
+        [string]$WarnMessage, [string]$NoChangeReason, [string]$AssertGone = '', [switch]$Quiet)
     if ($Patched -eq $Original) {
         if ($AssertGone -and ($Original -match $AssertGone)) { throw "$Description : pattern not found and '$AssertGone' still present in $Path -- upstream layout changed, refusing to continue" }
         if ([string]::IsNullOrWhiteSpace($WarnMessage)) {
             $WarnMessage = "$Description : $NoChangeReason; upstream layout may have changed. Verify $Path."
         }
-        Write-Warning $WarnMessage
+        if (-not $Quiet) { Write-Warning $WarnMessage }
         return $false
     }
     [System.IO.File]::WriteAllText($Path, $Patched)
     if ($AssertGone -and ($Patched -match $AssertGone)) { throw "$Description : '$AssertGone' still present after patching $Path -- the replacement did not remove it" }
-    Write-Host "Patched $Description ($Path)"
+    if (-not $Quiet) { Write-Host "Patched $Description ($Path)" }
     return $true
 }
 
@@ -206,14 +202,15 @@ function Invoke-InlineRegexPatch {
         # A match means already applied: return $true, touch nothing.
         [string]$SkipIfMatch = '',
         # Throws when the file still matches this after writing, or when the pattern was never found.
-        [string]$AssertGone = ''
+        [string]$AssertGone = '',
+        [switch]$Quiet
     )
     $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Invoke-InlineRegexPatch' -Require:($Require -or [bool]$AssertGone)
     if ($null -eq $patchInput) { return $false }
     $Description = $patchInput.Description
     $text = $patchInput.Text
     if ($SkipIfMatch -and ($text -match $SkipIfMatch)) {
-        Write-Host "$Description already applied ($Path)"
+        if (-not $Quiet) { Write-Host "$Description already applied ($Path)" }
         return $true
     }
     if ($Guard -and ($text -notmatch $Guard)) {
@@ -222,7 +219,7 @@ function Invoke-InlineRegexPatch {
     }
     $patched = $text -replace $Pattern, $Replacement
     Save-SourcePatchText -Path $Path -Original $text -Patched $patched -Description $Description `
-        -WarnMessage $WarnMessage -NoChangeReason 'pattern not found' -AssertGone $AssertGone
+        -WarnMessage $WarnMessage -NoChangeReason 'pattern not found' -AssertGone $AssertGone -Quiet:$Quiet
 }
 
 <#
@@ -396,16 +393,14 @@ function Edit-SourceFile {
         [string]$Marker = '',
         [string]$WarnMessage = '',
         [switch]$Require,
-        [string]$Description = ''
+        [string]$Description = '',
+        [switch]$Quiet,
+        [string]$Guard = ''
     )
-    $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Edit-SourceFile' -Require:$Require
+    $patchInput = Read-SourcePatchInput -Path $Path -Description $Description -CallerName 'Edit-SourceFile' -Require:$Require -Marker $Marker -Guard $Guard
     if ($null -eq $patchInput) { return $false }
-    $Description = $patchInput.Description
-    $text = $patchInput.Text
-    if ($Marker -and ($text -match $Marker)) { return $false }
-    $patched = [string](& $Transform $text)
-    Save-SourcePatchText -Path $Path -Original $text -Patched $patched -Description $Description `
-        -WarnMessage $WarnMessage -NoChangeReason 'transform made no change'
+    Save-SourcePatchText -Path $Path -Original $patchInput.Text -Patched ([string](& $Transform $patchInput.Text)) -Description $patchInput.Description `
+        -WarnMessage $WarnMessage -NoChangeReason 'transform made no change' -Quiet:$Quiet
 }
 
 Export-ModuleMember -Function @(
