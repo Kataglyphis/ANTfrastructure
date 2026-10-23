@@ -22,9 +22,7 @@ Describe 'Build-LitertLmBazel: the bazel command per lane' {
     }
 
     It 'the script launches bazel once, through that function, with the unchanged startup option' {
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-RepoRoot) $script:LlmBazel), [ref]$null, [ref]$null)
-        $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
-                    $n.CommandElements[0].Extent.Text -eq 'Invoke-BazelLogged' }, $true))
+        $calls = @(Get-TestScriptCommands -ScriptPath $script:LlmBazel -Name 'Invoke-BazelLogged')
         Assert-Equal 1 $calls.Count 'one bazelisk invocation'
         Assert-Equal 'Invoke-BazelLogged -Bazel C:\bzl-tools\bazel.exe -Argument (@($bazelArgs) + @($bazelCmd) + @($toolchainOpts)) -LogPath C:\bazel-build.log' `
             $calls[0].Extent.Text 'through Invoke-BazelLogged, with its arguments'
@@ -49,7 +47,7 @@ Describe 'Build-LitertLmBazel: the bazel command per lane' {
 
 Describe 'Build-LitertLmBazel: the script body wires the rocm gate' {
     # The functions are inert unless the body calls them, gated and ordered as below.
-    $script:LlmAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-RepoRoot) $script:LlmBazel), [ref]$null, [ref]$null)
+    $script:LlmAst = (Get-TestScriptAst -ScriptPath $script:LlmBazel)
 
     function Get-LlmBodyNode {
         param([scriptblock]$Where)
@@ -290,7 +288,7 @@ Describe 'rocm-checks\LiteRtLm.ps1' {
     It 'is a parameterless pwsh 7 check script' {
         $path = Join-Path (Get-RepoRoot) $script:LlmCheck
         Assert-Equal '#requires -Version 7.0' (Get-Content -LiteralPath $path -TotalCount 1) 'first line'
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+        $ast = (Get-TestScriptAst -ScriptPath $path)
         Assert-Null $ast.ParamBlock 'no params: Test-RocmImage.ps1 runs it bare'
     }
 

@@ -39,7 +39,7 @@ elseif ($args[0] -eq 'inspect') { $global:LASTEXITCODE = 1 }
 # A docker pipeline whose output nothing consumes leaks into its function's result.
 function Get-LeakingDockerCall {
     param([Parameter(Mandatory)][string]$Text)
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
+    $ast = (ConvertTo-TestScriptAst -Text $Text)
     foreach ($p in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.PipelineAst] }, $true)) {
         $last = $p.PipelineElements[-1]
         if ($last -isnot [System.Management.Automation.Language.CommandAst] -or

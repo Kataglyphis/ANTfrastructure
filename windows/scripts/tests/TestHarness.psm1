@@ -276,6 +276,26 @@ function Get-TestScriptAst {
     Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "${ErrorLabel}: parse errors in $full"
 }
 
+function Get-TestAstCommands {
+    param([System.Management.Automation.Language.Ast]$Ast, [string]$Name)
+    $Ast.FindAll({ param($node)
+        $node -is [System.Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq $Name
+    }, $true)
+}
+
+function Get-TestScriptCommands {
+    param([string]$ScriptPath, [string]$Name)
+    Get-TestAstCommands -Ast (Get-TestScriptAst -ScriptPath $ScriptPath) -Name $Name
+}
+
+function Get-TestCommandArguments {
+    param([System.Management.Automation.Language.CommandAst]$Command)
+    $bound = [System.Management.Automation.Language.StaticParameterBinder]::BindCommand($Command, $false).BoundParameters
+    $arguments = @{}
+    foreach ($name in $bound.Keys) { $arguments[$name] = $bound[$name].Value.Extent.Text }
+    return $arguments
+}
+
 function ConvertTo-TestScriptAst {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Text, [string]$ErrorLabel = 'Get-TestScriptAst')
     $tokens = $null; $parseErrors = $null
@@ -364,6 +384,6 @@ function Start-LoopbackListener {
     return $listener
 }
 
-Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, Get-TestScriptAst, ConvertTo-TestScriptAst, `
+Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, Get-TestScriptAst, ConvertTo-TestScriptAst, Get-TestAstCommands, Get-TestCommandArguments, Get-TestScriptCommands, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
     Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim

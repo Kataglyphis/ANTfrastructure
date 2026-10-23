@@ -125,13 +125,12 @@ Describe 'Invoke-PythonCiBuild.ps1' {
     }
 
     It 'passes the child drivers only parameters they declare' {
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:CiBuild, [ref]$null, [ref]$null)
-        $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-ChildDriver' }, $true))
+        $calls = @(Get-TestScriptCommands -ScriptPath $script:CiBuild -Name 'Invoke-ChildDriver')
         Assert-Equal 3 $calls.Count 'the static-analysis, packaging and wheel-tests calls'
         $drivers = @{ '$StaticAnalysisScript' = 'Invoke-CiStaticAnalysis.ps1'; '$PackagingScript' = 'Invoke-CiPackaging.ps1'; '$WheelTestsScript' = 'Invoke-FreeThreadedWheelTests.ps1' }
         foreach ($call in $calls) {
             $driver = Join-Path (Split-Path $script:CiBuild) $drivers[$call.CommandElements[1].Extent.Text]
-            $declared = @([System.Management.Automation.Language.Parser]::ParseFile($driver, [ref]$null, [ref]$null).ParamBlock.Parameters.Name.VariablePath.UserPath)
+            $declared = @((Get-TestScriptAst -ScriptPath $driver).ParamBlock.Parameters.Name.VariablePath.UserPath)
             $passed = @($call.CommandElements[2].Find({ param($n) $n -is [System.Management.Automation.Language.HashtableAst] }, $true).KeyValuePairs.Item1.Value)
             foreach ($name in $passed) { Assert-True ($name -in $declared) "$(Split-Path $driver -Leaf) has no -$name" }
         }

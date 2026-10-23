@@ -195,7 +195,7 @@ Describe 'Get-BkRocmStageArg (rocm-only build-args)' {
 Describe 'Get-BkTag: lane tags (golden table)' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' -FunctionName 'Get-BkTag')
     $driverPath = Join-Path (Get-RepoRoot) 'windows\Build-Buildkit.ps1'
-    $driverAst = [System.Management.Automation.Language.Parser]::ParseFile($driverPath, [ref]$null, [ref]$null)
+    $driverAst = (Get-TestScriptAst -ScriptPath $driverPath)
     # The driver's own assignment right-hand sides, evaluated here: the test uses the shipped values.
     function Get-DriverAssignment([string]$Left) {
         $a = @($driverAst.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $Left }, $true))

@@ -120,7 +120,7 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
 
 Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the one plan' {
     # Structural, because the script is monolithic: a site guarded by anything but $ffAmfPlan breaks some lane.
-    $script:ffAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-RepoRoot) $script:ffScript), [ref]$null, [ref]$null)
+    $script:ffAst = (Get-TestScriptAst -ScriptPath $script:ffScript)
 
     # Script-level AST nodes only: calls inside the extracted functions are their own tests' business.
     function Find-FfScriptLevelNode([scriptblock]$Predicate) {
@@ -545,7 +545,7 @@ Describe 'rocm-checks/FFmpeg.ps1 (smoke findings)' {
 
 Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input (structural)' {
     # A dropped call or input loop leaves the unit tests green and the smoke vacuous; no GPU-less run reaches this code.
-    $script:ckAst = [System.Management.Automation.Language.Parser]::ParseFile((Join-Path (Get-RepoRoot) $script:ffCheck), [ref]$null, [ref]$null)
+    $script:ckAst = (Get-TestScriptAst -ScriptPath $script:ffCheck)
 
     function Find-CkScriptLevelNode([scriptblock]$Predicate) {
         @($script:ckAst.FindAll({ param($n)

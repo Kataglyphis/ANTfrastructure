@@ -12,6 +12,10 @@ Describe 'Get-TestScriptAst' {
             Assert-Equal 1 $functions.Count
             Assert-Equal 'Get-FixtureValue' $functions[0].Name
             Assert-Equal $path $ast.Extent.File
+            [IO.File]::WriteAllText($path, "throw 'must not run'`nGet-Item -LiteralPath missing")
+            $calls = @(Get-TestScriptCommands -ScriptPath $path -Name Get-Item)
+            Assert-Equal 1 $calls.Count
+            Assert-Equal 'Get-Item -LiteralPath missing' $calls[0].Extent.Text
         }
     }
 
@@ -32,5 +36,31 @@ Describe 'ConvertTo-TestScriptAst' {
         Assert-NotNull $ast
         Assert-Throws { ConvertTo-TestScriptAst -Text 'function Broken {' -ErrorLabel fixture } -MessagePattern 'fixture snippet failed to parse'
         Assert-NotNull (ConvertTo-TestScriptAst -Text '')
+    }
+}
+
+Describe 'Static command queries' {
+    It 'finds exact command names in nested scopes without executing the input' {
+        $ast = ConvertTo-TestScriptAst -Text @'
+throw 'must not execute'
+Get-Item -LiteralPath 'a b' -ErrorAction Stop
+function Nested { get-item -LiteralPath $target }
+Get-ItemProperty -LiteralPath ignored
+'@
+        $calls = @(Get-TestAstCommands -Ast $ast -Name 'Get-Item')
+        Assert-Equal 2 $calls.Count
+        Assert-Equal 0 @(Get-TestAstCommands -Ast $ast -Name 'Missing-Command').Count
+        $bound = Get-TestCommandArguments -Command $calls[0]
+        Assert-Equal "'a b'" $bound['LiteralPath']
+        Assert-Equal 'Stop' $bound['ErrorAction']
+        Assert-Equal '$target' (Get-TestCommandArguments -Command $calls[1])['LiteralPath']
+    }
+
+    It 'returns an empty argument map for an unparameterized command' {
+        $ast = ConvertTo-TestScriptAst -Text 'Get-Date'
+        $call = @(Get-TestAstCommands -Ast $ast -Name Get-Date)[0]
+        $bound = Get-TestCommandArguments -Command $call
+        Assert-True ($bound -is [hashtable])
+        Assert-Equal 0 $bound.Count
     }
 }

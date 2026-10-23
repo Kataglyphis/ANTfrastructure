@@ -10,8 +10,7 @@ Describe 'Invoke-CiStaticAnalysis: bandit argv' {
     $driver = Join-Path $repoRoot 'windows\scripts\python\Invoke-CiStaticAnalysis.ps1'
     $linuxTwin = Join-Path $repoRoot 'linux/scripts/02-toolchain/python/ci_static_analysis.sh'
 
-    $tokens = $null; $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($driver, [ref]$tokens, [ref]$parseErrors)
+    $ast = Get-TestScriptAst -ScriptPath $driver
 
     # Found by its second element, the gate name, so the assertions are about the argv, not the text around it.
     $banditCall = @($ast.FindAll({ param($n)
@@ -32,7 +31,7 @@ Describe 'Invoke-CiStaticAnalysis: bandit argv' {
     }
 
     It 'has a parseable driver and a bandit gate to grade' {
-        Assert-Equal 0 @($parseErrors).Count
+        Assert-NotNull $ast
         Assert-NotNull $banditCall
         Assert-NotNull $targetsAssign
     }

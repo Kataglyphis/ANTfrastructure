@@ -31,6 +31,11 @@
 
 ## 2026-10-23 — preserve failure paths while reducing quality freezes
 
+- Store Windows SIMD flags, MLAS match patterns and match floors in the existing
+  target fact table; retain distinct global/kernel values and isolate returned copies.
+- Share Windows test AST command queries and parameter binding. Move structural
+  suites onto the harness parsers so malformed input fails before declaration checks.
+
 - Share CMake/CTest Git and Vulkan setup in a passive project-environment library;
   preserve SDK hook precedence, Git opt-out and advisory configuration failures.
 - Remove GStreamer's private cross-mode fallback; require the guard already validated

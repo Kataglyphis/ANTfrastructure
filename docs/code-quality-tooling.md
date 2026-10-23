@@ -3245,3 +3245,11 @@ and targeted mutations cover dry-run policies, discovery and missing guards.
 CMake and CTest share project Git/Vulkan initialization and Vulkan CLI help. Their
 pair exemption is removed. See the [project environment contract](shared-script-libraries.md#shared-cmake-and-ctest-project-environment)
 for hook precedence, optional Git configuration and fixture coverage.
+
+Windows structural suites also share command queries and static parameter binding
+in the [AST harness](windows-builds.md#structural-test-ast-helpers). Moving their
+parsing to that harness rejects malformed source before declaration checks.
+SIMD and MLAS facts now use the existing per-target record; global and dispatched
+kernel settings remain distinct. Tests keep independent flag literals and verify
+record isolation. No detector normalization or threshold changes accompany these
+budget reductions.

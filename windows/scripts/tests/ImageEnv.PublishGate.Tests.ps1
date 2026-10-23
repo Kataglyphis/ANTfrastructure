@@ -28,7 +28,7 @@ function Get-ImageEnvCaseMismatch {
 # The scope names Assert-ImageEnvPublishable reads when no -Scopes is given, from its loop literal.
 function Get-DefaultImageEnvScope {
     param([Parameter(Mandatory)][string]$Text)
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
+    $ast = ConvertTo-TestScriptAst -Text $Text
     $fn = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
                 $n.Name -eq 'Assert-ImageEnvPublishable' }, $true))
     if ($fn.Count -ne 1) { throw 'Assert-ImageEnvPublishable not found' }
@@ -176,7 +176,7 @@ function Get-EnclosingFunctionName {
 # '' when Build-Buildkit.ps1 wires the publish gate as documented, else the first problem.
 function Get-PublishGateWiringProblem {
     param([Parameter(Mandatory)][string]$Text)
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
+    $ast = ConvertTo-TestScriptAst -Text $Text
     $stages = Find-DriverCall $ast 'Invoke-BkStage'
     $solve = @($stages | Where-Object { $_.Extent.Text -match 'Dockerfile\.publish-gate' })
     if ($solve.Count -ne 1) { return "expected one publish-gate solve, found $($solve.Count)" }
@@ -280,7 +280,7 @@ function Invoke-GateScenario {
     param([Parameter(Mandatory)][string]$Driver, [Parameter(Mandatory)][scriptblock]$Scenario,
         [string]$FailDockerfile = '', [string]$Find = '', [AllowEmptyString()][string]$Replace = '',
         [string]$Config = $script:cleanConfigJson, [switch]$NoMetadata)
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Driver, [ref]$null, [ref]$null)
+    $ast = ConvertTo-TestScriptAst -Text $Driver
     $state = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
                 $n.Left.Extent.Text -in @('$script:NoCacheStageMatched', '$script:BkBuiltTags', '$script:BkGatedImages') }, $true) |
             ForEach-Object { $_.Extent.Text })

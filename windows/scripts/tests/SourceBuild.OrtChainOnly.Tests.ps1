@@ -71,7 +71,7 @@ function New-OrtGateZip {
 # The calls to -Name in a script's text, by AST: a comment or a string naming it is no call.
 function Get-OrtGateCommandAst {
     param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][string]$Name)
-    $ast = [System.Management.Automation.Language.Parser]::ParseInput($Text, [ref]$null, [ref]$null)
+    $ast = (ConvertTo-TestScriptAst -Text $Text)
     return @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Name }, $true))
 }
 

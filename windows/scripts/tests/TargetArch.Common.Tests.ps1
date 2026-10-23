@@ -171,6 +171,22 @@ Describe 'SIMD flag sets' {
     }
 }
 
+Describe 'SIMD fact record isolation' {
+    It 'does not let callers overwrite global flags, kernel flags or match floors' {
+        $baseline = Get-WindowsTargetSimdFlags -Arch amd64
+        $kernel = Get-WindowsTargetKernelSimdFlags -Arch arm64
+        $info = Get-WindowsTargetArchInfo -Arch amd64
+        $info.SimdFlags = '/clang:-mavx512f'
+        $info.MlasKernelTuMinimum = 0
+        $arm = Get-WindowsTargetArchInfo -Arch arm64
+        $arm.KernelSimdFlags = '/clang:-mavx512f'
+        Assert-Equal $baseline (Get-WindowsTargetSimdFlags -Arch x86_64)
+        Assert-Equal $kernel (Get-WindowsTargetKernelSimdFlags -Arch aarch64)
+        Assert-Equal 8 (Get-MlasKernelTuMinimum -Arch amd64)
+        Assert-Equal 12 (Get-MlasKernelTuMinimum -Arch arm64)
+    }
+}
+
 Describe 'MLAS per-TU patch targeting' {
 
     It 'the x64 pattern matches the x64 MLAS kernel TUs' {

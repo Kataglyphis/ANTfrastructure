@@ -2294,3 +2294,20 @@ and absence using empty files. Its `-Standalone` mode runs these four cases with
 an explicit count and exit status. It starts no application and proves no Windows
 binary can run. Mutation checks reverse the candidates, remove app normalization
 and remove recursion; each must fail the suite.
+
+## Structural test AST helpers
+
+`TestHarness.psm1` owns file/snippet parsing, exact command-name queries and static
+parameter binding. `Get-TestAstCommands` includes nested scopes; callers retain
+their lane/ancestor checks. `Get-TestScriptCommands` combines file loading and a
+command query. `Get-TestCommandArguments` returns the original argument source,
+including quotes, rather than evaluating it. The parser helpers reject malformed
+input and never execute the inspected script.
+
+OpenCV wiring tests use these queries and the shared binder. Structural driver,
+Python, ROCm and smoke suites use the parser helpers. `Harness.Ast.Tests.ps1`
+checks nested queries, exact names, unparameterized commands and non-execution.
+Target-architecture tests retain independent literal SIMD expectations and check
+that modifying a cloned record cannot change flags or MLAS floors. These fixtures
+provide no native Windows build or runtime proof; suites using Windows drives or
+command files also need a Windows run.

@@ -215,6 +215,11 @@ VsDevCmd `-arch`, PE machine type, vcpkg triplet, MSVC lib/bin subdirs, Vulkan `
 CPython `-p` platform and `PCbuild\<dir>`, wheel tag, rust triple, NuGet RID, ffmpeg `--arch`,
 `lib /machine`, SIMD flag sets, and the CMake cross arguments.
 
+SIMD globals, dispatched-kernel flags, MLAS TU patterns and match floors live in
+that same per-target fact table. Their public accessors read cloned fact records;
+mutating a returned record cannot change later builds. The arm64 global set stays
+empty, and the MLAS floors stay 8 for amd64 and 12 for arm64.
+
 Two behaviours are deliberate and tested:
 
 - **An unknown arch throws.** Silently degrading to amd64 would emit an x64 build labelled arm64,

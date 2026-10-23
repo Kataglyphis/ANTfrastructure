@@ -419,7 +419,7 @@ Describe 'Build-IreeFromSource + Build-TvmFromSource: rocm-only steps sit behind
     $script:RocmStepTree = @{}
     foreach ($rel in $script:IreeScript, $script:TvmScript) {
         $text = [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $rel))
-        $script:RocmStepTree[$rel] = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$null)
+        $script:RocmStepTree[$rel] = (ConvertTo-TestScriptAst -Text $text)
     }
 
     # Guards are the enclosing if-conditions, innermost first; 'else' / 'condition' mark an unprotected site.
@@ -756,7 +756,7 @@ Describe 'rocm-checks: IREE.ps1 and TVM.ps1 follow the check contract' {
     It 'declare pwsh 7 and take no parameters' {
         foreach ($rel in $script:IreeCheck, $script:TvmCheck) {
             $path = Join-Path (Get-RepoRoot) $rel
-            $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+            $ast = (Get-TestScriptAst -ScriptPath $path)
             Assert-Match '(?m)^#requires -Version 7\.0' (Get-Content -Raw $path) "$rel requires"
             Assert-Null $ast.ParamBlock "$rel has no param block"
         }

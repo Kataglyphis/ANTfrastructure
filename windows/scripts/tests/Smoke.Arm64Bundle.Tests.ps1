@@ -70,7 +70,7 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     }
 
     It 'grades the ORT step by the CPU run''s exit code, whatever DirectML did, under the workflow''s native-error preference (mutation)' {
-        $ast = [System.Management.Automation.Language.Parser]::ParseInput($script:gateText, [ref]$null, [ref]$null)
+        $ast = (ConvertTo-TestScriptAst -Text $script:gateText)
         $step = $ast.Find({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and "$($n.CommandElements[0])" -eq 'Invoke-BundleStep' -and "$($n.CommandElements[1])" -match "^'ORT inference" }, $true)
         $body = $step.CommandElements[2].ScriptBlock.GetScriptBlock()
         Invoke-InTestDir { param($d)

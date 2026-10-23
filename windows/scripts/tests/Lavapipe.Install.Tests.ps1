@@ -111,7 +111,7 @@ Describe 'Install-Lavapipe: the script reads no variable it never sets' {
     # Under strict mode a stale name throws at that line: 665b4df2 left ${vulkanVersion} behind and the merge stage died there.
     It 'reads only parameters, assigned and loop variables, and automatic ones' {
         $path = Join-Path (Get-RepoRoot) 'windows\scripts\host\Install-Lavapipe.ps1'
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+        $ast = (Get-TestScriptAst -ScriptPath $path)
         $find = { param($type) $ast.FindAll({ param($n) $n -is $type }.GetNewClosure(), $true) }
         $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
         foreach ($p in (& $find ([System.Management.Automation.Language.ParameterAst]))) { [void]$set.Add($p.Name.VariablePath.UserPath) }

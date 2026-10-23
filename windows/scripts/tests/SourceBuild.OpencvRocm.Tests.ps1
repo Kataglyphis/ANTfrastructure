@@ -151,10 +151,9 @@ Describe 'OpenCV rocm lane: configure gate' {
 
 Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     $L = 'System.Management.Automation.Language'
-    $tree = [System.Management.Automation.Language.Parser]::ParseInput([System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:OcvScript)), [ref]$null, [ref]$null)
+    $tree = Get-TestScriptAst -ScriptPath $script:OcvScript
     $all = @($tree.FindAll({ $true }, $true))
     $cmakeEdits = @($all | Where-Object { $_ -is [type]"$L.AssignmentStatementAst" -and $_.Left.Extent.Text -eq '$cmakeExtra' })
-    $callsTo = { param([string]$Name) @($all | Where-Object { $_ -is [type]"$L.CommandAst" -and $_.GetCommandName() -eq $Name }) }
     # The nearest enclosing if/elseif whose condition matches $Pattern, else $null.
     $enclosingIf = {
         param($node, [string]$Pattern)
@@ -173,14 +172,6 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
         Assert-True ($Node.Extent.StartOffset -ge $right.StartOffset -and $Node.Extent.EndOffset -le $right.EndOffset) "$Var holds $($Node.Extent.Text)"
         $assign[0]
     }
-    # Parameter name -> argument source text, through PowerShell's own binder.
-    $argsOf = {
-        param($cmd)
-        $bound = [System.Management.Automation.Language.StaticParameterBinder]::BindCommand($cmd, $false).BoundParameters
-        $map = @{}
-        foreach ($name in $bound.Keys) { $map[$name] = $bound[$name].Value.Extent.Text }
-        $map
-    }
 
     It 'keeps WITH_OPENCL/WITH_OPENCL_SVM ON in the every-lane array (the rocm lane relies on it)' {
         $init = @($cmakeEdits | Where-Object { $_.Operator -eq 'Equals' })
@@ -192,14 +183,14 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     It 'appends no CMake arg under a HasRocm condition (the delta goes through the tested function)' {
         $gated = @($cmakeEdits | Where-Object { & $guardedBy $_ 'HasRocm' })
         Assert-Equal 0 $gated.Count "rocm-gated `$cmakeExtra edits: $(($gated | ForEach-Object { $_.Extent.Text }) -join '; ')"
-        Assert-Equal 1 @(& $callsTo 'Get-OpencvRocmCmakeArgs').Count 'one call site'
+        Assert-Equal 1 @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmCmakeArgs').Count 'one call site'
     }
 
     It 'feeds the delta the lane''s own Get-GpuEnvironment and cross flag, and appends its result' {
-        $gpuAssign = & $assertHolds '$gpuEnv' @(& $callsTo 'Get-GpuEnvironment')[0]
+        $gpuAssign = & $assertHolds '$gpuEnv' @(Get-TestAstCommands -Ast $tree -Name 'Get-GpuEnvironment')[0]
         Assert-Equal 'Get-GpuEnvironment' $gpuAssign.Right.Extent.Text '$gpuEnv is the bare probe'
-        $call = @(& $callsTo 'Get-OpencvRocmCmakeArgs')[0]
-        $bound = & $argsOf $call
+        $call = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmCmakeArgs')[0]
+        $bound = Get-TestCommandArguments -Command $call
         Assert-Equal '$gpuEnv' $bound['GpuEnv'] '-GpuEnv binding'
         Assert-Equal '$ocvCross' $bound['Cross'] '-Cross binding'
         $null = & $assertHolds '$ocvRocmArgs' $call
@@ -215,18 +206,18 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     }
 
     It 'runs the configure gate only on the rocm lane, after configure' {
-        $gate = @(& $callsTo 'Get-OpencvRocmConfigureFinding')
+        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmConfigureFinding')
         Assert-Equal 1 $gate.Count 'one gate call'
         Assert-True (& $guardedBy $gate[0] '^\$gpuEnv\.HasRocm$') 'gate sits under if ($gpuEnv.HasRocm)'
-        Assert-True ($gate[0].Extent.StartOffset -gt @(& $callsTo 'Invoke-CmakeConfigure')[0].Extent.StartOffset) 'gate reads the log configure wrote'
-        $bound = & $argsOf $gate[0]
+        Assert-True ($gate[0].Extent.StartOffset -gt @(Get-TestAstCommands -Ast $tree -Name 'Invoke-CmakeConfigure')[0].Extent.StartOffset) 'gate reads the log configure wrote'
+        $bound = Get-TestCommandArguments -Command $gate[0]
         Assert-Equal '$gpuEnv.RocmRoot' $bound['RocmRoot'] '-RocmRoot binding'
         Assert-Match '^"\$\(Get-Content -LiteralPath \$cfgLog -Raw\)"$' $bound['ConfigureLog'] '-ConfigureLog reads the teed log'
         Assert-Match 'Join-Path \$buildDir ''CMakeCache\.txt''' $bound['CMakeCache'] '-CMakeCache reads the build tree''s cache'
     }
 
     It 'throws on any gate finding (fails closed, never only logs)' {
-        $gate = @(& $callsTo 'Get-OpencvRocmConfigureFinding')[0]
+        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvRocmConfigureFinding')[0]
         $null = & $assertHolds '$ocvRocmCfg' $gate
         $rocmIf = & $enclosingIf $gate '^\$gpuEnv\.HasRocm$'
         Assert-True ($null -ne $rocmIf) 'the enclosing if ($gpuEnv.HasRocm)'

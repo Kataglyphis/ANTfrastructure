@@ -611,7 +611,7 @@ Describe 'rocm-checks\Torch.ps1: findings' {
         Assert-False ($src -match 'onnxruntime_ep_webgpu|register_execution_provider_library') 'no prebuilt plugin EP (the chain ORT carries WebGPU; rocm-checks\OrtWebGpu.ps1 checks it)'
         Assert-Match '"dml"\] = "DmlExecutionProvider" in ort\.get_available_providers\(\)' $src 'the chain wheel''s DML EP is read'
         Assert-Match 'ctypes\.WinDLL\(path\), "LiteRtAcceleratorImpl"' $src 'accelerator loaded and its entry export resolved'
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-TorchRocmSuitePath $script:TorchRocmCheck), [ref]$null, [ref]$null)
+        $ast = (Get-TestScriptAst -ScriptPath (Resolve-TorchRocmSuitePath $script:TorchRocmCheck))
         Assert-Null $ast.ParamBlock 'rocm-checks scripts take no parameters (Test-RocmImage.ps1 runs them bare)'
     }
 }

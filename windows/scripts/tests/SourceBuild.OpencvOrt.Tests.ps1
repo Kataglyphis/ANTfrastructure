@@ -315,22 +315,14 @@ Describe 'OpenCV ORT: the G-API delay-load hook' {
 
 Describe 'OpenCV ORT: wiring in Build-OpencvFromSource.ps1' {
     $L = 'System.Management.Automation.Language'
-    $tree = [System.Management.Automation.Language.Parser]::ParseInput([System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $script:OrtOcvScript)), [ref]$null, [ref]$null)
+    $tree = Get-TestScriptAst -ScriptPath $script:OrtOcvScript
     $all = @($tree.FindAll({ $true }, $true))
-    $callsTo = { param([string]$Name) @($all | Where-Object { $_ -is [type]"$L.CommandAst" -and $_.GetCommandName() -eq $Name }) }
     $underIf = { param($node) $up = $node.Parent; while ($up -and $up -isnot [type]"$L.IfStatementAst") { $up = $up.Parent }; $null -ne $up }
-    $argsOf = {
-        param($cmd)
-        $bound = [System.Management.Automation.Language.StaticParameterBinder]::BindCommand($cmd, $false).BoundParameters
-        $map = @{}
-        foreach ($name in $bound.Keys) { $map[$name] = $bound[$name].Value.Extent.Text }
-        $map
-    }
-    $configure = @(& $callsTo 'Invoke-CmakeConfigure')[0]
+    $configure = @(Get-TestAstCommands -Ast $tree -Name 'Invoke-CmakeConfigure')[0]
 
     It 'wires the shim, the args and the gate once each, under no lane condition' {
         foreach ($fn in 'New-OpencvOrtNestedInclude', 'Get-OpencvOrtCmakeArgs', 'Get-OpencvOrtConfigureFinding') {
-            $calls = @(& $callsTo $fn)
+            $calls = @(Get-TestAstCommands -Ast $tree -Name $fn)
             Assert-Equal 1 $calls.Count "$fn call sites"
             Assert-False (& $underIf $calls[0]) "$fn sits under an if; the ORT wiring is every-lane"
         }
@@ -346,19 +338,19 @@ Describe 'OpenCV ORT: wiring in Build-OpencvFromSource.ps1' {
     }
 
     It 'gates after configure on the teed log, the cache, build.ninja and the same roots the args got' {
-        $gate = @(& $callsTo 'Get-OpencvOrtConfigureFinding')[0]
+        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvOrtConfigureFinding')[0]
         Assert-True ($gate.Extent.StartOffset -gt $configure.Extent.StartOffset) 'gate reads what configure wrote'
-        $bound = & $argsOf $gate
+        $bound = Get-TestCommandArguments -Command $gate
         Assert-Match '^"\$\(Get-Content -LiteralPath \$cfgLog -Raw\)"$' $bound['ConfigureLog']
         Assert-Match "Join-Path \`$buildDir 'CMakeCache\.txt'" $bound['CMakeCache']
         Assert-Match "Join-Path \`$buildDir 'build\.ninja'" $bound['BuildNinja']
-        $argsCall = & $argsOf @(& $callsTo 'Get-OpencvOrtCmakeArgs')[0]
+        $argsCall = Get-TestCommandArguments -Command @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvOrtCmakeArgs')[0]
         foreach ($p in 'OrtRoot', 'ShimRoot', 'OrtVersion') { Assert-Equal $argsCall[$p] $bound[$p] "-$p is shared by args and gate" }
         Assert-Equal '$ortShimRoot' $bound['ShimRoot']
     }
 
     It 'throws on any gate finding, directly and unconditionally' {
-        $gate = @(& $callsTo 'Get-OpencvOrtConfigureFinding')[0]
+        $gate = @(Get-TestAstCommands -Ast $tree -Name 'Get-OpencvOrtConfigureFinding')[0]
         $assign = $gate.Parent
         while ($assign -and $assign -isnot [type]"$L.AssignmentStatementAst") { $assign = $assign.Parent }
         Assert-Equal '$ocvOrtCfg' $assign.Left.Extent.Text

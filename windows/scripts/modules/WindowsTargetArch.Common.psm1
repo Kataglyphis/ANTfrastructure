@@ -51,6 +51,11 @@ $script:TargetArchTable = @{
         QnnLibDir = 'x86_64-windows-msvc'
         # Package file names, wix build -arch, AppxManifest ProcessorArchitecture and VC\Redist\MSVC\<ver>\<this>.
         PackageArch = 'x64'
+        # Optional SIMD features stay on dispatched kernels, never global CXX flags.
+        SimdFlags = '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
+        KernelSimdFlags = '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
+        MlasKernelTuPattern = 'qgemm_kernel_amx|intrinsics[\\/]avx512|_avx512[a-z0-9_]*\.cpp'
+        MlasKernelTuMinimum = 8
     }
     arm64 = @{
         Arch = 'arm64'
@@ -77,6 +82,11 @@ $script:TargetArchTable = @{
         CMakeSystemProcessor = 'ARM64'
         QnnLibDir = 'aarch64-windows-msvc'
         PackageArch = 'arm64'
+        # Optional SIMD features stay on dispatched kernels, never global CXX flags.
+        SimdFlags = ''
+        KernelSimdFlags = '/clang:-march=armv8.2-a+dotprod+i8mm+bf16+fp16'
+        MlasKernelTuPattern = '_fp16|_kernel_neon|qgemm_kernel_(udot|sdot|smmla|ummla)'
+        MlasKernelTuMinimum = 12
     }
 }
 
@@ -492,18 +502,7 @@ function Get-LibMachineArg {
 #>
 function Get-WindowsTargetSimdFlags {
     param([string]$Arch = '')
-
-    $key = Get-WindowsTargetArch -Arch $Arch
-    switch ($key) {
-        'amd64' {
-            return '/clang:-mavx2 /clang:-mavx /clang:-mfma /clang:-mssse3 /clang:-msse3 /clang:-msse4.1 /clang:-msse4.2 /clang:-mpopcnt'
-        }
-        'arm64' {
-            # NEON is implied by the target triple.
-            return ''
-        }
-    }
-    throw "Get-WindowsTargetSimdFlags: no flag set defined for '$key'"
+    return (Get-WindowsTargetArchInfo -Arch $Arch).SimdFlags
 }
 
 <#
@@ -516,18 +515,7 @@ function Get-WindowsTargetSimdFlags {
 #>
 function Get-WindowsTargetKernelSimdFlags {
     param([string]$Arch = '')
-
-    $key = Get-WindowsTargetArch -Arch $Arch
-    switch ($key) {
-        'amd64' {
-            return '/clang:-mavx512f /clang:-mavx512cd /clang:-mavx512bw /clang:-mavx512dq /clang:-mavx512vl /clang:-mavx512vnni /clang:-mavx512bf16 /clang:-mavx512fp16 /clang:-mavxvnni /clang:-mamx-int8 /clang:-mamx-tile /clang:-mamx-bf16'
-        }
-        'arm64' {
-            # armv8.2-a is the floor that makes dotprod/i8mm/bf16 expressible.
-            return '/clang:-march=armv8.2-a+dotprod+i8mm+bf16+fp16'
-        }
-    }
-    throw "Get-WindowsTargetKernelSimdFlags: no kernel flag set defined for '$key'"
+    return (Get-WindowsTargetArchInfo -Arch $Arch).KernelSimdFlags
 }
 
 <#
@@ -540,15 +528,7 @@ function Get-WindowsTargetKernelSimdFlags {
 #>
 function Get-MlasKernelTuPattern {
     param([string]$Arch = '')
-
-    $key = Get-WindowsTargetArch -Arch $Arch
-    switch ($key) {
-        # Anchored to \.cpp: -match is case-insensitive and lib/amd64 holds MASM *Avx512*.asm kernels.
-        'amd64' { return 'qgemm_kernel_amx|intrinsics[\\/]avx512|_avx512[a-z0-9_]*\.cpp' }
-        # Not matched on purpose: the dispatchers (cast.cpp, halfconv.cpp, halfgemm.cpp) must stay feature-free.
-        'arm64' { return '_fp16|_kernel_neon|qgemm_kernel_(udot|sdot|smmla|ummla)' }
-    }
-    throw "Get-MlasKernelTuPattern: no TU pattern defined for '$key'"
+    return (Get-WindowsTargetArchInfo -Arch $Arch).MlasKernelTuPattern
 }
 
 <#
@@ -561,15 +541,7 @@ function Get-MlasKernelTuPattern {
 #>
 function Get-MlasKernelTuMinimum {
     param([string]$Arch = '')
-
-    $key = Get-WindowsTargetArch -Arch $Arch
-    switch ($key) {
-        # ORT v1.29.0 matches 11; the stale pattern matched 5.
-        'amd64' { return 8 }
-        # ORT v1.29.0 matches 16; the first, incomplete pattern matched 10.
-        'arm64' { return 12 }
-    }
-    throw "Get-MlasKernelTuMinimum: no minimum defined for '$key'"
+    return (Get-WindowsTargetArchInfo -Arch $Arch).MlasKernelTuMinimum
 }
 
 # CMake

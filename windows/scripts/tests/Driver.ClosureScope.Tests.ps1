@@ -15,7 +15,7 @@ Describe 'driver .GetNewClosure() blocks never read script-scope param() vars' {
 
     function Get-ClosureViolation {
         param([string]$Path)
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
+        $ast = (Get-TestScriptAst -ScriptPath $Path)
         $scriptParams = Get-ScriptParamNames -Ast $ast
         $violations = @()
         # Every `{ ... }.GetNewClosure()` in the file.

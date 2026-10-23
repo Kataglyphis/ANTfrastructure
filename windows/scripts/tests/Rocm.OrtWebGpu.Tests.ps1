@@ -529,7 +529,7 @@ Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC DLLs and each inter
         Assert-True ($src.IndexOf('"dxcompiler.dll", "dxil.dll"') -gt $src.IndexOf('og.Model(og.Config(model_dir))')) 'DXC loads last, dxcompiler first (the one Dawn loads; dxil.dll only to catch a leftover)'
         Assert-Match '"provider_options": \[\{"webgpu": \{\}\}\]' $src 'GenAI asks for its webgpu provider'
         Assert-False ($src -match 'ALLOW_SOFTWARE|forceFallback|dawnBackendType|register_execution_provider_library') 'no adapter forcing, no plugin EP'
-        $ast = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-OrtWebGpuSuitePath $script:OrtWebGpuCheck), [ref]$null, [ref]$null)
+        $ast = (Get-TestScriptAst -ScriptPath (Resolve-OrtWebGpuSuitePath $script:OrtWebGpuCheck))
         Assert-Null $ast.ParamBlock 'rocm-checks scripts take no parameters (Test-RocmImage.ps1 runs them bare)'
     }
 

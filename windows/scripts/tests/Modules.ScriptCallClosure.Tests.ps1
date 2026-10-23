@@ -44,7 +44,7 @@ Describe 'build scripts can resolve every module function they call (cold import
                 [System.StringComparer]::OrdinalIgnoreCase)
 
             # Via the AST: a regex would also match names in comments and error strings.
-            $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref]$null, [ref]$null)
+            $ast = (ConvertTo-TestScriptAst -Text $text)
             $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) |
                 ForEach-Object { $_.GetCommandName() } | Where-Object { $_ })
 

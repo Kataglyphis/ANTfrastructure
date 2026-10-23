@@ -230,7 +230,7 @@ Describe 'Smoke §21: the probe runner' {
 Describe 'Smoke §21: wiring in Test-Container.ps1' {
     $path = Resolve-SmokeOrtSuitePath $script:SmokeScript
     $text = [System.IO.File]::ReadAllText($path)
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$null, [ref]$null)
+    $ast = (Get-TestScriptAst -ScriptPath $path)
     # The branch that runs once the venv and its verifier exist; every statement in it is unconditional.
     $venvBranch = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and
                 "$($n.Clauses[0].Item1.Extent.Text)" -match '^\$torchAppDir -and \(Test-Path \$torchAppDir\) -and \$torchAppScript$' }, $true))
