@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — reduce Windows fixture and tool lookup duplication
+
+- Share LLVM bare-name and `.exe` lookup while preserving optional archiver use and required MASM selection.
+- Keep the scoped environment helper's loop variables from shadowing caller locals, move the FFmpeg fixture into Pester's shared scope, convert full-loop engine smoke tests to distinct data cases, reuse the batch-tool fixture for Bazel, and lower the measured agentic-test self-match from 45 to 39.
+- Share Torch and torchvision ROCm target-family selection through one helper at both original setup points.
+- Share leaf-file gap detection across MIGraphX install, ORT EP staging and license checks while preserving each caller's required-file list.
+- Share host tree byte, file and access-error enumeration for VHDX verification and disk-reclaim sizing while preserving caller-specific verdicts.
+
 ## 2026-10-23 — remove another Windows duplication wave
 
 - Scope FFmpeg codec and Vulkan Validation Layers compiler variables with the shared environment helper, route GPU diagnostics through shared Docker discovery, and build wheel/sccache fakes with the shared batch-tool fixture.

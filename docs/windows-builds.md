@@ -1999,6 +1999,9 @@ REBUILDING it around its live data, the only reliable reclaim on ReFS guests, wh
 - Parameters: `-VhdxPath` mandatory, `-NewSizeGB`, `-NewVhdxPath`, `-Service`, `-BlockingProcess`,
   `-VerifyPath`, `-ExcludeDir`, `-LogPath`, `-ReportOnly`, `-CopyOnly`, `-SwapOnly`, `-RetireOld`,
   `-Force`. Put `-LogPath` off the volume for swap runs.
+- Tree inventory uses `Get-HostMaintenanceTreeStats` for both copy verification and reclaim sizing.
+  It returns bytes, file count and access-error count; the VHDX caller compares the copy while the
+  reclaim caller keeps its report-only zero-size fallback.
 
 #### `Clear-DiskSpace.ps1`
 
@@ -2374,7 +2377,7 @@ CMake configure findings share `Get-CmakeCacheEntries` for raw lines, variable n
 
 Source-build failure catches share `Complete-SourceBuildFailure` to mark the active phase and print the caller-labeled summary. Callers keep their own rethrow, cleanup and trap policies.
 
-FFmpeg codec Meson commands use `Invoke-WithProcessEnvironment` for `CC` and `CXX`, restoring even unset and empty caller values after either command fails. Vulkan Validation Layers scopes `CL=/w` around dependency and layer builds with the same helper; `_CL_` remains unset because clang-cl appends it after source arguments. GPU passthrough diagnostics use `Resolve-DiagnosticDocker` so required Docker discovery keeps one candidate list; explicit caller paths remain untouched. Free-threaded wheel and sccache fixtures use `New-TestBatchTool` for command-file encoding and line endings while keeping each fake's argv and exit behavior.
+FFmpeg codec Meson commands use `Invoke-WithProcessEnvironment` for `CC` and `CXX`, restoring even unset and empty caller values after either command fails without shadowing caller locals. Vulkan Validation Layers scopes `CL=/w` around dependency and layer builds with the same helper; `_CL_` remains unset because clang-cl appends it after source arguments. LLVM archiver and MASM resolution share bare-name then `.exe` lookup; archiver use stays optional while MASM is required at CMake argument construction. GPU passthrough diagnostics use `Resolve-DiagnosticDocker` so required Docker discovery keeps one candidate list; explicit caller paths remain untouched. MIGraphX install, ORT EP staging and license checks share leaf-file gap detection while keeping their own required-path lists. Free-threaded wheel, sccache and Bazel fixtures use `New-TestBatchTool` for command-file encoding and line endings while keeping each fake's argv, output and exit behavior. Torch and torchvision set the final ROCm GPU target and disable TheRock auto-detection through one helper at their original phase boundary.
 
 Python application wheel writers share one requirements read, hash update and write only after a matching wheel is found; pure-build and store-wheel callers retain their own pin and artifact filters. Agentic execution shares task counting and executor-batch progression while planner-only behavior, retry limits and fatal stop messages stay with their callers. The RDNA4 guard uses the shared active-device filter for its final verdict.
 

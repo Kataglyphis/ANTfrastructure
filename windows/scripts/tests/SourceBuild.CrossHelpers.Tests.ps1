@@ -2,9 +2,37 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# The shared cross-lane helpers over fixtures and one real system DLL; nothing here needs a toolchain.
+# NOT covered: a toolchain or real LLVM install; the suite pins shared helpers over fixtures and one system DLL.
 
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
+
+Describe 'LLVM tool path resolution' {
+    It 'tries the bare command before its .exe form and returns the resolved source' {
+        $state = New-TestCallState @{ Sources = @{ 'llvm-ml' = $null; 'llvm-ml.exe' = [pscustomobject]@{ Source = 'C:\llvm\bin\llvm-ml.exe' } } }
+        $prelude = @'
+function Get-Command { param($Name, $ErrorAction) $null = $State.Calls.Add($Name); $State.Sources[$Name] }
+'@
+        Invoke-TestFunctionMutations -ModuleArguments @{
+            ScriptPath = 'windows/scripts/modules/WindowsSourceBuild.Common.psm1'
+            FunctionName = @('Resolve-LlvmToolPath')
+            FixtureState = $state
+            Prelude = $prelude
+        } -Case @(@{
+            Find = 'if (-not $toolPath) { $toolPath = (Get-Command "$Name.exe" -ErrorAction SilentlyContinue).Source }'
+            Replace = ''
+            Expected = 'the .exe candidate resolves'
+        }) -IncludeControl -Body {
+            param($fixture)
+            $fixture.Calls.Clear()
+            Assert-Equal 'C:\llvm\bin\llvm-ml.exe' (Resolve-MutLlvmToolPath -Name 'llvm-ml') 'the .exe candidate resolves'
+            Assert-Equal 'llvm-ml|llvm-ml.exe' ($fixture.Calls -join '|') 'bare command is queried before .exe'
+            $fixture.Calls.Clear()
+            $fixture.Sources['llvm-ml'] = [pscustomobject]@{ Source = 'C:\llvm\bin\custom-llvm-ml' }
+            Assert-Equal 'C:\llvm\bin\custom-llvm-ml' (Resolve-MutLlvmToolPath -Name 'llvm-ml') 'a bare command wins'
+            Assert-Equal 'llvm-ml' ($fixture.Calls -join '|') 'the .exe candidate is skipped after a bare match'
+        }
+    }
+}
 
 Describe 'Add-NinjaPerTuFlags' {
 

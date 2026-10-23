@@ -65,6 +65,31 @@ Describe 'WindowsMigraphx.Common: gfx targets' {
     }
 }
 
+Describe 'WindowsMigraphx.Common: relative file gaps' {
+    It 'reports only missing leaves in input order and accepts an empty list' {
+        Invoke-InTestDir { param($dir)
+            Set-Content -LiteralPath (Join-Path $dir 'present.dll') -Value 'x'
+            Set-Content -LiteralPath (Join-Path $dir 'present1.dll') -Value 'x'
+            New-Item -ItemType Directory -Force -Path (Join-Path $dir 'directory') | Out-Null
+            $required = @('present.dll', 'present[1].dll', 'missing.dll', 'directory')
+            $gaps = @(Get-MigraphxFileGap -Root $dir -RelativePath $required)
+            Assert-Equal 'present[1].dll,missing.dll,directory' ($gaps -join ',') 'literal missing leaf paths in input order'
+            Assert-Equal 0 @(Get-MigraphxFileGap -Root $dir -RelativePath @()).Count 'empty required list'
+        }
+    }
+
+    It 'does not treat a directory as a required file' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsMigraphx.Common.psm1' -FunctionName Get-MigraphxFileGap `
+            -IncludeControl -Find '-PathType Leaf' -Replace '-PathType Container' -Expected 'directory must not satisfy a required file' -Body {
+            Invoke-InTestDir { param($dir)
+                New-Item -ItemType Directory -Force -Path (Join-Path $dir 'directory') | Out-Null
+                $gaps = @(Get-MutMigraphxFileGap -Root $dir -RelativePath @('directory'))
+                Assert-Equal 'directory' ($gaps -join ',') 'directory must not satisfy a required file'
+            }
+        }
+    }
+}
+
 Describe 'WindowsMigraphx.Common: AMD LLVM tool paths' {
     It 'returns an absolute forward-slash path under lib\llvm\bin, and throws when absent' {
         Invoke-InTestDir { param($dir)

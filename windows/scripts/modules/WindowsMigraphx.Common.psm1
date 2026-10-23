@@ -463,6 +463,18 @@ function Get-MigraphxStagedLicensePath {
     return $paths
 }
 
+function Get-MigraphxFileGap {
+    <#
+    .SYNOPSIS
+        Relative paths that are not files under a root.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$RelativePath
+    )
+    return @($RelativePath | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Root $_) -PathType Leaf) })
+}
+
 function Get-MigraphxLicenseGap {
     <#
     .SYNOPSIS
@@ -472,7 +484,7 @@ function Get-MigraphxLicenseGap {
         [Parameter(Mandatory)][string]$InstallDir,
         [Parameter(Mandatory)][ValidateSet('MigraphxDeps', 'OrtAmdgpuEp')][string]$Set
     )
-    return @(Get-MigraphxStagedLicensePath -Set $Set | Where-Object { -not (Test-Path -LiteralPath (Join-Path $InstallDir $_) -PathType Leaf) })
+    return @(Get-MigraphxFileGap -Root $InstallDir -RelativePath (Get-MigraphxStagedLicensePath -Set $Set))
 }
 
 function Copy-MigraphxLicenseFile {
@@ -551,5 +563,5 @@ Export-ModuleMember -Function Assert-MigraphxRocmLane, Get-MigraphxGpuTargetList
     Assert-FetchContentSeeded, Get-FetchContentSeedArg, Get-MigraphxTreeFact, Get-MigraphxRocmCmakeCommit, Save-GitCommitSource,
     Write-NlohmannJsonConfigShim,
     Get-MigraphxPinnedSourceSpec, Start-MigraphxBuildSession, Complete-MigraphxBuildSession,
-    Get-MigraphxLicenseFile, Get-MigraphxStagedLicensePath, Get-MigraphxLicenseGap, Copy-MigraphxLicenseFile, Save-SpdxHeaderNotice,
+    Get-MigraphxLicenseFile, Get-MigraphxStagedLicensePath, Get-MigraphxFileGap, Get-MigraphxLicenseGap, Copy-MigraphxLicenseFile, Save-SpdxHeaderNotice,
     Save-MigraphxLicense

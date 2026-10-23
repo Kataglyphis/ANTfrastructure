@@ -378,10 +378,15 @@ function Get-MsvcToolsRoot {
     return @(Get-MsvcToolsRoots)[0]
 }
 
+function Resolve-LlvmToolPath {
+    param([Parameter(Mandatory)][string]$Name)
+    $toolPath = (Get-Command $Name -ErrorAction SilentlyContinue).Source
+    if (-not $toolPath) { $toolPath = (Get-Command "$Name.exe" -ErrorAction SilentlyContinue).Source }
+    return $toolPath
+}
+
 function Resolve-LlvmArchiver {
-    $llvmLib = (Get-Command 'llvm-lib' -ErrorAction SilentlyContinue).Source
-    if (-not $llvmLib) { $llvmLib = (Get-Command 'llvm-lib.exe' -ErrorAction SilentlyContinue).Source }
-    return $llvmLib
+    return Resolve-LlvmToolPath -Name 'llvm-lib'
 }
 
 function Copy-CpythonPyConfigHeader {
@@ -1899,9 +1904,7 @@ function Get-LlvmArchiverCmakeArg {
 
 # llvm-ml replaces ml64.exe, the last MSVC tool; unlike the archiver, a missing one throws (see Get-LlvmMasmCmakeArg).
 function Resolve-LlvmMasm {
-    $llvmMl = (Get-Command 'llvm-ml' -ErrorAction SilentlyContinue).Source
-    if (-not $llvmMl) { $llvmMl = (Get-Command 'llvm-ml.exe' -ErrorAction SilentlyContinue).Source }
-    return $llvmMl
+    return Resolve-LlvmToolPath -Name 'llvm-ml'
 }
 function Get-LlvmMasmCmakeArg {
     # Forward slashes: the value is also expanded inside CMake strings (IREE's custom command).

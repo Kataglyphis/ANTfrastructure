@@ -111,9 +111,7 @@ function Get-EntrySizeGB {
     try {
         $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
         if (-not $item.PSIsContainer) { return [math]::Round($item.Length / 1GB, 3) }
-        # No -FollowSymlink: sizing must not walk out of the subtree either.
-        $bytes = (Get-ChildItem -LiteralPath $Path -Recurse -Force -File -ErrorAction SilentlyContinue |
-                Measure-Object -Property Length -Sum).Sum
+        $bytes = (Get-HostMaintenanceTreeStats -Root $Path).Bytes
         if (-not $bytes) { return 0.0 }
         return [math]::Round($bytes / 1GB, 3)
     } catch { return 0.0 }

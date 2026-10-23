@@ -2,7 +2,7 @@
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
 
-# Smoke §19: the ort-sys crate env windows/Dockerfile bakes must name the chain ORT on every lane; no cargo build.
+# NOT covered: a cargo build; this smoke pins image ORT env wiring and parser failure order.
 using namespace System.Management.Automation.Language
 
 $script:CrateSmoke = Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-Container.ps1'
@@ -89,34 +89,36 @@ Describe 'Smoke §19: ort crate env findings' {
     }
 }
 
-# Every IfStatementAst between $Node and the script root, as condition text (empty = runs unconditionally).
-function Get-OrtCrateGuard {
-    param([Parameter(Mandatory)][Ast]$Node)
-    $guards = [System.Collections.Generic.List[string]]::new()
-    $p = $Node.Parent
-    while ($null -ne $p) {
-        if ($p -is [IfStatementAst]) { $guards.Add($p.Clauses[0].Item1.Extent.Text) }
-        $p = $p.Parent
-    }
-    return $guards.ToArray()
-}
-
 Describe 'Smoke §19: ort crate env wiring' {
-    $src = Get-Content -Raw -LiteralPath $script:CrateSmoke
-    $parseErrors = $null
-    $tokens = $null
-    $all = [Parser]::ParseInput($src, [ref]$tokens, [ref]$parseErrors).FindAll({ $true }, $true)
-    $check = @($all | Where-Object { $_ -is [CommandAst] -and $_.Extent.Text -like 'Assert-Test*$ortCrateFindings*' })
-    $source = @($all | Where-Object { $_ -is [AssignmentStatementAst] -and $_.Left.Extent.Text -eq '$ortCrateFindings' })
+    $ast = Get-TestScriptAst -ScriptPath $script:CrateSmoke
+    $src = $ast.Extent.Text
+    $check = @(Get-TestAstCommands -Ast $ast -Name 'Assert-Test' | Where-Object { $_.Extent.Text -like 'Assert-Test*$ortCrateFindings*' })
+    $sourceCall = @(Get-TestAstCommands -Ast $ast -Name 'Get-OrtCrateEnvFinding')
+    $source = @($sourceCall | ForEach-Object { Get-TestAstAncestor -Node $_ -Type ([AssignmentStatementAst]) -First })
 
     It 'asserts zero findings from the process env, inside section 19, under no lane condition (mutation)' {
-        Assert-Equal 0 @($parseErrors).Count 'Test-Container.ps1 parses'
         Assert-Equal '1/1' "$($check.Count)/$($source.Count)" 'one ort crate env assertion, fed by one findings assignment'
-        Assert-Match '-Finding \$ortCrateFindings(?: |$)' $check[0].Extent.Text 'passes on zero findings only'
+        Assert-Equal '$ortCrateFindings' (Get-TestCommandArguments -Command $check[0]).Finding 'passes on zero findings only'
         Assert-Match '^@\(Get-OrtCrateEnvFinding -OnnxRoot \$env:ONNX_ROOT\)$' $source[0].Right.Extent.Text 'the image env, not a fixture'
-        Assert-Equal '' ((@(Get-OrtCrateGuard $check[0]) + @(Get-OrtCrateGuard $source[0])) -join ' ; ') 'every lane: no enclosing if'
+        $guards = @(
+            Get-TestAstAncestor -Node $check[0] -Type ([IfStatementAst])
+            Get-TestAstAncestor -Node $source[0] -Type ([IfStatementAst])
+        )
+        Assert-Equal 0 $guards.Count 'every lane: no enclosing if'
         $at = $check[0].Extent.StartOffset
         Assert-True ($src.IndexOf("Write-TestHeader '19.") -lt $at -and $at -lt $src.IndexOf("Write-TestHeader '20.")) 'counted in section 19, whose floors it raised'
+    }
+
+    It 'rejects a malformed source mutation before inspecting declarations' {
+        Invoke-InTestDir { param($dir)
+            $mutatedPath = Join-Path $dir 'Test-Container-malformed.ps1'
+            $malformed = [IO.File]::ReadAllText($script:CrateSmoke) + "`nfunction Broken {"
+            [IO.File]::WriteAllText($mutatedPath, $malformed)
+            Assert-Throws {
+                $mutatedAst = Get-TestScriptAst -ScriptPath $mutatedPath -ErrorLabel 'mutated Test-Container.ps1'
+                $null = Get-TestAstCommands -Ast $mutatedAst -Name 'Assert-Test'
+            } -MessagePattern 'mutated Test-Container\.ps1: parse errors'
+        }
     }
 
     It 'expects exactly the values windows/Dockerfile bakes (mutation)' {

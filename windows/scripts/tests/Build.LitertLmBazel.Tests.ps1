@@ -39,8 +39,9 @@ Describe 'Build-LitertLmBazel: bazel''s trees leave the layer (hub #181)' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsBazel.Common.psm1' -FunctionName 'Invoke-BazelLogged')
         Assert-Match 'Invoke-BazelLogged -Bazel C:\\bzl-tools\\bazel\.exe -Argument .* -LogPath C:\\bazel-build\.log' $script:LlmBazelText 'the driver streams through it'
         Invoke-InTestDir { param($d)
-            $fake = Join-Path $d 'bazel.cmd'
-            Set-Content -LiteralPath $fake -Encoding ASCII -Value @('@echo off', 'echo [1 / 9] one', 'echo [2 / 9] two', 'echo INFO: done', 'exit /b 3')
+            $fake = New-TestBatchTool -Directory $d -Name 'bazel.cmd' -Line @(
+                'echo [1 / 9] one', 'echo [2 / 9] two', 'echo INFO: done'
+            ) -ExitCode 3
             $log = Join-Path $d 'build.log'
             $shown = @(& { $script:BazelExit = Invoke-BazelLogged -Bazel $fake -Argument @('build') -LogPath $log } 6>&1 | ForEach-Object { "$_" })
             Assert-Equal 3 $script:BazelExit 'bazel''s exit code comes back'

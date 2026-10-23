@@ -74,7 +74,7 @@ Describe 'Build-TorchRocmFromSource: the steps both RUNs share' {
 }
 
 Describe 'Build-TorchRocmFromSource: the ROCm loader and the build env' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Get-TorchRocmInitSource', 'Get-TorchRocmCommonEnv', 'Get-TorchRocmTorchEnv', 'Get-TorchRocmVisionEnv', 'Copy-TorchRocmEnv')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchRocmBuilder -FunctionName 'Get-TorchRocmInitSource', 'Get-TorchRocmCommonEnv', 'Get-TorchRocmTorchEnv', 'Get-TorchRocmVisionEnv', 'Copy-TorchRocmEnv', 'Set-TorchRocmBootstrapEnvironment')
 
     It '_rocm_init.py preloads ROCm through rocm_sdk at the release, as AMD''s wheels do' {
         $src = Get-TorchRocmInitSource -Release '10.0.0'
@@ -94,6 +94,19 @@ Describe 'Build-TorchRocmFromSource: the ROCm loader and the build env' {
             Assert-Equal (Join-Path $dir 'lib\llvm\bin\clang-cl.exe') $e['CXX'] 'CXX'
             Assert-Equal 'rocm-openblas' $e['OpenBLAS_LIB_NAME'] 'OpenBLAS from the SDK''s host-math'
             Assert-False $e.Contains('HIP_DEVICE_LIB_PATH') 'no bitcode dir, no HIP_DEVICE_LIB_PATH'
+        }
+    }
+
+    It 'selects TheRock''s last GPU target and disables bootstrap detection for both wheel builds' {
+        Invoke-WithEnv @{ ROCM_SDK_TARGET_FAMILY = 'before'; ROCM_BOOTSTRAP_DISABLE_DETECTION = '0' } {
+            Set-TorchRocmBootstrapEnvironment -GpuTargets 'gfx1200;gfx1201'
+            Assert-Equal 'gfx1201' $env:ROCM_SDK_TARGET_FAMILY 'TheRock target family'
+            Assert-Equal '1' $env:ROCM_BOOTSTRAP_DISABLE_DETECTION 'explicit target selection'
+        }
+        foreach ($path in $script:TorchRocmBuilder, 'windows/scripts/build/Build-TorchvisionRocmFromSource.ps1') {
+            $calls = @(Get-TestScriptCommands -ScriptPath $path -Name 'Set-TorchRocmBootstrapEnvironment')
+            Assert-Equal 1 $calls.Count "one explicit TheRock target setup in $path"
+            Assert-Equal 'Set-TorchRocmBootstrapEnvironment -GpuTargets $build.GpuTargets' $calls[0].Extent.Text "caller target in $path"
         }
     }
 

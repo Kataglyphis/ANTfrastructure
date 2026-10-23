@@ -144,6 +144,23 @@ function Get-HostMaintenanceProcess {
     return $live
 }
 
+function Get-HostMaintenanceTreeStats {
+    param([Parameter(Mandatory)][string]$Root, [string[]]$ExcludeDir = @())
+    $bytes = [long]0; $files = 0; $errors = 0
+    $ev = $null
+    # Omit -FollowSymlink so size probes remain inside the selected tree.
+    $items = Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable ev
+    if ($ExcludeDir.Count -gt 0) {
+        $items = @($items | Where-Object {
+                $parts = $_.FullName.Split([char]'\')
+                -not ($ExcludeDir | Where-Object { $parts -contains $_ })
+            })
+    }
+    foreach ($file in $items) { $bytes += $file.Length; $files++ }
+    if ($ev) { $errors = @($ev).Count }
+    return [pscustomobject]@{ Bytes = $bytes; Files = $files; Errors = $errors }
+}
+
 Export-ModuleMember -Function @(
     'New-HostMaintenanceLog',
     'Write-HostStep',
@@ -152,6 +169,7 @@ Export-ModuleMember -Function @(
     'Stop-HostServices',
     'Start-HostServices',
     'Get-HostMaintenanceProcess',
+    'Get-HostMaintenanceTreeStats',
     'Write-HostMaintenanceFailure',
     'Write-HostMaintenanceError',
     'Invoke-HostMaintenanceTask',

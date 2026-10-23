@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Local transcript and process fixtures do not stop services, attach disks, modify registry values or probe the host.
+# Transcript and tree-stat fixtures do not touch live services, disks, registry values, ACLs or host probes.
 
 Describe 'Host maintenance contexts and live-process guard' {
     It 'isolates transcript contexts and preserves idle, force, diagnostics and save-before-throw policies' {
@@ -56,6 +56,49 @@ Describe 'Host maintenance contexts and live-process guard' {
                 Invoke-MutHostMaintenanceTask -Log $second -Operation { throw 'fixture task failure' } -FailureTemplate 'task failed: {0}' -FailureColor Yellow 6>$null
                 Assert-Match 'task failed: fixture task failure$' $second.Lines[-1]
             }
+        }
+    }
+
+    It 'fails mutations that drop recursion, exclusions or access-error accounting' {
+        Assert-HostTreeStatsPolicyMutations
+    }
+
+    It 'walks nested files rather than silently measuring only the root (mutation)' {
+        Assert-HostTreeRecursionMutation
+    }
+}
+
+function New-HostTreeStatsPrelude {
+    return @'
+function Get-ChildItem {
+    [CmdletBinding()]
+    param([string]$LiteralPath, [switch]$Recurse, [switch]$File, [switch]$Force)
+    [pscustomobject]@{ FullName = 'C:\fixture\keep\file.bin'; Length = 5 }
+    [pscustomobject]@{ FullName = 'C:\fixture\$RECYCLE.BIN\old.bin'; Length = 7 }
+    Write-Error 'fixture access denied'
+}
+'@
+}
+
+function Assert-HostTreeStatsPolicyMutations {
+    $cases = [System.Collections.Generic.List[object]]::new()
+    $cases.Add(@{ Find = '-not ($ExcludeDir | Where-Object { $parts -contains $_ })'; Replace = '$true'; Expected = 'excluded files must not contribute bytes' })
+    $cases.Add(@{ Find = '-ErrorVariable ev'; Replace = ''; Expected = 'unreadable paths must remain observable' })
+    Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName Get-HostMaintenanceTreeStats -Prelude (New-HostTreeStatsPrelude) -IncludeControl -Case $cases.ToArray() -Body {
+        $stats = Get-MutHostMaintenanceTreeStats -Root 'C:\fixture' -ExcludeDir '$RECYCLE.BIN'
+        Assert-Equal 5 $stats.Bytes 'excluded files must not contribute bytes'
+        Assert-Equal 1 $stats.Files 'excluded files must not contribute to the count'
+        Assert-Equal 1 $stats.Errors 'unreadable paths must remain observable'
+    }
+}
+
+function Assert-HostTreeRecursionMutation {
+    Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1' -FunctionName Get-HostMaintenanceTreeStats -IncludeControl -Find '-Recurse' -Replace '' -Expected 'expected nested file count' -Body {
+        Invoke-InTestDir -Files @{ 'top.bin' = 'abc'; 'nested\deep.bin' = '123456' } -Body {
+            param($dir)
+            $stats = Get-MutHostMaintenanceTreeStats -Root $dir
+            Assert-Equal 2 $stats.Files 'expected nested file count'
+            Assert-Equal 9 $stats.Bytes
         }
     }
 }

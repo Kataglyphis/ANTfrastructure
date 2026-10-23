@@ -537,21 +537,36 @@ Plain text after the block.
                 | Should -Not -Throw
         }
 
-        It 'full loop works with the claude engine (dry-run, max 1 iteration)' {
-            $claudeCfg = New-EngineTestConfig -Engines @{ claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' } }
-            { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
-                -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality } `
-                | Should -Not -Throw
-        }
-
-        It 'full loop works with an engine override to opencode' {
-            $claudeCfg = New-EngineTestConfig -Engines @{
-                claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' }
-                opencode = @{ plannerModel = 'oc-planner'; executorModel = 'oc-executor' }
+        It 'full loop works with <Scenario> (dry-run, max 1 iteration)' -ForEach @(
+            @{
+                Scenario = 'the configured claude engine'
+                Engines = @{ claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' } }
+                EngineOverride = $null
             }
-            { Invoke-AgenticLoop -Config $claudeCfg -PlannerPrompt 'test' -ExecutorPrompt 'test' `
-                -BuildConfigs @('debug') -OnWindows $true -RepoRoot $script:testDir -MaxIterations 1 -SkipBuild -SkipTests -SkipQuality -Engine 'opencode' } `
-                | Should -Not -Throw
+            @{
+                Scenario = 'an opencode engine override'
+                Engines = @{
+                    claude = @{ plannerModel = 'claude-fable-5'; executorModel = 'claude-sonnet-5' }
+                    opencode = @{ plannerModel = 'oc-planner'; executorModel = 'oc-executor' }
+                }
+                EngineOverride = 'opencode'
+            }
+        ) {
+            $scenario = $_
+            $loopArgs = @{
+                Config = New-EngineTestConfig -Engines $scenario.Engines
+                PlannerPrompt = 'test'
+                ExecutorPrompt = 'test'
+                BuildConfigs = @('debug')
+                OnWindows = $true
+                RepoRoot = $script:testDir
+                MaxIterations = 1
+                SkipBuild = $true
+                SkipTests = $true
+                SkipQuality = $true
+            }
+            if ($scenario.EngineOverride) { $loopArgs.Engine = $scenario.EngineOverride }
+            { Invoke-AgenticLoop @loopArgs } | Should -Not -Throw
         }
     }
 

@@ -401,10 +401,10 @@ function Invoke-WithProcessEnvironment {
     param([Parameter(Mandatory)][System.Collections.IDictionary]$Environment, [Parameter(Mandatory)][scriptblock]$ScriptBlock)
     $priorEnv = @(Get-ChildItem Env: | Where-Object Name -In @($Environment.Keys))
     try {
-        foreach ($name in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$name" -Value $Environment[$name] }
+        foreach ($environmentName in @($Environment.Keys)) { Set-Item -LiteralPath "Env:$environmentName" -Value $Environment[$environmentName] }
         & $ScriptBlock
     } finally {
-        foreach ($name in @($Environment.Keys)) { Remove-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue }
+        foreach ($environmentName in @($Environment.Keys)) { Remove-Item -LiteralPath "Env:$environmentName" -ErrorAction SilentlyContinue }
         $priorEnv | ForEach-Object { Set-Item -LiteralPath "Env:$($_.Name)" -Value $_.Value }
     }
 }

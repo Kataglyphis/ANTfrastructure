@@ -57,24 +57,6 @@ $oldVhdxPath = "$VhdxPath.old"
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsHostMaintenance.Common.psm1') -Force
 $hostLog = New-HostMaintenanceLog -Name 'rebuild-host-vhdx' -LogPath $LogPath
 
-# Access errors are counted, not swallowed: an unreadable file is a different problem than a short copy.
-function Measure-Tree {
-    param([string]$Root, [string[]]$ExcludeDir = @())
-    $bytes = [long]0; $files = 0; $errors = 0
-    $ev = $null
-    $items = Get-ChildItem -LiteralPath $Root -Recurse -File -Force -ErrorAction SilentlyContinue -ErrorVariable ev
-    # Skip what robocopy /XD skips: a fresh volume root has its own $RECYCLE.BIN.
-    if ($ExcludeDir.Count -gt 0) {
-        $items = @($items | Where-Object {
-                $parts = $_.FullName.Split([char]'\')
-                -not ($ExcludeDir | Where-Object { $parts -contains $_ })
-            })
-    }
-    foreach ($f in $items) { $bytes += $f.Length; $files++ }
-    if ($ev) { $errors = @($ev).Count }
-    return [pscustomobject]@{ Bytes = $bytes; Files = $files; Errors = $errors }
-}
-
 function Get-FreeDriveLetter {
     $used = (Get-PSDrive -PSProvider FileSystem).Name
     foreach ($c in [char[]](90..68)) { if ($used -notcontains "$c") { return "$c" } }
@@ -193,8 +175,8 @@ if (-not $SwapOnly) {
         if ($rcExit -ge 8) { throw "robocopy reported failures (exit $rcExit) — the copy is not trustworthy." }
 
         Write-HostStep -Log $hostLog '--- verifying the copy ---'
-        $srcStats = Measure-Tree -Root $sourceRoot -ExcludeDir $ExcludeDir
-        $dstStats = Measure-Tree -Root "${stageLetter}:\" -ExcludeDir $ExcludeDir
+        $srcStats = Get-HostMaintenanceTreeStats -Root $sourceRoot -ExcludeDir $ExcludeDir
+        $dstStats = Get-HostMaintenanceTreeStats -Root "${stageLetter}:\" -ExcludeDir $ExcludeDir
         Write-HostStep -Log $hostLog ('source : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $srcStats.Files, ($srcStats.Bytes / 1GB), $srcStats.Errors)
         Write-HostStep -Log $hostLog ('copy   : {0:N0} files, {1:N2} GB ({2} unreadable)' -f $dstStats.Files, ($dstStats.Bytes / 1GB), $dstStats.Errors)
         if ($dstStats.Files -ne $srcStats.Files -or $dstStats.Bytes -ne $srcStats.Bytes) {

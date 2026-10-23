@@ -17,17 +17,20 @@ Describe 'Get-PipPin and the chain''s pip installs (CON89)' {
         $bare = [System.Collections.Generic.List[string]]::new()
         $pinned = [System.Collections.Generic.List[string]]::new()
         foreach ($script in Get-Item -Path (Join-Path (Get-RepoRoot) 'windows\scripts\build\*.ps1')) {
-            $ast = (Get-Command -Name $script.FullName).ScriptBlock.Ast
-            foreach ($call in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Invoke-CpythonPip' }, $true)) {
-                $consts = @($call.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $n.StringConstantType -ne 'BareWord' }, $true) | ForEach-Object Value)
+            $ast = Get-TestScriptAst -ScriptPath $script.FullName
+            foreach ($call in Get-TestAstCommands -Ast $ast -Name 'Invoke-CpythonPip') {
+                $arguments = (Get-TestCommandArguments -Command $call -AsAst).Arguments
+                $consts = @($arguments.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $n.StringConstantType -ne 'BareWord' }, $true) | ForEach-Object Value)
                 if ($consts.Count -eq 0 -or $consts[0] -cne 'install') { continue }
                 foreach ($c in @($consts | Select-Object -Skip 1)) {
                     if ($c -match '^[A-Za-z][A-Za-z0-9_.-]*$') { $bare.Add("$($script.Name):$($call.Extent.StartLineNumber) $c") }
                 }
             }
-            foreach ($install in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq 'Install-CpythonPipPin' }, $true)) {
-                $texts = @($install.CommandElements | ForEach-Object { $_.Extent.Text })
-                foreach ($name in @($texts[[array]::IndexOf($texts, '-Name') + 1] -split '\s*,\s*')) { $pinned.Add($name) }
+            foreach ($install in Get-TestAstCommands -Ast $ast -Name 'Install-CpythonPipPin') {
+                $names = (Get-TestCommandArguments -Command $install -AsAst).Name
+                foreach ($name in @($names.FindAll({ param($n) $n -is [System.Management.Automation.Language.StringConstantExpressionAst] }, $true) | ForEach-Object Value)) {
+                    $pinned.Add($name)
+                }
             }
         }
         Assert-Equal '' ($bare -join '; ') 'install names a bare package; install it through Install-CpythonPipPin'

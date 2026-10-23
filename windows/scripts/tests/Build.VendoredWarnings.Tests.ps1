@@ -1,8 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2026 Kataglyphis
 # SPDX-License-Identifier: MIT
-# NOT covered: emitted compiler diagnostics; this suite checks source wiring only.
-# Hub #183: vendored code's GCC-style -Wall reaches clang-cl as -Weverything and floods the stage logs.
+# NOT covered: emitted compiler diagnostics; this source-wiring check guards hub #183's clang-cl warning flag.
 
 function Assert-VendoredWarningScope {
     param([Parameter(Mandatory)][string]$Text, [Parameter(Mandatory)][string]$What,

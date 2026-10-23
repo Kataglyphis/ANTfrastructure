@@ -51,7 +51,7 @@ try {
     $env:UV_NO_CACHE = '1'; $env:UV_LINK_MODE = 'copy'
     # `import torchvision` imports PIL; torch's build requirements do not bring it.
     Invoke-TorchRocmLogged -CommandLine "uv pip install --python ""$venvPy"" pillow" -WorkingDir $WorkDir -LogName 'torchvision-rocm-deps.log'
-    $env:ROCM_SDK_TARGET_FAMILY = ($build.GpuTargets -split ';')[-1]; $env:ROCM_BOOTSTRAP_DISABLE_DETECTION = '1'
+    Set-TorchRocmBootstrapEnvironment -GpuTargets $build.GpuTargets
     $pyTag = Get-TorchRocmPythonTag -Python $venvPy
     $common = Get-TorchRocmCommonEnv -RocmRoot $build.RocmRoot -GpuTargets $build.GpuTargets
     Set-TorchRocmProcessEnv -Env (Get-TorchRocmVisionEnv -Common $common -BuildVersion $visionVersion -Jobs $jobs)

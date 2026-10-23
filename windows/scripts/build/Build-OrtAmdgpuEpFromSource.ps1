@@ -64,7 +64,7 @@ function Get-OrtAmdgpuEpStageGap {
     )
     $required = @('migraphx-ep.dll', 'migraphx.dll', 'migraphx_c.dll', 'migraphx_gpu.dll', 'migraphx_device.dll',
         'migraphx_onnx.dll', 'migraphx-hiprtc-driver.exe') + $HipRuntimeName
-    return @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $EpDir $_) -PathType Leaf) })
+    return @(Get-MigraphxFileGap -Root $EpDir -RelativePath $required)
 }
 
 # Refuses off the rocm lane (Get-GpuEnvironment.HasRocm) before anything is fetched.

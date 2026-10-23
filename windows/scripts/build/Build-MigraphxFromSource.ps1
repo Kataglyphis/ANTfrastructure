@@ -120,7 +120,7 @@ function Get-MigraphxInstallGap {
         'bin\migraphx_onnx.dll', 'bin\migraphx-hiprtc-driver.exe', 'bin\migraphx-driver.exe',
         'lib\migraphx_c.lib', 'lib\cmake\migraphx\migraphx-config.cmake', 'include\migraphx\migraphx.hpp'
     )
-    return @($required | Where-Object { -not (Test-Path -LiteralPath (Join-Path $InstallDir $_) -PathType Leaf) })
+    return @(Get-MigraphxFileGap -Root $InstallDir -RelativePath $required)
 }
 
 # Refuses off the rocm lane (Get-GpuEnvironment.HasRocm) before anything is fetched.

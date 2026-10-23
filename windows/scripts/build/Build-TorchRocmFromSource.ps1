@@ -154,6 +154,12 @@ function Set-TorchRocmProcessEnv {
     }
 }
 
+function Set-TorchRocmBootstrapEnvironment {
+    param([Parameter(Mandatory)][string]$GpuTargets)
+    $env:ROCM_SDK_TARGET_FAMILY = ($GpuTargets -split ';')[-1]
+    $env:ROCM_BOOTSTRAP_DISABLE_DETECTION = '1'
+}
+
 function Copy-TorchRocmVenvShim {
     # Without the base sitecustomize.py the clang-built CPython reports win32 and uv resolves 32-bit wheels.
     param([Parameter(Mandatory)][string]$BaseSitePackages, [Parameter(Mandatory)][string]$BasePythonDir, [Parameter(Mandatory)][string]$Venv)
@@ -270,7 +276,7 @@ try {
     foreach ($k in @([Environment]::GetEnvironmentVariables().Keys | Where-Object { "$_" -like 'TORCH_ROCM_WINDOWS_*' })) { $pins["$k"] = [Environment]::GetEnvironmentVariable("$k") }
     $req = Join-Path $WorkDir 'rocm-runtime.txt'
     Set-Content -LiteralPath $req -Encoding utf8 -Value @(Save-TorchRocmRuntimeWheel -Dir (Join-Path $WorkDir 'rocm-runtime') -Pin @(Get-TorchRocmRuntimePin -Pins $pins))
-    $env:ROCM_SDK_TARGET_FAMILY = ($build.GpuTargets -split ';')[-1]; $env:ROCM_BOOTSTRAP_DISABLE_DETECTION = '1'
+    Set-TorchRocmBootstrapEnvironment -GpuTargets $build.GpuTargets
     Invoke-TorchRocmLogged -CommandLine ("uv pip install --python ""$venvPy"" --no-deps --no-index --no-build-isolation --require-hashes -r ""$req""") `
         -WorkingDir $WorkDir -LogName 'torch-rocm-runtime.log'
     $pyTag = Get-TorchRocmPythonTag -Python $venvPy
