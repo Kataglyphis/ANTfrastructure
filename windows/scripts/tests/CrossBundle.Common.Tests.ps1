@@ -43,6 +43,18 @@ Describe 'Get-WindowsPackageArch' {
         Assert-Equal 'arm64' (Get-WindowsPackageArch -Arch arm64) 'arm64 packages as arm64'
         Assert-Throws { Get-WindowsPackageArch -Arch riscv64 } -MessagePattern 'Unsupported Windows target architecture'
     }
+
+    It 'keeps the CrossBundle export delegated to the canonical target-architecture mapping' {
+        $crossBundle = Get-Module -Name 'WindowsCrossBundle.Common' | Select-Object -First 1
+        $targetArch = Get-Module -Name 'WindowsTargetArch.Common' | Select-Object -First 1
+        Assert-True ($crossBundle.ExportedFunctions.ContainsKey('Get-WindowsPackageArch')) 'the CrossBundle compatibility export remains public'
+        Assert-True ($null -ne $targetArch) 'CrossBundle loads the canonical target-architecture module'
+        foreach ($arch in 'amd64', 'x64', 'arm64') {
+            $expected = & $targetArch { param($requestedArch) Get-WindowsPackageArch -Arch $requestedArch } $arch
+            $actual = WindowsCrossBundle.Common\Get-WindowsPackageArch -Arch $arch
+            Assert-Equal $expected $actual "$arch package mapping comes from the canonical owner"
+        }
+    }
 }
 
 Describe 'Get-ProductDllSearchPath' {

@@ -281,23 +281,29 @@ Describe 'Dockerfile.rocm: PATH and pins' {
 }
 
 Describe 'Install-Rocm: TheRock''s OpenCL ICD, registered the way the Khronos loader reads it' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Register-OpenClIcd')
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-OpenClIcdRegistryEntry', 'Get-OpenClIcdRegistryFinding')
+    BeforeAll {
+        Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1') -Force -DisableNameChecking
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-OpenClIcdRegistryFinding')
+    }
     # A throwaway HKCU key stands in for HKLM\SOFTWARE\Khronos\OpenCL\Vendors.
     function Invoke-InTestRegistry([scriptblock]$Body) {
-        $sub = 'Software\ANTfrastructure-test-' + [guid]::NewGuid().ToString('N')
-        try { & $Body ([Microsoft.Win32.Registry]::CurrentUser) $sub }
-        finally { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($sub, $false) }
+        $root = 'Software\ANTfrastructure-test-' + [guid]::NewGuid().ToString('N')
+        $base = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($root, $true)
+        try { & $Body $base }
+        finally {
+            $base.Dispose()
+            [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($root, $false)
+        }
     }
 
     It 'writes the DLL path as the value name with REG_DWORD 0, once, and the rocm-check reads it back clean' {
         Invoke-InTestDir { param($dir)
             $dll = Join-Path $dir 'amdocl64.dll'
             Set-Content -LiteralPath $dll -Value 'x'
-            Invoke-InTestRegistry { param($base, $sub)
-                Register-OpenClIcd -IcdPath $dll -BaseKey $base -SubKey $sub
-                Register-OpenClIcd -IcdPath $dll -BaseKey $base -SubKey $sub
-                $entries = @(Get-OpenClIcdRegistryEntry -BaseKey $base -SubKey $sub)
+            Invoke-InTestRegistry { param($base)
+                Register-OpenClIcd -IcdPath $dll -BaseKey $base
+                Register-OpenClIcd -IcdPath $dll -BaseKey $base
+                $entries = @(Get-OpenClIcdRegistryEntry -BaseKey $base)
                 Assert-Equal 1 $entries.Count 'one value after two registrations'
                 Assert-Equal $dll $entries[0].Name 'value name = the DLL path'
                 Assert-Equal 'DWord' $entries[0].Kind 'REG_DWORD'
@@ -308,19 +314,36 @@ Describe 'Install-Rocm: TheRock''s OpenCL ICD, registered the way the Khronos lo
     }
 
     It 'refuses a relative or missing ICD path without creating the key' {
-        Invoke-InTestRegistry { param($base, $sub)
+        Invoke-InTestRegistry { param($base)
             foreach ($bad in @('amdocl64.dll', 'C:\no-such-dir-4c1f\amdocl64.dll')) {
-                Assert-Throws { Register-OpenClIcd -IcdPath $bad -BaseKey $base -SubKey $sub } "path '$bad'" -MessagePattern 'not an existing absolute path'
+                Assert-Throws { Register-OpenClIcd -IcdPath $bad -BaseKey $base } "path '$bad'" -MessagePattern 'not an existing absolute path'
             }
-            Assert-Null $base.OpenSubKey($sub) 'no key was created'
+            Assert-Equal 0 @($base.GetSubKeyNames()).Count 'no Vendors key was created'
+            Assert-Equal 0 @(Get-OpenClIcdRegistryEntry -BaseKey $base).Count 'an absent key reads as no entries'
         }
     }
 
     It 'Install-Rocm registers bin\amdocl64.dll in HKLM''s 64-bit view, after the layout gate proved the file' {
         $src = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\host\Install-Rocm.ps1')
         Assert-Match "(?s)Assert-RocmWindowsLayout -Root \`$InstallDir -Release \`$RocmRelease\s+\`$icd = Join-Path \`$InstallDir 'bin\\amdocl64\.dll'\s+Register-OpenClIcd -IcdPath \`$icd\s" $src 'call order'
-        Assert-Match "OpenBaseKey\('LocalMachine', 'Registry64'\)" $src '64-bit HKLM'
-        Assert-Match "SubKey = 'SOFTWARE\\Khronos\\OpenCL\\Vendors'" $src 'the key the loader opens'
+        $common = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContainerImage.Common.psm1')
+        Assert-Match "OpenBaseKey\('LocalMachine', \[Microsoft\.Win32\.RegistryView\]::Registry64\)" $common '64-bit HKLM view has one owner'
+        Assert-Match "OpenClIcdRegistrySubKey = 'SOFTWARE\\Khronos\\OpenCL\\Vendors'" $common 'the key the loader opens has one owner'
+        Assert-Match "Import-Module .*WindowsContainerImage\.Common\.psm1" $src 'the installer loads the shared registration API'
+        Assert-Equal 'WindowsContainerImage.Common' (Get-Command Register-OpenClIcd -ErrorAction Stop).ModuleName 'the shared registration command is exported by its owner'
+        Assert-Equal 'WindowsContainerImage.Common' (Get-Command Get-OpenClIcdRegistryEntry -ErrorAction Stop).ModuleName 'the shared read command is exported by its owner'
+        $check = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\rocm-checks\GpuLoaders.ps1')
+        Assert-False ($check -match 'function Get-OpenClIcdRegistryEntry') 'the smoke checker keeps only caller-owned findings'
+    }
+
+    It 'keeps the shared registry module in both image and smoke-check closures' {
+        $root = Get-RepoRoot
+        $base = Get-Content -Raw (Join-Path $root 'windows\Dockerfile.base')
+        $smoke = Get-Content -Raw (Join-Path $root 'windows\Dockerfile.smoke-gate')
+        $check = Get-Content -Raw (Join-Path $root 'windows\scripts\build\rocm-checks\GpuLoaders.ps1')
+        Assert-Match 'WindowsContainerImage\.Common\.psm1' $base 'the SDK image inherits the common module'
+        Assert-Match 'source=windows/scripts,target=C:\\gate\\scripts' $smoke 'the smoke gate exposes the module beside its check'
+        Assert-Match "modules\\WindowsContainerImage\.Common\.psm1'\) -ErrorAction Stop" $check 'the check requires the same module'
     }
 }
 

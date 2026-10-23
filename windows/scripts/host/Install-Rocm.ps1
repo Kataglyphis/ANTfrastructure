@@ -119,19 +119,6 @@ function Assert-RocmWindowsLayout {
     64-bit registry view only: amdocl64.dll is a 64-bit ICD, and a 32-bit loader reads WOW6432Node.
     OCL_ICD_FILENAMES is no substitute: the loader ignores it in a high-integrity (elevated admin) process.
 #>
-function Register-OpenClIcd {
-    param(
-        [Parameter(Mandatory)][string]$IcdPath,
-        [Microsoft.Win32.RegistryKey]$BaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64'),
-        [string]$SubKey = 'SOFTWARE\Khronos\OpenCL\Vendors'
-    )
-    if (-not [System.IO.Path]::IsPathFullyQualified($IcdPath) -or -not [System.IO.File]::Exists($IcdPath)) {
-        throw "Install-Rocm: OpenCL ICD '$IcdPath' is not an existing absolute path; the loader LoadLibrary's the value name as is"
-    }
-    $key = $BaseKey.CreateSubKey($SubKey, $true)
-    try { $key.SetValue($IcdPath, 0, [Microsoft.Win32.RegistryValueKind]::DWord) } finally { $key.Dispose() }
-}
-
 $RocmRelease = Resolve-ContainerImageValue -Value $RocmRelease -EnvironmentVariable 'ROCM_WINDOWS_RELEASE'
 $GfxFamily = Resolve-ContainerImageValue -Value $GfxFamily -EnvironmentVariable 'ROCM_WINDOWS_GFX_FAMILY'
 $TarballSha256 = Resolve-ContainerImageValue -Value $TarballSha256 -EnvironmentVariable 'ROCM_WINDOWS_TARBALL_SHA256'

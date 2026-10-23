@@ -128,7 +128,7 @@ revision = deadbeef
                     $null = Invoke-MutMesonSubprojectArchive -Url fixture -Archive $archivePath -Target $target `
                         -Description fixture -Logger { param($message) }
                     Assert-False (Test-Path -LiteralPath $archivePath) 'temporary archive must be removed'
-                } finally { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+                } finally { Remove-TestDir -Path $dir }
             }
         } -MessagePattern 'temporary archive must be removed'
     }

@@ -13,23 +13,10 @@
 Set-StrictMode -Version Latest
 
 $nativeRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
-Import-Module (Join-Path $nativeRoot 'modules\WindowsNative.Common.psm1')
+Import-Module (Join-Path $nativeRoot 'modules\WindowsNative.Common.psm1') -ErrorAction Stop
+Import-Module (Join-Path $nativeRoot 'modules\WindowsContainerImage.Common.psm1') -ErrorAction Stop
 
 $ErrorActionPreference = 'Stop'
-
-function Get-OpenClIcdRegistryEntry {
-    param(
-        [Microsoft.Win32.RegistryKey]$BaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', 'Registry64'),
-        [string]$SubKey = 'SOFTWARE\Khronos\OpenCL\Vendors'
-    )
-    $key = $BaseKey.OpenSubKey($SubKey)
-    if ($null -eq $key) { return }
-    try {
-        foreach ($name in $key.GetValueNames()) {
-            [pscustomobject]@{ Name = $name; Kind = "$($key.GetValueKind($name))"; Value = $key.GetValue($name) }
-        }
-    } finally { $key.Dispose() }
-}
 
 # The Khronos loader LoadLibrary's each value NAME whose data is REG_DWORD 0 (icd_windows.c).
 function Get-OpenClIcdRegistryFinding {

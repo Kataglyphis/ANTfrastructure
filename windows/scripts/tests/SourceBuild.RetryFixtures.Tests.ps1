@@ -15,7 +15,7 @@ function Assert-RetryFixtureFailure {
         Assert-Equal 1 $seen.Count
         Assert-False (Test-Path -LiteralPath $seen[0])
     } finally {
-        foreach ($path in $seen) { Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction SilentlyContinue }
+        foreach ($path in $seen) { Remove-TestDir -Path $path }
     }
 }
 

@@ -513,9 +513,10 @@ pointer size:
 - `-Corrosion` adds `Rust_CARGO_TARGET`;
 - `-Vulkan` adds `Vulkan_LIBRARY` from the SDK's `Lib-ARM64`.
 
-`Get-WindowsPackageArch` (same module) spells the target the way Windows packaging does, `x64`
-or `arm64`: an AppxManifest's `ProcessorArchitecture`, `wix build -arch` and the VC++ redist
-directory.
+`WindowsTargetArch.Common` owns `Get-WindowsPackageArch`, which spells the target the way Windows
+packaging does, `x64` or `arm64`: an AppxManifest's `ProcessorArchitecture`, `wix build -arch` and
+the VC++ redist directory. `WindowsCrossBundle.Common` keeps its public command as a delegating
+export for existing consumers.
 
 The hub's `cmake/` reads `CMAKE_SYSTEM_PROCESSOR` too. `Hardening.cmake` links `/CETCOMPAT`
 on x64 only, because an ARM64 link refuses it (`test-cmake-windows-arch.sh`).

@@ -27,6 +27,9 @@
 - Share operation timing and failure capture across build steps, gates and optional operations while preserving each caller's verdict policy.
 - Pass the flat ROCm BuildKit module mount explicitly to the llama.cpp and Torch installers, removing their duplicate root discovery while retaining checkout defaults.
 - Share source-build copy-if-absent and lavapipe module-path validation; pass the mounted module root explicitly to keep the BuildKit installer mount flat.
+- Share OpenCL ICD 64-bit registry entry access between ROCm installation and smoke checks; keep path validation fatal and findings caller-owned.
+- Delegate the CrossBundle package-architecture export to `WindowsTargetArch.Common`.
+- Share the bounded dual-stack TCP probe between URL checks and the BuildKit sccache guard while preserving malformed-URL and timeout behavior.
 - Share Dockerfile stage indexing and literal test-directory cleanup across Windows suites, preserving suite-specific stage rules and cleanup scopes.
 
 ## 2026-10-23 — remove another Windows duplication wave

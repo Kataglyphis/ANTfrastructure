@@ -76,6 +76,12 @@ Describe 'Get-MsvcToolsRoots' {
 
 Describe 'Test-UrlPortOpen' {
 
+    It 'keeps the socket implementation private to WindowsScripts.Shared' {
+        $module = Get-Module -Name 'WindowsScripts.Shared'
+        Assert-NotNull $module 'the shared module is loaded for this suite'
+        Assert-False $module.ExportedCommands.ContainsKey('Test-TcpSocketReachable') 'only the URL adapter is public'
+    }
+
     It 'answers $false for a malformed or host-less URL instead of throwing' {
         Assert-False (Test-UrlPortOpen 'not a url') 'no scheme'
         Assert-False (Test-UrlPortOpen '') 'empty'
@@ -84,8 +90,19 @@ Describe 'Test-UrlPortOpen' {
     It 'answers $true for a listening port and $false once it closes' {
         $listener = Start-LoopbackListener
         $url = "http://127.0.0.1:$($listener.LocalEndpoint.Port)"
-        try { Assert-True (Test-UrlPortOpen $url) 'listening' } finally { $listener.Stop() }
+        try {
+            Assert-True (Test-UrlPortOpen $url) 'listening'
+            Assert-True (Test-UrlPortOpen $url 1) 'the positional seconds timeout stays compatible'
+        } finally { $listener.Stop() }
         Assert-False (Test-UrlPortOpen $url -TimeoutSeconds 1) 'closed'
+    }
+
+    It 'accepts a millisecond deadline through the same TCP probe' {
+        $listener = Start-LoopbackListener
+        $url = "http://127.0.0.1:$($listener.LocalEndpoint.Port)"
+        try { Assert-True (Test-UrlPortOpen -Url $url -TimeoutMs 500) 'the listening socket answers within the millisecond bound' }
+        finally { $listener.Stop() }
+        Assert-False (Test-UrlPortOpen -Url $url -TimeoutMs 500) 'a closed socket stays closed'
     }
 }
 

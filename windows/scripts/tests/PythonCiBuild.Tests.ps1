@@ -67,7 +67,7 @@ Describe 'Invoke-PythonCiBuild.ps1' {
             $fetcher = [regex]::Escape((Join-Path (Get-RepoRoot) 'linux\scripts\lib\fetch-data-lock.py'))
             Assert-Match "\|python -I $fetcher --lock <d>\\models\\models\.lock\|packaging " $calls 'the hub''s fetcher takes the lock before packaging'
             Assert-Match '\|packaging RepoRoot=<d>\|wheeltests RepoRoot=<d>$' $calls 'the installed-wheel tests last, on what packaging left'
-            Assert-Equal 2 @($r.Calls | Where-Object { $_ -match '^uv run pytest ' }).Count 'one pytest run per leg'
+            Assert-Equal 2 @($r.Calls | Where-Object { $_ -like 'uv run pytest -v *' }).Count 'one pytest run per leg'
             Assert-Equal '' (@($r.Summary.failedSteps) -join ',') 'nothing failed'
         }
     }

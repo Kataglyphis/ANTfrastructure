@@ -65,7 +65,7 @@ function Get-CrossConfigureArgs {
 #>
 function Get-WindowsPackageArch {
     param([string]$Arch = '')
-    return @{ amd64 = 'x64'; arm64 = 'arm64' }[(Get-WindowsTargetArch -Arch $Arch)]
+    return (WindowsTargetArch.Common\Get-WindowsPackageArch -Arch $Arch)
 }
 
 <#

@@ -696,39 +696,14 @@ Export-ModuleMember -Function @(
     'ConvertTo-ParameterList'
 )
 
-# All addresses at once: Windows takes ~2 s to report a refused ::1 before trying 127.0.0.1.
 function Test-TcpEndpointReachable {
     param(
         [Parameter(Mandatory)][string]$HostName,
         [Parameter(Mandatory)][int]$Port,
         [int]$TimeoutMs = 2000
     )
-
-    $clock = [System.Diagnostics.Stopwatch]::StartNew()
-    $clients = [System.Collections.Generic.List[System.Net.Sockets.TcpClient]]::new()
-    try {
-        $resolve = [System.Net.Dns]::GetHostAddressesAsync($HostName)
-        if (-not $resolve.Wait($TimeoutMs)) { return $false }
-        $pending = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
-        foreach ($address in $resolve.Result) {
-            $client = [System.Net.Sockets.TcpClient]::new($address.AddressFamily)
-            $clients.Add($client)
-            $pending.Add($client.ConnectAsync($address, $Port))
-        }
-        while ($pending.Count -gt 0) {
-            $left = $TimeoutMs - [int]$clock.ElapsedMilliseconds
-            if ($left -le 0) { return $false }
-            $done = [System.Threading.Tasks.Task]::WaitAny($pending.ToArray(), $left)
-            if ($done -lt 0) { return $false }
-            if ($pending[$done].IsCompletedSuccessfully) { return $true }
-            $pending.RemoveAt($done)
-        }
-        return $false
-    } catch {
-        return $false
-    } finally {
-        foreach ($c in $clients) { $c.Dispose() }
-    }
+    $endpoint = [UriBuilder]::new('tcp', $HostName, $Port).Uri.AbsoluteUri
+    return [bool](Test-UrlPortOpen -Url $endpoint -TimeoutMs $TimeoutMs)
 }
 
 <#
@@ -748,8 +723,8 @@ function Clear-UnreachableSccacheEndpoint {
     # Why a store URL cannot be used, or '' when it answers.
     $problem = {
         param([string]$Url)
-        $uri = $null
-        if (-not [Uri]::TryCreate($Url.Trim(), [UriKind]::Absolute, [ref]$uri) -or -not $uri.DnsSafeHost) { return 'is not an absolute URL with a host' }
+        $uri = Get-TcpEndpointUri -Url $Url.Trim()
+        if ($null -eq $uri -or -not $uri.DnsSafeHost) { return 'is not an absolute URL with a host' }
         if (-not (Test-TcpEndpointReachable -HostName $uri.DnsSafeHost -Port $uri.Port -TimeoutMs $TimeoutMs)) {
             return "is unreachable (TCP $($uri.DnsSafeHost):$($uri.Port), no connection within $TimeoutMs ms)"
         }

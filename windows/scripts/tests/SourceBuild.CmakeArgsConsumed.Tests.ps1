@@ -41,7 +41,9 @@ Describe 'Assert-CmakeArgsConsumed' {
     }
 
     It 'is a no-op when there is no cache to read' {
-        $d = Join-Path ([IO.Path]::GetTempPath()) ("cmc-none-" + [Guid]::NewGuid().ToString('N'))
-        { Assert-CmakeArgsConsumed -BuildDir $d -PassedArgs @('-DX=1') } | Should -Not -Throw
+        Invoke-InTestDir { param($dir)
+            $missing = Join-Path $dir 'cmc-none'
+            { Assert-CmakeArgsConsumed -BuildDir $missing -PassedArgs @('-DX=1') } | Should -Not -Throw
+        }
     }
 }

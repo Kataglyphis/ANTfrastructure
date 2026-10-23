@@ -272,7 +272,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
             Assert-True ($paths -contains $stale.FullName) 'a 30-day-old entry was not offered'
             Assert-False ($paths -contains $fresh.FullName) 'a FRESH entry was offered - work in flight would be deleted'
         } finally {
-            if (Test-Path -LiteralPath $sandbox) { [IO.Directory]::Delete($sandbox, $true) }
+            Remove-TestDir -Path $sandbox
         }
     }
 
@@ -297,7 +297,7 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
         } finally {
             # Remove the junction ITSELF first, never its contents.
             if (Test-Path -LiteralPath $link) { [IO.Directory]::Delete($link) }
-            if (Test-Path -LiteralPath $sandbox) { [IO.Directory]::Delete($sandbox, $true) }
+            Remove-TestDir -Path $sandbox
         }
     }
 

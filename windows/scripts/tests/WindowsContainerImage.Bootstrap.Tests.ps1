@@ -9,11 +9,11 @@ Describe 'WindowsContainerImage.Bootstrap' {
     function script:Assert-ContainerImageModulePath {
         Invoke-InTestDir -Files @{ 'modules/WindowsContainerImage.Common.psm1' = '' } -Body { param($root)
             $expected = Join-Path $root 'modules\WindowsContainerImage.Common.psm1'
-            Assert-Equal $expected (Resolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsContainerImage.Common.psm1')
+            Assert-Equal $expected (MutResolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsContainerImage.Common.psm1')
             Assert-Throws -MessagePattern 'Required module not found' -Body {
-                Resolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1'
+                MutResolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1'
             }
-            Assert-Null (Resolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1' -Optional)
+            Assert-Null (MutResolve-ContainerImageModulePath -ModuleRoot $root -Name 'WindowsMissing.Common.psm1' -Optional)
         }
     }
 

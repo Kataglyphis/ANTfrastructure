@@ -2367,6 +2367,11 @@ cleanup, CMake shares environment/stat diagnostics, Flutter shares link cleanup 
 the agentic loop shares lazy environment-to-config fallback. Caller ordering,
 whitespace, retry, broken-link and trace-marker policies stay at the caller.
 
+`Test-UrlPortOpen` and the BuildKit sccache guard use one bounded socket probe in
+`WindowsScripts.Shared`. It resolves once, tries every IPv4/IPv6 address concurrently,
+and applies one millisecond deadline to resolution and connection attempts; URL parsing
+keeps malformed endpoints closed without throwing.
+
 `Write-DiagnosticResult` renders the existing verdict bytes, including ARM64's
 separate detail line. The sccache write probe shares rename evidence, directory
 rows and server shutdown while preserving staged-source retention versus temporary

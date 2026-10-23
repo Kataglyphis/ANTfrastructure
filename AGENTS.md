@@ -121,6 +121,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Vulkan target components share launcher and accounting; preserve required-component verdicts, WSI checks and glslang pass order.
    TVM compiler validation and selection share GCC-name resolution; keep override validation and wrapper argument order.
    Logging prefixes share severity formatting; preserve ANSI bytes, streams and NO_COLOR precedence.
+   Windows TCP reachability shares one bounded dual-stack socket probe; malformed URLs stay closed and the socket helper stays private.
    Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active.
    ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts.
    Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results.

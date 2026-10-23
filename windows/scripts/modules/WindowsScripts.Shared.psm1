@@ -412,12 +412,55 @@ function Get-HostSettingValue {
     return ''
 }
 
-function Test-UrlPortOpen {
-    # A TCP connect to a URL's host and port; a malformed URL is closed, not an error.
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Url, [int]$TimeoutSeconds = 3)
+function Get-TcpEndpointUri {
+    param([AllowEmptyString()][string]$Url)
     $uri = $null
-    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -or -not $uri.Host) { return $false }
-    return [bool](Test-Connection -TargetName $uri.Host -TcpPort $uri.Port -Quiet -TimeoutSeconds $TimeoutSeconds)
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$uri) -or -not $uri.Host) { return $null }
+    return $uri
+}
+
+function Test-TcpSocketReachable {
+    # See docs/windows-builds.md § Shared Windows behavior: IPv6 refusal must not hide a listening IPv4 address.
+    param([Parameter(Mandatory)][string]$HostName, [Parameter(Mandatory)][int]$Port, [int]$TimeoutMs = 2000)
+    $clock = [System.Diagnostics.Stopwatch]::StartNew()
+    $clients = [System.Collections.Generic.List[System.Net.Sockets.TcpClient]]::new()
+    try {
+        $resolve = [System.Net.Dns]::GetHostAddressesAsync($HostName)
+        if (-not $resolve.Wait($TimeoutMs)) { return $false }
+        $pending = [System.Collections.Generic.List[System.Threading.Tasks.Task]]::new()
+        foreach ($address in $resolve.Result) {
+            $client = [System.Net.Sockets.TcpClient]::new($address.AddressFamily)
+            $clients.Add($client)
+            $pending.Add($client.ConnectAsync($address, $Port))
+        }
+        while ($pending.Count -gt 0) {
+            $left = $TimeoutMs - [int]$clock.ElapsedMilliseconds
+            if ($left -le 0) { return $false }
+            $done = [System.Threading.Tasks.Task]::WaitAny($pending.ToArray(), $left)
+            if ($done -lt 0) { return $false }
+            if ($pending[$done].IsCompletedSuccessfully) { return $true }
+            $pending.RemoveAt($done)
+        }
+        return $false
+    } catch {
+        return $false
+    } finally {
+        foreach ($client in $clients) { $client.Dispose() }
+    }
+}
+
+function Test-UrlPortOpen {
+    # A malformed URL is closed, not an error.
+    [CmdletBinding(DefaultParameterSetName = 'seconds')]
+    param(
+        [Parameter(Mandatory, Position = 0)][AllowEmptyString()][string]$Url,
+        [Parameter(Position = 1, ParameterSetName = 'seconds')][ValidateRange(0, 2147483)][int]$TimeoutSeconds = 3,
+        [Parameter(ParameterSetName = 'milliseconds')][ValidateRange(0, 2147483647)][int]$TimeoutMs
+    )
+    $uri = Get-TcpEndpointUri -Url $Url
+    if ($null -eq $uri) { return $false }
+    $timeout = if ($PSCmdlet.ParameterSetName -eq 'milliseconds') { $TimeoutMs } else { $TimeoutSeconds * 1000 }
+    return [bool](Test-TcpSocketReachable -HostName $uri.DnsSafeHost -Port $uri.Port -TimeoutMs $timeout)
 }
 
 function Initialize-BuildDirectory {
@@ -909,6 +952,7 @@ Export-ModuleMember -Function @(
     'Expand-ArchiveSubdirectory',
     'Get-HostSettingValue',
     'Test-UrlPortOpen',
+    'Get-TcpEndpointUri',
     'Invoke-S5cmdWithKey',
     'Invoke-WithProcessEnvironment',
     'Get-SccacheS3Level',

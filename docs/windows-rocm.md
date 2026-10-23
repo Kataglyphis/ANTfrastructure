@@ -246,8 +246,10 @@ AMD GPU APIs loadable in the image. Neither needs a GPU to check, and
   clr's `opencl/khronos/icd`). It loads the vendor ICDs listed under
   `HKLM\SOFTWARE\Khronos\OpenCL\Vendors`. `Install-Rocm.ps1` registers
   `C:\TheRock\build\bin\amdocl64.dll` there, as `REG_DWORD 0` in the 64-bit view. Until
-  then nothing registered it, so the loader found no platform. The loader rules, read at
-  the rocm-systems commit therock-10.0 pins (6b0e43f):
+  then nothing registered it, so the loader found no platform. `WindowsContainerImage.Common.psm1`
+  owns the 64-bit registry access used by both installer and smoke check; registration still
+  fails if the DLL path is relative or missing. The loader rules, read at the rocm-systems commit
+  therock-10.0 pins (6b0e43f):
   - the value name is the DLL path, passed to `LoadLibraryA` as is, and only DWORD 0
     counts (`icd_windows.c:117-151`);
   - `OCL_ICD_FILENAMES` is no substitute: it is read through `secure_getenv`, which

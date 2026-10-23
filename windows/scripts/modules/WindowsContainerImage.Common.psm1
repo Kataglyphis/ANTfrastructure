@@ -182,6 +182,50 @@ function Get-CiImageReference {
     return ('{0}:{1}' -f $versions['IMAGE_REGISTRY_PREFIX'], $versions[$tagKey])
 }
 
+$script:OpenClIcdRegistrySubKey = 'SOFTWARE\Khronos\OpenCL\Vendors'
+
+function Open-OpenClVendorsKey {
+    param(
+        [Microsoft.Win32.RegistryKey]$BaseKey,
+        [switch]$Writable
+    )
+    $ownedBaseKey = $null
+    if ($null -eq $BaseKey) {
+        $ownedBaseKey = [Microsoft.Win32.RegistryKey]::OpenBaseKey('LocalMachine', [Microsoft.Win32.RegistryView]::Registry64)
+        $BaseKey = $ownedBaseKey
+    }
+    try {
+        if ($Writable) { return $BaseKey.CreateSubKey($script:OpenClIcdRegistrySubKey, $true) }
+        return $BaseKey.OpenSubKey($script:OpenClIcdRegistrySubKey)
+    } finally {
+        if ($ownedBaseKey) { $ownedBaseKey.Dispose() }
+    }
+}
+
+function Register-OpenClIcd {
+    param(
+        [Parameter(Mandatory)][string]$IcdPath,
+        [Microsoft.Win32.RegistryKey]$BaseKey
+    )
+    if (-not [System.IO.Path]::IsPathFullyQualified($IcdPath) -or -not [System.IO.File]::Exists($IcdPath)) {
+        throw "Install-Rocm: OpenCL ICD '$IcdPath' is not an existing absolute path; the loader LoadLibrary's the value name as is"
+    }
+    $key = Open-OpenClVendorsKey -BaseKey $BaseKey -Writable
+    if ($null -eq $key) { throw 'OpenCL ICD Vendors registry key could not be created' }
+    try { $key.SetValue($IcdPath, 0, [Microsoft.Win32.RegistryValueKind]::DWord) } finally { $key.Dispose() }
+}
+
+function Get-OpenClIcdRegistryEntry {
+    param([Microsoft.Win32.RegistryKey]$BaseKey)
+    $key = Open-OpenClVendorsKey -BaseKey $BaseKey
+    if ($null -eq $key) { return }
+    try {
+        foreach ($name in $key.GetValueNames()) {
+            [pscustomobject]@{ Name = $name; Kind = "$($key.GetValueKind($name))"; Value = $key.GetValue($name) }
+        }
+    } finally { $key.Dispose() }
+}
+
 <#
 .SYNOPSIS
     Extracts named files from LunarG's Runtime Components zip, flat, under a per-arch prefix.
@@ -405,6 +449,8 @@ Export-ModuleMember -Function @(
     'Assert-ContainerCommandAvailable',
     'Assert-VulkanArm64Library',
     'Register-LavapipeIcd',
+    'Register-OpenClIcd',
+    'Get-OpenClIcdRegistryEntry',
     'Get-CiImageReference',
     'Expand-VulkanRuntimeComponents',
     'Get-LavapipeWindowsUrl',

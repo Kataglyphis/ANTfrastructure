@@ -42,8 +42,9 @@ function Invoke-WithProbeEnv {
 
 # Splatted into Invoke-WithFunctionModule: a mutant is the probe's two functions, as Clear-MutUnreachableSccacheEndpoint.
 $probeMutantSource = @{
-    Text         = [IO.File]::ReadAllText((Join-Path $modDir 'WindowsBuild.Common.psm1'))
-    FunctionName = 'Test-TcpEndpointReachable', 'Clear-UnreachableSccacheEndpoint'
+    Text         = [IO.File]::ReadAllText((Join-Path $modDir 'WindowsBuild.Common.psm1')) +
+        [IO.File]::ReadAllText((Join-Path $modDir 'WindowsScripts.Shared.psm1'))
+    FunctionName = 'Get-TcpEndpointUri', 'Test-TcpSocketReachable', 'Test-UrlPortOpen', 'Test-TcpEndpointReachable', 'Clear-UnreachableSccacheEndpoint'
 }
 
 # Runs $Body with SCCACHE_WEBDAV_ENDPOINT on a loopback port that refuses every connect.
@@ -71,6 +72,12 @@ function Measure-ProbeMs {
 }
 
 Describe 'Clear-UnreachableSccacheEndpoint' {
+
+    It 'keeps its TCP adapter private to WindowsBuild.Common' {
+        $module = Get-Module -Name 'WindowsBuild.Common'
+        Assert-NotNull $module 'the build module is loaded for the probe suite'
+        Assert-False $module.ExportedCommands.ContainsKey('Test-TcpEndpointReachable') 'the implementation helper remains private'
+    }
 
     It 'keeps a reachable endpoint (the build host keeps its cache) and says nothing' {
         $l = New-ListeningLoopbackPort
