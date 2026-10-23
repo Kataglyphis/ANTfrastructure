@@ -124,6 +124,7 @@ t_assert_contains "${_PKG}" 'ENV PATH="${PATH}${ANDROID_HOME:+:' "no /cmdline-to
 # The resolver as the runtime lane runs it, with the real platform helpers.
 _RES="$(t_fn_src "${RBF}" runtime_host_payload_arches)
 $(t_fn_src "${RBF}" runtime_host_payload)
+$(t_fn_src "${SCRIPTS}/01-core/tag-naming.sh" _runtime_reject_artifact_mode)
 $(t_fn_src "${SCRIPTS}/01-core/tag-naming.sh" runtime_artifact_platform)" || exit 1
 _payload() { bash -c "source '${SCRIPTS}/01-core/platform.sh'; ${_RES}"$'\n'"runtime_host_payload \"\$1\"" _ "$1" 2>&1; }
 _payload_rc() { _payload "$1" >/dev/null; echo $?; }
@@ -151,6 +152,10 @@ t_assert_eq off "$(ARTIFACT_BUILD_MODE=native HOST_PAYLOAD_ARCHES=amd64,arm64 _p
   "a native arm64 artifact: android-sdk.sh skipped the SDK"
 t_assert_eq on "$(ARTIFACT_BUILD_MODE=native _payload amd64)"
 t_assert_eq off "$(CROSS_BUILD_PLATFORM=linux/arm64 _payload amd64)" "a cross chain hosted on arm64"
+
+t_case "an unsupported artifact mode retains the extracted resolver refusal"
+t_assert_eq 1 "$(ARTIFACT_BUILD_MODE=broken _payload_rc arm64)"
+t_assert_eq '[ERROR] Unsupported artifact build mode: broken' "$(ARTIFACT_BUILD_MODE=broken _payload arm64)"
 
 t_case "the package build passes it, and every orchestrator checks the knob before it builds"
 t_assert_contains "$(t_fn_src "${RBF}" append_package_build_args)" '--build-arg "HOST_PAYLOAD=${_apba_payload}"'

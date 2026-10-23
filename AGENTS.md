@@ -108,6 +108,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
    Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
    Minimal toolchain bootstraps still carry `elf-strip.sh`; keep the narrow GCC/LLVM mounts.
+   Standalone `android-sdk.sh` and `vulkan.sh` carry toolchain `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence.
    Copied ORT provenance and GStreamer ORT checks carry `path-helpers.sh` in their relative `01-core` layout.
    Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
    Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.

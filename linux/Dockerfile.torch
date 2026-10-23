@@ -100,7 +100,7 @@ ARG VCS_REF=""
 # Re-declared for the version LABEL: the torch stage's APP_REF does not reach this stage.
 ARG APP_REF=develop
 
-COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh /usr/local/bin/vulkan.sh
+COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/
 COPY --chmod=755 linux/scripts/04-runtime/entrypoint.sh /usr/local/bin/entrypoint.sh
 COPY --chmod=755 linux/scripts/04-runtime/gstreamer-env.sh /usr/local/bin/gstreamer-env.sh
 COPY --chmod=755 linux/scripts/04-runtime/libcamera-env.sh /usr/local/bin/libcamera-env.sh

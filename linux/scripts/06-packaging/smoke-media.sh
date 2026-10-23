@@ -294,6 +294,98 @@ if not any('onnx' in str(b).lower() or 'ort' in str(b).lower() for b in backends
   fi
 fi
 
+_smoke_ffmpeg_features() {
+  _ff_bc="$("${_ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
+  # Captured once: under pipefail `ffmpeg -encoders | grep -q` reads ffmpeg's SIGPIPE as "not registered".
+  _ff_codecs="$("${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null || true)
+$("${_ffmpeg_bin}" -hide_banner -decoders 2>/dev/null || true)"
+  _ff_filters="$("${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null || true)"
+  for _c in libx265 libdav1d libsvtav1 libvpx libopus libvvdec; do
+    case "${_ff_bc}" in
+      *"--enable-${_c}"*)
+        if grep -q "${_c#lib}" <<<"${_ff_codecs}"; then
+          pass "ffmpeg ${_c}: enabled in buildconf and registered"
+        else
+          fail "ffmpeg buildconf claims --enable-${_c} but no matching codec registered"
+        fi ;;
+    esac
+  done
+  # A real roundtrip per codec proves the codepath, not just the registry.
+  for _spec in libx265 libvpx-vp9; do
+    "${_ffmpeg_bin}" -hide_banner -h "encoder=${_spec}" >/dev/null 2>&1 || continue
+    _ff_tmp="$(mktemp -d)"
+    if smoke_ffmpeg_test_encode "${_ffmpeg_bin}" 2 "${_ff_tmp}/s.mkv" "${_spec}" \
+       && smoke_ffmpeg_decode_to_null "${_ffmpeg_bin}" "${_ff_tmp}/s.mkv"; then
+      pass "ffmpeg ${_spec} encode+decode roundtrip OK"
+    else
+      fail "ffmpeg ${_spec} is advertised but the encode/decode roundtrip FAILED"
+    fi
+    rm -rf "${_ff_tmp}"
+  done
+  # drawtext needs three probe-gated libraries; assert the filter is registered, not the buildconf.
+  if grep -q "drawtext" <<<"${_ff_filters}"; then
+    pass "ffmpeg drawtext filter registered"
+  else
+    fail "ffmpeg drawtext filter NOT registered (libfreetype/libharfbuzz/libfontconfig probe may have missed)"
+  fi
+  # The *_vulkan filters also need glslangValidator at build time.
+  if grep -q "scale_vulkan" <<<"${_ff_filters}"; then
+    pass "ffmpeg scale_vulkan filter registered"
+  else
+    fail "ffmpeg scale_vulkan filter NOT registered (glslangValidator may have been missing at build time)"
+  fi
+}
+
+_smoke_ffmpeg_native() {
+  ffmpeg_ver="$("${_ffmpeg_bin}" -version 2>/dev/null | head -1 || echo '?')"
+  if [ "${ffmpeg_ver}" != "?" ]; then
+    pass "ffmpeg functional: ${ffmpeg_ver}"
+  else
+    # Not runnable here until configure-runtime.sh; INFO, but a non-ELF still fails.
+    smoke_deferred_if_elf "ffmpeg" "${_ffmpeg_bin}" \
+      "ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
+  fi
+  tmpdir="$(mktemp -d)"
+  if smoke_ffmpeg_test_encode "${_ffmpeg_bin}" 1 "${tmpdir}/smoke.mp4" libx264 -preset ultrafast; then
+    pass "ffmpeg H.264 encode OK"
+    if smoke_ffmpeg_decode_to_null "${_ffmpeg_bin}" "${tmpdir}/smoke.mp4"; then
+      pass "ffmpeg H.264 decode OK"
+    else
+      fail "ffmpeg H.264 decode failed"
+    fi
+  elif [ "${ffmpeg_ver}" != "?" ] \
+       && grep -q libx264 <<<"$("${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null || true)"; then
+    # ffmpeg executes AND advertises libx264 — a failed encode is real.
+    fail "ffmpeg H.264 encode FAILED (binary executes and libx264 encoder is advertised)"
+  else
+    echo "  INFO: ffmpeg encode test skipped (binary not executable here, or libx264 not built)"
+  fi
+  # build-ffmpeg.sh probe-gates every --enable-*, and a missed probe drops the codec silently.
+  if [ "${ffmpeg_ver}" != "?" ]; then
+    _smoke_ffmpeg_features
+  fi
+  rm -rf "${tmpdir}"
+}
+
+_smoke_cam_native() {
+  if "${_cam_bin}" --help 2>/dev/null | head -1 | grep -q .; then
+    pass "cam binary functional"
+  else
+    echo "  INFO: cam binary found but --help failed (expected without camera hardware)"
+  fi
+}
+
+_smoke_gst_version() {
+  if "${_gst_inspect}" --version >/dev/null 2>&1; then
+    gst_ver="$("${_gst_inspect}" --version 2>/dev/null | head -1 || echo '?')"
+    pass "gst-inspect-1.0 functional: ${gst_ver}"
+  else
+    # Not runnable in the sandbox until configure-runtime.sh; INFO, but a non-ELF still fails.
+    smoke_deferred_if_elf "gst-inspect-1.0" "${_gst_inspect}" \
+      "gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
+  fi
+}
+
 # GStreamer: version and pipeline smoke
 echo "--- GStreamer ---"
 _gst_bin="${GSTREAMER_PREFIX:-/opt/gstreamer}/bin"
@@ -305,16 +397,7 @@ else
   _gst_inspect=""
 fi
 if [ -n "${_gst_inspect}" ]; then
-  if smoke_cross_presence_gate "gst-inspect-1.0" "${_gst_inspect}"; then
-    :   # presence proven by the gate; execution is deliberately skipped
-  elif "${_gst_inspect}" --version >/dev/null 2>&1; then
-    gst_ver="$("${_gst_inspect}" --version 2>/dev/null | head -1 || echo '?')"
-    pass "gst-inspect-1.0 functional: ${gst_ver}"
-  else
-    # Not runnable in the sandbox until configure-runtime.sh; INFO, but a non-ELF still fails.
-    smoke_deferred_if_elf "gst-inspect-1.0" "${_gst_inspect}" \
-      "gst-inspect-1.0 present but not executable in build sandbox — functional gate is the runtime smoke"
-  fi
+  smoke_native_dispatch gst-inspect-1.0 "${_gst_inspect}" _smoke_gst_version
   if ! cross_build_is_active 2>/dev/null && "${_gst_inspect}" --version >/dev/null 2>&1; then
     _gst_launch="$(smoke_resolve_bin gst-launch-1.0 "${_gst_bin}/gst-launch-1.0")"
     if "${_gst_launch}" videotestsrc num-buffers=1 ! fakesink 2>/dev/null; then
@@ -371,79 +454,7 @@ fi
 echo "--- FFmpeg ---"
 _ffmpeg_bin="$(smoke_resolve_bin ffmpeg "${FFMPEG_PREFIX:-/opt/ffmpeg}/bin/ffmpeg")"
 if [ -x "${_ffmpeg_bin}" ]; then
-  if smoke_cross_presence_gate "ffmpeg" "${_ffmpeg_bin}"; then
-    :   # presence proven by the gate; execution is deliberately skipped
-  else
-    ffmpeg_ver="$("${_ffmpeg_bin}" -version 2>/dev/null | head -1 || echo '?')"
-    if [ "${ffmpeg_ver}" != "?" ]; then
-      pass "ffmpeg functional: ${ffmpeg_ver}"
-    else
-      # Not runnable here until configure-runtime.sh; INFO, but a non-ELF still fails.
-      smoke_deferred_if_elf "ffmpeg" "${_ffmpeg_bin}" \
-        "ffmpeg present but not executable in build sandbox (ld paths land in configure-runtime) — functional gate is the runtime smoke"
-    fi
-    tmpdir="$(mktemp -d)"
-    if "${_ffmpeg_bin}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=1" \
-         -c:v libx264 -preset ultrafast \
-         "${tmpdir}/smoke.mp4" 2>/dev/null; then
-      pass "ffmpeg H.264 encode OK"
-      if "${_ffmpeg_bin}" -y -i "${tmpdir}/smoke.mp4" -f null /dev/null 2>/dev/null; then
-        pass "ffmpeg H.264 decode OK"
-      else
-        fail "ffmpeg H.264 decode failed"
-      fi
-    elif [ "${ffmpeg_ver}" != "?" ] \
-         && grep -q libx264 <<<"$("${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null || true)"; then
-      # ffmpeg executes AND advertises libx264 — a failed encode is real.
-      fail "ffmpeg H.264 encode FAILED (binary executes and libx264 encoder is advertised)"
-    else
-      echo "  INFO: ffmpeg encode test skipped (binary not executable here, or libx264 not built)"
-    fi
-    # build-ffmpeg.sh probe-gates every --enable-*, and a missed probe drops the codec silently.
-    if [ "${ffmpeg_ver}" != "?" ]; then
-      _ff_bc="$("${_ffmpeg_bin}" -hide_banner -buildconf 2>/dev/null || true)"
-      # Captured once: under pipefail `ffmpeg -encoders | grep -q` reads ffmpeg's SIGPIPE as "not registered".
-      _ff_codecs="$("${_ffmpeg_bin}" -hide_banner -encoders 2>/dev/null || true)
-$("${_ffmpeg_bin}" -hide_banner -decoders 2>/dev/null || true)"
-      _ff_filters="$("${_ffmpeg_bin}" -hide_banner -filters 2>/dev/null || true)"
-      for _c in libx265 libdav1d libsvtav1 libvpx libopus libvvdec; do
-        case "${_ff_bc}" in
-          *"--enable-${_c}"*)
-            if grep -q "${_c#lib}" <<<"${_ff_codecs}"; then
-              pass "ffmpeg ${_c}: enabled in buildconf and registered"
-            else
-              fail "ffmpeg buildconf claims --enable-${_c} but no matching codec registered"
-            fi ;;
-        esac
-      done
-      # A real roundtrip per codec proves the codepath, not just the registry.
-      for _spec in libx265 libvpx-vp9; do
-        "${_ffmpeg_bin}" -hide_banner -h "encoder=${_spec}" >/dev/null 2>&1 || continue
-        _ff_tmp="$(mktemp -d)"
-        if "${_ffmpeg_bin}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=2" \
-             -c:v "${_spec}" "${_ff_tmp}/s.mkv" 2>/dev/null \
-           && "${_ffmpeg_bin}" -y -i "${_ff_tmp}/s.mkv" -f null /dev/null 2>/dev/null; then
-          pass "ffmpeg ${_spec} encode+decode roundtrip OK"
-        else
-          fail "ffmpeg ${_spec} is advertised but the encode/decode roundtrip FAILED"
-        fi
-        rm -rf "${_ff_tmp}"
-      done
-      # drawtext needs three probe-gated libraries; assert the filter is registered, not the buildconf.
-      if grep -q "drawtext" <<<"${_ff_filters}"; then
-        pass "ffmpeg drawtext filter registered"
-      else
-        fail "ffmpeg drawtext filter NOT registered (libfreetype/libharfbuzz/libfontconfig probe may have missed)"
-      fi
-      # The *_vulkan filters also need glslangValidator at build time.
-      if grep -q "scale_vulkan" <<<"${_ff_filters}"; then
-        pass "ffmpeg scale_vulkan filter registered"
-      else
-        fail "ffmpeg scale_vulkan filter NOT registered (glslangValidator may have been missing at build time)"
-      fi
-    fi
-    rm -rf "${tmpdir}"
-  fi
+  smoke_native_dispatch ffmpeg "${_ffmpeg_bin}" _smoke_ffmpeg_native
 else
   fail "ffmpeg not found (checked PATH and ${FFMPEG_PREFIX:-/opt/ffmpeg}/bin)"
 fi
@@ -464,13 +475,7 @@ if command -v pkg-config >/dev/null 2>&1; then
 fi
 _cam_bin="$(smoke_resolve_bin cam "${_lc_prefix}/bin/cam")"
 if [ -x "${_cam_bin}" ]; then
-  if smoke_cross_presence_gate "cam" "${_cam_bin}"; then
-    :   # presence proven by the gate; execution is deliberately skipped
-  elif "${_cam_bin}" --help 2>/dev/null | head -1 | grep -q .; then
-    pass "cam binary functional"
-  else
-    echo "  INFO: cam binary found but --help failed (expected without camera hardware)"
-  fi
+  smoke_native_dispatch cam "${_cam_bin}" _smoke_cam_native
 elif command -v lc-compliance >/dev/null 2>&1; then
   pass "lc-compliance binary found"
 else

@@ -568,6 +568,7 @@ t_case "the drift scan actually reaches the smoke scripts (positive control)"
 t_assert_ok test "$(_dedup_targets | wc -l)" -ge 4
 t_assert_contains "$(_dedup_targets)" "smoke-media.sh"
 t_assert_contains "$(_dedup_scan 'smoke_cross_presence_gate')" "smoke-media.sh:"
+t_assert_contains "$(_dedup_scan 'smoke_native_dispatch')" "smoke-media.sh:"
 
 t_case "no re-inlined smoke_resolve_bin (command -v … || echo <fallback>)"
 t_assert_eq "" "$(_dedup_scan 'command -v [^|]*\|\|[[:space:]]*echo')" \

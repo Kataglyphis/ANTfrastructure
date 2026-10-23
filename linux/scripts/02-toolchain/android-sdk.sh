@@ -17,18 +17,9 @@ if [ -f /opt/scripts/core/ubuntu-mirror.sh ]; then
 fi
 
 # This installer runs without the module chain, so load downloads.sh directly.
-if ! command -v download_file >/dev/null 2>&1; then
-  for _asdk_dl in \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
-    "/opt/scripts/core/downloads.sh"; do
-    if [ -f "${_asdk_dl}" ]; then
-      # shellcheck disable=SC1090
-      source "${_asdk_dl}"
-      break
-    fi
-  done
-  unset _asdk_dl
-fi
+# shellcheck source=bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/bootstrap.sh" || exit $?
+source_toolchain_downloads "${BASH_SOURCE[0]}"
 
 ensure_host_apt_architectures() {
   apt_sources_set_architectures "/etc/apt/sources.list.d/ubuntu.sources" "amd64 i386"

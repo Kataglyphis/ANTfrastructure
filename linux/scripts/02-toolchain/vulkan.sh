@@ -7,18 +7,9 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 
 # Load downloads.sh directly when this file is sourced without the common.sh module chain.
-if ! command -v download_file >/dev/null 2>&1; then
-  for _vulkan_dl in \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
-    "/opt/scripts/core/downloads.sh"; do
-    if [ -f "${_vulkan_dl}" ]; then
-      # shellcheck disable=SC1090
-      source "${_vulkan_dl}"
-      break
-    fi
-  done
-  unset _vulkan_dl
-fi
+# shellcheck source=bootstrap.sh
+source "$(dirname "${BASH_SOURCE[0]}")/bootstrap.sh" || return $?
+source_toolchain_downloads "${BASH_SOURCE[0]}"
 
 # Logs the link-time .so symlinks vulkan-tools needs, so a later "cannot find -lxcb" is diagnosable.
 _vulkan_report_wsi_link_libs() {
