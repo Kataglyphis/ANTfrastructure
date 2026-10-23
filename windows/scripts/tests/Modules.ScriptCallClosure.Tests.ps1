@@ -14,8 +14,8 @@ Describe 'build scripts can resolve every module function they call (cold import
         # Only module-defined functions: cmdlets, native exes and script-local functions are out of scope.
         $script:moduleFunctions = [System.Collections.Generic.HashSet[string]]::new(
             [string[]]@(Get-ChildItem -Path $script:moduleDir -Filter '*.psm1' -File | ForEach-Object {
-                [regex]::Matches([System.IO.File]::ReadAllText($_.FullName), '(?m)^function\s+([A-Za-z]+(?:-[A-Za-z0-9]+)+)') |
-                    ForEach-Object { $_.Groups[1].Value }
+                $tree = Get-TestScriptAst -ScriptPath $_.FullName
+                Get-TestFunctionNames -Ast $tree
             }),
             [System.StringComparer]::OrdinalIgnoreCase)
     }
@@ -30,7 +30,8 @@ Describe 'build scripts can resolve every module function they call (cold import
         $checked = 0
         $bad = @()
         foreach ($s in $scripts) {
-            $text = [System.IO.File]::ReadAllText($s.FullName)
+            $ast = Get-TestScriptAst -ScriptPath $s.FullName
+            $text = $ast.Extent.Text
 
             # The tree's two import idioms: a `modules\X.psm1` path or a bare 'X.psm1' in a foreach list.
             $wanted = @([regex]::Matches($text, '(?i)modules[\\/]([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
@@ -40,11 +41,10 @@ Describe 'build scripts can resolve every module function they call (cold import
 
             # Functions the script defines itself never need an export.
             $local = [System.Collections.Generic.HashSet[string]]::new(
-                [string[]]@([regex]::Matches($text, '(?m)^\s*function\s+([A-Za-z]+(?:-[A-Za-z0-9]+)+)') | ForEach-Object { $_.Groups[1].Value }),
+                [string[]]@(Get-TestFunctionNames -Ast $ast),
                 [System.StringComparer]::OrdinalIgnoreCase)
 
             # Via the AST: a regex would also match names in comments and error strings.
-            $ast = (ConvertTo-TestScriptAst -Text $text)
             $calls = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] }, $true) |
                 ForEach-Object { $_.GetCommandName() } | Where-Object { $_ })
 
@@ -53,17 +53,10 @@ Describe 'build scripts can resolve every module function they call (cold import
             if (-not $needed) { continue }
             $checked++
 
-            $importLines = ($wanted | ForEach-Object { "Import-Module '$(Join-Path $script:moduleDir "$_.psm1")' -DisableNameChecking" }) -join "`n"
-            $probe = @"
-`$ErrorActionPreference = 'Stop'
-$importLines
-`$missing = @('$($needed -join "','")') | Where-Object { -not (Get-Command `$_ -ErrorAction SilentlyContinue) }
-if (`$missing) { `$missing -join ','; exit 1 }
-exit 0
-"@
-            $out = & pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | Out-String
-            if ($LASTEXITCODE -ne 0) {
-                $bad += "$($s.Name) calls but cannot resolve: $($out.Trim())  [imports: $($wanted -join ', ')]"
+            $paths = @($wanted | ForEach-Object { Join-Path $script:moduleDir "$_.psm1" })
+            $result = Test-ColdModuleCommands -ModulePath $paths -CommandName $needed
+            if ($result.ExitCode -ne 0) {
+                $bad += "$($s.Name) calls but cannot resolve: $($result.Output)  [imports: $($wanted -join ', ')]"
             }
         }
 

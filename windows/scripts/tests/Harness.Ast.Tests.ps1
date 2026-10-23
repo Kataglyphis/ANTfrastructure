@@ -11,6 +11,7 @@ Describe 'Get-TestScriptAst' {
                         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true))
             Assert-Equal 1 $functions.Count
             Assert-Equal 'Get-FixtureValue' $functions[0].Name
+            Assert-Equal 'Get-FixtureValue' ((Get-TestFunctionNames -Ast $ast) -join ',')
             Assert-Equal $path $ast.Extent.File
             [IO.File]::WriteAllText($path, "throw 'must not run'`nGet-Item -LiteralPath missing")
             $calls = @(Get-TestScriptCommands -ScriptPath $path -Name Get-Item)

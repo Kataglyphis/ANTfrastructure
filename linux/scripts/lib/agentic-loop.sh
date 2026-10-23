@@ -53,21 +53,20 @@ section() {
 # shellcheck source=./agentic-engines.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agentic-engines.sh"
 
-# BACKLOG helpers
-unchecked_task_count() {
-    local backlog="${1:-BACKLOG.md}"
-    # grep -c prints 0 and exits 1 on no match, so `|| echo 0` would emit "0\n0".
-    local n
-    n=$(grep -c '^- \[ \]' "$backlog" 2>/dev/null) || true
+_agentic_task_count() {
+    local backlog="$1" pattern="$2" n
+    # grep -c emits zero on a miss; appending another zero would corrupt the count.
+    n=$(grep -c "$pattern" "$backlog" 2>/dev/null) || true
     echo "${n:-0}"
 }
 
-# Kept out of unchecked_task_count so an all-blocked backlog lets the planner run again.
+unchecked_task_count() {
+    _agentic_task_count "${1:-BACKLOG.md}" '^- \[ \]'
+}
+
+# Blocked tasks stay separate so an all-blocked backlog lets the planner run again.
 blocked_task_count() {
-    local backlog="${1:-BACKLOG.md}"
-    local n
-    n=$(grep -c '^- \[[bB]\]' "$backlog" 2>/dev/null) || true
-    echo "${n:-0}"
+    _agentic_task_count "${1:-BACKLOG.md}" '^- \[[bB]\]'
 }
 
 # Completed work stays in git history instead of accumulating in the backlog.
@@ -75,8 +74,7 @@ remove_checked_tasks() {
     local backlog="${1:-BACKLOG.md}"
     [[ -f "$backlog" ]] || return 0
     local checked
-    checked=$(grep -c '^- \[[xX]\]' "$backlog" 2>/dev/null) || true
-    checked="${checked:-0}"
+    checked=$(_agentic_task_count "$backlog" '^- \[[xX]\]')
     [[ "$checked" -eq 0 ]] && return 0
     if [[ "${DRY_RUN:-false}" == "true" ]]; then
         log "[DRY RUN] would remove $checked completed task(s) from $(basename "$backlog")"
@@ -96,32 +94,39 @@ remove_checked_tasks() {
     log "Removed $checked completed task(s) from $(basename "$backlog")"
 }
 
-# Build, test, quality
+_agentic_run_phase() {
+    local cmd="$1" banner="$2" noun="$3" verdict="$4"
+    section "$banner"
+    log "Command: $cmd"
+    if [[ "${DRY_RUN:-false}" == "true" ]]; then
+        log "[DRY RUN] skipped $noun"
+        return 0
+    fi
+    local rc=0
+    eval "$cmd" >> "$LOG_FILE" 2>&1 || rc=$?
+    if [[ "$verdict" == "advisory" ]]; then
+        log "Quality check complete"
+        return 0
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        log "$verdict PASSED"
+        return 0
+    fi
+    log "$verdict FAILED" "ERROR"
+    return 1
+}
+
 invoke_build() {
     local cmd="$1" config_name="$2"
-    section "BUILD: $config_name"
-    log "Command: $cmd"
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then log "[DRY RUN] skipped build"; return 0; fi
-    if eval "$cmd" >> "$LOG_FILE" 2>&1; then log "BUILD PASSED"; return 0
-    else log "BUILD FAILED" "ERROR"; return 1; fi
+    _agentic_run_phase "$cmd" "BUILD: $config_name" build BUILD
 }
 
 invoke_tests() {
-    local cmd="$1"
-    section "TESTS"
-    log "Command: $cmd"
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then log "[DRY RUN] skipped tests"; return 0; fi
-    if eval "$cmd" >> "$LOG_FILE" 2>&1; then log "TESTS PASSED"; return 0
-    else log "TESTS FAILED" "ERROR"; return 1; fi
+    _agentic_run_phase "$1" TESTS tests TESTS
 }
 
 invoke_quality() {
-    local cmd="$1"
-    section "QUALITY"
-    log "Command: $cmd"
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then log "[DRY RUN] skipped quality"; return 0; fi
-    eval "$cmd" >> "$LOG_FILE" 2>&1 || true
-    log "Quality check complete"
+    _agentic_run_phase "$1" QUALITY quality advisory
 }
 
 # Build-failure fixer; returns the agent's exit code.

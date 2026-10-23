@@ -415,3 +415,29 @@ function Invoke-SourceFileDiagnosticCase {
 
 
 Export-ModuleMember -Function Invoke-SourceFileDiagnosticCase
+
+function Test-ColdModuleCommands {
+    param([Parameter(Mandatory)][string[]]$ModulePath, [Parameter(Mandatory)][string[]]$CommandName, [switch]$Force)
+    $paths = ($ModulePath | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
+    $names = ($CommandName | ForEach-Object { "'" + $_.Replace("'", "''") + "'" }) -join ','
+    $probe = @"
+`$ErrorActionPreference = 'Stop'
+foreach (`$path in @($paths)) { Import-Module `$path -Force:`$$($Force.IsPresent.ToString().ToLowerInvariant()) -DisableNameChecking }
+`$missing = @($names) | Where-Object { -not (Get-Command `$_ -ErrorAction SilentlyContinue) }
+if (`$missing) { `$missing -join ','; exit 1 }
+exit 0
+"@
+    $output = & pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | Out-String
+    $code = $LASTEXITCODE
+    [pscustomobject]@{ ExitCode = $code; Output = $output.Trim() }
+}
+
+Export-ModuleMember -Function Test-ColdModuleCommands
+
+function Get-TestFunctionNames {
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast)
+    $Ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) |
+        ForEach-Object { $_.Name }
+}
+
+Export-ModuleMember -Function Get-TestFunctionNames

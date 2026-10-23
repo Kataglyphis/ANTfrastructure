@@ -1997,3 +1997,12 @@ nonzero. Grep diagnostics are quiet while the named failure remains visible.
 spaces, missing inputs, invalid expressions and aggregation with local fixtures.
 The existing critical-fixes suite still removes guarded source lines from its
 fixture tree. Neither test establishes correctness of compiled or shipped bytes.
+
+### Shared ONNX smoke fixture
+
+The architecture-parity suite uses one ONNX Runtime stub for the generated
+inference program and its environment transport. Both paths require a model
+longer than 50 bytes, expose provider discovery and compare the inference
+result. Blank emitters, dropped environment payloads and missing output
+sentinels remain independent negative cases. This fixture validates smoke
+control flow; actual execution-provider compatibility still needs the image.

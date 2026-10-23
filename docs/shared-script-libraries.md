@@ -1264,3 +1264,17 @@ propagation and no-op timestamps.
 Torch's Dockerfile test parser indexes stage objects as it reads them, retaining
 global instructions, unnamed stages and references to the final instruction lists.
 Its fixture and mutation proof cover indexing without invoking a container build.
+
+### Cold module visibility fixtures
+
+`Test-ColdModuleCommands` in the Windows test harness runs module imports and
+command visibility checks in a fresh PowerShell session. It returns the child
+exit code and captured diagnostics, quotes literal paths and command names,
+and accepts `-Force` only when a caller needs a forced entry-level import.
+Re-export and build-call closure suites share this probe. Their declarations
+come from the harness AST readers and command binder, so malformed scripts
+fail before export or function discovery. `Get-TestFunctionNames` reads only
+parsed function declarations, including nested definitions, without executing
+the source. The fixture tests cover exported and missing commands, failed
+imports, apostrophes in paths and isolation from parent-session functions;
+they do not execute build entry points.

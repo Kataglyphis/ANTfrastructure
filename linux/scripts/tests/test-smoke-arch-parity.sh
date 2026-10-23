@@ -141,8 +141,11 @@ __version__ = "stub"
 def get_available_providers(): return ["StubEP"]
 class InferenceSession:
     def __init__(self, model, providers=None):
-        with open(os.environ["ONNX_STUB_MODEL"], "wb") as f:
-            f.write(model)
+        assert model and len(model) > 50, "empty/short model reached the session"
+        p = os.environ.get("ONNX_STUB_MODEL")
+        if p:
+            with open(p, "wb") as f:
+                f.write(model)
     def get_providers(self): return ["StubEP"]
     def run(self, outputs, feeds):
         import numpy
@@ -187,24 +190,7 @@ exec env PYTHONPATH="${_STUB}" python3 "\$@"
 EOF
 chmod +x "${_EP}/venv/bin/python"
 # The stub refuses a truncated model, so a few stray bytes cannot fake a run.
-cat > "${_STUB}/onnxruntime.py" <<'PY'
-import os
-__version__ = "stub"
-def get_available_providers(): return ["StubEP"]
-class InferenceSession:
-    def __init__(self, model, providers=None):
-        assert model and len(model) > 50, "empty/short model reached the session"
-        p = os.environ.get("ONNX_STUB_MODEL")
-        if p:
-            with open(p, "wb") as f:
-                f.write(model)
-    def get_providers(self): return ["StubEP"]
-    def run(self, outputs, feeds):
-        import numpy
-        if os.environ.get("ONNX_STUB_ANSWER") == "wrong":
-            return [numpy.array([[0.0, 0.0, 0.0, 0.0]])]
-        return [numpy.array([[11.0, 22.0, 33.0, 44.0]])]
-PY
+
 
 # $1 = mutation: none | blank-emitter | drop-env | no-guard-drop-env
 _ep_drive() {

@@ -5202,8 +5202,8 @@
  {
   "id": "lib.agentic-blocked-not-queued",
   "target": "linux/scripts/lib/agentic-loop.sh",
-  "find": "    n=$(grep -c '^- \\[ \\]' \"$backlog\" 2>/dev/null) || true",
-  "replace": "    n=$(grep -c '^- \\[' \"$backlog\" 2>/dev/null) || true",
+  "find": "    _agentic_task_count \"${1:-BACKLOG.md}\" '^- \\[ \\]'",
+  "replace": "    _agentic_task_count \"${1:-BACKLOG.md}\" '^- \\['",
   "test": "bash linux/scripts/tests/test-agentic-loop.sh",
   "why": "blocked tasks are deliberately not queue depth: counting them keeps the executor grinding on work it cannot do instead of letting the planner run"
  },
@@ -17834,5 +17834,37 @@
   "replace": "bash \"${GCC_CROSS_BUILDER}\" \"${args[@]}\"; return 0",
   "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
   "why": "the shared launcher must propagate the underlying builder exit status even in a conditional context"
+ },
+ {
+  "id": "lib.agentic-phase-dry-run",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "if [[ \"${DRY_RUN:-false}\" == \"true\" ]]; then\n        log \"[DRY RUN] skipped $noun\"",
+  "replace": "if false; then\n        log \"[DRY RUN] skipped $noun\"",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "Dry-run must leave commands unexecuted."
+ },
+ {
+  "id": "lib.agentic-phase-strict-failure",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "    log \"$verdict FAILED\" \"ERROR\"\n    return 1",
+  "replace": "    log \"$verdict FAILED\" \"ERROR\"\n    return 0",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "Build and test failures must propagate."
+ },
+ {
+  "id": "lib.agentic-phase-quality-advisory",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "if [[ \"$verdict\" == \"advisory\" ]]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "Quality checks retain the existing advisory policy."
+ },
+ {
+  "id": "lib.agentic-phase-task-pattern",
+  "target": "linux/scripts/lib/agentic-loop.sh",
+  "find": "n=$(grep -c \"$pattern\" \"$backlog\" 2>/dev/null)",
+  "replace": "n=$(grep -c '^- \\[[xX]\\]' \"$backlog\" 2>/dev/null)",
+  "test": "bash linux/scripts/tests/test-agentic-phases.sh",
+  "why": "Pending and blocked counts must select the requested task state."
  }
 ]

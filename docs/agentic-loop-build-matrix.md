@@ -197,6 +197,12 @@ are documented in the module API reference,
 | `run_agentic_loop <config_json> <repo_root> <platform>` | Full loop with build matrix, sanitizer tests, quality gates |
 | `_agentic_planner_phase <repo_root> <force_planner> <planner_ran_nameref>` | Phase 1 of an iteration: skip while actionable tasks pend, starvation guard, refactor-cycle prompt; reports whether it ran |
 
+The build, test and quality entry points share `_agentic_run_phase`, including
+command logging and dry-run handling. Build and test failures return 1; quality
+remains advisory and returns 0. Backlog counters share state-pattern counting,
+including a single zero for missing files or no matches. Local regression tests
+exercise these contracts without launching agents or real builds.
+
 ### The two bash files
 
 `agentic-loop.sh` is the only file a consumer sources; it sources

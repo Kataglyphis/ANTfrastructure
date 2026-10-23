@@ -7,21 +7,18 @@ Describe 'WindowsSourceBuild.Common re-export integrity (fresh session)' {
         $modPath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSourceBuild.Common.psm1'
         Assert-True (Test-Path $modPath) "module not found at $modPath"
 
-        # Parsed from the file, so a name added to Export-ModuleMember is covered automatically.
-        $raw = Get-Content -Raw $modPath
-        # From Export-ModuleMember on, or any quoted Verb-Noun line in the file would match.
-        $raw = $raw.Substring($raw.IndexOf('Export-ModuleMember'))
-        $names = [regex]::Matches($raw, "(?m)^\s*'([A-Za-z]+(?:-[A-Za-z0-9]+)+)',?\s*$") |
-            ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+        $ast = Get-TestScriptAst -ScriptPath $modPath
+        $exports = @(Get-TestAstCommands -Ast $ast -Name Export-ModuleMember)
+        $names = @($exports | ForEach-Object {
+            $argument = (Get-TestCommandArguments -Command $_ -AsAst).Function
+            $argument.FindAll({ param($node)
+                $node -is [Management.Automation.Language.StringConstantExpressionAst]
+            }, $true) | ForEach-Object { $_.Value }
+        } | Sort-Object -Unique)
         Assert-True ($names.Count -ge 40) "parsed only $($names.Count) export names — the Export-ModuleMember layout changed; update this parser"
 
-        $probe = @"
-Import-Module '$modPath' -Force -DisableNameChecking
-`$missing = @('$($names -join "','")') | Where-Object { -not (Get-Command `$_ -ErrorAction SilentlyContinue) }
-if (`$missing) { `$missing -join ','; exit 1 }
-exit 0
-"@
-        $out = & pwsh -NoProfile -NonInteractive -Command $probe 2>&1 | Out-String
-        Assert-True ($LASTEXITCODE -eq 0) ("exported names missing after cold import (the silent re-export no-op class): " + $out.Trim())
+        $result = Test-ColdModuleCommands -ModulePath $modPath -CommandName $names -Force
+        Assert-Equal 0 $result.ExitCode ("exported names missing after cold import (the silent re-export no-op class): " + $result.Output)
+
     }
 }

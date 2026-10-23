@@ -12,6 +12,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share module visibility and ONNX smoke fixtures
+
+- Re-export and build-call closure suites share a fresh-session module probe; discover declarations through parsed ASTs and retain child exit codes, diagnostics and isolation.
+- Use one ONNX inference stub for generated-program and transported-program checks; both reject empty or truncated models.
+- Remove resolved duplication exceptions and cover missing exports, import failures and quoted paths with local fixtures and a mutation proof.
+
+## 2026-10-23 — share agentic phases and backlog counting
+
+- Share command execution, log redirection and dry-run handling across build, test and quality phases; preserve their distinct failure policies.
+- Share task-state counting and remove the agentic-loop self-duplication exemption; cover local execution and backlog contracts with regressions and mutations.
+
 ## 2026-10-23 — consolidate Windows source patch families
 
 - GStreamer, IREE, LiteRT-LM, C++ keyword conversion and Ninja cleanup share the patch API's file and verdict handling; keep default warnings and caller-owned counters with an optional diagnostic-only quiet mode.

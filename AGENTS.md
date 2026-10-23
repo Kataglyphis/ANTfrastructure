@@ -80,6 +80,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
+   Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
@@ -89,6 +90,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
+   Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results.
    Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255.
    Critical source-pattern checks share verdict handling; failed probes increment the aggregate and must reach the failing summary.
    Python CI driver tests use `t_python_ci_fixture` for isolated script trees and workspace detection; keep tool stubs in each suite.
