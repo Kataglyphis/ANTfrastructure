@@ -34,6 +34,14 @@ validate_fail() {
   _VALIDATE_ERRORS=$((_VALIDATE_ERRORS + 1))
 }
 
+_vc_elf_machine_header() {
+  LC_ALL=C readelf -h "$1" 2>/dev/null | grep 'Machine:' | head -1
+}
+
+_vc_elf_header_matches() {
+  echo "$1" | grep -qi "$2"
+}
+
 _artifact_source_check_host_gcc() {
   local target_arch="${_VCS_TARGET_ARCH}"
   local gcc_prefix="${_VCS_GCC_PREFIX}"
@@ -43,11 +51,11 @@ _artifact_source_check_host_gcc() {
     host_ver="$("${gcc_prefix}/bin/gcc" --version 2>/dev/null | head -1 || true)"
     if echo "${host_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
       echo "OK: host gcc ${gcc_prefix}/bin/gcc reports ${host_ver}"
-    elif host_elf="$(LC_ALL=C readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1)"; then
+    elif host_elf="$(_vc_elf_machine_header "${gcc_prefix}/bin/gcc")"; then
       # A target-native GCC cannot run on the build host; check its ELF machine instead.
       local expected_machine=""
       expected_machine="$(arch_to_elf_machine "${target_arch}" 2>/dev/null || true)"
-      if echo "${host_elf}" | grep -qi "${expected_machine}"; then
+      if _vc_elf_header_matches "${host_elf}" "${expected_machine}"; then
         echo "OK: host gcc ${gcc_prefix}/bin/gcc is cross-built ELF for ${target_arch} (${host_elf})"
       else
         validate_fail "host-gcc" "${gcc_prefix}/bin/gcc --version: ${host_ver:-MISSING} (expected ${GCC_VERSION:-16.2.0}), ELF: ${host_elf}"
@@ -103,8 +111,8 @@ _artifact_source_check_swapped_gcc() {
   if [ -n "${expected_triple}" ] && [ "${main_gcc_dump}" = "${expected_triple}" ]; then
     echo "OK: main gcc already reports target-native triple ${main_gcc_dump} (swap completed)"
   elif [ -n "${expected_machine}" ]; then
-    main_gcc_elf="$(LC_ALL=C readelf -h "${gcc_prefix}/bin/gcc" 2>/dev/null | grep 'Machine:' | head -1 || true)"
-    if echo "${main_gcc_elf}" | grep -qi "${expected_machine}"; then
+    main_gcc_elf="$(_vc_elf_machine_header "${gcc_prefix}/bin/gcc" || true)"
+    if _vc_elf_header_matches "${main_gcc_elf}" "${expected_machine}"; then
       echo "OK: main gcc is cross-built ELF for ${target_arch} (${main_gcc_elf}) - swap completed"
     else
       validate_fail "native-gcc-missing" "expected target-native GCC at ${native_gcc}/bin/gcc for ${target_arch}"
@@ -116,9 +124,9 @@ _artifact_source_check_swapped_gcc() {
 
 _artifact_source_check_target_elf() {
   local binary="$1" label="$2" gate="$3" version_failure="$4" machine expected_machine
-  machine="$(LC_ALL=C readelf -h "${binary}" 2>/dev/null | grep 'Machine:' | head -1 || true)"
+  machine="$(_vc_elf_machine_header "${binary}" || true)"
   expected_machine="$(arch_to_elf_machine "${_VCS_TARGET_ARCH}" 2>/dev/null || true)"
-  if [ -n "${expected_machine}" ] && echo "${machine}" | grep -qi "${expected_machine}"; then
+  if [ -n "${expected_machine}" ] && _vc_elf_header_matches "${machine}" "${expected_machine}"; then
     echo "OK: ${label} is cross-built ELF for ${_VCS_TARGET_ARCH} (${machine})"
   else
     validate_fail "${gate}" "${version_failure}${machine:+ ELF: ${machine}}"

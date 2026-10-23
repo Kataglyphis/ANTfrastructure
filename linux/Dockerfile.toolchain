@@ -220,6 +220,7 @@ ENV VIRTUAL_ENV=/opt/python/.venv \
 
 # Script bundle as plain COPYs, content-keyed, so no manual cache-buster is needed.
 COPY --chmod=755 linux/scripts/01-core/ /opt/scripts/core/
+COPY --chmod=755 linux/scripts/lib/log-bootstrap.sh /opt/scripts/lib/log-bootstrap.sh
 COPY --chmod=755 linux/scripts/02-toolchain/ /opt/scripts/toolchain/
 COPY --chmod=755 linux/scripts/02-toolchain/python/build_python.sh \
                  linux/scripts/02-toolchain/python/fix-staged-python-pc.sh \

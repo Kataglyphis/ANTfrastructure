@@ -31,6 +31,24 @@ The Slang twins accept additional pinned source roots and import an owner's
 WGSL manifest without a copied definition; their caller parameters and ownership
 rules are in [`slang-shader-compilation.md`](slang-shader-compilation.md#caller-variables).
 
+## Shared compiler and media probe policies
+
+Smoke ELF inspection calls the canonical `platform.sh` parser. A preloaded parser
+keeps precedence; otherwise the existing platform loader runs in a subshell so its
+functions and flags do not change the smoke caller. Toolchain copies carry that
+platform owner. Compiler validation shares its separate raw `Machine:` query and
+case-insensitive comparison, retaining host versus swapped/target failure policy.
+
+GStreamer and OpenCV collect optional target-Python paths in caller-selected order
+through `cross-python.sh`. Missing probes preserve existing fields; failed probes
+retain partial stdout. Cargo compiler bindings share environment publication in
+`cross-env.sh`; callers keep compiler validation, wrapper choice, host variables
+and Rust-name policy.
+
+Test fixtures share probe execution, rescued-stage assertions and Renovate apply
+and permission lifetimes. They retain independent child cleanup so mutating a
+production stop function cannot strand the test's own processes.
+
 ## Shared ONNX staging and report fixtures
 
 ONNX Runtime and GenAI append their shared cross-toolchain definitions from the
@@ -258,6 +276,22 @@ expected results. Both suites pass the same assertions before and after the
 extraction; status-swallowing and dropped-environment mutations must fail.
 
 ## The logging bootstrap
+
+The bootstrap also owns fallback registration for standalone Abseil, Torch
+wheelhouse and payload-copy scripts. A scoped `_LOG_BOOTSTRAP_REGISTRAR_ONLY=1`
+source imports only the registrar; it loads no real logger and leaves the
+bootstrap guard and caller arguments unchanged. Standalone scripts retain
+command lookup, plain prefixes and their selected logger names. Library
+fallbacks retain function-only lookup, ANSI prefixes, stderr warnings and fatal
+errors. Existing callbacks keep their own status and output policy.
+
+Toolchain and Media carry `lib/log-bootstrap.sh` for the core Abseil module,
+including a partial Media rebuild against an older SDK parent. Adjacent Media
+core copies share the same pre-RUN source set and permissions.
+The isolated package payload COPY carries the same file beside its entry point
+and inventory. Keep these companions when copying either closure; missing
+companions fail instead of restoring private fallback definitions.
+
 
 `log-bootstrap.sh` is the one owner of the block every other library needs
 before it can say anything: resolve `../01-core/logging.sh` if the caller has

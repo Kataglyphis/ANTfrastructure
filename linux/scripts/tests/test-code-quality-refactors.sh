@@ -280,7 +280,7 @@ t_assert_eq 1 "$(t_rc _cerbero_soundtouch_archive_url fixture soundtouch https:/
 t_assert_eq 1 "$(t_rc _cerbero_soundtouch_archive_url fixture soundtouch 'https://codeberg.org/{unknown}/archive/fixture.tar.gz')"
 t_assert_eq 1 "$(t_rc _cerbero_soundtouch_archive_url 'bad/value' soundtouch 'https://codeberg.org/soundtouch/archive/{version}.tar.gz')"
 
-eval "$(t_fn_src "${TESTS_DIR}/../06-packaging/validate-compilers.sh" _artifact_source_check_swapped_gcc)"
+t_source_functions "${TESTS_DIR}/../06-packaging/validate-compilers.sh" _artifact_source_check_swapped_gcc _vc_elf_machine_header _vc_elf_header_matches || exit 1
 mkdir -p "${WORK}/swapped-gcc/bin"
 printf '#!/bin/sh\nprintf "%%s\\n" "$DUMP_TRIPLE"\n' > "${WORK}/swapped-gcc/bin/gcc"
 chmod +x "${WORK}/swapped-gcc/bin/gcc"

@@ -6,7 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 VALIDATOR="${1:-${TESTS_DIR}/../06-packaging/validate-compilers.sh}"
 t_source_functions "${VALIDATOR}" validate_fail _cc_target_dumpmachine _cc_target_elf_check \
   _artifact_source_check_native_gcc _artifact_source_check_llvm || exit 1
-for helper in _cc_target_failure _artifact_source_check_target_elf; do
+for helper in _cc_target_failure _artifact_source_check_target_elf _vc_elf_machine_header _vc_elf_header_matches; do
   if grep -Eq "^${helper}\(\)" "${VALIDATOR}"; then eval "$(t_fn_src "${VALIDATOR}" "${helper}")"; fi
 done
 run_probe() {

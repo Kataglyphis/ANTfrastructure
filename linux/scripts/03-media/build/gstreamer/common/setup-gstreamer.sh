@@ -100,12 +100,10 @@ prepare_cargo_host_cxx_wrapper() {
 _gst_prepare_target_cargo_env() {
   # Without a target-triple linker cargo links the cross cdylibs with the host cc and fails "incompatible with elf64-x86-64".
   local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
-  if command -v cross_target_upper_rust >/dev/null 2>&1; then
-    target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
-  fi
-  if command -v cross_target_lower_rust >/dev/null 2>&1; then
-    target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
-  fi
+  local -A gst_rust_names=([upper]="${target_rust_env}" [lower]="${target_rust_lower}")
+  cross_collect_target_rust_env gst_rust_names
+  target_rust_env="${gst_rust_names[upper]}"
+  target_rust_lower="${gst_rust_names[lower]}"
   if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
     local _tgt_arch
     _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
@@ -145,16 +143,13 @@ prepare_host_cargo_toolchain_env() {
   cargo_host_cc="$(resolve_host_gcc_for_cargo)"
   if [ -n "${cargo_host_cc}" ]; then
     cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
-    export "CARGO_TARGET_${build_rust_env}_LINKER=${cargo_host_linker}"
-    export "CC_${build_rust_lower}=${cargo_host_linker}"
-    export HOST_CC="${cargo_host_linker}"
+    export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" c "${cargo_host_linker}" host
   fi
 
   cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
   if [ -n "${cargo_host_cxx}" ]; then
     cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
-    export "CXX_${build_rust_lower}=${cargo_host_cxx_wrapper}"
-    export HOST_CXX="${cargo_host_cxx_wrapper}"
+    export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" cxx "${cargo_host_cxx_wrapper}" host
   fi
 
   _gst_prepare_target_cargo_env
@@ -193,15 +188,11 @@ _gst_xpy_resolve_target_paths() {
     return 1
   fi
 
-  if command -v cross_target_python_include_dir >/dev/null 2>&1; then
-    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
-  fi
-  if command -v cross_target_python_library >/dev/null 2>&1; then
-    target_python_library="$(cross_target_python_library 2>/dev/null || true)"
-  fi
-  if command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
-    target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
-  fi
+  local -A gst_python_paths=([include_dir]="${target_python_include}" [library]="${target_python_library}" [pkgconfig_dir]="${target_python_pkgconfig_dir}")
+  cross_collect_python_dev_paths gst_python_paths include_dir library pkgconfig_dir
+  target_python_include="${gst_python_paths[include_dir]}"
+  target_python_library="${gst_python_paths[library]}"
+  target_python_pkgconfig_dir="${gst_python_paths[pkgconfig_dir]}"
   # The resolvers can return the host's /usr/local Python; use the staged cross Python instead.
   local _py_pv="${PYTHON_VERSION:-}"
   local _py_mm="${PYTHON_MAJOR_MINOR:-${_py_pv%.*}}"

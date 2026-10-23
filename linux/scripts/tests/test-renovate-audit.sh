@@ -30,13 +30,6 @@ for site in found:
 PY
 }
 
-# _parser_refuses <repo> <report> <manager> <reason>: refused for that reason with rc 2; see docs/dependency-updates.md#what-a-caller-branches-on
-_parser_refuses() {
-  _run "$1" "$2" --apply --managers "$3"
-  t_assert_eq "2" "${RC}" "the refusal is the RESULT, so the run exits 2"
-  t_assert_contains "${OUT}" "$4" "the refusal is the parser's, and it says why"
-}
-
 _npm_repo() {
   _plant "$1" package.json \
     '{\n  "name": "fixture",\n  "dependencies": {\n    "left-pad": "1.1.0"\n  }\n}\n'
@@ -252,9 +245,8 @@ PY
 
 t_case "(H9e) and the SCRIPT reaches that refusal, with the digest in the reason"
 H9E="$(_plant h9e requirements.txt 'ruff==0.9.0 \\\n  --hash=sha256:abc\n')"
-_run "${H9E}" "${RUFF_REPORT}" --apply --managers pip_requirements
-t_assert_eq "2" "${RC}" "the refusal is the RESULT, so the run exits 2"
-t_assert_contains "${OUT}" "pinned by digest (--hash=sha256:abc)" \
+_parser_refuses "${H9E}" "${RUFF_REPORT}" pip_requirements \
+  "pinned by digest (--hash=sha256:abc)" "the refusal is the RESULT, so the run exits 2" \
   "the reason names the digests, not a value that 'moved'"
 t_assert_contains "${OUT}" "re-run pip-compile" "and says who can recompute them"
 t_assert_eq 'ruff==0.9.0 \' "$(_req "${H9E}" 1)" "the pin is untouched"

@@ -447,12 +447,10 @@ _opencv_cmake_python_opts() {
             local target_python_library=""
             local target_python_include=""
 
-            if command -v cross_target_python_library >/dev/null 2>&1; then
-                target_python_library="$(cross_target_python_library 2>/dev/null || true)"
-            fi
-            if command -v cross_target_python_include_dir >/dev/null 2>&1; then
-                target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
-            fi
+            local -A opencv_python_paths=([library]="" [include_dir]="")
+            cross_collect_python_dev_paths opencv_python_paths library include_dir
+            target_python_library="${opencv_python_paths[library]}"
+            target_python_include="${opencv_python_paths[include_dir]}"
 
             if [ -n "${target_python_library}" ] && [ -d "${target_python_include}" ]; then
                 _ocmpo_out+=("-DPYTHON3_LIBRARY=${target_python_library}")

@@ -67,6 +67,14 @@
 - Correct PowerShell function-boundary scanning for braces in strings, comments and here-strings; add a regression fixture without removing literal tokens from comparison.
 - Remove 16 stale Windows duplication exceptions and lower 12 measured budgets without widening thresholds or narrowing scan coverage.
 
+## 2026-10-23 — share logger fallbacks, ELF checks and media probes
+
+- Share standalone logging fallback registration while retaining plain/ANSI bytes, command/function lookup, streams, fatal errors and caller state.
+- Carry the logger in Toolchain, Media and isolated payload copies; reuse the canonical platform ELF parser without leaking platform initialization.
+- Share raw compiler-header queries, optional Python paths and Cargo environment bindings with caller ordering and validation preserved.
+- Share test fixture lifetimes and verdicts while keeping process cleanup independent of the production code under mutation.
+- Remove measured duplication exceptions and lower existing budgets without changing scanner limits or scope.
+
 ## 2026-10-23 — share Windows graph, debugger and fixture lifetimes
 
 - Reuse the architecture DLL graph for cross bundles while preserving multi-root breadth-first order, machine checks and indexed API-set/system traversal.

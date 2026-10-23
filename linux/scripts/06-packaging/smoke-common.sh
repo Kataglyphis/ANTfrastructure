@@ -158,17 +158,17 @@ smoke_cross_presence_gate() {
   pass "${label} ${noun} present at ${path} (cross build — ${action} skipped)"
 }
 
-# The readelf "Machine:" value of a file, executing nothing; platform.sh's elf_machine_name when sourced.
+# Load the canonical parser in isolation so legacy smoke architecture fallbacks retain their caller state.
 smoke_elf_machine_of() {
   if command -v elf_machine_name >/dev/null 2>&1; then
     elf_machine_name "$1"
     return
   fi
-  command -v readelf >/dev/null 2>&1 || return 1
-  [ -r "$1" ] || return 1
-  LC_ALL=C readelf -h "$1" 2>/dev/null \
-    | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' \
-    | head -n1
+  (
+    smoke_load_platform
+    command -v elf_machine_name >/dev/null 2>&1 || exit 1
+    elf_machine_name "$1"
+  )
 }
 
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
