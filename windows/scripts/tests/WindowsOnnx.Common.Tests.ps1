@@ -32,7 +32,7 @@ Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
                 }
             }
         }
-        $okPackage = @('Some.Package.1.0.0\Some.Package.1.0.0.nupkg', 'Some.Package.1.0.0\lib\native\some.dll')
+        $script:okPackage = @('Some.Package.1.0.0\Some.Package.1.0.0.nupkg', 'Some.Package.1.0.0\lib\native\some.dll')
     }
 
     It 'refuses every ONNX Runtime package id before any NuGet call (mutation)' {
@@ -49,7 +49,7 @@ Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
         }
 
         It 'installs a package that carries no ONNX Runtime and returns exactly $true' {
-            Invoke-WithNuGetStandIn -Offer 'Some.Package 1.0.0' -Layout $okPackage { param($out, $log)
+            Invoke-WithNuGetStandIn -Offer 'Some.Package 1.0.0' -Layout $script:okPackage { param($out, $log)
                 $r = @(Install-OptionalNuGetPackage -PackageId 'Some.Package' -Version '1.0.0' -OutputDirectory $out)
                 Assert-Equal 1 $r.Count 'nuget output must not leak into the return value'
                 Assert-True ($r[0] -is [bool] -and $r[0])
@@ -60,13 +60,13 @@ Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
 
         It 'refuses ORT that arrives as a dependency, bundled under another id, or already there on a re-run (mutation)' {
             $cases = @(
-                @{ Why = 'dependency'; Layout = $okPackage + 'Microsoft.ML.OnnxRuntime.1.2.3\Microsoft.ML.OnnxRuntime.1.2.3.nupkg'
+                @{ Why = 'dependency'; Layout = $script:okPackage + 'Microsoft.ML.OnnxRuntime.1.2.3\Microsoft.ML.OnnxRuntime.1.2.3.nupkg'
                     Pattern = 'Microsoft\.ML\.OnnxRuntime\.1\.2\.3' }
-                @{ Why = 'bundled'; Layout = $okPackage + 'Some.Package.1.0.0\runtimes\win-x64\native\onnxruntime.dll'
+                @{ Why = 'bundled'; Layout = $script:okPackage + 'Some.Package.1.0.0\runtimes\win-x64\native\onnxruntime.dll'
                     Pattern = 'Some\.Package\.1\.0\.0\\runtimes\\win-x64\\native\\onnxruntime\.dll' }
-                @{ Why = 'bundled GenAI'; Layout = $okPackage + 'Some.Package.1.0.0\runtimes\win-x64\native\onnxruntime-genai.dll'
+                @{ Why = 'bundled GenAI'; Layout = $script:okPackage + 'Some.Package.1.0.0\runtimes\win-x64\native\onnxruntime-genai.dll'
                     Pattern = 'Some\.Package\.1\.0\.0\\runtimes\\win-x64\\native\\onnxruntime-genai\.dll' }
-                @{ Why = 're-run'; Layout = $okPackage; Before = 'microsoft.ml.onnxruntime.directml\1.2.3\microsoft.ml.onnxruntime.directml.1.2.3.nupkg'
+                @{ Why = 're-run'; Layout = $script:okPackage; Before = 'microsoft.ml.onnxruntime.directml\1.2.3\microsoft.ml.onnxruntime.directml.1.2.3.nupkg'
                     Pattern = 'microsoft\.ml\.onnxruntime\.directml' }
             )
             foreach ($case in $cases) {
@@ -80,14 +80,14 @@ Describe 'WindowsOnnx.Common: NuGet ONNX Runtime is refused' {
 
         It 'does not count an onnxruntime.dll that sits outside every NuGet package directory' {
             # A staged chain copy under the workspace (the default -OutputDirectory is '.') is not a package.
-            Invoke-WithNuGetStandIn -Offer 'Some.Package 1.0.0' -Layout $okPackage { param($out)
+            Invoke-WithNuGetStandIn -Offer 'Some.Package 1.0.0' -Layout $script:okPackage { param($out)
                 Write-OnnxTestTree -Root $out -Relative @('build\bin\onnxruntime.dll')
                 Assert-True (Install-OptionalNuGetPackage -PackageId 'Some.Package' -Version '1.0.0' -OutputDirectory $out)
             }
         }
 
         It 'returns $false and installs nothing when the version is not on NuGet' {
-            Invoke-WithNuGetStandIn -Offer $null -Layout $okPackage { param($out)
+            Invoke-WithNuGetStandIn -Offer $null -Layout $script:okPackage { param($out)
                 Assert-False (Install-OptionalNuGetPackage -PackageId 'Some.Package' -Version '9.9.9' -OutputDirectory $out)
                 Assert-False (Test-Path -LiteralPath $out)
             }
@@ -102,9 +102,9 @@ Describe 'WindowsOnnx.Common: the chain layout' {
     BeforeAll {
         Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsOnnx.Common.psm1') -Force -DisableNameChecking
 
-        $previousTargetArch = $env:WINDOWS_TARGET_ARCH
-        $previousOnnxRoot = $env:ONNX_ROOT
-        $previousGenAiRoot = $env:ONNX_GENAI_ROOT
+        $script:previousTargetArch = $env:WINDOWS_TARGET_ARCH
+        $script:previousOnnxRoot = $env:ONNX_ROOT
+        $script:previousGenAiRoot = $env:ONNX_GENAI_ROOT
         $env:WINDOWS_TARGET_ARCH = $null
         $env:ONNX_ROOT = $null
         $env:ONNX_GENAI_ROOT = $null
@@ -213,9 +213,9 @@ Describe 'WindowsOnnx.Common: the chain layout' {
         }
 
     AfterAll {
-        $env:WINDOWS_TARGET_ARCH = $previousTargetArch
-        $env:ONNX_ROOT = $previousOnnxRoot
-        $env:ONNX_GENAI_ROOT = $previousGenAiRoot
+        $env:WINDOWS_TARGET_ARCH = $script:previousTargetArch
+        $env:ONNX_ROOT = $script:previousOnnxRoot
+        $env:ONNX_GENAI_ROOT = $script:previousGenAiRoot
         Remove-TestDir -Path $root
     }
 }
