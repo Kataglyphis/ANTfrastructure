@@ -39,7 +39,7 @@ Describe 'WindowsRepoHygiene.Common' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:sandbox -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:sandbox
   }
 
   Context 'Get-SubmoduleStatusLine' {

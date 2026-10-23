@@ -784,10 +784,10 @@ Describe 'Dockerfile.rocm-llama: rocm-only stage, two layers off PATH, closure m
     It 'builds, installs and checks HIP in one RUN and Vulkan in another, failing the stage on any finding' {
         $runs = @([regex]::Matches($code, '(?s)RUN --mount.*?throw \(.*?\)\s*\}') | ForEach-Object { $_.Value })
         Assert-Equal 2 $runs.Count 'two RUNs'
-        Assert-Match ("(?s)Build-LlamaCppHipFromSource\.ps1' -OutputDir '(?<out>[^']+)'.*Install-LlamaCpp\.ps1' -Backend hip .*-InstallDir \`$env:LLAMA_CPP_HIP_HOME -BuiltDir '\k<out>'" +
+        Assert-Match ("(?s)Build-LlamaCppHipFromSource\.ps1' -OutputDir '(?<out>[^']+)'.*Install-LlamaCpp\.ps1' -Backend hip .*-InstallDir \`$env:LLAMA_CPP_HIP_HOME -BuiltDir '\k<out>' -ModuleRoot 'C:\\bkmnt'" +
             ".*@\(& 'C:\\bkmnt\\LlamaCpp\.ps1' -Backend hip\).*throw") $runs[0] 'HIP built, installed from that output, armed'
         Assert-Match 'type=cache,target=C:\\sccache,' $runs[0] 'the compile shares the lane''s sccache'
-        Assert-Match "(?s)Install-LlamaCpp\.ps1' -Backend vulkan .*-InstallDir \`$env:LLAMA_CPP_VULKAN_HOME.*@\(& 'C:\\bkmnt\\LlamaCpp\.ps1' -Backend vulkan\).*throw" $runs[1] 'Vulkan armed'
+        Assert-Match "(?s)Install-LlamaCpp\.ps1' -Backend vulkan .*-InstallDir \`$env:LLAMA_CPP_VULKAN_HOME -ModuleRoot 'C:\\bkmnt'.*@\(& 'C:\\bkmnt\\LlamaCpp\.ps1' -Backend vulkan\).*throw" $runs[1] 'Vulkan armed'
     }
 
     It 'declares the HIP pins before the HIP RUN and the Vulkan pin after it, so bumping it keeps the HIP layer cached' {

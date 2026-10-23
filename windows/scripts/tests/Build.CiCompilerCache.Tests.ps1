@@ -6,12 +6,12 @@
 # A -Force reload would break WindowsScripts.Shared's guarded import, so an already loaded copy stays.
 if (-not (Get-Module -Name 'WindowsBuild.Common')) { Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsBuild.Common.psm1') -DisableNameChecking }
 
-# New-Item -Force creates a file's missing directories too.
-function script:Set-CacheFile([string]$Dir, [string[]]$Relative) { $Relative | ForEach-Object { $null = New-Item -ItemType File -Force -Path (Join-Path $Dir $_) -Value $_ } }
-
 # A CI cache with an sccache object and a cargo archive, and the stand-in sccache; returns the env the cases run under.
 function script:New-CiCacheFixture([string]$Dir) {
-    Set-CacheFile $Dir 'ci\sccache\a\obj', 'ci\cargo\registry\cache\x.crate'
+    Write-TestFileTree -Root $Dir -Files @{
+        'ci\sccache\a\obj' = 'ci\sccache\a\obj'
+        'ci\cargo\registry\cache\x.crate' = 'ci\cargo\registry\cache\x.crate'
+    }
     $null = New-TestBatchTool -Directory (Join-Path $Dir 'bin') -Name 'sccache.cmd' -Line @(
         '>>"%FAKE_SCCACHE_LOG%" echo %*', 'if "%1"=="--version" echo sccache 0.19.0')
     return @{ PATH = "$(Join-Path $Dir 'bin');$env:PATH"; FAKE_SCCACHE_LOG = (Join-Path $Dir 'sccache.log'); SCCACHE_DIR = $null; CARGO_HOME = $null
@@ -34,7 +34,11 @@ Describe 'Restore-CiCompilerCache and Save-CiCompilerCache' {
                 Assert-Equal (Join-Path $d 'local\cargo') $env:CARGO_HOME
                 Assert-True (Test-Path -LiteralPath (Join-Path $d 'local\sccache\a\obj')) 'the object moved in'
                 Assert-False (Test-Path -LiteralPath (Join-Path $d 'ci\sccache\a\obj')) 'moved, not copied'
-                Set-CacheFile $d 'local\sccache\b\new', 'local\cargo\registry\src\x\lib.rs', 'local\cargo\git\checkouts\y\f'
+                Write-TestFileTree -Root $d -Files @{
+                    'local\sccache\b\new' = 'local\sccache\b\new'
+                    'local\cargo\registry\src\x\lib.rs' = 'local\cargo\registry\src\x\lib.rs'
+                    'local\cargo\git\checkouts\y\f' = 'local\cargo\git\checkouts\y\f'
+                }
                 Assert-True (Save-CiCompilerCache $restored 6>$null)
                 foreach ($f in 'ci\sccache\a\obj', 'ci\sccache\b\new', 'ci\cargo\registry\cache\x.crate') {
                     Assert-True (Test-Path -LiteralPath (Join-Path $d $f)) "$f is saved"

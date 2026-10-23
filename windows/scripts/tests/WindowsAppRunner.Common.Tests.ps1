@@ -18,7 +18,7 @@ Describe 'WindowsAppRunner.Common' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:root
   }
 
   Context 'Resolve-AppExecutablePath' {

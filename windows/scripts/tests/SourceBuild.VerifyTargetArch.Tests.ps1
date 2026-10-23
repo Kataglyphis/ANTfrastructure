@@ -16,7 +16,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
     }
 
     AfterAll {
-        if ($script:tmp -and (Test-Path $script:tmp)) { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-TestDir -Path $script:tmp
     }
 
     # Get-CoffMachine

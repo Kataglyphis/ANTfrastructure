@@ -13,7 +13,7 @@ Describe 'WindowsMsix.Common' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:tmp -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:tmp
   }
 
   Context 'Expand-XmlTemplateTokens' {

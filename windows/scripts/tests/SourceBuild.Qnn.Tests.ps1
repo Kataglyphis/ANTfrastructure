@@ -24,7 +24,7 @@ Describe 'Resolve-QnnSdk' {
         [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $script:tmp 'sdk'), $script:zip)
         $script:sha = (Get-FileHash -Algorithm SHA256 -Path $script:zip).Hash
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'returns $null when no zip is staged (the default state)' {
         $empty = Join-Path $script:tmp 'empty'; New-Item $empty -ItemType Directory -Force | Out-Null

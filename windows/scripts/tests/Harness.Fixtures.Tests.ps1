@@ -11,6 +11,14 @@ function Assert-FixtureTreeContent {
     }
 }
 
+function New-RemoveTestDirProbeFixture {
+    $parent = New-TestDir -Prefix 'remove-testdir-'
+    $path = [IO.Path]::Combine($parent, 'fixture [x]')
+    $wildcardMatch = $path.Replace('[x]', 'x')
+    [void][IO.Directory]::CreateDirectory($wildcardMatch)
+    return [pscustomobject]@{ Parent = $parent; Path = $path; WildcardMatch = $wildcardMatch }
+}
+
 function Assert-MutationFactoryRefused {
     param([Parameter(Mandatory)][scriptblock]$Factory, [Parameter(Mandatory)][string]$MessagePattern,
         [string]$Expected = 'recipe failure')
@@ -29,7 +37,26 @@ Describe 'Harness fixture lifecycle' {
             Assert-False ($first -eq $second)
             Assert-Match '^wbt-[a-f0-9]{32}$' (Split-Path $first -Leaf)
         } finally {
-            Remove-Item -LiteralPath $first, $second -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-TestDir -Path $first
+            Remove-TestDir -Path $second
+        }
+    }
+
+    It 'removes a recursive fixture root literally and treats empty or missing paths as no-ops' {
+        $fixture = New-RemoveTestDirProbeFixture
+        Write-TestFileTree -Root $fixture.Path -Files @{ 'nested/leaf.txt' = 'payload' }
+        try {
+            $missing = Join-Path $fixture.Parent 'missing'
+            Remove-TestDir -Path $null
+            Remove-TestDir -Path ''
+            Remove-TestDir -Path $missing
+            Assert-True (Test-Path -LiteralPath $fixture.WildcardMatch -PathType Container) 'missing-path cleanup leaves its sibling'
+            Assert-Equal 'payload' ([IO.File]::ReadAllText((Join-Path $fixture.Path 'nested/leaf.txt'))) 'nested fixture exists before cleanup'
+            Remove-TestDir -Path $fixture.Path
+            Assert-False (Test-Path -LiteralPath $fixture.Path) 'the bracketed root and its nested files are removed'
+            Assert-True (Test-Path -LiteralPath $fixture.WildcardMatch -PathType Container) 'brackets are literal, so the wildcard-shaped sibling stays'
+        } finally {
+            Remove-Item -LiteralPath $fixture.Parent -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 
@@ -42,13 +69,13 @@ Describe 'Harness fixture lifecycle' {
             Assert-FixtureTreeContent -Root $dir -Expected @{ 'nested [parent]/exact.txt' = "fixture`nbytes"; 'empty.txt' = '' }
             $empty = New-TestDir -Files @{}
             try { Assert-True (Test-Path -LiteralPath $empty -PathType Container) }
-            finally { Remove-Item -LiteralPath $empty -Recurse -Force -ErrorAction SilentlyContinue }
-        } finally { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+            finally { Remove-TestDir -Path $empty }
+        } finally { Remove-TestDir -Path $dir }
     }
 
     It 'removes the allocated directory when file initialization fails and propagates that failure' {
         Invoke-DirectoryCleanupProbe { param($state)
-            Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir -Prefix Init -FixtureState $state `
+            Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir, Remove-TestDir -Prefix Init -FixtureState $state `
                 -Prelude 'function Write-TestFileTree { param($Root, $Files); $State.Path = $Root; throw "file initialization sentinel" }' -Body {
                     param($record)
                     Assert-Throws { New-InitTestDir -Files @{ 'requested.txt' = 'content' } } -MessagePattern 'file initialization sentinel'
@@ -59,7 +86,7 @@ Describe 'Harness fixture lifecycle' {
     }
 
     It 'propagates a directory allocation error before file initialization or a body can report success' {
-        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir -Prefix Allocation `
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir, Remove-TestDir -Prefix Allocation `
             -Prelude 'function New-Item { param($ItemType, [switch]$Force, $Path, $ErrorAction); Write-Error "directory allocation sentinel" -ErrorAction $ErrorAction }' -Body {
                 Assert-Throws { New-AllocationTestDir } -MessagePattern 'directory allocation sentinel'
             }
@@ -108,6 +135,51 @@ Describe 'Harness text trees' {
             Assert-FixtureTreeContent -Root $root -Expected @{ 'nested [folder]/file.txt' = $content; 'empty.txt' = '' }
             Write-TestFileTree -Root $root -Files @{ 'nested [folder]\file.txt' = 'replacement' }
             Assert-FixtureTreeContent -Root $root -Expected @{ 'nested [folder]/file.txt' = 'replacement' }
+        }
+    }
+}
+
+Describe 'Dockerfile stage fixtures' {
+    It 'indexes named and unnamed stages, global instructions, comments and continued instructions' {
+        $parsed = Get-TestDockerfileStages -Text @'
+# header comment
+ARG GLOBAL=1
+FROM base AS compile
+RUN compile `
+  source
+FROM compile
+RUN unnamed
+FROM compile AS final
+RUN first
+RUN second
+'@ -JoinContinuations -IgnoreComments -TrimLines
+        Assert-Equal 'ARG GLOBAL=1' ($parsed.Global -join ',')
+        Assert-Equal 3 $parsed.Stages.Count
+        Assert-Equal 2 $parsed.ByName.Count
+        Assert-Equal 'RUN compile source' ($parsed.ByName.compile.Lines -join ',')
+        Assert-Equal 'RUN unnamed' ($parsed.Stages[1].Lines -join ',')
+        Assert-Equal 'RUN first,RUN second' ($parsed.ByName.final.Lines -join ',')
+        Assert-True ([object]::ReferenceEquals($parsed.Stages[2], $parsed.ByName.final))
+        $indented = Get-TestDockerfileStages -Text " FROM base AS ignored`nRUN global" -IgnoreComments -TrimLines
+        Assert-Equal 0 $indented.Stages.Count 'Torch indexing keeps its unindented header rule'
+        Assert-Equal 'FROM base AS ignored,RUN global' ($indented.Global -join ',')
+    }
+
+    It 'recognizes only complete FROM headers when a caller needs strict boundaries' {
+        $parsed = Get-TestDockerfileStages -Text "ARG GLOBAL=1`nFROM `${BASE_IMAGE} AS first`nARG FIRST=1`nFROM invalid AS extra words`nRUN still-first`nFROM local`nRUN unnamed" -StrictFromHeader
+        Assert-Equal 2 $parsed.Stages.Count
+        Assert-Equal '${BASE_IMAGE}' $parsed.Stages[0].From
+        Assert-Equal 'first' $parsed.Stages[0].Name
+        Assert-Equal 'ARG FIRST=1,FROM invalid AS extra words,RUN still-first' ($parsed.Stages[0].Lines -join ',')
+        Assert-Equal '' $parsed.Stages[1].Name
+        Assert-Equal 'RUN unnamed' ($parsed.Stages[1].Lines -join ',')
+    }
+
+    It 'goes red when the shared parser stops recognizing stage headers' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName Get-TestDockerfileStages `
+            -Find 'if ($line -match $fromPattern)' -Replace 'if ($false)' -Expected 'Assert-Equal' -Body {
+            $parsed = Get-MutTestDockerfileStages -Text "FROM base AS final`nRUN fixture"
+            Assert-Equal 1 $parsed.Stages.Count 'the FROM header starts the stage'
         }
     }
 }
@@ -483,16 +555,27 @@ Describe 'Recorded fixture state' {
 Describe 'Harness fixture mutation proofs' {
     $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'TestHarness.psm1'))
     It 'detects a directory allocator that ignores a suite prefix' {
-        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir -Find '($Prefix +' -Replace "('wbt-' +" -Body {
+        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir, Remove-TestDir -Find '($Prefix +' -Replace "('wbt-' +" -Body {
             $dir = New-MutTestDir -Prefix 'fixture mutation-'
             try { Assert-Throws { Assert-Match '^fixture mutation-' (Split-Path $dir -Leaf) } -MessagePattern 'does not match' }
-            finally { Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue }
+            finally { Remove-TestDir -Path $dir }
         }
     }
     It 'detects a directory allocator that returns an uncreated path' {
-        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir -Find '$null = New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop' -Replace '' -Body {
+        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir, Remove-TestDir -Find '$null = New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop' -Replace '' -Body {
             $dir = New-MutTestDir
             Assert-Throws { Assert-True (Test-Path -LiteralPath $dir -PathType Container) } -MessagePattern 'Assert-True failed'
+        }
+    }
+    It 'detects a cleanup mutant that treats bracketed paths as wildcard patterns' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName Remove-TestDir `
+            -Find '-LiteralPath $Path' -Replace '-Path $Path' -Expected 'literal fixture root remains' -IncludeControl -Body {
+            $fixture = New-RemoveTestDirProbeFixture
+            try {
+                Remove-MutTestDir -Path $fixture.Path
+                if (Test-Path -LiteralPath $fixture.Path) { throw 'literal fixture root remains after cleanup' }
+                if (-not (Test-Path -LiteralPath $fixture.WildcardMatch)) { throw 'wildcard sibling was removed' }
+            } finally { Remove-Item -LiteralPath $fixture.Parent -Recurse -Force -ErrorAction SilentlyContinue }
         }
     }
 }

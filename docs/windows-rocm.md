@@ -727,6 +727,8 @@ WebGPU for ONNX Runtime comes from the chain ORT itself ([§ ONNX Runtime WebGPU
 
 `rocm-1` runs `windows/scripts/build/Install-TorchRocm.ps1`, then `Build-TorchApp.ps1 -Mode verify`, so the app's own smoke suite runs on the ROCm torch. That verify runs the ORT census first: any ONNX Runtime distribution that is not a chain wheel fails the stage ([`failure-modes.md`](failure-modes.md#the-torch-stage-fails-with-ort-census-fail)). The installer itself also requires the venv's onnxruntime RECORD digest to be the same before and after it runs (`Assert-TorchRocmOrtUnchanged`).
 
+The installer resolves its modules from `-ModuleRoot`, which defaults to the checkout's `windows/scripts` directory. The flat BuildKit mount passes `-ModuleRoot 'C:\bkmnt'` explicitly so the installer loads the modules mounted beside it.
+
 **The source build** (`windows/scripts/build/Build-TorchRocmFromSource.ps1`, then `Build-TorchvisionRocmFromSource.ps1`, following TheRock's `external-builds/pytorch/build_prod_wheels.py`):
 
 - **Sources.** `Save-GitCommitSource` fetches `TORCH_ROCM_WINDOWS_PYTORCH_COMMIT` and `_TORCHVISION_COMMIT`, the tags' commits, and git verifies every object. Submodules come at the superproject's gitlinks (`--depth 1`). Each commit's `version.txt` (`2.14.0a0` upstream) must carry the pinned x.y.z.
@@ -837,7 +839,7 @@ That is how upstream composes its own `win-rocm` zip: release.yml's `windows-roc
 - Nothing downloads at build time: the tools, the server's prebuilt UI (fetched unpinned from a Hugging Face bucket) and BoringSSL are switched off, and `FETCHCONTENT_FULLY_DISCONNECTED` is set. `LLAMA_BUILD_NUMBER`/`_COMMIT` come from the pin, because the tarball has no git history.
 - Only the `ggml-hip` target is built. Its PE machine must be amd64, and the pins it was built from go to `llama-cpp-hip-build.json` next to it.
 
-**How it is installed** (`windows/scripts/build/Install-LlamaCpp.ps1 -Backend hip -BuiltDir <the build's output>`). One installer serves both builds; a backend table (`Get-LlamaCppBackendSpec`) holds what differs. For HIP it fails closed:
+**How it is installed** (`windows/scripts/build/Install-LlamaCpp.ps1 -Backend hip -BuiltDir <the build's output>`). One installer serves both builds; a backend table (`Get-LlamaCppBackendSpec`) holds what differs. `-ModuleRoot` defaults to the checkout's `windows/scripts` directory, and each flat BuildKit invocation passes `-ModuleRoot 'C:\bkmnt'` for the mounted module closure. For HIP it fails closed:
 - It runs only when `Get-GpuEnvironment` reports `HasRocm`, and only when ROCm's bin has `amdhip64_7.dll`, `hipblas.dll` and `rocblas.dll`.
 - The build record must name `LLAMA_CPP_HIP_BUILD` and the image's `ROCM_WINDOWS_RELEASE`.
 - The CPU zip is verified against `LLAMA_CPP_CPU_SHA256`. It must be flat, hold the load-bearing files (`llama-server.exe`, `llama-cli.exe`, `ggml-base.dll`, `ggml.dll`, `llama.dll`), and carry neither a `ggml-hip.dll` nor any DLL name ROCm's bin has.

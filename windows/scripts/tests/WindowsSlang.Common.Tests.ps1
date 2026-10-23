@@ -38,7 +38,7 @@ Describe 'WindowsSlang.Common' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:root
   }
 
   Context 'Test-WgslVaryingsAreLocated' {

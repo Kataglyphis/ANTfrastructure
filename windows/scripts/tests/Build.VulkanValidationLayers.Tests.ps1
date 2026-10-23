@@ -66,7 +66,7 @@ Describe 'Build-VulkanValidationLayers: the layer manifest' {
         }
     }
 
-    AfterAll { Remove-Item -LiteralPath $script:dir -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:dir }
 
     It 'accepts the layer with its DLL beside it' {
         Assert-ValidationLayerManifest -Path (New-Manifest 'VK_LAYER_KHRONOS_validation' '.\VkLayer_khronos_validation.dll')

@@ -15,7 +15,7 @@ Describe 'Resolve-BuildMachineMsvcTool' {
         }
         $script:vc = Join-Path $script:tmp 'VC\Tools\MSVC\14.51.36231'
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'returns the x64-targeting tool as a forward-slash path' {
         $r = Resolve-BuildMachineMsvcTool -VcToolsDir $script:vc -Name 'cl.exe'

@@ -31,7 +31,7 @@ Describe 'Install-RustTargetStdFromPinnedManifest' {
             'version = "1.98.0"'
         ) -join "`n" | Set-Content -Path (Join-Path $tcDir 'multirust-channel-manifest.toml') -Encoding ASCII
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'derives the upstream URL from the pinned file:// URL and lands the bytes where the manifest points' {
         $script:seenUrl = $null; $script:seenDest = $null

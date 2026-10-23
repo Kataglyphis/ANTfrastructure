@@ -57,7 +57,7 @@ RUN --mount=type=cache,target=C:\sccache,id=sccache-winamd64-2,sharing=shared `
     --mount=type=bind,source=windows/scripts/build/Import-Versions.ps1,target=C:\bkmnt\Import-Versions.ps1 `
     --mount=type=bind,from=llamamods,source=/bkmods,target=C:\bkmnt\modules `
     & 'C:\bkmnt\Build-LlamaCppHipFromSource.ps1' -OutputDir 'C:\temp\llama-cpp-hip-built' -WorkDir 'C:\temp\llama-cpp-hip-work'; `
-    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend hip -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME -BuiltDir 'C:\temp\llama-cpp-hip-built'; `
+    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend hip -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_HIP_HOME -BuiltDir 'C:\temp\llama-cpp-hip-built' -ModuleRoot 'C:\bkmnt'; `
     Remove-Item -LiteralPath 'C:\temp\llama-cpp-hip-built' -Recurse -Force; `
     $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend hip); `
     if ($findings.Count -gt 0) { throw ('llama.cpp HIP check failed: ' + ($findings -join ' | ')) }
@@ -68,6 +68,6 @@ ENV LLAMA_CPP_VULKAN_HOME="C:\runtime\opt\llama.cpp-vulkan"
 RUN --mount=type=bind,source=windows/scripts/build/Install-LlamaCpp.ps1,target=C:\bkmnt\Install-LlamaCpp.ps1 `
     --mount=type=bind,source=windows/scripts/build/rocm-checks/LlamaCpp.ps1,target=C:\bkmnt\LlamaCpp.ps1 `
     --mount=type=bind,from=llamamods,source=/bkmods,target=C:\bkmnt\modules `
-    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend vulkan -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_VULKAN_HOME; `
+    & 'C:\bkmnt\Install-LlamaCpp.ps1' -Backend vulkan -TempDir $env:TEMP_DIR -InstallDir $env:LLAMA_CPP_VULKAN_HOME -ModuleRoot 'C:\bkmnt'; `
     $findings = @(& 'C:\bkmnt\LlamaCpp.ps1' -Backend vulkan); `
     if ($findings.Count -gt 0) { throw ('llama.cpp Vulkan check failed: ' + ($findings -join ' | ')) }

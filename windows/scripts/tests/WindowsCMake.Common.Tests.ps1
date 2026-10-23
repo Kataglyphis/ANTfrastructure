@@ -12,7 +12,7 @@ Describe 'WindowsCMake.Common' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:buildRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:buildRoot
   }
 
   Context 'Get-CompileCommandsDatabase' {

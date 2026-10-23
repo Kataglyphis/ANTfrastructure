@@ -11,7 +11,7 @@ Describe 'Host maintenance buildctl lookup' {
             Required = $false
             Resolved = 'buildctl from PATH'
         }
-        $prelude = 'function Test-Path { param($Path) $State.CheckedPaths.Add($Path); $Path -eq $State.ExistsPath }; function Get-PreferredToolPath { param($CommandName, $CandidatePaths, [switch]$Required) $State.PreferredCalls++; $State.PreferredPaths = $CandidatePaths; $State.Required = $Required; $State.Resolved }'
+        $prelude = 'function Test-Path { param($Path) $State.CheckedPaths.Add($Path); $Path -eq $State.ExistsPath }; function Get-PreferredToolPath { param($CommandName, $CandidatePaths, [switch]$Required) $State.PreferredCalls++; $State.CommandName = $CommandName; $State.PreferredPaths = $CandidatePaths; $State.Required = $Required; $State.Resolved }'
         Invoke-WithEnv @{ ProgramFiles = 'Z:\FixtureProgramFiles' } {
             Invoke-TestFunctionMutations -ModuleArguments @{ ScriptPath = 'windows/scripts/modules/WindowsHostMaintenance.Common.psm1';
                     FunctionName = 'Get-HostMaintenanceBuildCtlPath'; Prelude = $prelude; FixtureState = $state } -IncludeControl `

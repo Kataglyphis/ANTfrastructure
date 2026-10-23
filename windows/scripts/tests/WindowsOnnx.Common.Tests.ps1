@@ -207,5 +207,5 @@ Describe 'WindowsOnnx.Common: the chain layout' {
         }
     }
 
-    AfterAll { Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:root }
 }

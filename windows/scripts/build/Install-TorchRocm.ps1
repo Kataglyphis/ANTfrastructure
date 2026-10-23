@@ -22,7 +22,8 @@ param(
     # Hash-keyed download cache (<cache>\<sha256>\<file>) on the torch stage's uv cache mount.
     [string]$WheelCache = 'C:\uvcache\torch-rocm',
     # The image's rocm-check, dot-sourced: it owns the venv probe and the findings this script applies.
-    [string]$CheckScript = (Join-Path $PSScriptRoot 'rocm-checks\Torch.ps1')
+    [string]$CheckScript = (Join-Path $PSScriptRoot 'rocm-checks\Torch.ps1'),
+    [string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -316,10 +317,8 @@ if (-not (Test-TorchRocmLane -TorchRocm $TorchRocm -GpuType "$env:GPU_TYPE")) {
     return
 }
 
-# #108 layout: modules sit beside this script in the flat container mount, one level up in the repo.
-$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 foreach ($module in 'WindowsScripts.Shared.psm1', 'WindowsNative.Common.psm1') {
-    $modulePath = Join-Path $scriptAssetRoot "modules\$module"
+    $modulePath = Join-Path $ModuleRoot "modules\$module"
     if (-not (Test-Path $modulePath)) { throw "Required module not found: $modulePath" }
     Import-Module $modulePath -Force -DisableNameChecking
 }

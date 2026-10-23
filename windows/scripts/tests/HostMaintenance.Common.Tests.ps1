@@ -102,7 +102,8 @@ Describe 'Host maintenance contexts and live-process guard' {
                 foreach ($name in @('buildctl', 'bt', 'dockerExe')) { Set-Variable -Name $name -Value 'Invoke-TestHostProbe' }
                 Assert-Equal 4 $state.ProbeCommands.Count
                 foreach ($command in $state.ProbeCommands) {
-                    & ([scriptblock]::Create($command.Replace('Write-HostMaintenanceProbe', 'Write-MutHostMaintenanceProbe'))) 6>$null
+                    $mutatedCommand = $command.Replace('Write-HostMaintenanceProbe', 'Write-MutHostMaintenanceProbe').Replace('Get-HostMaintenanceBuildCtlPath', 'Get-MutHostMaintenanceBuildCtlPath')
+                    & ([scriptblock]::Create($mutatedCommand)) 6>$null
                     Assert-True ($state.ProbeArguments.Count -gt 0)
                 }
                 Assert-Match '^\[\d\d:\d\d:\d\d\] first context$' $first.Lines[0]

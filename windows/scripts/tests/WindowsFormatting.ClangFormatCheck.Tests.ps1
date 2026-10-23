@@ -29,7 +29,7 @@ Describe 'Invoke-ClangFormatCheck' {
 
   AfterAll {
     $env:LLVM_WINDOWS_VERSION = $script:pinBefore
-    Remove-Item -LiteralPath $script:root -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:root
   }
 
   It 'reports a deviating file without failing by default' {
@@ -92,7 +92,7 @@ Describe 'The source walk without a git checkout' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:tree -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:tree
   }
 
   It 'grades the repository''s own C/C++ files and skips every dependency and output tree' {

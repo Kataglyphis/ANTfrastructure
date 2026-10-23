@@ -3,8 +3,8 @@
 
 Describe 'Harness working-directory scope' {
     It 'uses literal paths, forwards stdout and native results, and removes the bracket-named fixture' {
-        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName Invoke-InTestDir `
-            -Find 'Remove-Item -LiteralPath $d' -Replace 'Remove-Item -Path $d' -Expected 'literal fixture root must be removed' -IncludeControl -Body {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName Invoke-InTestDir, Remove-TestDir `
+            -Find '-LiteralPath $Path' -Replace '-Path $Path' -Expected 'literal fixture root must be removed' -IncludeControl -Body {
             Invoke-DirectoryCleanupProbe { param($record)
                 Invoke-MutInTestDir -Prefix 'location [literal]-' -Body { param($dir)
                     $record.Path = $dir

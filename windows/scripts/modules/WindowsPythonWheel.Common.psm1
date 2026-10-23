@@ -150,12 +150,13 @@ function Invoke-PythonAbiProbe {
     param([Parameter(Mandatory)][string]$Python, [scriptblock]$Runner, [switch]$Isolated)
     $arguments = @('-c', $script:PythonAbiProbeCode)
     if ($Isolated) { $arguments = @('-I') + $arguments }
+    [string[]]$output = @()
     if ($Runner) {
         $result = & $Runner $Python $arguments
         $exitCode = $result.ExitCode
-        $output = if ($result.PSObject.Properties['Output']) { [string[]]@($result.Output) } else { [string[]]@() }
+        if ($result.PSObject.Properties['Output']) { $output = @($result.Output) }
     } else {
-        $output = [string[]]@(& $Python @arguments 2>&1 | ForEach-Object { "$_" })
+        $output = @(& $Python @arguments 2>&1 | ForEach-Object { "$_" })
         $exitCode = $LASTEXITCODE
     }
     $abi = if ($exitCode -eq 0 -and $output.Count -gt 0) { "$($output[-1])".Trim() } else { '' }

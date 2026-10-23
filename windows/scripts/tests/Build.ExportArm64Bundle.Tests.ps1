@@ -44,5 +44,5 @@ Describe 'Export-Arm64Bundle: packs a real bundle or throws' {
         Assert-True (Test-Path (Join-Path $dest 'python\python.exe')) 'python extracts'
     }
 
-    AfterAll { Remove-Item -LiteralPath $script:work -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:work }
 }

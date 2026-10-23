@@ -25,7 +25,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
     }
 
     AfterAll {
-        if ($script:tmp -and (Test-Path $script:tmp)) { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-TestDir -Path $script:tmp
     }
 
     # Get-WheelDistName

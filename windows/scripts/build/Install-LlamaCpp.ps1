@@ -19,16 +19,16 @@ param(
     [string]$LicenseSha256 = '',
     [string]$InstallDir = '',
     # hip only: Build-LlamaCppHipFromSource.ps1's -OutputDir.
-    [string]$BuiltDir = 'C:\temp\llama-cpp-hip-built'
+    [string]$BuiltDir = 'C:\temp\llama-cpp-hip-built',
+    [string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)
 )
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $ProgressPreference = 'SilentlyContinue'
 
-$scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 foreach ($name in 'modules\WindowsContainerImage.Common.psm1', 'modules\WindowsSourceBuild.Cuda.psm1') {
-    $modulePath = Join-Path $scriptAssetRoot $name
+    $modulePath = Join-Path $ModuleRoot $name
     if (-not (Test-Path $modulePath)) { throw "Required module not found: $modulePath" }
     Import-Module $modulePath -Force
 }

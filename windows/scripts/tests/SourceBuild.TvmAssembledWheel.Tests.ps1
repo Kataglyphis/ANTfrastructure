@@ -11,7 +11,7 @@ Describe 'TVM assembled-wheel helpers' {
             'root/tvm_ffi/lib/tvm_ffi.dll' = 'not a real dll'
         }
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'writes a binary-wheel dist-info with the target tag, the requirements and the top-level package' {
         $di = Write-AssembledWheelDistInfo -Name 'apache-tvm-ffi' -Version '0.1.13.post3' -PackageRoot (Join-Path $script:tmp 'root') -PythonTag 'cp987' -AbiTag 'cp987' -RequiresDist @('typing-extensions>=4.5') -RequiresPython '>=3.9' -Summary 'fixture'

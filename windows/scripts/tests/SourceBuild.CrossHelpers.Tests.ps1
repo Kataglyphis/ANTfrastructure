@@ -51,7 +51,7 @@ Describe 'Add-NinjaPerTuFlags' {
             '  LINK_FLAGS = /DLL'
         ) | Set-Content -Path $script:ninja -Encoding ASCII
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'tags exactly the FLAGS lines of the selected build statements and returns the count' {
         $n = Add-NinjaPerTuFlags -NinjaFile $script:ninja -Label 'fixture' -Floor 2 -AlreadyTaggedPattern 'mavx512' -Select { param($l) if ($l -match 'kernel_avx512') { '/clang:-mavx512f' } }
@@ -80,7 +80,7 @@ Describe 'Write-AbsentOnCrossMarker' {
     BeforeAll {
         $script:tmp = New-TestDir -Prefix 'wbt-absent-'
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'creates the root + ensured dirs and writes the arch-named marker with the reason lines' {
         Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
@@ -132,7 +132,7 @@ Describe 'Get-TargetBuildPython (fixture CPython tree)' {
         Set-Content (Join-Path $script:tmp 'PCbuild\amd64\python314.lib') 'x'
         Set-Content (Join-Path $script:tmp 'PCbuild\arm64\python314.lib') 'x'
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'on a cross lane: host .Exe, target .Lib/.LibDir, Available when the target lib exists' {
         Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
@@ -161,7 +161,7 @@ Describe 'Invoke-InlineRegexPatch guards (-SkipIfMatch / -AssertGone)' {
         Import-Module (Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
         $script:tmp = New-TestDir -Prefix 'wbt-patch-'
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'applies, then reports already-applied via -SkipIfMatch on the second call' {
         $f = Join-Path $script:tmp 'a.cmake'
@@ -190,7 +190,7 @@ Describe 'PE asserts over a real system DLL' {
         Copy-Item (Join-Path $env:SystemRoot 'System32\kernel32.dll') (Join-Path $script:tmp 'sub\k.dll')
         Set-Content (Join-Path $script:tmp 'sub\readme.txt') 'not a pe'
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'Assert-DirectoryTargetArch passes for the runner arch and counts only native files' {
         Assert-Equal 1 (Assert-DirectoryTargetArch -Path $script:tmp -Arch $script:hostArch -Context 'fixture') 'one DLL, the txt is ignored'

@@ -329,25 +329,15 @@ Describe 'WINDOWS_TARGET_ARCH crosses stage boundaries' {
         foreach ($rel in @('windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder')) {
             $path = Join-Path $repo $rel
             Assert-True (Test-Path $path) "missing Dockerfile: $rel"
-            $lines = @(Get-Content -LiteralPath $path)
-            # Index every stage header so a body can be bounded by the next one.
-            $headers = @()
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-                if ($lines[$i] -match '^FROM\s+(\S+)(?:\s+AS\s+(\S+))?\s*$') {
-                    $headers += [pscustomobject]@{ Index = $i; Parent = $Matches[1]; Name = $Matches[2] }
-                }
-            }
-            for ($h = 0; $h -lt $headers.Count; $h++) {
-                $stage = $headers[$h]
+            $stages = Get-TestDockerfileStages -Text ([IO.File]::ReadAllText($path)) -StrictFromHeader
+            foreach ($stage in $stages.Stages) {
                 if (-not $stage.Name) { continue }
                 # Only stages pulled from a build-arg image reference are at risk.
-                if ($stage.Parent -notmatch '^\$\{') { continue }
-                $end = if ($h + 1 -lt $headers.Count) { $headers[$h + 1].Index - 1 } else { $lines.Count - 1 }
-                $body = $lines[$stage.Index..$end]
+                if ($stage.From -notmatch '^\$\{') { continue }
                 # Only stages that actually RUN something can be affected.
-                if (-not ($body | Select-String -Pattern '^RUN ')) { continue }
-                if (-not ($body | Select-String -Pattern '^ARG\s+WINDOWS_TARGET_ARCH')) {
-                    $missing += "${rel}: stage '$($stage.Name)' is FROM $($stage.Parent) and RUNs, but does not redeclare ARG WINDOWS_TARGET_ARCH"
+                if (-not ($stage.Lines | Select-String -Pattern '^RUN ')) { continue }
+                if (-not ($stage.Lines | Select-String -Pattern '^ARG\s+WINDOWS_TARGET_ARCH')) {
+                    $missing += "${rel}: stage '$($stage.Name)' is FROM $($stage.From) and RUNs, but does not redeclare ARG WINDOWS_TARGET_ARCH"
                 }
             }
         }

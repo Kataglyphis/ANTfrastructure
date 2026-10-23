@@ -27,7 +27,7 @@ function Assert-LinuxScriptLookupPolicy {
 
 function New-PythonAbiFixtureState {
     param([int]$ExitCode = 0, [string[]]$Output = @('noise', ' cp314t '))
-    $state = New-TestCallState @{ Root = [IO.Path]::GetTempPath(); Missing = [guid]::NewGuid().ToString(); Probe = [pscustomobject]@{ ExitCode = $ExitCode; Output = $Output } }
+    $state = New-TestCallState @{ Root = [IO.Path]::GetTempPath(); Missing = [guid]::NewGuid().ToString(); Probe = [pscustomobject]@{ ExitCode = $ExitCode; Output = $Output }; Runner = $null }
     $state.Runner = {
         param($Python, $Arguments)
         $State.Calls.Add("$Python/$($Arguments -join '|')")

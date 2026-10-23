@@ -1,5 +1,15 @@
 #requires -Version 7.0
-# $scriptAssetRoot locates modules\ before any import, so it cannot live in one: each copy must be assigned, canonical, at column 0.
+# Flat-mounted installers receive their module root because the mount cannot bootstrap its own import.
+
+function Assert-MountedModuleRootContract {
+    param([Parameter(Mandatory)][System.Management.Automation.Language.Ast]$Ast)
+    $moduleRoot = @($Ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'ModuleRoot' })
+    Assert-Equal 1 $moduleRoot.Count 'one ModuleRoot parameter'
+    Assert-Equal '(Split-Path $PSScriptRoot -Parent)' $moduleRoot[0].DefaultValue.Extent.Text 'checkout module-root default'
+    Assert-Match 'Join-Path \$ModuleRoot' $Ast.Extent.Text 'module lookup uses the caller root'
+    Assert-Match 'modules\\' $Ast.Extent.Text 'module lookup stays under modules'
+    Assert-False ($Ast.Extent.Text -match '\$scriptAssetRoot') 'the flat mount is not rediscovered'
+}
 
 function Assert-ScriptAssetProjection {
     param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Definition,
@@ -52,5 +62,17 @@ Describe 'scriptAssetRoot resolver parity' {
             param($definition)
             if ($definition.Line -notmatch '^\$scriptAssetRoot') { "$($definition.Filename):$($definition.LineNumber)" }
         }
+    }
+}
+
+Describe 'mounted installer module roots' {
+    It 'flat-mounted ROCm installers take their module root explicitly and default to the checkout (mutation)' {
+        $paths = 'windows/scripts/build/Install-LlamaCpp.ps1', 'windows/scripts/build/Install-TorchRocm.ps1'
+        $asts = @($paths | ForEach-Object { Get-TestScriptAst -ScriptPath $_ })
+        foreach ($ast in $asts) { Assert-MountedModuleRootContract -Ast $ast }
+        $needle = '[string]$ModuleRoot = (Split-Path $PSScriptRoot -Parent)'
+        $mutated = $asts[0].Extent.Text.Replace($needle, '[string]$ModuleRoot = $PSScriptRoot')
+        Assert-True ($mutated -cne $asts[0].Extent.Text) 'the default-root mutation applied'
+        Assert-Throws { Assert-MountedModuleRootContract -Ast (ConvertTo-TestScriptAst -Text $mutated) } -MessagePattern 'checkout module-root default'
     }
 }

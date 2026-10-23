@@ -104,6 +104,12 @@ function Invoke-WithEnv {
 }
 
 # Suite-scoped fixtures keep their diagnostic prefix and clean up in AfterAll.
+function Remove-TestDir {
+    param([AllowNull()][AllowEmptyString()][string]$Path)
+    if ([string]::IsNullOrEmpty($Path)) { return }
+    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 function New-TestDir {
     param([string]$Prefix = 'wbt-', [Collections.IDictionary]$Files)
     $d = Join-Path ([System.IO.Path]::GetTempPath()) ($Prefix + [guid]::NewGuid().ToString('N'))
@@ -112,7 +118,7 @@ function New-TestDir {
         if ($null -ne $Files) { Write-TestFileTree -Root $d -Files $Files }
         return $d
     } catch {
-        Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-TestDir -Path $d
         throw
     }
 }
@@ -125,7 +131,7 @@ function Invoke-InTestDir {
     try {
         & $Body $d
     }
-    finally { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction SilentlyContinue }
+    finally { Remove-TestDir -Path $d }
 }
 
 # A location fixture must unwind even when an assertion fails; it leaves the native exit code observable.
@@ -145,7 +151,7 @@ function Invoke-DirectoryCleanupProbe {
     try { & $Body $record }
     finally {
         if ($savedExit) { $global:LASTEXITCODE = $savedExit.Value } else { Remove-Variable -Name LASTEXITCODE -Scope Global -ErrorAction SilentlyContinue }
-        if ($record.Path) { Remove-Item -LiteralPath $record.Path -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-TestDir -Path $record.Path
     }
 }
 
@@ -172,6 +178,31 @@ function Get-TestJsonFile {
     return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json)
 }
 
+function Get-TestDockerfileStages {
+    param([Parameter(Mandatory)][string]$Text, [switch]$JoinContinuations, [switch]$IgnoreComments,
+        [switch]$TrimLines, [switch]$StrictFromHeader)
+    if ($JoinContinuations) { $Text = $Text -replace '[ \t]*`\r?\n\s*', ' ' }
+    $lines = @($Text -split '\r?\n')
+    $stages = [System.Collections.Generic.List[object]]::new()
+    $global = [System.Collections.Generic.List[string]]::new()
+    $current = $null
+    $byName = @{}
+    $fromPattern = if ($StrictFromHeader) { '^FROM\s+(?<from>\S+)(?:\s+AS\s+(?<name>\S+))?\s*$' } else { '^FROM\s+(?<from>\S+)(\s+AS\s+(?<name>\S+))?' }
+    foreach ($line in $lines) {
+        if ($IgnoreComments -and (-not $line.Trim() -or $line -match '^\s*#')) { continue }
+        if ($line -match $fromPattern) {
+            $current = [pscustomobject]@{ From = $Matches.from; Name = "$($Matches['name'])"; Lines = [System.Collections.Generic.List[string]]::new() }
+            $stages.Add($current)
+            if ($current.Name) { $byName[$current.Name] = $current }
+        } else {
+            $instruction = if ($TrimLines) { $line.Trim() } else { $line }
+            if ($null -eq $current) { $global.Add($instruction) }
+            else { $current.Lines.Add($instruction) }
+        }
+    }
+    return [pscustomobject]@{ Global = @($global); Stages = @($stages); ByName = $byName }
+}
+
 function Invoke-InTestScriptDir {
     param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][scriptblock]$Body)
     $source = Get-TestScriptAst -ScriptPath $ScriptPath
@@ -181,7 +212,7 @@ function Invoke-InTestScriptDir {
 
 Export-ModuleMember -Function Invoke-InTestScriptDir
 
-Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree, Get-TestJsonFile
+Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree, Get-TestJsonFile, Get-TestDockerfileStages
 
 function New-TestBatchTool {
     param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Name,
@@ -706,7 +737,7 @@ function Start-LoopbackListener {
 
 Export-ModuleMember -Function Start-LoopbackListener, Describe, It, Reset-TestState, Get-TestResult, Get-RepoRoot, Get-IdentityOnnxHex, Get-ModuleImportClosure, Get-ScriptFunctionDefinition, Get-TestScriptAst, ConvertTo-TestScriptAst, Get-TestAstCommands, Get-TestCommandArguments, Get-TestScriptCommands, `
     Import-FunctionModule, Invoke-WithFunctionModule, Assert-Equal, Assert-True, Assert-False, Assert-Null, Assert-NotNull, Assert-Match, Assert-Throws, `
-    Invoke-WithEnv, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim
+    Invoke-WithEnv, Remove-TestDir, New-TestDir, Invoke-InTestDir, New-TestPeFile, New-OrtTestExportTable, New-OrtTestPe, New-TestWheel, New-FakeToolShim
 
 function Invoke-SourceFileDiagnosticCase {
     param([string]$InitialText, [scriptblock]$Transform, [string]$ExpectedText, [bool]$Changed)

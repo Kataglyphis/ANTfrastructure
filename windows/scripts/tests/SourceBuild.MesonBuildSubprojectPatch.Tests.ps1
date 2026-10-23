@@ -32,7 +32,7 @@ Describe 'Invoke-MesonBuildSubprojectPatch' {
             '    def current_build_project(self) -> build.BuildProject:'
         ) -join "`n"
     }
-    AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:tmp }
 
     It 'rewrites both disabled_subproject sites and both configure_file lines, nothing else' {
         $f = Join-Path $script:tmp 'interpreter.py'

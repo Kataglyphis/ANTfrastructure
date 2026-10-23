@@ -71,7 +71,7 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | Upgrade dependencies, Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published, how the chain is laid out, what is in it | [docs/overview.md](docs/overview.md) |
 | Build and accept the Linux images | [Basics](docs/linux-build-basics.md) · [Cross builds](docs/linux-cross-builds.md) · [Accelerators](docs/linux-accelerator-images.md) · [Consumer acceptance](docs/image-acceptance.md) |
-| Build the Windows image, and its arm64 bundle | [docs/windows-builds.md](docs/windows-builds.md) · [docs/windows-build-lanes.md](docs/windows-build-lanes.md) · [docs/windows-cross-builds.md](docs/windows-cross-builds.md) |
+| Build the Windows image, and its arm64 bundle | [docs/windows-builds.md](docs/windows-builds.md) · [docs/windows-build-lanes.md](docs/windows-build-lanes.md) · [docs/windows-cross-builds.md](docs/windows-cross-builds.md) · [ROCm details](docs/windows-rocm.md) |
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
 | Know which workflow runs when | [docs/ci-build-triggers.md](docs/ci-build-triggers.md) |
 | Know every quality gate, the exception policy and shared build behavior | [Quality tooling](docs/code-quality-tooling.md#the-allowlist-contract) · [Gate registry](docs/code-quality-gates.md) · [Linux build, staging, packaging and fixture helpers](docs/shared-script-libraries.md) · [Windows dependency graphs, probe transport and fixtures](docs/windows-builds.md#shared-windows-behavior) |

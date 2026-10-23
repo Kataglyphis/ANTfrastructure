@@ -2332,6 +2332,9 @@ input and never execute the inspected script.
 OpenCV wiring tests use these queries and the shared binder. Structural driver,
 Python, ROCm and smoke suites use the parser helpers. `Harness.Ast.Tests.ps1`
 checks nested queries, exact names, unparameterized commands and non-execution.
+`Get-TestDockerfileStages` indexes named, unnamed and global instructions; strict
+header matching stays available for structural stage-boundary checks while each
+suite keeps its policy assertions.
 Target-architecture tests retain independent literal SIMD expectations and check
 that modifying a cloned record cannot change flags or MLAS floors. These fixtures
 provide no native Windows build or runtime proof; suites using Windows drives or
@@ -2433,7 +2436,8 @@ failed exits and stale logs; the existing consumer suites retain their assertion
 The harness file-tree writer joins relative fixture paths with `Join-Path` so
 Windows separators retain their directory meaning when structural suites run on
 Linux. `Harness.Fixtures.Tests.ps1` keeps its nested path, bracket and content
-checks; all cases remain included in the lifted-module mutation baselines.
+checks; `Remove-TestDir` handles empty, missing and bracketed roots with literal
+recursive cleanup. All cases remain included in the lifted-module mutation baselines.
 
 Native GPU probes share process capture, timeout and process-tree cleanup in
 `WindowsNative.Common.psm1`. Callers retain trimmed or exact output and inherited

@@ -25,6 +25,8 @@
 - Share CPython ABI probing between app and uv modules while preserving fatal wheel-fit checks and optional twin-store selection.
 - Share Meson wrap-git and forced-libffi archive download, extraction and cleanup while keeping caller-specific failure and wrap deletion policies.
 - Share operation timing and failure capture across build steps, gates and optional operations while preserving each caller's verdict policy.
+- Pass the flat ROCm BuildKit module mount explicitly to the llama.cpp and Torch installers, removing their duplicate root discovery while retaining checkout defaults.
+- Share Dockerfile stage indexing and literal test-directory cleanup across Windows suites, preserving suite-specific stage rules and cleanup scopes.
 
 ## 2026-10-23 — remove another Windows duplication wave
 

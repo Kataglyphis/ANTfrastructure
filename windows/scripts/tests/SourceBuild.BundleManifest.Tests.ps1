@@ -19,15 +19,11 @@ Describe 'write-bundle-manifest: bundle self-description' {
             $script:savedEnv[$n] = [Environment]::GetEnvironmentVariable($n, 'Process')
         }
         # An empty wheel at -Path: the cp3XYt store's check opens each twin, never a GIL wheel.
-        $script:NewTwin = { param([string]$Path)
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            New-Item -ItemType Directory -Force -Path (Split-Path $Path) | Out-Null
-            [IO.Compression.ZipFile]::Open($Path, 'Create').Dispose()
-        }
+        $script:NewTwin = { param([string]$Path) New-TestWheel -Path $Path | Out-Null }
     }
 
     AfterAll {
-        if ($script:tmp -and (Test-Path $script:tmp)) { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
+        Remove-TestDir -Path $script:tmp
         # Restore env vars.
         if ($null -ne $script:savedArch) { [Environment]::SetEnvironmentVariable('WINDOWS_TARGET_ARCH', $script:savedArch, 'Process') } else { [Environment]::SetEnvironmentVariable('WINDOWS_TARGET_ARCH', $null, 'Process') }
         foreach ($kv in $script:savedEnv.GetEnumerator()) {

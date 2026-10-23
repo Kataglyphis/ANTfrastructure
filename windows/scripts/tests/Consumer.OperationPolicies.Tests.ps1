@@ -130,7 +130,7 @@ Describe 'Consumer operation accounting' {
     }
 
     It 'rejects corrupted shared duration accounting' {
-        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Set-BuildOperationDuration, Invoke-BuildOptional `
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Set-BuildOperationDuration, Invoke-BuildOperationBody, Invoke-BuildOptional `
             -Find '$Context.Results.Durations[$Name] = $Stopwatch.Elapsed.TotalSeconds' `
             -Replace '$Context.Results.Durations[$Name] = -1' -Body {
                 Assert-Throws {

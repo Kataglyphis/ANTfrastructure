@@ -127,9 +127,8 @@ Describe 'Free-threaded build interpreters' {
 
     It 'Save-FreeThreadedWheel stops a GIL-tagged wheel at the tag gate, before any venv or store (mutation)' {
         Invoke-InTestDir { param($d)
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
             $w = "$d\av-19.0.1-cp314-cp314-win_amd64.whl"
-            [System.IO.Compression.ZipFile]::Open($w, 'Create').Dispose()
+            New-TestWheel -Path $w | Out-Null
             Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'amd64' } {
                 Assert-Throws { Save-FreeThreadedWheel -Wheel $w -Distribution 'av' -Store "$d\store" } -MessagePattern 'fails the cp3XYt tag gate:\s+.*tagged cp314-cp314'
             }

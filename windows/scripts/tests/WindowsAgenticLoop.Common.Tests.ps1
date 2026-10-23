@@ -27,7 +27,7 @@ Describe 'WindowsAgenticLoop.Common' {
     }
 
     AfterAll {
-        if (Test-Path -LiteralPath $script:testDir) { Remove-Item -LiteralPath $script:testDir -Recurse -Force }
+        Remove-TestDir -Path $script:testDir
     }
 
     # Platform detection

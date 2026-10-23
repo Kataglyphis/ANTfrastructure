@@ -82,7 +82,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
-   Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
+   Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
    Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
@@ -94,7 +94,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows mutation fixtures share module lifetime; import or parse failures cannot satisfy an expected assertion failure.
    Windows script workspaces share AST validation before allocation and cleanup; log and Cargo paths use the canonical rooted-path resolver.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
-   Fixture cleanup uses literal paths; bracketed diagnostic prefixes must leave no temporary roots.
+   Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies and nonempty-list advice.
@@ -430,6 +430,9 @@ individually linkable in
 [`docs/windows-build-invariants.md`](docs/windows-build-invariants.md). **Read it before editing
 anything under `windows/`.** Each entry carries the incident that produced it; a rule whose
 evidence no longer matches the code is a bug in the rule.
+
+ROCm installers called from flat BuildKit mounts receive `-ModuleRoot` explicitly; direct
+checkout calls default to `windows/scripts`. See [`windows-rocm.md`](docs/windows-rocm.md).
 
 The three most often regressed:
 

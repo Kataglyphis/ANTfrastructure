@@ -19,7 +19,7 @@ Describe 'PE inspection primitives' {
         Set-Content -Path $script:notPe -Value 'this is not a portable executable, it is a haiku' -Encoding ASCII
     }
 
-    AfterAll { Remove-Item -LiteralPath $script:notPeDir -Recurse -Force -ErrorAction SilentlyContinue }
+    AfterAll { Remove-TestDir -Path $script:notPeDir }
 
     It 'Get-PeFileMachine reads the machine of a real system DLL' {
         Assert-Equal $script:hostMachine (Get-PeFileMachine -Path $script:kernel32) 'kernel32.dll must report the runner''s own machine type'

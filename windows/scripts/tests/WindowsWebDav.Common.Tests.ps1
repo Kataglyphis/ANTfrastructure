@@ -13,7 +13,7 @@ Describe 'WindowsWebDav.Common' {
   }
 
   AfterAll {
-    Remove-Item -LiteralPath $script:workspace -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-TestDir -Path $script:workspace
   }
 
   Context 'Invoke-EarlyWebDavDownload' {

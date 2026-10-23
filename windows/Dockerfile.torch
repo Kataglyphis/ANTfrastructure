@@ -110,7 +110,7 @@ RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `
     --mount=type=bind,source=windows/scripts/build/rocm-checks/Torch.ps1,target=C:\bkmnt\rocm-checks\Torch.ps1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsScripts.Shared.psm1,target=C:\bkmnt\modules\WindowsScripts.Shared.psm1 `
     --mount=type=bind,source=windows/scripts/modules/WindowsNative.Common.psm1,target=C:\bkmnt\modules\WindowsNative.Common.psm1 `
-    & 'C:\bkmnt\Install-TorchRocm.ps1' -TorchRocm 1 -WheelDir 'C:\bkmnt\torch-rocm-wheels' -WheelCache 'C:\uvcache\torch-rocm'; `
+    & 'C:\bkmnt\Install-TorchRocm.ps1' -TorchRocm 1 -WheelDir 'C:\bkmnt\torch-rocm-wheels' -WheelCache 'C:\uvcache\torch-rocm' -ModuleRoot 'C:\bkmnt'; `
     & 'C:\temp\scripts\Build-TorchApp.ps1' -Mode verify
 
 FROM rocm-${TORCH_ROCM}

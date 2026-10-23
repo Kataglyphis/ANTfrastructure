@@ -67,28 +67,6 @@ function Get-TorchDockerfileText {
     return [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.torch'))
 }
 
-# Dockerfile.torch as stages: continuation lines joined, comments dropped.
-function Get-TorchDockerfileStage {
-    param([string]$Text = (Get-TorchDockerfileText))
-    $lines = @(($Text -replace '[ \t]*`\r?\n\s*', ' ') -split '\r?\n' | Where-Object { $_.Trim() -and $_ -notmatch '^\s*#' })
-    $stages = [System.Collections.Generic.List[object]]::new()
-    $global = [System.Collections.Generic.List[string]]::new()
-    $current = $null
-    $byName = @{}
-    foreach ($line in $lines) {
-        if ($line -match '^FROM\s+(?<from>\S+)(\s+AS\s+(?<name>\S+))?') {
-            $current = [pscustomobject]@{ From = $Matches.from; Name = "$($Matches['name'])"; Lines = [System.Collections.Generic.List[string]]::new() }
-            $stages.Add($current)
-            if ($current.Name) { $byName[$current.Name] = $current }
-        } elseif ($null -eq $current) {
-            $global.Add($line.Trim())
-        } else {
-            $current.Lines.Add($line.Trim())
-        }
-    }
-    return [pscustomobject]@{ Global = @($global); Stages = @($stages); ByName = $byName }
-}
-
 # APP_REF's default syncs from versions.env, so it is masked; editing a line here changes the cpu/nvidia image.
 $script:TorchAppStageGolden = @(@'
 ARG APP_REF=<versions.env>
@@ -103,7 +81,7 @@ ENV TORCH_APP_DIR="C:\opt\OrchestrANT"
 # TORCH_ROCM picks only the last stage, so a golden `app` and an ARG/HEALTHCHECK/LABEL tail keep cpu/nvidia unchanged.
 function Get-TorchDockerfileProblem {
     param([string]$Text = (Get-TorchDockerfileText))
-    $df = Get-TorchDockerfileStage -Text $Text
+    $df = Get-TestDockerfileStages -Text $Text -JoinContinuations -IgnoreComments -TrimLines
     $byName = $df.ByName
     if ($df.Global -notcontains 'ARG TORCH_ROCM=0') { 'no global ARG TORCH_ROCM=0' }
     if ($df.Stages.Count -eq 0 -or $df.Stages[-1].From -ne 'rocm-${TORCH_ROCM}') { 'the last FROM is not rocm-${TORCH_ROCM}' }
@@ -741,7 +719,7 @@ Describe 'rocm-checks\Torch.ps1: the one venv probe, shared with Install-TorchRo
 }
 
 Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
-    $df = Get-TorchDockerfileStage
+    $df = Get-TestDockerfileStages -Text (Get-TorchDockerfileText) -JoinContinuations -IgnoreComments -TrimLines
     $byName = $df.ByName
 
     It 'TORCH_ROCM only selects the last stage; app is the golden list; the tail holds only ARG/HEALTHCHECK/LABEL' {
@@ -867,7 +845,7 @@ Describe 'Dockerfile.torch: cpu and nvidia build the unchanged app stage' {
             $sibling = [regex]::Matches([System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) "windows\scripts\modules\$m.psm1")), "PSScriptRoot\s+'([A-Za-z0-9._]+)\.psm1'")
             Assert-Equal 0 $sibling.Count "$m imports a sibling module the RUN does not mount"
         }
-        Assert-Match "Install-TorchRocm\.ps1' -TorchRocm 1 .*Build-TorchApp\.ps1' -Mode verify" $run 'install, then the app verify on ROCm torch'
+        Assert-Match "Install-TorchRocm\.ps1' -TorchRocm 1 .* -ModuleRoot 'C:\\bkmnt'.*Build-TorchApp\.ps1' -Mode verify" $run 'install from the flat module mount, then verify the app on ROCm torch'
         Assert-True $run.Contains('from=torch-rocm-wheels,source=/torch-rocm-wheels,target=C:\bkmnt\torch-rocm-wheels') 'the built wheels, from the build stage (source Unix-style)'
         Assert-True $run.Contains("-WheelDir 'C:\bkmnt\torch-rocm-wheels'") 'the installer reads them there'
     }
@@ -892,40 +870,5 @@ Describe 'Driver contract: TORCH_ROCM reaches Dockerfile.torch on the rocm lane 
         foreach ($lane in '', 'nvidia') { $sent[$lane] = Get-BkRocmStageArg -Variant $lane -Stage 'torch' -VersionTable $pins }
         Assert-Equal '' (@($new | Where-Object { $sent.rocm[$_] -cne $pins[$_] }) -join ',') 'rocm must forward these with their versions.env values'
         Assert-Equal '0,0' (('', 'nvidia' | ForEach-Object { $sent[$_].Count }) -join ',') 'cpu, nvidia: no torch build-arg even with the full pin table'
-    }
-}
-
-Describe 'Torch Dockerfile stage indexing' {
-    It 'indexes stages as they are parsed while retaining global and unnamed instructions' {
-        $parsed = Get-TorchDockerfileStage -Text @'
-# fixture
-ARG GLOBAL=1
-FROM base AS compile
-RUN compile `
-  source
-FROM compile
-RUN unnamed
-FROM compile AS final
-RUN first
-RUN second
-'@
-        Assert-Equal 'ARG GLOBAL=1' ($parsed.Global -join ',')
-        Assert-Equal 3 $parsed.Stages.Count
-        Assert-Equal 2 $parsed.ByName.Count
-        Assert-Equal 'RUN compile source' ($parsed.ByName.compile.Lines -join ',')
-        Assert-Equal 'RUN unnamed' ($parsed.Stages[1].Lines -join ',')
-        Assert-Equal 'RUN first,RUN second' ($parsed.ByName.final.Lines -join ',')
-        Assert-True ([object]::ReferenceEquals($parsed.Stages[2], $parsed.ByName.final))
-    }
-}
-
-Describe 'Torch stage index mutation proof' {
-    It 'detects a parser that no longer indexes its parsed stage objects' {
-        $source = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/tests/Torch.Rocm.Tests.ps1'))
-        Invoke-WithFunctionModule -Text $source -FunctionName Get-TorchDockerfileStage `
-            -Find 'if ($current.Name) { $byName[$current.Name] = $current }' -Replace 'if ($false) { $byName[$current.Name] = $current }' -Body {
-            $parsed = Get-MutTorchDockerfileStage -Text "FROM base AS final`nRUN fixture"
-            Assert-Throws { Assert-Equal 1 $parsed.ByName.Count } -MessagePattern 'Assert-Equal'
-        }
     }
 }
