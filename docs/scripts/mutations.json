@@ -19378,5 +19378,269 @@
   "replace": "_ORTG_COMPARED=$((_ORTG_COMPARED + 0))",
   "test": "bash linux/scripts/tests/test-ort-chain-digests.sh",
   "why": "G2 counts each chain-named comparison while GenAI and archive exemptions leave that counter unchanged"
+ },
+ {
+  "id": "lib.renovate-staged-rollback-head",
+  "target": "linux/scripts/renovate-tree.sh",
+  "find": "checkout --quiet HEAD -- \"${pth}\"",
+  "replace": "checkout --quiet -- \"${pth}\"",
+  "test": "bash linux/scripts/tests/test-renovate-collateral.sh",
+  "why": "Both staged deletion and staged modification must restore original HEAD bytes and clear the index, rather than restore tool output from the index."
+ },
+ {
+  "id": "lib.logging-trap-bare-action",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "local action=\"${3:-${_LOG_TRAP_ACTION:-err}}\"",
+  "replace": "local action=\"${3:-warn}\"",
+  "test": "bash linux/scripts/tests/test-logging-err-trap.sh",
+  "why": "A bare re-armed trap must retain the installed error action, severity and failing status after its installer returns."
+ },
+ {
+  "id": "lib.module-shadow-fixture-dispatch",
+  "target": "linux/scripts/tests/test-module-resolution.sh",
+  "find": "  source_module armnn-support.sh",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-module-resolution.sh",
+  "why": "Both shadowing fixtures must execute production module resolution before asserting the selected module marker."
+ },
+ {
+  "id": "lib.bind-ownership-fixture-user",
+  "target": "linux/scripts/tests/test-bind-mount-ownership.sh",
+  "find": "STUB_UID=\"$1\"",
+  "replace": "STUB_UID=1001",
+  "test": "bash linux/scripts/tests/test-bind-mount-ownership.sh",
+  "why": "Failed-chown fixtures must distinguish root from non-root; silently fixing the stub uid would miss the fatal root failure."
+ },
+ {
+  "id": "lib.onnx-wasm-collector-extra-pattern",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "for pattern in \"$@\"; do names+=(-o -name \"$pattern\"); done",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.onnx-wasm-collector-null-boundaries",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "'(' \"${names[@]}\" ')' -print0",
+  "replace": "'(' \"${names[@]}\" ')' -print",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.onnx-wasm-collector-copy-advisory",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "| xargs -0 cp -t \"${WASM_OUTPUT_DIR}/\" 2>/dev/null || true",
+  "replace": "| xargs -0 cp -t \"${WASM_OUTPUT_DIR}/\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.onnx-wasm-mandatory-fatal",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "\"${BUILD_SH}\" \"${COMMON_ARGS[@]}\" --enable_wasm_simd --enable_wasm_threads\n",
+  "replace": "\"${BUILD_SH}\" \"${COMMON_ARGS[@]}\" --enable_wasm_simd --enable_wasm_threads || true\n",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.onnx-wasm-optional-fatal-optin",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "[ \"${ORT_WEB_REQUIRED:-0}\" = \"1\" ]",
+  "replace": "[ \"${ORT_WEB_REQUIRED:-0}\" = \"0\" ]",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.onnx-wasm-jspi-exception-policy",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/40-build-wasm.sh",
+  "find": "[ \"${_arg}\" = \"--disable_wasm_exception_catching\" ] || JSPI_COMMON_ARGS+=(\"${_arg}\")",
+  "replace": "JSPI_COMMON_ARGS+=(\"${_arg}\")",
+  "test": "bash linux/scripts/tests/test-onnx-wasm-passes.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.iree-android-runtime-profile",
+  "target": "linux/scripts/03-media/build/iree/android/build-android.sh",
+  "find": "  -DIREE_BUILD_COMPILER=OFF",
+  "replace": "  -DIREE_BUILD_COMPILER=ON",
+  "test": "bash linux/scripts/tests/test-iree-android-profile.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.iree-android-target-profile",
+  "target": "linux/scripts/03-media/build/iree/android/build-android.sh",
+  "find": "    -DIREE_HOST_BIN_DIR=\"${HOST_INSTALL}/bin\" \\\n    \"${_iree_runtime_cmake_args[@]}\" \\\n",
+  "replace": "    -DIREE_HOST_BIN_DIR=\"${HOST_INSTALL}/bin\" \\\n",
+  "test": "bash linux/scripts/tests/test-iree-android-profile.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.iree-android-host-profile",
+  "target": "linux/scripts/03-media/build/iree/android/build-android.sh",
+  "find": "    -DCMAKE_BUILD_TYPE=Release \\\n    \"${_iree_runtime_cmake_args[@]}\" \\\n",
+  "replace": "    -DCMAKE_BUILD_TYPE=Release \\\n",
+  "test": "bash linux/scripts/tests/test-iree-android-profile.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.iree-android-host-tool-prefix",
+  "target": "linux/scripts/03-media/build/iree/android/build-android.sh",
+  "find": "-DIREE_HOST_BIN_DIR=\"${HOST_INSTALL}/bin\"",
+  "replace": "-DIREE_HOST_BIN_DIR=\"${INSTALL_DIR}/bin\"",
+  "test": "bash linux/scripts/tests/test-iree-android-profile.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.iree-android-advisory-configure",
+  "target": "linux/scripts/03-media/build/iree/android/build-android.sh",
+  "find": "warn \"Android IREE: host-tools configure failed; skipping (non-gating)\"; exit 0",
+  "replace": "warn \"Android IREE: host-tools configure failed; skipping (non-gating)\"; exit 9",
+  "test": "bash linux/scripts/tests/test-iree-android-profile.sh",
+  "why": "Offline characterization preserves ordered host/target profiles, mandatory versus optional builds and exact best-effort WASM artifact collection."
+ },
+ {
+  "id": "lib.media-artifact-empty-verdict",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "if [ ! -s \"$1\" ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-verifier-artifact-parity.sh",
+  "why": "empty files and admitted dangling symlinks must fail once with the existing empty-artifact diagnostic"
+ },
+ {
+  "id": "lib.parity-import-status",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": ")\" || _pair_status=$?",
+  "replace": ")\" || _pair_status=0",
+  "test": "bash linux/scripts/tests/test-verifier-artifact-parity.sh",
+  "why": "full-output import probes retain each image exit status while version probes remain advisory about command status"
+ },
+ {
+  "id": "lib.parity-result-failure",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "  fail \"$3\"\n  return 1",
+  "replace": "  pass \"$3\"\n  return 0",
+  "test": "bash linux/scripts/tests/test-verifier-artifact-parity.sh",
+  "why": "a nonzero aggregate mismatch count must produce a failed parity verdict"
+ },
+ {
+  "id": "lib.parity-empty-version-probes",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "if [ \"${compared}\" -eq 0 ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-verifier-artifact-parity.sh",
+  "why": "two empty version outputs must remain a vacuous failure rather than equal successful images"
+ },
+ {
+  "id": "lib.genai-stub-binding-overrides",
+  "target": "linux/scripts/tests/test-genai-smoke-payload.sh",
+  "find": "STUB_GENAI_EXT=\"${STUB}/onnxruntime_genai/ext_x86_64.so\" \"$@\"",
+  "replace": "STUB_GENAI_EXT=\"${STUB}/onnxruntime_genai/ext_x86_64.so\"",
+  "test": "bash linux/scripts/tests/test-genai-smoke-payload.sh",
+  "why": "shared healthy-binding fixtures must forward per-case version, architecture, extension and API-failure overrides"
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-nullglob-enable",
+  "target": "linux/scripts/01-core/ubuntu-mirror.sh",
+  "find": "  shopt -s nullglob\n  _umsf_output=(",
+  "replace": "  _umsf_output=(",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "Missing glob groups must disappear rather than become literal filenames."
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-nullglob-clear",
+  "target": "linux/scripts/01-core/ubuntu-mirror.sh",
+  "find": "  shopt -u nullglob\n}\n\nubuntu_archive_regex",
+  "replace": "  :\n}\n\nubuntu_archive_regex",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "Enumeration must clear nullglob even when it was enabled by the caller."
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-literal-main",
+  "target": "linux/scripts/01-core/ubuntu-mirror.sh",
+  "find": "    \"${_umsf_root%/}/etc/apt/sources.list\"\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "The literal main source path remains in the result even when missing."
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-group-order",
+  "target": "linux/scripts/01-core/ubuntu-mirror.sh",
+  "find": "    \"${_umsf_root%/}/etc/apt/sources.list.d/\"*.list\n    \"${_umsf_root%/}/etc/apt/sources.list.d/\"*.sources",
+  "replace": "    \"${_umsf_root%/}/etc/apt/sources.list.d/\"*.sources\n    \"${_umsf_root%/}/etc/apt/sources.list.d/\"*.list",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "List files precede deb822 source files independently of filename sorting."
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-quoted-root",
+  "target": "linux/scripts/01-core/ubuntu-mirror.sh",
+  "find": "    \"${_umsf_root%/}/etc/apt/sources.list.d/\"*.list",
+  "replace": "    ${_umsf_root%/}/etc/apt/sources.list.d/*.list",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "A root containing spaces must remain one path."
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-base-wiring",
+  "target": "linux/scripts/01-core/base-image.sh",
+  "find": "  ubuntu_mirror_source_files source_files \"${sources_root}\"",
+  "replace": "  source_files=()",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "Both callers must use the shared enumeration with their own root."
+ },
+ {
+  "id": "lib.ubuntu-mirror-source-files-fast-wiring",
+  "target": "linux/scripts/01-core/use-fast-ubuntu-mirror.sh",
+  "find": "  ubuntu_mirror_source_files source_files \"${sources_root}\"",
+  "replace": "  source_files=()",
+  "test": "bash linux/scripts/tests/test-ubuntu-mirror-source-files.sh",
+  "why": "Both callers must use the shared enumeration with their own root."
+ },
+ {
+  "id": "lib.bump-offline-fixture-argv",
+  "target": "linux/scripts/tests/test-bump-versions.sh",
+  "find": "| python3 - \"${REPO}\" \"$@\"",
+  "replace": "| python3 - \"${REPO}\"",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "Shared offline snippets must execute the real bump module with every fixture argument while preserving all pin and error assertions."
+ },
+ {
+  "id": "lib.bump-offline-fixture-module",
+  "target": "linux/scripts/tests/test-bump-versions.sh",
+  "find": "import bump_versions as bv\\n'; cat;",
+  "replace": "import bump_versions as absent_module\\n'; cat;",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "Shared offline snippets must execute the real bump module with every fixture argument while preserving all pin and error assertions."
+ },
+ {
+  "id": "lib.bump-offline-tag-fixture",
+  "target": "linux/scripts/tests/test-bump-versions.sh",
+  "find": "printf 'bv.ls_remote_tags = lambda repo: %s\\n' \"$tags\"",
+  "replace": "printf 'bv.ls_remote_tags = lambda repo: %s\\n' '[]'",
+  "test": "bash linux/scripts/tests/test-bump-versions.sh",
+  "why": "Shared release-tag fixtures must expose the exact candidate sets before each asset and write-policy assertion."
+ },
+ {
+  "id": "lib.optional-function-fixture-emission",
+  "target": "linux/scripts/tests/test-harness.sh",
+  "find": "then declare -f \"${name}\"; fi",
+  "replace": "then :; fi",
+  "test": "bash linux/scripts/tests/test-optional-function-fixtures.sh",
+  "why": "optional worker fixtures emit present functions in order, skip absent middle and last names, and retain usable bodies and statuses"
+ },
+ {
+  "id": "lib.g2-fixture-shell-body",
+  "target": "linux/scripts/tests/test-ort-provenance-build.sh",
+  "find": "body=\"$2\"; shift 2; eval \"${body}\"",
+  "replace": "body=\"$2\"; shift 2; : \"${body}\"",
+  "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
+  "why": "shared isolated gate shells must execute both bare and same-session retry bodies with the original arguments"
+ },
+ {
+  "id": "lib.lint-fixture-tracked-files",
+  "target": "linux/scripts/tests/test-lint-gates.sh",
+  "find": "  git -C \"$1\" add -A >/dev/null 2>&1",
+  "replace": "  : \"$1\"",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "consumer fixture files must be tracked before lint scope and shared-config declarations are judged"
  }
 ]

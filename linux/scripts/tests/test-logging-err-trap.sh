@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The ERR-trap bug only reproduces in a real `bash -c`; see docs/failure-modes.md#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error
+# Child shells cover ERR-trap frames and statuses, not compiler execution; see docs/failure-modes.md#loggingsh-line-nnn-action-unbound-variable-instead-of-the-real-error
 set -uo pipefail
 
 _TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,6 +25,17 @@ ${body}
   rm -f "${tmp}"
 }
 
+_assert_trap_report() {
+  local level="$1" status="$2" context="$3"
+  t_assert_contains "${_OUT}" "Command failed" "${context} must report the failure"
+  t_assert_contains "${_OUT}" "[${level}]" "${context} must retain its severity"
+  t_assert_eq "${status}" "${_RC}" "${context} must retain its exit status"
+  case "${_OUT}" in
+    *"unbound variable"*) t_assert_eq "" "${_OUT}" "${context} must not die on an unbound variable" ;;
+    *) t_assert_eq "0" "0" ;;
+  esac
+}
+
 # Warn trap: the `set +e` window is what tells it apart from the err trap.
 t_case "install_warn_trap reports via warn() and lets the script continue"
 _run_trap_script '
@@ -34,15 +45,9 @@ false
 set -e
 echo "REACHED-END"
 '
-t_assert_contains "${_OUT}" "Command failed" "warn trap must report the failure"
+_assert_trap_report WARN 0 "warn trap"
 t_assert_contains "${_OUT}" "false" "warn trap must name the failing command"
-t_assert_contains "${_OUT}" "[WARN]" "warn trap must report at WARN level"
 t_assert_contains "${_OUT}" "REACHED-END" "warn trap must not abort the script"
-t_assert_eq "0" "${_RC}" "warn trap must not change the exit status"
-case "${_OUT}" in
-  *"unbound variable"*) t_assert_eq "" "${_OUT}" "warn trap must not die on an unbound variable" ;;
-  *) t_assert_eq "0" "0" ;;
-esac
 
 # ── err trap: reports at ERROR level and exits 1 ──────────────────────────────
 t_case "install_err_trap reports via err() and exits 1"
@@ -53,15 +58,9 @@ false
 set -e
 echo "REACHED-END"
 '
-t_assert_contains "${_OUT}" "Command failed" "err trap must report the failure"
-t_assert_contains "${_OUT}" "[ERROR]" "err trap must report at ERROR level"
-t_assert_eq "1" "${_RC}" "err trap must exit 1"
+_assert_trap_report ERROR 1 "err trap"
 case "${_OUT}" in
   *"REACHED-END"*) t_assert_eq "" "${_OUT}" "err trap must abort the script" ;;
-  *) t_assert_eq "0" "0" ;;
-esac
-case "${_OUT}" in
-  *"unbound variable"*) t_assert_eq "" "${_OUT}" "err trap must not die on an unbound variable" ;;
   *) t_assert_eq "0" "0" ;;
 esac
 
@@ -151,12 +150,6 @@ false
 set -e
 echo "REACHED-END"
 '
-t_assert_contains "${_OUT}" "Command failed" "bare re-arm must still report"
-t_assert_contains "${_OUT}" "[ERROR]" "bare re-arm must keep err semantics"
-t_assert_eq "1" "${_RC}" "bare re-arm must still exit 1"
-case "${_OUT}" in
-  *"unbound variable"*) t_assert_eq "" "${_OUT}" "bare re-arm must not die on an unbound variable" ;;
-  *) t_assert_eq "0" "0" ;;
-esac
+_assert_trap_report ERROR 1 "bare re-arm"
 
 t_summary

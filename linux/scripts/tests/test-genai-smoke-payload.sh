@@ -107,6 +107,11 @@ _run() {  # $1 = PYTHONPATH, rest = VAR=VAL ...
   return 0
 }
 
+_run_stub_binding() {
+  _run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
+    STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so" "$@"
+}
+
 # ── B. the three hand-verified verdicts ─────────────────────────────────────
 t_case "module absent -> GENAI-BIND SKIP, rc=3"
 _run "${EMPTY}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64
@@ -130,8 +135,7 @@ _run "${STUB_FLAVOUR}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 STUB_
 t_assert_contains "${_OUT}" "__version__ 0.15.2 matches the build pin" "the version comes from onnxruntime-genai-cuda's metadata"
 
 t_case "a correct binding -> GENAI-BIND OK, rc=0, with all four tiers reported"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+_run_stub_binding
 t_assert_eq "0" "${_RC}"
 t_assert_contains "${_OUT}" "GENAI-BIND OK: onnxruntime_genai 0.15.2"
 t_assert_contains "${_OUT}" "PROVEN   __version__ 0.15.2 matches the build pin"
@@ -142,8 +146,7 @@ t_assert_contains "${_OUT}" "GENAI-GEN SKIP: no GENAI_MODEL_DIR set"
 
 # ── C. each tier can actually fail ──────────────────────────────────────────
 t_case "tier 1: version != the versions.env pin -> FAIL rc=1"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.14.0 GENAI_EXPECT_ARCH=amd64 \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+_run_stub_binding GENAI_EXPECT_VERSION=0.14.0
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "version 0.15.2 != versions.env pin 0.14.0"
 
@@ -154,20 +157,17 @@ t_assert_eq "0" "${_RC}"
 t_assert_contains "${_OUT}" "UNPROVEN version (no GENAI_EXPECT_VERSION passed in)"
 
 t_case "tier 2: a host-arch .so in a riscv64 image -> FAIL rc=1"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=riscv64 \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+_run_stub_binding GENAI_EXPECT_ARCH=riscv64
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "has ELF machine 62, expected 243 (RISC-V) for riscv64"
 
 t_case "tier 2: the right .so for riscv64 passes"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=riscv64 \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_riscv64.so"
+_run_stub_binding GENAI_EXPECT_ARCH=riscv64 STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_riscv64.so"
 t_assert_eq "0" "${_RC}"
 t_assert_contains "${_OUT}" "is RISC-V ELF (e_machine=243)"
 
 t_case "tier 2: an unreadable extension is a sentinelled FAIL, not an escaping OSError"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai"
+_run_stub_binding STUB_GENAI_EXT="${STUB}/onnxruntime_genai"
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "cannot read the loaded extension"
 t_assert_contains "${_OUT}" "GENAI-BIND FAIL:"
@@ -175,14 +175,12 @@ t_assert_ok test -z "$(printf '%s' "${_OUT}" | grep -c 'Traceback' | grep -v '^0
 
 t_case "tier 2: a non-ELF extension -> FAIL rc=1"
 printf 'not an elf at all, just text padding\n' > "${_WORK}/notelf.so"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
-     STUB_GENAI_EXT="${_WORK}/notelf.so"
+_run_stub_binding STUB_GENAI_EXT="${_WORK}/notelf.so"
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "is not an ELF object"
 
 t_case "tier 3: a pybind module missing a documented name -> FAIL rc=1"
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
-     STUB_GENAI_DROP=Generator STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+_run_stub_binding STUB_GENAI_DROP=Generator
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "og.Generator missing"
 
@@ -198,9 +196,7 @@ t_assert_contains "${_OUT}" "og.Config() failed at the BINDING layer"
 
 t_case "tier 4: GENAI_MODEL_DIR pointing at a non-directory -> FAIL rc=1"
 t_needs "a POSIX python3 (Windows' python sees drive-letter paths)" t_posix_python
-_run "${STUB}" GENAI_EXPECT_VERSION=0.15.2 GENAI_EXPECT_ARCH=amd64 \
-     GENAI_MODEL_DIR=/nonexistent-genai-model \
-     STUB_GENAI_EXT="${STUB}/onnxruntime_genai/ext_x86_64.so"
+_run_stub_binding GENAI_MODEL_DIR=/nonexistent-genai-model
 t_assert_eq "1" "${_RC}"
 t_assert_contains "${_OUT}" "GENAI_MODEL_DIR=/nonexistent-genai-model is not a directory"
 

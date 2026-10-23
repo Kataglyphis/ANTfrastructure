@@ -18,13 +18,17 @@ printf 'MODRES_LOADED=from-caller-poison\n' > "${_TM_ROOT}/caller/armnn-support.
 printf 'MODRES_POISON_SOURCED=yes\n' > "${_TM_ROOT}/caller/lib/common.sh"
 printf 'MODRES_LOADED=from-core\n' > "${_TM_ROOT}/scripts/01-core/common.sh"
 
-case_01core_preferred() {
+_load_shadowed_fixture() {
   MODRES_LOADED=""
   export SCRIPT_DIR="${_TM_ROOT}/caller"
   export SCRIPTS_ROOT="${_TM_ROOT}/scripts"
   # shellcheck disable=SC1090
   source "${MODULES}"
   source_module armnn-support.sh
+}
+
+case_01core_preferred() {
+  _load_shadowed_fixture
   t_assert_eq "from-core" "${MODRES_LOADED:-EMPTY}"
 }
 
@@ -44,12 +48,7 @@ case_recursion_shape() {
 }
 
 case_script_root_exists_shadows_caller() {
-  MODRES_LOADED=""
-  export SCRIPT_DIR="${_TM_ROOT}/caller"
-  export SCRIPTS_ROOT="${_TM_ROOT}/scripts"
-  # shellcheck disable=SC1090
-  source "${MODULES}"
-  source_module armnn-support.sh
+  _load_shadowed_fixture
   t_assert_eq "from-core" "${MODRES_LOADED}"
 }
 

@@ -1622,3 +1622,45 @@ The Ubuntu mirror verifier shares error emission and aggregate accounting.
 Every Dockerfile, bootstrap order, scheme and suite probe still runs, and any
 failed probe keeps the verifier red. These source checks do not test remote
 mirror availability or perform package installation.
+
+### Artifact collection and paired probes
+
+The WASM build worker shares artifact collection across its build passes. Required
+build failures remain fatal; optional passes and artifact copies retain their
+existing best-effort policies. IREE Android shares its runtime configuration
+profile while keeping host and target toolchain and driver options in their
+original argument positions. Offline fixtures use stubbed tools; they do not
+compile SDKs or validate produced WebAssembly binaries. Their shared
+`linux/scripts/tests/script-stage-fixture.sh` owns source selection and workspace cleanup.
+
+Ubuntu mirror callers share source-file enumeration through their existing
+`ubuntu-mirror.sh` companion. The original file ordering and shell option state
+remain observable. Fixtures exercise source layouts without running apt or
+contacting a mirror.
+
+Media artifact checks share the nonempty-file verdict while retaining their
+distinct file and symlink admission rules and failure accounting. Image parity
+checks share paired probe execution. Version comparison still uses first-line
+output and its existing status policy; import checks preserve full output and
+per-image failures. Empty version output cannot pass vacuously. Stubbed probes
+characterize these contracts without starting containers.
+
+Renovate collateral fixtures share the original-byte and clean-index checks for
+staged deletions and modifications. Logging fixtures share severity, status and
+unbound-variable verdicts; child scripts still exercise distinct trap lifetimes.
+Module shadowing fixtures share production module loading while preserving each
+assertion. Ownership fixtures share failed-chown setup while retaining distinct
+root and non-root verdicts. Their mutation proofs cover dispatch and failure detection;
+they do not perform dependency updates or real compiler builds.
+
+Version-bump fixtures reuse their existing offline Python importer and forward
+fixture arguments into fresh interpreters. Tag fixtures retain their exact fake
+upstream candidates. GenAI binding fixtures share healthy defaults while passing
+per-case overrides last; deliberately unpinned cases keep explicit unset behavior.
+Provenance and lint fixtures retain their separate checks while sharing setup.
+
+`t_emit_optional_functions` in the Linux harness serializes present functions in
+argument order and skips absent names. Worker fixtures use it only for optional
+helpers; required definitions remain mandatory. Focused tests check missing names,
+usable emitted bodies and exit status. This test API performs no source parsing
+or container execution.

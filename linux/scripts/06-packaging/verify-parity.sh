@@ -199,7 +199,30 @@ check_python() {
   run_diff_check "Python packages" "${native_file}.norm" "${cross_file}.norm" "All Python packages match ($(wc -l < "${native_file}.norm") packages)"
 }
 
-# Check: binary versions
+_parity_result() {
+  if [ "$1" -eq 0 ]; then
+    pass "$2"
+    return 0
+  fi
+  fail "$3"
+  return 1
+}
+
+_parity_probe_pair() {
+  local command="$1" mode="$2" side image
+  for side in native cross; do
+    local -n _pair_output="${side}_out" _pair_status="${side}_rc"
+    image="${NATIVE_IMAGE}"
+    [ "${side}" != cross ] || image="${CROSS_IMAGE}"
+    _pair_status=0
+    if [ "${mode}" = first ]; then
+      _pair_output="$(container_exec_strip "${image}" "${command}" 2>/dev/null | head -1 || true)"
+    else
+      _pair_output="$(container_exec_strip "${image}" "${command}" 2>/dev/null)" || _pair_status=$?
+    fi
+  done
+}
+
 check_versions() {
   echo_header "Binary Version Checks"
 
@@ -226,15 +249,14 @@ check_versions() {
   local native_file="${WORKDIR}/native-versions.txt"
   local cross_file="${WORKDIR}/cross-versions.txt"
   local failures=0
-  local native_out cross_out compared=0
+  local native_out cross_out native_rc cross_rc compared=0
 
   :> "${native_file}"
   :> "${cross_file}"
 
   for tool_spec in "${tools[@]}"; do
     # No `bash -lc` prefix — container_exec already wraps (see check_python).
-    native_out="$(container_exec_strip "${NATIVE_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
-    cross_out="$(container_exec_strip "${CROSS_IMAGE}" "${tool_spec} 2>&1" 2>/dev/null | head -1 || true)"
+    _parity_probe_pair "${tool_spec} 2>&1" first
 
     # Two empty outputs compare equal, so count only checks that read both images.
     [ -n "${native_out}" ] && [ -n "${cross_out}" ] && compared=$((compared + 1))
@@ -257,13 +279,7 @@ check_versions() {
     fail "version checks read NOTHING from either image (${#tools[@]} tools attempted) -- two empty outputs compare equal, so a green here would be vacuous"
     return 1
   fi
-  if [ "${failures}" -eq 0 ]; then
-    pass "All ${compared}/${#tools[@]} version checks match"
-    return 0
-  fi
-
-  fail "${failures}/${#tools[@]} version checks differ"
-  return 1
+  _parity_result "${failures}" "All ${compared}/${#tools[@]} version checks match" "${failures}/${#tools[@]} version checks differ"
 }
 
 # Check: file tree
@@ -343,11 +359,7 @@ check_imports() {
 
     # Judge by exit status: a sentinel word lands after the traceback on the same stdout.
     local native_rc=0 cross_rc=0
-    native_out="$(container_exec_strip "${NATIVE_IMAGE}" \
-      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null)" || native_rc=$?
-
-    cross_out="$(container_exec_strip "${CROSS_IMAGE}" \
-      "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" 2>/dev/null)" || cross_rc=$?
+    _parity_probe_pair "${_VENV_ACTIVATE_PROLOGUE} python3 -c '${py_cmd}' 2>&1" full
 
     if [ "${native_rc}" -ne 0 ]; then
       printf '  NATIVE %-15s FAILED (rc=%s): %s\n' "${mod}" "${native_rc}" "$(printf '%s' "${native_out}" | tail -1)"
@@ -359,13 +371,7 @@ check_imports() {
     fi
   done
 
-  if [ "${failures}" -eq 0 ]; then
-    pass "All ${#modules[@]} Python imports succeed in both images"
-    return 0
-  fi
-
-  fail "${failures} Python imports failed"
-  return 1
+  _parity_result "${failures}" "All ${#modules[@]} Python imports succeed in both images" "${failures} Python imports failed"
 }
 
 # Main

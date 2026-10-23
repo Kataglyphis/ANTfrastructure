@@ -86,6 +86,19 @@ _fixture() {
   printf '%s\n' "${f}"
 }
 
+# _bv_offline [args...] runs a snippet with the real module imported as bv; dependencies remain fixture-owned.
+_bv_offline() {
+  { printf 'import os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))\nimport bump_versions as bv\n'; cat; } \
+    | python3 - "${REPO}" "$@"
+}
+
+
+_bv_tags_offline() {
+  local tags="$1"
+  shift
+  { printf 'bv.ls_remote_tags = lambda repo: %s\n' "$tags"; cat; } | _bv_offline "$@"
+}
+
 t_case "--only names a key outside the safe set: rc 2, and the error names it"
 _fx="$(_fixture only_bogus <<'ENV'
 UP_VERSION=1.0.0
@@ -218,10 +231,7 @@ t_assert_eq "1" "$(_rc_of "${_unverified}")" "a lookup failure under --write is 
 t_assert_contains "${_unverified}" "is unverified for those keys." "the warning names what could not be checked"
 
 t_case "litert_lm_gpu_pins: the rocm-lane LiteRT-LM pins come from a tag's LFS pointers + WORKSPACE (offline)"
-_pins="$(python3 - "${REPO}" <<'PY'
-import os, sys
-sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
-import bump_versions as bv
+_pins="$(_bv_offline <<'PY'
 files = {f"prebuilt/windows_x86_64/{dll}": f"version https://git-lfs.github.com/spec/v1\noid sha256:{c * 64}\nsize 1\n"
          for (_, dll), c in zip(bv._LITERT_LM_GPU_DLL_PINS, "abc")}
 files["WORKSPACE"] = ('http_archive(\n    name = "directx_shader_compiler",\n'
@@ -244,10 +254,7 @@ t_assert_contains "${_pins}" "RAISED no git-LFS pointer for prebuilt/windows_x86
   "a file that is not an LFS pointer must fail loudly, never pin a guess"
 
 t_case "protoc_from_protobuf_cmake: the slaved PROTOC_VERSION reads all three protobuf.cmake shapes (offline)"
-_protoc="$(python3 - "${REPO}" <<'PY'
-import os, sys
-sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
-import bump_versions as bv
+_protoc="$(_bv_offline <<'PY'
 for label, text in (
     ("0.18", 'set(LITERTLM_PROTOBUF_TAG "v36.1" CACHE STRING "Protobuf git tag")\n    GIT_TAG\n      ${LITERTLM_PROTOBUF_TAG}\n'),
     ("0.17", "    GIT_REPOSITORY\n      https://github.com/protocolbuffers/protobuf\n    GIT_TAG\n      v35.1\n"),
@@ -268,13 +275,9 @@ LLAMA_CPP_HIP_BUILD=100
 ENV
 )"
 # Upstream faked: b103 has no Vulkan zip, b102 no CPU zip, v0.4.1 is the other tag family.
-_out="$(python3 - "${REPO}" "${_fx}" <<'PY'
-import os, sys
+_out="$(_bv_tags_offline '["b99", "b100", "b101", "b102", "b103", "v0.4.1"]' "${_fx}" <<'PY'
 from pathlib import Path
-sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
-import bump_versions as bv
 bv.VERSIONS_ENV = Path(sys.argv[2])
-bv.ls_remote_tags = lambda repo: ["b99", "b100", "b101", "b102", "b103", "v0.4.1"]
 bv.ls_remote_tag_commit = lambda repo, tag: {"b101": "c" * 40}[tag]
 bv.artifact_exists = lambda url: url.rsplit("/", 1)[1] in (
     "llama-b100-bin-win-cpu-x64.zip", "llama-b101-bin-win-cpu-x64.zip", "llama-b103-bin-win-cpu-x64.zip",
@@ -309,11 +312,7 @@ t_assert_contains "${_out}" "raised none of the newest 30 ggml-org/llama.cpp bui
 
 t_case "spec_amf_headers: only vX.Y.Z tags count, and the header asset's SHA moves with the tag (offline)"
 # AMF's real tag shapes (1.4.14, 1.4.16.1, v.1.4.21, v1.4.7.0), faked NEWER than v1.5.3 in each shape.
-_out="$(python3 - "${REPO}" <<'PY'
-import os, sys
-sys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))
-import bump_versions as bv
-bv.ls_remote_tags = lambda repo: ["1.4.14", "v1.4.36", "v1.5.2", "v1.5.3", "1.6.0", "1.6.0.1", "v.1.6.1", "v1.5.3.1"]
+_out="$(_bv_tags_offline '["1.4.14", "v1.4.36", "v1.5.2", "v1.5.3", "1.6.0", "1.6.0.1", "v.1.6.1", "v1.5.3.1"]' <<'PY'
 hashed = []
 bv.asset_sha256 = lambda repo, tag, asset, sums=(): hashed.append((repo, tag, asset)) or "e" * 64
 bv.WRITE_MODE = False
@@ -330,11 +329,6 @@ t_assert_contains "${_out}" "bump ('v1.5.3', {'AMF_HEADERS_SHA256': '${_e64}'}) 
   "--write takes v1.5.3 (not 1.6.0, v.1.6.1 or v1.5.3.1) and re-hashes exactly its header asset"
 t_assert_contains "${_out}" "same ('v1.5.3', {}) []" "an up-to-date tag drags no SHA and hashes nothing"
 
-# _bv_offline <<'PY' ... PY -- a snippet run against the real module, imported as bv; nothing else is set up.
-_bv_offline() {
-  { printf 'import os, sys\nsys.path.insert(0, os.path.join(sys.argv[1], "docs/scripts"))\nimport bump_versions as bv\n'; cat; } \
-    | python3 - "${REPO}"
-}
 
 t_case "spec_vulkan: the Windows loader zip's SHA moves with VULKAN_VERSION, LunarG's digest first (offline)"
 _out="$(_bv_offline <<'PY'
@@ -556,8 +550,7 @@ t_assert_contains "${_out}" "wrap 1.5.2 abab" "dav1d's version and hash come fro
 t_assert_contains "${_out}" "protobuf 21.12" "HailoRT's protobuf is the version its FetchContent GIT_TAG names"
 
 t_case "spec_deepstream: the newest tag whose OWN release carries the runtime deb wins (v9.1.0.x tags have none) (offline)"
-_out="$(_bv_offline <<'PY'
-bv.ls_remote_tags = lambda repo: ["v9.0.2", "v9.1.0", "v9.1.0.1", "v9.1.0.2"]
+_out="$(_bv_tags_offline '["v9.0.2", "v9.1.0", "v9.1.0.1", "v9.1.0.2"]' <<'PY'
 probed = []
 bv.artifact_exists = lambda url: probed.append(url.rsplit("/", 2)[1]) or "/v9.1.0/" in url
 bv.WRITE_MODE = False

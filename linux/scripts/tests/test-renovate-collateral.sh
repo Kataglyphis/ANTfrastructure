@@ -44,6 +44,13 @@ _cs_run() {
   _cs_run_with "${repo}" "${A_REPORT}" "${body}" "$@"
 }
 
+_cs_assert_staged_rollback() {
+  local repo="$1" bytes_message="$2" index_message="$3"
+  t_assert_eq "1" "${RC}" "the run must FAIL"
+  t_assert_eq "generated one" "$(cat "${repo}/lib/l10n/app_localizations.dart" 2>&1)" "${bytes_message}"
+  t_assert_eq "" "$(git -C "${repo}" status --porcelain=v1 -uall)" "${index_message}"
+}
+
 # (K1) A tool that deletes a tracked file it was not asked about: the case the guard exists for.
 t_case "(K1) a lock tool that deletes a tracked file refuses the whole run"
 K1="$(_cs_repo k1)"
@@ -197,19 +204,14 @@ t_assert_ok test -f "${K11}/.git/renovate-local-inflight"
 t_case "(K12) a STAGED deletion is put back and unstaged, not left gone"
 K12="$(_cs_repo k12)"
 _cs_run "${K12}" 'git rm -q -f lib/l10n/app_localizations.dart'
-t_assert_eq "1" "${RC}" "the run must FAIL"
-t_assert_eq "generated one" "$(cat "${K12}/lib/l10n/app_localizations.dart" 2>&1)" \
-  "the file is back with the bytes it had"
-t_assert_eq "" "$(git -C "${K12}" status --porcelain=v1 -uall)" \
+_cs_assert_staged_rollback "${K12}" "the file is back with the bytes it had" \
   "and nothing is left staged: checkout HEAD rewrites the index too"
 
 t_case "(K13) a STAGED modification is put back, not accepted as already correct"
 K13="$(_cs_repo k13)"
 _cs_run "${K13}" 'printf "the tool wrote this\n" > lib/l10n/app_localizations.dart && git add lib/l10n/app_localizations.dart'
-t_assert_eq "1" "${RC}" "the run must FAIL"
-t_assert_eq "generated one" "$(cat "${K13}/lib/l10n/app_localizations.dart")" \
-  "a checkout from the INDEX would have been a no-op and left the tool's bytes"
-t_assert_eq "" "$(git -C "${K13}" status --porcelain=v1 -uall)" "and nothing is staged"
+_cs_assert_staged_rollback "${K13}" \
+  "a checkout from the INDEX would have been a no-op and left the tool's bytes" "and nothing is staged"
 
 # (K14) The collateral snapshot must look inside submodules; path dependencies can live in one.
 t_case "(K14) a tool that writes INSIDE a submodule is seen, named and refused"

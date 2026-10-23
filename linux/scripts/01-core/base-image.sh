@@ -271,13 +271,7 @@ restore_mirror_https_scheme() {
     esac
   fi
 
-  shopt -s nullglob
-  source_files=(
-    "${sources_root%/}/etc/apt/sources.list"
-    "${sources_root%/}/etc/apt/sources.list.d/"*.list
-    "${sources_root%/}/etc/apt/sources.list.d/"*.sources
-  )
-  shopt -u nullglob
+  ubuntu_mirror_source_files source_files "${sources_root}"
 
   for sources_file in "${source_files[@]}"; do
     [ -f "${sources_file}" ] || continue

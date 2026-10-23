@@ -12,6 +12,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share Linux artifact collection and probe execution
+
+- Share WASM artifact collection and IREE Android runtime options while retaining caller build and argument policies.
+- Share Ubuntu source-file enumeration without changing ordering or shell options.
+- Share media artifact verdicts and paired-image probes; preserve symlink admission, empty-output guards and failure counts.
+- Share Renovate rollback, logging-trap, module-shadow and ownership fixtures with unchanged assertions and mutation proofs.
+- Share version-bump, provenance, lint and GenAI fixture setup; keep required worker functions distinct from optional definitions.
+- Remove resolved duplication exemptions without increasing budgets or narrowing scan coverage.
+
 ## 2026-10-23 — share remaining Windows operations and fixtures
 
 - Share Meson binaries, ARM per-file features, optional source edits, machine names, handoff transfers and sccache command lifecycle.

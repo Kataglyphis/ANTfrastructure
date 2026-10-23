@@ -25,9 +25,7 @@ end = text.index('copy_onnx_headers_to_output ', start)
 Path(sys.argv[2]).write_text(text[start:end] + '\necho tail-complete\n')
 PY
 done
-for helper in run_onnx_native_build collect_onnx_native_wheels; do
-  if declare -F "${helper}" >/dev/null; then declare -f "${helper}"; fi
-done > "${WORK}/runner.sh"
+t_emit_optional_functions run_onnx_native_build collect_onnx_native_wheels > "${WORK}/runner.sh"
 cat >> "${WORK}/runner.sh" <<'RUNNER'
 WORK="$1"; backend="$2"; cross="$3"; build_rc="$4"; wheels="$5"; collect_rc="$6"
 export NATIVE_CPU_BUILD_DIR="${WORK}/CPU build" NATIVE_GPU_BUILD_DIR="${WORK}/AMD build"

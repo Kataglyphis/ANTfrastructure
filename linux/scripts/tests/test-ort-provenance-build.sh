@@ -336,9 +336,15 @@ _red "the build record ${TREE}/nope.ninja is missing" --record "${TREE}/nope.nin
 _red "the build log ${TREE}/nope.log is missing" --log "${TREE}/nope.log"
 _red "no tree at ${CASE}/absent to check" --tree "${CASE}/absent"
 # _bare <args...>: the gate with exactly these arguments (no fixture defaults), under the consumers' IFS.
-_bare() {
-  OUTPUT="$(HOME="${CASE}/home" bash -c 'set -uo pipefail; IFS=$'"'"'\n\t'"'"'; source "$1"; shift; ort_assert_chain_only "$@"' _ "${GATE}" "$@" 2>&1)" \
+_gate_shell() {
+  local body="$1"
+  shift
+  OUTPUT="$(HOME="${CASE}/home" bash -c 'set -uo pipefail; IFS=$'"'"'\n\t'"'"'; source "$1"; body="$2"; shift 2; eval "${body}"' _ "${GATE}" "${body}" "$@" 2>&1)" \
     && RC=0 || RC=$?
+}
+
+_bare() {
+  _gate_shell 'ort_assert_chain_only "$@"' "$@"
 }
 mkdir -p "${CASE}/empty"
 _bare opencv --stamp "${STAMP}" --chain "${CHAIN}" --tree "${CASE}/empty" --record "${TREE}/build/CMakeCache.txt"
@@ -368,12 +374,11 @@ t_assert_contains "${OUTPUT}" "no build log was given, so no configure or build 
 t_case "no temp file, a failing count or an unresolved record path fails closed, even after an earlier pass in the same shell (mutation)"
 # _twice <override>: the gate passes once, then runs again in the same shell with <override> sourced in between.
 _twice() {
-  OUTPUT="$(HOME="${CASE}/home" bash -c 'set -uo pipefail; IFS=$'"'"'\n\t'"'"'; source "$1"; override="$2"; shift 2
+  _gate_shell 'override="$1"; shift
     ort_assert_chain_only opencv "$@" > /dev/null || exit 9
     eval "${override}"
-    ort_assert_chain_only opencv "$@"' _ "${GATE}" "$1" --stamp "${STAMP}" --chain "${CHAIN}" --tree "${TREE}" --shim "${SHIM}" \
-    --record "${TREE}/build/CMakeCache.txt" --record "${TREE}/build/build.ninja" --log "${TREE}/build/opencv-configure.log" 2>&1)" \
-    && RC=0 || RC=$?
+    ort_assert_chain_only opencv "$@"' "$1" --stamp "${STAMP}" --chain "${CHAIN}" --tree "${TREE}" --shim "${SHIM}" \
+    --record "${TREE}/build/CMakeCache.txt" --record "${TREE}/build/build.ninja" --log "${TREE}/build/opencv-configure.log"
   t_assert_eq 1 "${RC}" "${OUTPUT}"
   t_assert_fails test -e "${STAMP}"
 }

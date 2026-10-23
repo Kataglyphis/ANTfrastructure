@@ -46,13 +46,7 @@ main() {
   sources_root="${UBUNTU_SOURCES_ROOT:-/}"
   updated=0
 
-  shopt -s nullglob
-  source_files=(
-    "${sources_root%/}/etc/apt/sources.list"
-    "${sources_root%/}/etc/apt/sources.list.d/"*.list
-    "${sources_root%/}/etc/apt/sources.list.d/"*.sources
-  )
-  shopt -u nullglob
+  ubuntu_mirror_source_files source_files "${sources_root}"
 
   for sources_file in "${source_files[@]}"; do
     apply_mirror_rewrite "${sources_file}" "$(ubuntu_archive_regex)" "${archive_mirror_url}" archive && updated=1

@@ -30,11 +30,9 @@ linux/scripts/lib/wasm-opt.sh	wasm_opt_optimize
 # check_python of its own, so the name table read this one as used until the
 # unlinked-definer arm proved the two files never meet (backlog GH6).
 linux/scripts/06-packaging/verify-parity.sh	check_files
-linux/scripts/06-packaging/verify-parity.sh	check_imports
 linux/scripts/06-packaging/verify-parity.sh	check_libs
 linux/scripts/06-packaging/verify-parity.sh	check_packages
 linux/scripts/06-packaging/verify-parity.sh	check_python
-linux/scripts/06-packaging/verify-parity.sh	check_versions
 
 # bash hook: bash itself calls it when a command is not found.
 linux/scripts/tests/test-harness.sh	command_not_found_handle

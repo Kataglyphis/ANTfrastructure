@@ -68,7 +68,10 @@ run_optional_flavor_pass() {
 
 collect_wasm_artifacts() {
   local pattern="$1"
-  find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "${pattern}" -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+  shift
+  local names=(-name "$pattern")
+  for pattern in "$@"; do names+=(-o -name "$pattern"); done
+  find "${BUILD_DIR}/${WASM_CONFIG}" -type f '(' "${names[@]}" ')' -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
 }
 
 mkdir -p "${WASM_OUTPUT_DIR}"
@@ -77,12 +80,12 @@ rm -rf "${BUILD_DIR}" || true
 info ">>> Pass 1: SIMD + Threads"
 rm -rf "${BUILD_DIR}"
 "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads
-find "${BUILD_DIR}/${WASM_CONFIG}" -type f -name "ort-wasm-simd-threaded.*" -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+collect_wasm_artifacts "ort-wasm-simd-threaded.*"
 
 info ">>> Pass 2: JSEP (WebGPU/WebNN)"
 rm -rf "${BUILD_DIR}"
 "${BUILD_SH}" "${COMMON_ARGS[@]}" --enable_wasm_simd --enable_wasm_threads --use_jsep --use_webnn
-find "${BUILD_DIR}/${WASM_CONFIG}" -type f \( -name "ort-wasm-simd-threaded.jsep.*" -o -name "ort-wasm-simd-threaded.webnn.*" \) -print0 | xargs -0 cp -t "${WASM_OUTPUT_DIR}/" 2>/dev/null || true
+collect_wasm_artifacts "ort-wasm-simd-threaded.jsep.*" "ort-wasm-simd-threaded.webnn.*"
 
 # No training pass: upstream deprecated on-device training and removed it from onnxruntime-web (CON94, dropped 2026-10-13).
 

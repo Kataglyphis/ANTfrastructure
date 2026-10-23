@@ -45,6 +45,14 @@ verify_dir_not_empty() {
   return 0
 }
 
+verify_file_nonempty() {
+  if [ ! -s "$1" ]; then
+    fail_check "$2 is empty: $1"
+    return 1
+  fi
+  return 0
+}
+
 verify_file_exists() {
   local file="$1"
   local label="${2:-file}"
@@ -53,11 +61,7 @@ verify_file_exists() {
     fail_check "${label} not found: ${file}"
     return 1
   fi
-  if [ ! -s "${file}" ]; then
-    fail_check "${label} is empty: ${file}"
-    return 1
-  fi
-  return 0
+  verify_file_nonempty "${file}" "${label}"
 }
 
 # <prefix> <pc_name> <label> [optional]: "optional" downgrades a miss to INFO.
@@ -86,10 +90,7 @@ verify_shared_lib() {
     fail_check "${label} (${glob_pattern}) not found in ${dir}"
     return 1
   fi
-  if [ ! -s "${found}" ]; then
-    fail_check "${label} is empty: ${found}"
-    return 1
-  fi
+  verify_file_nonempty "${found}" "${label}" || return 1
   pass_check "${label}: ${found}"
   return 0
 }

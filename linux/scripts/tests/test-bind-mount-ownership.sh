@@ -57,6 +57,10 @@ _call() {
     t_capture_stubbed OUT rc LOG "${_work}" "${SUBJECT}" "${environment[@]}" -- fix_bind_mount_ownership "$@"
 }
 
+_fail_chown_as() {
+  _call STUB_STAT_UID=4242 STUB_CHOWN_RC=1 STUB_UID="$1" -- "${TREE}" "${REF}"
+}
+
 t_case "a target that does not exist is not an error"
 # A docs step that produced nothing must not have its finalize step break the lane.
 _call -- "${_work}/never-written" "${REF}"
@@ -94,13 +98,13 @@ t_assert_contains "${OUT}" "Handing 4 path(s)" \
   "docs/ plus one.txt plus sub/ plus sub/two.txt; a wrong count means the find and the chown disagree"
 
 t_case "a failing chown as a NON-ROOT uid is explained, not a red nobody can act on"
-_call STUB_STAT_UID=4242 STUB_CHOWN_RC=1 STUB_UID=1001 -- "${TREE}" "${REF}"
+_fail_chown_as 1001
 t_assert_eq "0" "${rc}" "only root can hand files to another uid; that is arithmetic, not a defect"
 t_assert_contains "${OUT}" "not permitted for uid 1001"
 t_assert_contains "${OUT}" "Only root can hand files to another uid"
 
 t_case "the same failing chown AS ROOT is fatal"
-_call STUB_STAT_UID=4242 STUB_CHOWN_RC=1 STUB_UID=0 -- "${TREE}" "${REF}"
+_fail_chown_as 0
 t_assert_eq "1" "${rc}" "as root a chown failure is a read-only or broken mount, and the tree really is unusable"
 t_assert_contains "${OUT}" "failed as root"
 

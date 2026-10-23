@@ -384,3 +384,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../01-core" && pwd)/python_uv.sh
 detect_workspace() { export WORKSPACE_ROOT="${FIXTURE_WS}"; }
 CI_COMMON
 }
+
+# Baseline source snapshots may lack the helpers a current worker needs.
+t_emit_optional_functions() {
+  local name
+  for name in "$@"; do
+    if declare -F "${name}" >/dev/null; then declare -f "${name}"; fi
+  done
+}

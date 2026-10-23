@@ -9,6 +9,12 @@ GATE="${SCRIPTS}/run-lint-gates.sh"
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
+_track_lint_fixture() {
+  git -C "$1" init -q
+  git -C "$1" add -A >/dev/null 2>&1
+  printf '%s' "$1"
+}
+
 # A consumer with a vendored third_party/ subtree and one first-party file directly in third_party/.
 _consumer() {
   local d; d="$(mktemp -d "${_work}/root.XXXXXX")"
@@ -19,9 +25,7 @@ _consumer() {
   printf 'x\n' > "${d}/README.md"
   printf 'x\n' > "${d}/third_party/CMakeLists.txt"
   mkdir -p "${d}/aß-dir"; printf '#!/usr/bin/env bash\ntrue\n' > "${d}/aß-dir/d.sh"
-  git -C "${d}" init -q
-  git -C "${d}" add -A >/dev/null 2>&1
-  printf '%s' "${d}"
+  _track_lint_fixture "${d}"
 }
 
 t_case "the consumer root is mandatory and never inferred"
@@ -69,7 +73,7 @@ t_assert_eq "" "$(printf '%s\n' "${_scope}" | grep -x 'third_party' || true)" \
 t_case "an empty shell list FAILS instead of falling back to ANTfrastructure's own tree"
 _empty="$(mktemp -d "${_work}/empty.XXXXXX")"
 printf 'x\n' > "${_empty}/README.md"
-git -C "${_empty}" init -q; git -C "${_empty}" add -A >/dev/null 2>&1
+_track_lint_fixture "${_empty}" >/dev/null
 _lint_gates_parse_args "${_empty}"
 # A green lint-shell.sh, as the real one is over a clean hub; a red one would hide a missing refusal.
 _green="$(mktemp -d "${_work}/green.XXXXXX")"
@@ -99,8 +103,7 @@ _declaring() {  # _declaring <manifest-body> -> a git root carrying a faithful c
   local d; d="$(mktemp -d "${_work}/decl.XXXXXX")"
   cp "${_HUB}/shared/config/.clang-format" "${d}/.clang-format"
   printf '%s\n' "$1" > "${d}/.antfrastructure-shared.manifest"
-  git -C "${d}" init -q; git -C "${d}" add -A >/dev/null 2>&1
-  printf '%s' "${d}"
+  _track_lint_fixture "${d}"
 }
 
 t_case "no manifest is a FAILURE, not a skip"

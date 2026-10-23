@@ -38,15 +38,19 @@ HOST_CC="$(resolve_host_compiler c)"
 HOST_CXX="$(resolve_host_compiler cxx)"
 PARALLEL_JOBS="$(media_jobs)"
 
+_iree_runtime_cmake_args=(
+  -DIREE_BUILD_COMPILER=OFF
+  -DIREE_BUILD_PYTHON_BINDINGS=OFF
+  -DIREE_BUILD_SAMPLES=OFF
+  -DIREE_BUILD_TESTS=OFF
+)
+
 # Stage 1 — LLVM-free host tools for IREE_HOST_BIN_DIR.
 HOST_BUILD=/opt/iree-android/build-host
 HOST_INSTALL="${HOST_BUILD}/install"
 cmake -GNinja -S /opt/iree-android -B "${HOST_BUILD}" \
     -DCMAKE_BUILD_TYPE=Release \
-    -DIREE_BUILD_COMPILER=OFF \
-    -DIREE_BUILD_PYTHON_BINDINGS=OFF \
-    -DIREE_BUILD_SAMPLES=OFF \
-    -DIREE_BUILD_TESTS=OFF \
+    "${_iree_runtime_cmake_args[@]}" \
     -DCMAKE_C_COMPILER="${HOST_CC}" \
     -DCMAKE_CXX_COMPILER="${HOST_CXX}" \
     -DCMAKE_INSTALL_PREFIX="${HOST_INSTALL}" \
@@ -64,10 +68,7 @@ cmake -GNinja -S /opt/iree-android -B "${TARGET_BUILD}" \
     -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM} \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     -DIREE_HOST_BIN_DIR="${HOST_INSTALL}/bin" \
-    -DIREE_BUILD_COMPILER=OFF \
-    -DIREE_BUILD_PYTHON_BINDINGS=OFF \
-    -DIREE_BUILD_SAMPLES=OFF \
-    -DIREE_BUILD_TESTS=OFF \
+    "${_iree_runtime_cmake_args[@]}" \
     -DIREE_HAL_DRIVER_LOCAL_SYNC=ON \
     -DIREE_HAL_DRIVER_LOCAL_TASK=ON \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \

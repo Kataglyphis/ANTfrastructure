@@ -26,6 +26,19 @@ ubuntu_mirror_normalize_url() {
   esac
 }
 
+# Callers filter missing sources.list themselves and expect nullglob cleared afterward.
+ubuntu_mirror_source_files() {
+  local -n _umsf_output="$1"
+  local _umsf_root="$2"
+  shopt -s nullglob
+  _umsf_output=(
+    "${_umsf_root%/}/etc/apt/sources.list"
+    "${_umsf_root%/}/etc/apt/sources.list.d/"*.list
+    "${_umsf_root%/}/etc/apt/sources.list.d/"*.sources
+  )
+  shopt -u nullglob
+}
+
 ubuntu_archive_regex() {
   printf '%s' 'https?://([A-Za-z0-9-]+\.)?archive\.ubuntu\.com/ubuntu/?'
 }
