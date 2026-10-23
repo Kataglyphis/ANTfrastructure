@@ -892,19 +892,21 @@ reports success. Nothing in the log says the exit code was thrown away.
 command used as a condition — the callee's body, and everything it calls. So a
 function written to rely on `set -e` for its aborts raises nothing when it is
 reached through `if ! f …`, `f && …`, `f || …` or a condition-context
-substitution. `gcc.sh:384` reaches `build_canadian_native_gcc_for` exactly that
+substitution. `gcc.sh` reaches `build_canadian_native_gcc_for` exactly that
 way, and inside it the invocation of `build-gcc.sh` was a plain command: its
 non-zero exit was discarded, and the missing native GCC only surfaced arches
 later.
 
 **Fix.** Inside such a function every failure has to be raised **explicitly**.
-The builder invocation now ends `|| die "Canadian native GCC build FAILED for
-…"`, and the two `[ -x … ]` checks on the produced `gcc`/`g++` die on their own
-rather than through `errexit`. `tests/test-gcc-errexit-contract.sh` holds both
-halves: one characterisation case that runs a real `bash -c` and records that
-`if ! f` really does suppress `errexit` inside `f` — the mechanism, not our code
-— and contract cases over `gcc.sh` itself asserting the explicit raises are
-still there.
+Both cross-GCC callers now invoke `_gcc_invoke_cross_builder` with an explicit
+`|| die` for builder failure. The launcher retains the builder's exit status;
+Canadian compiler variables and configure cache answers remain on that caller.
+Installed-tool checks keep their own explicit failures. The Canadian link-probe
+skip remains the only opt-in nonfatal path. `test-gcc-errexit-contract.sh` pins
+Bash's conditional behavior and the structural fatal guard;
+`test-gcc-cross-launch.sh` exercises both callers with fake tools, including a
+failed ordinary cross build with stale installed executables. These tests do not
+compile GCC or validate real ELF files.
 
 **The check to carry away.** Before trusting `set -e` inside a helper, grep for
 how the helper is *called*. A guard that only works in the default context is

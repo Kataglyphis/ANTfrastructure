@@ -86,6 +86,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies.
    Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
+   Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
    Runtime and cross orchestrators share common CLI dispatch; preserve consumed-argument counts and help code 255.
    Critical source-pattern checks share verdict handling; failed probes increment the aggregate and must reach the failing summary.

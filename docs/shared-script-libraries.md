@@ -1227,3 +1227,19 @@ and project-specific options stay unchanged. Return codes still mean unknown
 (`0`), one argument (`1`), a flag plus value (`2`), or help (`255`); the outer
 dispatcher retains its missing-value checks. The parser suite exercises both
 public entry points, including URL whitespace and swallowed option values.
+
+## Cross GCC builder invocation
+
+`02-toolchain/gcc.sh` owns `_gcc_invoke_cross_builder` for ordinary cross GCC and
+Canadian native GCC. It preserves option order, the root sysroot, target include
+path, C/C++ languages, non-bootstrap mode, compiler cache and registration policy.
+Only the Canadian call supplies `--host`; its compiler environment and configure
+cache answers remain with that caller. Prefix, scratch directory and requested or
+detected job count are forwarded to the existing builder.
+
+Both callers raise builder failures explicitly. An ordinary cross build can no
+longer appear successful under a conditional caller merely because an earlier
+installation left executable tools behind. The Canadian link-probe skip remains
+opt-in and happens before the builder. Local fake tools exercise argument order,
+environment, job counts and fatal/skip paths; they do not compile GCC or inspect
+real compiler ELF files.

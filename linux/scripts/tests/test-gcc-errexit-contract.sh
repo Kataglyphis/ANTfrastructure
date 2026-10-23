@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The function cannot run without a cross toolchain, so its contract is read; see docs/failure-modes.md#a-callee-invoked-in-an-if--condition-runs-with-errexit-off
+# The structural guard complements fake-builder execution in test-gcc-cross-launch.sh; no real GCC build is covered.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -17,10 +17,10 @@ t_assert_eq "REACHED" "${_swallowed}" \
 t_case "the Canadian native builder invocation raises on failure"
 # Only the invocation's own continuation lines: a window grep would also see the -x checks' `|| die`.
 _builder_block="$(awk '/^build_canadian_native_gcc_for\(\)/,/^\}/' "${GCC_SH}")"
-t_assert_contains "${_builder_block}" 'bash "${GCC_CROSS_BUILDER}"' \
-  "the function must still be the one that invokes the builder"
+t_assert_contains "${_builder_block}" '_gcc_invoke_cross_builder' \
+  "the function must still call the shared builder launch"
 _tail="$(printf '%s\n' "${_builder_block}" | awk '
-  /bash "\$\{GCC_CROSS_BUILDER\}"/ { inv=1 }
+  /_gcc_invoke_cross_builder/ { inv=1 }
   inv { print; if ($0 !~ /\\$/) exit }')"
 t_assert_contains "${_tail}" "|| die" \
   "the builder command itself must end in an explicit die, not rely on errexit"

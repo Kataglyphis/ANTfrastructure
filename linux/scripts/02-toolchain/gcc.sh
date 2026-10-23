@@ -181,6 +181,19 @@ link_amd64_host_as_cross() {
   link_cross_binutils "${prefix}" "${triplet}"
 }
 
+_gcc_invoke_cross_builder() {
+  local prefix="$1" build_dir="$2" full_version="$3" triplet="$4" host="${5:-}"
+  local -a args=(--version "${full_version}" --target "${triplet}")
+  if [ -n "${host}" ]; then args+=(--host "${host}"); fi
+  args+=(
+    --languages 'c,c++' --sysroot /
+    --native-system-header-dir "/usr/${triplet}/include"
+    --disable-bootstrap --ccache --skip-system-registration
+  )
+  PREFIX="${prefix}" BUILD_DIR="${build_dir}" JOBS="${JOBS:-$(nproc)}" \
+    bash "${GCC_CROSS_BUILDER}" "${args[@]}"
+}
+
 # A cross GCC that runs on the build host and emits target code, under triplet-prefixed names.
 build_cross_gcc_for() {
   local full_version="$1"
@@ -190,18 +203,8 @@ build_cross_gcc_for() {
 
   scratch_root="$(gcc_cross_scratch_root)"
   log "Building source cross GCC ${full_version} for ${triplet}"
-  PREFIX="${prefix}" \
-    BUILD_DIR="${scratch_root}/gcc-build-${full_version}-${triplet}" \
-    JOBS="${JOBS:-$(nproc)}" \
-    bash "${GCC_CROSS_BUILDER}" \
-      --version "${full_version}" \
-      --target "${triplet}" \
-      --languages c,c++ \
-      --sysroot / \
-      --native-system-header-dir "/usr/${triplet}/include" \
-      --disable-bootstrap \
-      --ccache \
-      --skip-system-registration
+  _gcc_invoke_cross_builder "${prefix}" "${scratch_root}/gcc-build-${full_version}-${triplet}" "${full_version}" "${triplet}" \
+    || die "Source cross GCC build FAILED for ${triplet}"
 
   for tool in gcc g++ gcc-ar gcc-nm gcc-ranlib; do
     [ -x "${prefix}/bin/${triplet}-${tool}" ] || die "Expected cross GCC tool not found: ${prefix}/bin/${triplet}-${tool}"
@@ -251,19 +254,7 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
     ac_cv_prog_cc_works=yes \
     ac_cv_prog_CC_works=yes \
     ac_cv_prog_cxx_works=yes \
-    PREFIX="${native_prefix}" \
-    BUILD_DIR="${scratch_root}/gcc-build-${full_version}-native-${normalized_target}" \
-    JOBS="${JOBS:-$(nproc)}" \
-    bash "${GCC_CROSS_BUILDER}" \
-      --version "${full_version}" \
-      --target "${triplet}" \
-      --host "${triplet}" \
-      --languages c,c++ \
-      --sysroot / \
-      --native-system-header-dir "/usr/${triplet}/include" \
-      --disable-bootstrap \
-      --ccache \
-      --skip-system-registration \
+    _gcc_invoke_cross_builder "${native_prefix}" "${scratch_root}/gcc-build-${full_version}-native-${normalized_target}" "${full_version}" "${triplet}" "${triplet}" \
       || die "Canadian native GCC build FAILED for ${normalized_target}"
 
   [ -x "${native_prefix}/bin/gcc" ] || die "Expected native GCC not found: ${native_prefix}/bin/gcc"

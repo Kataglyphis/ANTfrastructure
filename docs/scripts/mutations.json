@@ -17778,5 +17778,61 @@
   "replace": "  if grep \"${@:1:2}\" 2>/dev/null; then",
   "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
   "why": "the selected grep mode, literal pattern and source path including spaces must reach the probe intact"
+ },
+ {
+  "id": "probe.gcc-cross-host",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "if [ -n \"${host}\" ]; then args+=(--host \"${host}\"); fi",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "Canadian cross must retain its explicit host triplet while the ordinary cross compiler omits it"
+ },
+ {
+  "id": "probe.gcc-cross-sysroot",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "--languages 'c,c++' --sysroot /",
+  "replace": "--languages 'c,c++' --sysroot /wrong",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "both builders retain the existing root sysroot and target include directory"
+ },
+ {
+  "id": "probe.gcc-cross-cache",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "--disable-bootstrap --ccache --skip-system-registration",
+  "replace": "--disable-bootstrap --skip-system-registration",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "both non-bootstrap compiler builds must retain compiler caching"
+ },
+ {
+  "id": "probe.gcc-cross-fatal",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "|| die \"Source cross GCC build FAILED for ${triplet}\"",
+  "replace": "|| true",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "a failed cross builder must not pass by inspecting stale executable tools under a conditional caller"
+ },
+ {
+  "id": "probe.gcc-cross-canadian-fatal",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "|| die \"Canadian native GCC build FAILED for ${normalized_target}\"",
+  "replace": "|| true",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "Canadian builder failure must be diagnosed before installed-tool checks hide its actual cause"
+ },
+ {
+  "id": "probe.gcc-cross-jobs",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "PREFIX=\"${prefix}\" BUILD_DIR=\"${build_dir}\" JOBS=\"${JOBS:-$(nproc)}\"",
+  "replace": "PREFIX=\"${prefix}\" BUILD_DIR=\"${build_dir}\" JOBS=1",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "explicit parallelism and detected fallback parallelism must reach the shared build command"
+ },
+ {
+  "id": "probe.gcc-cross-status",
+  "target": "linux/scripts/02-toolchain/gcc.sh",
+  "find": "bash \"${GCC_CROSS_BUILDER}\" \"${args[@]}\"",
+  "replace": "bash \"${GCC_CROSS_BUILDER}\" \"${args[@]}\"; return 0",
+  "test": "bash linux/scripts/tests/test-gcc-cross-launch.sh",
+  "why": "the shared launcher must propagate the underlying builder exit status even in a conditional context"
  }
 ]

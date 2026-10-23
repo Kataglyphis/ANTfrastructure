@@ -12,6 +12,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share cross and Canadian GCC builder invocation
+
+- Cross GCC and Canadian native GCC share builder argument construction and invocation, retaining environment, job counts, sysroot, caching and host distinctions.
+- Fail ordinary cross builds explicitly even under conditional callers with stale installed tools; preserve the Canadian link-skip policy and fatal diagnostic.
+- Fake-builder regressions and seven mutations cover the invocation contract; remove the GCC self-duplication exemption.
+
 ## 2026-10-23 — share critical source-pattern verdicts
 
 - Twelve positive source-pattern checks share grep execution and PASS/FAIL aggregation; keep caller patterns and messages, compound conditions, negative checks and final failure propagation.
