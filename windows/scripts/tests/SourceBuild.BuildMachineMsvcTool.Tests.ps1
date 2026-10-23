@@ -8,7 +8,7 @@ Describe 'Resolve-BuildMachineMsvcTool' {
 
     BeforeAll {
 
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-vctools-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-vctools-'
         $script:vc = Join-Path $script:tmp 'VC\Tools\MSVC\14.51.36231'
         New-Item -ItemType Directory -Force -Path (Join-Path $script:vc 'bin\HostX64\x64') | Out-Null
         New-Item -ItemType Directory -Force -Path (Join-Path $script:vc 'bin\HostX64\ARM64') | Out-Null
@@ -25,14 +25,10 @@ Describe 'Resolve-BuildMachineMsvcTool' {
     }
 
     It 'throws when only the ARM64-targeting copy exists (never falls back to PATH or HostX64\ARM64)' {
-        $threw = $false
-        try { Resolve-BuildMachineMsvcTool -VcToolsDir $script:vc -Name 'ml64.exe' | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'ml64.exe present only under HostX64\ARM64 must throw'
+        Assert-Throws { Resolve-BuildMachineMsvcTool -VcToolsDir $script:vc -Name 'ml64.exe' | Out-Null } 'ml64.exe present only under HostX64\ARM64 must throw'
     }
 
     It 'throws on an empty VC tools root' {
-        $threw = $false
-        try { Resolve-BuildMachineMsvcTool -VcToolsDir ' ' -Name 'cl.exe' | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'blank root must throw'
+        Assert-Throws { Resolve-BuildMachineMsvcTool -VcToolsDir ' ' -Name 'cl.exe' | Out-Null } 'blank root must throw'
     }
 }

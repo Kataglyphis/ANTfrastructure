@@ -33,9 +33,7 @@ Describe 'Invoke-WithHostArchLibraryEnvironment' {
     It 'restores the environment when the block throws' {
         $env:WINDOWS_TARGET_ARCH = 'arm64'
         $env:LIB = 'C:\VS\lib\arm64'
-        $threw = $false
-        try { Invoke-WithHostArchLibraryEnvironment { throw 'boom' } } catch { $threw = $true }
-        Assert-True $threw 'the block''s exception propagates'
+        Assert-Throws { Invoke-WithHostArchLibraryEnvironment { throw 'boom' } } 'the block''s exception propagates'
         Assert-Equal 'C:\VS\lib\arm64' $env:LIB 'LIB restored even on throw'
     }
 

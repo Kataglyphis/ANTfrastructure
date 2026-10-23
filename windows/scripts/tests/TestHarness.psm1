@@ -103,9 +103,10 @@ function Invoke-WithEnv {
     }
 }
 
-# Exported for external consumers; in-repo suites use Invoke-InTestDir, which also cleans up.
+# Suite-scoped fixtures keep their diagnostic prefix and clean up in AfterAll.
 function New-TestDir {
-    $d = Join-Path ([System.IO.Path]::GetTempPath()) ("wbt-" + [guid]::NewGuid().ToString('N'))
+    param([string]$Prefix = 'wbt-')
+    $d = Join-Path ([System.IO.Path]::GetTempPath()) ($Prefix + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Force -Path $d | Out-Null
     return $d
 }

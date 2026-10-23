@@ -12,6 +12,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — consolidate Windows test fixture families
+
+- Windows suites share prefixed temporary-directory allocation and exception assertions through the existing harness; retain their import scope and cleanup lifecycle.
+- Compare affected suites before and after the refactor; add harness lifecycle and mutation regressions. OpenCV builders let Git create checkout parents, covered by a local clone regression.
+- Shrink duplication budgets and remove resolved pairs without changing detector thresholds or coverage.
+
 ## 2026-10-23 — share isolated Python CI test trees
 
 - Four Python CI suites share temporary script-tree creation, source copying and workspace detection through the test harness; each retains its tool stubs and assertions.

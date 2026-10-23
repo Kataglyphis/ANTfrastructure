@@ -7,7 +7,7 @@
 Describe 'write-bundle-manifest: bundle self-description' {
 
     BeforeAll {
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('bundlemanifest-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'bundlemanifest-'
         $script:runtime = Join-Path $script:tmp 'runtime'
         New-Item -ItemType Directory -Force -Path $script:runtime | Out-Null
         $script:scriptPath = Join-Path (Get-RepoRoot) 'windows\scripts\build\Write-BundleManifest.ps1'
@@ -136,9 +136,7 @@ Describe 'write-bundle-manifest: bundle self-description' {
     It 'throws when the install directory does not exist' {
         [Environment]::SetEnvironmentVariable('WINDOWS_TARGET_ARCH', 'amd64', 'Process')
         $missing = Join-Path $script:tmp 'does-not-exist'
-        $threw = $false
-        try { & $script:scriptPath -InstallDir $missing 2>&1 | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'missing install dir throws, never silently writes nothing'
+        Assert-Throws { & $script:scriptPath -InstallDir $missing 2>&1 | Out-Null } 'missing install dir throws, never silently writes nothing'
     }
 
     It 'records an ABSENT marker when one is present in the tree' {

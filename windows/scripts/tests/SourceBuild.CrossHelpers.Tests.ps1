@@ -9,8 +9,7 @@ Describe 'Add-NinjaPerTuFlags' {
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-ninja-' + [guid]::NewGuid().ToString('N'))
-        New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
+        $script:tmp = New-TestDir -Prefix 'wbt-ninja-'
         $script:ninja = Join-Path $script:tmp 'build.ninja'
         @(
             'build a/kernel_avx512.cpp.obj: CXX_COMPILER a/kernel_avx512.cpp',
@@ -44,9 +43,7 @@ Describe 'Add-NinjaPerTuFlags' {
 
     It 'throws below the floor and leaves the file untouched' {
         $before = Get-Content $script:ninja -Raw
-        $threw = $false
-        try { Add-NinjaPerTuFlags -NinjaFile $script:ninja -Label 'fixture' -Floor 5 -Select { param($l) if ($l -match 'nomatch_zzz') { '/x' } } | Out-Null } catch { $threw = $true; Assert-True ($_.Exception.Message -match 'tagged only 0 fixture') 'message names the count and label' }
-        Assert-True $threw 'a selector that matches nothing must throw'
+        Assert-Throws { Add-NinjaPerTuFlags -NinjaFile $script:ninja -Label 'fixture' -Floor 5 -Select { param($l) if ($l -match 'nomatch_zzz') { '/x' } } | Out-Null } 'a selector that matches nothing must throw' -MessagePattern 'tagged only 0 fixture'
         Assert-Equal $before (Get-Content $script:ninja -Raw) 'file untouched on a floor failure'
     }
 }
@@ -56,7 +53,7 @@ Describe 'Write-AbsentOnCrossMarker' {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
         $script:savedArch = $env:WINDOWS_TARGET_ARCH
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-absent-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-absent-'
     }
     AfterAll { $env:WINDOWS_TARGET_ARCH = $script:savedArch; Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
@@ -107,7 +104,7 @@ Describe 'Get-TargetBuildPython (fixture CPython tree)' {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
         $script:savedArch = $env:WINDOWS_TARGET_ARCH
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-tpy-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-tpy-'
         foreach ($d in 'PCbuild\amd64', 'PCbuild\arm64', 'Include') { New-Item -Path (Join-Path $script:tmp $d) -ItemType Directory -Force | Out-Null }
         Set-Content (Join-Path $script:tmp 'PCbuild\amd64\python.exe') 'x'
         Set-Content (Join-Path $script:tmp 'PCbuild\amd64\python314.lib') 'x'
@@ -139,8 +136,7 @@ Describe 'Invoke-InlineRegexPatch guards (-SkipIfMatch / -AssertGone)' {
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Patches.psm1') -Force -DisableNameChecking
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-patch-' + [guid]::NewGuid().ToString('N'))
-        New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
+        $script:tmp = New-TestDir -Prefix 'wbt-patch-'
     }
     AfterAll { Remove-Item $script:tmp -Recurse -Force -ErrorAction SilentlyContinue }
 
@@ -157,9 +153,7 @@ Describe 'Invoke-InlineRegexPatch guards (-SkipIfMatch / -AssertGone)' {
     It 'throws when the pattern is absent but -AssertGone still matches (layout drift)' {
         $f = Join-Path $script:tmp 'b.cmake'
         Set-Content $f 'if(MSVC_C_ARCHITECTURE_ID   MATCHES 64)'   # double space defeats the exact pattern
-        $threw = $false
-        try { Invoke-InlineRegexPatch -Path $f -Pattern 'ID MATCHES 64\)' -Replacement 'x' -AssertGone 'MATCHES 64\)' -Description 'fixture' -WarnMessage 'quiet' | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'drift must throw, not warn'
+        Assert-Throws { Invoke-InlineRegexPatch -Path $f -Pattern 'ID MATCHES 64\)' -Replacement 'x' -AssertGone 'MATCHES 64\)' -Description 'fixture' -WarnMessage 'quiet' | Out-Null } 'drift must throw, not warn'
     }
 }
 
@@ -169,7 +163,7 @@ Describe 'PE asserts over a real system DLL' {
         Import-Module (Join-Path $root 'scripts\modules\WindowsTargetArch.Common.psm1') -Force -DisableNameChecking
         $script:hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString() -eq 'Arm64') { 'arm64' } else { 'amd64' }
         $script:otherArch = if ($script:hostArch -eq 'amd64') { 'arm64' } else { 'amd64' }
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-pe-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-pe-'
         New-Item -Path (Join-Path $script:tmp 'sub') -ItemType Directory -Force | Out-Null
         Copy-Item (Join-Path $env:SystemRoot 'System32\kernel32.dll') (Join-Path $script:tmp 'sub\k.dll')
         Set-Content (Join-Path $script:tmp 'sub\readme.txt') 'not a pe'
@@ -181,20 +175,14 @@ Describe 'PE asserts over a real system DLL' {
     }
 
     It 'Assert-DirectoryTargetArch throws for the other arch, naming the file, and on an empty tree' {
-        $threw = $false
-        try { Assert-DirectoryTargetArch -Path $script:tmp -Arch $script:otherArch -Context 'fixture' | Out-Null } catch { $threw = $true; Assert-True ($_.Exception.Message -match 'k\.dll') 'offender named' }
-        Assert-True $threw 'wrong machine must throw'
+        Assert-Throws { Assert-DirectoryTargetArch -Path $script:tmp -Arch $script:otherArch -Context 'fixture' | Out-Null } 'wrong machine must throw' -MessagePattern 'k\.dll'
         $empty = Join-Path $script:tmp 'empty'; New-Item $empty -ItemType Directory -Force | Out-Null
-        $threw = $false
-        try { Assert-DirectoryTargetArch -Path $empty -Arch $script:hostArch | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'an empty tree is a failure, never a pass'
+        Assert-Throws { Assert-DirectoryTargetArch -Path $empty -Arch $script:hostArch | Out-Null } 'an empty tree is a failure, never a pass'
     }
 
     It 'Assert-PythonExtensionTag accepts bare and target-tagged names and rejects host-tagged ones' {
         Assert-True (Assert-PythonExtensionTag -Name 'cv2.pyd' -Arch 'arm64') 'bare .pyd passes'
         Assert-True (Assert-PythonExtensionTag -Name 'C:\x\cv2.cp314-win_arm64.pyd' -Arch 'arm64') 'target tag passes'
-        $threw = $false
-        try { Assert-PythonExtensionTag -Name 'cv2.cp314-win_amd64.pyd' -Arch 'arm64' | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'host tag on a target module must throw'
+        Assert-Throws { Assert-PythonExtensionTag -Name 'cv2.cp314-win_amd64.pyd' -Arch 'arm64' | Out-Null } 'host tag on a target module must throw'
     }
 }

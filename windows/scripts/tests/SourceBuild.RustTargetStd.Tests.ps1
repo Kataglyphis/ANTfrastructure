@@ -7,7 +7,7 @@ Describe 'Install-RustTargetStdFromPinnedManifest' {
 
     BeforeAll {
 
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-ruststd-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-ruststd-'
         $script:rustupHome = Join-Path $script:tmp 'rustup'
         $script:mirror = Join-Path $script:tmp 'rustup-dist'
         $tcDir = Join-Path $script:rustupHome 'toolchains\1.98.0-x86_64-pc-windows-msvc\lib\rustlib'

@@ -26,7 +26,6 @@ $OpenCvVersion = Get-SourceBuildVersion -Value $OpenCvVersion -EnvironmentVariab
 
 Write-Host "=== OpenCV source build (branch $OpenCvVersion, Ninja+clang-cl) ==="
 
-New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
 Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc | Out-Null
 

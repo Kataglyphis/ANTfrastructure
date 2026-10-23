@@ -45,7 +45,6 @@ if (-not (Test-Path $gstHeader)) {
 }
 
 # OpenCV source at the same pin the installed OpenCV was built from
-New-Item -Path $SourceDir -ItemType Directory -Force | Out-Null
 $mainSrc = Join-Path $SourceDir 'opencv'
 Invoke-GitClone -RepoUrl 'https://github.com/opencv/opencv.git' -Branch $OpenCvVersion -SourceDir $mainSrc | Out-Null
 

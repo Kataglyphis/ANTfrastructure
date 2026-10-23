@@ -56,8 +56,7 @@ Describe 'Build-VulkanValidationLayers: the layer manifest' {
 
     BeforeAll {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-VulkanValidationLayers.ps1' -FunctionName 'Assert-ValidationLayerManifest')
-        $script:dir = Join-Path ([IO.Path]::GetTempPath()) ('vvl-manifest-' + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path $script:dir | Out-Null
+        $script:dir = New-TestDir -Prefix 'vvl-manifest-'
         $script:written = 0
         function New-Manifest([string]$Name, [string]$Library) {
             $script:written++

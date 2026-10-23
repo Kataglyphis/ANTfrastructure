@@ -9,7 +9,7 @@ Describe 'Resolve-QnnSdk' {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
         $script:savedArch = $env:WINDOWS_TARGET_ARCH
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-qnn-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-qnn-'
         $script:drop = Join-Path $script:tmp 'drop'
         $script:extract = Join-Path $script:tmp 'extract'
         New-Item -Path $script:drop -ItemType Directory -Force | Out-Null
@@ -41,25 +41,17 @@ Describe 'Resolve-QnnSdk' {
     }
 
     It 'throws on a SHA mismatch and on a missing backend set for the target' {
-        $threw = $false
-        try { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 ('0' * 64) -ExtractDir $script:extract -Arch 'arm64' | Out-Null } catch { $threw = $true; Assert-True ($_.Exception.Message -match 'SHA256 mismatch') 'names the hash' }
-        Assert-True $threw 'hash mismatch must throw'
-        $threw = $false
-        try { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'amd64' | Out-Null } catch { $threw = $true; Assert-True ($_.Exception.Message -match 'QnnCpu\.dll missing') 'names the missing backend' }
-        Assert-True $threw 'the fake SDK has no x86_64 QnnCpu.dll -> amd64 must throw'
+        Assert-Throws { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 ('0' * 64) -ExtractDir $script:extract -Arch 'arm64' | Out-Null } 'hash mismatch must throw' -MessagePattern 'SHA256 mismatch'
+        Assert-Throws { Resolve-QnnSdk -DropDir $script:drop -ExpectedSha256 $script:sha -ExtractDir $script:extract -Arch 'amd64' | Out-Null } 'the fake SDK has no x86_64 QnnCpu.dll -> amd64 must throw' -MessagePattern 'QnnCpu\.dll missing'
     }
 
     It 'throws on two staged zips and on a zip that is not an SDK' {
         $two = Join-Path $script:tmp 'two'; New-Item $two -ItemType Directory -Force | Out-Null
         Copy-Item $script:zip (Join-Path $two 'a.zip'); Copy-Item $script:zip (Join-Path $two 'b.zip')
-        $threw = $false
-        try { Resolve-QnnSdk -DropDir $two -ExtractDir $script:extract -Arch 'arm64' | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'two zips must throw'
+        Assert-Throws { Resolve-QnnSdk -DropDir $two -ExtractDir $script:extract -Arch 'arm64' | Out-Null } 'two zips must throw'
         $junk = Join-Path $script:tmp 'junk'; New-Item (Join-Path $junk 'src') -ItemType Directory -Force | Out-Null
         Set-Content (Join-Path $junk 'src\readme.txt') 'not an sdk'
         [System.IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $junk 'src'), (Join-Path $junk 'notsdk.zip'))
-        $threw = $false
-        try { Resolve-QnnSdk -DropDir $junk -ExtractDir $script:extract -Arch 'arm64' | Out-Null } catch { $threw = $true; Assert-True ($_.Exception.Message -match 'QnnInterface\.h not found') 'names the anchor' }
-        Assert-True $threw 'a zip without include\QNN\QnnInterface.h must throw'
+        Assert-Throws { Resolve-QnnSdk -DropDir $junk -ExtractDir $script:extract -Arch 'arm64' | Out-Null } 'a zip without include\QNN\QnnInterface.h must throw' -MessagePattern 'QnnInterface\.h not found'
     }
 }

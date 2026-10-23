@@ -23,8 +23,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Test-TargetArch.ps1' `
                 -FunctionName 'Get-CoffMachine', 'Get-ArchiveMachine', 'Format-Machine')
 
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('archgate-' + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
+        $script:tmp = New-TestDir -Prefix 'archgate-'
 
         # Scriptblocks, not functions: Pester 5 It blocks do not see file-level functions.
         $script:NewPe = {

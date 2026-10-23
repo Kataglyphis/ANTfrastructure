@@ -9,8 +9,7 @@ Describe 'Invoke-NinjaBuildWithRetry -Targets' {
     BeforeAll {
         $root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
         Import-Module (Join-Path $root 'scripts\modules\WindowsSourceBuild.Common.psm1') -Force -DisableNameChecking
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-ninjat-' + [guid]::NewGuid().ToString('N'))
-        New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
+        $script:tmp = New-TestDir -Prefix 'wbt-ninjat-'
         @(
             '@echo off',
             'echo NINJA %* >> "%WBT_NINJA_LOG%"',

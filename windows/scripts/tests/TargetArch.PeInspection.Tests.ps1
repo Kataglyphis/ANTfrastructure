@@ -26,9 +26,7 @@ Describe 'PE inspection primitives' {
     }
 
     It 'Get-PeFileMachine throws on a non-PE file rather than returning 0' {
-        $threw = $false
-        try { Get-PeFileMachine -Path $script:notPe | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'a text file must be rejected, never mistaken for "matches nothing"'
+        Assert-Throws { Get-PeFileMachine -Path $script:notPe | Out-Null } 'a text file must be rejected, never mistaken for "matches nothing"'
     }
 
     It 'Get-PeImportNames lists the imported DLL names of a real PE (kernel32 -> ntdll)' {
@@ -47,9 +45,7 @@ Describe 'PE inspection primitives' {
     It 'Get-PeImportNames returns unique names and throws on a non-PE file' {
         $imports = @(Get-PeImportNames -Path $script:kernel32)
         Assert-Equal $imports.Count @($imports | Select-Object -Unique).Count 'names are unique'
-        $threw = $false
-        try { Get-PeImportNames -Path $script:notPe | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'non-PE input must throw'
+        Assert-Throws { Get-PeImportNames -Path $script:notPe | Out-Null } 'non-PE input must throw'
     }
 
     It 'Get-PeExportNames lists a real PE''s own exports; a forwarder only with -IncludeForwarded (kernel32)' {
@@ -58,8 +54,6 @@ Describe 'PE inspection primitives' {
         Assert-True ($own -ccontains 'GetProcAddress') 'GetProcAddress is kernel32''s own code'
         Assert-False ($own -ccontains 'AcquireSRWLockExclusive') 'AcquireSRWLockExclusive forwards to NTDLL'
         Assert-True ($all -ccontains 'AcquireSRWLockExclusive') 'and is listed when forwarders are asked for'
-        $threw = $false
-        try { Get-PeExportNames -Path $script:notPe | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'non-PE input must throw'
+        Assert-Throws { Get-PeExportNames -Path $script:notPe | Out-Null } 'non-PE input must throw'
     }
 }

@@ -9,8 +9,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' `
                 -FunctionName 'Get-WheelDistName', 'Get-RequirementName', 'Get-WheelRequirements', 'ConvertTo-CmdSafeRequirement')
 
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('stagedeps-' + [guid]::NewGuid().ToString('N'))
-        New-Item -ItemType Directory -Force -Path $script:tmp | Out-Null
+        $script:tmp = New-TestDir -Prefix 'stagedeps-'
 
         # The description after the blank line checks that parsing stops at the headers.
         $script:NewWheel = {
@@ -112,9 +111,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         $zip = [System.IO.Compression.ZipFile]::Open($p, 'Create')
         $zip.CreateEntry('wrong.txt') | Out-Null
         $zip.Dispose()
-        $threw = $false
-        try { Get-WheelRequirements $p | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'missing METADATA throws, not silently empty'
+        Assert-Throws { Get-WheelRequirements $p | Out-Null } 'missing METADATA throws, not silently empty'
     }
 }
 

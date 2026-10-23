@@ -6,7 +6,7 @@
 Describe 'TVM assembled-wheel helpers' {
 
     BeforeAll {
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-tvmwheel-' + [guid]::NewGuid().ToString('N'))
+        $script:tmp = New-TestDir -Prefix 'wbt-tvmwheel-'
         New-Item -ItemType Directory -Force -Path (Join-Path $script:tmp 'root\tvm_ffi\lib') | Out-Null
         Set-Content (Join-Path $script:tmp 'root\tvm_ffi\__init__.py') '# pkg'
         Set-Content (Join-Path $script:tmp 'root\tvm_ffi\core.cp314-win_arm64.pyd') 'not a real pyd'
@@ -39,9 +39,7 @@ Describe 'TVM assembled-wheel helpers' {
         Assert-Equal '0.1.13.post3' (Get-VendoredTvmFfiVersion -DescribeOutput 'v0.1.13-post3') 'dash-post tag'
         Assert-Equal '0.1.13' (Get-VendoredTvmFfiVersion -DescribeOutput "v0.1.13`n") 'plain tag, trailing newline'
         Assert-Equal '0.1.13.post2' (Get-VendoredTvmFfiVersion -DescribeOutput 'fatal: No names found' -TvmPyprojectText "dependencies = [`n  ""apache-tvm-ffi>=0.1.13.post2"",`n  ""numpy"",`n]") 'falls back to the >= bound'
-        $threw = $false
-        try { Get-VendoredTvmFfiVersion -DescribeOutput '' -TvmPyprojectText 'nothing here' | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'no tag and no bound must throw'
+        Assert-Throws { Get-VendoredTvmFfiVersion -DescribeOutput '' -TvmPyprojectText 'nothing here' | Out-Null } 'no tag and no bound must throw'
     }
 
     It 'reads the [project] dependencies block and nothing else' {

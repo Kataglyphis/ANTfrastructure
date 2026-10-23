@@ -7,8 +7,7 @@
 Describe 'Invoke-MesonBuildSubprojectPatch' {
 
     BeforeAll {
-        $script:tmp = Join-Path ([IO.Path]::GetTempPath()) ('wbt-meson-' + [guid]::NewGuid().ToString('N'))
-        New-Item -Path $script:tmp -ItemType Directory -Force | Out-Null
+        $script:tmp = New-TestDir -Prefix 'wbt-meson-'
 
         # meson 1.12.0 interpreter.py excerpts, LF line endings as pip installs them.
         $script:fixture = @(
@@ -66,22 +65,16 @@ Describe 'Invoke-MesonBuildSubprojectPatch' {
         $f = Join-Path $script:tmp 'drift-key.py'
         $one = $script:fixture -replace "(?m)^                return self\.disabled_subproject\(subp_name, exception=e\)\n            mlog\.error", "                return self.disabled_subproject(subp_name, exception=e, for_machine=for_machine)`n            mlog.error"
         [IO.File]::WriteAllText($f, $one)
-        $threw = $false
-        try { Invoke-MesonBuildSubprojectPatch -InterpreterPath $f | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'one site instead of two must throw'
+        Assert-Throws { Invoke-MesonBuildSubprojectPatch -InterpreterPath $f | Out-Null } 'one site instead of two must throw'
     }
 
     It 'throws when a configure_file line is missing (layout drift)' {
         $f = Join-Path $script:tmp 'drift-cf.py'
         [IO.File]::WriteAllText($f, ($script:fixture -replace 'return mesonlib\.File\.from_built_file\(self\.subdir, output\)', 'return self._cf_file(output)'))
-        $threw = $false
-        try { Invoke-MesonBuildSubprojectPatch -InterpreterPath $f | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'missing configure_file return line must throw'
+        Assert-Throws { Invoke-MesonBuildSubprojectPatch -InterpreterPath $f | Out-Null } 'missing configure_file return line must throw'
     }
 
     It 'throws when the interpreter file is missing' {
-        $threw = $false
-        try { Invoke-MesonBuildSubprojectPatch -InterpreterPath (Join-Path $script:tmp 'absent.py') | Out-Null } catch { $threw = $true }
-        Assert-True $threw 'missing file must throw'
+        Assert-Throws { Invoke-MesonBuildSubprojectPatch -InterpreterPath (Join-Path $script:tmp 'absent.py') | Out-Null } 'missing file must throw'
     }
 }

@@ -1201,3 +1201,19 @@ that points to `FIXTURE_WS`. Missing inputs fail in conditional callers too.
 The four Python CI suites append their own preparation and uv stubs; their wheel,
 packaging and interpreter assertions remain unchanged. Harness fixtures verify
 source bytes, paths with spaces and workspace binding without invoking uv.
+
+## Windows test fixture helpers
+
+`TestHarness.psm1` owns temporary directory allocation and
+exception assertions. `New-TestDir -Prefix` preserves each suite's diagnostic
+prefix and creates a unique directory. A suite-scoped fixture keeps its existing
+`AfterAll` cleanup; `Invoke-InTestDir` owns cleanup for one test body, including
+failures. `Assert-Throws -MessagePattern` checks both the exception and the
+expected diagnostic instead of copying a Boolean and catch block.
+
+The harness fixtures exercise directory creation, prefixes, cleanup and exception
+matching, with mutation proofs for allocation.
+
+OpenCV and its GStreamer plugin delegate checkout-directory creation to
+`Invoke-GitClone` and Git itself. They no longer pre-create the checkout parent;
+a local-repository regression covers cloning into missing parent directories.
