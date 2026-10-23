@@ -77,4 +77,73 @@ ORCHESTRATOR_UNSUPPORTED_FLAGS=""
 t_assert_fails orchestrator_warn_if_unsupported --push x
 unset ORCHESTRATOR_UNSUPPORTED_FLAGS
 
+t_case "both public parsers share architecture aliases, mirrors, globals and help"
+for parser_kind in orchestrator runtime; do
+  _mode='' _base='' _package='' _wrapper='' _app='' _intermediate=0
+  if [ "${parser_kind}" = orchestrator ]; then
+    parser_call=(parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu)
+  else
+    parser_call=(parse_shared_runtime_args _ta _ir _mode _base _package _wrapper _app _uf _fu _fp _intermediate)
+  fi
+  for flag in --architectures --target-arches; do
+    _ta=unchanged
+    _rc=0
+    "${parser_call[@]}" "${flag}" arm64,riscv64 || _rc=$?
+    t_assert_eq 2 "${_rc}"
+    t_assert_eq arm64,riscv64 "${_ta}"
+  done
+  for flag in --fast-ubuntu-mirror-url --fast-ubuntu-ports-mirror-url; do
+    _uf=false _fu=old-ubuntu _fp=old-ports
+    _rc=0
+    "${parser_call[@]}" "${flag}" 'https://fixture.invalid/path with spaces' || _rc=$?
+    t_assert_eq 2 "${_rc}"
+    t_assert_eq true "${_uf}"
+    if [ "${flag}" = --fast-ubuntu-mirror-url ]; then
+      t_assert_eq 'https://fixture.invalid/path with spaces' "${_fu}"
+      t_assert_eq old-ports "${_fp}"
+    else
+      t_assert_eq old-ubuntu "${_fu}"
+      t_assert_eq 'https://fixture.invalid/path with spaces' "${_fp}"
+    fi
+  done
+  _uf=false
+  _rc=0
+  "${parser_call[@]}" --fast-ubuntu-mirror '' || _rc=$?
+  t_assert_eq 1 "${_rc}"
+  t_assert_eq true "${_uf}"
+  for flag in --dry-run --parallel-archs --max-parallel-archs; do
+    DRY_RUN=0 PARALLEL_ARCHS=0 MAX_PARALLEL_ARCHS=0
+    _rc=0
+    "${parser_call[@]}" "${flag}" 3 || _rc=$?
+    case "${flag}" in
+      --dry-run) t_assert_eq 1 "${_rc}"; t_assert_eq 1 "${DRY_RUN}" ;;
+      --parallel-archs) t_assert_eq 1 "${_rc}"; t_assert_eq 1 "${PARALLEL_ARCHS}" ;;
+      --max-parallel-archs) t_assert_eq 2 "${_rc}"; t_assert_eq 3 "${MAX_PARALLEL_ARCHS}" ;;
+    esac
+  done
+  for flag in -h --help; do
+    _rc=0
+    "${parser_call[@]}" "${flag}" '' || _rc=$?
+    t_assert_eq 255 "${_rc}"
+  done
+  _ta=unchanged
+  _rc=0
+  "${parser_call[@]}" --unknown '' || _rc=$?
+  t_assert_eq 0 "${_rc}"
+  t_assert_eq unchanged "${_ta}"
+  t_assert_fails dispatch_parsed_args "${parser_call[@]}" --target-arches ''
+  t_assert_fails dispatch_parsed_args "${parser_call[@]}" --target-arches --push
+  t_assert_fails dispatch_parsed_args "${parser_call[@]}" --fast-ubuntu-mirror-url ''
+done
+
+t_case "project-specific options retain their destinations and return codes"
+_rc=0
+parse_shared_orchestrator_args _ta _uf _fu _fp _ir _vv _pu --image-repo fixture/repo || _rc=$?
+t_assert_eq 2 "${_rc}"
+t_assert_eq fixture/repo "${_ir}"
+_rc=0
+parse_shared_runtime_args _ta _ir _mode _base _package _wrapper _app _uf _fu _fp _intermediate --torch-dockerfile 'fixture Dockerfile' || _rc=$?
+t_assert_eq 2 "${_rc}"
+t_assert_eq 'fixture Dockerfile' "${_wrapper}"
+
 t_summary

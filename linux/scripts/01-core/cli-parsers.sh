@@ -41,6 +41,20 @@ _parse_global_flags() {
   esac
 }
 
+_parse_common_build_flags() {
+  local -n _pcbf_arches="$1"
+  local _pcbf_rc=0
+  _parse_global_flags "$5" "$6" || _pcbf_rc=$?
+  if [ "${_pcbf_rc}" -ne 0 ]; then return "${_pcbf_rc}"; fi
+  _parse_mirror_flags "$2" "$3" "$4" "$5" "$6" || _pcbf_rc=$?
+  if [ "${_pcbf_rc}" -ne 0 ]; then return "${_pcbf_rc}"; fi
+  case "$5" in
+    --target-arches|--architectures) _pcbf_arches="$6"; return 2 ;;
+    -h|--help) return 255 ;;
+    *) return 0 ;;
+  esac
+}
+
 # The cross orchestrators' shared flags: seven namerefs, then the loop's $1 $2.
 parse_shared_orchestrator_args() {
   local -n _psoa_target_arches=$1
@@ -54,23 +68,16 @@ parse_shared_orchestrator_args() {
   local arg="$1" val="$2"
 
   local _rc=0
-  _parse_global_flags "${arg}" "${val}" || _rc=$?
-  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
-
-  _parse_mirror_flags _psoa_use_fast_mirror _psoa_fast_mirror_url _psoa_fast_ports_url "${arg}" "${val}" || _rc=$?
+  _parse_common_build_flags _psoa_target_arches _psoa_use_fast_mirror _psoa_fast_mirror_url _psoa_fast_ports_url "${arg}" "${val}" || _rc=$?
   if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
 
   case "${arg}" in
-    --target-arches|--architectures)
-      _psoa_target_arches="${val}"; return 2 ;;
     --image-repo)
       _psoa_image_repo="${val}"; return 2 ;;
     --vulkan-version)
       _psoa_vulkan_version="${val}"; return 2 ;;
     --push)
       _psoa_push=1; return 1 ;;
-    -h|--help)
-      return 255 ;;
     *)
       return 0 ;;
   esac
@@ -148,15 +155,10 @@ parse_shared_runtime_args() {
   local arg="$1" val="$2"
 
   local _rc=0
-  _parse_global_flags "${arg}" "${val}" || _rc=$?
-  if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
-
-  _parse_mirror_flags _use_fast_mirror _fast_mirror_url _fast_ports_url "${arg}" "${val}" || _rc=$?
+  _parse_common_build_flags _target_arches _use_fast_mirror _fast_mirror_url _fast_ports_url "${arg}" "${val}" || _rc=$?
   if [ "${_rc}" -ne 0 ]; then return "${_rc}"; fi
 
   case "${arg}" in
-    --architectures|--target-arches)
-      _target_arches="${val}"; return 2 ;;
     --artifact-image-prefix)
       _artifact_image_prefix="${val}"; return 2 ;;
     --artifact-build-mode)
@@ -169,8 +171,6 @@ parse_shared_runtime_args() {
       _wrapper_dockerfile="${val}"; return 2 ;;
     --torch-app-mode)
       _torch_app_mode="${val}"; return 2 ;;
-    -h|--help)
-      return 255 ;;
     *)
       return 0 ;;
   esac

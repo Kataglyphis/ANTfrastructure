@@ -1217,3 +1217,13 @@ matching, with mutation proofs for allocation.
 OpenCV and its GStreamer plugin delegate checkout-directory creation to
 `Invoke-GitClone` and Git itself. They no longer pre-create the checkout parent;
 a local-repository regression covers cloning into missing parent directories.
+
+## Common build CLI dispatch
+
+`01-core/cli-parsers.sh` owns `_parse_common_build_flags` for the runtime and cross
+orchestrator parsers. It dispatches global options and mirror updates before
+architecture aliases and help. Existing nameref destinations, parser signatures
+and project-specific options stay unchanged. Return codes still mean unknown
+(`0`), one argument (`1`), a flag plus value (`2`), or help (`255`); the outer
+dispatcher retains its missing-value checks. The parser suite exercises both
+public entry points, including URL whitespace and swallowed option values.

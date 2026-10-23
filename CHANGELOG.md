@@ -12,6 +12,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share common runtime and cross CLI dispatch
+
+- Architecture aliases, mirrors, global options and help have one dispatcher; preserve public parser signatures, nameref outputs, value validation and argument counts.
+- Expand the parser suite to 81 assertions and add four mutation proofs; reduce its self-duplication budget from 43 to 21 shingles.
+
 ## 2026-10-23 — consolidate Windows test fixture families
 
 - Windows suites share prefixed temporary-directory allocation and exception assertions through the existing harness; retain their import scope and cleanup lifecycle.

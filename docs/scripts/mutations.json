@@ -17722,5 +17722,37 @@
   "replace": "detect_workspace() { :; }",
   "test": "bash linux/scripts/tests/test-harness-guards.sh",
   "why": "stubbed workspace detection must bind the caller fixture, never the real checkout"
+ },
+ {
+  "id": "probe.cli-common-global",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "_parse_global_flags \"$5\" \"$6\" || _pcbf_rc=$?",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "both public parsers must preserve dry-run and parallelism flags and their consumed argument counts"
+ },
+ {
+  "id": "probe.cli-common-mirror",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "_parse_mirror_flags \"$2\" \"$3\" \"$4\" \"$5\" \"$6\" || _pcbf_rc=$?",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "mirror enablement and the selected URL must reach both parser callers without changing the other URL"
+ },
+ {
+  "id": "probe.cli-common-arches",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "--target-arches|--architectures) _pcbf_arches=\"$6\"; return 2 ;;",
+  "replace": "--target-arches|--architectures) _pcbf_arches=\"$6\"; return 1 ;;",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "architecture aliases consume a value so the dispatcher can reject missing or swallowed values"
+ },
+ {
+  "id": "probe.cli-common-help",
+  "target": "linux/scripts/01-core/cli-parsers.sh",
+  "find": "-h|--help) return 255 ;;",
+  "replace": "-h|--help) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-cli-parsers.sh",
+  "why": "help must propagate the special return code instead of looking like an unknown flag"
  }
 ]
