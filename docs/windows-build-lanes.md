@@ -521,7 +521,8 @@ Housekeeping and sharing:
      `.bak-<stamp>`, restarts, re-deploys the GC toml). The rename frees
      NOTHING by itself.
   2. Delete the `.bak` trees — since 2026-08-21 only through
-     `windows/scripts/host/Clear-DiskSpace.ps1` (report first, then `-Apply`),
+     `windows/scripts/host/Clear-DiskSpace.ps1 -StoreHusksOnly` (report first,
+     then add `-Apply`; no daemon GC, TEMP, logs or checkout scratch),
      never a command composed on the spot: that day an improvised delete took
      a host's installed programs with it
      ([`windows-builds.md`](windows-builds.md#clear-diskspaceps1)). What this
@@ -531,6 +532,8 @@ Housekeeping and sharing:
      was 3–5× faster; plain `Remove-Item` failed outright on `Files\bootmgr`
      etc. The script deletes with `Remove-Item`, so a husk it reports as
      `locked or in use, left in place` is for a human to clear, not an agent.
+     A junction/symlink or unreadable subtree is also skipped, including when
+     it appears between the report and the immediate pre-delete scan.
   3. Re-seed the pinned base first
      ([`windows-host-setup.md`](windows-host-setup.md) § R2): a reset leaves the
      content store empty. Then one overnight ride rebuilds the chain. The sccache WebDAV store lives

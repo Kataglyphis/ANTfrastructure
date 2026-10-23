@@ -1994,16 +1994,21 @@ profile, and the host had to be rebuilt by hand).
 - Works from an ALLOWLIST, never a denylist; **reports by default, `-Apply` is required to delete**;
   every live-directory rule is **age-gated** (`-TempOlderThanDays`, default 7), so nothing in flight
   is touched.
+- `-StoreHusksOnly` selects only `C:\ProgramData\{containerd,buildkitd,Docker}.bak-*`
+  directories and disables every daemon report/prune call, even with `-Apply`. It excludes TEMP,
+  logs and checkout scratch. Report with this selector first; apply only after checking the list.
 - Fails the WHOLE run if any resolved candidate lands on a protected root (Program Files, Windows,
   ProgramData outside the container stores, user profiles, AppData, drive roots): that means the
   resolution logic is wrong, not that one target should be skipped.
-- Skips any candidate containing a junction/symlink: a reparse point is where a name stops
-  predicting what a recursive delete reaches.
-- **Never touches the sccache/ccache/cargo/uv compile caches** (CACHE1: hours of build time for a
-  few GB) or anything installed. Refuses the destructive half while a build looks live unless
-  `-AllowDuringBuild`.
+- Skips any candidate containing a junction/symlink or an unreadable descendant: an incomplete
+  traversal cannot prove containment. Rechecks the tree immediately before deletion. A skipped
+  or locked husk remains in place; do not bypass its ACLs or use a different deletion tool.
+- The **file allowlist excludes sccache/ccache/cargo/uv compile caches** and installed software.
+  Daemon GC is separate: its existing unfiltered BuildKit prune can select unused cache mounts;
+  use `-StoreHusksOnly` to disable it for husk cleanup. Refuses the destructive half while a build
+  looks live unless `-AllowDuringBuild`.
 - Parameters: `-Apply`, `-KeepGB` (buildkit free-space target, default 100), `-TempOlderThanDays`,
-  `-AllowDuringBuild`, `-NoDaemonPrune`.
+  `-AllowDuringBuild`, `-NoDaemonPrune`, `-StoreHusksOnly`.
 - Enforced from outside the script too, by the `PreToolUse` guard in
   `.claude/hooks/guard-destructive-deletes.ps1`; behaviour pinned by
   `windows/scripts/tests/Guard.DestructiveDeletes.Tests.ps1`.

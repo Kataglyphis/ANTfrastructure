@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — isolate old container-store husks during host cleanup
+
+- Add `Clear-DiskSpace.ps1 -StoreHusksOnly`: exactly the three existing renamed-store
+  directory patterns, report-only by default, with daemon calls disabled and TEMP/logs/scratch
+  excluded. Refuse incomplete reparse scans and recheck each candidate before deletion.
+- Exercise the actual cleanup functions with recorded operations, unreadable traversal and
+  a newly unsafe tree; retain protected-root, junction and age-gate regression coverage.
+
 ## 2026-10-23 — groom the open backlogs against merged evidence
 
 - Remove completed Omni fallback-font work and F1; retain dated closure evidence and archive

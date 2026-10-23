@@ -19,7 +19,10 @@ param(
     [switch]$AllowDuringBuild,
 
     # Skip the daemon GC levers (container layers) and only handle files.
-    [switch]$NoDaemonPrune
+    [switch]$NoDaemonPrune,
+
+    # Only renamed container stores; daemon GC is always disabled.
+    [switch]$StoreHusksOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -31,7 +34,7 @@ function Say([string]$m, [string]$c = 'Gray') {
 
 # The allowlist, root plus leaf pattern per rule, is the whole security boundary: adding a rule is a reviewed change.
 function Get-ReclaimRules {
-    param([int]$TempAgeDays = 7)
+    param([int]$TempAgeDays = 7, [switch]$StoreHusksOnly)
 
     $repoRoot = Split-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) -Parent
 
@@ -40,6 +43,9 @@ function Get-ReclaimRules {
         @{ Root = 'C:\ProgramData'; Leaf = 'containerd.bak-*'; Kind = 'Directory'; MinAgeDays = 0; What = 'containerd store husk' }
         @{ Root = 'C:\ProgramData'; Leaf = 'buildkitd.bak-*'; Kind = 'Directory'; MinAgeDays = 0; What = 'buildkitd store husk' }
         @{ Root = 'C:\ProgramData'; Leaf = 'Docker.bak-*'; Kind = 'Directory'; MinAgeDays = 0; What = 'docker store husk' }
+    )
+    if (-not $StoreHusksOnly) {
+        $rules += @(
         @{ Root = 'C:\ProgramData\kataglyphis'; Leaf = 'logs-*'; Kind = 'Any'; MinAgeDays = 7; What = 'rotated host-tool logs' }
 
         # --- temp: regenerable by definition, but AGE-GATED ---
@@ -49,7 +55,8 @@ function Get-ReclaimRules {
         # --- build scratch inside the checkout ---
         @{ Root = (Join-Path $repoRoot 'out'); Leaf = 'build-logs-*'; Kind = 'Any'; MinAgeDays = 3; What = 'archived build logs' }
         @{ Root = (Join-Path $repoRoot 'out'); Leaf = 'probe-*'; Kind = 'Directory'; MinAgeDays = 3; What = 'diagnostic probe scratch' }
-    )
+        )
+    }
 
     # A rule without a root is dropped, never resolved against the current directory.
     return @($rules | Where-Object { -not [string]::IsNullOrWhiteSpace($_.Root) })
@@ -94,7 +101,7 @@ function Test-HasReparsePoint {
         $self = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
         if ($self.Attributes -band [IO.FileAttributes]::ReparsePoint) { return $true }
         if (-not $self.PSIsContainer) { return $false }
-        $links = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -Attributes ReparsePoint -ErrorAction SilentlyContinue)
+        $links = @(Get-ChildItem -LiteralPath $Path -Recurse -Force -Attributes ReparsePoint -ErrorAction Stop)
         return ($links.Count -gt 0)
     } catch { return $true }
 }
@@ -143,7 +150,8 @@ function Get-ReclaimPlan {
 # Main
 function Invoke-FreeDiskSpace {
     Say '== resolving the allowlist ==' 'Cyan'
-    $plan = Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays)
+    $daemonPrune = -not ($NoDaemonPrune -or $StoreHusksOnly)
+    $plan = @(Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays -StoreHusksOnly:$StoreHusksOnly))
 
     # Fail closed: one target on a protected root means the resolution is wrong, so nothing runs.
     foreach ($t in $plan) {
@@ -167,16 +175,16 @@ function Invoke-FreeDiskSpace {
         if ($plan.Count -gt 40) { Say ('... and {0} more (not truncated at delete time)' -f ($plan.Count - 40)) 'DarkGray' }
 
         foreach ($l in ($plan | Where-Object { $_.Linked })) {
-            Say ('SKIP - contains a junction/symlink, a recursive delete could tunnel out of it: ' + $l.Path) 'Yellow'
+            Say ('SKIP - junction/symlink or unreadable tree: ' + $l.Path) 'Yellow'
         }
         $deletable = @($plan | Where-Object { -not $_.Linked })
-        Say ('total allow-listed: {0} GB across {1} entries ({2} skipped as linked)' -f
-            [math]::Round((($deletable | Measure-Object SizeGB -Sum).Sum), 2), $deletable.Count,
+        Say ('total allow-listed: {0} GB across {1} entries ({2} skipped as unsafe)' -f
+            [math]::Round((($deletable | ForEach-Object { $_.SizeGB } | Measure-Object -Sum).Sum), 2), $deletable.Count,
             ($plan.Count - $deletable.Count)) 'Yellow'
     }
 
     # ----------------------------------------------------- daemon levers ----
-    if (-not $NoDaemonPrune) {
+    if ($daemonPrune) {
         Say '== unused container layers (the big lever) ==' 'Cyan'
         try {
             $df = & docker system df 2>&1
@@ -185,7 +193,7 @@ function Invoke-FreeDiskSpace {
         } catch { Say '  docker not on PATH in this shell - no layer report (the prune levers below still apply).' 'DarkGray' }
         Say ('levers: buildctl prune --free-storage {0}  |  docker image prune -f' -f ($KeepGB * 1024))
         Say 'Both leave in-use and freshly-referenced records alone. See docs\windows-builds.md § Store GC.'
-        Say 'NOT pruned: sccache/ccache/cargo/uv compile caches - hours of build time, a few GB of disk.' 'DarkGray'
+        Say 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
     }
 
     # ------------------------------------------------------- the delete -----
@@ -204,7 +212,7 @@ function Invoke-FreeDiskSpace {
         return 1
     }
 
-    if (-not $NoDaemonPrune) {
+    if ($daemonPrune) {
         Say '== pruning unused container layers ==' 'Cyan'
         $freeTargetMB = $KeepGB * 1024
         try {
@@ -221,7 +229,7 @@ function Invoke-FreeDiskSpace {
     $freed = 0.0
     foreach ($t in $plan) {
         if (Test-Protected $t.Path) { Say ('SKIP (protected): ' + $t.Path) 'Red'; continue }
-        if ($t.Linked) { Say ('SKIP (junction/symlink inside): ' + $t.Path) 'Yellow'; continue }
+        if ($t.Linked -or (Test-HasReparsePoint $t.Path)) { Say ('SKIP (junction/symlink or unreadable tree): ' + $t.Path) 'Yellow'; continue }
         try {
             Remove-Item -LiteralPath $t.Path -Recurse -Force -ErrorAction Stop
             $freed += $t.SizeGB

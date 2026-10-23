@@ -139,6 +139,35 @@ Start-Service buildkitd
     }
 }
 
+function Invoke-ReclaimFixture {
+    param([string]$ScriptPath, [switch]$ApplyChanges, [switch]$PlanUnsafe, [switch]$FreshUnsafe)
+
+    . $ScriptPath
+    $fixture = @{ Deleted = @(); Daemons = @(); Scans = 0; Rules = @(); Messages = @() }
+    $settings = @{ Apply = $ApplyChanges; StoreHusksOnly = $true; NoDaemonPrune = $false; AllowDuringBuild = $false; TempOlderThanDays = 7; KeepGB = 100 }
+    foreach ($setting in $settings.GetEnumerator()) { Set-Variable -Name $setting.Key -Value $setting.Value -Scope Local }
+    function Say { param($m, $c); $fixture.Messages += $m }
+    function Get-ReclaimPlan {
+        param($Rules)
+        $fixture.Rules = @($Rules)
+        [pscustomobject]@{ Path = 'C:\ProgramData\Docker.bak-fixture'; What = 'fixture'; AgeDays = 30; SizeGB = 1; Linked = [bool]$PlanUnsafe }
+    }
+    function Test-Protected { param($Path); return $false }
+    function Test-HasReparsePoint { param($Path); $fixture.Scans++; return [bool]$FreshUnsafe }
+    $commands = @{
+        'Get-Process' = { param($Name, $ErrorAction) }
+        'Get-PSDrive' = { param($Name, $ErrorAction) }
+        'Remove-Item' = { param($LiteralPath, [switch]$Recurse, [switch]$Force, $ErrorAction); $fixture.Deleted += $LiteralPath }
+        'Write-Host' = { param([Parameter(ValueFromPipeline)]$Object); process { } }
+    }
+    foreach ($command in $commands.GetEnumerator()) { Set-Item -LiteralPath ('Function:local:' + $command.Key) -Value $command.Value }
+    function docker { $fixture.Daemons += 'docker'; $LASTEXITCODE = 0 }
+    function buildctl { $fixture.Daemons += 'buildctl'; $LASTEXITCODE = 0 }
+
+    $result = Invoke-FreeDiskSpace
+    [pscustomobject]@{ ExitCode = $result; Deleted = @($fixture.Deleted); Daemons = @($fixture.Daemons); Scans = $fixture.Scans; Rules = $fixture.Rules; Messages = $fixture.Messages }
+}
+
 Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
 
     # Dot-sourcing gives the functions without running anything.
@@ -172,6 +201,61 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
         foreach ($r in ($rules | Where-Object { $_.Root -match 'Temp' })) {
             Assert-True ($r.MinAgeDays -ge 1) "temp rule is not age-gated: $($r.Root)"
         }
+    }
+
+    It 'store-husks-only selects exactly the three existing renamed stores' {
+        $rules = @(Get-ReclaimRules -StoreHusksOnly)
+        Assert-Equal 3 $rules.Count
+        Assert-Equal 'buildkitd.bak-*|containerd.bak-*|Docker.bak-*' (($rules.Leaf | Sort-Object) -join '|')
+        foreach ($rule in $rules) {
+            Assert-Equal 'C:\ProgramData' $rule.Root
+            Assert-Equal 'Directory' $rule.Kind
+            Assert-Equal 0 $rule.MinAgeDays
+        }
+    }
+
+    It 'store-husks-only reports without deleting or calling either daemon' {
+        $result = Invoke-ReclaimFixture -ScriptPath $reclaim
+        Assert-Equal 0 $result.ExitCode
+        Assert-Equal 0 $result.Deleted.Count
+        Assert-Equal 0 $result.Daemons.Count
+        Assert-Equal 3 $result.Rules.Count
+    }
+
+    It 'store-husks-only apply deletes a safe fixture without daemon GC' {
+        $result = Invoke-ReclaimFixture -ScriptPath $reclaim -ApplyChanges
+        Assert-Equal 0 $result.ExitCode
+        Assert-Equal 'C:\ProgramData\Docker.bak-fixture' ($result.Deleted -join '|')
+        Assert-Equal 0 $result.Daemons.Count
+        Assert-Equal 1 $result.Scans
+        Assert-Equal 3 $result.Rules.Count
+    }
+
+    It 'refuses an unreadable descendant rather than treating it as link-free' {
+        $unsafe = & {
+            . (Get-ScriptFunctionDefinition -ScriptPath $reclaim -FunctionName 'Test-HasReparsePoint')
+            Set-Item -LiteralPath 'Function:local:Get-Item' -Value { param($LiteralPath, [switch]$Force, $ErrorAction); [pscustomobject]@{ Attributes = [IO.FileAttributes]::Directory; PSIsContainer = $true } }
+            Set-Item -LiteralPath 'Function:local:Get-ChildItem' -Value {
+                [CmdletBinding()]
+                param($LiteralPath, [switch]$Recurse, [switch]$Force, $Attributes)
+                Write-Error 'fixture descendant access denied' -Category PermissionDenied
+            }
+            Test-HasReparsePoint 'C:\ProgramData\Docker.bak-fixture'
+        }
+        Assert-True $unsafe 'an incomplete traversal was accepted as safe'
+    }
+
+    It 'never deletes a candidate already marked unsafe by the plan' {
+        $result = Invoke-ReclaimFixture -ScriptPath $reclaim -ApplyChanges -PlanUnsafe
+        Assert-Equal 0 $result.ExitCode
+        Assert-Equal 0 $result.Deleted.Count
+    }
+
+    It 'rechecks immediately before deletion and refuses a newly unsafe tree' {
+        $result = Invoke-ReclaimFixture -ScriptPath $reclaim -ApplyChanges -FreshUnsafe
+        Assert-Equal 0 $result.ExitCode
+        Assert-Equal 1 $result.Scans
+        Assert-Equal 0 $result.Deleted.Count
     }
 
     It 'age-gates: work in flight survives, stale entries are candidates' {
