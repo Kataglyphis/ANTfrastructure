@@ -12,6 +12,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — parallel duplication cleanup
+
+- Share cross-Python context, directory lookup and pkg-config suffix composition while preserving staged precedence, argument forwarding and failure paths; share the foreign-target guard without changing raw comparisons or errexit.
+- Share Vulkan target launch arguments and component accounting; retain command traces, required-component failures, loader WSI checks and glslang shared/static order.
+- Share Windows architecture, artifact and UV test fixtures, preserving malformed binary layouts, child exit-code checks, caller-owned errors and package-specific assertions.
+- Share workflow YAML fixture builders and wheel-metadata fixtures; preserve malformed cases and strengthen the metadata-header boundary proof.
+- Add local regression and mutation proofs; remove resolved duplication exemptions without changing scan coverage or thresholds.
+
 ## 2026-10-23 — share compiler selection, logging and OCI fixtures
 
 - TVM compiler validation and selection share pinned-name and fallback resolution; preserve overrides, wrapper inputs and missing-tool failures.

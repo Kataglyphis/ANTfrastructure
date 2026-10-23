@@ -8,6 +8,9 @@ VULKAN_SH="${TESTS_DIR}/../02-toolchain/vulkan.sh"
 # Only the functions under test: sourcing vulkan.sh sets -euo pipefail and pulls in 01-core.
 _FNS=""
 for _fn in _cross_build_sdk_component \
+           _vk_note_attempt \
+           _vk_note_success \
+           _vk_build_target_component \
            _vulkan_setup_cross_pkgconfig \
            _vulkan_target_copy_headers \
            _vulkan_loader_wsi_missing \

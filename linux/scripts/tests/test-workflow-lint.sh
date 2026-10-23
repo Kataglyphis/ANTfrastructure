@@ -25,12 +25,17 @@ _conv_half() {
   printf '%s\n' "$2" > "$1/linux/scripts/workflow-conventions.allow"
 }
 
+_new_workflow_tree() {
+  local d; d="$(mktemp -d "${_work}/$2.XXXXXX")"
+  mkdir -p "${d}/.github/workflows"
+  git -C "${d}" init -q
+  git -C "${d}" remote add origin "https://github.com/Kataglyphis/$1.git"
+  printf '%s' "$d"
+}
+
 # _root <clean|broken|shellonly>: conventions-clean on purpose (ubuntu-24.04, a declared origin); `shellonly` is SC1010 only.
 _root() {
-  local d; d="$(mktemp -d "${_work}/root.XXXXXX")"
-  mkdir -p "${d}/.github/workflows"
-  git -C "${d}" init -q   # actionlint resolves a project from the enclosing repo
-  git -C "${d}" remote add origin "https://github.com/Kataglyphis/OxidANT.git"
+  local d; d="$(_new_workflow_tree OxidANT root)"
   {
     printf 'name: ci\non: push\npermissions:\n  contents: read\njobs:\n  build:\n'
     printf '    runs-on: ubuntu-24.04\n    timeout-minutes: 5\n    steps:\n'
@@ -82,7 +87,7 @@ _stage() {
 }
 
 _pin_tree() {  # <tool-pins.env body>
-  local d; d="$(mktemp -d "${_work}/pin.XXXXXX")"
+  local d; d="$(_new_workflow_tree OxidANT pin)"
   _stage "${d}" lint-workflows.sh 0755
   _stage "${d}" 01-core/load-versions-env.sh
   _stage "${d}" 01-core/lint-tool-release.sh
@@ -90,9 +95,6 @@ _pin_tree() {  # <tool-pins.env body>
   # The gate sources the interpreter probe before its Python half.
   _stage "${d}" 01-core/python-probe.sh
   printf '%s\n' "$1" > "${d}/linux/scripts/01-core/tool-pins.env"
-  mkdir -p "${d}/.github/workflows"
-  git -C "${d}" init -q
-  git -C "${d}" remote add origin "https://github.com/Kataglyphis/OxidANT.git"
   printf '%s' "${d}"
 }
 
@@ -179,29 +181,43 @@ t_assert_fails grep -q -F -e 'does not resolve on PATH' <<<"${_out}"
 
 # _conv_root <name> <body>: `origin` names a declared repository, which is what keys the allow rows.
 _conv_root() {
-  local d; d="$(mktemp -d "${_work}/conv.XXXXXX")"
-  mkdir -p "${d}/.github/workflows"
-  git -C "${d}" init -q
-  git -C "${d}" remote add origin "https://github.com/Kataglyphis/$1.git"
+  local d; d="$(_new_workflow_tree "$1" conv)"
   printf '%s\n' "$2" > "${d}/.github/workflows/ci.yml"
   printf '%s' "${d}"
 }
 
-# Keeps all four conventions, so a red below is about the one thing its case changed.
-_CONV_CLEAN='name: ci
+_workflow_job_header() {
+  cat <<'YAML'
+name: ci
 on: push
 permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/upload-artifact@v7
-        with:
-          name: out
-          path: dist
-          if-no-files-found: error'
+YAML
+}
+
+_workflow_matrix_body() {
+  local include_indent="$1" timeout="$2"
+  _workflow_job_header
+  printf '    strategy:\n      matrix:\n        include:\n'
+  printf '%*s- runs_on: windows-latest\n' "$include_indent" ''
+  printf '%s\n' '    runs-on: ${{ matrix.runs_on }}'
+  printf '    timeout-minutes: %s\n    steps:\n      - run: echo hi\n' "$timeout"
+}
+
+_workflow_upload_body() {
+  local step_indent="$1" timeout="$2" strict="$3"
+  _workflow_job_header
+  printf '    runs-on: ubuntu-24.04\n    timeout-minutes: %s\n    steps:\n' "$timeout"
+  printf '%*s- uses: actions/upload-artifact@v7\n' "$step_indent" ''
+  printf '%*swith:\n' "$((step_indent + 2))" ''
+  printf '%*sname: out\n%*spath: dist\n' "$((step_indent + 4))" '' "$((step_indent + 4))" ''
+  if [ "$strict" = error ]; then printf '%*sif-no-files-found: error\n' "$((step_indent + 4))" ''; fi
+}
+
+# Keeps all four conventions, so a red below is about the one thing its case changed.
+_CONV_CLEAN="$(_workflow_upload_body 6 15 error)"
 
 # The same workflow with all three ramped conventions broken and nothing else.
 _CONV_RAMPED='name: ci
@@ -245,20 +261,7 @@ t_assert_contains "$(t_out _conv "${d}")" "[runner-ban] runner label 'ubuntu-lat
 
 t_case "a *-latest label reached through a matrix column is caught too"
 # Through a matrix the banned alias sits lines away from `runs-on:`, out of a grep's reach.
-d="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-          - runs_on: windows-latest
-    runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 15
-    steps:
-      - run: echo hi')"
+d="$(_conv_root OxidANT "$(_workflow_matrix_body 10 15)")"
 t_assert_eq "1" "$(t_rc _conv "${d}")"
 t_assert_contains "$(t_out _conv "${d}")" "runner label 'windows-latest'"
 
@@ -412,39 +415,14 @@ _p_armed() { WORKFLOW_CONVENTIONS_GATE=1 _conv_at "${phub}" "$1"; }
 
 t_case "a block sequence at the SAME column as its key is read, not dropped"
 # Entries flush under `steps:` are valid YAML and must not parse as an empty key.
-d="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-    - uses: actions/upload-artifact@v7
-      with:
-        name: out
-        path: dist')"
+d="$(_conv_root OxidANT "$(_workflow_upload_body 4 5 absent)")"
 t_assert_contains "$(t_out _p "${d}")" "[artifact-error] upload-artifact step" \
   "a dropped steps: list is a clean bill over an upload that can ship nothing and stay green"
 t_assert_eq "1" "$(t_rc _p_armed "${d}")"
 
 t_case "...and a same-column sequence does not truncate the keys after it"
 # A flush matrix `include:` must not swallow the rest of its job.
-d="$(_conv_root OxidANT 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    strategy:
-      matrix:
-        include:
-        - runs_on: windows-latest
-    runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 5
-    steps:
-      - run: echo hi')"
+d="$(_conv_root OxidANT "$(_workflow_matrix_body 8 5)")"
 _out="$(t_out _p "${d}")"
 t_assert_contains "${_out}" "runner label 'windows-latest'"
 t_assert_fails grep -q -F -e '[job-timeout]' <<<"${_out}" \
@@ -572,15 +550,7 @@ t_assert_eq "0" "$(t_rc _conv_at "${hube}" "${one_off}")"
 t_assert_contains "$(t_out _conv_at "${hube}" "${one_off}")" "RATCHET [job-timeout] is down to 1"
 
 # Named the hub, whose own commit can edit the row, so its shrink must be recorded.
-hub_root="$(_conv_root ANTfrastructure 'name: ci
-on: push
-permissions:
-  contents: read
-jobs:
-  build:
-    runs-on: ubuntu-24.04
-    steps:
-      - run: echo hi')"
+hub_root="$(_conv_root ANTfrastructure "$(cat "${one_off}/.github/workflows/ci.yml")")"
 
 t_case "...but an unrecorded shrink in the HUB fails, like every other allow file here"
 hubf="$(_conv_hub 'CENSUS | ANTfrastructure | job-timeout | 4 | above the fixture on purpose')"

@@ -25,57 +25,8 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
         $script:tmp = New-TestDir -Prefix 'archgate-'
 
-        # Scriptblocks, not functions: Pester 5 It blocks do not see file-level functions.
-        $script:NewPe = {
-            param([string]$Path, [int]$Machine)
-            $bytes = New-Object byte[] 0x48
-            $bytes[0] = 0x4D; $bytes[1] = 0x5A
-            $bytes[0x3C] = 0x40; $bytes[0x3D] = 0x00; $bytes[0x3E] = 0x00; $bytes[0x3F] = 0x00
-            $bytes[0x40] = 0x50; $bytes[0x41] = 0x45; $bytes[0x42] = 0x00; $bytes[0x43] = 0x00
-            $bytes[0x44] = $Machine -band 0xFF
-            $bytes[0x45] = ($Machine -shr 8) -band 0xFF
-            [IO.File]::WriteAllBytes($Path, $bytes)
-        }
-        $script:NewCoffObj = {
-            param([string]$Path, [int]$Machine)
-            $bytes = New-Object byte[] 4
-            $bytes[0] = $Machine -band 0xFF
-            $bytes[1] = ($Machine -shr 8) -band 0xFF
-            [IO.File]::WriteAllBytes($Path, $bytes)
-        }
-        # The widths are the ar spec; one wrong PadRight makes the fixture silently unparseable.
-        $script:WriteArMemberHeader = {
-            param([System.IO.BinaryWriter]$Writer, [string]$MemberName)
-            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes($MemberName.PadRight(16).Substring(0, 16)))
-            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(12)))
-            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('0'.PadRight(6)))
-            $Writer.Write([System.Text.Encoding]::ASCII.GetBytes('100644'.PadRight(8)))
-        }
-        $script:NewArchive = {
-            param([string]$Path, [int]$Machine, [switch]$ShortImport, [string]$MemberName = 'foo.obj')
-            $ms = New-Object System.IO.MemoryStream
-            $bw = New-Object System.IO.BinaryWriter($ms)
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes("!<arch>`n"))
-            & $script:WriteArMemberHeader $bw $MemberName
-            $payload = if ($ShortImport) {
-                $p = New-Object byte[] 20
-                $p[2] = 0xFF; $p[3] = 0xFF
-                $p[6] = $Machine -band 0xFF
-                $p[7] = ($Machine -shr 8) -band 0xFF
-                ,$p
-            } else {
-                $p = New-Object byte[] 20
-                $p[0] = $Machine -band 0xFF
-                $p[1] = ($Machine -shr 8) -band 0xFF
-                ,$p
-            }
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes("$($payload.Length)".PadLeft(10)))
-            $bw.Write([System.Text.Encoding]::ASCII.GetBytes("`r`n"))
-            $bw.Write($payload)
-            $bw.Flush()
-            [IO.File]::WriteAllBytes($Path, $ms.ToArray())
-        }
+        Import-Module (Join-Path $PSScriptRoot 'WindowsArchGate.Fixture.psm1') -DisableNameChecking
+
     }
 
     AfterAll {
@@ -86,25 +37,25 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     It 'Get-CoffMachine reads an AMD64 PE image' {
         $p = Join-Path $script:tmp 'amd64.dll'
-        & $script:NewPe -Path $p -Machine 0x8664
+        New-OrtTestPe -Path $p -Machine 0x8664
         Assert-Equal 0x8664 (Get-CoffMachine -LiteralPath $p) 'AMD64 PE machine'
     }
 
     It 'Get-CoffMachine reads an ARM64 PE image' {
         $p = Join-Path $script:tmp 'arm64.dll'
-        & $script:NewPe -Path $p -Machine 0xAA64
+        New-OrtTestPe -Path $p -Machine 0xAA64
         Assert-Equal 0xAA64 (Get-CoffMachine -LiteralPath $p) 'ARM64 PE machine'
     }
 
     It 'Get-CoffMachine reads an ARM64EC PE image' {
         $p = Join-Path $script:tmp 'arm64ec.dll'
-        & $script:NewPe -Path $p -Machine 0xA641
+        New-OrtTestPe -Path $p -Machine 0xA641
         Assert-Equal 0xA641 (Get-CoffMachine -LiteralPath $p) 'ARM64EC PE machine'
     }
 
     It 'Get-CoffMachine reads a COFF object (.obj) machine from byte 0' {
         $p = Join-Path $script:tmp 'foo.obj'
-        & $script:NewCoffObj -Path $p -Machine 0x8664
+        New-ArchGateMachineFile -Path $p -Machine 0x8664 -Kind Coff
         Assert-Equal 0x8664 (Get-CoffMachine -LiteralPath $p) 'COFF object machine at offset 0'
     }
 
@@ -129,23 +80,14 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     It 'Get-CoffMachine returns null when e_lfanew points outside the file' {
         $p = Join-Path $script:tmp 'bad-pe.dll'
-        $bytes = New-Object byte[] 64
-        $bytes[0] = 0x4D; $bytes[1] = 0x5A
-        # e_lfanew = 0x100 (beyond the 64-byte file)
-        $bytes[0x3C] = 0x00; $bytes[0x3D] = 0x01; $bytes[0x3E] = 0x00; $bytes[0x3F] = 0x00
-        [IO.File]::WriteAllBytes($p, $bytes)
+        New-ArchGateMachineFile -Path $p -Kind BadOffset
         $r = Get-CoffMachine -LiteralPath $p
         Assert-Null $r 'PE with e_lfanew past EOF returns null'
     }
 
     It 'Get-CoffMachine returns null when the PE signature is wrong' {
         $p = Join-Path $script:tmp 'bad-sig.dll'
-        $bytes = New-Object byte[] 66
-        $bytes[0] = 0x4D; $bytes[1] = 0x5A
-        $bytes[0x3C] = 0x38; $bytes[0x3D] = 0x00; $bytes[0x3E] = 0x00; $bytes[0x3F] = 0x00
-        # "NE" instead of "PE"
-        $bytes[0x38] = 0x4E; $bytes[0x39] = 0x45; $bytes[0x3A] = 0x00; $bytes[0x3B] = 0x00
-        [IO.File]::WriteAllBytes($p, $bytes)
+        New-ArchGateMachineFile -Path $p -Kind BadSignature
         $r = Get-CoffMachine -LiteralPath $p
         Assert-Null $r 'wrong PE signature returns null'
     }
@@ -154,43 +96,25 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     It 'Get-ArchiveMachine reads a short-import archive (AMD64)' {
         $p = Join-Path $script:tmp 'amd64.lib'
-        & $script:NewArchive -Path $p -Machine 0x8664 -ShortImport
+        New-ArchGateArchive -Path $p -Machine 0x8664 -ShortImport
         Assert-Equal 0x8664 (Get-ArchiveMachine -LiteralPath $p) 'short-import AMD64 archive'
     }
 
     It 'Get-ArchiveMachine reads a short-import archive (ARM64)' {
         $p = Join-Path $script:tmp 'arm64.lib'
-        & $script:NewArchive -Path $p -Machine 0xAA64 -ShortImport
+        New-ArchGateArchive -Path $p -Machine 0xAA64 -ShortImport
         Assert-Equal 0xAA64 (Get-ArchiveMachine -LiteralPath $p) 'short-import ARM64 archive'
     }
 
     It 'Get-ArchiveMachine reads a raw-object archive' {
         $p = Join-Path $script:tmp 'raw.lib'
-        & $script:NewArchive -Path $p -Machine 0xAA64
+        New-ArchGateArchive -Path $p -Machine 0xAA64
         Assert-Equal 0xAA64 (Get-ArchiveMachine -LiteralPath $p) 'raw-object ARM64 archive'
     }
 
     It 'Get-ArchiveMachine skips the linker members (/ and //) and reads the first real member' {
         $p = Join-Path $script:tmp 'with-linker.lib'
-        # Build an archive with a "/" member first, then the real short-import member.
-        $ms = New-Object System.IO.MemoryStream
-        $bw = New-Object System.IO.BinaryWriter($ms)
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes("!<arch>`n"))
-        # First member: "/" (linker member), size 4
-        & $script:WriteArMemberHeader $bw '/'
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('         4'))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes("`r`n"))
-        $bw.Write([byte[]](0, 0, 0, 0))  # 4-byte payload
-        # Second member: real object, short-import, ARM64
-        & $script:WriteArMemberHeader $bw 'foo.obj'
-        $payload = New-Object byte[] 20
-        $payload[2] = 0xFF; $payload[3] = 0xFF
-        $payload[6] = 0x64; $payload[7] = 0xAA  # 0xAA64 little-endian
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes("$($payload.Length)".PadLeft(10)))
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes("`r`n"))
-        $bw.Write($payload)
-        $bw.Flush()
-        [IO.File]::WriteAllBytes($p, $ms.ToArray())
+        New-ArchGateArchive -Path $p -Machine 0xAA64 -ShortImport -LinkerMember
         Assert-Equal 0xAA64 (Get-ArchiveMachine -LiteralPath $p) 'skipped "/" linker member and read the real member'
     }
 
@@ -223,14 +147,7 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 
     It 'Get-ArchiveMachine returns null for a malformed size field (no throw)' {
         $p = Join-Path $script:tmp 'bad-size.lib'
-        $ms = New-Object System.IO.MemoryStream
-        $bw = New-Object System.IO.BinaryWriter($ms)
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes("!<arch>`n"))
-        & $script:WriteArMemberHeader $bw 'foo.obj'
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes('NOTANUMBER'))  # 10 bytes, not a number
-        $bw.Write([System.Text.Encoding]::ASCII.GetBytes("`r`n"))
-        $bw.Flush()
-        [IO.File]::WriteAllBytes($p, $ms.ToArray())
+        New-ArchGateArchive -Path $p -Machine 0xAA64 -InvalidSize
         $r = Get-ArchiveMachine -LiteralPath $p
         Assert-Null $r 'malformed size returns null, not an exception'
     }
@@ -247,22 +164,21 @@ Describe 'verify-target-arch: Get-CoffMachine / Get-ArchiveMachine' {
 }
 
 Describe 'verify-target-arch: device-OS import allowances (#121 QNN)' {
+    BeforeAll { $script:archGateText = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Test-TargetArch.ps1').Extent.Text }
 
-    It 'classifies the Qualcomm FastRPC drivers as device OS (libcdsprpc/libadsprpc)' {
-        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts/build/Test-TargetArch.ps1')
-        Assert-True ($scriptText.Contains('lib(cds|ads)prpc\.dll')) 'libcdsprpc/libadsprpc must be client-OS allowed (QAIRT HTP stubs import them; they ship in every Windows-on-Snapdragon OS image)'
-        Assert-True ($scriptText.Contains('FastRPC')) 'the comment must say why'
+    It '<Name>' -ForEach @(
+        @{ Name = 'classifies the Qualcomm FastRPC drivers as device OS (libcdsprpc/libadsprpc)'; Literal = 'lib(cds|ads)prpc\.dll'; Why = 'FastRPC' }
+        @{ Name = "allowlists the cp313 torch stack's interpreter as an external (python313.dll)"; Literal = 'python313\.dll'; Why = 'cp313' }
+    ) {
+        Assert-True ($script:archGateText.Contains($Literal)) "the gate must retain its import allowance: $Literal"
+        Assert-True ($script:archGateText.Contains($Why)) "the allowance must retain its reason: $Why"
     }
 
-    It 'allowlists the cp313 torch stack''s interpreter as an external (python313.dll)' {
-        $scriptText = Get-Content -Raw (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'scripts/build/Test-TargetArch.ps1')
-        Assert-True ($scriptText.Contains('python313\.dll')) 'the cp313 wheels import python313.dll; the bundle ships python314 and the device provides the 3.13 interpreter'
-        Assert-True ($scriptText.Contains('cp313')) 'the comment must say why'
-    }
 }
 
 Describe 'verify-target-arch: the import walk opens every wheel' {
     BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot 'WindowsArchGate.Fixture.psm1') -DisableNameChecking
         # The gate resolves system imports against $env:SystemRoot\System32; a fake one holds the names these fixtures import.
         $script:savedSystemRoot = $env:SystemRoot
         $script:fakeSystemRoot = Join-Path $TestDrive 'Windows'
@@ -279,9 +195,7 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
 
     It 'walks two same-named wheels, as the GIL and the free-threaded tree each ship ensurepip''s pip' {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
-        Invoke-InTestDir { param($d)
-            $rt = Join-Path $d 'runtime'
-            New-OrtTestPe -Path (Join-Path $rt 'python\python314.dll') -Machine 0xAA64 -Import 'kernel32.dll'
+        Invoke-ArchGateFixture -Body { param($d, $rt)
             foreach ($tree in 'python', 'python-freethreaded') {
                 $src = Join-Path $d "wheel-$tree"
                 New-OrtTestPe -Path (Join-Path $src 'pip\_vendor\distlib\t64-arm.exe') -Machine 0xAA64 -Import 'kernel32.dll'
@@ -289,79 +203,65 @@ Describe 'verify-target-arch: the import walk opens every wheel' {
                 New-Item -ItemType Directory -Force -Path (Split-Path $whl) | Out-Null
                 [IO.Compression.ZipFile]::CreateFromDirectory($src, $whl)
             }
-            # A child process: the gate re-imports its arch module with -Force.
-            $out = @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1)
-            Assert-Equal 0 $LASTEXITCODE "the gate failed: $($out -join ' | ')"
-            Assert-Match 'import walk: 3 file\(s\) walked, 0 unresolved' ($out -join "`n") 'the DLL and the launcher of each wheel'
+            Assert-ArchGateTree -Path $rt -Pattern 'import walk: 3 file\(s\) walked, 0 unresolved'
+
         }
     }
 
     It 'machine-checks every wheel member, and a cp3XYt wheel''s modules may import only python3XYt.dll (mutation)' {
-        Invoke-InTestDir { param($d)
-            $rt = Join-Path $d 'runtime'
-            # Both runtimes ship in the bundle, so the walk resolves either; only the ABI check tells them apart.
-            foreach ($dll in 'python\python314.dll', 'python-freethreaded\python314t.dll') { New-OrtTestPe -Path (Join-Path $rt $dll) -Machine 0xAA64 -Import 'kernel32.dll' }
+        Invoke-ArchGateFixture -RuntimeDll 'python\python314.dll', 'python-freethreaded\python314t.dll' -Body { param($d, $rt)
             $whl = Join-Path $rt 'wheels-cp314t\av-1.0-cp314-cp314t-win_arm64.whl'
-            $pack = { param([hashtable]$Member) Remove-Item -LiteralPath $whl -ErrorAction SilentlyContinue; [void](New-TestWheel -Path $whl -Member $Member) }
-            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $rt -Arch arm64 -MinInspected 1 -ImportWalk 2>&1) -join "`n" }
-            & $pack @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0xAA64; Import = 'python314t.dll' }; 'av\avutil.dll' = @{ Machine = 0xAA64; Import = 'kernel32.dll' } }
-            $out = & $gate
-            Assert-Equal 0 $LASTEXITCODE "a clean twin passes: $out"
-            Assert-Match 'cp3XYt wheels: 1 wheel\(s\), 1 module\(s\) import their free-threaded runtime, 0 finding\(s\)' $out 'counted'
-            & $pack @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0x8664; Import = 'python314t.dll' } }
-            $out = & $gate
-            Assert-True ($LASTEXITCODE -ne 0) 'an x64 member fails the arch gate'
-            Assert-Match 'av-1\.0-cp314-cp314t-win_arm64\.whl!av[\\/]_core\.cp314t-win_arm64\.pyd  is 0x8664 \(AMD64\)' $out 'the member is named inside its wheel'
-            & $pack @{ 'av\_core.pyd' = @{ Machine = 0xAA64; Import = 'python314.dll' } }
-            $out = & $gate
-            Assert-True ($LASTEXITCODE -ne 0) 'a GIL module in a cp3XYt wheel fails'
-            Assert-Match 'FREE-THREADED ABI: .*av[\\/]_core\.pyd imports python314\.dll, not python314t\.dll' $out 'the GIL runtime'
-            Assert-Match 'FREE-THREADED ABI: .*av-1\.0-cp314-cp314t-win_arm64\.whl has no module importing its free-threaded runtime' $out 'and none imports its own'
+            New-ArchGateWheel -Path $whl -Member @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0xAA64; Import = 'python314t.dll' }; 'av\avutil.dll' = @{ Machine = 0xAA64; Import = 'kernel32.dll' } }
+            Assert-ArchGateTree -Path $rt -Pattern 'cp3XYt wheels: 1 wheel\(s\), 1 module\(s\) import their free-threaded runtime, 0 finding\(s\)'
+            New-ArchGateWheel -Path $whl -Member @{ 'av\_core.cp314t-win_arm64.pyd' = @{ Machine = 0x8664; Import = 'python314t.dll' } }
+            Assert-ArchGateTree -Path $rt -Fails -Pattern 'av-1\.0-cp314-cp314t-win_arm64\.whl!av[\\/]_core\.cp314t-win_arm64\.pyd  is 0x8664 \(AMD64\)'
+            New-ArchGateWheel -Path $whl -Member @{ 'av\_core.pyd' = @{ Machine = 0xAA64; Import = 'python314.dll' } }
+            Assert-ArchGateTree -Path $rt -Fails -Pattern @(
+                'FREE-THREADED ABI: .*av[\\/]_core\.pyd imports python314\.dll, not python314t\.dll'
+                'FREE-THREADED ABI: .*av-1\.0-cp314-cp314t-win_arm64\.whl has no module importing its free-threaded runtime'
+            )
         }
     }
 
     It 'skips an NSIS installer, an x86 stub on every arch, and still fails an x86 exe without the NSIS header (mutation)' {
-        Invoke-InTestDir { param($d)
-            $tree = Join-Path $d 'dist'
-            New-OrtTestPe -Path (Join-Path $tree 'bundle\bin\app.exe') -Machine 0xAA64 -Import 'kernel32.dll'
+        Invoke-ArchGateFixture -RootName dist -RuntimeDll 'bundle\bin\app.exe' -Body { param($d, $tree)
             $setup = Join-Path $tree 'packages\App-1.0-Release-aarch64.exe'
             New-OrtTestPe -Path $setup -Machine 0x014C -Import 'kernel32.dll'
-            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $tree -Arch arm64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
-            $out = & $gate
-            Assert-True ($LASTEXITCODE -ne 0) 'an x86 exe without the NSIS header fails'
-            Assert-Match 'App-1\.0-Release-aarch64\.exe  is 0x014C \(I386\)' $out 'named'
+            Assert-ArchGateTree -Path $tree -Standalone -Fails -Pattern 'App-1\.0-Release-aarch64\.exe  is 0x014C \(I386\)'
             $header = [byte[]](@(0, 0, 0, 0, 0xEF, 0xBE, 0xAD, 0xDE) + [Text.Encoding]::ASCII.GetBytes('NullsoftInst') + [byte[]]::new(8))
             $fs = [IO.File]::Open($setup, [IO.FileMode]::Append)
             try { $fs.Write($header, 0, $header.Length) } finally { $fs.Dispose() }
-            $out = & $gate
-            Assert-Equal 0 $LASTEXITCODE "the NSIS installer passes an arm64 tree: $out"
-            Assert-Match 'NSIS installers, an x86 stub on every arch, skipped 1 file\(s\)' $out 'reported, not counted'
+            Assert-ArchGateTree -Path $tree -Standalone -Pattern 'NSIS installers, an x86 stub on every arch, skipped 1 file\(s\)'
             New-OrtTestPe -Path (Join-Path $tree 'bundle\bin\helper.exe') -Machine 0x014C -Import 'kernel32.dll'
-            $out = & $gate
-            Assert-True ($LASTEXITCODE -ne 0) 'an x86 binary beside the installer still fails'
+            Assert-ArchGateTree -Path $tree -Standalone -Fails
         }
     }
 
     It 'reports the launcher templates of a real pip wheel, one per arch, and still fails a foreign binary beside them (mutation)' {
-        Invoke-InTestDir { param($d)
-            $rt = Join-Path $d 'runtime'
-            New-OrtTestPe -Path (Join-Path $rt 'python314.dll') -Machine 0x8664 -Import 'kernel32.dll'
+        Invoke-ArchGateFixture -Machine 0x8664 -RuntimeDll python314.dll -Body { param($d, $rt)
             $whl = Join-Path $rt 'Lib\ensurepip\_bundled\pip-26.2.1-py3-none-any.whl'
             $templates = @{}
             foreach ($t in @(@('t32', 0x014C), @('w32', 0x014C), @('t64', 0x8664), @('w64', 0x8664), @('t64-arm', 0xAA64), @('w64-arm', 0xAA64))) {
                 $templates["pip\_vendor\distlib\$($t[0]).exe"] = @{ Machine = $t[1]; Import = 'kernel32.dll' }
             }
-            $gate = { @(& pwsh -NoProfile -File (Join-Path (Get-RepoRoot) 'windows/scripts/build/Test-TargetArch.ps1') -Path $rt -Arch amd64 -MinInspected 1 -ImportWalk -Standalone 2>&1) -join "`n" }
-            [void](New-TestWheel -Path $whl -Member $templates)
-            $out = & $gate
-            Assert-Equal 0 $LASTEXITCODE "the six templates pass an amd64 bundle: $out"
-            Assert-Match 'launcher templates, one per arch by design, skipped 6 file\(s\)' $out 'reported, not counted'
-            Remove-Item -LiteralPath $whl
+            New-ArchGateWheel -Path $whl -Member $templates
+            Assert-ArchGateTree -Path $rt -Arch amd64 -Standalone -Pattern 'launcher templates, one per arch by design, skipped 6 file\(s\)'
             $templates['pip\_vendor\rich\arm64-helper.exe'] = @{ Machine = 0xAA64; Import = 'kernel32.dll' }
-            [void](New-TestWheel -Path $whl -Member $templates)
-            $out = & $gate
-            Assert-True ($LASTEXITCODE -ne 0) 'an ARM64 binary that is no template still fails'
-            Assert-Match 'arm64-helper\.exe  is 0xAA64 \(ARM64\), expected 0x8664 \(AMD64\)' $out 'named'
+            New-ArchGateWheel -Path $whl -Member $templates
+            Assert-ArchGateTree -Path $rt -Arch amd64 -Standalone -Fails -Pattern 'arm64-helper\.exe  is 0xAA64 \(ARM64\), expected 0x8664 \(AMD64\)'
         }
     }
+    It 'detects a child-verdict mutant that turns an empty inspection into success' {
+        $script:emptyGateRoot = Join-Path $TestDrive 'empty-gate'
+        New-Item -ItemType Directory -Force -Path $script:emptyGateRoot | Out-Null
+        Assert-Throws { Assert-ArchGateTree -Path $script:emptyGateRoot } -MessagePattern 'the gate failed'
+        $definition = (Get-Command Assert-ArchGateTree).Definition
+        $text = "function Assert-ArchGateTree {`n$definition`n}"
+        Invoke-WithFunctionModule -Text $text -FunctionName Assert-ArchGateTree -Find '$code = $LASTEXITCODE' -Replace '$code = 0' -Body {
+            Assert-Throws {
+                Assert-Throws { Assert-MutArchGateTree -Path $script:emptyGateRoot } -MessagePattern 'the gate failed'
+            } -MessagePattern 'expected an exception but none was thrown'
+        }
+    }
+
 }

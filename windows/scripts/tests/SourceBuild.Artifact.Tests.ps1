@@ -2,50 +2,63 @@
 # Copy-BuildArtifact is the install for upstreams whose cmake --install is a no-op, so a regression ships an incomplete tree.
 
 Describe 'Copy-BuildArtifact' {
-
-    It 'copies by extension into the mapped dest dirs, creating them, skipping unmatched files' {
+    function Invoke-ArtifactCopyFixture {
+        param([Parameter(Mandatory)][ValidateNotNullOrEmpty()][string[]]$File,
+            [Parameter(Mandatory)][ValidateNotNullOrEmpty()][hashtable[]]$Case, [string]$CopyCommand = 'Copy-BuildArtifact')
         Invoke-InTestDir { param($dir)
-            $bd = Join-Path $dir 'build'; New-Item -ItemType Directory -Path $bd | Out-Null
-            Set-Content (Join-Path $bd 'a.dll') 'x' -Encoding ASCII
-            Set-Content (Join-Path $bd 'b.lib') 'x' -Encoding ASCII
-            Set-Content (Join-Path $bd 'c.txt') 'x' -Encoding ASCII
-            $inst = Join-Path $dir 'install'
-            Copy-BuildArtifact -BuildDir $bd -InstallDir $inst -Map @(
-                @{ Filter = '*.dll'; Dest = 'bin' }
-                @{ Filter = '*.lib'; Dest = 'lib' }
-            )
-            Assert-True  (Test-Path (Join-Path $inst 'bin\a.dll')) 'dll routed to bin (dir auto-created)'
-            Assert-True  (Test-Path (Join-Path $inst 'lib\b.lib')) 'lib routed to lib'
-            Assert-False (Test-Path (Join-Path $inst 'bin\c.txt')) 'unmatched file not copied'
+            $build = Join-Path $dir 'build'
+            foreach ($relative in $File) {
+                $path = Join-Path $build $relative
+                New-Item -ItemType Directory -Path (Split-Path $path -Parent) -Force | Out-Null
+                Set-Content -LiteralPath $path -Value x -Encoding ASCII
+            }
+            foreach ($copyCase in $Case) {
+                if (-not $copyCase.Present -and -not $copyCase.Absent) { throw 'an artifact-copy fixture needs an expected outcome' }
+                $install = Join-Path $dir $copyCase.Name
+                & $CopyCommand -BuildDir $build -InstallDir $install -Recurse:$copyCase.Recurse -Map $copyCase.Map
+                foreach ($relative in $copyCase.Present) {
+                    Assert-True (Test-Path (Join-Path $install $relative)) "copied artifact missing: $relative"
+                }
+                foreach ($relative in $copyCase.Absent) {
+                    Assert-False (Test-Path (Join-Path $install $relative)) "unrequested artifact copied: $relative"
+                }
+            }
         }
     }
 
-    It 'recurses only when -Recurse is set' {
-        Invoke-InTestDir { param($dir)
-            $bd = Join-Path $dir 'build'; $sub = Join-Path $bd 'sub'
-            New-Item -ItemType Directory -Path $sub -Force | Out-Null
-            Set-Content (Join-Path $bd 'top.dll') 'x' -Encoding ASCII
-            Set-Content (Join-Path $sub 'deep.dll') 'x' -Encoding ASCII
-            $flat = Join-Path $dir 'flat'; $deep = Join-Path $dir 'deep'
-            Copy-BuildArtifact -BuildDir $bd -InstallDir $flat -Map @(@{ Filter = '*.dll'; Dest = 'bin' })
-            Assert-True  (Test-Path (Join-Path $flat 'bin\top.dll'))  'top-level dll copied without -Recurse'
-            Assert-False (Test-Path (Join-Path $flat 'bin\deep.dll')) 'nested dll NOT copied without -Recurse'
-            Copy-BuildArtifact -BuildDir $bd -InstallDir $deep -Recurse -Map @(@{ Filter = '*.dll'; Dest = 'bin' })
-            Assert-True  (Test-Path (Join-Path $deep 'bin\deep.dll')) 'nested dll copied with -Recurse'
-        }
+    $copyCases = @(
+        @{ Name = 'copies by extension into the mapped dest dirs, creating them, skipping unmatched files'
+            File = @('a.dll', 'b.lib', 'c.txt')
+            Plans = @(@{ Name = 'install'; Recurse = $false
+                    Map = @(@{ Filter = '*.dll'; Dest = 'bin' }, @{ Filter = '*.lib'; Dest = 'lib' })
+                    Present = @('bin/a.dll', 'lib/b.lib'); Absent = @('bin/c.txt') }) }
+        @{ Name = 'recurses only when -Recurse is set'; File = @('top.dll', 'sub/deep.dll')
+            Plans = @(
+                @{ Name = 'flat'; Recurse = $false; Map = @(@{ Filter = '*.dll'; Dest = 'bin' })
+                    Present = @('bin/top.dll'); Absent = @('bin/deep.dll') }
+                @{ Name = 'deep'; Recurse = $true; Map = @(@{ Filter = '*.dll'; Dest = 'bin' })
+                    Present = @('bin/top.dll', 'bin/deep.dll'); Absent = @() }
+            ) }
+        @{ Name = 'accepts multiple filters routed to one dest'; File = @('x.lib', 'y.dll')
+            Plans = @(@{ Name = 'install'; Recurse = $false; Map = @(@{ Filter = @('*.lib', '*.dll'); Dest = 'lib' })
+                    Present = @('lib/x.lib', 'lib/y.dll'); Absent = @() }) }
+    )
+    foreach ($copyCase in $copyCases) {
+        It $copyCase.Name { Invoke-ArtifactCopyFixture -File $copyCase.File -Case $copyCase.Plans }
     }
 
-    It 'accepts multiple filters routed to one dest' {
-        Invoke-InTestDir { param($dir)
-            $bd = Join-Path $dir 'build'; New-Item -ItemType Directory -Path $bd | Out-Null
-            Set-Content (Join-Path $bd 'x.lib') 'x' -Encoding ASCII
-            Set-Content (Join-Path $bd 'y.dll') 'x' -Encoding ASCII
-            $inst = Join-Path $dir 'install'
-            Copy-BuildArtifact -BuildDir $bd -InstallDir $inst -Map @(@{ Filter = @('*.lib', '*.dll'); Dest = 'lib' })
-            Assert-True (Test-Path (Join-Path $inst 'lib\x.lib')) 'lib copied'
-            Assert-True (Test-Path (Join-Path $inst 'lib\y.dll')) 'dll copied to the same dest'
-        }
+    It 'detects a copy mutant that recurses despite an omitted switch' {
+        $definition = (Get-Command Copy-BuildArtifact).Definition
+        $source = "function Copy-BuildArtifact {`n$definition`n}"
+        $fixture = (Get-Command Invoke-ArtifactCopyFixture).ScriptBlock
+        $flatCase = $copyCases[1].Plans[0]
+        Invoke-WithFunctionModule -Text $source -FunctionName Copy-BuildArtifact -Find '-Recurse:$Recurse' -Replace '-Recurse' -Body ({
+            Assert-Throws {
+                & $fixture -File top.dll, sub/deep.dll -Case $flatCase -CopyCommand Copy-MutBuildArtifact
+            } -MessagePattern 'unrequested artifact copied'
+        }.GetNewClosure())
     }
+
 }
 
 Describe 'Remove-MakefileShowIncludes' {
@@ -106,6 +119,16 @@ Cflags: -I`${includedir}
     }
     $allFour = @('libavcodec', 'libavformat', 'libavutil', 'libavfilter')
 
+    function Assert-InvalidFfmpegPc {
+        param([hashtable]$Replacement, [string]$MessagePattern)
+        Invoke-InTestDir { param($dir)
+            $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
+            New-TestPc -Dir $dir @Replacement
+            Assert-Throws { Assert-FfmpegPkgConfig -PkgConfigDir $dir } -MessagePattern $MessagePattern
+        }
+    }
+
+
     It 'passes and reports versions when all four modules are well-formed' {
         Invoke-InTestDir { param($dir)
             $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
@@ -125,21 +148,11 @@ Cflags: -I`${includedir}
     }
 
     It 'throws on the empty "Version: .." configure emits without a VERSION file' {
-        Invoke-InTestDir { param($dir)
-            $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
-            New-TestPc -Dir $dir -Name 'libavcodec' -Version '..'
-            Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir $dir } `
-                -MessagePattern 'unusable version' -Message 'empty version rejected'
-        }
+        Assert-InvalidFfmpegPc -Replacement @{ Name = 'libavcodec'; Version = '..' } -MessagePattern 'unusable version'
     }
 
     It 'throws when an MSYS prefix survived the rewrite' {
-        Invoke-InTestDir { param($dir)
-            $allFour | ForEach-Object { New-TestPc -Dir $dir -Name $_ }
-            New-TestPc -Dir $dir -Name 'libavutil' -Prefix '/c/runtime/ffmpeg'
-            Assert-Throws -Body { Assert-FfmpegPkgConfig -PkgConfigDir $dir } `
-                -MessagePattern 'MSYS prefix' -Message 'clang-cl cannot resolve /c/...'
-        }
+        Assert-InvalidFfmpegPc -Replacement @{ Name = 'libavutil'; Prefix = '/c/runtime/ffmpeg' } -MessagePattern 'MSYS prefix'
     }
 
     It 'throws when one of the four modules is missing entirely' {

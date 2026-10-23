@@ -45,10 +45,16 @@ the flag is `OFF` and the remaining components are built.
 
 ## Failures here are non-fatal on purpose
 
-`_vulkan_target_install_component` counts an attempt and tolerates a failure: a
-component that will not cross-build leaves the prefix poorer, it does not fail
-the lane. `_vulkan_target_verdict` fails only when *every* attempt failed, which
-is the shape of a broken cross toolchain rather than one awkward component.
+Target builders share attempt/success accounting and a launcher that composes
+the component tag and target install prefix. Component-specific options, build
+order, loader WSI validation and the two glslang passes stay in their callers.
+A glslang shared/static pair counts as one component attempt.
+
+Optional component failures leave the target prefix poorer. The final verdict
+fails when a required component is missing or every attempt failed; successful
+optional components cannot hide a failed loader, SPIRV-Tools or glslang build.
+The local decomposition suite checks command traces, counters, required failures
+and optional skips with stubbed CMake. It does not compile or inspect a real SDK.
 
 ## The host build must not inherit the cross pkg-config path
 

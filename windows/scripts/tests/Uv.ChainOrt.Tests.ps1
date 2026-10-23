@@ -5,6 +5,8 @@
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Common.psm1') -Force -DisableNameChecking
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsUv.ChainFixtures.psm1') -Force -DisableNameChecking
+
 # A venv dir with a Scripts\python.exe, and a store holding two chain ORT wheels beside a non-ORT one.
 function script:New-ChainOrtFixture {
     param([Parameter(Mandatory)][string]$Dir, [switch]$NoOrtWheel)
@@ -41,13 +43,13 @@ function script:Invoke-ChainOrtCase {
         [switch]$RetryWithoutLocked,
         [switch]$StaleLock
     )
-    $state = [pscustomobject]@{ Uv = [System.Collections.Generic.List[string]]::new(); Log = [System.Collections.Generic.List[string]]::new(); Error = ''; NoSync = '' }
-    $runner = {
+    $check = {
         param($exe, $arguments)
-        $state.Uv.Add(($arguments -join ' '))
         if ($FailInstall -and $arguments[1] -eq 'install') { throw 'uv: the wheel is not supported on this platform' }
         if ($StaleLock -and $arguments -contains '--locked') { throw 'The lockfile at `uv.lock` needs to be updated, but `--locked` was provided.' }
     }.GetNewClosure()
+    $observer = New-UvChainTestObserver -CommandCheck $check
+    $state = $observer.State
     $python = {
         param($exe, $arguments)
         if ($arguments -contains '--purge-list') { return [pscustomobject]@{ ExitCode = 0; Output = $Listed } }
@@ -57,16 +59,15 @@ function script:Invoke-ChainOrtCase {
         $verdict = if ($CheckExit -eq 0) { 'ORT-CENSUS PASS: 2 chain distribution(s)' } else { 'ORT-CENSUS FAIL onnxruntime-directml 1.24.4 is not a chain wheel' }
         return [pscustomobject]@{ ExitCode = $CheckExit; Output = @($verdict) }
     }.GetNewClosure()
-    $log = { param($m) $state.Log.Add("$m") }.GetNewClosure()
     $syncEnv = @{ ORT_CHAIN_WHEEL_DIR = $null; PYTHON_WHEELS = $null; UV_PROJECT_ENVIRONMENT = $Fixture.Venv; UV_SYNC_EXTRAS = $null }
     if ($Store) { $syncEnv[$StoreVar] = $Store }
     if ($Lock) { Set-Content -LiteralPath (Join-Path $Fixture.Venv 'uv.lock') -Value $Lock -Encoding utf8NoBOM }
     $sync = @{ UseLocked = $UseLocked; RetryWithoutLocked = $RetryWithoutLocked; PythonRunner = $(if ($StubPython) { $python } else { $null }) }
     try {
         if ($ViaSync) {
-            Invoke-WithEnv $syncEnv { Sync-UvProjectDependencies -PyprojectPath (Join-Path $Fixture.Venv 'pyproject.toml') -CommandRunner $runner -LogInfo $log -LogWarning $log @sync }
+            Invoke-WithEnv $syncEnv { Sync-UvProjectDependencies -PyprojectPath (Join-Path $Fixture.Venv 'pyproject.toml') -CommandRunner $observer.CommandRunner -LogInfo $observer.Log -LogWarning $observer.Log @sync }
         } else {
-            Sync-UvChainOnnxRuntime -VenvPath $Fixture.Venv -WheelStore $Store -Skipped $Skipped -CommandRunner $runner -PythonRunner $python -LogInfo $log -LogWarning $log
+            Sync-UvChainOnnxRuntime -VenvPath $Fixture.Venv -WheelStore $Store -Skipped $Skipped -CommandRunner $observer.CommandRunner -PythonRunner $python -LogInfo $observer.Log -LogWarning $observer.Log
         }
     } catch { $state.Error = $_.Exception.Message }
     $state.NoSync = "$env:UV_NO_SYNC"
@@ -152,14 +153,13 @@ Describe 'WindowsUv.Common: Sync-UvChainOnnxRuntime, and Sync-UvProjectDependenc
     It 'inside our images replaces every PyPI ORT dist with the chain wheels and holds uv run off the lock' {
         Use-ChainOrtFixture { param($f)
             $r = Invoke-ChainOrtCase -Fixture $f -Store $f.Store
-            Assert-Equal '' $r.Error 'no failure'
-            Assert-Equal 2 $r.Uv.Count 'one uninstall, one install'
-            Assert-Equal "pip uninstall --python $($f.Venv)\Scripts\python.exe onnxruntime onnxruntime-directml onnxruntime-genai" $r.Uv[0] 'every dist the census lists'
-            Assert-Match '^pip install --python [^ ]+ --no-index --no-deps --force-reinstall ' $r.Uv[1] 'offline, without the wheels'' PyPI dependency metadata'
-            Assert-Match '[\\/]onnxruntime-1\.30\.0-cp314-cp314-win_amd64\.whl( |$)' $r.Uv[1] 'the chain core wheel'
-            Assert-Match '[\\/]onnxruntime_genai-0\.15\.2-cp314-cp314-win_amd64\.whl( |$)' $r.Uv[1] 'the chain GenAI wheel'
-            Assert-False ($r.Uv[1] -match 'tvm-') 'only ORT wheels are taken from the store'
-            Assert-Equal '1' $r.NoSync 'UV_NO_SYNC held'
+            Assert-UvChainTestReplacement -State $r -CommandCount 2
+            Assert-UvChainTestCommand -State $r -Index 0 -Equal "pip uninstall --python $($f.Venv)\Scripts\python.exe onnxruntime onnxruntime-directml onnxruntime-genai"
+            Assert-UvChainTestCommand -State $r -Index 1 -Match @(
+                '^pip install --python [^ ]+ --no-index --no-deps --force-reinstall ',
+                '[\\/]onnxruntime-1\.30\.0-cp314-cp314-win_amd64\.whl( |$)',
+                '[\\/]onnxruntime_genai-0\.15\.2-cp314-cp314-win_amd64\.whl( |$)'
+            ) -NotMatch 'tvm-'
             Assert-True (@($r.Log) -match 'ORT-CENSUS PASS') 'the census verdict is logged'
         }
     }

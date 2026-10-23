@@ -95,14 +95,19 @@ resolve_cross_cc_cxx_for_arch() {
   export CC="${cc}" CXX="${cxx}"
 }
 
+_compiler_target_is_foreign() {
+  [ -n "$1" ] || return 1
+  if [ "$1" != "$(build_arch_oci 2>/dev/null || echo amd64)" ]; then return 0; fi
+  return 1
+}
+
 # apt packages can leave /usr/lib/<triplet>/libstdc++.so pointing at the host arch's library.
 fix_libstdcxx_symlink() {
   local arch
   arch="$(default_target_arch "${1:-}")"
   local triplet gcc_lib sys_lib
 
-  [ -n "${arch}" ] || return 0
-  [ "${arch}" = "$(build_arch_oci 2>/dev/null || echo amd64)" ] && return 0
+  _compiler_target_is_foreign "${arch}" || return 0
 
   triplet="$(arch_deb_multiarch_triplet_for "${arch}")" || return 0
 
@@ -135,8 +140,7 @@ _target_gcc_libstdcxx() {
 pin_target_libstdcxx() {
   local arch
   arch="$(default_target_arch "${1:-}")"
-  [ -n "${arch}" ] || return 0
-  [ "${arch}" = "$(build_arch_oci 2>/dev/null || echo amd64)" ] && return 0
+  _compiler_target_is_foreign "${arch}" || return 0
 
   local triplet=""
   if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then

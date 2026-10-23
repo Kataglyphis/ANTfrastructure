@@ -12,20 +12,16 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         $script:tmp = New-TestDir -Prefix 'stagedeps-'
 
         # The description after the blank line checks that parsing stops at the headers.
-        $script:NewWheel = {
-            param([string]$Path, [string]$Name, [string[]]$RequiresDist, [string]$RequiresPython = '>=3.9')
-            $distInfo = "$Name.dist-info"
-            $meta = "Metadata-Version: 2.1`nName: $Name`nVersion: 1.0.0`nRequires-Python: $RequiresPython`n"
-            foreach ($r in $RequiresDist) { $meta += "Requires-Dist: $r`n" }
-            $meta += "`nDescription goes here.`n"
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            $zip = [System.IO.Compression.ZipFile]::Open($Path, 'Create')
-            try {
-                $entry = $zip.CreateEntry("$distInfo/METADATA")
-                $writer = New-Object System.IO.StreamWriter($entry.Open())
-                try { $writer.Write($meta) } finally { $writer.Dispose() }
-            } finally { $zip.Dispose() }
+        $script:WheelRequirements = {
+            param([string]$Name, [string[]]$RequiresDist)
+            $path = Join-Path $script:tmp "$Name-1.0.0-py3-none-any.whl"
+            $meta = "Metadata-Version: 2.1`nName: $Name`nVersion: 1.0.0`nRequires-Python: >=3.9`n"
+            foreach ($requirement in $RequiresDist) { $meta += "Requires-Dist: $requirement`n" }
+            $meta += "`nDescription goes here.`nRequires-Dist: description-only`n"
+            [void](New-TestWheel -Path $path -Member @{ "$Name.dist-info/METADATA" = $meta })
+            Get-WheelRequirements $path
         }
+
     }
 
     AfterAll {
@@ -67,21 +63,23 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
     # Get-WheelRequirements
 
     It 'Get-WheelRequirements reads Requires-Dist lines from a wheel METADATA' {
-        $p = Join-Path $script:tmp 'test-1.0.0-py3-none-any.whl'
-        & $script:NewWheel -Path $p -Name 'test' -RequiresDist @('numpy>=1.21', 'packaging', 'typing_extensions>=4.5', 'my-extra==1.0')
-        $reqs = @(Get-WheelRequirements $p)
+        $reqs = @(& $script:WheelRequirements -Name 'test' -RequiresDist @('numpy>=1.21', 'packaging', 'typing_extensions>=4.5', 'my-extra==1.0'))
         Assert-Equal 4 $reqs.Count 'four requirements'
         Assert-True ($reqs -contains 'numpy>=1.21') 'numpy present'
         Assert-True ($reqs -contains 'packaging') 'packaging present'
         Assert-True ($reqs -contains 'typing_extensions>=4.5') 'typing_extensions present'
         Assert-True ($reqs -contains 'my-extra==1.0') 'a name containing "extra" is not a marker'
+        $definition = Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Copy-TargetPythonDeps.ps1' -FunctionName Get-WheelRequirements
+        $wheelPath = Join-Path $script:tmp 'test-1.0.0-py3-none-any.whl'
+        Invoke-WithFunctionModule -Text $definition.ToString() -FunctionName Get-WheelRequirements -Find "if (`$line -eq '') { break }" -Replace '' -Body {
+            $mutant = @(Get-MutWheelRequirements $wheelPath)
+            Assert-Throws { Assert-Equal 4 $mutant.Count } -MessagePattern 'Assert-Equal'
+        }.GetNewClosure()
     }
 
     It 'Get-WheelRequirements drops extras (extra == markers) — optional deps are not first-touch' {
-        $p = Join-Path $script:tmp 'extras-1.0.0-py3-none-any.whl'
-        & $script:NewWheel -Path $p -Name 'extras' -RequiresDist @('numpy>=1.21', 'torch ; extra == "gpu"', 'pytest ; extra == "dev"',
-                "backports-zstd; (python_version < '3.14') and extra == 'test-full'", 'pytest-perf; sys_platform != "cygwin" and extra == "test"')
-        $reqs = @(Get-WheelRequirements $p)
+        $reqs = @(& $script:WheelRequirements -Name 'extras' -RequiresDist @('numpy>=1.21', 'torch ; extra == "gpu"', 'pytest ; extra == "dev"',
+                "backports-zstd; (python_version < '3.14') and extra == 'test-full'", 'pytest-perf; sys_platform != "cygwin" and extra == "test"'))
         Assert-Equal 1 $reqs.Count 'only the non-extra requirement, however the marker is compounded'
         Assert-Equal 'numpy>=1.21' $reqs[0] 'numpy is the first-touch dep'
     }
@@ -92,26 +90,19 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
     }
 
     It 'Get-WheelRequirements stops at the first blank line (description is not parsed)' {
-        $p = Join-Path $script:tmp 'blank-1.0.0-py3-none-any.whl'
-        & $script:NewWheel -Path $p -Name 'blank' -RequiresDist @('numpy>=1.21')
-        $reqs = @(Get-WheelRequirements $p)
+        $reqs = @(& $script:WheelRequirements -Name 'blank' -RequiresDist @('numpy>=1.21'))
         Assert-Equal 1 $reqs.Count 'only the header requirement, not the description'
     }
 
     It 'Get-WheelRequirements returns an empty array for a wheel with no Requires-Dist' {
-        $p = Join-Path $script:tmp 'bare-1.0.0-py3-none-any.whl'
-        & $script:NewWheel -Path $p -Name 'bare' -RequiresDist @()
-        $reqs = @(Get-WheelRequirements $p)
+        $reqs = @(& $script:WheelRequirements -Name 'bare' -RequiresDist @())
         Assert-Equal 0 $reqs.Count 'no requirements'
     }
 
     It 'Get-WheelRequirements throws on a wheel with no dist-info/METADATA' {
         $p = Join-Path $script:tmp 'bad-1.0.0-py3-none-any.whl'
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        $zip = [System.IO.Compression.ZipFile]::Open($p, 'Create')
-        $zip.CreateEntry('wrong.txt') | Out-Null
-        $zip.Dispose()
-        Assert-Throws { Get-WheelRequirements $p | Out-Null } 'missing METADATA throws, not silently empty'
+        [void](New-TestWheel -Path $p -Member @{ 'wrong.txt' = '' })
+        Assert-Throws { Get-WheelRequirements $p | Out-Null } -MessagePattern 'no dist-info/METADATA'
     }
 }
 

@@ -6,6 +6,8 @@
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsUv.Common.psm1') -Force -DisableNameChecking
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
 
+Import-Module (Join-Path $PSScriptRoot 'WindowsUv.ChainFixtures.psm1') -Force -DisableNameChecking
+
 # An image runtime whose OpenCV needs FFmpeg from its own PATH dir (the 2026-10-01 bundle gap), a venv, and the chain cv2.
 function script:New-ChainOpenCvFixture {
     param([Parameter(Mandatory)][string]$Dir, [string[]]$DistInfo = @(), [switch]$NoSource)
@@ -32,11 +34,10 @@ function script:New-ChainOpenCvFixture {
 
 function script:Invoke-ChainOpenCvCase {
     param([Parameter(Mandatory)][pscustomobject]$Fixture)
-    $state = [pscustomobject]@{ Uv = [System.Collections.Generic.List[string]]::new(); Log = [System.Collections.Generic.List[string]]::new(); NoSync = '' }
-    $runner = { param($exe, $arguments) $state.Uv.Add(($arguments -join ' ')) }.GetNewClosure()
-    $log = { param($m) $state.Log.Add("$m") }.GetNewClosure()
+    $observer = New-UvChainTestObserver
+    $state = $observer.State
     Invoke-WithEnv @{ PATH = "$($Fixture.FfBin);$env:SystemRoot\System32"; ONNX_ROOT = $null; UV_NO_SYNC = $null } {
-        Sync-UvChainOpenCv -VenvPath $Fixture.Venv -Source $Fixture.Source -RuntimeRoot $Fixture.Root -CommandRunner $runner -LogInfo $log
+        Sync-UvChainOpenCv -VenvPath $Fixture.Venv -Source $Fixture.Source -RuntimeRoot $Fixture.Root -CommandRunner $observer.CommandRunner -LogInfo $observer.Log
         $state.NoSync = "$env:UV_NO_SYNC"
     }
     return $state
@@ -48,11 +49,10 @@ Describe 'Sync-UvChainOpenCv' {
         Invoke-InTestDir { param($d)
             $f = New-ChainOpenCvFixture -Dir $d -DistInfo 'opencv_python-5.0.0.dist-info', 'opencv_contrib_python_headless-5.0.0.dist-info', 'numpy-2.3.0.dist-info'
             $state = Invoke-ChainOpenCvCase -Fixture $f
-            Assert-Equal 1 $state.Uv.Count 'one uninstall'
-            Assert-Match '^pip uninstall --python .+\\Scripts\\python\.exe' $state.Uv[0] 'the venv interpreter'
-            Assert-Match 'opencv_python\b' $state.Uv[0] 'opencv-python'
-            Assert-Match 'opencv_contrib_python_headless' $state.Uv[0] 'the contrib flavour'
-            Assert-False ($state.Uv[0] -match 'numpy') 'not numpy'
+            Assert-UvChainTestReplacement -State $state -CommandCount 1
+            Assert-UvChainTestCommand -State $state -Index 0 -Match @(
+                '^pip uninstall --python .+\\Scripts\\python\.exe', 'opencv_python\b', 'opencv_contrib_python_headless'
+            ) -NotMatch numpy
             Assert-Equal 'chain' ((Get-Content -LiteralPath (Join-Path $f.Site 'cv2\__init__.py')).Trim()) 'the chain loader'
             $config = Get-Content -LiteralPath (Join-Path $f.Site 'cv2\config.py') -Raw
             Assert-True $config.Contains("r'$($f.OcvBin)'") "OpenCV's own bin: $config"
@@ -62,7 +62,6 @@ Describe 'Sync-UvChainOpenCv' {
             Assert-Match "LOADER_DIR, 'python-3.14'" (Get-Content -LiteralPath (Join-Path $f.Site 'cv2\config-3.14.py') -Raw) 'the copied .pyd, not the image''s'
             Assert-Match 'Media Foundation' ($state.Log -join "`n") 'says why'
             Assert-Match ([regex]::Escape($f.FfBin)) ($state.Log -join "`n") 'says where from'
-            Assert-Equal '1' $state.NoSync 'holds uv run off the lock, which would restore PyPI opencv'
         }
     }
 

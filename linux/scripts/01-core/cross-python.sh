@@ -132,11 +132,16 @@ cross_target_python_include_dir() {
     "/usr/include/python${python_mm}"
 }
 
-cross_target_python_arch_include_dir() {
-  local python_mm triplet python_root
+# The caller owns these locals so nested path probes cannot overwrite its parent scope.
+_cross_target_python_build_context() {
   python_mm="$(cross_target_python_major_minor)" || return 1
   triplet="$(cross_target_triplet 2>/dev/null || true)"
   python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+}
+
+cross_target_python_arch_include_dir() {
+  local python_mm triplet python_root
+  _cross_target_python_build_context "$@" || return 1
   _resolve_first_path -d \
     "${python_root:+${python_root}/include/${triplet}/python${python_mm}}" \
     "${python_root:+${python_root}/include/python${python_mm}}" \
@@ -146,22 +151,24 @@ cross_target_python_arch_include_dir() {
     "/usr/include/python${python_mm}"
 }
 
-cross_target_python_libdir() {
+_cross_target_python_lib_subdir() {
+  local suffix="$1"
+  shift
   local triplet python_root
   python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
   triplet="$(cross_target_triplet 2>/dev/null || true)"
   _resolve_first_path -d \
-    "${python_root:+${python_root}/lib}" \
-    "/usr/local/lib" \
-    "/usr/lib/${triplet}" \
-    "/usr/lib"
+    "${python_root:+${python_root}/lib${suffix}}" \
+    "/usr/local/lib${suffix}" \
+    "/usr/lib/${triplet}${suffix}" \
+    "/usr/lib${suffix}"
 }
+
+cross_target_python_libdir() { _cross_target_python_lib_subdir '' "$@"; }
 
 cross_target_python_library() {
   local python_mm triplet python_root
-  python_mm="$(cross_target_python_major_minor)" || return 1
-  triplet="$(cross_target_triplet 2>/dev/null || true)"
-  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
+  _cross_target_python_build_context "$@" || return 1
   _resolve_first_path -f \
     "${python_root:+${python_root}/lib/libpython${python_mm}.so}" \
     "${python_root:+${python_root}/lib/libpython${python_mm}.so.1.0}" \
@@ -173,34 +180,17 @@ cross_target_python_library() {
     "/usr/lib/libpython${python_mm}.so.1.0"
 }
 
-cross_target_python_pkgconfig_dir() {
-  local triplet python_root
-  python_root="$(cross_target_python_root "$@" 2>/dev/null || true)"
-  triplet="$(cross_target_triplet 2>/dev/null || true)"
-  _resolve_first_path -d \
-    "${python_root:+${python_root}/lib/pkgconfig}" \
-    "/usr/local/lib/pkgconfig" \
-    "/usr/lib/${triplet}/pkgconfig" \
-    "/usr/lib/pkgconfig"
-}
+cross_target_python_pkgconfig_dir() { _cross_target_python_lib_subdir /pkgconfig "$@"; }
 
-cross_target_python_pc() {
-  local python_mm
-  local pkgconfig_dir
-
+_cross_target_python_pc_path() {
+  local suffix="$1" python_mm pkgconfig_dir
   python_mm="$(cross_target_python_major_minor)" || return 1
   pkgconfig_dir="$(cross_target_python_pkgconfig_dir)" || return 1
-  printf '%s' "${pkgconfig_dir}/python-${python_mm}.pc"
+  printf '%s' "${pkgconfig_dir}/python-${python_mm}${suffix}.pc"
 }
 
-cross_target_python_embed_pc() {
-  local python_mm
-  local pkgconfig_dir
-
-  python_mm="$(cross_target_python_major_minor)" || return 1
-  pkgconfig_dir="$(cross_target_python_pkgconfig_dir)" || return 1
-  printf '%s' "${pkgconfig_dir}/python-${python_mm}-embed.pc"
-}
+cross_target_python_pc() { _cross_target_python_pc_path ''; }
+cross_target_python_embed_pc() { _cross_target_python_pc_path -embed; }
 
 cross_target_python_dev_ready() {
   local include_dir

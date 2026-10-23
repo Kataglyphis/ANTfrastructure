@@ -18026,5 +18026,109 @@
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-logging-format.sh",
   "why": "NO_COLOR must override LOG_COLOR=always."
+ },
+ {
+  "id": "vulkan.shared-attempt-count",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "  _vk_attempted=$((_vk_attempted + 1))",
+  "replace": "  _vk_attempted=$((_vk_attempted + 0))",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "Each attempted target component must retain its count, including glslang two-pass builds."
+ },
+ {
+  "id": "vulkan.shared-success-count",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "  _vk_ok=$((_vk_ok + 1))",
+  "replace": "  _vk_ok=$((_vk_ok + 0))",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "Successful required and optional components must contribute to the final SDK verdict."
+ },
+ {
+  "id": "vulkan.shared-install-prefix",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "      -DCMAKE_INSTALL_PREFIX=\"$archdir\" \"$@\"",
+  "replace": "      -DCMAKE_INSTALL_PREFIX=/wrong \"$@\"",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "The shared component launcher must retain each target architecture install prefix and argument order."
+ },
+ {
+  "id": "vulkan.shared-build-failure",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "      -DCMAKE_INSTALL_PREFIX=\"$archdir\" \"$@\"",
+  "replace": "      -DCMAKE_INSTALL_PREFIX=\"$archdir\" \"$@\"; return 0",
+  "test": "bash linux/scripts/tests/test-vulkan-target-decomposition.sh",
+  "why": "A failed component launcher must remain a failure for required-component verdicts."
+ },
+ {
+  "id": "cross-build.python-pkgconfig-suffix",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "cross_target_python_pkgconfig_dir() { _cross_target_python_lib_subdir /pkgconfig \"$@\"; }",
+  "replace": "cross_target_python_pkgconfig_dir() { _cross_target_python_lib_subdir '' \"$@\"; }",
+  "test": "bash linux/scripts/tests/test-cross-python-paths.sh",
+  "why": "The pkg-config directory must retain its suffix while sharing library-directory precedence."
+ },
+ {
+  "id": "cross-build.python-context-version",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "_cross_target_python_build_context() {\n  python_mm=\"$(cross_target_python_major_minor)\" || return 1",
+  "replace": "_cross_target_python_build_context() {\n  python_mm=\"$(cross_target_python_major_minor)\" || true",
+  "test": "bash linux/scripts/tests/test-cross-python-paths.sh",
+  "why": "Failed version resolution must stop before triplet and root probes."
+ },
+ {
+  "id": "cross-build.python-context-scope",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "cross_target_python_arch_include_dir() {\n  local python_mm triplet python_root",
+  "replace": "cross_target_python_arch_include_dir() {\n  :",
+  "test": "bash linux/scripts/tests/test-cross-python-paths.sh",
+  "why": "Shared context assignments must remain in caller-owned locals."
+ },
+ {
+  "id": "cross-build.python-pc-suffix",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "cross_target_python_embed_pc() { _cross_target_python_pc_path -embed; }",
+  "replace": "cross_target_python_embed_pc() { _cross_target_python_pc_path ''; }",
+  "test": "bash linux/scripts/tests/test-cross-python-paths.sh",
+  "why": "The embed pkg-config file must keep its distinct suffix."
+ },
+ {
+  "id": "cross-build.python-pc-directory-failure",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "  pkgconfig_dir=\"$(cross_target_python_pkgconfig_dir)\" || return 1",
+  "replace": "  pkgconfig_dir=\"$(cross_target_python_pkgconfig_dir)\" || true",
+  "test": "bash linux/scripts/tests/test-cross-python-paths.sh",
+  "why": "Unresolved pkg-config directories must fail rather than yield a fabricated path."
+ },
+ {
+  "id": "cross-build.compiler-foreign-nonempty",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "_compiler_target_is_foreign() {\n  [ -n \"$1\" ] || return 1",
+  "replace": "_compiler_target_is_foreign() {\n  :",
+  "test": "bash linux/scripts/tests/test-compiler-foreign-target.sh",
+  "why": "An empty target must skip host and triplet probes."
+ },
+ {
+  "id": "cross-build.compiler-foreign-comparison",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "  if [ \"$1\" != \"$(build_arch_oci 2>/dev/null || echo amd64)\" ]; then return 0; fi",
+  "replace": "  if [ \"$1\" = \"$(build_arch_oci 2>/dev/null || echo amd64)\" ]; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-compiler-foreign-target.sh",
+  "why": "Native targets must skip library repair while foreign targets reach their own triplet policy."
+ },
+ {
+  "id": "cross-build.compiler-foreign-fallback",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "  if [ \"$1\" != \"$(build_arch_oci 2>/dev/null || echo amd64)\" ]; then return 0; fi",
+  "replace": "  if [ \"$1\" != \"$(build_arch_oci 2>/dev/null || echo arm64)\" ]; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-compiler-foreign-target.sh",
+  "why": "A failed build-architecture probe retains the existing amd64 fallback."
+ },
+ {
+  "id": "cross-build.compiler-foreign-raw-target",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "  if [ \"$1\" != \"$(build_arch_oci 2>/dev/null || echo amd64)\" ]; then return 0; fi",
+  "replace": "  if [ \"$(arch_normalize \"$1\")\" != \"$(build_arch_oci 2>/dev/null || echo amd64)\" ]; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-compiler-foreign-target.sh",
+  "why": "The existing guard compares raw target spelling rather than normalizing aliases."
  }
 ]

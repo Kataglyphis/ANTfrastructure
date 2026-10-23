@@ -81,6 +81,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    variables, reformat copies or add suppressions to evade a duplication finding.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
+   Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Windows structural tests use the harness AST readers and command binder; parse errors must fail before inspecting declarations.
    Windows suites share `New-TestDir -Prefix` and `Assert-Throws -MessagePattern`; suite-scoped directories retain their `AfterAll` cleanup.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
@@ -90,6 +91,9 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
+   Libstdc++ repair and pinning share the foreign-target predicate; keep raw arch comparison, probe fallback and unconditional target resolution.
+   Cross-Python path helpers share context and directory lookup; preserve staged precedence, argument forwarding and failure short circuits.
+   Vulkan target components share launcher and accounting; preserve required-component verdicts, WSI checks and glslang pass order.
    TVM compiler validation and selection share GCC-name resolution; keep override validation and wrapper argument order.
    Logging prefixes share severity formatting; preserve ANSI bytes, streams and NO_COLOR precedence.
    Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active.

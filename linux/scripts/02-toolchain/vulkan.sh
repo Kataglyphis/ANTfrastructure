@@ -447,15 +447,30 @@ _vulkan_loader_wsi_missing() {
   printf '%s' "${missing# }"
 }
 
+_vk_note_attempt() {
+  _vk_attempted=$((_vk_attempted + 1))
+  log "$*"
+}
+
+_vk_note_success() {
+  _vk_ok=$((_vk_ok + 1))
+  if [ "$#" -gt 0 ]; then log "$*"; fi
+}
+
+_vk_build_target_component() {
+  local source="$1" label="$2" arch_suffix="$3" archdir="$4"
+  shift 4
+  _cross_build_sdk_component "$source" "${label}-${arch_suffix}" \
+      -DCMAKE_INSTALL_PREFIX="$archdir" "$@"
+}
+
 # Loader with X11/XCB/Wayland WSI: the options are required pkg-config lookups, and the export check catches a silent drop.
 _vulkan_target_build_loader() {
   local arch_suffix="$1" host_archdir="$2" archdir="$3" loader_src="$4"
 
   if [ -d "${loader_src}" ] && [ -d "${host_archdir}/include/vulkan" ]; then
-    _vk_attempted=$((_vk_attempted + 1))
-    log "Cross-building Vulkan loader for ${arch_suffix}"
-    if _cross_build_sdk_component "${loader_src}" "vulkan-loader-${arch_suffix}" \
-        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+    _vk_note_attempt "Cross-building Vulkan loader for ${arch_suffix}"
+    if _vk_build_target_component "${loader_src}" "vulkan-loader" "${arch_suffix}" "${archdir}" \
         -DVULKAN_HEADERS_INSTALL_DIR="${host_archdir}" \
         -DBUILD_TESTS=OFF \
         -DBUILD_WSI_XCB_SUPPORT=ON \
@@ -468,8 +483,7 @@ _vulkan_target_build_loader() {
       if [ -n "${_wsi_missing}" ]; then
         _vk_note_failure vulkan-loader "Target Vulkan loader for ${arch_suffix} does not export ${_wsi_missing}; every windowed Vulkan app would abort"
       else
-        _vk_ok=$((_vk_ok + 1))
-        log "Installed target Vulkan loader with X11/XCB/Wayland WSI: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
+        _vk_note_success "Installed target Vulkan loader with X11/XCB/Wayland WSI: $(ls "${archdir}"/lib/libvulkan.so* 2>/dev/null | tr '\n' ' ')"
       fi
     else
       _vk_note_failure vulkan-loader "Target Vulkan loader unavailable; cross Vulkan will be disabled downstream"
@@ -484,16 +498,13 @@ _vulkan_target_build_spirv_tools() {
   local arch_suffix="$1" archdir="$2" spirv_tools_src="$3" spirv_headers_src="$4"
 
   if [ -d "${spirv_tools_src}" ]; then
-    _vk_attempted=$((_vk_attempted + 1))
-    log "Cross-building SPIRV-Tools for ${arch_suffix}"
-    if _cross_build_sdk_component "${spirv_tools_src}" "spirv-tools-${arch_suffix}" \
-        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+    _vk_note_attempt "Cross-building SPIRV-Tools for ${arch_suffix}"
+    if _vk_build_target_component "${spirv_tools_src}" "spirv-tools" "${arch_suffix}" "${archdir}" \
         -DSPIRV-Headers_SOURCE_DIR="${spirv_headers_src}" \
         -DSPIRV_SKIP_TESTS=ON \
         -DSPIRV_SKIP_EXECUTABLES=OFF \
         -DSPIRV_WERROR=OFF; then
-      _vk_ok=$((_vk_ok + 1))
-      log "Installed target SPIRV-Tools: $(ls "${archdir}"/bin/spirv-* 2>/dev/null | wc -l) tools, $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | wc -l) libs"
+      _vk_note_success "Installed target SPIRV-Tools: $(ls "${archdir}"/bin/spirv-* 2>/dev/null | wc -l) tools, $(ls "${archdir}"/lib/libSPIRV-Tools*.a 2>/dev/null | wc -l) libs"
     else
       _vk_note_failure spirv-tools "Target SPIRV-Tools unavailable; cross TVM Vulkan may fail to configure"
     fi
@@ -516,15 +527,13 @@ _vulkan_target_install_component() {
   shift 4
 
   [ -d "${src}" ] || { log "${label}: source missing at ${src}; skipping"; return 0; }
-  _vk_attempted=$((_vk_attempted + 1))
-  log "Cross-building ${label} for ${arch_suffix}"
-  if _cross_build_sdk_component "${src}" "${label}-${arch_suffix}" \
-      -DCMAKE_INSTALL_PREFIX="${archdir}" \
+  _vk_note_attempt "Cross-building ${label} for ${arch_suffix}"
+  if _vk_build_target_component "${src}" "${label}" "${arch_suffix}" "${archdir}" \
       -DCMAKE_PREFIX_PATH="${archdir}" \
       -DBUILD_TESTS=OFF \
       -DBUILD_TESTING=OFF \
       "$@"; then
-    _vk_ok=$((_vk_ok + 1))
+    _vk_note_success
   else
     _vk_note_failure "${label}" "${label} unavailable on ${arch_suffix}; the target SDK ships without it"
   fi
@@ -684,11 +693,9 @@ _vulkan_target_build_glslang() {
   local glslang_src="${target_dir}/source/glslang"
   [ -d "${glslang_src}" ] || glslang_src="${target_dir}/source/glslang-main"
   if [ -d "${glslang_src}" ]; then
-    _vk_attempted=$((_vk_attempted + 1))
-    log "Cross-building glslang (glslangValidator) for ${arch_suffix}"
+    _vk_note_attempt "Cross-building glslang (glslangValidator) for ${arch_suffix}"
     # BUILD_SHARED_LIBS is exclusive, so two passes; static last, as it owns the exported CMake package.
-    _cross_build_sdk_component "${glslang_src}" "glslang-shared-${arch_suffix}" \
-        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+    _vk_build_target_component "${glslang_src}" "glslang-shared" "${arch_suffix}" "${archdir}" \
         -DENABLE_OPT=OFF \
         -DGLSLANG_TESTS=OFF \
         -DBUILD_TESTING=OFF \
@@ -696,8 +703,7 @@ _vulkan_target_build_glslang() {
         -DENABLE_SPVREMAPPER=OFF \
         -DBUILD_SHARED_LIBS=ON \
       || log "glslang: shared pass failed; the prefix keeps the static half only"
-    if _cross_build_sdk_component "${glslang_src}" "glslang-${arch_suffix}" \
-        -DCMAKE_INSTALL_PREFIX="${archdir}" \
+    if _vk_build_target_component "${glslang_src}" "glslang" "${arch_suffix}" "${archdir}" \
         -DENABLE_OPT=OFF \
         -DGLSLANG_TESTS=OFF \
         -DBUILD_TESTING=OFF \
@@ -705,8 +711,7 @@ _vulkan_target_build_glslang() {
         -DENABLE_SPVREMAPPER=OFF \
         -DBUILD_SHARED_LIBS=OFF; then
       _vulkan_target_link_glslang_aliases "${archdir}"
-      _vk_ok=$((_vk_ok + 1))
-      log "Installed target glslang: $(ls "${archdir}"/bin/glslang* 2>/dev/null | tr '\n' ' '); on PATH: $(command -v glslangValidator 2>/dev/null || echo none)"
+      _vk_note_success "Installed target glslang: $(ls "${archdir}"/bin/glslang* 2>/dev/null | tr '\n' ' '); on PATH: $(command -v glslangValidator 2>/dev/null || echo none)"
     else
       _vk_note_failure glslang "Target glslang unavailable; GLSL shader compilation will fail on ${arch_suffix}"
     fi

@@ -1335,3 +1335,51 @@ with the existing bold-only colored form. `NO_COLOR` still wins over forced
 color, normal messages use stdout, warnings use stderr and errors exit 1.
 The prefix/stream fixtures and ERR-trap suite run without a terminal; actual
 terminal rendering is outside their coverage.
+
+### Shared cross-Python path lookup
+
+The cross-Python library shares library-directory suffix lookup, scoped
+Python/triplet/root context and pkg-config filename composition. The staged
+prefix precedes system locations, root arguments retain their order, a failed
+version probe stops later lookups and embed metadata keeps its own suffix.
+Path-context assignments stay in caller-owned locals. The local path fixtures
+also run against the previous implementation and cover candidate ordering,
+forwarding, missing metadata and resolver failures. They do not execute a
+target interpreter or establish target ABI compatibility.
+
+### Windows test fixture companions
+
+`WindowsArchGate.Fixture.psm1` shares architecture-suite binary constructors,
+runtime-tree setup and child-gate verdicts. Valid PE samples use the existing
+harness constructor; malformed headers and COFF/archive members retain their
+boundary bytes. Child exit-code and diagnostic checks remain mandatory, with
+a mutation that rejects a fabricated successful exit code.
+
+`WindowsUv.ChainFixtures.psm1` shares command/log observers and replacement
+assertions. Recording occurs before caller-owned rejection; each invocation
+keeps independent state. OpenCV and ORT keep their own environment and error
+handling, exact command expectations and positive/negative pattern checks.
+The fixture's dropped-recorder mutation must fail its command-count verdict.
+Both companions live beside their suites and must accompany copied suites;
+they are test helpers, not new image dependencies.
+
+Wheel requirement fixtures use `New-TestWheel` rather than private ZIP writers.
+A Requires-Dist-looking body line proves parsing stops at the header boundary;
+a local mutant that reads the body is rejected. These fixtures do not run uv,
+target binaries or target interpreters. Existing platform-dependent skips and
+failures remain visible in the focused suite results.
+
+### Shared foreign-target guard
+
+The libstdc++ linker repair and runtime pinning entry points share a pure
+nonempty-target-versus-build-architecture predicate. They retain raw target
+spelling, the existing amd64 fallback after a failed build-architecture probe
+and their distinct triplet policies. Default target resolution remains at the
+original unconditional call sites, preserving errexit on resolution failures.
+The guard fixtures stub all link operations and do not modify system libraries.
+The path and guard suites share module selection, scratch setup and cleanup in
+`tests/cross-toolchain-fixture.sh`, which must accompany those test scripts.
+
+The artifact suite shares copy/recursion and invalid-pkgconfig fixtures while
+retaining each negative condition. Its forced-recursion mutant must fail the
+omitted-switch case. These are local test fixtures, not new build dependencies.
