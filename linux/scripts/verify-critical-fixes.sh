@@ -7,6 +7,16 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=linux/scripts/06-packaging/smoke-common.sh
 source "${REPO_ROOT}/linux/scripts/06-packaging/smoke-common.sh"
 
+_critical_source_pattern() {
+  local success="$1" failure="$2"
+  shift 2
+  if grep "$@" 2>/dev/null; then
+    pass "${success}"
+  else
+    fail "${failure}"
+  fi
+}
+
 fix5_gst_geometry_include() {
   echo "--- Fix 5: OpenCV 5 GStreamer compat (geometry.hpp include) ---"
   local dirs=(
@@ -33,11 +43,9 @@ fix5_gst_geometry_include() {
   else
     echo "  SKIP: gstsegmentation.cpp not found (checking if patch applies at build time)"
     if [ -f "${REPO_ROOT}/linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh" ]; then
-      if grep -q "geometry.hpp" "${REPO_ROOT}/linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh" 2>/dev/null; then
-        pass "patch-gstreamer-sources.sh contains geometry.hpp patch"
-      else
-        fail "patch-gstreamer-sources.sh missing geometry.hpp reference"
-      fi
+      _critical_source_pattern "patch-gstreamer-sources.sh contains geometry.hpp patch" \
+        "patch-gstreamer-sources.sh missing geometry.hpp reference" \
+        -q "geometry.hpp" "${REPO_ROOT}/linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh"
     fi
   fi
 }
@@ -56,17 +64,13 @@ fix6_native_gcc_system_paths() {
   else
     fail "setup-torch-venv.sh lost the -idirafter CXXFLAGS injection (bug D regression)"
   fi
-  if grep -q 'idirafter /usr/include' "${swp}" 2>/dev/null; then
-    pass "swap-native-gcc.sh profile.d writes -idirafter system paths"
-  else
-    fail "swap-native-gcc.sh lost the -idirafter profile.d injection (bug D regression)"
-  fi
+  _critical_source_pattern "swap-native-gcc.sh profile.d writes -idirafter system paths" \
+    "swap-native-gcc.sh lost the -idirafter profile.d injection (bug D regression)" \
+    -q 'idirafter /usr/include' "${swp}"
   # D: Pillow needs jpeglib.h -> libjpeg-dev in the final-stage target packages.
-  if grep -qE '^[[:space:]]*libjpeg-dev' "${dep}" 2>/dev/null; then
-    pass "install-deps.sh installs libjpeg-dev (Pillow jpeglib.h)"
-  else
-    fail "install-deps.sh no longer installs libjpeg-dev (bug D regression)"
-  fi
+  _critical_source_pattern "install-deps.sh installs libjpeg-dev (Pillow jpeglib.h)" \
+    "install-deps.sh no longer installs libjpeg-dev (bug D regression)" \
+    -qE '^[[:space:]]*libjpeg-dev' "${dep}"
   # apt numpy must NOT be seeded into the venv (collides with uv's built wheel).
   if grep -qE 'for pkg in .*\bnumpy\b' "${stv}" 2>/dev/null; then
     fail "setup-torch-venv.sh re-seeds apt numpy into the venv (bug E regression)"
@@ -116,17 +120,13 @@ fix7_hardening_2026_07() {
     fail "Dockerfile.base ubuntu base is no longer digest-pinned"
   fi
   # Non-root: the runtime user must own its WORKDIR/VOLUME.
-  if grep -qE 'chown -R kataglyphis(:kataglyphis)? \$\{WORKDIR\}' "${dtorch}" 2>/dev/null; then
-    pass "Dockerfile.torch chowns WORKDIR to the non-root user"
-  else
-    fail "Dockerfile.torch no longer chowns WORKDIR (non-root user cannot write it)"
-  fi
+  _critical_source_pattern "Dockerfile.torch chowns WORKDIR to the non-root user" \
+    "Dockerfile.torch no longer chowns WORKDIR (non-root user cannot write it)" \
+    -qE 'chown -R kataglyphis(:kataglyphis)? \$\{WORKDIR\}' "${dtorch}"
   # apt: image-wide retries for flaky QEMU networks.
-  if grep -q 'apt.conf.d/80-retries' "${bimg}" 2>/dev/null; then
-    pass "base-image.sh installs image-wide apt retries"
-  else
-    fail "base-image.sh lost the image-wide apt retry config"
-  fi
+  _critical_source_pattern "base-image.sh installs image-wide apt retries" \
+    "base-image.sh lost the image-wide apt retry config" \
+    -q 'apt.conf.d/80-retries' "${bimg}"
   # A whole-tree scripts bind mount folds every script's checksum into the base cache key.
   if grep -qE -- '--mount=type=bind,source=linux/scripts,target' "${dbase}" 2>/dev/null; then
     fail "Dockerfile.base re-introduced a whole-tree scripts bind mount (busts base cache)"
@@ -167,11 +167,9 @@ fix8_push_retry_2026_07() {
   fi
 
   # The multi-arch manifest push is retried too.
-  if grep -qE 'retry .*manifest push' "${brm}"; then
-    pass "build-runtime-manifest.sh retries the manifest push (A1)"
-  else
-    fail "build-runtime-manifest.sh manifest push is not retried (A1 regression)"
-  fi
+  _critical_source_pattern "build-runtime-manifest.sh retries the manifest push (A1)" \
+    "build-runtime-manifest.sh manifest push is not retried (A1 regression)" \
+    -qE 'retry .*manifest push' "${brm}"
 
   # The transient classifier must accept network drops and reject build errors.
   local _fn _t
@@ -221,23 +219,17 @@ fix9_riscv_isaspec_and_noise_2026_07() {
   fi
 
   # The riscv64 torch-wheel fallback drops a sentinel the runtime smoke keys on.
-  if grep -qF '.torch-missing' "${venv}"; then
-    pass "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)"
-  else
-    fail "setup-torch-venv.sh lost the torch-less sentinel (A3 regression)"
-  fi
+  _critical_source_pattern "setup-torch-venv.sh writes the /opt/venv/.torch-missing sentinel (A3)" \
+    "setup-torch-venv.sh lost the torch-less sentinel (A3 regression)" \
+    -qF '.torch-missing' "${venv}"
 
   # Expected build noise stays classified as NOTE, not surfaced as failure.
-  if grep -q 'too-recent versioned symbols' "${rw}"; then
-    pass "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)"
-  else
-    fail "repair-wheels.sh lost the benign-auditwheel classifier (B2 regression)"
-  fi
-  if grep -q 'invalid -march=' "${swap}"; then
-    pass "swap-native-gcc.sh classifies benign riscv64 -march skew (B2)"
-  else
-    fail "swap-native-gcc.sh lost the benign -march classifier (B2 regression)"
-  fi
+  _critical_source_pattern "repair-wheels.sh classifies benign auditwheel glibc mismatch (B2)" \
+    "repair-wheels.sh lost the benign-auditwheel classifier (B2 regression)" \
+    -q 'too-recent versioned symbols' "${rw}"
+  _critical_source_pattern "swap-native-gcc.sh classifies benign riscv64 -march skew (B2)" \
+    "swap-native-gcc.sh lost the benign -march classifier (B2 regression)" \
+    -q 'invalid -march=' "${swap}"
 }
 
 fix10_libstdcxx_nostdinc_2026_08() {
@@ -249,17 +241,13 @@ fix10_libstdcxx_nostdinc_2026_08() {
   else
     fail "build-gcc.sh LOST the PR100017 -nostdinc++ patch block — Canadian-cross std module would silently ship EMPTY (fix10 regression)"
   fi
-  if grep -q "AM_CXXFLAGS layout changed" "${bg}"; then
-    pass "the -nostdinc++ sed still dies loud on GCC layout change (fix10)"
-  else
-    fail "the -nostdinc++ sed lost its loud-failure die (fix10 regression)"
-  fi
+  _critical_source_pattern "the -nostdinc++ sed still dies loud on GCC layout change (fix10)" \
+    "the -nostdinc++ sed lost its loud-failure die (fix10 regression)" \
+    -q "AM_CXXFLAGS layout changed" "${bg}"
   # The idempotence gate is what makes the patch self-retiring on a fixed GCC.
-  if grep -qE '!\s*grep -q -- .-nostdinc\+\+' "${bg}"; then
-    pass "the -nostdinc++ sed is idempotence-gated / self-retiring (fix10)"
-  else
-    fail "the -nostdinc++ sed lost its idempotence gate (fix10 regression)"
-  fi
+  _critical_source_pattern "the -nostdinc++ sed is idempotence-gated / self-retiring (fix10)" \
+    "the -nostdinc++ sed lost its idempotence gate (fix10 regression)" \
+    -qE '!\s*grep -q -- .-nostdinc\+\+' "${bg}"
 }
 
 # fix11: a denylist keeping ORT to one source; see docs/windows-build-invariants.md#onnx-runtime-has-exactly-one-source-the-chain-owner-rule-2026-09-23
@@ -611,11 +599,9 @@ fix11_ort_gate_wiring() {
   _f11_require '^linux/(scripts/06-packaging/smoke-runtime-image\.sh|Dockerfile\.package)$' \
     '^[[:space:]]+check_ort_census[[:space:]]|check-ort-provenance\.sh[[:space:]]+[^[:space:]]' 1+ \
     "the Linux runtime smoke or the wrapper-smoke stage runs the ORT census (G1)"
-  if grep -qxF -e '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)' "${REPO_ROOT}/docs/windows-build-invariants.md" 2>/dev/null; then
-    pass "fix11: docs/windows-build-invariants.md carries the ORT single-source invariant (G5)"
-  else
-    fail "fix11: docs/windows-build-invariants.md lost '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)'"
-  fi
+  _critical_source_pattern "fix11: docs/windows-build-invariants.md carries the ORT single-source invariant (G5)" \
+    "fix11: docs/windows-build-invariants.md lost '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)'" \
+    -qxF -e '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)' "${REPO_ROOT}/docs/windows-build-invariants.md"
 }
 
 # fix11_ort_census_roots: the census fingerprints the baked-in source root, so it must match each lane's real root.

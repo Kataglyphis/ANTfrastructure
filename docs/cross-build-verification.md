@@ -1983,3 +1983,17 @@ library can come from the distro. This keeps alternative selection and validatio
 on the same identity without changing their failure policies. Fixture tests retain
 independent expected versions and check that metadata avoids executing the binary;
 they do not prove an installed compiler or target runtime works.
+
+## Shared critical source-pattern verdicts
+
+The host critical-fixes battery uses `_critical_source_pattern` for simple positive
+grep checks. Callers keep their patterns, source paths and success/failure text;
+compound predicates and negative checks retain their own policy. A missing match,
+unreadable or missing source, or invalid grep expression records a failure. A later
+successful check cannot clear the accumulated count; `smoke_summary` still exits
+nonzero. Grep diagnostics are quiet while the named failure remains visible.
+
+`test-critical-source-pattern.sh` covers literal and regex matches, paths containing
+spaces, missing inputs, invalid expressions and aggregation with local fixtures.
+The existing critical-fixes suite still removes guarded source lines from its
+fixture tree. Neither test establishes correctness of compiled or shipped bytes.

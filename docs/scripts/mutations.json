@@ -6114,8 +6114,8 @@
  {
   "id": "critical-fixes.ort-g5-heading",
   "target": "linux/scripts/verify-critical-fixes.sh",
-  "find": "  if grep -qxF -e '### ONNX Runtime has exactly one source",
-  "replace": "  if true || grep -qxF -e '### ONNX Runtime has exactly one source",
+  "find": "  _critical_source_pattern \"fix11: docs/windows-build-invariants.md carries the ORT single-source invariant (G5)\" \\\n    \"fix11: docs/windows-build-invariants.md lost '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)'\" \\\n    -qxF -e '### ONNX Runtime has exactly one source: the chain (owner rule 2026-09-23)' \"${REPO_ROOT}/docs/windows-build-invariants.md\"",
+  "replace": "  pass \"fix11: docs/windows-build-invariants.md carries the ORT single-source invariant (G5)\"",
   "test": "bash linux/scripts/tests/test-critical-fixes.sh",
   "why": "the invariant is what stops the next agent simplifying a pre-set or a shim away"
  },
@@ -17754,5 +17754,29 @@
   "replace": "-h|--help) return 0 ;;",
   "test": "bash linux/scripts/tests/test-cli-parsers.sh",
   "why": "help must propagate the special return code instead of looking like an unknown flag"
+ },
+ {
+  "id": "critical-fixes.source-pattern-probe-runs",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "  if grep \"$@\" 2>/dev/null; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "a missing match, missing file and invalid expression must not produce a success verdict"
+ },
+ {
+  "id": "critical-fixes.source-pattern-failure-recorded",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "    fail \"${failure}\"",
+  "replace": "    pass \"${failure}\"",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "a failed source assertion must contribute to the shared failure count and a nonzero final summary"
+ },
+ {
+  "id": "critical-fixes.source-pattern-arguments",
+  "target": "linux/scripts/verify-critical-fixes.sh",
+  "find": "  if grep \"$@\" 2>/dev/null; then",
+  "replace": "  if grep \"${@:1:2}\" 2>/dev/null; then",
+  "test": "bash linux/scripts/tests/test-critical-source-pattern.sh",
+  "why": "the selected grep mode, literal pattern and source path including spaces must reach the probe intact"
  }
 ]

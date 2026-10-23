@@ -12,6 +12,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-23 — share critical source-pattern verdicts
+
+- Twelve positive source-pattern checks share grep execution and PASS/FAIL aggregation; keep caller patterns and messages, compound conditions, negative checks and final failure propagation.
+- Add local regressions and three mutation proofs for successful matches, failed probes, argument forwarding and accumulated failures; shrink the gate's duplication budget from 46 to 33 shingles.
+
 ## 2026-10-23 — share common runtime and cross CLI dispatch
 
 - Architecture aliases, mirrors, global options and help have one dispatcher; preserve public parser signatures, nameref outputs, value validation and argument counts.
