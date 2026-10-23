@@ -4,7 +4,8 @@ set -euo pipefail
 _source_toolchain_first_available() {
   local -n _toolchain_source_result="$1"
   local script_dir="$2" leaf="$3" priority="${4:-core-first}" candidate
-  local candidates=("${script_dir}/${leaf}")
+  local candidates=()
+  [ "$priority" = core-paths-only ] || candidates=("${script_dir}/${leaf}")
   if [ "$priority" = mounted-first ]; then
     candidates+=("/opt/scripts/core/${leaf}" "${script_dir}/../01-core/${leaf}")
   else
@@ -74,4 +75,13 @@ toolchain_unknown_option() {
   warn "Unknown option: $1"
   usage >&2
   exit 1
+}
+
+# Supplied download helpers win; standalone callers use exactly the two historical core locations.
+source_toolchain_downloads() {
+  local caller="$1" _std_found
+  if command -v download_file >/dev/null 2>&1; then return 0; fi
+  _source_toolchain_first_available _std_found \
+    "$(cd "$(dirname "$caller")" && pwd)" downloads.sh core-paths-only
+  return 0
 }

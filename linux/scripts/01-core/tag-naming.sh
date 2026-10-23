@@ -83,6 +83,11 @@ runtime_wrapper_tag() {
   printf '%s' "${RUNTIME_IMAGE_PREFIX}-${arch}"
 }
 
+_runtime_reject_artifact_mode() {
+  printf '[ERROR] Unsupported artifact build mode: %s\n' "${ARTIFACT_BUILD_MODE}" >&2
+  return 1
+}
+
 runtime_artifact_platform() {
   local arch="$1"
   case "${ARTIFACT_BUILD_MODE:-cross}" in
@@ -95,10 +100,7 @@ runtime_artifact_platform() {
       fi
       printf '%s' "${p}" ;;
     native) printf '%s' "linux/${arch}" ;;
-    *)
-      printf '[ERROR] Unsupported artifact build mode: %s\n' "${ARTIFACT_BUILD_MODE}" >&2
-      return 1
-      ;;
+    *) _runtime_reject_artifact_mode ;;
   esac
 }
 
@@ -113,9 +115,6 @@ runtime_artifact_image_ref() {
   case "${ARTIFACT_BUILD_MODE:-cross}" in
     cross) printf '%s' "${ARTIFACT_IMAGE_PREFIX}-${arch}" ;;
     native) printf '%s' "${ARTIFACT_IMAGE_PREFIX}" ;;
-    *)
-      printf '[ERROR] Unsupported artifact build mode: %s\n' "${ARTIFACT_BUILD_MODE}" >&2
-      return 1
-      ;;
+    *) _runtime_reject_artifact_mode ;;
   esac
 }

@@ -677,3 +677,20 @@ smoke_genai_py() {
   _smoke_genai_py_tier4_generate
   _smoke_genai_py_verdict
 }
+
+smoke_native_dispatch() {
+  if smoke_cross_presence_gate "$1" "$2"; then return 0; fi
+  shift 2
+  "$@"
+}
+
+smoke_ffmpeg_test_encode() {
+  local _sfte_binary="$1" _sfte_rate="$2" _sfte_output="$3"
+  shift 3
+  "${_sfte_binary}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=${_sfte_rate}" \
+    -c:v "$@" "${_sfte_output}" 2>/dev/null
+}
+
+smoke_ffmpeg_decode_to_null() {
+  "$1" -y -i "$2" -f null /dev/null 2>/dev/null
+}

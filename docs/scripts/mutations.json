@@ -18798,8 +18798,8 @@
  {
   "id": "lib.bootstrap-adjacent-companion",
   "target": "linux/scripts/02-toolchain/bootstrap.sh",
-  "find": "local candidates=(\"${script_dir}/${leaf}\")",
-  "replace": "local candidates=()",
+  "find": "  [ \"$priority\" = core-paths-only ] || candidates=(\"${script_dir}/${leaf}\")",
+  "replace": "  :",
   "test": "bash linux/scripts/tests/test-toolchain-bootstrap.sh",
   "why": "Shared toolchain bootstrap preserves adjacent and caller-specific companion precedence, required ELF fallback and normal errexit behavior."
  },
@@ -22455,5 +22455,277 @@
   "replace": "    if host_python_pinned_path interpreter; then\n      printf '%s' \"${interpreter}\"\n      return 0",
   "test": "bash linux/scripts/tests/test-host-python-pins.sh",
   "why": "a selected Android pin whose stdout emission fails retains that failure and never falls through to PATH"
+ },
+ {
+  "id": "lib.tag-mode-refusal-status",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "_runtime_reject_artifact_mode() {\n  printf '[ERROR] Unsupported artifact build mode: %s\\n' \"${ARTIFACT_BUILD_MODE}\" >&2\n  return 1\n}",
+  "replace": "_runtime_reject_artifact_mode() {\n  printf '[ERROR] Unsupported artifact build mode: %s\\n' \"${ARTIFACT_BUILD_MODE}\" >&2\n  return 0\n}",
+  "test": "bash linux/scripts/tests/test-tag-mode-rejection.sh",
+  "why": "Invalid modes must fail in direct and conditional contexts rather than becoming an empty successful tag."
+ },
+ {
+  "id": "lib.tag-mode-diagnostic-stream",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "_runtime_reject_artifact_mode() {\n  printf '[ERROR] Unsupported artifact build mode: %s\\n' \"${ARTIFACT_BUILD_MODE}\" >&2\n  return 1\n}",
+  "replace": "_runtime_reject_artifact_mode() {\n  printf '[ERROR] Unsupported artifact build mode: %s\\n' \"${ARTIFACT_BUILD_MODE}\"\n  return 1\n}",
+  "test": "bash linux/scripts/tests/test-tag-mode-rejection.sh",
+  "why": "The exact invalid-mode diagnostic belongs on stderr while stdout remains empty."
+ },
+ {
+  "id": "lib.tag-mode-platform-delegates",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "    native) printf '%s' \"linux/${arch}\" ;;\n    *) _runtime_reject_artifact_mode ;;",
+  "replace": "    native) printf '%s' \"linux/${arch}\" ;;\n    *) : ;;",
+  "test": "bash linux/scripts/tests/test-tag-mode-rejection.sh",
+  "why": "The platform caller must retain invalid-mode refusal through the shared owner."
+ },
+ {
+  "id": "lib.tag-mode-reference-delegates",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "    native) printf '%s' \"${ARTIFACT_IMAGE_PREFIX}\" ;;\n    *) _runtime_reject_artifact_mode ;;",
+  "replace": "    native) printf '%s' \"${ARTIFACT_IMAGE_PREFIX}\" ;;\n    *) : ;;",
+  "test": "bash linux/scripts/tests/test-tag-mode-rejection.sh",
+  "why": "The image-reference caller must retain invalid-mode refusal through the shared owner."
+ },
+ {
+  "id": "lib.tag-mode-invalid-is-lazy",
+  "target": "linux/scripts/01-core/tag-naming.sh",
+  "find": "_runtime_reject_artifact_mode() {",
+  "replace": "_runtime_reject_artifact_mode() {\n  : \"${ARTIFACT_IMAGE_PREFIX}\"",
+  "test": "bash linux/scripts/tests/test-tag-mode-rejection.sh",
+  "why": "Invalid modes must reject without first expanding an unrelated unset image prefix."
+ },
+ {
+  "id": "lib.tag-mode-host-fixture-closure",
+  "target": "linux/scripts/tests/test-host-payload.sh",
+  "find": "$(t_fn_src \"${SCRIPTS}/01-core/tag-naming.sh\" _runtime_reject_artifact_mode)\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-host-payload.sh",
+  "why": "The extracted host-payload resolver must retain the shared refusal helper and its exact diagnostic."
+ },
+ {
+  "id": "lib.smoke-native-cross-skip",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "if smoke_cross_presence_gate \"$1\" \"$2\"; then return 0; fi",
+  "replace": "if false && smoke_cross_presence_gate \"$1\" \"$2\"; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "foreign targets prove presence without running the native tool callback"
+ },
+ {
+  "id": "lib.smoke-native-callback-errexit",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  shift 2\n  \"$@\"\n}",
+  "replace": "  shift 2\n  if \"$@\"; then :; fi\n}",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "native callbacks remain unconditional so unexpected failures retain caller errexit"
+ },
+ {
+  "id": "lib.smoke-native-callback-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  shift 2\n  \"$@\"\n}",
+  "replace": "  shift 2\n  \"$@\" || true\n}",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "conditional callers still receive the actual callback status"
+ },
+ {
+  "id": "lib.smoke-native-callback-arguments",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  shift 2\n  \"$@\"\n}",
+  "replace": "  shift 2\n  $@\n}",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "empty and spaced callback arguments retain their array boundaries"
+ },
+ {
+  "id": "lib.smoke-native-callback-scope",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "smoke_native_dispatch() {",
+  "replace": "smoke_native_dispatch() {\n  local label=hidden path=hidden",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "dispatch does not shadow callback-visible caller variables"
+ },
+ {
+  "id": "lib.smoke-native-encode-rate",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "rate=${_sfte_rate}",
+  "replace": "rate=1",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "H264 keeps rate one while advertised encoder roundtrips retain rate two"
+ },
+ {
+  "id": "lib.smoke-native-encode-options",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "    -c:v \"$@\" \"${_sfte_output}\" 2>/dev/null",
+  "replace": "    -c:v \"$1\" \"${_sfte_output}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "the H264 preset remains between codec and output without changing other codecs"
+ },
+ {
+  "id": "lib.smoke-native-encode-stderr",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "\"${_sfte_output}\" 2>/dev/null",
+  "replace": "\"${_sfte_output}\"",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "encoder stderr stays suppressed while caller diagnostics remain visible"
+ },
+ {
+  "id": "lib.smoke-native-encode-stdout",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "\"${_sfte_output}\" 2>/dev/null",
+  "replace": "\"${_sfte_output}\" >/dev/null 2>&1",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "encoder stdout remains visible before the caller reports encode success"
+ },
+ {
+  "id": "lib.smoke-native-decode-status",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  \"$1\" -y -i \"$2\" -f null /dev/null 2>/dev/null",
+  "replace": "  \"$1\" -y -i \"$2\" -f null /dev/null 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "a failed null decode remains a failed H264 or advertised codec verdict"
+ },
+ {
+  "id": "lib.smoke-native-decode-stderr",
+  "target": "linux/scripts/06-packaging/smoke-common.sh",
+  "find": "  \"$1\" -y -i \"$2\" -f null /dev/null 2>/dev/null",
+  "replace": "  \"$1\" -y -i \"$2\" -f null /dev/null",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "decoder stderr remains suppressed independently of its result"
+ },
+ {
+  "id": "lib.smoke-native-features-delegation",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "    _smoke_ffmpeg_features\n",
+  "replace": "    :\n",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "the native tool still verifies configured codecs, advertised roundtrips and filters"
+ },
+ {
+  "id": "lib.smoke-native-h264-temp-cleanup",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "  rm -rf \"${tmpdir}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "H264 cleanup retains its private-file effect and original position after feature checks"
+ },
+ {
+  "id": "lib.smoke-native-camera-dispatch",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "  smoke_native_dispatch cam \"${_cam_bin}\" _smoke_cam_native",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "a native camera help probe is still run while foreign builds retain presence-only behavior"
+ },
+ {
+  "id": "lib.smoke-native-gst-dispatch",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "  smoke_native_dispatch gst-inspect-1.0 \"${_gst_inspect}\" _smoke_gst_version",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "GStreamer version and ELF deferral stay before its independent pipeline/plugin checks"
+ },
+ {
+  "id": "lib.smoke-native-ffmpeg-dispatch",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "  smoke_native_dispatch ffmpeg \"${_ffmpeg_bin}\" _smoke_ffmpeg_native",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-smoke-native-dispatch.sh",
+  "why": "all native FFmpeg verdicts and cleanup remain connected to the binary discovery branch"
+ },
+ {
+  "id": "lib.toolchain-downloads-adjacent-excluded",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "downloads.sh core-paths-only",
+  "replace": "downloads.sh core-first",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "Adjacent downloads.sh was never a standalone installer candidate."
+ },
+ {
+  "id": "lib.toolchain-downloads-provided-helper-wins",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  if command -v download_file >/dev/null 2>&1; then return 0; fi",
+  "replace": "  if false; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "A supplied download_file prevents all downloader module lookup and initialization."
+ },
+ {
+  "id": "lib.toolchain-downloads-repository-first",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "    candidates+=(\"${script_dir}/../01-core/${leaf}\" \"/opt/scripts/core/${leaf}\")",
+  "replace": "    candidates+=(\"/opt/scripts/core/${leaf}\" \"${script_dir}/../01-core/${leaf}\")",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The repository downloader remains preferred to an installed downloader."
+ },
+ {
+  "id": "lib.toolchain-downloads-unconditional-source",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  _source_toolchain_first_available _std_found \\\n    \"$(cd \"$(dirname \"$caller\")\" && pwd)\" downloads.sh core-paths-only",
+  "replace": "  if _source_toolchain_first_available _std_found \\\n    \"$(cd \"$(dirname \"$caller\")\" && pwd)\" downloads.sh core-paths-only; then :; fi",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "Actual downloader initialization retains direct-strict failures and conditional-call behavior."
+ },
+ {
+  "id": "lib.toolchain-downloads-android-bootstrap-required",
+  "target": "linux/scripts/02-toolchain/android-sdk.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\" || exit $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\"",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The executable installer stops on a missing or failed mandatory bootstrap before loading downloads."
+ },
+ {
+  "id": "lib.toolchain-downloads-vulkan-bootstrap-required",
+  "target": "linux/scripts/02-toolchain/vulkan.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\" || return $?",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/bootstrap.sh\"",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The source-only Vulkan module returns a failed bootstrap before loading downloads."
+ },
+ {
+  "id": "lib.toolchain-downloads-android-copy",
+  "target": "linux/Dockerfile.android",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The flattened Android installer carries the canonical bootstrap beside its copied bytes."
+ },
+ {
+  "id": "lib.toolchain-downloads-sdk-copy",
+  "target": "linux/Dockerfile.sdk",
+  "find": "    linux/scripts/02-toolchain/bootstrap.sh \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The SDK refreshes the canonical bootstrap beside its current Vulkan helper."
+ },
+ {
+  "id": "lib.toolchain-downloads-source-scope",
+  "target": "linux/scripts/02-toolchain/bootstrap.sh",
+  "find": "  local caller=\"$1\" _std_found",
+  "replace": "  local caller=\"$1\" _std_found _DOWNLOADS_SH_LOADED",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "Sourcing actual downloads inside the transport must retain its global initialization guard."
+ },
+ {
+  "id": "lib.toolchain-downloads-torch-bootstrap",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The copied Vulkan runtime entry requires the canonical bootstrap beside it."
+ },
+ {
+  "id": "lib.toolchain-downloads-torch-install-library",
+  "target": "linux/Dockerfile.torch",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/vulkan-install.sh /usr/local/bin/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/vulkan.sh linux/scripts/02-toolchain/bootstrap.sh /usr/local/bin/",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The real copied Vulkan entry must source its sibling provisioning declarations without executing them."
+ },
+ {
+  "id": "lib.toolchain-downloads-package-bootstrap",
+  "target": "linux/Dockerfile.package",
+  "find": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/",
+  "replace": "COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh",
+  "test": "bash linux/scripts/tests/test-toolchain-download-loader.sh",
+  "why": "The package stage also refreshes the canonical bootstrap beside its flattened Android installer."
  }
 ]

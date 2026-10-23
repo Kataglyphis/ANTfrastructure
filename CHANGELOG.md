@@ -18,6 +18,14 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-23 — share artifact refusal, media probes and download initialization
+
+- Share unsupported artifact-mode diagnostics while preserving exact stderr, status and lazy branch behavior.
+- Share media cross/native dispatch and FFmpeg encode/decode commands, retaining native failure policy, caller globals, codec diagnostics and temporary-file cleanup.
+- Share standalone Android/Vulkan download initialization with unchanged supplied-helper precedence, core lookup order and source-failure policy.
+- Carry the bootstrap beside both standalone callers across Android, SDK, package and Torch copies, including the Vulkan install companion in Torch.
+- Remove three resolved duplication exceptions; retain all independent smoke and architecture assertions.
+
 ## 2026-10-23 — share linker policy, service actions and cross-chain help
 
 - Share the optional LLD check with its original literal-`false` policy, preserving lookup order, status, compiler arguments and logs.

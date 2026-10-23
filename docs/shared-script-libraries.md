@@ -1962,3 +1962,29 @@ trailing-newline and output-failure behavior. Both imports require the existing
 platform companion rather than loading the broader cross environment or providing
 a private fallback. Independent receipts cover pin order, failed lookups, version
 policy, overrides, source guards and copied-companion failures.
+
+### Artifact refusal, media dispatch and standalone downloads
+
+`tag-naming.sh` owns the unsupported artifact-mode diagnostic in one private
+helper. Platform and image-reference callers retain their own native/cross
+branches and lazy access to their environment. Extracted test fixtures carry
+the rejection helper so invalid-mode assertions still exercise its exact status
+and stderr rather than an undefined-function error.
+
+`smoke_native_dispatch` shares cross-target presence checking and calls the native
+callback unconditionally when execution is appropriate. It introduces no local
+variables that could shadow caller globals. FFmpeg's shared test-pattern encoder
+and null decoder retain exact arguments and streams; callers retain codec policy,
+rate and preset choices, the H264 interstitial success message and cleanup order.
+Independent complete-section receipts cover tool calls, shell failure contexts,
+global state and temporary files without running real media tools.
+
+`source_toolchain_downloads` uses only the historical repository-core and installed
+core candidates, in that order, and leaves a supplied `download_file` untouched.
+The shared selector's `core-paths-only` mode excludes an adjacent downloads file.
+Both standalone callers carry `bootstrap.sh` beside their entrypoint; SDK and
+package copies refresh it and Android's flattened layout includes it. Torch's
+`/usr/local/bin/vulkan.sh` also carries `vulkan-install.sh`. The bootstrap contains
+function definitions and shell options; the downloads module's actual top-level
+state remains global when selected. Source calls keep their original strict and
+conditional failure behavior, and no private download fallback is restored.

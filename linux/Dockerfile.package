@@ -284,7 +284,7 @@ RUN printf '%s\n' \
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
-COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
+COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh /opt/scripts/
 COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
 # The final install-deps.sh sources media_load_arch_flags from here.
 COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/
