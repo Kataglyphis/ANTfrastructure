@@ -55,9 +55,7 @@ foreach ($f in $icd, $vulkanInfo, (Join-Path $lavapipeDir 'vulkan-1.dll')) {
 $env:VK_DRIVER_FILES = $icd
 $env:VK_LOADER_DRIVERS_SELECT = '*lvp_icd*'
 if (Test-Elevated) {
-    $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
-    New-Item -Path $key -Force | Out-Null
-    New-ItemProperty -LiteralPath $key -Name $icd -Value 0 -PropertyType DWord -Force | Out-Null
+    Register-LavapipeIcd -IcdPath $icd
 }
 $env:LP_NATIVE_VECTOR_WIDTH = $env:LP_NATIVE_VECTOR_WIDTH ?? '256'
 

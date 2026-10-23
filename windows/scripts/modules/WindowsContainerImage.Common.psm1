@@ -341,6 +341,13 @@ function Assert-VulkanArm64Library {
     else { Write-Warning $advisory }
 }
 
+function Register-LavapipeIcd {
+    param([Parameter(Mandatory)][string]$IcdPath)
+    $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
+    New-Item -Path $key -Force | Out-Null
+    New-ItemProperty -LiteralPath $key -Name $IcdPath -Value 0 -PropertyType DWord -Force | Out-Null
+}
+
 <#
 .SYNOPSIS
     Reads the four lavapipe pins through a caller-supplied lookup (env vars in the image, versions.env on a host).
@@ -388,6 +395,7 @@ Export-ModuleMember -Function @(
     'Sync-ContainerProcessPath',
     'Assert-ContainerCommandAvailable',
     'Assert-VulkanArm64Library',
+    'Register-LavapipeIcd',
     'Get-CiImageReference',
     'Expand-VulkanRuntimeComponents',
     'Get-LavapipeWindowsUrl',

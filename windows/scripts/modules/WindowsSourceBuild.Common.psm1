@@ -292,6 +292,22 @@ function Assert-CmakeArgsConsumed {
     }
 }
 
+function Get-CmakeCacheEntries {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
+    foreach ($line in ($Text -split '\r?\n')) {
+        if ($line -notmatch '^(?<key>[^/#\s][^=]*?)=(?<value>.*)$') { continue }
+        $key = $Matches['key']
+        $value = $Matches['value']
+        $name = $null
+        $type = $null
+        if ($key -match '^(?<name>[A-Za-z_][\w.+-]*)(?::(?<type>[A-Za-z_]+))?$') {
+            $name = $Matches['name']
+            $type = $Matches['type']
+        }
+        [pscustomobject]@{ Name = $name; Type = $type; Value = $value; Line = $line }
+    }
+}
+
 # Test-SccacheRemoteConfigured lives in WindowsScripts.Shared.psm1 and is re-exported here.
 
 function Write-SccacheStats {
@@ -2610,6 +2626,7 @@ Export-ModuleMember -Function @(
     'Get-SourceBuildSccache',
     'Get-CMakeRocmIsolationArgs',
     'Assert-CmakeArgsConsumed',
+    'Get-CmakeCacheEntries',
     'Test-SccacheRemoteConfigured',
     # Re-exported from WindowsScripts.Shared: scripts cannot see nested-module exports.
     'Get-SccacheStatsText',

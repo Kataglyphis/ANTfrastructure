@@ -164,69 +164,73 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
                         SHELL_FUNC)
 
 
+def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str):
+    if i == 0 or text[i - 1] == "\n":
+        end = text.find("\n", i)
+        end = len(text) if end < 0 else end
+        start = i + (len(text[i:end]) - len(text[i:end].lstrip(" \t")))
+        if text.startswith(marker, start):
+            return start + 2, "code", None
+    if text[i] in "{}":
+        chars[i] = " "
+    return i + 1, "here", marker
+
+
+def _mask_ps_comment_char(char: str, chars: list[str], i: int):
+    if char in "\r\n":
+        return i + 1, "code"
+    if char in "{}":
+        chars[i] = " "
+    return i + 1, "comment"
+
+
+def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str):
+    char = text[i]
+    if char in "{}":
+        chars[i] = " "
+    if marker == "'" and char == "'" and i + 1 < len(text) and text[i + 1] == "'":
+        return i + 2, "quote", marker
+    if marker == '"' and char == "`":
+        if i + 1 < len(text) and text[i + 1] in "{}":
+            chars[i + 1] = " "
+        return i + 2, "quote", marker
+    if char == marker:
+        return i + 1, "code", None
+    return i + 1, "quote", marker
+
+
+def _mask_ps_code_char(text: str, chars: list[str], i: int):
+    char = text[i]
+    if char == "`" and i + 1 < len(text):
+        if text[i + 1] in "{}":
+            chars[i + 1] = " "
+        return i + 2, "code", None
+    if char == "#":
+        return i + 1, "comment", None
+    if char == "@" and i + 1 < len(text) and text[i + 1] in "'\"":
+        end = text.find("\n", i)
+        end = len(text) if end < 0 else end
+        if not text[i + 2:end].strip(" \t\r"):
+            return i + 2, "here", text[i + 1] + "@"
+    if char in "'\"":
+        return i + 1, "quote", char
+    return i + 1, "code", None
+
+
 def _mask_ps_braces_in_literals(text: str) -> str:
     chars = list(text)
-    quote = None
-    here = None
-    comment = False
-    i = 0
+    state, marker, i = "code", None, 0
     while i < len(text):
-        char = text[i]
-        if here:
-            if i == 0 or text[i - 1] == "\n":
-                end = text.find("\n", i)
-                end = len(text) if end < 0 else end
-                start = i + (len(text[i:end]) - len(text[i:end].lstrip(" \t")))
-                if text.startswith(here, start):
-                    here = None
-                    i = start + 2
-                    continue
-            if here:
-                if char in "{}":
-                    chars[i] = " "
-                i += 1
-                continue
-        if comment:
-            if char in "\r\n":
-                comment = False
-            elif char in "{}":
-                chars[i] = " "
-            i += 1
+        if state == "here":
+            i, state, marker = _mask_ps_here_char(text, chars, i, marker)
             continue
-        if quote:
-            if char in "{}":
-                chars[i] = " "
-            if quote == "'" and char == "'" and i + 1 < len(text) and text[i + 1] == "'":
-                i += 2
-                continue
-            if quote == '"' and char == "`":
-                if i + 1 < len(text) and text[i + 1] in "{}":
-                    chars[i + 1] = " "
-                i += 2
-                continue
-            if char == quote:
-                quote = None
-            i += 1
+        if state == "comment":
+            i, state = _mask_ps_comment_char(text[i], chars, i)
             continue
-        if char == "`" and i + 1 < len(text):
-            if text[i + 1] in "{}":
-                chars[i + 1] = " "
-            i += 2
+        if state == "quote":
+            i, state, marker = _mask_ps_quote_char(text, chars, i, marker)
             continue
-        if char == "#":
-            comment = True
-            i += 1
-            continue
-        if char == "@" and i + 1 < len(text) and text[i + 1] in "'\"":
-            end = text.find("\n", i)
-            end = len(text) if end < 0 else end
-            if not text[i + 2:end].strip(" \t\r"):
-                here = text[i + 1] + "@"
-                i += 2
-                continue
-        if char in "'\"":
-            quote = char
-        i += 1
+        i, state, marker = _mask_ps_code_char(text, chars, i)
     return "".join(chars)
 
 

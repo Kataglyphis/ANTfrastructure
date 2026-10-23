@@ -187,8 +187,8 @@ function Get-GenaiOrtConfigureFinding {
         $dirSeen | Where-Object { -not (& $isPath $_ $dirVar.Want) } | ForEach-Object { "ortlib.cmake set $($dirVar.Name) to '$_', not $($dirVar.Want)" }
     }
     $cacheVars = [ordered]@{}
-    foreach ($entry in ($CMakeCache -split '\r?\n')) {
-        if ($entry -match '^(?<name>[A-Za-z_][\w.+-]*)(:[A-Za-z_]+)?=(?<value>.*)$') { $cacheVars[$Matches['name']] = $Matches['value'] }
+    foreach ($entry in (Get-CmakeCacheEntries -Text $CMakeCache)) {
+        if ($entry.Name) { $cacheVars[$entry.Name] = $entry.Value }
     }
     $blocked = ConvertTo-GenaiCmakePath $FetchBlockDir
     $pins = [ordered]@{ ORT_HOME = $shim; FETCHCONTENT_SOURCE_DIR_ORTLIB = $blocked; FETCHCONTENT_SOURCE_DIR_ONNXRUNTIME = $blocked }

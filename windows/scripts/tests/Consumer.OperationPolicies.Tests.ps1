@@ -43,15 +43,18 @@ Describe 'Shared build log and Rust package paths' {
 
 function Invoke-ConsumerProbeFixture {
     param([scriptblock]$Body, [string]$Find = '', [string]$Replace = '')
+    $state = [pscustomobject]@{ Code = 9; Error = 'fixture client notice'; Output = 'fixture stdout' }
     $prelude = @'
+$script:State = $State
 function Test-FixtureClient {
-    Write-Error 'fixture client notice'
-    'fixture stdout'
-    $global:LASTEXITCODE = 9
+    if ($script:State.Error) { Write-Error $script:State.Error }
+    $script:State.Output
+    $global:LASTEXITCODE = $script:State.Code
 }
 '@
-    Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsContainerBuild.Reuse.psm1' -FunctionName Invoke-ContainerClientAttempt -Find $Find -Replace $Replace `
-        -Prelude $prelude -Body $Body
+    Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsContainerBuild.Reuse.psm1' `
+        -FunctionName Invoke-ContainerClientCommand, Invoke-ContainerClientAttempt, Get-ContainerInspectField `
+        -Find $Find -Replace $Replace -FixtureState $state -Prelude $prelude -Body $Body
 }
 
 function Invoke-ConsumerOptionalCase {
@@ -166,6 +169,7 @@ Describe 'Benchmark row construction and rendering' {
 Describe 'Best-effort container client transport' {
     It 'captures stdout and failure code while containing nonterminating client diagnostics' {
         Invoke-ConsumerProbeFixture -Body {
+            param($state)
             $savedPreference = $ErrorActionPreference
             $ErrorActionPreference = 'Stop'
             try {
@@ -175,11 +179,24 @@ Describe 'Best-effort container client transport' {
                 Assert-Equal 'Stop' $ErrorActionPreference
                 Assert-Throws { Invoke-MutContainerClientAttempt -DockerExe Missing-FixtureClient -Arguments @() } -MessagePattern 'Missing-FixtureClient'
                 Assert-Equal 'Stop' $ErrorActionPreference
+
+                foreach ($case in @(
+                    @{ Code = 0; Error = 'WARNING: client notice'; Output = 'running'; Value = 'running'; Diagnostic = 'WARNING: client notice'; Missing = $false }
+                    @{ Code = 1; Error = ''; Output = 'Error: No such object: fixture'; Value = ''; Diagnostic = 'Error: No such object: fixture'; Missing = $true }
+                )) {
+                    $state.Code = $case.Code; $state.Error = $case.Error; $state.Output = $case.Output
+                    $inspect = Get-MutContainerInspectField -DockerExe Test-FixtureClient -Name fixture -Format '{{.State.Status}}'
+                    Assert-Equal $case.Code $inspect.ExitCode
+                    Assert-Equal $case.Value $inspect.Value 'stderr must never become the inspected value'
+                    Assert-Equal $case.Diagnostic $inspect.Error 'inspect diagnostics keep their stderr-first policy'
+                    Assert-Equal $case.Missing $inspect.Missing 'stdout-only docker failures remain classifiable'
+                }
+                Assert-Equal 'Stop' $ErrorActionPreference
             } finally { $ErrorActionPreference = $savedPreference }
         }
     }
 
-    It 'rejects a client probe that lets diagnostic errors terminate the build' {
+    It 'rejects a shared client call that lets diagnostic errors terminate the build' {
         Invoke-ConsumerProbeFixture -Find '$ErrorActionPreference = ''Continue''' -Replace '$ErrorActionPreference = ''Stop''' -Body {
             Assert-Throws { Invoke-MutContainerClientAttempt -DockerExe Test-FixtureClient -Arguments @() } -MessagePattern 'fixture client notice'
         }

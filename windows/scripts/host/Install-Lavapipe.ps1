@@ -35,17 +35,6 @@ if ($ScriptDir) { & (Join-Path $ScriptDir 'Import-Versions.ps1') }
 
 # The URL builders and pin names have one owner: WindowsContainerImage.Common, which the host provisioner calls too.
 
-<#
-.SYNOPSIS
-    Registers an ICD under HKLM\SOFTWARE\Khronos\Vulkan\Drivers.
-#>
-function Register-LavapipeIcd {
-    param([Parameter(Mandatory)][string]$IcdPath)
-    $key = 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers'
-    New-Item -Path $key -Force | Out-Null
-    New-ItemProperty -LiteralPath $key -Name $IcdPath -Value 0 -PropertyType DWord -Force | Out-Null
-}
-
 $arch = if ([string]::IsNullOrWhiteSpace($TargetArch)) { Get-WindowsTargetArch } else { $TargetArch }
 if ($arch -notin 'amd64', 'arm64') { throw "Install-Lavapipe: -TargetArch must be amd64 or arm64; got '$arch'" }
 

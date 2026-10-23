@@ -132,7 +132,25 @@ Describe 'Shared lavapipe acquisition' {
         }
         $modulePath = Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsContainerImage.Common.psm1'
         $module = Import-Module $modulePath -PassThru
-        try { Assert-True $module.ExportedCommands.ContainsKey('Install-LavapipeRuntime') 'the entry point must be exported' }
+        try {
+            Assert-True $module.ExportedCommands.ContainsKey('Install-LavapipeRuntime') 'the entry point must be exported'
+            Assert-True $module.ExportedCommands.ContainsKey('Register-LavapipeIcd') 'both installers use the shared registry write'
+        }
         finally { Remove-Module $module }
+    }
+
+    It 'keeps registration after runtime verification and preserves each caller policy' {
+        $containerPath = 'windows/scripts/host/Install-Lavapipe.ps1'
+        $hostPath = 'windows/scripts/host/Install-LavapipeHost.ps1'
+        $container = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $containerPath))
+        $hostSource = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $hostPath))
+        $containerCall = @(Get-TestScriptCommands -ScriptPath $containerPath -Name Register-LavapipeIcd)
+        $hostCall = @(Get-TestScriptCommands -ScriptPath $hostPath -Name Register-LavapipeIcd)
+        Assert-Equal 1 $containerCall.Count 'the image installer registers once'
+        Assert-Equal 1 $hostCall.Count 'the host provisioner registers once'
+        Assert-Equal '$icd' (Get-TestCommandArguments $containerCall[0]).IcdPath
+        Assert-Equal '$icd' (Get-TestCommandArguments $hostCall[0]).IcdPath
+        Assert-Match '(?s)\$icdJson = .*?if \(\$arch -eq ''amd64''\) \{ Register-LavapipeIcd -IcdPath \$icd \}' $container 'the verified amd64 ICD alone is registered in the image'
+        Assert-Match '(?s)foreach \(\$f in \$icd, \$vulkanInfo, .*?if \(Test-Elevated\) \{\s*Register-LavapipeIcd -IcdPath \$icd\s*\}' $hostSource 'host registration remains elevation-gated and follows runtime file checks'
     }
 }

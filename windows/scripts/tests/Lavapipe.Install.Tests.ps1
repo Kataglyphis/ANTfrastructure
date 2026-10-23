@@ -60,6 +60,61 @@ Describe 'Install-Lavapipe version guard' {
     }
 }
 
+function Get-LavapipeRegistryPrelude {
+    return @'
+function New-Item {
+    param([string]$Path, [switch]$Force)
+    $State.Calls.Add(@{ Name = 'key'; Path = $Path; Force = [bool]$Force })
+}
+function New-ItemProperty {
+    param([string]$LiteralPath, [string]$Name, [int]$Value, [string]$PropertyType, [switch]$Force)
+    $State.Calls.Add(@{ Name = 'value'; Path = $LiteralPath; Icd = $Name; Value = $Value; Type = $PropertyType; Force = [bool]$Force })
+    if ($State.FailWrite) { throw 'registry write failed' }
+}
+'@
+}
+
+function New-LavapipeRegistryModuleArguments {
+    param([Parameter(Mandatory)][object]$State)
+    return @{
+        ScriptPath = 'windows/scripts/modules/WindowsContainerImage.Common.psm1'
+        FunctionName = @('Register-LavapipeIcd')
+        Prefix = 'Mut'
+        FixtureState = $state
+        Prelude = Get-LavapipeRegistryPrelude
+    }
+}
+
+Describe 'Lavapipe ICD registration' {
+    It 'creates the loader key and writes the ICD path as a zero DWORD; mutation control checks the property write' {
+        $module = New-LavapipeRegistryModuleArguments -State (New-TestCallState @{ FailWrite = $false })
+        Invoke-TestFunctionMutations -ModuleArguments $module -Find 'New-ItemProperty -LiteralPath $key -Name $IcdPath -Value 0 -PropertyType DWord -Force | Out-Null' -Replace '' -Expected 'registry key and ICD property are both written' -IncludeControl -Body {
+            param($state)
+            $state.Calls.Clear()
+            Register-MutLavapipeIcd -IcdPath 'C:\runtime\lavapipe\lvp_icd.x86_64.json'
+            Assert-Equal 2 $state.Calls.Count 'registry key and ICD property are both written'
+            Assert-Equal 'key|value' ($state.Calls.Name -join '|')
+            Assert-Equal 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' $state.Calls[0].Path
+            Assert-True $state.Calls[0].Force
+            Assert-Equal $state.Calls[0].Path $state.Calls[1].Path
+            Assert-Equal 'C:\runtime\lavapipe\lvp_icd.x86_64.json' $state.Calls[1].Icd
+            Assert-Equal 0 $state.Calls[1].Value
+            Assert-Equal 'DWord' $state.Calls[1].Type
+            Assert-True $state.Calls[1].Force
+        }
+    }
+
+    It 'propagates registry write failures' {
+        $state = New-TestCallState @{ FailWrite = $true }
+        $module = New-LavapipeRegistryModuleArguments -State $state
+        Invoke-WithFunctionModule @module -Body {
+            param($state)
+            Assert-Throws { Register-MutLavapipeIcd -IcdPath 'C:\runtime\lavapipe\lvp_icd.aarch64.json' } -MessagePattern 'registry write failed'
+            Assert-Equal 'key|value' ($state.Calls.Name -join '|') 'the registry failure is not swallowed'
+        }
+    }
+}
+
 Describe 'Install-Lavapipe: the loader-zip layout' {
     # The extraction has ONE owner: the shared image module Install-Lavapipe and Install-VulkanLoader both call.
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsContainerImage.Common.psm1' -FunctionName 'Expand-VulkanRuntimeComponents')

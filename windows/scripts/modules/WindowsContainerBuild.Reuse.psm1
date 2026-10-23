@@ -8,14 +8,30 @@ if (-not (Get-Command Get-SccacheS3Level -ErrorAction SilentlyContinue)) {
     Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -DisableNameChecking
 }
 
-function Invoke-ContainerClientAttempt {
-    param([string]$DockerExe, [string[]]$Arguments)
+function Invoke-ContainerClientCommand {
+    param([string]$DockerExe, [string[]]$Arguments, [switch]$CaptureStderr)
+    $stdoutLines = [System.Collections.Generic.List[object]]::new()
+    $stderrLines = [System.Collections.Generic.List[string]]::new()
     $previous = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = @(& $DockerExe @Arguments 2>$null)
-        return [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
+        if ($CaptureStderr) {
+            & $DockerExe @Arguments 2>&1 | ForEach-Object {
+                if ($_ -is [System.Management.Automation.ErrorRecord]) { $stderrLines.Add("$_") }
+                else { $stdoutLines.Add($_) }
+            }
+        } else {
+            foreach ($line in @(& $DockerExe @Arguments 2>$null)) { $stdoutLines.Add($line) }
+        }
+        $exitCode = $LASTEXITCODE
     } finally { $ErrorActionPreference = $previous }
+    return [pscustomobject]@{ Output = $stdoutLines.ToArray(); Error = $stderrLines.ToArray(); ExitCode = $exitCode }
+}
+
+function Invoke-ContainerClientAttempt {
+    param([string]$DockerExe, [string[]]$Arguments)
+    $result = Invoke-ContainerClientCommand -DockerExe $DockerExe -Arguments $Arguments
+    return [pscustomobject]@{ Output = $result.Output; ExitCode = $result.ExitCode }
 }
 
 <#
@@ -395,39 +411,27 @@ function Get-ContainerInspectField {
         [Parameter(Mandatory)][string]$Format
     )
 
-    $stdoutLines = [System.Collections.Generic.List[string]]::new()
-    $stderrLines = [System.Collections.Generic.List[string]]::new()
-    $previousPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        # Redirected stderr arrives as ErrorRecords, so the streams split cleanly.
-        & $DockerExe inspect -f $Format $Name 2>&1 | ForEach-Object {
-            if ($_ -is [System.Management.Automation.ErrorRecord]) { $stderrLines.Add("$_") }
-            else { $stdoutLines.Add("$_") }
-        }
-        $code = $LASTEXITCODE
-    } finally {
-        $ErrorActionPreference = $previousPreference
-    }
+    # Redirected stderr arrives as ErrorRecords, so the shared transport keeps it separate from the value.
+    $result = Invoke-ContainerClientCommand -DockerExe $DockerExe -Arguments @('inspect', '-f', $Format, $Name) -CaptureStderr
 
     $value = ''
-    if ($code -eq 0) {
-        $first = @($stdoutLines | Where-Object { $_.Trim() }) | Select-Object -First 1
+    if ($result.ExitCode -eq 0) {
+        $first = @($result.Output | Where-Object { $_.Trim() }) | Select-Object -First 1
         if ($first) { $value = $first.Trim() }
     }
     # stdout is the fallback for a docker that reports its failure there.
-    $errorSource = if ($stderrLines.Count -gt 0) { $stderrLines } else { $stdoutLines }
+    $errorSource = if ($result.Error.Count -gt 0) { $result.Error } else { $result.Output }
     $text = (@($errorSource) -join "`n").Trim()
 
     return [pscustomobject]@{
-        Ok                = ($code -eq 0)
+        Ok                = ($result.ExitCode -eq 0)
         Value             = $value
-        ExitCode          = $code
+        ExitCode          = $result.ExitCode
         Error             = $text
         # 'Error: No such object: <name>' (inspect) / 'No such container'.
-        Missing           = (($code -ne 0) -and ($text -match 'No such (object|container)'))
+        Missing           = (($result.ExitCode -ne 0) -and ($text -match 'No such (object|container)'))
         # 'error during connect: ... //./pipe/docker_engine': the client, not the container.
-        DaemonUnreachable = (($code -ne 0) -and
+        DaemonUnreachable = (($result.ExitCode -ne 0) -and
             ($text -match 'error during connect|docker_engine|Cannot connect to the Docker daemon|daemon is not running'))
     }
 }

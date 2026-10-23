@@ -1,5 +1,5 @@
 #requires -Version 7.0
-# Fake native loaders and hostname cover PATH isolation and closure visibility; real DLL imports and compiler correctness remain image smoke coverage.
+# Use System32 hostname so a Git-bundled copy cannot add unrelated DLL dependencies to the probe.
 
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
 
@@ -19,7 +19,8 @@ public static class KataNativeProbe {
 
 function Assert-SmokeEnvironmentProbe {
     param([string]$ModuleSource)
-    $hostname = (Get-Command hostname -CommandType Application).Source
+    $hostname = Join-Path $env:SystemRoot 'System32\hostname.exe'
+    if (-not (Test-Path -LiteralPath $hostname -PathType Leaf)) { throw "Windows hostname fixture is missing: $hostname" }
     Invoke-InTestDir -Files @{ 'a.dll' = ''; 'nested/b.dll' = ''; 'skip.dll' = '' } -Body { param($dir)
         $state = New-TestCallState @{ Root = $dir; Hostname = $hostname; Scope = (Get-Command Invoke-WithProcessEnvironment) }
         $prelude = @'

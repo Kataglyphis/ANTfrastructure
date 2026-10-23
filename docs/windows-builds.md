@@ -2370,6 +2370,8 @@ run independently with their own paths, strict inputs and messages.
 
 Free-threaded wheel proofs share DLL search-path `sitecustomize.py` generation while container proofs keep their directory-only rule and device proofs keep their existing-path rule. Lavapipe URLs, pin names, ICD names and loader prefixes read one architecture fact. Sccache probes share process-start settings, stop-before-configuration updates and post-flush log reads while retaining their caller-specific launch, wait and verdict policies. Docker test fixtures share literal reads and continuation folding; each suite retains its own parser and assertions.
 
+CMake configure findings share `Get-CmakeCacheEntries` for raw lines, variable names, types and full values. Container CLI capture shares its native-call lifecycle while inspect keeps stderr-first diagnostics and ordinary probes discard stderr. Lavapipe registry writes share `Register-LavapipeIcd`; the image's amd64 condition and the host's elevation check stay with their callers.
+
 Python application wheel writers share one requirements read, hash update and write only after a matching wheel is found; pure-build and store-wheel callers retain their own pin and artifact filters. Agentic execution shares task counting and executor-batch progression while planner-only behavior, retry limits and fatal stop messages stay with their callers. The RDNA4 guard uses the shared active-device filter for its final verdict.
 
 Required sibling imports bind into each owner's scope without forcing a reload.

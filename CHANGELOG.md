@@ -14,6 +14,12 @@
 
 ## 2026-10-23 — remove another Windows duplication wave
 
+- Share CMake cache parsing, lavapipe ICD registry writes and container-client capture while preserving caller-specific verdict and failure policies.
+- Split the PowerShell literal masker into state handlers so the complexity gate can grade it without freezing an exception.
+- Add focused regression cases for raw cache values, registry write failures and container inspect stream policy.
+
+## 2026-10-23 — remove another Windows duplication wave
+
 - Share ONNX source-patch fallback and TVM ROCm probe lifecycles while preserving caller patch, argv, wait and verdict policies.
 - Share CUDA target-usability checks, source-build preparation, Python wheel DLL search paths and requirements, Agentic execution, RDNA4 filtering, and Lavapipe asset facts.
 - Share Windows test fixtures and mutation setup while keeping suite-specific assertions and failure controls.

@@ -361,10 +361,10 @@ function Get-OpencvRocmConfigureFinding {
     if (-not ($lines -match '(?<![\w/])OpenCL:\s+YES\b')) { 'the configure summary lacks "OpenCL: YES" (the OpenCL T-API is off)' }
     $lines | Where-Object { & $inRoot $_ } | ForEach-Object { "a configure line resolves into the ROCm tree: $($_.Trim())" }
     # Entries only ('//' and '#' are comments); CMAKE_IGNORE_PREFIX_PATH is Invoke-CmakeConfigure's own isolation arg.
-    $entries = @($CMakeCache -split '\r?\n' | Where-Object { $_ -match '^[^/#\s][^=]*=' })
+    $entries = @(Get-CmakeCacheEntries -Text $CMakeCache)
     if ($entries.Count -eq 0) { 'CMakeCache.txt is missing or has no entries, so the silent find results cannot be checked' }
-    $entries | Where-Object { $_ -notmatch '^CMAKE_IGNORE_PREFIX_PATH:' -and (& $inRoot $_) } |
-        ForEach-Object { "a CMake cache entry resolves into the ROCm tree: $($_.Trim())" }
+    $entries | Where-Object { $_.Line -notmatch '^CMAKE_IGNORE_PREFIX_PATH:' -and (& $inRoot $_.Line) } |
+        ForEach-Object { "a CMake cache entry resolves into the ROCm tree: $($_.Line.Trim())" }
 }
 
 # $null when no non-phony statement matches, '' when it lacks the variable; outputs end at the first unescaped ':'.
@@ -418,16 +418,16 @@ function Get-OpencvOrtConfigureFinding {
         if (-not (& $same $inc "$shim/include/onnxruntime/core/session")) { "ONNX Runtime's include path is '$inc', not the nested chain headers $shim/include/onnxruntime/core/session" }
         if (-not (& $same $lib "$chain/lib/onnxruntime.lib")) { "ONNX Runtime links '$lib', not the chain's import library $chain/lib/onnxruntime.lib" }
     }
-    $entries = @($CMakeCache -split '\r?\n' | Where-Object { $_ -match '^[^/#\s][^=]*=' })
+    $entries = @(Get-CmakeCacheEntries -Text $CMakeCache)
     if ($entries.Count -eq 0) {
         'CMakeCache.txt is missing or has no entries, so the DirectML probe cannot be checked'
     } else {
-        $ep = "$(@($entries | Where-Object { $_ -match '^ORT_EP_INCLUDE:' } | ForEach-Object { $_ -replace '^[^=]*=', '' }) | Select-Object -First 1)"
+        $ep = "$(@($entries | Where-Object { $_.Line -match '^ORT_EP_INCLUDE:' } | ForEach-Object Value) | Select-Object -First 1)"
         if (-not (& $same $ep "$shim/include/onnxruntime/core/providers/dml")) {
             "FindONNX's DirectML probe resolved to '$ep', not the nested dml_provider_factory.h, so HAVE_ONNX_DML is off"
         }
-        $entries | Where-Object { $_ -match '3rdparty[\\/]onnxruntime' } |
-            ForEach-Object { "a CMake cache entry names dnn's ORT download dir: $($_.Trim())" }
+        $entries | Where-Object { $_.Line -match '3rdparty[\\/]onnxruntime' } |
+            ForEach-Object { "a CMake cache entry names dnn's ORT download dir: $($_.Line.Trim())" }
     }
     if ([string]::IsNullOrWhiteSpace($BuildNinja)) { return 'build.ninja is missing or empty, so the G-API compile and link lines cannot be checked' }
     $defines = Get-NinjaBuildVariable -BuildNinja $BuildNinja -OutputPattern '[\\/]opencv_gapi\.dir[\\/](.*[\\/])?dml_ep\.cpp\.obj(\s|$)' -Variable 'DEFINES'
