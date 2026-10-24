@@ -27103,5 +27103,45 @@
   "replace": " sccache-server-address.sh cross-active-fallback.sh)",
   "test": "bash linux/scripts/tests/test-layer-order.sh",
   "why": "The source-only policy remains a leaf and is available to the common layer."
+ },
+ {
+  "id": "lib.media-selector-first-candidate",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "for _mfef_candidate in \"$@\"; do",
+  "replace": "for _mfef_candidate in \"${@:2}\"; do",
+  "test": "bash linux/scripts/tests/test-media-file-selection.sh",
+  "why": "The container's first existing media file wins over the repository fallback."
+ },
+ {
+  "id": "lib.media-selector-caller-slot",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "_mfef_slot=\"${_mfef_candidate}\"",
+  "replace": "_mfef_slot=''",
+  "test": "bash linux/scripts/tests/test-media-file-selection.sh",
+  "why": "Sourced setup files retain the candidate variable the original caller loop exposed."
+ },
+ {
+  "id": "lib.media-selector-alias-arguments",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if _media_candidate_exists \"${_mfef_caller_args[@]}\"; then",
+  "replace": "if _media_candidate_exists; then",
+  "test": "bash linux/scripts/tests/test-media-file-selection.sh",
+  "why": "A caller-bound file-test alias receives the same positional arguments as the old loop."
+ },
+ {
+  "id": "lib.media-selector-missing-status",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "  done\n  return 1\n}\n\n# See docs/cross-build-verification.md",
+  "replace": "  done\n  return 0\n}\n\n# See docs/cross-build-verification.md",
+  "test": "bash linux/scripts/tests/test-media-file-selection.sh",
+  "why": "An absent optional media file leaves defaults intact without trying to source an empty path."
+ },
+ {
+  "id": "lib.media-selector-selected-source-fatal",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "source \"${_dep_env}\" || { echo \"FATAL: cannot load ${_dep_env}\" >&2; exit 1; }",
+  "replace": "source \"${_dep_env}\" || return 0",
+  "test": "bash linux/scripts/tests/test-media-file-selection.sh",
+  "why": "A selected preamble that fails must remain fatal and cannot fall through to the repo copy."
  }
 ]

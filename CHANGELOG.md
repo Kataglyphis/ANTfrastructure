@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — share media file selection
+
+- Share first-existing file selection for media architecture flags and install preambles while keeping `source` in each caller.
+- Preserve installed-before-repository order, caller arguments, source-visible path variables and fatal statuses.
+- Remove one measured duplication exception without changing scanner thresholds or coverage.
+
 ## 2026-10-24 — share privilege, APT and target Cargo policy
 
 - Share privilege selection with caller-bound publication, original readonly behavior and module-owned companion lookup.

@@ -1123,6 +1123,13 @@ the end of media_common_init, after cross-env.sh is loaded).
 media_load_arch_flags themselves; the preamble has already provided the
 cross_build_is_active / cross_target_arch helpers by then.
 
+`_media_first_existing_file` owns the shared regular-file lookup used by
+`media_load_arch_flags` and `media_install_deps_init`. It writes the selected
+path into the caller's existing local slot; each caller runs `source` itself,
+so sourced files retain the same positional arguments and `BASH_SOURCE` frame.
+The installed path stays first and a missing optional file leaves the media
+defaults unset.
+
 ### smoke-torch-venv: what the venv assertions cover
 
 Assert installed ML-stack versions match their pins. Two authorities, but NOT
