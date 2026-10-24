@@ -19,6 +19,7 @@
 - Report missing Python return annotations with Ruff ANN rules in the same folder and upload the reports from CI. Ty checks types but does not itself require annotations.
 - Correct type errors in quality scripts, build helpers and tests; prove that a planted type error fails the new gate and that a failed consumer ty check fails the existing static-analysis driver.
 - Keep curated SBOM `--stdout` byte-identical to the generated file on Windows as well as Linux.
+- Refresh the mutation manifest totals so the documentation-number suite and Linux preflight agree with the measured inventory.
 
 ## 2026-10-24 — CI quality evidence
 
