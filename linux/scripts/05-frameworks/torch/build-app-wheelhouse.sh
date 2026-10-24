@@ -71,17 +71,22 @@ unset _evf
 : "${PYTORCH_HOST_INDEX_URL:=https://download.pytorch.org/whl/cpu}"
 : "${DEFAULT_PYPI_INDEX_URL:=https://pypi.org/simple}"
 
-if [ -f /opt/scripts/core/parallelism.sh ]; then
-  # shellcheck disable=SC1091
-  source /opt/scripts/core/parallelism.sh 2>/dev/null || true
-  # torch's aten TUs peak ~4 GB per cc1plus, so budget 4 GB per job.
-  if declare -F compute_cpp_heavy_jobs >/dev/null 2>&1; then
-    MAX_JOBS="${MAX_JOBS:-$(compute_cpp_heavy_jobs "")}"
-  elif declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
-    MAX_JOBS="${MAX_JOBS:-$(compute_jobs_with_mem_cap "" 4096)}"
-  fi
-fi
-: "${MAX_JOBS:=$(nproc)}"
+_torch_select_max_jobs() {
+    if [ -n "${MAX_JOBS:-}" ]; then
+        printf '%s' "${MAX_JOBS}"
+        return 0
+    fi
+
+    # Torch's aten TUs peak ~4 GB per cc1plus, so use the heavy profile.
+    if declare -F compute_cpp_heavy_jobs >/dev/null 2>&1; then
+        compute_cpp_heavy_jobs ""
+    elif declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then
+        compute_jobs_with_mem_cap "" 4096
+    else
+        nproc
+    fi
+}
+MAX_JOBS="$(_torch_select_max_jobs)"
 
 BUILD_PYTHON=""
 TARGET_TORCH_WHEEL=""
