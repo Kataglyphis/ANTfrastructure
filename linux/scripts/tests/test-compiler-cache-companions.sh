@@ -12,7 +12,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
 mkdir "${WORK}/complete" "${WORK}/missing"
-for companion in compiler-cache-utils.sh load-versions-env.sh versions.env platform.sh cross-active-fallback.sh; do
+for companion in compiler-cache-utils.sh load-versions-env.sh versions.env platform.sh cross-active-fallback.sh sudo-policy.sh; do
   install -m 0644 "${TESTS_DIR}/../01-core/${companion}" "${WORK}/complete/"
 done
 for module in "${CACHE}" "${CMAKE}" "${COMMON}"; do

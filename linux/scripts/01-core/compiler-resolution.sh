@@ -188,3 +188,27 @@ prepare_and_publish_host_cargo_compiler() {
   fi
   return $?
 }
+
+# Selected preparation stays unconditional so strict failures and parent publication retain the caller's policy.
+cargo_target_pipeline() {
+  local _ctp_target="$1" _ctp_available="$2" _ctp_prepare_publish="$3"
+  if [ -n "${_ctp_target}" ] && "${_ctp_available}"; then
+    "${_ctp_prepare_publish}"
+  fi
+  return $?
+}
+
+# Callers retain each capture so successful resolver mutations cannot leak into the parent environment.
+cargo_resolved_compiler_field() {
+  local _crcf_field="$1" _crcf_resolve="$2" _crcf_printf="$3"
+  if "${_crcf_resolve}" >/dev/null 2>&1; then
+    case "${_crcf_field}" in
+      CC) "${_crcf_printf}" "${CC:-}" ;;
+      CXX) "${_crcf_printf}" "${CXX:-}" ;;
+      *) return 2 ;;
+    esac
+  else
+    return $?
+  fi
+  return $?
+}

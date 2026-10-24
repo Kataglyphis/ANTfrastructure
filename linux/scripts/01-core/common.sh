@@ -107,21 +107,32 @@ tool_version() {
   fi
 }
 
-# Delegates to logging.sh's guard, which sets SUDO and SUDO_WRAP; inline fallback if it was not sourced.
+_common_sudo_nonroot() { [ "${EUID:-$(id -u)}" -ne 0 ]; return $?; }
+_common_sudo_available() { command -v sudo; }
+_common_sudo_die() { die "This script requires sudo or root."; }
+
+_common_sudo_publish_nonroot() {
+  SUDO="sudo"
+  SUDO_WRAP="sudo"
+}
+
+_common_sudo_publish_root() {
+  SUDO=""
+  # shellcheck disable=SC2034 # set beside SUDO; read by the scripts that source common.sh
+  SUDO_WRAP=""
+}
+
+# Logging owns initialized wrappers; minimal source layouts use the pure policy leaf.
 require_sudo() {
   if command -v _ensure_sudo_wrapper >/dev/null 2>&1; then
     _ensure_sudo_wrapper "This script requires sudo or root."
     return
   fi
-  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-    command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-    SUDO="sudo"
-    SUDO_WRAP="sudo"
-  else
-    SUDO=""
-    # shellcheck disable=SC2034 # set beside SUDO; read by the scripts that source common.sh
-    SUDO_WRAP=""
-  fi
+  unset -f sudo_policy_select || return $?
+  # shellcheck source=linux/scripts/01-core/sudo-policy.sh
+  source "${_COMMON_SH_DIR}/sudo-policy.sh" || return $?
+  declare -F sudo_policy_select >/dev/null || { printf 'ERROR: sudo policy API missing\n' >&2; return 1; }
+  sudo_policy_select _common_sudo_nonroot _common_sudo_available _common_sudo_die _common_sudo_publish_nonroot _common_sudo_publish_root "$@"
 }
 
 detect_system() {

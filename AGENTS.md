@@ -89,6 +89,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
    Callback dispatch preserves caller-visible bindings and positional context; generic helper locals must not hide configuration used by supplied shell wrappers.
    Host compiler wrappers retain parent-shell publication and original local slots; optional media pinning retains caller-bound lookup and invocation.
+   Copied common and minimal bootstrap modules carry `sudo-policy.sh`; retain SDK delegation before importing the policy from its module owner.
+   Validate cross-apt's first-line source API marker before its helper-only import; older full imports must not overwrite provided SDK updaters.
    Shared CLI consumers retain complete argument lists when nameref assignments can read positional parameters.
    Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies.
    Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
