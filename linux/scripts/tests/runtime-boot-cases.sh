@@ -112,6 +112,8 @@ _rust() {
     _rt_run() { printf "%s\n" "${RUST_OUT}"; }
     smoke_rust_target() { printf "x86_64-unknown-linux-gnu"; }
     _rt_versions_env_pin() { printf "1.98.0"; }
+    '"$(_extract _rt_run_optional)"'
+    '"$(_extract _smoke_runtime_pin_matches)"'
     '"$(_extract check_rust_toolchain)"'
     check_rust_toolchain img amd64' 2>&1
 }
@@ -146,6 +148,8 @@ _flutter() {
     _rt_run() { printf "opts=%s\n" "$*" > "${OPTS}"; printf "%s\n" "${FLUTTER_OUT}"; }
     smoke_elf_machine_grep() { case "$1" in amd64) printf "X86-64";; arm64) printf "AArch64";; esac; }
     _rt_versions_env_pin() { printf "3.47.1"; }
+    '"$(_extract _rt_run_optional)"'
+    '"$(_extract _smoke_runtime_pin_matches)"'
     '"$(_extract check_flutter)"'
     check_flutter img '"${2:-arm64}"'' 2>&1
   cat "${opts}"; rm -f "${opts}"
@@ -207,6 +211,8 @@ _truth_gate_output() {
     '"$(_extract _advertised_probe_failure)"'
     '"$(_extract _venv_probe_failure)"'
     '"$(_extract _shipped_truth_section)"'
+    '"$(_extract _shipped_truth_verdict_rows)"'
+    '"$(_extract _advertised_verdict_line)"'
     '"$(_extract _check_advertised_versions)"'
     '"$(_extract _check_venv_package_set)"'
     '"$(_extract check_advertised_versions)"'

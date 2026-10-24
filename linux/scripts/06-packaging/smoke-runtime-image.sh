@@ -412,13 +412,13 @@ _functional_smoke_gate() {
   local image_tag="$1" target_arch="$2" title="$3" success="$4" failure="$5"
   shift 5
   echo "--- Functional: ${title} ---"
-  if "$@"; then
-    pass "${success}"
-  else
-    fail "${failure}"
-  fi
+  if "$@"; then pass "${success}"; else fail "${failure}"; fi
   echo ""
 }
+
+_rt_run_optional() { _rt_run "$@" 2>&1 || true; }
+
+_smoke_runtime_pin_matches() { printf '%s\n' "$1" | grep -qE "^$2 ${3:-[0-9]}"; }
 
 check_ffmpeg() {
   # pipefail is required: head's 0 would hide an ffmpeg that cannot load a .so.
@@ -445,8 +445,8 @@ check_flutter() {
   fi
   pin="$(_rt_versions_env_pin FLUTTER_VERSION)"
   machine="$(smoke_elf_machine_grep "${target_arch}")"
-  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine; for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w "$d" ] || printf "UNWRITABLE %s\n" "$d"; done; find /opt/flutter ! -user "$(id -u)" -printf "FOREIGN %p\n" 2>/dev/null | head -3' 2>&1 || true)"
-  if ! printf '%s\n' "${out}" | grep -qE "^Flutter ${pin:-[0-9]}"; then
+  out="$(_rt_run_optional --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine; for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w "$d" ] || printf "UNWRITABLE %s\n" "$d"; done; find /opt/flutter ! -user "$(id -u)" -printf "FOREIGN %p\n" 2>/dev/null | head -3')"
+  if ! _smoke_runtime_pin_matches "${out}" Flutter "${pin}"; then
     fail "flutter does not run offline as the image user, or is not FLUTTER_VERSION=${pin:-?} (${target_arch}): $(printf '%s' "${out}" | head -1)"
   elif ! printf '%s\n' "${out}" | grep -qF "${machine}"; then
     fail "the cached Dart SDK is not ${machine} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- bootstrapped on the wrong arch"
@@ -468,8 +468,8 @@ check_rust_toolchain() {
   echo "--- Functional: rust toolchain ---"
   triple="$(smoke_rust_target "${target_arch}")"
   pin="$(_rt_versions_env_pin RUST_VERSION)"
-  out="$(_rt_run bash -lc 'rustc --version 2>&1 | head -1; rustup show active-toolchain 2>&1 | head -1; command -v cargo-cbuild' 2>&1 || true)"
-  if ! printf '%s\n' "${out}" | grep -qE "^rustc ${pin:-[0-9]}"; then
+  out="$(_rt_run_optional bash -lc 'rustc --version 2>&1 | head -1; rustup show active-toolchain 2>&1 | head -1; command -v cargo-cbuild')"
+  if ! _smoke_runtime_pin_matches "${out}" rustc "${pin}"; then
     fail "rustc does not run or is not RUST_VERSION=${pin:-?} in the ${target_arch} image: $(printf '%s' "${out}" | head -1)"
   elif ! printf '%s\n' "${out}" | grep -qF -- "-${triple}"; then
     fail "the active rust toolchain is not ${triple} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- the builder's toolchain was shipped instead of a native one"
@@ -1535,15 +1535,11 @@ _rvv_verdicts() {
 }
 
 # Shared shipped-truth records count only explicit OK and BAD results.
-_shipped_truth_verdict_gate() {
-  local probe_failure="$1" pass_prefix="$2" pass_suffix="$3" parser="$4" renderer="$5"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "${probe_failure}"
-    echo ""
-    return 0
-  fi
+_shipped_truth_verdict_rows() {
+  local pass_prefix="$1" pass_suffix="$2" parser="$3" renderer="$4" empty_failure="${5:-}"
   local line verb ok=0 bad=0
   while IFS= read -r line; do
+    [ -n "${line}" ] || continue
     verb="${line%% *}"
     case "${verb}" in
       OK)  ok=$((ok + 1)) ;;
@@ -1552,7 +1548,18 @@ _shipped_truth_verdict_gate() {
     "${renderer}" "${line}"
   done < <("${parser}" "${_SHIPPED_TRUTH_PROBE}")
   [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "${pass_prefix}${ok}${pass_suffix}"
+  if [ "${ok}" -eq 0 ] && [ "${bad}" -eq 0 ] && [ -n "${empty_failure}" ]; then fail "${empty_failure}"; fi
   echo ""
+}
+
+_shipped_truth_verdict_gate() {
+  local probe_failure="$1" pass_prefix="$2" pass_suffix="$3" parser="$4" renderer="$5" empty_failure="${6:-}"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "${probe_failure}"
+    echo ""
+    return 0
+  fi
+  _shipped_truth_verdict_rows "${pass_prefix}" "${pass_suffix}" "${parser}" "${renderer}" "${empty_failure}"
 }
 
 _rvv_verdict_line() {
@@ -1650,30 +1657,23 @@ _shipped_truth_section() {
   echo ""
 }
 check_advertised_versions() {
-  _shipped_truth_section "$1" "$2" "A: advertised env versions == actual" \
-    _advertised_probe_failure _check_advertised_versions
+  _shipped_truth_section "$1" "$2" "A: advertised env versions == actual" _advertised_probe_failure _check_advertised_versions
+}
+_advertised_verdict_line() {
+  local verb key rest
+  read -r verb key rest <<< "$1"
+  case "${verb}" in
+    OK)     echo "  OK   ${key}=${rest} matches the image" ;;
+    BAD)    fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+    UNSET)  bad=$((bad + 1)); fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
+    UNREAD) bad=$((bad + 1)); fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
+    *)      _smoke_unknown_verdict bad advertised-version "${verb}" "${key}" "${target_arch}" \
+              " -- a verb no arm handles is a silently dropped row" ;;
+  esac
 }
 _check_advertised_versions() {
-  local verb key rest ok=0 bad=0
-  while read -r verb key rest; do
-    [ -n "${verb}" ] || continue
-    case "${verb}" in
-      OK)     echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
-      BAD)    bad=$((bad + 1))
-              fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
-      UNSET)  bad=$((bad + 1))
-              fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
-      UNREAD) bad=$((bad + 1))
-              fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
-      *)      _smoke_unknown_verdict bad advertised-version "${verb}" "${key}" "${target_arch}" \
-                " -- a verb no arm handles is a silently dropped row" ;;
-    esac
-  done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
-  if [ "$((ok + bad))" -eq 0 ]; then
-    fail "advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image"
-  elif [ "${bad}" -eq 0 ]; then
-    pass "all ${ok} advertised version(s) match the shipped image (${target_arch})"
-  fi
+  _shipped_truth_verdict_rows "all " " advertised version(s) match the shipped image (${target_arch})" _advert_verdicts _advertised_verdict_line \
+    "advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image"
 }
 
 # B: the venv must carry what the app's own metadata says this arch needs.
@@ -1682,8 +1682,7 @@ _venv_probe_failure() {
   fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
 }
 check_venv_package_set() {
-  _shipped_truth_section "$1" "$2" "B: venv package set vs the app's declared graph" \
-    _venv_probe_failure _check_venv_package_set
+  _shipped_truth_section "$1" "$2" "B: venv package set vs the app's declared graph" _venv_probe_failure _check_venv_package_set
 }
 _check_venv_package_set() {
   local absent

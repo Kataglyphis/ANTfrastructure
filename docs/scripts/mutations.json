@@ -1026,8 +1026,8 @@
  {
   "id": "flutter.smoke-offline",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "out=\"$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version",
-  "replace": "out=\"$(_rt_run bash -lc 'flutter --suppress-analytics --version",
+  "find": "out=\"$(_rt_run_optional --network none bash -lc 'flutter --suppress-analytics --version",
+  "replace": "out=\"$(_rt_run_optional bash -lc 'flutter --suppress-analytics --version",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "online, a bare SDK bootstraps itself during the smoke and passes; the shipped property is that it works without a network"
  },
@@ -3002,7 +3002,7 @@
  {
   "id": "probe.advert-unknown-verb",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "      *)      _smoke_unknown_verdict bad advertised-version \"${verb}\" \"${key}\" \"${target_arch}\" \\\n                \" -- a verb no arm handles is a silently dropped row\" ;;",
+  "find": "    *)      _smoke_unknown_verdict bad advertised-version \"${verb}\" \"${key}\" \"${target_arch}\" \\\n              \" -- a verb no arm handles is a silently dropped row\" ;;",
   "replace": "      *)      : ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "a verb no arm handles is a silently dropped row -- the same class as the SKIP arms themselves"
@@ -3370,8 +3370,8 @@
  {
   "id": "probe.advert-empty-table-is-vacuous",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "    fail \"advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image\"",
-  "replace": "    pass \"advertised-version gate had nothing to check on ${target_arch}\"",
+  "find": "  if [ \"${ok}\" -eq 0 ] && [ \"${bad}\" -eq 0 ] && [ -n \"${empty_failure}\" ]; then fail \"${empty_failure}\"; fi",
+  "replace": "  if false; then fail \"${empty_failure}\"; fi",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "a gate whose key list came back empty asserted nothing; printing PASS for it is the hole the gate exists to close"
  },
