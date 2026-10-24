@@ -2,12 +2,10 @@
 # Offline commands cover current-UID execute/status policies, not privilege changes or real sudo/package installs.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$TESTS_DIR/test-workspace-fixture.sh"
 source "$TESTS_DIR/stream-receipt-fixture.sh"
-t_fixture_workspace_init WORK
+receipt=''
+t_stream_workspace WORK receipt "${2:-}"
 subject="${1:-$TESTS_DIR/../02-toolchain/packaging-deps.sh}"
-receipt="${2:-}"
-[ -z "$receipt" ] || : > "$receipt"
 for name in best_effort_mode _packaging_execute _packaging_step_failure run_step _packaging_sudo_failure try_or_sudo; do
   if grep -q "^${name}() {" "$subject"; then t_fn_src "$subject" "$name"; fi
 done > "$WORK/functions.sh"

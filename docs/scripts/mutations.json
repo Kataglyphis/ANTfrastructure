@@ -9734,8 +9734,8 @@
  {
   "id": "ort-chain.g2-hidden",
   "target": "linux/scripts/03-media/ort-provenance.sh",
-  "find": "-o -name '*_provider_factory.h' -o -name '*.tar.lzma2' \\)",
-  "replace": "-o -name '*_provider_factory.h' -o -name '*.tar.lzma2' \\) ! -path '*/.*'",
+  "find": "\\( \"${file_candidates[@]}\" \\) \\\n        -printf",
+  "replace": "\\( \"${file_candidates[@]}\" \\) ! -path '*/.*' \\\n        -printf",
   "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
   "why": "hidden files and dirs are scanned too"
  },
@@ -10054,7 +10054,7 @@
  {
   "id": "ort-chain.g2-bin-genai-excluded",
   "target": "linux/scripts/03-media/ort-provenance.sh",
-  "find": "  case \"${lc}\" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 1 ;; esac",
+  "find": "  if _ortg_component_name \"${lc}\"; then return 1; fi",
   "replace": "  :",
   "test": "bash linux/scripts/tests/test-ort-provenance-build.sh",
   "why": "GenAI's and extensions' own libraries are not ORT binaries"
@@ -23383,5 +23383,261 @@
   "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d ${destination} >/dev/null 2>&1",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "Wheel destinations containing spaces remain one argument."
+ },
+ {
+  "id": "lib.ort-component-name-exemption",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "  case \"${1,,}\" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 0 ;; esac",
+  "replace": "  case \"${1,,}\" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 1 ;; esac",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "GenAI and extensions remain excluded from core binary and archive classifications while ordinary ORT names retain their findings."
+ },
+ {
+  "id": "lib.ort-tree-archive-candidates",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "  _ortg_file_candidates file_candidates archives",
+  "replace": "  _ortg_file_candidates file_candidates",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "Tree scans still inspect arbitrary tar.lzma2 archives while preserving the original filename predicate and raw suffix diagnostics."
+ },
+ {
+  "id": "lib.ort-record-candidate-scope",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "  _ortg_file_candidates file_candidates\n",
+  "replace": "  _ortg_file_candidates file_candidates archives\n",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "Record-directory scans retain their one-level filename policy and must not gain tree-only tar.lzma2 candidates."
+ },
+ {
+  "id": "lib.ort-provider-header-candidates",
+  "target": "linux/scripts/03-media/ort-provenance.sh",
+  "find": "  _ofc_predicate=(-iname '*onnxruntime*' -o -name '*_provider_factory.h')",
+  "replace": "  _ofc_predicate=(-iname '*onnxruntime*')",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "Provider headers without onnxruntime in their filename still reach byte comparison in both tree and record scans."
+ },
+ {
+  "id": "lib.stream-workspace-receipt-reset",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "  [ -z \"$_tsw_receipt\" ] || : > \"$_tsw_receipt\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "An explicit optional receipt is truncated at startup while an omitted receipt creates no output file."
+ },
+ {
+  "id": "lib.stream-workspace-named-output",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "  _tsw_receipt=\"${3:-}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "Workspace startup assigns the caller receipt variable, including caller-local names and an omitted optional value."
+ },
+ {
+  "id": "lib.stream-workspace-failure-status",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "  t_fixture_workspace_init \"$1\" || return \"$?\"",
+  "replace": "  t_fixture_workspace_init \"$1\"",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "Workspace creation failure must propagate before optional receipt handling can turn it into a successful initializer."
+ },
+ {
+  "id": "lib.stream-workspace-companion",
+  "target": "linux/scripts/tests/stream-receipt-fixture.sh",
+  "find": "  source \"${BASH_SOURCE[0]%/*}/test-workspace-fixture.sh\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-ort-name-selection.sh",
+  "why": "The shared startup requires its workspace and EXIT-cleanup owner rather than assuming another suite imported it first."
+ },
+ {
+  "id": "lib.wheel-tag-primary-precedence",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  if command -v cross_wheel_platform_tag >/dev/null 2>&1; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "An available canonical wheel-tag override runs before architecture fallback."
+ },
+ {
+  "id": "lib.wheel-tag-primary-status",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    cross_wheel_platform_tag\n    return $?",
+  "replace": "    cross_wheel_platform_tag\n    return 0",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "Canonical override failures retain their raw status under conditional callers."
+ },
+ {
+  "id": "lib.wheel-tag-required-target",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    command -v cross_target_arch >/dev/null 2>&1 || return 1",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "The LiteRT fallback requires a target resolver before mapping an architecture."
+ },
+ {
+  "id": "lib.wheel-tag-best-effort-stderr",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    arch_linux_platform_tag_for \"$(cross_target_arch 2>/dev/null || true)\"",
+  "replace": "    arch_linux_platform_tag_for \"$(cross_target_arch || true)\"",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "The Torch fallback keeps target-probe diagnostics suppressed while retaining mapper status."
+ },
+ {
+  "id": "lib.wheel-tag-litert-policy",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "    wheel_platform_tag_with_fallback required",
+  "replace": "    wheel_platform_tag_with_fallback best-effort",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "LiteRT preserves its required target-symbol fallback policy."
+ },
+ {
+  "id": "lib.wheel-tag-torch-policy",
+  "target": "linux/scripts/05-frameworks/torch/build-app-wheelhouse.sh",
+  "find": "    wheel_platform_tag_with_fallback best-effort",
+  "replace": "    wheel_platform_tag_with_fallback required",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "Torch preserves its best-effort fallback when the target resolver is absent."
+ },
+ {
+  "id": "lib.wheel-tag-gst-native-scope",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "  if cross_build_is_active && command -v cross_target_arch >/dev/null 2>&1; then",
+  "replace": "  if command -v cross_target_arch >/dev/null 2>&1; then",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "Native GStreamer setup must not enable foreign-target workarounds."
+ },
+ {
+  "id": "lib.wheel-tag-gst-target-availability",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "  if cross_build_is_active && command -v cross_target_arch >/dev/null 2>&1; then",
+  "replace": "  if cross_build_is_active; then",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "Absent target resolvers must remain silent and must not be called."
+ },
+ {
+  "id": "lib.wheel-tag-gst-riscv64",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "      arm64|riscv64) _mgft_match=1 ;;",
+  "replace": "      arm64) _mgft_match=1 ;;",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "The shared GStreamer selection includes both arm64 and riscv64."
+ },
+ {
+  "id": "lib.wheel-tag-gst-lookup-streams",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "    case \"$(cross_target_arch)\" in",
+  "replace": "    case \"$(cross_target_arch 2>/dev/null)\" in",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "GStreamer target lookup diagnostics remain visible to the caller."
+ },
+ {
+  "id": "lib.wheel-tag-gst-selector-required",
+  "target": "linux/scripts/03-media/build/gstreamer/common/pre-setup.sh",
+  "find": "media_gstreamer_foreign_target _gst_foreign_target\n",
+  "replace": "_gst_foreign_target=0\n",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "GStreamer GI setup must invoke the shared foreign-target selector before deciding whether to resolve its wrapper architecture."
+ },
+ {
+  "id": "lib.wheel-tag-gst-gi-raw-status",
+  "target": "linux/scripts/03-media/build/gstreamer/common/pre-setup.sh",
+  "find": "  unset _gst_foreign_target\n  gi_cross_wrapper_arch=\"$(cross_target_arch)\"",
+  "replace": "  gi_cross_wrapper_arch=\"$(cross_target_arch)\"\n  unset _gst_foreign_target",
+  "test": "bash linux/scripts/tests/test-wheel-tag-resolution.sh",
+  "why": "Temporary selector cleanup precedes the second GI lookup so its raw failure status is not masked."
+ },
+ {
+  "id": "lib.validator-source-unconditional",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  \"$1\"\n  \"$2\"\n",
+  "replace": "  if \"$1\"; then :; fi\n  \"$2\"\n",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "source-writer failure remains fatal under strict callers and retains conditional continuation"
+ },
+ {
+  "id": "lib.validator-probe-unconditional",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  \"$1\"\n  \"$2\"\n",
+  "replace": "  \"$1\"\n  if \"$2\"; then :; fi\n",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "probe callbacks are unconditional so errexit is not disabled inside them"
+ },
+ {
+  "id": "lib.validator-source-before-probe",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  \"$1\"\n  \"$2\"\n",
+  "replace": "  \"$2\"\n  \"$1\"\n",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "the literal source is written before its compiler reads it"
+ },
+ {
+  "id": "lib.validator-fixture-cleanup",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  \"$1\"\n  \"$2\"\n  rm -rf \"${d}\"",
+  "replace": "  \"$1\"\n  \"$2\"\n  :",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "both fixture lifecycles retain actual cleanup and its returned status"
+ },
+ {
+  "id": "lib.validator-gcc-dyn-local",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  local dyn=\"\"\n  _vc_source_fixture",
+  "replace": "  dyn=\"\"\n  _vc_source_fixture",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "sanitizer metadata remains local while probes inherit the same temporary directory"
+ },
+ {
+  "id": "lib.validator-gcc-source-binding",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  _vc_source_fixture _smoke_gcc_sanitizer_source _smoke_gcc_sanitizer_probe",
+  "replace": "  _vc_source_fixture _smoke_clang_fuzzer_source _smoke_gcc_sanitizer_probe",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "GCC still receives the sanitizer header and variable-shift source rather than a different smoke source"
+ },
+ {
+  "id": "lib.validator-fuzzer-probe-binding",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "  _vc_source_fixture _smoke_clang_fuzzer_source _smoke_clang_fuzzer_probe",
+  "replace": "  _vc_source_fixture _smoke_clang_fuzzer_source _smoke_gcc_sanitizer_probe",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "Clang still links and runs its own libFuzzer target"
+ },
+ {
+  "id": "lib.validator-version-first-line",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "_vc_version_result=\"$(\"$1\" --version 2>/dev/null | head -1 || true)\"",
+  "replace": "_vc_version_result=\"$(\"$1\" --version 2>/dev/null | tail -1 || true)\"",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "only the first compiler version line participates in the existing matcher"
+ },
+ {
+  "id": "lib.validator-version-pattern",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "echo \"${_vc_version_result}\" | grep -q \"${GCC_VERSION:-16.2.0}\"",
+  "replace": "echo \"${_vc_version_result}\" | grep -Fq \"${GCC_VERSION:-16.2.0}\"",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "the original regex interpretation and invalid-pattern diagnostics remain unchanged"
+ },
+ {
+  "id": "lib.validator-version-verdict",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "echo \"${_vc_version_result}\" | grep -q \"${GCC_VERSION:-16.2.0}\"",
+  "replace": "echo \"${_vc_version_result}\" | grep -q \"${GCC_VERSION:-16.2.0}\" || true",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "a mismatching version reaches the caller-specific ELF fallback instead of being accepted"
+ },
+ {
+  "id": "lib.validator-host-version-binding",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "if _vc_gcc_version_matches \"${gcc_prefix}/bin/gcc\" host_ver; then",
+  "replace": "if _vc_gcc_version_matches \"${gcc_prefix}/bin/gcc\" host_elf; then",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "the host version text remains available for its unchanged diagnostics"
+ },
+ {
+  "id": "lib.validator-native-version-binding",
+  "target": "linux/scripts/06-packaging/validate-compilers.sh",
+  "find": "if _vc_gcc_version_matches \"${native_gcc}/bin/gcc\" native_ver; then",
+  "replace": "if _vc_gcc_version_matches \"${native_gcc}/bin/gcc\" gcc_prefix; then",
+  "test": "bash linux/scripts/tests/test-validator-probes.sh",
+  "why": "the native version report retains its own output variable and diagnostic text"
  }
 ]

@@ -2,12 +2,10 @@
 # Offline tag receipts cover mode rejection and lazy probe behavior, not registry contents or image execution.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-workspace-fixture.sh"
-t_fixture_workspace_init WORK
 source "${TESTS_DIR}/stream-receipt-fixture.sh"
+receipt=''
+t_stream_workspace WORK receipt "${2:-}"
 subject="${1:-${TESTS_DIR}/../01-core/tag-naming.sh}"
-receipt="${2:-}"
-[ -z "$receipt" ] || : > "$receipt"
 cat > "$WORK/worker.sh" <<'BASH_WORKER'
 set -u
 harness="$1"; shift

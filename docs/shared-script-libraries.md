@@ -1793,6 +1793,24 @@ best-effort warnings, root refusal and the original sudo arguments and status.
 Offline fixtures cover the current user's branch; they do not change privilege
 or run package installation.
 
+Wheel platform resolution shares canonical-helper precedence while preserving
+LiteRT's required target lookup and Torch's best-effort fallback. GStreamer
+shares foreign-target selection through its existing media owner. Keep each
+original lookup separate. Remove scratch
+state before the selected action so a failed lookup retains its status.
+
+Compiler validation shares GCC version capture and source-fixture transport.
+Source writers and probes remain unconditional, with caller-specific source bytes,
+compiler arguments, link checks and diagnostics. Dynamic temporary-directory and
+sanitizer state keep their original scope; cleanup retains its failure behavior.
+
+ORT provenance shares component-name exclusions and filename candidate predicates.
+Tree scans include `.tar.lzma2` archives; build-record scans stay at depth one and
+omit that extra suffix. The concatenated GenAI spelling remains an archive-only
+exclusion. Partial traversal findings and advisory failure diagnostics remain.
+Stream fixtures share workspace and optional receipt initialization while keeping
+each suite's expected outputs independent.
+
 Core helpers share nondefault-host suffix formatting and caller-directory
 resolution while preserving explicit path bytes. Disk validation keeps positive
 settings distinct from nonnegative free-space readings: zero-disabled settings

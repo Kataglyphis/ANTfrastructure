@@ -22,13 +22,13 @@ _apt_refresh
 is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
 gi_cross_wrapper_arch=""
-if cross_build_is_active && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-  case "$(cross_target_arch)" in
-    arm64|riscv64)
-      gi_cross_wrapper_arch="$(cross_target_arch)"
-      ;;
-  esac
+declare _gst_foreign_target
+media_gstreamer_foreign_target _gst_foreign_target
+if [ "${_gst_foreign_target}" = 1 ]; then
+  unset _gst_foreign_target
+  gi_cross_wrapper_arch="$(cross_target_arch)"
+else
+  unset _gst_foreign_target
 fi
 
 prefer_toolchain_vulkan=false

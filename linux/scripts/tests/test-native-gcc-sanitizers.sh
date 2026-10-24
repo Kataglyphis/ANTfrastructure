@@ -227,6 +227,9 @@ _N_UBSAN=' 0x0000000000000001 (NEEDED)             Shared library: [libubsan.so.
 
 # ── validate-compilers.sh: the wrapper-smoke compile+link ──────────────────
 _vc_fns="$(t_fn_src "${VALIDATE}" validate_fail; t_fn_src "${VALIDATE}" _smoke_gcc_sanitizers)"
+for helper in _vc_source_fixture _smoke_gcc_sanitizer_source _smoke_gcc_sanitizer_probe; do
+  if grep -q "^${helper}() {" "${VALIDATE}"; then _vc_fns+=$'\n'"$(t_fn_src "${VALIDATE}" "${helper}")"; fi
+done
 _vc_run() {  # [VAR=val...] -> the real _smoke_gcc_sanitizers against whatever g++/readelf PATH finds
   env "$@" bash -c 'set -euo pipefail; _VALIDATE_ERRORS=0; eval "$1"; _smoke_gcc_sanitizers
     echo "ERRORS=${_VALIDATE_ERRORS}"' _ "${_vc_fns}" 2>&1

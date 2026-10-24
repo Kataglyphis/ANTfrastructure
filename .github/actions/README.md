@@ -276,7 +276,7 @@ the one that can move under a green build with no commit to blame.
 The prologue every containerised Linux job repeats: free runner disk, check
 out (submodules recursive, full history by default), log in to the registry
 and `docker pull` the image with retries and a per-attempt timeout.
-Inputs: `image` (optional — defaults to the family Linux image; see above),
+Inputs: `image` ([shared defaults](#the-two-images-and-the-one-place-they-are-named)),
 `registry`, `registry-username`,
 `registry-password` (login is skipped when empty, so fork PRs without secrets
 still pull public images), `fetch-depth`, `submodules`, `checkout`,
@@ -335,7 +335,7 @@ a missing library, a failing command and a two-match glob. Background:
 
 ### `run-in-linux-container`
 Runs a bash command inside a Linux container image (`docker run --rm`).
-Inputs: `image` (optional — defaults to the family Linux image; see above),
+Inputs: `image` ([shared defaults](#the-two-images-and-the-one-place-they-are-named)),
 `script` (bash fragment, verbatim), `workdir`,
 `log-file` (tee target), `extra-args` (verbatim extra `docker run` args).
 Used by consumer repos to run their build/test steps inside the published
