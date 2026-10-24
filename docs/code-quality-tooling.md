@@ -515,13 +515,13 @@ PREFLIGHT_ONLY=python-types bash linux/scripts/preflight.sh
 The script passes tracked Python paths to ty rather than scanning a directory of generated
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
 `windows/`. The three ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
-missing-return-annotation findings go to `logs/code-quality/ruff-annotations.txt`. The
+missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`. The
 Linux x64 workflow uploads these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
 **Every tracked `docs/scripts/*.py` and `linux/scripts/verify_*.py`, plus the shared
 quality helpers, is a strict type gate.** This checks the tools that grade the rest of
-the repo. The wider first-party scan and return-annotation
+the repo. The wider first-party scan and annotation
 audit remain reports while type errors and optional package resolution are corrected.
 There is no allowlist or raised diagnostic threshold. The full report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
@@ -530,8 +530,9 @@ return and an error in a verifier, requiring the gate to fail for both.
 the verifier path selection; the suite must catch both.
 
 Ty uses declared and inferred types. It does **not** add annotations or require every
-function to have one. Ruff's `ANN201`, `ANN202` and `ANN204`–`ANN206` report missing
-return annotations; they will become a gate after the existing findings are fixed.
+function to have one. Ruff's `ANN001`–`ANN003`, `ANN201`, `ANN202` and
+`ANN204`–`ANN206` report missing parameter and return annotations; they will
+become a gate after the existing findings are fixed.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 

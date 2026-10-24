@@ -56,7 +56,7 @@ report_scan "Linux Python report" linux "${linux_report}" "${linux_files[@]}"
 report_scan "Windows Python report" windows "${windows_report}" "${windows_files[@]}"
 
 annotation_rc=0
-uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN201,ANN202,ANN204,ANN205,ANN206 \
+uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN001,ANN002,ANN003,ANN201,ANN202,ANN204,ANN205,ANN206 \
   --output-format concise "${py_files[@]}" > "${annotations_report}" 2>&1 || annotation_rc=$?
 case "${annotation_rc}" in
   0) printf 'Ruff annotation report: clean (%s files)\n' "${#py_files[@]}" ;;

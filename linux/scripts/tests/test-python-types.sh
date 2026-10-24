@@ -76,4 +76,12 @@ t_assert_contains "${out}" "ty quality gate: clean"
 t_assert_contains "${out}" "rc=0"
 t_assert_grep "${ROOT}/logs/code-quality/ruff-annotations.txt" 'ANN201'
 
+t_case "missing parameter annotations are reported without failing the type gate"
+printf 'def answer(value) -> int:\n    return 42\n' > "${ROOT}/docs/scripts/subject.py"
+out="$(_run)"
+t_assert_contains "${out}" "Ruff annotation report: findings"
+t_assert_contains "${out}" "ty quality gate: clean"
+t_assert_contains "${out}" "rc=0"
+t_assert_grep "${ROOT}/logs/code-quality/ruff-annotations.txt" 'ANN001'
+
 t_summary
