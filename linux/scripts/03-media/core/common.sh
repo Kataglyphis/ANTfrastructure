@@ -54,6 +54,28 @@ _media_find_core_dir() {
   return 1
 }
 
+# Resolve paths in the caller so sourced files keep their dynamic bindings.
+_media_candidate_exists() {
+  [ -f "${_mfef_candidate}" ]
+  return $?
+}
+
+_media_first_existing_file() {
+  local -n _mfef_slot="$1"
+  local _mfef_arg_count="$2"
+  shift 2
+  local -a _mfef_caller_args=("${@:1:_mfef_arg_count}")
+  shift "${_mfef_arg_count}"
+  local _mfef_candidate
+  for _mfef_candidate in "$@"; do
+    _mfef_slot="${_mfef_candidate}"
+    if _media_candidate_exists "${_mfef_caller_args[@]}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # See docs/cross-build-verification.md
 media_load_arch_flags() {
   local arch="amd64" candidate flags_file=""
@@ -64,14 +86,12 @@ media_load_arch_flags() {
   fi
 
   # Container layout first, then this file's own dir.
-  for candidate in \
+  if ! _media_first_existing_file candidate "$#" "$@" \
       "/opt/scripts/03-media/core/arch-flags-${arch}.env" \
-      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/arch-flags-${arch}.env"; do
-    if [ -f "${candidate}" ]; then
-      flags_file="${candidate}"
-      break
-    fi
-  done
+      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/arch-flags-${arch}.env"; then
+    return 0
+  fi
+  flags_file="${candidate}"
 
   # No flag file for this arch → keep the all-unset defaults (do not skip).
   [ -n "${flags_file}" ] || return 0
@@ -110,6 +130,7 @@ _media_assert_critical_fns() {
 media_common_init() {
   local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
   local core_dir
+  local -a _media_arch_flags_args=()
   core_dir="$(_media_find_core_dir "${script_dir}")" || {
     echo "ERROR: could not locate 01-core module framework from ${script_dir}" >&2
     return 1
@@ -135,7 +156,7 @@ media_common_init() {
   _media_setup_rust_cache
   _media_load_modules compiler-resolution.sh python-host.sh cmake-cache-linker.sh abseil-headers.sh
 
-  media_load_arch_flags
+  media_load_arch_flags "${_media_arch_flags_args[@]}"
 
   # Stats at exit: setup_ccache's own snapshot prints before the first object.
   if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
@@ -164,17 +185,15 @@ media_load_vulkan_toolchain() {
 media_install_deps_init() {
   local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
   local _dep_env
-  for _dep_env in \
+  local -a _media_arch_flags_args=()
+  if _media_first_existing_file _dep_env "$#" "$@" \
       "/opt/scripts/core/install-deps-preamble.sh" \
-      "${script_dir}/../../../01-core/install-deps-preamble.sh"; do
-    if [ -f "${_dep_env}" ]; then
-      # shellcheck disable=SC1090
-      source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
-      break
-    fi
-  done
+      "${script_dir}/../../../01-core/install-deps-preamble.sh"; then
+    # shellcheck disable=SC1090
+    source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
+  fi
 
-  media_load_arch_flags
+  media_load_arch_flags "${_media_arch_flags_args[@]}"
 }
 
 # Keep selection separate from the GI lookup so both target probes retain their original order.

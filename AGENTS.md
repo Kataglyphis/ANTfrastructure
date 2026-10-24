@@ -842,6 +842,7 @@ grades this repo's own surface against them.
 - **Dry-run guard:** `build-helpers.sh` → `is_dry_run()`, `_bool_truthy()`, instead of `[ "${DRY_RUN:-0}" -eq 1 ]`.
 - **Module loading:** `modules.sh` → `source_modules_framework()`, the bootstrap for sourcing 01-core.
 - **Media bootstrap:** `03-media/core/common.sh` → `media_common_init <script_dir>`: the one entry that sources the 01-core module framework; every media build script sources it instead of copying a preamble block. (The old `media_build_preamble_init` alias is gone: zero callers, no definition.)
+- **Media file selection:** `03-media/core/common.sh` → `_media_first_existing_file <caller-slot> <argc> <argv...> <candidates...>`; callers keep their own `source` command so dynamic bindings stay visible.
 - **CC validation:** `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke).
 - **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, `cross_stage_repo()` (nvidia's private stage package), the runtime tag functions. Never construct tags by hand.
 - **Stage graph:** `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`.
