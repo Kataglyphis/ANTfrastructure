@@ -32,14 +32,14 @@ _fetch_npm_package() {
   # The tarball comes from the CDN, so check it against the registry's dist.integrity; no metadata only warns.
   local _want_int _got_int
   _want_int="$(
-    _npm_metadata_python() { python3 "$@"; }
+    _npm_metadata_python() { python3 -c 'import json,sys; print(json.load(sys.stdin).get("dist",{}).get("integrity",""))'; }
     curl -fsSL --max-time 30 "${REGISTRY}/${scope_path}/${version}" 2>/dev/null \
-      | _npm_python_quiet _npm_metadata_python -c 'import json,sys; print(json.load(sys.stdin).get("dist",{}).get("integrity",""))' || true
+      | _npm_python_quiet _npm_metadata_python "$@" || true
   )"
   if [ -n "${_want_int}" ]; then
     _got_int="sha512-$(
-      _npm_digest_python() { python3 "$@"; }
-      _npm_python_quiet _npm_digest_python -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],"rb").read()).digest()).decode())' "${tmp}/pkg.tgz"
+      _npm_digest_python() { python3 -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],"rb").read()).digest()).decode())' "${tmp}/pkg.tgz"; }
+      _npm_python_quiet _npm_digest_python "$@"
     )"
     if [ "${_want_int}" != "${_got_int}" ]; then
       rm -rf "${tmp}"

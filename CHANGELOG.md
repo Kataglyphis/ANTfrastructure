@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — share probe publication and preserve callback context
+
+- Share ordered compiler candidate publication with the original caller-local state and fallback behavior.
+- Share live sibling-PID eligibility while retaining pidfile reads, ownership and refusal policies.
+- Share optional libcamera reporting after environment initialization without adding a companion.
+- Share help termination while retaining alias binding, strict failures and conditional missing-API refusal.
+- Restore caller-visible variables and literal command alias bindings in wheel, packaging, media and target-provider callbacks; add independent binding and positional-context controls.
+- Remove four resolved duplication exceptions without changing budgets, scanner settings or independent expected results.
+
 ## 2026-10-24 — share bound discovery and interpreter transport
 
 - Share first-match finder policy while preserving legacy arguments, partial output and caller alias bindings.

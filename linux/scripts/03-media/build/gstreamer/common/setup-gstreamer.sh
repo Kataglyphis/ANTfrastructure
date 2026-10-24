@@ -188,11 +188,19 @@ _gst_xpy_resolve_target_paths() {
     return 1
   fi
 
-  local -A gst_python_paths=([include_dir]="${target_python_include}" [library]="${target_python_library}" [pkgconfig_dir]="${target_python_pkgconfig_dir}")
-  cross_collect_python_dev_paths gst_python_paths include_dir library pkgconfig_dir
-  target_python_include="${gst_python_paths[include_dir]}"
-  target_python_library="${gst_python_paths[library]}"
-  target_python_pkgconfig_dir="${gst_python_paths[pkgconfig_dir]}"
+  cross_python_provider_api_ready || return $?
+  target_python_include="$(
+    _gst_python_provider() { cross_target_python_include_dir; }
+    cross_capture_python_dev_path include_dir "${target_python_include}" _gst_python_provider
+  )"
+  target_python_library="$(
+    _gst_python_provider() { cross_target_python_library; }
+    cross_capture_python_dev_path library "${target_python_library}" _gst_python_provider
+  )"
+  target_python_pkgconfig_dir="$(
+    _gst_python_provider() { cross_target_python_pkgconfig_dir; }
+    cross_capture_python_dev_path pkgconfig_dir "${target_python_pkgconfig_dir}" _gst_python_provider
+  )"
   # The resolvers can return the host's /usr/local Python; use the staged cross Python instead.
   local _py_pv="${PYTHON_VERSION:-}"
   local _py_mm="${PYTHON_MAJOR_MINOR:-${_py_pv%.*}}"

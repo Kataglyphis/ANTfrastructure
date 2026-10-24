@@ -111,6 +111,7 @@ t_assert_eq "/custom/logs" "$(
 # The archiver, with logging stubbed: only chain-lifecycle.sh is sourced.
 log()  { :; }
 warn() { :; }
+eval "$(sed -n '/^_chain_is_live_other_pid()/,/^}/p' "${CHAIN_SH}")"
 eval "$(sed -n '/^_chain_live_sibling_pid()/,/^}/p' "${CHAIN_SH}")"
 # Away from the host's real pidfile: a running chain there would make the archiver refuse.
 cross_chain_pidfile_path() { printf '%s' "${TMPDIR:-/tmp}/no-such-chain.$$.pid"; }

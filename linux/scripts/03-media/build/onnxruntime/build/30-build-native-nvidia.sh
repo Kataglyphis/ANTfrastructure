@@ -20,7 +20,12 @@ init_nvidia_defaults() {
       exit 1
     fi
     TRT_INC=$(
-      _ort_trt_header_find() { find "$@"; }
+      _ort_trt_header_caller_argv=("$@")
+      _ort_trt_header_find() {
+        local -a _ort_trt_header_exec_argv=("$@")
+        set -- "${_ort_trt_header_caller_argv[@]}"
+        find "${_ort_trt_header_exec_argv[@]}"
+      }
       first_match_using _ort_trt_header_find /usr/include /usr/local -name "NvInfer.h"
     )
     if [ -n "$TRT_INC" ]; then

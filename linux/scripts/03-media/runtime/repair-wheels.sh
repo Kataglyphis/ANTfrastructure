@@ -110,6 +110,13 @@ if [ "${FREE_THREADED}" = 1 ]; then
 fi
 ort_manifest_rows check "${WHEELS_DIR}" "${_ORT_MANIFESTS[@]}"
 
+# Literal uv aliases bind when this caller is loaded, before transport passes through a command argument.
+_repair_wheel_uv() {
+  local -a _rwuv_exec_argv=("$@")
+  set --
+  uv "${_rwuv_exec_argv[@]}"
+}
+
 # The host strip is a no-op on foreign ELFs; unpack and `wheel pack` so RECORD is recomputed, never edit in place.
 strip_cross_wheels() {
   [ "${MEDIA_STRIP:-1}" = "1" ] || return 0
@@ -121,12 +128,12 @@ strip_cross_wheels() {
     [ -f "${whl}" ] || continue
     case "${whl}" in *-none-any.whl) continue ;; esac
     tmp="$(mktemp -d)"
-    if wheel_archive_run unpack "${whl}" "${tmp}/u" uv run python \
+    if wheel_archive_run unpack "${whl}" "${tmp}/u" _repair_wheel_uv run python \
        && find "${tmp}/u" -type f \( -name '*.so' -o -name '*.so.*' \) -print -quit 2>/dev/null | grep -q .; then
       apply_shared_library_action "${tmp}/u" "" 2 '*.so' '*.so.*' "${strip_bin}" --strip-all
       unpacked="$(first_match "${tmp}/u" -mindepth 1 -maxdepth 1 -type d)"
       mkdir -p "${tmp}/p"   # `wheel pack -d` does NOT create its dest dir
-      if [ -n "${unpacked}" ] && wheel_archive_run pack "${unpacked}" "${tmp}/p" uv run python; then
+      if [ -n "${unpacked}" ] && wheel_archive_run pack "${unpacked}" "${tmp}/p" _repair_wheel_uv run python; then
         packed="$(first_match "${tmp}/p" -maxdepth 1 -name '*.whl')"
         if [ -n "${packed}" ]; then
           rm -f "${whl}"

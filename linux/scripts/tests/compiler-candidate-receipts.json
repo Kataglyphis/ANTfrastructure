@@ -1,0 +1,1346 @@
+{
+  "('c', 'primary', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'primary', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('c', 'alternate', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'alternate', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'empty', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'direct', True, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'empty', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('c', 'primary-partial', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'primary-partial', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('c', 'alternate-partial', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'alternate-partial', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('c', 'whitespace', 'direct', False, 0)": {
+    "rc": 0,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'direct', False, 41)": {
+    "rc": 0,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'direct', True, 0)": {
+    "rc": 0,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'direct', True, 41)": {
+    "rc": 41,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'whitespace', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('c', 'newline', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'newline', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('c', 'embedded', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('c', 'embedded', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'primary', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'primary', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/primary\n]\ntest\n-n\n/primary\n]\nprintf\n%s\n/primary\n"
+  },
+  "('cxx', 'alternate', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'alternate', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'empty', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'direct', True, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'empty', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-g++\n]\ntest\n-x\n/usr/bin/clang++\n]\ntest\n-x\n/usr/bin/g++\n]\ntest\n-x\n/usr/bin/c++\n]\nlookup\n-v\ng++\nlookup\n-v\nc++\n"
+  },
+  "('cxx', 'primary-partial', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/partial",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'primary-partial', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/partial:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n/partial\n]\ntest\n-n\n/partial\n]\nprintf\n%s\n/partial\n"
+  },
+  "('cxx', 'alternate-partial', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/partial-alt",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'alternate-partial', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/partial-alt:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/partial-alt\n]\nprintf\n%s\n/partial-alt\n"
+  },
+  "('cxx', 'whitespace', 'direct', False, 0)": {
+    "rc": 0,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'direct', False, 41)": {
+    "rc": 0,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'direct', True, 0)": {
+    "rc": 0,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'direct', True, 41)": {
+    "rc": 41,
+    "out": " ",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'whitespace', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": " :STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n \n]\ntest\n-n\n \n]\nprintf\n%s\n \n"
+  },
+  "('cxx', 'newline', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'newline', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\n\n]\nproducer\nlate\nc++\nscope::g++:c++\ntest\n-n\n/alternate\n]\nprintf\n%s\n/alternate\n"
+  },
+  "('cxx', 'embedded', 'direct', False, 0)": {
+    "rc": 0,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'direct', False, 41)": {
+    "rc": 0,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'direct', True, 0)": {
+    "rc": 0,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'direct', True, 41)": {
+    "rc": 41,
+    "out": "path\nsecond",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('cxx', 'embedded', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": "path\nsecond:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ng++\nscope::g++:c++\ntest\n-n\npath\nsecond\n]\ntest\n-n\npath\nsecond\n]\nprintf\n%s\npath\nsecond\n"
+  },
+  "('rust', 'primary', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'empty', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'primary-partial', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'alternate-partial', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'whitespace', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'newline', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'direct', False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'direct', False, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'direct', True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'direct', True, 41)": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'conditional', False, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'conditional', False, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'conditional', True, 0)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('rust', 'embedded', 'conditional', True, 41)": {
+    "rc": 0,
+    "out": ":STATUS:1",
+    "err": "ERROR: unknown compiler language \"rust\"\n",
+    "trace": "printf\nERROR: unknown compiler language \"%s\"\\n\nrust\n"
+  },
+  "('fallback', 1, 1, 0, '/none', 127, 'direct', False)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nlookup\n-v\nbuild_deb_multiarch_triplet\ntest\n-x\n/usr/bin/-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 1, 1, 0, '/none', 127, 'direct', True)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nlookup\n-v\nbuild_deb_multiarch_triplet\ntest\n-x\n/usr/bin/-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 1, 1, 0, '/none', 127, 'conditional', False)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nlookup\n-v\nbuild_deb_multiarch_triplet\ntest\n-x\n/usr/bin/-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 1, 1, 0, '/none', 127, 'conditional', True)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nlookup\n-v\nbuild_deb_multiarch_triplet\ntest\n-x\n/usr/bin/-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 31, '/none', 127, 'direct', False)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 31, '/none', 127, 'direct', True)": {
+    "rc": 31,
+    "out": "",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\n"
+  },
+  "('fallback', 0, 0, 31, '/none', 127, 'conditional', False)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 31, '/none', 127, 'conditional', True)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/triplet-value-gcc', 127, 'direct', False)": {
+    "rc": 0,
+    "out": "/usr/bin/triplet-value-gcc",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\nprintf\n%s\n/usr/bin/triplet-value-gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/triplet-value-gcc', 127, 'direct', True)": {
+    "rc": 0,
+    "out": "/usr/bin/triplet-value-gcc",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\nprintf\n%s\n/usr/bin/triplet-value-gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/triplet-value-gcc', 127, 'conditional', False)": {
+    "rc": 0,
+    "out": "/usr/bin/triplet-value-gcc:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\nprintf\n%s\n/usr/bin/triplet-value-gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/triplet-value-gcc', 127, 'conditional', True)": {
+    "rc": 0,
+    "out": "/usr/bin/triplet-value-gcc:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\nprintf\n%s\n/usr/bin/triplet-value-gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/clang', 127, 'direct', False)": {
+    "rc": 0,
+    "out": "/usr/bin/clang",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\nprintf\n%s\n/usr/bin/clang\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/clang', 127, 'direct', True)": {
+    "rc": 0,
+    "out": "/usr/bin/clang",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\nprintf\n%s\n/usr/bin/clang\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/clang', 127, 'conditional', False)": {
+    "rc": 0,
+    "out": "/usr/bin/clang:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\nprintf\n%s\n/usr/bin/clang\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/clang', 127, 'conditional', True)": {
+    "rc": 0,
+    "out": "/usr/bin/clang:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\nprintf\n%s\n/usr/bin/clang\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/gcc', 127, 'direct', False)": {
+    "rc": 0,
+    "out": "/usr/bin/gcc",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\nprintf\n%s\n/usr/bin/gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/gcc', 127, 'direct', True)": {
+    "rc": 0,
+    "out": "/usr/bin/gcc",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\nprintf\n%s\n/usr/bin/gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/gcc', 127, 'conditional', False)": {
+    "rc": 0,
+    "out": "/usr/bin/gcc:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\nprintf\n%s\n/usr/bin/gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/gcc', 127, 'conditional', True)": {
+    "rc": 0,
+    "out": "/usr/bin/gcc:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\nprintf\n%s\n/usr/bin/gcc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/cc', 127, 'direct', False)": {
+    "rc": 0,
+    "out": "/usr/bin/cc",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nprintf\n%s\n/usr/bin/cc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/cc', 127, 'direct', True)": {
+    "rc": 0,
+    "out": "/usr/bin/cc",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nprintf\n%s\n/usr/bin/cc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/cc', 127, 'conditional', False)": {
+    "rc": 0,
+    "out": "/usr/bin/cc:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nprintf\n%s\n/usr/bin/cc\n"
+  },
+  "('fallback', 0, 0, 0, '/usr/bin/cc', 127, 'conditional', True)": {
+    "rc": 0,
+    "out": "/usr/bin/cc:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nprintf\n%s\n/usr/bin/cc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 0, 'direct', False)": {
+    "rc": 0,
+    "out": "/path/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 0, 'direct', True)": {
+    "rc": 0,
+    "out": "/path/primary",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 0, 'conditional', False)": {
+    "rc": 0,
+    "out": "/path/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 0, 'conditional', True)": {
+    "rc": 0,
+    "out": "/path/primary:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 23, 'direct', False)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 23, 'direct', True)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 23, 'conditional', False)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  },
+  "('fallback', 0, 0, 0, '/none', 23, 'conditional', True)": {
+    "rc": 0,
+    "out": "/path/primary/path/alternate:STATUS:0",
+    "err": "",
+    "trace": "lookup\n-v\nresolve_build_gcc_tool\nproducer\nlate\ngcc\nscope::gcc:cc\ntest\n-n\n\n]\nproducer\nlate\ncc\nscope::gcc:cc\ntest\n-n\n\n]\nlookup\n-v\nbuild_deb_multiarch_triplet\ntriplet\ntest\n-x\n/usr/bin/triplet-value-gcc\n]\ntest\n-x\n/usr/bin/clang\n]\ntest\n-x\n/usr/bin/gcc\n]\ntest\n-x\n/usr/bin/cc\n]\nlookup\n-v\ngcc\nlookup\n-v\ncc\n"
+  }
+}

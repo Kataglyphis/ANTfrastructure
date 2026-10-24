@@ -18470,7 +18470,7 @@
  {
   "id": "lib.smoke-media-library-presence",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "if _smoke_query_matches _smoke_python_files _smoke_python_match \"$@\" -name \"${pattern}\" -type f; then",
+  "find": "if _smoke_query_matches _smoke_python_files _smoke_python_match \"$@\"; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-media-onnx-policy.sh",
   "why": "native import failures defer only when a real library exists; cross required ORT needs presence"
@@ -20605,25 +20605,25 @@
  },
  {
   "id": "lib.media-probe-python-order",
-  "target": "linux/scripts/01-core/cross-python.sh",
-  "find": "for field in \"$@\"; do\n    probe=\"cross_target_python_${field}\"",
-  "replace": "for field in library include_dir pkgconfig_dir; do\n    probe=\"cross_target_python_${field}\"",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  target_python_include=\"$(\n    _gst_python_provider() { cross_target_python_include_dir; }\n    cross_capture_python_dev_path include_dir \"${target_python_include}\" _gst_python_provider\n  )\"\n  target_python_library=\"$(\n    _gst_python_provider() { cross_target_python_library; }\n    cross_capture_python_dev_path library \"${target_python_library}\" _gst_python_provider\n  )\"\n",
+  "replace": "  target_python_library=\"$(\n    _gst_python_provider() { cross_target_python_library; }\n    cross_capture_python_dev_path library \"${target_python_library}\" _gst_python_provider\n  )\"\n  target_python_include=\"$(\n    _gst_python_provider() { cross_target_python_include_dir; }\n    cross_capture_python_dev_path include_dir \"${target_python_include}\" _gst_python_provider\n  )\"\n",
   "test": "bash linux/scripts/tests/test-media-python-probes.sh",
-  "why": "Callers retain their own ordered target Python fields and optional pkg-config probe."
+  "why": "The actual GStreamer caller keeps include before library and its optional pkg-config probe rather than imposing a shared library-first field order."
  },
  {
   "id": "lib.media-probe-python-best-effort",
   "target": "linux/scripts/01-core/cross-python.sh",
-  "find": "python_paths[\"${field}\"]=\"$(\"${probe}\" 2>/dev/null || true)\"",
-  "replace": "python_paths[\"${field}\"]=\"$(\"${probe}\" 2>/dev/null)\"",
+  "find": "\"$3\" \"${@:4}\" 2>/dev/null || true",
+  "replace": "\"$3\" \"${@:4}\" 2>/dev/null",
   "test": "bash linux/scripts/tests/test-media-python-probes.sh",
   "why": "A failed optional probe retains its partial stdout without aborting an unconditional build caller."
  },
  {
   "id": "lib.media-probe-rust-field",
   "target": "linux/scripts/01-core/cross-env.sh",
-  "find": "probe=\"cross_target_${field}_rust\"",
-  "replace": "probe=\"cross_target_upper_rust\"",
+  "find": "if command -v \"cross_target_${_cctre_field}_rust\" >/dev/null 2>&1; then\n      printf -v \"${_cctre_output}[${_cctre_field}]\" '%s' \"$(\n        case \"${_cctre_field}\" in",
+  "replace": "if command -v \"cross_target_upper_rust\" >/dev/null 2>&1; then\n      printf -v \"${_cctre_output}[${_cctre_field}]\" '%s' \"$(\n        case upper in",
   "test": "bash linux/scripts/tests/test-gstreamer-cargo-bindings.sh",
   "why": "Upper and lower target Rust environment names remain independent ordered probes."
  },
@@ -23307,8 +23307,8 @@
  {
   "id": "lib.packaging-execution-argv-preserved",
   "target": "linux/scripts/02-toolchain/packaging-deps.sh",
-  "find": "    \"$failure_handler\" \"$status\" \"$@\"",
-  "replace": "    \"$failure_handler\" \"$status\" \"$*\"",
+  "find": "    \"$_pe_failure_handler\" \"$status\" \"$@\"",
+  "replace": "    \"$_pe_failure_handler\" \"$status\" \"$*\"",
   "test": "bash linux/scripts/tests/test-packaging-execution.sh",
   "why": "Sudo fallback receives the original command and argument boundaries, including whitespace, empty arguments and literal globs."
  },
@@ -23331,56 +23331,56 @@
  {
   "id": "lib.wheel-archive-action",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$@\" -m wheel unpack \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel unpack \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "Both pack and unpack must retain their selected wheel operation."
  },
  {
   "id": "lib.wheel-archive-source",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$@\" -m wheel \"${action}\" \"${destination}\" -d \"${destination}\" >/dev/null 2>&1",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_destination}\" -d \"${_war_destination}\" >/dev/null 2>&1",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "The payload source is distinct from the output directory."
  },
  {
   "id": "lib.wheel-archive-runner-argv",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$*\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$*\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "The uv run python command prefix retains argument boundaries."
  },
  {
   "id": "lib.wheel-archive-stdout",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" 2>/dev/null",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" 2>/dev/null",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "Wheel tool stdout remains quiet."
  },
  {
   "id": "lib.wheel-archive-stderr",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "Wheel tool stderr remains quiet."
  },
  {
   "id": "lib.wheel-archive-raw-status",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1\n  return 0",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1\n  return 0",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "Failed unpack and pack retain raw statuses for caller verdicts."
  },
  {
   "id": "lib.wheel-archive-destination-quoting",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d \"${destination}\" >/dev/null 2>&1",
-  "replace": "  \"$@\" -m wheel \"${action}\" \"${source}\" -d ${destination} >/dev/null 2>&1",
+  "find": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1",
+  "replace": "  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d ${_war_destination} >/dev/null 2>&1",
   "test": "bash linux/scripts/tests/test-wheel-archive-transport.sh",
   "why": "Wheel destinations containing spaces remain one argument."
  },
@@ -24107,87 +24107,87 @@
  {
   "id": "lib.meson-dispatch-optional-cross",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then",
-  "replace": "  if true; then",
+  "find": "  if command -v \"${_amp_name}\" >/dev/null 2>&1; then",
+  "replace": "  if [ \"${_amp_name}\" = append_meson_cross_flags ] || command -v \"${_amp_name}\" >/dev/null 2>&1; then",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "Absent cross providers are skipped without invoking commands or project cross-file callbacks."
  },
  {
   "id": "lib.meson-dispatch-native-selected",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  if command -v append_meson_native_flags >/dev/null 2>&1; then",
-  "replace": "  if false; then",
+  "find": "  if command -v \"${_amp_name}\" >/dev/null 2>&1; then",
+  "replace": "  if [ \"${_amp_name}\" != append_meson_native_flags ] && command -v \"${_amp_name}\" >/dev/null 2>&1; then",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "An available native provider receives the same array after the cross provider and project adjustment."
  },
  {
   "id": "lib.meson-dispatch-array-name",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "    append_meson_cross_flags \"${_amtf_array}\"",
-  "replace": "    append_meson_cross_flags MESON_SETUP_ARGS",
+  "find": "    \"${_amp_invoke}\" \"${_amp_array}\"",
+  "replace": "    if [ \"${_amp_name}\" = append_meson_cross_flags ]; then \"${_amp_invoke}\" MESON_SETUP_ARGS; else \"${_amp_invoke}\" \"${_amp_array}\"; fi",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "The caller array name reaches the provider intact, preserving both arrays and partial modifications."
  },
  {
   "id": "lib.meson-dispatch-project-callback",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi",
-  "replace": "    :",
+  "find": "    if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\"; else return \"${_amp_status}\"; fi",
+  "replace": "    if [ -n \"${_amp_after}\" ]; then :; else return \"${_amp_status}\"; fi",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "The GStreamer cross-file edit remains between cross and native provider calls."
  },
  {
   "id": "lib.meson-dispatch-provider-order",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi\n  fi\n  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi",
-  "replace": "  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi\n  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi\n  fi",
+  "find": "append_available_meson_toolchain_flags() {\n  local -a _amtf_caller_argv=(\"$@\")\n  local _amtf_array=\"$1\" _amtf_after_cross=\"${2:-}\"\n  append_available_meson_provider append_meson_cross_flags \"${3:-_common_meson_cross}\" \"${_amtf_array}\" \"${_amtf_after_cross}\"\n  append_available_meson_provider append_meson_native_flags \"${4:-_common_meson_native}\" \"${_amtf_array}\"\n}",
+  "replace": "append_available_meson_toolchain_flags() {\n  local -a _amtf_caller_argv=(\"$@\")\n  local _amtf_array=\"$1\" _amtf_after_cross=\"${2:-}\"\n  append_available_meson_provider append_meson_native_flags \"${4:-_common_meson_native}\" \"${_amtf_array}\"\n  append_available_meson_provider append_meson_cross_flags \"${3:-_common_meson_cross}\" \"${_amtf_array}\" \"${_amtf_after_cross}\"\n}",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "Cross flags and project adjustment precede native flags, including stream output and array mutation order."
  },
  {
   "id": "lib.meson-dispatch-callback-scope",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi\n  fi",
-  "replace": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n  fi\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi",
+  "find": "append_available_meson_provider() {\n  local _amp_name=\"$1\" _amp_invoke=\"$2\" _amp_array=\"$3\" _amp_after=\"${4:-}\" _amp_status\n  if command -v \"${_amp_name}\" >/dev/null 2>&1; then\n    \"${_amp_invoke}\" \"${_amp_array}\"\n    _amp_status=$?\n    if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\"; else return \"${_amp_status}\"; fi\n  fi\n  return $?\n}",
+  "replace": "append_available_meson_provider() {\n  local _amp_name=\"$1\" _amp_invoke=\"$2\" _amp_array=\"$3\" _amp_after=\"${4:-}\" _amp_status\n  if command -v \"${_amp_name}\" >/dev/null 2>&1; then\n    \"${_amp_invoke}\" \"${_amp_array}\"\n    _amp_status=$?\n  fi\n  if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\"; else return \"${_amp_status:-0}\"; fi\n  return $?\n}",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "A project callback only runs when a cross provider was selected, even if a cross file already exists."
  },
  {
   "id": "lib.meson-dispatch-cross-errexit",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "    append_meson_cross_flags \"${_amtf_array}\"",
-  "replace": "    append_meson_cross_flags \"${_amtf_array}\" || true",
+  "find": "    \"${_amp_invoke}\" \"${_amp_array}\"",
+  "replace": "    if [ \"${_amp_name}\" = append_meson_cross_flags ]; then \"${_amp_invoke}\" \"${_amp_array}\" || true; else \"${_amp_invoke}\" \"${_amp_array}\"; fi",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "Selected provider failures retain direct errexit and their original partial array changes."
  },
  {
   "id": "lib.meson-dispatch-native-errexit",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "    append_meson_native_flags \"${_amtf_array}\"",
-  "replace": "    append_meson_native_flags \"${_amtf_array}\" || true",
+  "find": "    \"${_amp_invoke}\" \"${_amp_array}\"",
+  "replace": "    if [ \"${_amp_name}\" = append_meson_native_flags ]; then \"${_amp_invoke}\" \"${_amp_array}\" || true; else \"${_amp_invoke}\" \"${_amp_array}\"; fi",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "Selected provider failures retain direct errexit and their original partial array changes."
  },
  {
   "id": "lib.meson-dispatch-gst-unconditional",
   "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
-  "find": "  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig",
-  "replace": "  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig || true",
+  "find": "  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig _gst_monorepo_meson_cross _gst_monorepo_meson_native",
+  "replace": "  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig _gst_monorepo_meson_cross _gst_monorepo_meson_native || true",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "Dispatch remains unconditional so strict provider failures cannot continue through a conditional wrapper."
  },
  {
   "id": "lib.meson-dispatch-camera-unconditional",
   "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
-  "find": "append_available_meson_toolchain_flags MESON_SETUP_ARGS",
-  "replace": "append_available_meson_toolchain_flags MESON_SETUP_ARGS || true",
+  "find": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}\nappend_available_meson_provider append_meson_cross_flags _libcamera_meson_cross MESON_SETUP_ARGS\n\n_libcamera_meson_native_argv=(\"$@\")\n_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}\nappend_available_meson_provider append_meson_native_flags _libcamera_meson_native MESON_SETUP_ARGS",
+  "replace": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}\nappend_available_meson_provider append_meson_cross_flags _libcamera_meson_cross MESON_SETUP_ARGS || true\n\n_libcamera_meson_native_argv=(\"$@\")\n_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}\nappend_available_meson_provider append_meson_native_flags _libcamera_meson_native MESON_SETUP_ARGS || true",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "Dispatch remains unconditional so strict provider failures cannot continue through a conditional wrapper."
  },
  {
   "id": "lib.meson-dispatch-gst-required-api",
   "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
-  "find": "  declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; return 1; }\n",
+  "find": "  declare -F append_available_meson_toolchain_flags append_available_meson_provider >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; return 1; }\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "A missing shared dispatch export must fail explicitly with the caller-specific return policy, including conditional sourcing."
@@ -24195,7 +24195,7 @@
  {
   "id": "lib.meson-dispatch-camera-required-api",
   "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
-  "find": "declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; exit 1; }\n",
+  "find": "declare -F append_available_meson_provider >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_provider\\n' >&2; exit 1; }\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "A missing shared dispatch export must fail explicitly with the caller-specific exit policy, including conditional sourcing."
@@ -24203,8 +24203,8 @@
  {
   "id": "lib.meson-dispatch-native-raw-status",
   "target": "linux/scripts/01-core/common.sh",
-  "find": "  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi\n  return $?",
-  "replace": "  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi\n  return 0",
+  "find": "    if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\"; else return \"${_amp_status}\"; fi",
+  "replace": "    if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\"; else if [ \"${_amp_name}\" = append_meson_native_flags ]; then return 0; else return \"${_amp_status}\"; fi; fi",
   "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
   "why": "The libcamera section preserves a failing native provider raw status under relaxed or conditional calls."
  },
@@ -24811,31 +24811,31 @@
  {
   "id": "lib.smoke-query-quiet-producer",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "\"${producer}\" \"$@\" 2>/dev/null | \"${consumer}\" -q .",
-  "replace": "\"${producer}\" \"$@\" | \"${consumer}\" -q .",
+  "find": "\"$1\" \"${@:3}\" 2>/dev/null | \"$2\" \"${@:3}\"",
+  "replace": "\"$1\" \"${@:3}\" | \"$2\" \"${@:3}\"",
   "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
   "why": "Only the producer diagnostics are quiet; consumer failures stay observable."
  },
  {
   "id": "lib.smoke-query-consumer-arguments",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "| \"${consumer}\" -q .",
-  "replace": "| \"${consumer}\" -q wrong",
+  "find": "_smoke_python_match() {\n  grep -q .\n}",
+  "replace": "_smoke_python_match() {\n  grep -q wrong\n}",
   "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
   "why": "Both callers retain the fixed quiet nonempty-output query and exact consumer arguments."
  },
  {
   "id": "lib.smoke-query-pipeline-status",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "\"${producer}\" \"$@\" 2>/dev/null | \"${consumer}\" -q .",
-  "replace": "\"${producer}\" \"$@\" 2>/dev/null | \"${consumer}\" -q . || true",
+  "find": "\"$1\" \"${@:3}\" 2>/dev/null | \"$2\" \"${@:3}\"",
+  "replace": "\"$1\" \"${@:3}\" 2>/dev/null | \"$2\" \"${@:3}\" || true",
   "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
   "why": "Producer failures including141 and empty or failed consumers cannot become successful presence verdicts."
  },
  {
   "id": "lib.smoke-query-web-find-binding",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "_smoke_web_loaders() {\n  find \"$@\"\n}",
+  "find": "_smoke_web_loaders() {\n  find \"${dir}\" \\( -name '*.js' -o -name '*.mjs' \\) -print -quit\n}",
   "replace": "_smoke_web_loaders() {\n  _smoke_python_files \"$@\"\n}",
   "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
   "why": "Web producer lookup retains its own later parse-time alias rather than the Python phase binding."
@@ -24843,7 +24843,7 @@
  {
   "id": "lib.smoke-query-web-grep-binding",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "_smoke_web_match() {\n  grep \"$@\"\n}",
+  "find": "_smoke_web_match() {\n  grep -q .\n}",
   "replace": "_smoke_web_match() {\n  _smoke_python_match \"$@\"\n}",
   "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
   "why": "Web consumer lookup retains its later parse-time alias independently from the Python consumer."
@@ -24851,8 +24851,8 @@
  {
   "id": "lib.smoke-query-web-selectors",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "_smoke_web_match \"${dir}\" \\( -name '*.js' -o -name '*.mjs' \\) -print -quit",
-  "replace": "_smoke_web_match \"${dir}\" -name '*.js' -print -quit",
+  "find": "find \"${dir}\" \\( -name '*.js' -o -name '*.mjs' \\) -print -quit",
+  "replace": "find \"${dir}\" -name '*.js' -print -quit",
   "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
   "why": "JS and MJS selector grouping, print/quit order and spaced roots remain caller owned."
  },
@@ -24963,8 +24963,8 @@
  {
   "id": "lib.header-discovery-litert-binding",
   "target": "linux/scripts/03-media/build/litert/build-litert.sh",
-  "find": "_litert_header_find() { find \"$@\"; }",
-  "replace": "_litert_header_find() { _first_match_find \"$@\"; }",
+  "find": "find \"${_litert_header_exec_argv[@]}\"",
+  "replace": "_first_match_find \"${_litert_header_exec_argv[@]}\"",
   "test": "bash linux/scripts/tests/test-header-discovery.sh",
   "why": "the caller command-substitution retains late alias binding instead of borrowing the earlier helper-owner alias"
  },
@@ -24979,16 +24979,16 @@
  {
   "id": "lib.header-discovery-litert-callback-scope",
   "target": "linux/scripts/03-media/build/litert/build-litert.sh",
-  "find": "fbheader=$(\n            _litert_header_find() { find \"$@\"; }",
-  "replace": "_litert_header_find() { find \"$@\"; }\n        fbheader=$(",
+  "find": "fbheader=$(\n            _litert_header_caller_argv=(\"$@\")\n            _litert_header_find() {\n                local -a _litert_header_exec_argv=(\"$@\")\n                set -- \"${_litert_header_caller_argv[@]}\"\n                find \"${_litert_header_exec_argv[@]}\"\n            }",
+  "replace": "            _litert_header_caller_argv=(\"$@\")\n            _litert_header_find() {\n                local -a _litert_header_exec_argv=(\"$@\")\n                set -- \"${_litert_header_caller_argv[@]}\"\n                find \"${_litert_header_exec_argv[@]}\"\n            }\n        fbheader=$(",
   "test": "bash linux/scripts/tests/test-header-discovery.sh",
   "why": "the find callback stays inside the existing captured subshell and leaves no parent function behind"
  },
  {
   "id": "lib.header-discovery-ort-binding",
   "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
-  "find": "_ort_trt_header_find() { find \"$@\"; }",
-  "replace": "_ort_trt_header_find() { _first_match_find \"$@\"; }",
+  "find": "find \"${_ort_trt_header_exec_argv[@]}\"",
+  "replace": "_first_match_find \"${_ort_trt_header_exec_argv[@]}\"",
   "test": "bash linux/scripts/tests/test-header-discovery.sh",
   "why": "the caller command-substitution retains late alias binding instead of borrowing the earlier helper-owner alias"
  },
@@ -25003,8 +25003,8 @@
  {
   "id": "lib.header-discovery-ort-callback-scope",
   "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
-  "find": "TRT_INC=$(\n      _ort_trt_header_find() { find \"$@\"; }",
-  "replace": "_ort_trt_header_find() { find \"$@\"; }\n    TRT_INC=$(",
+  "find": "TRT_INC=$(\n      _ort_trt_header_caller_argv=(\"$@\")\n      _ort_trt_header_find() {\n        local -a _ort_trt_header_exec_argv=(\"$@\")\n        set -- \"${_ort_trt_header_caller_argv[@]}\"\n        find \"${_ort_trt_header_exec_argv[@]}\"\n      }",
+  "replace": "      _ort_trt_header_caller_argv=(\"$@\")\n      _ort_trt_header_find() {\n        local -a _ort_trt_header_exec_argv=(\"$@\")\n        set -- \"${_ort_trt_header_caller_argv[@]}\"\n        find \"${_ort_trt_header_exec_argv[@]}\"\n      }\n    TRT_INC=$(",
   "test": "bash linux/scripts/tests/test-header-discovery.sh",
   "why": "the find callback stays inside the existing captured subshell and leaves no parent function behind"
  },
@@ -25059,32 +25059,32 @@
  {
   "id": "lib.npm-python-metadata-advisory",
   "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
-  "find": "      | _npm_python_quiet _npm_metadata_python -c 'import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))' || true",
-  "replace": "      | _npm_python_quiet _npm_metadata_python -c 'import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))'",
+  "find": "      | _npm_python_quiet _npm_metadata_python \"$@\" || true",
+  "replace": "      | _npm_python_quiet _npm_metadata_python \"$@\"",
   "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
   "why": "metadata lookup remains advisory even when Python or curl fails after partial output"
  },
  {
   "id": "lib.npm-python-digest-fatal",
   "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
-  "find": "      _npm_python_quiet _npm_digest_python -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())' \"${tmp}/pkg.tgz\"",
-  "replace": "      _npm_python_quiet _npm_digest_python -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())' \"${tmp}/pkg.tgz\" || true",
+  "find": "      _npm_python_quiet _npm_digest_python \"$@\"",
+  "replace": "      _npm_python_quiet _npm_digest_python \"$@\" || true",
   "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
   "why": "digest interpreter failure must not be normalized into a later mismatch or a successful install"
  },
  {
   "id": "lib.npm-python-metadata-quiet",
   "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
-  "find": "| _npm_python_quiet _npm_metadata_python -c",
-  "replace": "| _npm_metadata_python -c",
+  "find": "_npm_python_quiet _npm_metadata_python \"$@\"",
+  "replace": "_npm_metadata_python \"$@\"",
   "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
   "why": "metadata errors remain quiet while the caller emits its existing best-effort warning"
  },
  {
   "id": "lib.npm-python-digest-quiet",
   "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
-  "find": "      _npm_python_quiet _npm_digest_python -c",
-  "replace": "      _npm_digest_python -c",
+  "find": "_npm_python_quiet _npm_digest_python \"$@\"",
+  "replace": "_npm_digest_python \"$@\"",
   "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
   "why": "digest errors retain their quiet stderr and original raw status"
  },
@@ -25103,5 +25103,789 @@
   "replace": "    _npm_digest_python() { python3 \"$@\"; }\n    _got_int=\"sha512-$(\n",
   "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
   "why": "digest command binding remains inside its capture rather than altering parent function state"
+ },
+ {
+  "id": "lib.python-callback-fixture-partial-status",
+  "target": "linux/scripts/tests/test-python-callback-scope.sh",
+  "find": "t_source_functions \"$COLLECTOR\" cross_collect_python_dev_paths\ncross_target_python_custom_field() { printf custom-partial; return 7; }",
+  "replace": "t_source_functions \"$COLLECTOR\" cross_collect_python_dev_paths\ncross_target_python_custom_field() { printf custom-partial; return 0; }",
+  "test": "bash linux/scripts/tests/test-python-callback-scope.sh",
+  "why": "The independent literal fake-provider contract requires failed partial output before the collector dynamically resolves the same provider."
+ },
+ {
+  "id": "lib.python-provider-argv",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "\"$3\" \"${@:4}\" 2>/dev/null || true",
+  "replace": "\"$3\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "Alias prefixes retain the original OpenCV output/tail/empty argument context."
+ },
+ {
+  "id": "lib.python-provider-quiet",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "\"$3\" \"${@:4}\" 2>/dev/null || true",
+  "replace": "\"$3\" \"${@:4}\" || true",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "Failed partial provider diagnostics remain quiet while their stdout survives."
+ },
+ {
+  "id": "lib.python-provider-readiness",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "if ! declare -F cross_capture_python_dev_path >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "A partially installed owner cannot turn a missing capture export into a green caller."
+ },
+ {
+  "id": "lib.python-provider-gst-ready",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  cross_python_provider_api_ready || return $?",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "Actual GStreamer refuses an older or guarded owner before attempting selected providers."
+ },
+ {
+  "id": "lib.python-provider-opencv-ready",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "            cross_python_provider_api_ready || return $?",
+  "replace": "            :",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "Actual OpenCV refuses an older or guarded owner rather than interpreting a failed capture as optional absence."
+ },
+ {
+  "id": "lib.python-provider-gst-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "_gst_python_provider() { cross_target_python_include_dir; }",
+  "replace": "_gst_python_provider() { command cross_target_python_include_dir; }",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "GStreamer retains literal provider aliases at its original zero-argument resolver parse phase."
+ },
+ {
+  "id": "lib.python-provider-opencv-binding",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "_opencv_python_provider() { cross_target_python_library; }",
+  "replace": "_opencv_python_provider() { command cross_target_python_library; }",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "OpenCV retains provider aliases established after the owner loads but before its function declaration."
+ },
+ {
+  "id": "lib.python-provider-gst-no-leak",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "_gst_xpy_resolve_target_paths() {\n",
+  "replace": "_gst_xpy_resolve_target_paths() {\n  _gst_python_provider() { :; }\n",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "Provider callbacks stay inside captures and cannot leak into the parent shell."
+ },
+ {
+  "id": "lib.python-provider-opencv-no-leak",
+  "target": "linux/scripts/03-media/build/opencv/build-opencv.sh",
+  "find": "_opencv_cmake_python_opts() {\n",
+  "replace": "_opencv_cmake_python_opts() {\n    _opencv_python_provider() { :; }\n",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "OpenCV provider callback declarations remain capture-local."
+ },
+ {
+  "id": "lib.python-provider-cold-complete-closure",
+  "target": "linux/scripts/tests/python-provider-context-tests.py",
+  "find": "for name in (\"cross-python.sh\", \"platform.sh\"):",
+  "replace": "for name in (\"cross-python.sh\",):",
+  "test": "bash linux/scripts/tests/test-python-provider-context.sh",
+  "why": "A complete copied owner must initialize before old or partial owner rejection is accepted."
+ },
+ {
+  "id": "lib.python-provider-absent-default",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "    printf '%s' \"$2\"",
+  "replace": "    printf '%s' ''",
+  "test": "bash linux/scripts/tests/test-media-python-probes.sh",
+  "why": "Absent provider commands retain the caller previous value rather than clearing it."
+ },
+ {
+  "id": "lib.python-collector-partial-advisory",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "_ccpdp_paths[\"$1\"]=\"$(\"cross_target_python_$1\" 2>/dev/null || true)\"",
+  "replace": "_ccpdp_paths[\"$1\"]=\"$(\"cross_target_python_$1\" 2>/dev/null)\"",
+  "test": "bash linux/scripts/tests/test-python-callback-scope.sh",
+  "why": "Legacy arbitrary-field collectors retain failed partial output under direct errexit."
+ },
+ {
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "id": "lib.smoke-query-python-caller-argv",
+  "find": "_smoke_python_match \"$@\"; then",
+  "replace": "_smoke_python_match \"$@\" -name \"${pattern}\" -type f; then",
+  "why": "Python prefix aliases see only original post-shift paths, including empty arguments."
+ },
+ {
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "id": "lib.smoke-query-web-caller-argv",
+  "find": "_smoke_web_match \"$@\"; then",
+  "replace": "_smoke_web_match \"${dir}\"; then",
+  "why": "Web prefix aliases retain label, directory and expected count in their original positions."
+ },
+ {
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "id": "lib.smoke-query-consumer-caller-argv",
+  "find": "| \"$2\" \"${@:3}\"",
+  "replace": "| \"$2\" -q .",
+  "why": "Consumer aliases receive original caller arguments before fixed grep options."
+ },
+ {
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "id": "lib.smoke-query-web-consumer-arguments",
+  "find": "_smoke_web_match() {\n  grep -q .\n}",
+  "replace": "_smoke_web_match() {\n  grep -q wrong\n}",
+  "why": "The web consumer retains the exact quiet nonempty-output predicate."
+ },
+ {
+  "id": "lib.libcamera-report-availability",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "if command -v \"$1\" >/dev/null 2>&1; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Unavailable tools remain silent and never execute component probes."
+ },
+ {
+  "id": "lib.libcamera-report-quiet-probe",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "if \"$2\" \"${@:5}\" >/dev/null 2>&1; then",
+  "replace": "if \"$2\" \"${@:5}\"; then",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Both stdout and stderr from existence probes stay out of the diagnostic report."
+ },
+ {
+  "id": "lib.libcamera-report-probe-verdict",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "if \"$2\" \"${@:5}\" >/dev/null 2>&1; then",
+  "replace": "if \"$2\" \"${@:5}\" >/dev/null 2>&1 || true; then",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "A failed component probe must report missing instead of success."
+ },
+ {
+  "id": "lib.libcamera-report-success-callback",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "      \"$3\" \"${@:5}\"",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Successful component probes execute the original report and version lookup."
+ },
+ {
+  "id": "lib.libcamera-report-missing-message",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "      echo \"$4\"",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Missing components retain their exact independent diagnostic messages."
+ },
+ {
+  "id": "lib.libcamera-report-version-fallback",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "pkg-config --modversion libcamera 2>/dev/null || echo \"<version unknown>\"",
+  "replace": "pkg-config --modversion libcamera 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Failed version queries retain partial output plus the original unknown-version fallback."
+ },
+ {
+  "id": "lib.libcamera-report-pkg-binding",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "  pkg-config --exists libcamera",
+  "replace": "  command pkg-config --exists libcamera",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "The pkg-config probe preserves source-time function and alias binding."
+ },
+ {
+  "id": "lib.libcamera-report-gst-binding",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "  gst-inspect-1.0 libcamerasrc",
+  "replace": "  command gst-inspect-1.0 libcamerasrc",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "The GStreamer probe preserves source-time function and alias binding."
+ },
+ {
+  "id": "lib.libcamera-report-dynamic-scope",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "_libcamera_report_available_probe() {\n",
+  "replace": "_libcamera_report_available_probe() {\n  local tool=\"$1\" probe=\"$2\" success=\"$3\" missing=\"$4\"\n",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Bound component wrappers retain caller locals and globals without new helper locals hiding their dynamic bindings."
+ },
+ {
+  "id": "lib.libcamera-report-probe-argv",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "if \"$2\" \"${@:5}\" >/dev/null 2>&1; then",
+  "replace": "if \"$2\" >/dev/null 2>&1; then",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "Both literal probe aliases retain env_show positional arguments."
+ },
+ {
+  "id": "lib.libcamera-report-success-argv",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "      \"$3\" \"${@:5}\"",
+  "replace": "      \"$3\"",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "The pkg-config version alias retains env_show positional arguments."
+ },
+ {
+  "id": "lib.libcamera-report-pkg-caller-argv",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "\"  pkg-config: libcamera NOT found in current PKG_CONFIG_PATH\" \"$@\"",
+  "replace": "\"  pkg-config: libcamera NOT found in current PKG_CONFIG_PATH\"",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "The pkg-config probe and version report carry original show argv into bound callbacks."
+ },
+ {
+  "id": "lib.libcamera-report-gst-caller-argv",
+  "target": "linux/scripts/04-runtime/libcamera-env.sh",
+  "find": "\"  gst-inspect-1.0: libcamerasrc plugin NOT found\" \"$@\"",
+  "replace": "\"  gst-inspect-1.0: libcamerasrc plugin NOT found\"",
+  "test": "bash linux/scripts/tests/test-libcamera-report.sh",
+  "why": "The GStreamer presence alias receives original show argv with spaces and empty arguments."
+ },
+ {
+  "id": "lib.smoke-query-dynamic-scope",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "_smoke_query_matches() {\n",
+  "replace": "_smoke_query_matches() {\n  local producer=\"$1\" consumer=\"$2\"\n",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "Find and grep wrappers retain both caller-local and global producer/consumer bindings without helper shadowing."
+ },
+ {
+  "id": "lib.python-callback-dynamic-scope",
+  "target": "linux/scripts/01-core/cross-python.sh",
+  "find": "cross_collect_python_dev_paths() {\n",
+  "replace": "cross_collect_python_dev_paths() {\n  local field=include_dir probe=cross_target_python_include_dir python_paths=masked\n",
+  "test": "bash linux/scripts/tests/test-python-callback-scope.sh",
+  "why": "The actual GStreamer caller preserves global and caller-local field/probe/python_paths bindings visible to provided Python resolvers."
+ },
+ {
+  "id": "lib.chain-sibling-pid-empty-excluded",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "replace": "_chain_is_live_other_pid() {\n  [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "An empty pidfile does not invoke a process probe."
+ },
+ {
+  "id": "lib.chain-sibling-pid-self-excluded",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "replace": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "The current process never counts as a sibling and retains its own claimed pidfile."
+ },
+ {
+  "id": "lib.chain-sibling-pid-probe-required",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "replace": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  return 0\n}",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "Stale pidfiles do not protect a dead process or prevent takeover."
+ },
+ {
+  "id": "lib.chain-sibling-pid-raw-probe-status",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "replace": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null || return 1\n}",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "The shared predicate retains raw nonzero probe statuses for its caller."
+ },
+ {
+  "id": "lib.chain-sibling-pid-quiet-probe",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\" 2>/dev/null\n}",
+  "replace": "_chain_is_live_other_pid() {\n  [ -n \"$1\" ] && [ \"$1\" != \"$$\" ] || return 1\n  kill -0 \"$1\"\n}",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "Probe diagnostics stay suppressed without suppressing stdout or changing status."
+ },
+ {
+  "id": "lib.chain-sibling-pid-reader-delegates",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  _chain_is_live_other_pid \"${other}\" || return 0",
+  "replace": "  return 0",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "The reader must expose a live sibling to archive and refusal checks."
+ },
+ {
+  "id": "lib.chain-sibling-pid-writer-delegates",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "    if _chain_is_live_other_pid \"${other}\"; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-chain-sibling-pid.sh",
+  "why": "The writer cannot clobber the pidfile of a live sibling."
+ },
+ {
+  "id": "lib.command-callback-scope-action",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "wheel_archive_run() {\n  local _war_action=\"$1\" _war_source=\"$2\" _war_destination=\"$3\"\n  shift 3\n  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1\n}",
+  "replace": "wheel_archive_run() {\n  local action=\"$1\" _war_source=\"$2\" _war_destination=\"$3\"\n  shift 3\n  \"$@\" -m wheel \"${action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Actual wheel and packaging caller command functions retain user action configuration from global and caller-local scope."
+ },
+ {
+  "id": "lib.command-callback-scope-source",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "wheel_archive_run() {\n  local _war_action=\"$1\" _war_source=\"$2\" _war_destination=\"$3\"\n  shift 3\n  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1\n}",
+  "replace": "wheel_archive_run() {\n  local _war_action=\"$1\" source=\"$2\" _war_destination=\"$3\"\n  shift 3\n  \"$@\" -m wheel \"${_war_action}\" \"${source}\" -d \"${_war_destination}\" >/dev/null 2>&1\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Actual wheel and packaging caller command functions retain user source configuration from global and caller-local scope."
+ },
+ {
+  "id": "lib.command-callback-scope-destination",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "wheel_archive_run() {\n  local _war_action=\"$1\" _war_source=\"$2\" _war_destination=\"$3\"\n  shift 3\n  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${_war_destination}\" >/dev/null 2>&1\n}",
+  "replace": "wheel_archive_run() {\n  local _war_action=\"$1\" _war_source=\"$2\" destination=\"$3\"\n  shift 3\n  \"$@\" -m wheel \"${_war_action}\" \"${_war_source}\" -d \"${destination}\" >/dev/null 2>&1\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Actual wheel and packaging caller command functions retain user destination configuration from global and caller-local scope."
+ },
+ {
+  "id": "lib.command-callback-scope-failure_handler",
+  "target": "linux/scripts/02-toolchain/packaging-deps.sh",
+  "find": "_packaging_execute() {\n    local _pe_failure_handler=\"$1\" status=0\n    shift\n    \"$@\" || status=$?\n    if [ \"$status\" -eq 0 ]; then return 0; fi\n    \"$_pe_failure_handler\" \"$status\" \"$@\"\n}",
+  "replace": "_packaging_execute() {\n    local failure_handler=\"$1\" status=0\n    shift\n    \"$@\" || status=$?\n    if [ \"$status\" -eq 0 ]; then return 0; fi\n    \"$failure_handler\" \"$status\" \"$@\"\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Actual wheel and packaging caller command functions retain user failure_handler configuration from global and caller-local scope."
+ },
+ {
+  "id": "lib.wheel-archive-alias-adapter-literal",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "_repair_wheel_uv() {\n  local -a _rwuv_exec_argv=(\"$@\")\n  set --\n  uv \"${_rwuv_exec_argv[@]}\"\n}",
+  "replace": "_repair_wheel_uv() {\n  local -a _rwuv_exec_argv=(\"$@\")\n  set --\n  \"uv\" \"${_rwuv_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Load-time uv aliases remain bound at the original literal-command boundary."
+ },
+ {
+  "id": "lib.wheel-archive-alias-unpack-bound",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "wheel_archive_run unpack \"${whl}\" \"${tmp}/u\" _repair_wheel_uv run python",
+  "replace": "wheel_archive_run unpack \"${whl}\" \"${tmp}/u\" uv run python",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "The unpack operation must invoke the bound literal uv caller, retaining alias phase and user variables."
+ },
+ {
+  "id": "lib.wheel-archive-alias-pack-bound",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "wheel_archive_run pack \"${unpacked}\" \"${tmp}/p\" _repair_wheel_uv run python",
+  "replace": "wheel_archive_run pack \"${unpacked}\" \"${tmp}/p\" uv run python",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "The pack operation must invoke the bound literal uv caller, retaining alias phase and user variables."
+ },
+ {
+  "id": "lib.wheel-archive-alias-caller-argv",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "_repair_wheel_uv() {\n  local -a _rwuv_exec_argv=(\"$@\")\n  set --\n  uv \"${_rwuv_exec_argv[@]}\"\n}",
+  "replace": "_repair_wheel_uv() {\n  local -a _rwuv_exec_argv=(\"$@\")\n  uv \"${_rwuv_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Prefix aliases expand the original strip caller positional arguments, while exact unpack and pack tool arguments remain separate."
+ },
+ {
+  "id": "lib.wheel-archive-alias-exec-argv",
+  "target": "linux/scripts/03-media/runtime/repair-wheels.sh",
+  "find": "_repair_wheel_uv() {\n  local -a _rwuv_exec_argv=(\"$@\")\n  set --\n  uv \"${_rwuv_exec_argv[@]}\"\n}",
+  "replace": "_repair_wheel_uv() {\n  local -a _rwuv_exec_argv=(\"$@\")\n  set --\n  uv \"$@\"\n}",
+  "test": "bash linux/scripts/tests/test-command-callback-scope.sh",
+  "why": "Prefix aliases expand the original strip caller positional arguments, while exact unpack and pack tool arguments remain separate."
+ },
+ {
+  "id": "lib.meson-bound-gst-cross-literal",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "_gst_monorepo_meson_cross() {\n  local -a _gmmc_exec_argv=(\"$@\")\n  set --\n  append_meson_cross_flags \"${_gmmc_exec_argv[@]}\"\n}",
+  "replace": "_gst_monorepo_meson_cross() {\n  local -a _gmmc_exec_argv=(\"$@\")\n  set --\n  \"append_meson_cross_flags\" \"${_gmmc_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "Provider aliases bind at the original gst source phase without changing command function scope."
+ },
+ {
+  "id": "lib.meson-bound-gst-native-literal",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "_gst_monorepo_meson_native() {\n  local -a _gmmn_exec_argv=(\"$@\")\n  set --\n  append_meson_native_flags \"${_gmmn_exec_argv[@]}\"\n}",
+  "replace": "_gst_monorepo_meson_native() {\n  local -a _gmmn_exec_argv=(\"$@\")\n  set --\n  \"append_meson_native_flags\" \"${_gmmn_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "Provider aliases bind at the original gst source phase without changing command function scope."
+ },
+ {
+  "id": "lib.meson-bound-camera-cross-literal",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}",
+  "replace": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  \"append_meson_cross_flags\" \"${_lcmc_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "Provider aliases bind at the original camera source phase without changing command function scope."
+ },
+ {
+  "id": "lib.meson-bound-camera-native-literal",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}",
+  "replace": "_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  \"append_meson_native_flags\" \"${_lcmn_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "Provider aliases bind at the original camera source phase without changing command function scope."
+ },
+ {
+  "id": "lib.meson-bound-core-cross-literal",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "_common_meson_cross() {\n  local -a _cmc_exec_argv=(\"$@\")\n  set -- \"${_amtf_caller_argv[@]}\"\n  append_meson_cross_flags \"${_cmc_exec_argv[@]}\"\n}",
+  "replace": "_common_meson_cross() {\n  local -a _cmc_exec_argv=(\"$@\")\n  set -- \"${_amtf_caller_argv[@]}\"\n  \"append_meson_cross_flags\" \"${_cmc_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "Provider aliases bind at the original core source phase without changing command function scope."
+ },
+ {
+  "id": "lib.meson-bound-core-native-literal",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "_common_meson_native() {\n  local -a _cmn_exec_argv=(\"$@\")\n  set -- \"${_amtf_caller_argv[@]}\"\n  append_meson_native_flags \"${_cmn_exec_argv[@]}\"\n}",
+  "replace": "_common_meson_native() {\n  local -a _cmn_exec_argv=(\"$@\")\n  set -- \"${_amtf_caller_argv[@]}\"\n  \"append_meson_native_flags\" \"${_cmn_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "Provider aliases bind at the original core source phase without changing command function scope."
+ },
+ {
+  "id": "lib.meson-bound-camera-native-phase",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}\nappend_available_meson_provider append_meson_cross_flags _libcamera_meson_cross MESON_SETUP_ARGS\n\n_libcamera_meson_native_argv=(\"$@\")\n_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}",
+  "replace": "_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}\n\n_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}\nappend_available_meson_provider append_meson_cross_flags _libcamera_meson_cross MESON_SETUP_ARGS\n\n_libcamera_meson_native_argv=(\"$@\")\n",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A cross hook may install the native alias before the second top-level block is parsed."
+ },
+ {
+  "id": "lib.meson-bound-gst-primitive-required",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "  declare -F append_available_meson_toolchain_flags append_available_meson_provider >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; return 1; }",
+  "replace": "  declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; return 1; }",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A guarded old core with a dispatcher but no provider primitive must fail explicitly before dispatch."
+ },
+ {
+  "id": "lib.meson-bound-after-unconditional",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\"; else return \"${_amp_status}\"; fi",
+  "replace": "    if [ -n \"${_amp_after}\" ]; then \"${_amp_after}\" || true; else return \"${_amp_status}\"; fi",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "The project callback is unconditional so strict inner failures remain fatal."
+ },
+ {
+  "id": "lib.meson-bound-gst-cross-caller-argv",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "_gst_monorepo_meson_cross() {\n  local -a _gmmc_exec_argv=(\"$@\")\n  set --\n  append_meson_cross_flags \"${_gmmc_exec_argv[@]}\"\n}",
+  "replace": "_gst_monorepo_meson_cross() {\n  local -a _gmmc_exec_argv=(\"$@\")\n  append_meson_cross_flags \"${_gmmc_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A prefix alias containing literal positional arguments sees the original caller argv while the provider still receives its one exact array-name argument."
+ },
+ {
+  "id": "lib.meson-bound-gst-native-caller-argv",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "_gst_monorepo_meson_native() {\n  local -a _gmmn_exec_argv=(\"$@\")\n  set --\n  append_meson_native_flags \"${_gmmn_exec_argv[@]}\"\n}",
+  "replace": "_gst_monorepo_meson_native() {\n  local -a _gmmn_exec_argv=(\"$@\")\n  append_meson_native_flags \"${_gmmn_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A prefix alias containing literal positional arguments sees the original caller argv while the provider still receives its one exact array-name argument."
+ },
+ {
+  "id": "lib.meson-bound-camera-cross-caller-argv",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_cross_argv[@]}\"\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}",
+  "replace": "_libcamera_meson_cross() {\n  local -a _lcmc_exec_argv=(\"$@\")\n  append_meson_cross_flags \"${_lcmc_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A prefix alias containing literal positional arguments sees the original caller argv while the provider still receives its one exact array-name argument."
+ },
+ {
+  "id": "lib.meson-bound-camera-native-caller-argv",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  set -- \"${_libcamera_meson_native_argv[@]}\"\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}",
+  "replace": "_libcamera_meson_native() {\n  local -a _lcmn_exec_argv=(\"$@\")\n  append_meson_native_flags \"${_lcmn_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A prefix alias containing literal positional arguments sees the original caller argv while the provider still receives its one exact array-name argument."
+ },
+ {
+  "id": "lib.meson-bound-core-cross-caller-argv",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "_common_meson_cross() {\n  local -a _cmc_exec_argv=(\"$@\")\n  set -- \"${_amtf_caller_argv[@]}\"\n  append_meson_cross_flags \"${_cmc_exec_argv[@]}\"\n}",
+  "replace": "_common_meson_cross() {\n  local -a _cmc_exec_argv=(\"$@\")\n  append_meson_cross_flags \"${_cmc_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A prefix alias containing literal positional arguments sees the original caller argv while the provider still receives its one exact array-name argument."
+ },
+ {
+  "id": "lib.meson-bound-core-native-caller-argv",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "_common_meson_native() {\n  local -a _cmn_exec_argv=(\"$@\")\n  set -- \"${_amtf_caller_argv[@]}\"\n  append_meson_native_flags \"${_cmn_exec_argv[@]}\"\n}",
+  "replace": "_common_meson_native() {\n  local -a _cmn_exec_argv=(\"$@\")\n  append_meson_native_flags \"${_cmn_exec_argv[@]}\"\n}",
+  "test": "bash linux/scripts/tests/test-meson-bound-providers.sh",
+  "why": "A prefix alias containing literal positional arguments sees the original caller argv while the provider still receives its one exact array-name argument."
+ },
+ {
+  "id": "lib.header-discovery-litert-caller-argv",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "_litert_header_caller_argv=(\"$@\")",
+  "replace": "_litert_header_caller_argv=()",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "The original enclosing arguments, including empty tails, remain available to prefix aliases."
+ },
+ {
+  "id": "lib.header-discovery-litert-alias-argv",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "set -- \"${_litert_header_caller_argv[@]}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "The literal find alias expands against enclosing arguments rather than generated tool arguments."
+ },
+ {
+  "id": "lib.header-discovery-litert-exec-argv",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "find \"${_litert_header_exec_argv[@]}\"",
+  "replace": "find \"$@\"",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "Restoring alias positional arguments must not replace the actual finder roots, selectors or final print/quit options."
+ },
+ {
+  "id": "lib.header-discovery-ort-caller-argv",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "_ort_trt_header_caller_argv=(\"$@\")",
+  "replace": "_ort_trt_header_caller_argv=()",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "The original enclosing arguments, including empty tails, remain available to prefix aliases."
+ },
+ {
+  "id": "lib.header-discovery-ort-alias-argv",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "set -- \"${_ort_trt_header_caller_argv[@]}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "The literal find alias expands against enclosing arguments rather than generated tool arguments."
+ },
+ {
+  "id": "lib.header-discovery-ort-exec-argv",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "find \"${_ort_trt_header_exec_argv[@]}\"",
+  "replace": "find \"$@\"",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "Restoring alias positional arguments must not replace the actual finder roots, selectors or final print/quit options."
+ },
+ {
+  "id": "lib.compiler-candidate-ordered-names",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "_resolve_build_gcc_candidates _rhcf_found \"${compiler}\" \"${alternate}\"",
+  "replace": "_resolve_build_gcc_candidates _rhcf_found \"${alternate}\" \"${compiler}\"",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "the primary GCC name remains authoritative over its cc or c++ alias"
+ },
+ {
+  "id": "lib.compiler-candidate-test-order",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    case \"${_rbg_first}\" in\n      1) _rbg_first=0 ;;\n      *) [ -n \"${resolved}\" ] && break ;;\n    esac",
+  "replace": "    [ -n \"${resolved}\" ] && break",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "the ordered loop retains the exact nonempty-test count and placement between producer calls"
+ },
+ {
+  "id": "lib.compiler-candidate-first-result",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "*) [ -n \"${resolved}\" ] && break ;;",
+  "replace": "*) [ -n \"${resolved}\" ] && : ;;",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "a valid first candidate stops resolution before the alternate producer can replace it"
+ },
+ {
+  "id": "lib.compiler-candidate-producer-advisory",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null || true",
+  "replace": "resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "partial output from a failed optional producer remains usable without changing its historical status normalization"
+ },
+ {
+  "id": "lib.compiler-candidate-producer-quiet",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null || true",
+  "replace": "resolve_build_gcc_tool \"${_rbg_tool}\" || true",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "optional resolver stderr stays suppressed while candidate stdout is preserved"
+ },
+ {
+  "id": "lib.compiler-candidate-live-result",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "resolved=\"$(resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null || true)\"",
+  "replace": "_rbg_shadow=\"$(resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null || true)\"",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "captures update the same caller-local resolved binding that subsequent resolver hooks observe"
+ },
+ {
+  "id": "lib.compiler-candidate-publication-signal",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "_rbg_found=1;",
+  "replace": "_rbg_found=2;",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "successful publication tells the public resolver to return instead of appending an unrelated fallback path"
+ },
+ {
+  "id": "lib.compiler-candidate-caller-return",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "case \"${_rhcf_found}\" in 1) return 0 ;; esac",
+  "replace": "case \"${_rhcf_found}\" in 1) : ;; esac",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "publishing a build-tool path prevents any triplet, filesystem or PATH fallback"
+ },
+ {
+  "id": "lib.compiler-candidate-direct-publication",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "_resolve_build_gcc_candidates _rhcf_found \"${compiler}\" \"${alternate}\"",
+  "replace": "_rhcf_capture=\"$(_resolve_build_gcc_candidates _rhcf_found \"${compiler}\" \"${alternate}\")\"",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "publication and its found flag stay in the caller shell rather than being lost in an extra capture"
+ },
+ {
+  "id": "lib.compiler-candidate-printf-failure",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "printf '%s' \"${resolved}\"; _rbg_found=1;",
+  "replace": "printf '%s' \"${resolved}\" || true; _rbg_found=1;",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "strict printf failure remains fatal while conditional callers retain the original forced-success behavior"
+ },
+ {
+  "id": "lib.compiler-candidate-late-producer-binding",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "$(resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null || true)",
+  "replace": "$(command resolve_build_gcc_tool \"${_rbg_tool}\" 2>/dev/null || true)",
+  "test": "bash linux/scripts/tests/test-compiler-candidates.sh",
+  "why": "late aliases and caller-provided resolver functions retain their original lookup precedence"
+ },
+ {
+  "id": "lib.target-rust-callback-caller-scope",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "  local _cctre_output=\"$1\" _cctre_field",
+  "replace": "  local _cctre_output=\"$1\" _cctre_field\n  local output=SHADOW_OUTPUT field=SHADOW_FIELD probe=SHADOW_PROBE",
+  "test": "bash linux/scripts/tests/test-target-rust-callback-scope.sh",
+  "why": "provided hooks keep literal global and caller-local output, field and probe bindings through the actual GStreamer caller"
+ },
+ {
+  "id": "lib.target-rust-callback-alias-binding",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "_cctre_provider 2>/dev/null || true",
+  "replace": "\"cross_target_${_cctre_field}_rust\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-target-rust-callback-scope.sh",
+  "why": "alias-only and late-bound providers execute just as the original literal captures did"
+ },
+ {
+  "id": "lib.target-rust-callback-captured-scope",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "      printf -v \"${_cctre_output}[${_cctre_field}]\" '%s' \"$(\n        case \"${_cctre_field}\" in\n          upper) _cctre_provider() { cross_target_upper_rust; } ;;\n          lower) _cctre_provider() { cross_target_lower_rust; } ;;\n        esac\n        _cctre_provider 2>/dev/null || true\n      )\"",
+  "replace": "      case \"${_cctre_field}\" in\n        upper) _cctre_provider() { cross_target_upper_rust; } ;;\n        lower) _cctre_provider() { cross_target_lower_rust; } ;;\n      esac\n      printf -v \"${_cctre_output}[${_cctre_field}]\" '%s' \"$(_cctre_provider 2>/dev/null || true)\"",
+  "test": "bash linux/scripts/tests/test-target-rust-callback-scope.sh",
+  "why": "provider transport declarations stay in the original captured subshell and never persist as parent functions"
+ },
+ {
+  "id": "lib.target-rust-callback-required-output",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "local _cctre_output=\"$1\" _cctre_field",
+  "replace": "local _cctre_output=\"${1:-}\" _cctre_field",
+  "test": "bash linux/scripts/tests/test-target-rust-callback-scope.sh",
+  "why": "the required output operand retains native nounset failure even when no optional provider exists"
+ },
+ {
+  "id": "lib.target-rust-callback-probe-order",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "for _cctre_field in upper lower; do",
+  "replace": "for _cctre_field in lower upper; do",
+  "test": "bash linux/scripts/tests/test-target-rust-callback-scope.sh",
+  "why": "the lower hook sees the published upper field after exactly one ordered availability check and probe per field"
+ },
+ {
+  "id": "lib.npm-python-metadata-caller-argv",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "_npm_python_quiet _npm_metadata_python \"$@\"",
+  "replace": "_npm_python_quiet _npm_metadata_python",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "Prefix aliases retain original enclosing package arguments separately from interpreter arguments."
+ },
+ {
+  "id": "lib.npm-python-digest-caller-argv",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "_npm_python_quiet _npm_digest_python \"$@\"",
+  "replace": "_npm_python_quiet _npm_digest_python",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "Prefix aliases retain original enclosing package arguments separately from interpreter arguments."
+ },
+ {
+  "id": "lib.cli-help-exit",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "  exit 0\n",
+  "replace": "  return 0\n",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "help terminates its process instead of returning to caller work after rendering usage"
+ },
+ {
+  "id": "lib.cli-help-success",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "  exit 0\n",
+  "replace": "  exit 1\n",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "a successful help request retains its exact zero status"
+ },
+ {
+  "id": "lib.cli-help-arguments",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "  \"${1:?usage command required}\" \"${@:2}\"",
+  "replace": "  \"${1:?usage command required}\" ${*:2}",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "usage callback arguments retain spaces and explicitly empty values"
+ },
+ {
+  "id": "lib.cli-help-requires-command",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "  \"${1:?usage command required}\" \"${@:2}\"",
+  "replace": "  \"${1:-:}\" \"${@:2}\"",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "the new usage exit API refuses a missing callback rather than silently succeeding"
+ },
+ {
+  "id": "lib.cli-help-strict-failure",
+  "target": "linux/scripts/01-core/logging.sh",
+  "find": "  \"${1:?usage command required}\" \"${@:2}\"",
+  "replace": "  \"${1:?usage command required}\" \"${@:2}\" || true",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "the callback remains unconditional so strict help failures are not swallowed by an added OR wrapper"
+ },
+ {
+  "id": "lib.cli-help-stop-binding",
+  "target": "linux/scripts/stop-cross-chain.sh",
+  "find": "show_usage_and_exit _stop_usage \"$@\"; exit $?",
+  "replace": "show_usage_and_exit usage \"$@\"; exit $?",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "help uses the command binding captured at the original parser declaration phase"
+ },
+ {
+  "id": "lib.cli-help-stop-missing-api",
+  "target": "linux/scripts/stop-cross-chain.sh",
+  "find": "show_usage_and_exit _stop_usage \"$@\"; exit $?",
+  "replace": "show_usage_and_exit _stop_usage \"$@\"",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "a missing shared helper stops a conditional parser before cleanup or container work"
+ },
+ {
+  "id": "lib.cli-help-parity-binding",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "show_usage_and_exit _parity_usage \"$@\"; exit $?",
+  "replace": "show_usage_and_exit usage \"$@\"; exit $?",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "help uses the command binding captured at the original parser declaration phase"
+ },
+ {
+  "id": "lib.cli-help-parity-missing-api",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "show_usage_and_exit _parity_usage \"$@\"; exit $?",
+  "replace": "show_usage_and_exit _parity_usage \"$@\"",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "a missing shared helper stops a conditional parser before cleanup or container work"
+ },
+ {
+  "id": "lib.cli-help-stop-argument-context",
+  "target": "linux/scripts/stop-cross-chain.sh",
+  "find": "show_usage_and_exit _stop_usage \"$@\"; exit $?",
+  "replace": "show_usage_and_exit _stop_usage; exit $?",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "Command-prefix usage aliases retain the original parser argument context after preceding options were shifted."
+ },
+ {
+  "id": "lib.cli-help-parity-argument-context",
+  "target": "linux/scripts/06-packaging/verify-parity.sh",
+  "find": "show_usage_and_exit _parity_usage \"$@\"; exit $?",
+  "replace": "show_usage_and_exit _parity_usage; exit $?",
+  "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
+  "why": "Command-prefix usage aliases retain the original parser argument context after preceding options were shifted."
  }
 ]

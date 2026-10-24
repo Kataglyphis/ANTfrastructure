@@ -43,11 +43,11 @@ best_effort_mode() {
 }
 
 _packaging_execute() {
-    local failure_handler="$1" status=0
+    local _pe_failure_handler="$1" status=0
     shift
     "$@" || status=$?
     if [ "$status" -eq 0 ]; then return 0; fi
-    "$failure_handler" "$status" "$@"
+    "$_pe_failure_handler" "$status" "$@"
 }
 
 _packaging_step_failure() {

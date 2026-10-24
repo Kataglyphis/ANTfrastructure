@@ -1,0 +1,18 @@
+[
+ {
+  "subject": "stop",
+  "receipt": [
+   0,
+   "Usage: stop-cross-chain.sh [options]\n\nCleanly stop a running cross build chain and its nerdctl/buildctl children.\n\nOptions:\n  --timeout SECS   Seconds to wait for a graceful TERM before sending KILL\n                   (default: 15)\n  -h, --help       Show this help text\n\nFinds the chain via its pidfile (build-cross-chain.sh writes it; override the\npath with CROSS_CHAIN_PIDFILE) and falls back to pgrep on build-cross-chain.sh.\n",
+   ""
+  ]
+ },
+ {
+  "subject": "parity",
+  "receipt": [
+   0,
+   "Usage: verify-parity.sh --native IMAGE --cross IMAGE [options]\n\nCompares a natively-built container image against its cross-built counterpart\nto verify they have the same software packages and runtime functionality.\n\nChecks performed:\n  packages   OS packages (dpkg -l) match\n  python     Python venv packages match\n  versions   Key binary version strings match\n  files      File tree structure matches\n  libs       Shared library inventory matches\n  imports    Python import smoke test passes in both\n\nOptions:\n  --native IMAGE     Native-built image reference (required)\n  --cross IMAGE      Cross-built image reference (required)\n  --checks LIST      Comma-separated list of checks to run\n                     (default: packages,python,versions,files,libs,imports)\n  --verbose          Show full diff output for each check\n  --diff-tool TOOL   Diff tool to use (default: diff)\n  -h, --help         Show this help text\n\nEnvironment overrides:\n  CONTAINER_BIN      Container runtime (default: nerdctl)\n  TMPDIR             Temporary directory for output files\n\nExamples:\n  verify-parity.sh \\\n    --native kataglyphis:native-amd64 \\\n    --cross  ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest-amd64\n\n  verify-parity.sh --native kataglyphis:native-arm64 --cross kataglyphis:cross-arm64 \\\n    --checks packages,python,versions,imports\n",
+   ""
+  ]
+ }
+]

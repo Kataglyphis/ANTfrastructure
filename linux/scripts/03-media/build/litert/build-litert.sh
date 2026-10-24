@@ -484,7 +484,12 @@ _install_manual_flatbuffers() {
             exit 1
         fi
         fbheader=$(
-            _litert_header_find() { find "$@"; }
+            _litert_header_caller_argv=("$@")
+            _litert_header_find() {
+                local -a _litert_header_exec_argv=("$@")
+                set -- "${_litert_header_caller_argv[@]}"
+                find "${_litert_header_exec_argv[@]}"
+            }
             first_match_using _litert_header_find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h"
         )
         if [ -n "$fbheader" ]; then

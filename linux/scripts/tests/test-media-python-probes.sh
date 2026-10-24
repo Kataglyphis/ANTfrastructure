@@ -64,7 +64,7 @@ HOST_PYTHON='/host python'
 OPENCV_PYTHON_VERSION=3.99
 target_python_include=''; target_python_library=''; target_python_pkgconfig_dir=''
 BASH
-t_emit_optional_functions media_probe_answer cross_collect_python_dev_paths _gst_xpy_resolve_target_paths _opencv_cmake_python_opts cross_target_triplet cross_target_python_include_dir cross_target_python_library cross_target_python_pkgconfig_dir setup_host_python_environment uv python_module_include cross_build_is_active >> "$work/direct.sh"
+t_emit_optional_functions media_probe_answer cross_collect_python_dev_paths cross_capture_python_dev_path cross_python_provider_api_ready _gst_xpy_resolve_target_paths _opencv_cmake_python_opts cross_target_triplet cross_target_python_include_dir cross_target_python_library cross_target_python_pkgconfig_dir setup_host_python_environment uv python_module_include cross_build_is_active >> "$work/direct.sh"
 cat >> "$work/direct.sh" <<'BASH'
 _gst_xpy_resolve_target_paths
 args=()

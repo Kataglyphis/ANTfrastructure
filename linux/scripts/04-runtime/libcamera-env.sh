@@ -152,6 +152,32 @@ done
 export LIBCAMERA_PREFIX="$PREFIX"
 
 # Optional helper to show useful info
+_libcamera_report_available_probe() {
+  if command -v "$1" >/dev/null 2>&1; then
+    if "$2" "${@:5}" >/dev/null 2>&1; then
+      "$3" "${@:5}"
+    else
+      echo "$4"
+    fi
+  fi
+}
+
+_libcamera_pkg_probe() {
+  pkg-config --exists libcamera
+}
+
+_libcamera_pkg_found() {
+  echo "  pkg-config: libcamera found -> $(pkg-config --modversion libcamera 2>/dev/null || echo "<version unknown>")"
+}
+
+_libcamera_gst_probe() {
+  gst-inspect-1.0 libcamerasrc
+}
+
+_libcamera_gst_found() {
+  echo "  gst-inspect-1.0: libcamerasrc plugin found ✓"
+}
+
 libcamera_env_show() {
   echo "libcamera-env: LIBCAMERA_PREFIX = ${LIBCAMERA_PREFIX}"
   echo "  MULTIARCH_TRIPLET = ${MULTIARCH_TRIPLET:-<not detected>}"
@@ -160,20 +186,10 @@ libcamera_env_show() {
   echo "  LD_LIBRARY_PATH = ${LD_LIBRARY_PATH:-"<empty>"}"
   echo "  GST_PLUGIN_PATH = ${GST_PLUGIN_PATH:-"<empty>"}"
   echo "  PYTHONPATH = ${PYTHONPATH:-"<empty>"}"
-  if command -v pkg-config >/dev/null 2>&1; then
-    if pkg-config --exists libcamera >/dev/null 2>&1; then
-      echo "  pkg-config: libcamera found -> $(pkg-config --modversion libcamera 2>/dev/null || echo "<version unknown>")"
-    else
-      echo "  pkg-config: libcamera NOT found in current PKG_CONFIG_PATH"
-    fi
-  fi
-  if command -v gst-inspect-1.0 >/dev/null 2>&1; then
-    if gst-inspect-1.0 libcamerasrc >/dev/null 2>&1; then
-      echo "  gst-inspect-1.0: libcamerasrc plugin found ✓"
-    else
-      echo "  gst-inspect-1.0: libcamerasrc plugin NOT found"
-    fi
-  fi
+  _libcamera_report_available_probe pkg-config _libcamera_pkg_probe _libcamera_pkg_found \
+    "  pkg-config: libcamera NOT found in current PKG_CONFIG_PATH" "$@"
+  _libcamera_report_available_probe gst-inspect-1.0 _libcamera_gst_probe _libcamera_gst_found \
+    "  gst-inspect-1.0: libcamerasrc plugin NOT found" "$@"
 }
 
 # Show a short one-line confirmation when sourced interactively

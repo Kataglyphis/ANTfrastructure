@@ -162,3 +162,9 @@ reject_unknown_option() {
   "${2:-usage}" >&2
   exit "${3:-1}"
 }
+
+# Help must terminate even when the caller suppresses errexit.
+show_usage_and_exit() {
+  "${1:?usage command required}" "${@:2}"
+  exit 0
+}

@@ -582,13 +582,18 @@ _chain_start_resource_monitor() { start_resource_monitor cross; }
 _CHAIN_PIDFILE=""
 _CHAIN_SIGNAL_HANDLED=0
 
+_chain_is_live_other_pid() {
+  [ -n "$1" ] && [ "$1" != "$$" ] || return 1
+  kill -0 "$1" 2>/dev/null
+}
+
 # Reads the pidfile directly: runs before _chain_write_pidfile.
 _chain_live_sibling_pid() {
   local pf other
   pf="$(cross_chain_pidfile_path)"
   [ -f "${pf}" ] || return 0
   other="$(cat "${pf}" 2>/dev/null || true)"
-  [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null || return 0
+  _chain_is_live_other_pid "${other}" || return 0
   printf '%s' "${other}"
 }
 
@@ -614,7 +619,7 @@ _chain_write_pidfile() {
   # Never clobber a live sibling's pidfile; stop-cross-chain.sh is the way to stop it.
   if [ -f "${_CHAIN_PIDFILE}" ]; then
     local other; other="$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)"
-    if [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null; then
+    if _chain_is_live_other_pid "${other}"; then
       warn "another cross chain is running (pid ${other}); leaving ${_CHAIN_PIDFILE} pointing at IT so stop-cross-chain.sh still reaches it. This run continues WITHOUT a pidfile and cannot be stopped that way."
       _CHAIN_PIDFILE=""
       return 0

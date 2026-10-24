@@ -224,13 +224,18 @@ cross_build_lower_rust() {
   cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
 }
 
+# The capture binds runtime aliases without leaking a callback or shadowing provider variables.
 cross_collect_target_rust_env() {
-  local output="$1"
-  local field probe
-  for field in upper lower; do
-    probe="cross_target_${field}_rust"
-    if command -v "${probe}" >/dev/null 2>&1; then
-      printf -v "${output}[${field}]" '%s' "$("${probe}" 2>/dev/null || true)"
+  local _cctre_output="$1" _cctre_field
+  for _cctre_field in upper lower; do
+    if command -v "cross_target_${_cctre_field}_rust" >/dev/null 2>&1; then
+      printf -v "${_cctre_output}[${_cctre_field}]" '%s' "$(
+        case "${_cctre_field}" in
+          upper) _cctre_provider() { cross_target_upper_rust; } ;;
+          lower) _cctre_provider() { cross_target_lower_rust; } ;;
+        esac
+        _cctre_provider 2>/dev/null || true
+      )"
     fi
   done
 }

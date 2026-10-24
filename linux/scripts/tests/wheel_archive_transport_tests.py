@@ -63,6 +63,7 @@ def definitions(paths):
     chunks = []
     for leaf, name in [
         ("litert-wheel.sh", "_litert_fix_pywrap_ext_name"),
+        ("repair-wheels.sh", "_repair_wheel_uv"),
         ("repair-wheels.sh", "strip_cross_wheels"),
     ]:
         result = subprocess.run(
