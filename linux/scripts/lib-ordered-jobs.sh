@@ -140,7 +140,7 @@ _oj_spawn_command() {
     done
     [ ! -e "${OJ_DIR}/cancelled" ] || exit 143
     eval "${OJ_CMDS[${index}]}"
-  ) > "${OJ_DIR}/${index}.out" 2>&1 < /dev/null &
+  ) >> "${OJ_DIR}/${index}.out" 2>&1 < /dev/null &
   _OJ_COMMAND_PID=$!
   [ "${OJ_GROUPS}" -eq 0 ] || set +m
   OJ_LAUNCHING=0
@@ -198,7 +198,7 @@ _oj_start() {
 _oj_launch() {
   local index="$1"
   OJ_LAUNCHING=1
-  ( trap - TERM USR1 EXIT; trap ':' QUIT; _oj_child_int_trap ':'; _oj_start "${index}" ) &
+  ( trap - TERM USR1 EXIT; trap ':' QUIT; _oj_child_int_trap ':'; _oj_start "${index}" ) </dev/null >> "${OJ_DIR}/${index}.out" 2>&1 &
   OJ_WORKERS[${index}]=$!
   OJ_LAUNCHING=0
   _oj_dispatch_signal

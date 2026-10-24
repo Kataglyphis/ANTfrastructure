@@ -7,6 +7,7 @@ See docs/code-quality-tooling.md#the-mutation-gate-mutations
 import argparse
 import atexit
 import concurrent.futures
+from collections.abc import Callable
 import json
 import os
 import queue
@@ -157,6 +158,37 @@ def _reap_when_test_exits(proc, reap):
     reap()
 
 
+def _capture_text(data: bytes | str | None, encoding: str) -> str:
+    if isinstance(data, bytes):
+        return data.decode(encoding, errors="replace")
+    return data or ""
+
+
+def _timeout_result(
+    proc: subprocess.Popen[str], expired: subprocess.TimeoutExpired,
+    reap_once: Callable[[], None],
+) -> tuple[int | None, bool, str]:
+    leader_rc = proc.poll()
+    out, err = expired.stdout, expired.stderr
+    stderr_encoding = getattr(proc.stderr, "encoding", None) or "utf-8"
+    stdout_encoding = getattr(proc.stdout, "encoding", None) or "utf-8"
+    reap_once()
+    if leader_rc is None and proc.poll() is None:
+        proc.kill()
+    try:
+        final_out, final_err = proc.communicate(timeout=2)
+    except subprocess.TimeoutExpired as cleanup_expired:
+        final_out, final_err = cleanup_expired.stdout, cleanup_expired.stderr
+        # A detached child can retain a pipe after the test leader has exited.
+        for stream in (proc.stdout, proc.stderr):
+            if stream is not None:
+                stream.close()
+    out = final_out or out
+    err = final_err or err
+    return leader_rc, True, (_capture_text(err, stderr_encoding)
+                             + _capture_text(out, stdout_encoding))
+
+
 def _run_test(cmd, root, timeout):
     """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
@@ -181,11 +213,8 @@ def _run_test(cmd, root, timeout):
     try:
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, False, (err or "") + (out or "")
-    except subprocess.TimeoutExpired:
-        reap_once()
-        proc.kill()
-        proc.communicate()
-        return None, True, ""
+    except subprocess.TimeoutExpired as expired:
+        return _timeout_result(proc, expired, reap_once)
     finally:
         if watcher is not None:
             reap_once()
@@ -194,19 +223,25 @@ def _run_test(cmd, root, timeout):
             _LIVE_GROUPS.discard(proc.pid)
 
 
+def _output_excerpt(output: str) -> str:
+    lines = [line for line in output.strip().splitlines() if line.strip()]
+    excerpt = lines if len(lines) <= 6 else lines[:3] + ["..."] + lines[-3:]
+    return " | ".join(line[:500] for line in excerpt) or "<empty>"
+
+
 def passes(cmd, root, timeout):
     """Run one test command unmutated; returns (ok, why), ok None for a host skip. A timeout is not a pass."""
     rc, timed_out, output = _run_test(cmd, root, timeout)
     if timed_out:
-        return False, "timed out after %ss (a timeout is not a pass)" % timeout
+        leader = "still running" if rc is None else "exited rc=%s" % rc
+        return False, "timed out after %ss (a timeout is not a pass); leader %s; output excerpt: %s" % (
+            timeout, leader, _output_excerpt(output))
     if rc == 77 and HOST_MAY_SKIP:
         skip = [l.strip() for l in output.splitlines() if "SKIP [" in l][:1]
         return None, (skip or ["the suite exited 77"])[0]
     if rc != 0:
-        lines = [line for line in output.strip().splitlines() if line.strip()]
-        excerpt = lines if len(lines) <= 6 else lines[:3] + ["..."] + lines[-3:]
         return False, "exited rc=%s; output excerpt: %s" % (
-            rc, " | ".join(line[:500] for line in excerpt) or "<empty>")
+            rc, _output_excerpt(output))
     return True, None
 
 

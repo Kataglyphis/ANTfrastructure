@@ -10,7 +10,7 @@ PY="${PREFLIGHT_PYTHON:-python3}"
 GATE="${REPO}/docs/scripts/verify_mutations.py"
 
 _tmp="$(mktemp -d)"
-trap 'rm -rf "${_work}" "${_tmp}"' EXIT
+trap 'if [ -s "${_tmp}/hold-pid" ]; then kill -TERM "$(cat "${_tmp}/hold-pid")" 2>/dev/null || :; fi; rm -rf "${_work}" "${_tmp}"' EXIT
 
 # _fixture <find> <replace> <yes|witness|broken|no> [dir]: "${_work}" is outside any copy, "." inside it.
 _fixture() {
@@ -278,6 +278,7 @@ t_assert_eq "${_before}" "$(_snapshot)" "it reads targets; it must never apply o
 # --- the production call sites: isolation is a DEFAULT, --in-place is one flag away
 _gate_calls() { grep -e 'verify_mutations\.py' "$1" || true; }
 _count() { printf '%s\n' "$1" | grep -c "${@:2}" || true; }
+_matrix_shards() { tr -d '\r' < "$1" | sed -n 's/^ *shard: \[\(.*\)\]$/\1/p'; }
 
 t_case "the production call sites invoke the gate, and never with --in-place"
 _pf_calls="$(_gate_calls "${REPO}/linux/scripts/preflight.sh")"
@@ -304,8 +305,12 @@ t_assert_contains "$(cat "${REPO}/linux/scripts/preflight.sh")" '${PREFLIGHT_MUT
   "the slug must hand its shard to the gate, or every CI job proves the whole manifest"
 t_assert_contains "$(cat "${_wf}")" "PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh"
 _n="$(sed -n 's|.*PREFLIGHT_ONLY=mutations PREFLIGHT_MUTATION_SHARD="${{ matrix.shard }}/\([0-9]*\)" bash linux/scripts/preflight.sh.*|\1|p' "${_wf}")"
-t_assert_eq "$(seq -s ', ' 0 $(( ${_n:-0} - 1 )))" "$(sed -n 's/^ *shard: \[\(.*\)\]$/\1/p' "${_wf}")" \
+t_assert_eq "$(seq -s ', ' 0 $(( ${_n:-0} - 1 )))" "$(_matrix_shards "${_wf}")" \
   "the matrix must list K = 0..N-1 for the N its jobs pass, or a slice is never proven"
+printf '  shard: [0, 1]\n' > "${_tmp}/matrix-newlines"
+t_assert_eq "0, 1" "$(_matrix_shards "${_tmp}/matrix-newlines")" "the LF workflow shape must remain readable"
+printf '  shard: [0, 1]\r\n' > "${_tmp}/matrix-newlines"
+t_assert_eq "0, 1" "$(_matrix_shards "${_tmp}/matrix-newlines")" "a Windows CRLF checkout must keep the same shard proof"
 t_assert_eq "2 2" "$(grep -c -e 'pip install --quiet pytest' "${_wf}") $(grep -c -e 'pip install --quiet pyyaml' "${_wf}")" \
   "both jobs that run preflight.sh need the same setup, or the baselines go vacuous"
 
@@ -426,6 +431,40 @@ _child_gone() {
   fi
   kill -9 "$(cat "${_tmp}/gpid" 2>/dev/null)" 2>/dev/null; rm -f "${_tmp}/gpid"
 }
+
+t_case "a timed-out baseline reports bounded output and a running test leader"
+if _posix_host "process groups (os.killpg)"; then
+  _child_probe 'printf "timeout-first-stderr\n" >&2
+for n in $(seq 20); do printf "timeout-middle-%s\n" "$n"; done
+printf "timeout-last-stdout\n"
+sleep 60' 1
+  _out="$(_iso 2>&1)"; _code=$?
+  t_assert_eq "1" "${_code}" "the timed-out unmutated test is a vacuous bite"
+  t_assert_contains "${_out}" "leader still running" "the test leader had not exited at the deadline"
+  t_assert_contains "${_out}" "timeout-first-stderr" "preserve early stderr from TimeoutExpired"
+  t_assert_contains "${_out}" "timeout-last-stdout" "preserve late stdout from TimeoutExpired"
+  t_assert_fails grep -q -e 'timeout-middle-10' <<<"${_out}"
+fi
+
+t_case "a timed-out baseline distinguishes an exited test leader from an open child pipe"
+if _posix_host "a detached child retaining stdout"; then
+  _child_probe 'true' 1
+  cat > "${_work}/t.sh" <<EOF
+printf 'leader-finished-marker\n'
+setsid sleep 30 &
+echo \$! > '${_tmp}/hold-pid'
+sleep 0.2
+exit 0
+EOF
+  _t0="$(date +%s)"
+  _out="$(_iso 2>&1)"; _code=$?
+  t_assert_eq "1" "${_code}" "a child-held pipe cannot count as a healthy baseline"
+  t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 10
+  t_assert_contains "${_out}" "leader exited rc=0" "the test itself finished before its child-held pipe timed out"
+  t_assert_contains "${_out}" "leader-finished-marker" "the timeout retains the test's last output"
+  kill -TERM "$(cat "${_tmp}/hold-pid")" 2>/dev/null || :
+  rm -f "${_tmp}/hold-pid"
+fi
 
 t_case "a test that times out is killed as a TREE, its grandchildren with it"
 # Spins only once mutated (else its baseline fails), and ends at 60 s: an orphaned endless spin held a core for 2.8 days.

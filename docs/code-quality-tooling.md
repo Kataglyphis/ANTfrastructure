@@ -363,8 +363,9 @@ workers and stops their watchdogs and command groups. Nested runners receive a
 chance to run their own exit cleanup before forced termination. A lost supervisor
 or failed cleanup must reach the job report as an error. Caller-owned background
 jobs and returning or ignored signal handlers retain their existing policies.
-Watchdog diagnostics append to the job log, so a lingering watchdog cannot retain
-the caller's stdout or stderr pipe after the job report finishes.
+Supervisor and watchdog diagnostics append to the job log, so a lingering child
+cannot retain the caller's stdout or stderr pipe after the job report finishes.
+Commands append too, preserving diagnostics written before the command starts.
 An ignored INT is also retained by the supervisor, watchdog and scheduled command
 when a signal reaches their process groups; otherwise an interrupted wait can report 130
 despite its caller ignoring INT.
@@ -734,10 +735,16 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3407 entries** over **373 distinct test commands**; both digits are
+manifest holds **3409 entries** over **373 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
+
+If a baseline times out, its failure reports whether the test leader was still
+running or had exited while a child kept a capture pipe open. It includes at
+most the first and last three nonblank output lines, clipped to 500 characters
+per line, so the CI log shows the last case reached without flooding the
+summary. Cleanup of a retained pipe has its own two-second limit.
 
 **On a Git Bash host a skip is a skip, not a vacuous bite** (2026-10-05). A suite that
 cannot run there exits 77 with its `SKIP` line (`t_skip_unless`,

@@ -21522,6 +21522,22 @@
   "why": "a watchdog that inherits captured stdout or stderr can hold the test's pipe open after its owner exits"
  },
  {
+  "id": "ordered-jobs.supervisor-owns-output",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  ( trap - TERM USR1 EXIT; trap ':' QUIT; _oj_child_int_trap ':'; _oj_start \"${index}\" ) </dev/null >> \"${OJ_DIR}/${index}.out\" 2>&1 &",
+  "replace": "  ( trap - TERM USR1 EXIT; trap ':' QUIT; _oj_child_int_trap ':'; _oj_start \"${index}\" ) &",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-watchdog-fds.sh",
+  "why": "a supervisor that inherits captured stdout or stderr can hold the mutation baseline pipe open after its owner exits"
+ },
+ {
+  "id": "ordered-jobs.command-appends-output",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  ) >> \"${OJ_DIR}/${index}.out\" 2>&1 < /dev/null &",
+  "replace": "  ) > \"${OJ_DIR}/${index}.out\" 2>&1 < /dev/null &",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-watchdog-fds.sh",
+  "why": "a command truncation could erase a supervisor diagnostic already written to the shared job report"
+ },
+ {
   "id": "ordered-jobs.publication-barrier-required",
   "target": "linux/scripts/tests/test-run-tests-reaping.sh",
   "find": "      builtin printf ready > \"$REAP_FIXTURE_ROOT/publication.ready\"",
