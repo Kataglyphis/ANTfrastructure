@@ -419,7 +419,6 @@ _consumer_probe_verdict() {
 
 # Probe as the image's own user: a root probe answers yes to every writability question.
 check_consumer_contract() {
-  local image_tag="$1"
   local target_arch="$2"
   local probe want stop verb row rest asserted=""
   echo "--- CONSUMER CONTRACT (${target_arch}) ---"

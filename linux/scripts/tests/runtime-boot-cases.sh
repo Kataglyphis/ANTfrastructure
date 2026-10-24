@@ -378,7 +378,12 @@ _ht1_gate() {
 }
 
 t_case "the gate fails on a builder-arch tree"
-t_assert_contains "$(_ht1_gate "${_SCAN_OUT}" AArch64)" "FAIL" "a BAD verdict must reach the summary"
+t_assert_contains "$(_ht1_gate TREESCAN_DONE AArch64 "BAD /native X86-64 1 /native/libbad.so")" \
+  "FAIL" "a BAD verdict must reach the summary"
+
+t_case "the gate fails on an incomplete tree walk"
+t_assert_contains "$(_ht1_gate TREESCAN_DONE AArch64 "CAPPED /native 20 -")" \
+  "partial scan is not a pass" "a CAPPED verdict must fail the gate"
 
 t_case "a scanner that never ran fails instead of passing empty"
 t_assert_contains "$(_ht1_gate "python3: command not found" AArch64)" "could not run" \

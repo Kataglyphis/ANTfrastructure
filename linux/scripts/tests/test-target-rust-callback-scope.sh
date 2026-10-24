@@ -11,11 +11,22 @@ t_fn_src "${TESTS_DIR}/../03-media/build/gstreamer/common/build-gst-plugins-rs.s
   _gst_rs_riscv_cargo_config > "${_rust_scope_work}/rs" || exit 1
 t_fn_src "${TESTS_DIR}/../03-media/build/gstreamer/common/setup-gstreamer.sh" \
   _gst_prepare_target_cargo_env > "${_rust_scope_work}/setup" || exit 1
+t_fn_src "${TESTS_DIR}/../03-media/build/gstreamer/common/setup-gstreamer.sh" \
+  _gst_target_resolver_available >> "${_rust_scope_work}/setup" || exit 1
+t_fn_src "${TESTS_DIR}/../03-media/build/gstreamer/common/setup-gstreamer.sh" \
+  _gst_target_publish >> "${_rust_scope_work}/setup" || exit 1
+t_fn_src "${TESTS_DIR}/../03-media/build/gstreamer/common/setup-gstreamer.sh" \
+  _gst_target_prepare_publish >> "${_rust_scope_work}/setup" || exit 1
+t_fn_src "${TESTS_DIR}/../01-core/compiler-resolution.sh" \
+  cargo_target_pipeline > "${_rust_scope_work}/pipeline" || exit 1
+t_fn_src "${TESTS_DIR}/../01-core/compiler-resolution.sh" \
+  cargo_resolved_compiler_field >> "${_rust_scope_work}/pipeline" || exit 1
 cat > "${_rust_scope_work}/worker" <<'WORKER'
 set -euo pipefail
 source "$1/collector"
 source "$1/rs"
 source "$1/setup"
+source "$1/pipeline"
 trap 'if declare -F _cctre_provider >/dev/null; then printf CALLBACK_LEAK; fi' EXIT
 RUST_SCOPE_WORK="$1"
 output=GLOBAL_OUTPUT field=GLOBAL_FIELD probe=GLOBAL_PROBE
