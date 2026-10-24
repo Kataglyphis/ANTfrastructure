@@ -732,7 +732,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3406 entries** over **371 distinct test commands**; both digits are
+manifest holds **3406 entries** over **372 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -781,6 +781,11 @@ dealing once queued two slow suites on one shard, and each extra shard copies it
 own mirror inside the pool instead of waiting for the others' copies. Baselines stay shared across shards (one unmutated run
 per distinct command, whichever shard reaches it first). Same 309 entries, same
 verdicts: **1m59s** at `--jobs 8`, then the default (6.2x), and **1m24s** at `--jobs 16` (8.7x).
+The test transport reaps its session when the test shell exits. A surviving child
+can hold captured stdout or stderr open after the shell is gone; waiting for pipe
+EOF first used to turn a completed test into a 300-second baseline timeout.
+`test-mutation-pipe-reaping.sh` proves the transport closes those pipes on both
+the baseline and its mutant; its own mutation removes the exit watcher.
 Since 2026-09-24 every verdict is printed the moment its entry completes, flushed
 and tagged `[j/J]` with the shard that proved it, and a closing `FAILED: n of m
 entr(ies), in manifest order: …` line puts the failures back in manifest order. It

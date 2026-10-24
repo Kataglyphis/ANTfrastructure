@@ -152,23 +152,44 @@ def _exit_on_signal(signum, _frame):
     sys.exit(128 + signum)
 
 
+def _reap_when_test_exits(proc, reap):
+    proc.wait()
+    reap()
+
+
 def _run_test(cmd, root, timeout):
     """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
     with _LIVE_LOCK:
         _LIVE_GROUPS.add(proc.pid)
+    reap_lock = threading.Lock()
+    reaped = False
+
+    def reap_once():
+        nonlocal reaped
+        with reap_lock:
+            if not reaped:
+                _kill_group(proc.pid)
+                reaped = True
+
+    watcher = None
+    if hasattr(os, "killpg"):
+        # A surviving child can keep a capture pipe open after the test exits.
+        watcher = threading.Thread(target=_reap_when_test_exits, args=(proc, reap_once), daemon=True)
+        watcher.start()
     try:
         out, err = proc.communicate(timeout=timeout)
         return proc.returncode, False, (err or "") + (out or "")
     except subprocess.TimeoutExpired:
-        _kill_group(proc.pid)
+        reap_once()
         proc.kill()
         proc.communicate()
         return None, True, ""
     finally:
-        if hasattr(os, "killpg"):
-            _kill_group(proc.pid)
+        if watcher is not None:
+            reap_once()
+            watcher.join()
         with _LIVE_LOCK:
             _LIVE_GROUPS.discard(proc.pid)
 

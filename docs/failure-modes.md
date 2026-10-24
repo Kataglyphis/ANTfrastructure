@@ -203,6 +203,11 @@ the race without relying on machine load. Keep the child-death assertions and
 verify nested runners as well as the outer job; see
 [parallel gate workers](code-quality-tooling.md#the-gates-run-side-by-side).
 
+If this suite passes in preflight but a mutation baseline times out after 300
+seconds, inspect children that inherited the mutation transport's stdout or stderr
+pipe. The transport now reaps its session when the test shell exits, before it
+waits for pipe EOF. `test-mutation-pipe-reaping.sh` covers that captured-pipe case.
+
 ### `exec format error` on a foreign-arch build
 
 **Symptom.** `exec format error`

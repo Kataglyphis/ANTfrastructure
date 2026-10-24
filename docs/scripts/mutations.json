@@ -1234,7 +1234,7 @@
  {
   "id": "code-complexity.heredoc-skip",
   "target": "linux/scripts/verify_code_size.py",
-  "find": "    elif c == \"<\" and \"arith\" not in stack and HEREDOC.match(line, i):",
+  "find": "    elif c == \"<\" and \"arith\" not in stack:",
   "replace": "    elif False:",
   "test": "bash linux/scripts/tests/test-code-complexity.sh",
   "why": "Python inside a heredoc must not count"
@@ -4674,8 +4674,8 @@
  {
   "id": "sbom.stdout-writes-nothing",
   "target": "docs/scripts/generate_sbom.py",
-  "find": "    if args.stdout:\n        sys.stdout.write(content)\n        return 0",
-  "replace": "    if args.stdout:\n        sys.stdout.write(content)\n        OUT_DIR.mkdir(parents=True, exist_ok=True)\n        OUT_FILE.write_text(content, encoding=\"utf-8\", newline=\"\\n\")\n        return 0",
+  "find": "        sys.stdout.buffer.write(content.encode(\"utf-8\"))\n        return 0",
+  "replace": "        sys.stdout.buffer.write(content.encode(\"utf-8\"))\n        OUT_DIR.mkdir(parents=True, exist_ok=True)\n        OUT_FILE.write_text(content, encoding=\"utf-8\", newline=\"\\n\")\n        return 0",
   "test": "bash linux/scripts/tests/test-curated-sbom.sh",
   "why": "--stdout is the read-only mode; writing from it would make the check pass by rewriting the thing it was about to compare"
  },
@@ -7099,10 +7099,10 @@
  {
   "id": "mutations.reap-finished-test",
   "target": "docs/scripts/verify_mutations.py",
-  "find": "        if hasattr(os, \"killpg\"):\n            _kill_group(proc.pid)\n        with _LIVE_LOCK:",
-  "replace": "        with _LIVE_LOCK:",
-  "test": "bash linux/scripts/tests/test-mutation-gate.sh",
-  "why": "a test that exits normally can leave children in its session, and start_new_session hides them from everyone else"
+  "find": "    if hasattr(os, \"killpg\"):\n        # A surviving child can keep a capture pipe open after the test exits.",
+  "replace": "    if False:\n        # A surviving child can keep a capture pipe open after the test exits.",
+  "test": "bash linux/scripts/tests/test-mutation-pipe-reaping.sh",
+  "why": "a descendant holding captured stdout or stderr kept a completed test baseline pending until its timeout"
  },
  {
   "id": "mutations.reap-on-signal",
@@ -21507,7 +21507,7 @@
  {
   "id": "ordered-jobs.supervisor-ignores-group-interrupt",
   "target": "linux/scripts/lib-ordered-jobs.sh",
-  "find": "  trap ':' INT QUIT\n  trap '_oj_signal 124' USR1",
+  "find": "  _oj_child_int_trap ':'\n  trap '_oj_signal 124' USR1",
   "replace": "  trap '_oj_signal 130' INT\n  trap '_oj_signal 124' USR1",
   "test": "bash linux/scripts/tests/test-ordered-jobs-lifecycle.sh",
   "timeout": 90,
