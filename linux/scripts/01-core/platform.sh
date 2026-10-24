@@ -83,6 +83,14 @@ arch_uname_name_for() {
   esac
 }
 
+# Missing or failing mappings are advisory; callers retain their architecture and directory fallbacks.
+deb_multiarch_triplet_best_effort() {
+  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
+    arch_deb_multiarch_triplet_for "$1" 2>/dev/null || true
+  fi
+  return 0
+}
+
 arch_deb_multiarch_triplet_for() {
   case "$(arch_normalize "$1")" in
     amd64) printf '%s' "x86_64-linux-gnu" ;;

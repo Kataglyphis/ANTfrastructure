@@ -123,7 +123,7 @@ t_assert_ok bash -c '
 for module in python_uv.sh webdav-download.sh; do
   bundle="$WORK/$module bundle"
   mkdir -p "$bundle"
-  cp "$CORE/$module" "$CORE/logging.sh" "$CORE/load-versions-env.sh" "$bundle/"
+  cp "$CORE/$module" "$CORE/logging.sh" "$CORE/load-versions-env.sh" "$CORE/verified-script-install.sh" "$bundle/"
   t_case "$module refuses a copied closure missing python-probe.sh"
   t_assert_rc 73 bash -c 'if source "$1"; then exit 0; else exit 73; fi' _ "$bundle/$module"
   cp "$CORE/python-probe.sh" "$bundle/"
@@ -132,7 +132,7 @@ for module in python_uv.sh webdav-download.sh; do
 done
 bundle="$WORK/ci import"
 mkdir -p "$bundle/01-core" "$bundle/02-toolchain/python"
-cp "$CORE/python_uv.sh" "$CORE/logging.sh" "$bundle/01-core/"
+cp "$CORE/python_uv.sh" "$CORE/logging.sh" "$CORE/verified-script-install.sh" "$bundle/01-core/"
 cp "$CI" "$bundle/02-toolchain/python/ci-common.sh"
 t_case "conditional CI imports propagate a missing uv companion"
 t_assert_rc 73 bash -c 'if source "$1"; then exit 0; else exit 73; fi' _ "$bundle/02-toolchain/python/ci-common.sh"

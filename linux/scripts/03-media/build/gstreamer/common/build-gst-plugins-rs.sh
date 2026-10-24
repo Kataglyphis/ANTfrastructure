@@ -3,9 +3,7 @@ set -euo pipefail
 
 configure_gstreamer_prefix_for_cargo() {
   local triplet=""
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${TARGET_ARCH:-${TARGETARCH:-amd64}}" 2>/dev/null || true)"
-  fi
+  triplet="$(deb_multiarch_triplet_best_effort "${TARGET_ARCH:-${TARGETARCH:-amd64}}")" || return $?
   if [ -n "${triplet}" ] && [ -d "${GSTREAMER_PREFIX}/lib/${triplet}/pkgconfig" ]; then
     export PKG_CONFIG_PATH="${GSTREAMER_PREFIX}/lib/${triplet}/pkgconfig:${PKG_CONFIG_PATH:-}"
     export LD_LIBRARY_PATH="${GSTREAMER_PREFIX}/lib/${triplet}:${LD_LIBRARY_PATH:-}"

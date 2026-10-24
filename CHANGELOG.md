@@ -18,6 +18,14 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-24 — share architecture parsing, triplet queries and installer transport
+
+- Share rootless binfmt CSV parsing while retaining caller-specific architecture validation, namespace commands and statuses.
+- Share best-effort triplet queries without changing compiler or GStreamer directory and fallback policies.
+- Share UV/Rust installer curl, checksum, execution and cleanup while retaining temporary variables and mismatch diagnostics.
+- Carry the installer companion in copied UV fixtures and the narrow Rust build mount; verify cold imports and recovery.
+- Remove three resolved duplication exceptions with independent original/current receipts and unchanged gate settings.
+
 ## 2026-10-24 — share compiler probes, ORT selectors and wheel platform policies
 
 - Share compiler source-fixture transport and GCC version capture without changing probe verdicts, temporary state or strict-shell failures.

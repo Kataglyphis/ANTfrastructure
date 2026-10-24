@@ -80,10 +80,14 @@ _qemu_usable() {
   "$1" --version >/dev/null 2>&1
 }
 
+_binfmt_read_arches() {
+  IFS=',' read -ra _arr <<< "${ARCHES}"
+}
+
 extract_emulators() {
   mkdir -p "${QDIR}"
   local need=0 a qb
-  IFS=',' read -ra _arr <<< "${ARCHES}"
+  _binfmt_read_arches
   for a in "${_arr[@]}"; do
     qb="$(qemu_bin_for "${a}")" || { echo "unsupported arch: ${a}" >&2; exit 2; }
     _qemu_usable "${QDIR}/${qb}" || need=1
@@ -156,7 +160,7 @@ wait_for_namespace() {
 
 register() {
   local a qb magic mask
-  IFS=',' read -ra _arr <<< "${ARCHES}"
+  _binfmt_read_arches
   # Build the in-namespace script.
   local script='set -e
 # If the propagated host binfmt_misc is not writable by this namespace, overmount a fresh one.
@@ -179,7 +183,7 @@ echo \"registered ${qb} -> ${QDIR}/${qb}\"
 
 verify() {
   local a qb ok=1
-  IFS=',' read -ra _arr <<< "${ARCHES}"
+  _binfmt_read_arches
   for a in "${_arr[@]}"; do
     qb="$(qemu_bin_for "${a}")"
     if containerd-rootless-setuptool.sh nsenter -- sh -c "grep -q '^enabled' /proc/sys/fs/binfmt_misc/${qb} 2>/dev/null"; then

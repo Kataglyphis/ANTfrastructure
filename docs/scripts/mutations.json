@@ -23639,5 +23639,285 @@
   "replace": "if _vc_gcc_version_matches \"${native_gcc}/bin/gcc\" gcc_prefix; then",
   "test": "bash linux/scripts/tests/test-validator-probes.sh",
   "why": "the native version report retains its own output variable and diagnostic text"
+ },
+ {
+  "id": "lib.binfmt-csv-delimiter",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "  IFS=',' read -ra _arr <<< \"${ARCHES}\"",
+  "replace": "  IFS=' ' read -ra _arr <<< \"${ARCHES}\"",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "CSV fields use comma only; embedded whitespace and empty fields keep their original array boundaries."
+ },
+ {
+  "id": "lib.binfmt-csv-raw-bytes",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "  IFS=',' read -ra _arr <<< \"${ARCHES}\"",
+  "replace": "  IFS=',' read -a _arr <<< \"${ARCHES}\"",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "The shared read preserves literal backslashes, comma edge cases, duplicate fields and the first-line boundary."
+ },
+ {
+  "id": "lib.binfmt-csv-array-output",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "  IFS=',' read -ra _arr <<< \"${ARCHES}\"",
+  "replace": "  IFS=',' read -r _arr <<< \"${ARCHES}\"",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "The parser writes the complete dynamic caller array instead of replacing only an array element or retaining seeded entries."
+ },
+ {
+  "id": "lib.binfmt-csv-ifs-scope",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "  IFS=',' read -ra _arr <<< \"${ARCHES}\"",
+  "replace": "  IFS=','; read -ra _arr <<< \"${ARCHES}\"",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "The comma IFS assignment remains scoped to read; normal calls preserve unset, custom and default caller IFS."
+ },
+ {
+  "id": "lib.binfmt-csv-raw-status",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "  IFS=',' read -ra _arr <<< \"${ARCHES}\"",
+  "replace": "  IFS=',' read -ra _arr <<< \"${ARCHES}\" || true",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "Readonly output failures retain their raw status and strict/conditional fatal behavior instead of being normalized to success."
+ },
+ {
+  "id": "lib.binfmt-csv-extract-caller",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "extract_emulators() {\n  mkdir -p \"${QDIR}\"\n  local need=0 a qb\n  _binfmt_read_arches",
+  "replace": "extract_emulators() {\n  mkdir -p \"${QDIR}\"\n  local need=0 a qb",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "The extract caller uses the shared CSV read while preserving its own unknown-architecture, namespace and failure policy."
+ },
+ {
+  "id": "lib.binfmt-csv-register-caller",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "register() {\n  local a qb magic mask\n  _binfmt_read_arches",
+  "replace": "register() {\n  local a qb magic mask",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "The register caller uses the shared CSV read while preserving its own unknown-architecture, namespace and failure policy."
+ },
+ {
+  "id": "lib.binfmt-csv-verify-caller",
+  "target": "linux/scripts/setup-rootless-binfmt.sh",
+  "find": "verify() {\n  local a qb ok=1\n  _binfmt_read_arches",
+  "replace": "verify() {\n  local a qb ok=1",
+  "test": "bash linux/scripts/tests/test-binfmt-arches.sh",
+  "why": "The verify caller uses the shared CSV read while preserving its own unknown-architecture, namespace and failure policy."
+ },
+ {
+  "id": "lib.triplet-query-optional-map",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then\n    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true\n  fi",
+  "replace": "  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then\n    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true\n  else\n    return 1\n  fi",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "An absent architecture mapper remains advisory and leaves each caller free to use its existing fallback."
+ },
+ {
+  "id": "lib.triplet-query-stdout",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true",
+  "replace": "    arch_deb_multiarch_triplet_for \"$1\" >/dev/null 2>&1 || true",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "Mapper stdout, including partial output on failure, remains available to path and symlink selection."
+ },
+ {
+  "id": "lib.triplet-query-stderr",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true",
+  "replace": "    arch_deb_multiarch_triplet_for \"$1\" || true",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "Mapper diagnostics remain suppressed while caller diagnostics remain visible."
+ },
+ {
+  "id": "lib.triplet-query-argument",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true",
+  "replace": "    arch_deb_multiarch_triplet_for amd64 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "The optional mapper receives the exact architecture selected by its caller."
+ },
+ {
+  "id": "lib.triplet-query-advisory-status",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true",
+  "replace": "    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null\n    return $?",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "A failed mapper still contributes its stdout without making the optional query fail."
+ },
+ {
+  "id": "lib.triplet-query-pin-api-status",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "  triplet=\"$(deb_multiarch_triplet_best_effort \"${arch}\")\" || return $?",
+  "replace": "  triplet=\"$(deb_multiarch_triplet_best_effort \"${arch}\")\"",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "A missing or broken shared query API must retain its failure under conditional callers instead of reaching path or link fallbacks."
+ },
+ {
+  "id": "lib.triplet-query-gst-api-status",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "  triplet=\"$(deb_multiarch_triplet_best_effort \"${TARGET_ARCH:-${TARGETARCH:-amd64}}\")\" || return $?",
+  "replace": "  triplet=\"$(deb_multiarch_triplet_best_effort \"${TARGET_ARCH:-${TARGETARCH:-amd64}}\")\"",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "A missing or broken shared query API must retain its failure under conditional callers instead of reaching path or link fallbacks."
+ },
+ {
+  "id": "lib.triplet-query-pin-argument",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "  triplet=\"$(deb_multiarch_triplet_best_effort \"${arch}\")\" || return $?",
+  "replace": "  triplet=\"$(deb_multiarch_triplet_best_effort amd64)\" || return $?",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "Compiler pinning maps the resolved target architecture rather than the build host."
+ },
+ {
+  "id": "lib.triplet-query-gst-defaults",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "\"${TARGET_ARCH:-${TARGETARCH:-amd64}}\"",
+  "replace": "\"${TARGETARCH:-${TARGET_ARCH:-amd64}}\"",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "GStreamer preserves TARGET_ARCH precedence over TARGETARCH and its amd64 default."
+ },
+ {
+  "id": "lib.triplet-query-required-owner",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "deb_multiarch_triplet_best_effort() {\n  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then\n    arch_deb_multiarch_triplet_for \"$1\" 2>/dev/null || true\n  fi\n  return 0\n}",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-triplet-query.sh",
+  "why": "Both consumers require the shared query export from their existing platform owner."
+ },
+ {
+  "id": "lib.verified-installer-curl-fatal",
+  "target": "linux/scripts/01-core/verified-script-install.sh",
+  "find": "  curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o \"${_vsi_file}\" \"${_vsi_url}\"",
+  "replace": "  curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o \"${_vsi_file}\" \"${_vsi_url}\" || true",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "a failed or omitted fetch cannot execute stale or missing installer bytes"
+ },
+ {
+  "id": "lib.verified-installer-hash-required",
+  "target": "linux/scripts/01-core/verified-script-install.sh",
+  "find": "| sha256sum -c - || \"${_vsi_failure}\" \"${_vsi_file}\"",
+  "replace": "| sha256sum -c - || true",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "a pinned hash mismatch invokes the caller-specific refusal instead of executing the script"
+ },
+ {
+  "id": "lib.verified-installer-execution-fatal",
+  "target": "linux/scripts/01-core/verified-script-install.sh",
+  "find": "  sh \"${_vsi_file}\" \"$@\"",
+  "replace": "  sh \"${_vsi_file}\" \"$@\" || true",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "strict installer execution failures retain their original exit status and skip cleanup"
+ },
+ {
+  "id": "lib.verified-installer-cleanup",
+  "target": "linux/scripts/01-core/verified-script-install.sh",
+  "find": "  rm -f \"${_vsi_file}\"",
+  "replace": "  : \"${_vsi_file}\"",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "successful installer execution still removes the actual downloaded file"
+ },
+ {
+  "id": "lib.verified-installer-arguments",
+  "target": "linux/scripts/01-core/verified-script-install.sh",
+  "find": "  sh \"${_vsi_file}\" \"$@\"",
+  "replace": "  sh \"${_vsi_file}\"",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "Rust profile and pinned toolchain arguments reach sh as separate arguments"
+ },
+ {
+  "id": "lib.verified-installer-optional-hash",
+  "target": "linux/scripts/01-core/verified-script-install.sh",
+  "find": "if [ -n \"${_vsi_digest}\" ]; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "an absent optional checksum still skips hashing rather than manufacturing a refusal"
+ },
+ {
+  "id": "lib.verified-installer-uv-source-status",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "if [ \"${_uv_installer_source_status}\" -ne 0 ]; then return \"${_uv_installer_source_status}\"; fi",
+  "replace": "if [ \"${_uv_installer_source_status}\" -ne 0 ]; then :; fi",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "a companion that defines its export then fails must retain its raw status under conditional source"
+ },
+ {
+  "id": "lib.verified-installer-uv-export",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "if ! declare -F verified_script_install >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "an empty copied companion must fail at import before later declarations can hide the missing API"
+ },
+ {
+  "id": "lib.verified-installer-rust-source-status",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "if [ \"${_rust_installer_source_status}\" -ne 0 ]; then exit \"${_rust_installer_source_status}\"; fi",
+  "replace": "if [ \"${_rust_installer_source_status}\" -ne 0 ]; then :; fi",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "a companion that defines its export then fails must retain its raw status under conditional source"
+ },
+ {
+  "id": "lib.verified-installer-rust-export",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "if ! declare -F verified_script_install >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "an empty copied companion must fail at import before later declarations can hide the missing API"
+ },
+ {
+  "id": "lib.verified-installer-uv-import",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "source \"$_MODULE_DIR/verified-script-install.sh\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "the copied uv closure must actually import its mandatory installer companion"
+ },
+ {
+  "id": "lib.verified-installer-rust-import",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "source /opt/scripts/core/verified-script-install.sh",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "the copied Rust closure must actually import its mandatory installer companion"
+ },
+ {
+  "id": "lib.verified-installer-uv-binding",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "https://astral.sh/uv/install.sh \"$uv_install_sha\" _uv_install_hash_failure",
+  "replace": "https://astral.sh/uv/install.sh \"\" _uv_install_hash_failure",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "UV passes its resolved preset or versions.env checksum into the shared installer"
+ },
+ {
+  "id": "lib.verified-installer-rust-binding",
+  "target": "linux/scripts/02-toolchain/install-rust.sh",
+  "find": "-y --profile minimal --default-toolchain \"${RUST_VERSION}\"",
+  "replace": "-y --profile minimal",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "Rust retains its explicit pinned default toolchain rather than selecting current upstream stable"
+ },
+ {
+  "id": "lib.verified-installer-toolchain-closure",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/verified-script-install.sh,target=/opt/scripts/core/verified-script-install.sh,ro \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "the Rust RUN carries the freshly changed companion even when its parent image is older"
+ },
+ {
+  "id": "lib.verified-installer-uv-retry",
+  "target": "linux/scripts/01-core/python_uv.sh",
+  "find": "source \"$_MODULE_DIR/verified-script-install.sh\"",
+  "replace": "_PYTHON_UV_LOADED=1\nsource \"$_MODULE_DIR/verified-script-install.sh\"",
+  "test": "bash linux/scripts/tests/test-verified-installers.sh",
+  "why": "a failed companion import must not mark UV loaded or prevent a corrected same-session retry"
+ },
+ {
+  "id": "lib.verified-installer-ci-copy",
+  "target": "linux/scripts/tests/python-ci-fixture.sh",
+  "find": "01-core/python-probe.sh 01-core/verified-script-install.sh",
+  "replace": "01-core/python-probe.sh",
+  "test": "bash linux/scripts/tests/test-python-path-policies.sh",
+  "why": "the real Python CI fixture carries the new mandatory leaf alongside its copied UV module"
  }
 ]
