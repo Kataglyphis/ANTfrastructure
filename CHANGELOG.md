@@ -22,7 +22,7 @@
 - Refresh the mutation manifest totals so the documentation-number suite and Linux preflight agree with the measured inventory.
 - Preserve an ignored interrupt for scheduled job commands and use a valid module spec in the free-threaded load-trace fixture, fixing two Linux preflight failures.
 - Keep the quick-start README within its 100-line gate and set the ordered-job interrupt trap without a ShellCheck warning.
-- Reap mutation test sessions when their shell exits so an inherited output pipe cannot turn a completed baseline into a timeout; refresh stale SBOM, heredoc and interrupt mutation recipes.
+- Reap mutation test sessions when their shell exits so an inherited output pipe cannot turn a completed baseline into a timeout; refresh stale mutation recipes and the generated gate proof registry.
 
 ## 2026-10-24 — CI quality evidence
 
