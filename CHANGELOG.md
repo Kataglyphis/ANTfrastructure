@@ -13,6 +13,15 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — share bound discovery and interpreter transport
+
+- Share first-match finder policy while preserving legacy arguments, partial output and caller alias bindings.
+- Share media artifact queries with separate Python-library and JS predicates and unchanged pipeline verdicts.
+- Share quiet npm metadata and digest invocation without changing their distinct failure, retry or cleanup policies.
+- Share log-directory consumption with complete CLI argument context and unchanged nameref and readonly behavior.
+- Keep command callbacks inside their original source phases and captures; retain independent receipt oracles.
+- Remove four resolved duplication exceptions without changing scanner settings or frozen budgets.
+
 ## 2026-10-24 — share ordered artifact checks and compatibility registration
 
 - Share media regular-file checks while retaining completion stamps, lazy branches and raw probe status.

@@ -120,6 +120,11 @@ run_runtime_arg_loop() {
   done
 }
 
+orchestrator_consume_log_dir() {
+  LOG_DIR="$2"
+  _OARG_SHIFT=2
+}
+
 # $1 is the run id when CROSS_RUN_ID is unset; RESOURCE_MONITOR=0 disables. See docs/build-resource-monitoring.md
 start_resource_monitor() {
   [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0

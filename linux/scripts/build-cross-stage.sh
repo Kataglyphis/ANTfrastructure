@@ -59,7 +59,7 @@ _cross_stage_extra_arg() {
     --stage) STAGE="$2"; _OARG_SHIFT=2 ;;
     --arch) TARGET_ARCH="$2"; _OARG_SHIFT=2 ;;
     --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
-    --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
+    --log-dir) orchestrator_consume_log_dir "$@" ;;
     *) return 1 ;;
   esac
 }

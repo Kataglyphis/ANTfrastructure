@@ -12,6 +12,11 @@ LITERT_WEB_OUTPUT_DIR="${LITERT_WEB_OUTPUT_DIR:-/usr/local/lib/litert-web}"
 LITERT_LM_WEB_OUTPUT_DIR="${LITERT_LM_WEB_OUTPUT_DIR:-/usr/local/lib/litert-lm-web}"
 REGISTRY="${NPM_REGISTRY:-https://registry.npmjs.org}"
 
+# Keep transport quiet while callers retain distinct metadata and digest failure policies.
+_npm_python_quiet() {
+  "$1" "${@:2}" 2>/dev/null
+}
+
 # A pinned tarball URL rather than the npm resolver, for reproducibility.
 _fetch_npm_package() {
   local spec="$1" version="$2" dest="$3"
@@ -26,10 +31,16 @@ _fetch_npm_package() {
   if [ "${ok}" -ne 1 ]; then rm -rf "${tmp}"; warn "giving up on ${spec}@${version}"; return 1; fi
   # The tarball comes from the CDN, so check it against the registry's dist.integrity; no metadata only warns.
   local _want_int _got_int
-  _want_int="$(curl -fsSL --max-time 30 "${REGISTRY}/${scope_path}/${version}" 2>/dev/null \
-    | python3 -c 'import json,sys; print(json.load(sys.stdin).get("dist",{}).get("integrity",""))' 2>/dev/null || true)"
+  _want_int="$(
+    _npm_metadata_python() { python3 "$@"; }
+    curl -fsSL --max-time 30 "${REGISTRY}/${scope_path}/${version}" 2>/dev/null \
+      | _npm_python_quiet _npm_metadata_python -c 'import json,sys; print(json.load(sys.stdin).get("dist",{}).get("integrity",""))' || true
+  )"
   if [ -n "${_want_int}" ]; then
-    _got_int="sha512-$(python3 -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],"rb").read()).digest()).decode())' "${tmp}/pkg.tgz" 2>/dev/null)"
+    _got_int="sha512-$(
+      _npm_digest_python() { python3 "$@"; }
+      _npm_python_quiet _npm_digest_python -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],"rb").read()).digest()).decode())' "${tmp}/pkg.tgz"
+    )"
     if [ "${_want_int}" != "${_got_int}" ]; then
       rm -rf "${tmp}"
       warn "INTEGRITY MISMATCH ${spec}@${version}: registry ${_want_int} != downloaded ${_got_int} — refusing (tampering/corruption)"
