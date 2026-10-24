@@ -489,7 +489,6 @@ _consumer_present_verdict() {
 
 # Quotes each row's consumer-side symptom so a red run names the failure in the other repo.
 
-
 # Key <arch>:<row>; an arm that stops applying fails. docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_contract_exempt() {
   case "$1:$2" in
@@ -684,9 +683,6 @@ source "${_SCRIPT_DIR}/runtime-consumer-contract.sh"
 
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
 
-
-
-
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
   _consumer_require_fact "${p}" "${row}" chrome \
@@ -866,7 +862,6 @@ CROSS_PAYLOAD = (
     "/lib/gcc/",                  # gcc: per-target crt objects, one dir per triple
 )
 GCC_TARGET_DIR = re.compile(r"/gcc-[^/]+/[a-z0-9_]+(?:-[a-z0-9]+)?-linux-[a-z0-9]+/")
-
 
 def _cross_payload(path):
     if any(marker in path for marker in CROSS_PAYLOAD):
@@ -1396,7 +1391,6 @@ done
 echo RTPROBE_DONE
 PROBE
 }
-
 
 # One in-image script: what the image advertises, what it is, and what it holds.
 _shipped_truth_probe() {
@@ -2288,17 +2282,24 @@ EOF
     echo ""
 }
 
-# Runs the compiled programs on-target, which the x86_64 build host never can; RUNTIME_COMPILER_SMOKE=0 skips.
+# Runtime feature flags share one gate and heading path.
+_run_optional_runtime_smoke() {
+  local enabled="$1" heading="$2" arch="$3" runner="$4"; shift 4
+  [ "${enabled}" = "1" ] || return 0
+  printf '%s (%s) ---\n' "${heading}" "${arch}"
+  "${runner}" "$@"
+}
+
 check_native_compiler_battery() {
-  local image_tag="$1"
-  local target_arch="$2"
-    if [ "${RUNTIME_COMPILER_SMOKE}" = "1" ]; then
-      echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
-      # Exceptions+STL guards swap-native-gcc.sh's -idirafter fix; sources avoid single quotes for bash -lc.
-      local _san_run=0
-      if [ "${target_arch}" = "$(smoke_host_arch)" ]; then _san_run=1; fi
-      if _rt_run -e "SAN_RUN=${_san_run}" \
-           bash -lc 'set -uo pipefail
+  _run_optional_runtime_smoke "${RUNTIME_COMPILER_SMOKE}" "--- Functional: native compiler battery compile+link+run" "$2" _check_native_compiler_battery "$@"
+}
+_check_native_compiler_battery() {
+  local image_tag="$1" target_arch="$2"
+  # Exceptions+STL guards swap-native-gcc.sh's -idirafter fix; sources avoid single quotes for bash -lc.
+  local _san_run=0
+  if [ "${target_arch}" = "$(smoke_host_arch)" ]; then _san_run=1; fi
+  if _rt_run -e "SAN_RUN=${_san_run}" \
+       bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
 cxx="$(command -v g++ || command -v c++ || true)"
 [ -n "$cc" ] || { echo "no gcc/cc on PATH"; exit 3; }
@@ -2317,66 +2318,64 @@ printf "#include <math.h>\nint main(void){double x=sqrt(2.0)*sqrt(2.0);return (i
 printf "#include <stdio.h>\nint main(void){long long v=0;__atomic_fetch_add(&v,42,__ATOMIC_SEQ_CST);return v==42?0:1;}\n" > "$d/a.c"
 { "$cc" -O2 "$d/a.c" -o "$d/a" -latomic 2>"$d/e" && "$d/a"; }; report "C   libatomic (-latomic)" $?
 if [ -n "$cxx" ]; then
-  # C++: hello (compile+link+RUN libstdc++, verify stdout)
-  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/x.cpp"
-  { "$cxx" -O2 "$d/x.cpp" -o "$d/x" 2>"$d/e" && [ "$("$d/x")" = cxx-ok ]; }; report "C++ hello (stdout=cxx-ok)" $?
-  # C++: exceptions + STL -- regression guard for the -idirafter wrapper fix
-  printf "#include <vector>\n#include <string>\n#include <stdexcept>\n#include <algorithm>\nint main(){std::vector<std::string> v{\"c\",\"a\",\"b\"};std::sort(v.begin(),v.end());std::string j;for(auto&s:v)j+=s;try{throw std::runtime_error(\"x\");}catch(const std::exception&e){j+=e.what();}return j==\"abcx\"?0:1;}\n" > "$d/e.cpp"
-  { "$cxx" -O2 "$d/e.cpp" -o "$d/ex" 2>"$d/e" && "$d/ex"; }; report "C++ exceptions+STL (throw/catch/sort)" $?
-  # C++: std::thread
-  printf "#include <thread>\n#include <atomic>\nint main(){std::atomic<int> n{0};std::thread t([&]{n=42;});t.join();return n==42?0:1;}\n" > "$d/t.cpp"
-  { "$cxx" -O2 "$d/t.cpp" -o "$d/tt" -pthread 2>"$d/e" && "$d/tt"; }; report "C++ std::thread" $?
-  # C++: link-time optimization
-  printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
-  { "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
-  # C++: the header abseil includes, libasan+libubsan NEEDED ((8>>c) is a UBSan call under C++20 too); RUN only natively
-  printf "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c,char**){__sanitizer_annotate_contiguous_container(b,b+8,b+8,b+8);return (8>>c)==4?0:1;}\n" > "$d/s.cpp"
-  { "$cxx" -O1 -fsanitize=address,undefined "$d/s.cpp" -o "$d/s" 2>"$d/e" && readelf -d "$d/s" > "$d/dyn" && grep -q "NEEDED.*libasan" "$d/dyn" && grep -q "NEEDED.*libubsan" "$d/dyn"; }; report "C++ -fsanitize=address,undefined compile+link" $?
-  if [ "$SAN_RUN" = 1 ]; then { ASAN_OPTIONS=detect_leaks=0 "$d/s" 2>"$d/e"; }; report "C++ sanitizer RUN (native)" $?
-  else echo "  --  sanitizer RUN skipped: emulated arch (qemu-user cannot host ASan/LSan reliably)"; fi
+# C++: hello (compile+link+RUN libstdc++, verify stdout)
+printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/x.cpp"
+{ "$cxx" -O2 "$d/x.cpp" -o "$d/x" 2>"$d/e" && [ "$("$d/x")" = cxx-ok ]; }; report "C++ hello (stdout=cxx-ok)" $?
+# C++: exceptions + STL -- regression guard for the -idirafter wrapper fix
+printf "#include <vector>\n#include <string>\n#include <stdexcept>\n#include <algorithm>\nint main(){std::vector<std::string> v{\"c\",\"a\",\"b\"};std::sort(v.begin(),v.end());std::string j;for(auto&s:v)j+=s;try{throw std::runtime_error(\"x\");}catch(const std::exception&e){j+=e.what();}return j==\"abcx\"?0:1;}\n" > "$d/e.cpp"
+{ "$cxx" -O2 "$d/e.cpp" -o "$d/ex" 2>"$d/e" && "$d/ex"; }; report "C++ exceptions+STL (throw/catch/sort)" $?
+# C++: std::thread
+printf "#include <thread>\n#include <atomic>\nint main(){std::atomic<int> n{0};std::thread t([&]{n=42;});t.join();return n==42?0:1;}\n" > "$d/t.cpp"
+{ "$cxx" -O2 "$d/t.cpp" -o "$d/tt" -pthread 2>"$d/e" && "$d/tt"; }; report "C++ std::thread" $?
+# C++: link-time optimization
+printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
+{ "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
+# C++: the header abseil includes, libasan+libubsan NEEDED ((8>>c) is a UBSan call under C++20 too); RUN only natively
+printf "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c,char**){__sanitizer_annotate_contiguous_container(b,b+8,b+8,b+8);return (8>>c)==4?0:1;}\n" > "$d/s.cpp"
+{ "$cxx" -O1 -fsanitize=address,undefined "$d/s.cpp" -o "$d/s" 2>"$d/e" && readelf -d "$d/s" > "$d/dyn" && grep -q "NEEDED.*libasan" "$d/dyn" && grep -q "NEEDED.*libubsan" "$d/dyn"; }; report "C++ -fsanitize=address,undefined compile+link" $?
+if [ "$SAN_RUN" = 1 ]; then { ASAN_OPTIONS=detect_leaks=0 "$d/s" 2>"$d/e"; }; report "C++ sanitizer RUN (native)" $?
+else echo "  --  sanitizer RUN skipped: emulated arch (qemu-user cannot host ASan/LSan reliably)"; fi
 fi
 echo "  gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)]"
 exit $rc'; then
-        pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO/sanitizers) all pass on ${target_arch}"
-      else
-        fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
-      fi
-      echo ""
-    fi
+    pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO/sanitizers) all pass on ${target_arch}"
+  else
+    fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
+  fi
+  echo ""
 }
 
 # Clang/LLVM version on the shipped image, per arch: the toolchain-stage checks cannot see a stale reused sdk (RUNTIME_CLANG_VERSION_SMOKE=0 disables).
 check_clang_llvm_release() {
-  local image_tag="$1"
-  local target_arch="$2"
-    if [ "${RUNTIME_CLANG_VERSION_SMOKE}" = "1" ]; then
-      echo "--- Functional: clang/clang++ version == LLVM_RELEASE (${target_arch}) ---"
-      local _llvm_release="${LLVM_RELEASE:-}"
-      if [ -z "${_llvm_release}" ]; then
-        local _venv
-        _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
-        # `|| true`: under pipefail an absent key would abort the smoke without a summary; the fail below reports it.
-        [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2 || true)"
-      fi
-      if [ -z "${_llvm_release}" ]; then
-        fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"
-      elif _rt_run -e "WANT_LLVM=${_llvm_release}" \
-             bash -lc 'set -uo pipefail
+  _run_optional_runtime_smoke "${RUNTIME_CLANG_VERSION_SMOKE}" "--- Functional: clang/clang++ version == LLVM_RELEASE" "$2" _check_clang_llvm_release "$@"
+}
+_check_clang_llvm_release() {
+  local image_tag="$1" target_arch="$2"
+  local _llvm_release="${LLVM_RELEASE:-}"
+  if [ -z "${_llvm_release}" ]; then
+    local _venv
+    _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
+    # `|| true`: under pipefail an absent key would abort the smoke without a summary; the fail below reports it.
+    [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2 || true)"
+  fi
+  if [ -z "${_llvm_release}" ]; then
+    fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"
+  elif _rt_run -e "WANT_LLVM=${_llvm_release}" \
+         bash -lc 'set -uo pipefail
 rc=0
 for tool in clang clang++; do
-  p="$(command -v "$tool" || true)"
-  [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
-  # Run the tool for its version, never strings(1): a dylib-linked clang keeps its version in libLLVM.so.
-  ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
-  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
+p="$(command -v "$tool" || true)"
+[ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
+# Run the tool for its version, never strings(1): a dylib-linked clang keeps its version in libLLVM.so.
+ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
+if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
 done
 exit $rc'; then
-        pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"
-      else
-        fail "clang/clang++ version != LLVM_RELEASE ${_llvm_release} on ${target_arch} (stale toolchain / cross-sdk not rebuilt?)"
-      fi
-      echo ""
-    fi
+    pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"
+  else
+    fail "clang/clang++ version != LLVM_RELEASE ${_llvm_release} on ${target_arch} (stale toolchain / cross-sdk not rebuilt?)"
+  fi
+  echo ""
 }
 
 # DeepStream only on the nvidia variant, then its own gates in the image: docs/linux-accelerator-images.md#deepstream-nvidia-variant

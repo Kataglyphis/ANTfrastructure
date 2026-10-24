@@ -263,12 +263,14 @@ else
 fi
 
 # The battery's sanitizer case lives here: test-runtime-image-gates.sh is red on a Windows host.
-_bat_fn="$(t_fn_src "${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh" check_native_compiler_battery)" || exit 1
+_smoke="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+_gate_fn="$(t_fn_src "${_smoke}" _run_optional_runtime_smoke)" || exit 1
+_bat_fn="${_gate_fn}"$'\n'"$(t_fn_src "${_smoke}" check_native_compiler_battery)"$'\n'"$(t_fn_src "${_smoke}" _check_native_compiler_battery)" || exit 1
 _battery() {  # <target-arch> <host-arch> [VAR=val...] -> its report, the bash -lc body RUN on the modelled GCC
   local target="$1" host="$2"; shift 2
   env "$@" HOST_STUB="${host}" STUB_PATH="${_STUB}:${PATH}" TMPDIR="${_work}/bt" bash -c 'set -u
     pass() { echo "PASS $*"; }; fail() { echo "FAIL $*"; }
-    RUNTIME_COMPILER_SMOKE=1
+    RUNTIME_COMPILER_SMOKE="${RUNTIME_COMPILER_SMOKE:-1}"
     smoke_host_arch() { printf "%s" "${HOST_STUB}"; }
     _rt_run() {
       local -a envs=()
@@ -278,6 +280,16 @@ _battery() {  # <target-arch> <host-arch> [VAR=val...] -> its report, the bash -
     }
     eval "$1"; check_native_compiler_battery img "$2"' _ "${_bat_fn}" "${target}" 2>&1
 }
+
+t_case "the shared optional gate prints only enabled smoke headings and its callers skip cleanly"
+t_assert_eq $'gate heading (amd64) ---\nran arg' "$(bash -c 'eval "$1"; _smoke_test_runner() { printf "ran %s\n" "$*"; }; _run_optional_runtime_smoke 1 "gate heading" amd64 _smoke_test_runner arg' _ "${_gate_fn}")"
+t_assert_eq "0" "$(bash -c 'eval "$1"; _smoke_test_runner() { echo ran; }; _run_optional_runtime_smoke 0 ignored amd64 _smoke_test_runner; echo $?' _ "${_gate_fn}")"
+t_assert_eq "" "$(_battery arm64 amd64 RUNTIME_COMPILER_SMOKE=0)" "the compiler battery stays opt-in"
+_clang_fn="${_gate_fn}"$'\n'"$(t_fn_src "${_smoke}" check_clang_llvm_release)"$'\n'"$(t_fn_src "${_smoke}" _check_clang_llvm_release)" || exit 1
+_clang_disabled="$(bash -c 'eval "$1"; RUNTIME_CLANG_VERSION_SMOKE=0; check_clang_llvm_release img amd64' _ "${_clang_fn}")"
+t_assert_eq "" "${_clang_disabled}" "the clang version check stays opt-in"
+_clang_enabled="$(bash -c 'eval "$1"; pass() { printf "PASS %s\n" "$*"; }; fail() { printf "FAIL %s\n" "$*"; }; _rt_run() { return 0; }; LLVM_RELEASE=18.1.7 RUNTIME_CLANG_VERSION_SMOKE=1; check_clang_llvm_release img amd64' _ "${_clang_fn}")"
+t_assert_contains "${_clang_enabled}" "PASS clang/clang++ report LLVM_RELEASE 18.1.7 on amd64" "the enabled clang check still asserts the pin"
 _RUN="C++ sanitizer RUN (native)"
 _CL="C++ -fsanitize=address,undefined compile+link"
 _SKIP="sanitizer RUN skipped: emulated arch"
