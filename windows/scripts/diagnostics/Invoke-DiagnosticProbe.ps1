@@ -18,7 +18,7 @@
 .PARAMETER VerdictPattern
     Regex for the verdict lines printed after the solve.
 .PARAMETER LogName
-    Log filename under out\windows-build-logs\.
+    Log filename under logs\windows-build-logs\.
 #>
 [CmdletBinding()]
 param(
@@ -58,7 +58,7 @@ Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') 
 $BuildCtl = Resolve-BuildCtlPath -BuildCtl $BuildCtl
 
 if (-not $LogName) { $LogName = ($Dockerfile -replace '^Dockerfile\.', '') + '.log' }
-$logDir = Join-Path $repoRoot 'out\windows-build-logs'
+$logDir = Join-Path $repoRoot 'logs\windows-build-logs'
 $null = New-Item -ItemType Directory -Force -Path $logDir
 $log = Join-Path $logDir $LogName
 

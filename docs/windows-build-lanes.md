@@ -257,7 +257,7 @@ and `buildkitd` services. Everything below is one-time, admin unless noted.
    ```
 
    (`-1` = unlimited; the driver tees everything to per-stage files under
-   `out\windows-build-logs\` anyway, so disk is the only cost.)
+   `logs\windows-build-logs\` anyway, so disk is the only cost.)
 5. **sccache** (non-admin): serve a cache dir over WebDAV — e.g.
    [dufs](https://github.com/sigoden/dufs): `dufs C:\sccache-cache -p 5000 -A`
    — and export `SCCACHE_WEBDAV_ENDPOINT=http://<host-LAN-IP>:5000`; the
@@ -612,7 +612,7 @@ Housekeeping and sharing:
   superseded lineage, wait ~30 s for the containerd GC, then prune. Identify
   them by lineage, not by age: a stage tag is dead when its ancestor stage was
   rebuilt after it (compare image IDs against the current chain, and the stage
-  logs in `out\windows-build-logs\` for the rebuild times). Deleting them costs
+  logs in `logs\windows-build-logs\` for the rebuild times). Deleting them costs
   nothing that a failed chain was not going to rebuild anyway. **Before
   deleting a tagged FINAL image, verify the registry copy** —
   `docker manifest inspect ghcr.io/kataglyphis/kataglyphis_beschleuniger:winamd64`

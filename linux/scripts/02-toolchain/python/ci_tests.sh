@@ -13,7 +13,8 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "  package_name defaults to \$PACKAGE_NAME or derived from pyproject.toml"
   echo "  py_versions_string defaults to \$PY_VERSIONS, else the pinned X.Y, plus X.Yt when pyproject.toml declares free-threading;"
   echo "  the word pinned in it stands for that X.Y (pinnedt for its free-threaded twin)"
-  echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'docs/test_results/ci_tests-<timestamp>.log'"
+  echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'logs/test-results/ci_tests-<timestamp>.log'"
+  echo "  test reports are written to 'logs/test-results'"
   echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
   echo "  \$SYNC_EXTRAS (comma list) makes every leg sync only those extras and gate"
@@ -45,7 +46,8 @@ FREE_THREADED_SYNC_EXTRAS="${FREE_THREADED_SYNC_EXTRAS:-}"
 # Set, every leg syncs only these extras (a riscv64 row cannot build the full extra set under QEMU).
 SYNC_EXTRAS="${SYNC_EXTRAS:-}"
 
-LOG_FILE="${CI_TESTS_LOG_FILE:-$WORKSPACE_ROOT/docs/test_results/ci_tests-$(timestamp).log}"
+TEST_RESULTS_DIR="$WORKSPACE_ROOT/logs/test-results"
+LOG_FILE="${CI_TESTS_LOG_FILE:-$TEST_RESULTS_DIR/ci_tests-$(timestamp).log}"
 mkdir -p "$(dirname "$LOG_FILE")"
 
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -57,7 +59,8 @@ info "EXPERIMENTAL_PYTHON_VERSIONS=$EXPERIMENTAL_PYTHON_VERSIONS"
 
 git config --global --add safe.directory "$WORKSPACE_ROOT" || true
 
-mkdir -p "$WORKSPACE_ROOT/docs/test_results"
+mkdir -p "$TEST_RESULTS_DIR"
+export COVERAGE_FILE="${COVERAGE_FILE:-$TEST_RESULTS_DIR/.coverage}"
 
 # On riscv64 the image's seed holds what the lock builds from source under QEMU (108 min of the sync).
 uv_cache_seed_restore
@@ -116,14 +119,14 @@ for V in $PY_VERSIONS; do
     "${test_paths[@]}" -v
     --cov="$PACKAGE_NAME"
     --cov-report=term-missing
-    --cov-report="html:$WORKSPACE_ROOT/docs/test_results/coverage-html-${V}"
-    --cov-report="xml:$WORKSPACE_ROOT/docs/test_results/coverage-${V}.xml"
-    --junitxml="$WORKSPACE_ROOT/docs/test_results/report-${V}.xml"
-    --html="$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.html"
+    --cov-report="html:$TEST_RESULTS_DIR/coverage-html-${V}"
+    --cov-report="xml:$TEST_RESULTS_DIR/coverage-${V}.xml"
+    --junitxml="$TEST_RESULTS_DIR/report-${V}.xml"
+    --html="$TEST_RESULTS_DIR/pytest-report-${V}.html"
     --self-contained-html
     --md-report
     --md-report-verbose=1
-    --md-report-output "$WORKSPACE_ROOT/docs/test_results/pytest-report-${V}.md"
+    --md-report-output "$TEST_RESULTS_DIR/pytest-report-${V}.md"
   )
 
   if [ "$experimental" -eq 1 ]; then
@@ -139,7 +142,7 @@ for V in $PY_VERSIONS; do
   uv_run python bench/demo_line_profiler.py 2>/dev/null || info "demo_line_profiler.py skipped"
   uv_run -m memory_profiler bench/demo_memory_profiling.py 2>/dev/null || info "memory profiling skipped"
 
-  uv_run py-spy record --rate 200 --duration 10 -o "$WORKSPACE_ROOT/docs/test_results/profile.svg" -- python bench/demo_py_spy.py 2>/dev/null \
+  uv_run py-spy record --rate 200 --duration 10 -o "$TEST_RESULTS_DIR/profile.svg" -- python bench/demo_py_spy.py 2>/dev/null \
     || info "py-spy profiling skipped (may require a longer-running process or py-spy missing)"
 
   uv_run pytest bench/demo_pytest_benchmark.py 2>/dev/null || info "benchmark tests skipped or failed"

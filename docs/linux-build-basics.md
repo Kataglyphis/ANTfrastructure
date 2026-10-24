@@ -203,11 +203,12 @@ the user. A Windows host (Rancher) and CI, whose runner is uid 1001 itself, need
 Generic usage:
 
 ```bash
+mkdir -p ./logs/build-logs
 sudo nerdctl build \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   -f <dockerfile> \
-  . 2>&1 | tee ./out/build-logs/nerdctl-build.log
+  . 2>&1 | tee ./logs/build-logs/nerdctl-build.log
 ```
 
 Supported Dockerfiles: `linux/Dockerfile.base`, `linux/Dockerfile.toolchain`,
@@ -221,7 +222,7 @@ android image built natively for the target, and nothing publishes one (the chai
 `:cross-android-<arch>`), so put your own in place of `:android` below:
 
 ```bash
-mkdir -p ./out/build-logs && \
+mkdir -p ./logs/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:latest-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
@@ -231,13 +232,13 @@ nerdctl build --platform linux/amd64 \
   --build-arg ARTIFACT_PLATFORM=linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=native \
-  . 2>&1 | tee ./out/build-logs/wrapper-smoke-native.log
+  . 2>&1 | tee ./logs/build-logs/wrapper-smoke-native.log
 ```
 
 Cross-mode variant (validates cross-assembled artifacts):
 
 ```bash
-mkdir -p ./out/build-logs && \
+mkdir -p ./logs/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:latest-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
@@ -247,7 +248,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg ARTIFACT_PLATFORM=linux/amd64 \
   --build-arg TARGET_ARCH=amd64 \
   --build-arg BUILD_MODE=cross \
-  . 2>&1 | tee ./out/build-logs/wrapper-smoke-cross.log
+  . 2>&1 | tee ./logs/build-logs/wrapper-smoke-cross.log
 ```
 
 The `build-runtime-manifest.sh` helper uses the same local-only handoff internally, so
@@ -272,10 +273,10 @@ and LLVM_RELEASE forwarding through SDK rebuilds: `docs/linux-cross-builds.md`.
 ### RISC-V64 example
 
 ```bash
-mkdir -p ./out/build-logs && \
+mkdir -p ./logs/build-logs && \
 nerdctl build --platform linux/riscv64 --build-arg GSTREAMER_VERSION=1.29.2 --no-cache \
   -t ghcr.io/kataglyphis/kataglyphis_beschleuniger:riscv -f linux/Dockerfile.media \
-  . 2>&1 | tee ./out/build-logs/riscv64-build.log
+  . 2>&1 | tee ./logs/build-logs/riscv64-build.log
 ```
 
 `Dockerfile.media` builds FROM `BASE_IMAGE` (default `local/kataglyphis:sdk`), which must be a
@@ -292,12 +293,12 @@ For media-build validation before the slow gstreamer+libcamera serial tail, `Doc
 exposes a `media-smoke` alias that stops at the `media-inputs` aggregation stage:
 
 ```bash
-mkdir -p ./out/build-logs && \
+mkdir -p ./logs/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:media-smoke-amd64 \
   -f linux/Dockerfile.media --target media-smoke \
   --build-arg BASE_IMAGE=local/kataglyphis:cross-sdk-amd64 \
-  . 2>&1 | tee ./out/build-logs/media-smoke-amd64.log
+  . 2>&1 | tee ./logs/build-logs/media-smoke-amd64.log
 ```
 
 For a hands-off cross build of `:latest`, use the orchestrator `linux/scripts/build-cross-chain.sh`:

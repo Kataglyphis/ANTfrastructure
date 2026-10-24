@@ -14,11 +14,11 @@
 
 .EXAMPLE
     # sample every 20s into a CSV, phase-tagged (how the driver invokes it)
-    pwsh -File Build-ResourceSampler.ps1 -CsvPath out\windows-build-logs\resources-x.csv -PhaseFile out\windows-build-logs\current-phase.txt
+    pwsh -File Build-ResourceSampler.ps1 -CsvPath logs\windows-build-logs\resources-x.csv -PhaseFile logs\windows-build-logs\current-phase.txt
 
 .EXAMPLE
     # analyze afterwards: which phases exhausted the machine the most?
-    pwsh -File Build-ResourceSampler.ps1 -Summarize -CsvPath out\windows-build-logs\resources-x.csv
+    pwsh -File Build-ResourceSampler.ps1 -Summarize -CsvPath logs\windows-build-logs\resources-x.csv
 #>
 param(
     [Parameter(Mandatory)][string]$CsvPath,

@@ -46,4 +46,24 @@ status=0
 out="$(FAIL_ACCEPTANCE=1 scenario)" || status=$?
 t_assert_eq 1 "${status}"
 t_assert_eq 0 "$(printf '%s\n' "${out}" | grep -c PROMOTE || true)"
+
+acceptance_route() (
+  eval "$(t_fn_src "${SUBJECT}" _manifest_accept_and_promote)"
+  REPO_ROOT=/fixture
+  CROSS_RUN_ID=test-run
+  IMAGE_NAME=ghcr.io/kataglyphis/example:latest
+  python3() {
+    case "$2" in
+      resolve) printf 'ghcr.io/kataglyphis/example@sha256:abc' ;;
+      check|promote) printf '%s\n' "$*" ;;
+    esac
+  }
+  _manifest_accept_and_promote candidate
+)
+
+t_case "consumer logs and receipt live under logs while promotion uses that receipt"
+out="$(acceptance_route)"
+t_assert_contains "${out}" '--workspace /fixture/logs/image-acceptance/test-run/consumers'
+t_assert_contains "${out}" '--receipt /fixture/logs/image-acceptance/test-run/receipt.json'
+t_assert_contains "${out}" 'promote --receipt /fixture/logs/image-acceptance/test-run/receipt.json --target ghcr.io/kataglyphis/example:latest'
 t_summary

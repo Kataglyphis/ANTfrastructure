@@ -272,7 +272,7 @@ $Stages = $variantPlan.Stages
 # Every nvidia code path below reads this, so -Gpu and -Variant nvidia are one lane.
 $isNvidia = $Variant -eq 'nvidia'
 
-$script:LogDir = Join-Path $repoRoot 'out\windows-build-logs'
+$script:LogDir = Join-Path $repoRoot 'logs\windows-build-logs'
 New-Item -Path $script:LogDir -ItemType Directory -Force | Out-Null
 # Per-run id in every stage-log name, so run N never truncates run N-1's evidence.
 $script:RunId = if ($ParentRunId) { "$ParentRunId-$($MediaBranches -join '+')" } else { (Get-Date).ToString('yyyyMMdd-HHmmss') }
@@ -823,9 +823,9 @@ if ($Stages -contains 'sdk') {
         }
     } else {
         # containerd has no unprivileged tag, so a trivial FROM re-exports base under the sdk name.
-        $alias = Join-Path $script:LogDir 'Dockerfile.bk-sdk-alias'
+        $alias = Join-Path $repoRoot 'windows\generated\Dockerfile.bk-sdk-alias'
         "FROM $(Get-BkTag 'windows-base')`r`n" | Set-Content $alias -Encoding ASCII
-        Invoke-BkStage -Dockerfile ('out/windows-build-logs/' + [IO.Path]::GetFileName($alias)) -Tag (Get-BkTag 'windows-sdk') -Label 'bk-cpu-alias'
+        Invoke-BkStage -Dockerfile ('windows/generated/' + [IO.Path]::GetFileName($alias)) -Tag (Get-BkTag 'windows-sdk') -Label 'bk-cpu-alias'
     }
 }
 

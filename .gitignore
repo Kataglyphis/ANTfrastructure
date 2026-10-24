@@ -1,6 +1,15 @@
 docs/_build/*
 *.log
-logs/**/*
+/logs/
+# Older Python CI revisions still write reports here.
+/docs/test_results/
+# The docs build stages report copies here for publication.
+/docs/source/_static/coverage/
+/docs/source/_static/test_results/
+/docs/source/_static/coverage.xml
+/docs/source/_static/pytest-report*.md
+# Older frontend performance caches can restore here before migration.
+/.perf-baseline/
 out/**/*
 /out/complexity/
 __pycache__/

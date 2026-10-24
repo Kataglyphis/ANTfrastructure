@@ -10,7 +10,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorActio
 function New-HostMaintenanceLog {
     <#
     .SYNOPSIS
-        Transcript context: an in-memory line list and the log path (default <repo>\out\<name>.log).
+        Transcript context: an in-memory line list and the log path (default <repo>\logs\host\<name>.log).
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -18,7 +18,7 @@ function New-HostMaintenanceLog {
         [string]$LogPath = ''
     )
     if ([string]::IsNullOrWhiteSpace($LogPath)) {
-        $LogPath = Join-Path $RepoRoot ('out\' + $Name + '.log')
+        $LogPath = Join-Path $RepoRoot ('logs\host\' + $Name + '.log')
     }
     return [pscustomobject]@{
         Lines   = [System.Collections.Generic.List[string]]::new()

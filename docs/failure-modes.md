@@ -1762,7 +1762,7 @@ Two dumps 30 s apart carry the **byte-identical** stack and the thread reports *
 
 ### Windows media build crawls; `Building with ninja -j2`
 
-**Symptom.** Windows media build crawls; `Building with ninja -j2` in the stage log (`out\windows-build-logs\bk-<runid>-Dockerfile.media-builder-media-core-*.log`)
+**Symptom.** Windows media build crawls; `Building with ninja -j2` in the stage log (`logs\windows-build-logs\bk-<runid>-Dockerfile.media-builder-media-core-*.log`)
 
 **Cause.** `-j2` is the FLOOR of `Get-BuildJobCount` (`max(2, min(cores, MEMORY_LIMIT_GB/4))`), so the container resolved a near-zero memory budget — BK RUN steps are process-isolated with all host CPUs, so this is memory-bound, not a CPU cap. *(Historical: on the classic lane the same line meant media-core had fallen back to a 2-CPU `docker build` instead of `Invoke-RunCommitStage`; that driver went on 2026-08-31.)*
 

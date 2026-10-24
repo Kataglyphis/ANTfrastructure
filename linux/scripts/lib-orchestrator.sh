@@ -130,7 +130,8 @@ start_resource_monitor() {
   [ "${RESOURCE_MONITOR:-1}" = "1" ] || return 0
   local mon="${REPO_ROOT}/linux/scripts/01-core/resource-monitor.sh"
   [ -x "${mon}" ] || return 0
-  local out="${LOG_DIR:-${REPO_ROOT}}" rid="${CROSS_RUN_ID:-$1}"
+  local out="${LOG_DIR:-${REPO_ROOT}/logs}" rid="${CROSS_RUN_ID:-$1}"
+  mkdir -p "${out}" || { warn "resource-monitor: cannot create ${out}; monitoring disabled"; return 0; }
   pgrep -f "resource-monitor.sh.*${rid}" >/dev/null 2>&1 && return 0
   bash "${mon}" --out-dir "${out}" --run-id "${rid}" --stage-log-dir "${out}" \
     --disk-path "${BUILDKIT_CACHE_DIR:-/}" --watch-pid "$$" </dev/null >/dev/null 2>&1 &

@@ -132,6 +132,27 @@ Describe 'Build-Buildkit.ps1: rocm chain wiring' {
         Assert-Match "(?s)\} else \{.+?-Label 'bk-cpu-alias'" $sdkBlock 'cpu alias last, unchanged'
     }
 
+    It 'keeps the generated cpu SDK Dockerfile available to the build context' {
+        Invoke-InTestDir { param($dir)
+            $repoRoot = $dir
+            Set-Variable -Name Stages -Value @('sdk')
+            Set-Variable -Name isNvidia -Value $false
+            Set-Variable -Name Variant -Value ''
+            $calls = [System.Collections.Generic.List[object]]::new()
+            $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'windows\generated')
+            function Get-BkTag { param($Name) "bk-$Name" }
+            function Invoke-BkStage { param($Dockerfile, $Tag, $Label) $calls.Add([pscustomobject]@{ Dockerfile = $Dockerfile; Tag = $Tag; Label = $Label }) }
+            . (Get-ScriptFunctionDefinition -ScriptPath 'windows/Build-Buildkit.ps1' -FunctionName Invoke-BkSdkStage)
+            Invoke-BkSdkStage
+            Assert-Equal 1 $calls.Count
+            Assert-Equal 'bk-cpu-alias' $calls[0].Label
+            $dockerfile = Join-Path $repoRoot $calls[0].Dockerfile
+            Assert-True (Test-Path -LiteralPath $dockerfile -PathType Leaf) 'the solver can read the generated Dockerfile'
+            Assert-Equal 'FROM bk-windows-base' ([IO.File]::ReadAllText($dockerfile).Trim())
+            Assert-False ($calls[0].Dockerfile -like 'logs/*') 'the ignored logs tree cannot hold build inputs'
+        }
+    }
+
     It 'has no post-media rocm stage left' {
         Assert-False ($src -match "Get-BkTag 'windows-rocm'") 'bk-windows-rocm is gone'
         Assert-False ($src -match "Get-BkTag 'windows-torch-rocm'") 'the torch tag comes from the lane infix alone'

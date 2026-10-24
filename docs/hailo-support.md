@@ -295,11 +295,12 @@ the cache, and the second's `hailort-configure` line should show hits for nearly
 its requests, next to `exports PyInit__pyhailort` twice per arch:
 
 ```bash
+mkdir -p logs/build-logs
 for i in 1 2; do
   CROSS_LOCAL_CONTEXT_HANDOFF=0 RUNTIME_NO_CACHE=1 bash linux/scripts/build-cross-chain.sh --only runtime --no-push \
-    --target-arches amd64,arm64 2>&1 | tee "out/build-logs/hailo-carry-$i.log"
+    --target-arches amd64,arm64 2>&1 | tee "logs/build-logs/hailo-carry-$i.log"
 done
-grep -hE '\[CACHE\] hailo/|\[hailo\]' out/build-logs/hailo-carry-*.log
+grep -hE '\[CACHE\] hailo/|\[hailo\]' logs/build-logs/hailo-carry-*.log
 ```
 
 `RUNTIME_NO_CACHE=1` makes BuildKit run the Hailo `RUN` again rather than take it

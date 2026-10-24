@@ -55,12 +55,12 @@ refresh_worktree() {
   fi
   git -C "${CHAIN_WORKTREE}" fetch -q origin && git -C "${CHAIN_WORKTREE}" checkout -q --detach "${CHAIN_REF}" || return 1
   git -C "${CHAIN_WORKTREE}" submodule update --init --recursive -q || return 1
-  mkdir -p "${CHAIN_WORKTREE}/out"
+  mkdir -p "${CHAIN_WORKTREE}/logs"
 }
 
 start_unit() {
   local log
-  log="${CHAIN_WORKTREE}/out/chain-latest-$(date +%Y%m%d-%H%M)-${CHAIN_FROM_STAGE}.log" || return 1
+  log="${CHAIN_WORKTREE}/logs/chain-latest-$(date +%Y%m%d-%H%M)-${CHAIN_FROM_STAGE}.log" || return 1
   systemctl --user reset-failed "${CHAIN_UNIT}" 2>/dev/null || true
   systemd-run --user --unit="${CHAIN_UNIT}" -p "RuntimeMaxSec=${CHAIN_RUNTIME_MAX}" \
     --working-directory="${CHAIN_WORKTREE}" \

@@ -268,6 +268,10 @@ frame's self time per event, per widget with `debugProfileBuildsEnabled`. Both m
 OmniAccelerANT on 2026-10-21. Test: `tests/test-perf-reports.sh`. In CI the
 `frontend-perf-report` action runs the report and keeps a passing default-branch run in
 `actions/cache` as the next run's history ([`.github/actions/README.md`](../.github/actions/README.md)).
+Its default timing input is `logs/perf/frontend.json` in the consumer workspace.
+Cached timing history lives in `logs/perf/baseline/`. The action moves an older
+default `out/perf/frontend.json` or restored `.perf-baseline/` into those paths
+when the new path is absent; an explicit `timings:` input keeps its own path.
 
 #### `dart format`: the tracked files, in the floor's style
 
@@ -1631,6 +1635,18 @@ call-site credit rules, the
 `mutation-id:` and `mutation-family:` ratchets in both directions and all three
 convention breaches they catch, 32 in `tests/test-crlf-guard.sh`,
 and 28 entries (`gate-registry.*`).
+
+## Generated quality reports
+
+Build transcripts, resource measurements, test results and coverage reports live under the
+Git-ignored `logs/` directory. Linux and Windows Python CI put their reports in
+`logs/test-results/`; Linux stage logs use `logs/build-logs/`, and Windows BuildKit uses
+`logs/windows-build-logs/`. The docs build copies selected reports into its generated site
+assets for publication. The live `chain-status*.json` files remain at the repo root because
+the chain reads them there. PowerShell complexity JSON remains in `out/complexity/` as
+requested separately.
+The Windows test runner writes a JSON summary for each parent run to
+`logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
 
 ## Windows PowerShell complexity
 

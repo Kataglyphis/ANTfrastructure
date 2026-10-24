@@ -208,7 +208,7 @@ create_manifest() {
 _manifest_accept_and_promote() {
   local candidate receipt work
   candidate="$(python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" resolve "$1")" || return 1
-  work="${REPO_ROOT}/out/image-acceptance/${CROSS_RUN_ID}"
+  work="${REPO_ROOT}/logs/image-acceptance/${CROSS_RUN_ID}"
   receipt="${work}/receipt.json"
   python3 "${REPO_ROOT}/linux/scripts/image-acceptance.py" check --image "${candidate}" \
     --workspace "${work}/consumers" --receipt "${receipt}" --engine "${NERDCTL_BIN:-nerdctl}" || return 1

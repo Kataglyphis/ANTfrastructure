@@ -183,7 +183,7 @@ main() {
     shift; rm_summarize "${1:?usage: resource-monitor.sh summarize <csv>}"; return $?
   fi
 
-  local out_dir="${LOG_DIR:-.}" run_id="${CROSS_RUN_ID:-run}" interval=15
+  local out_dir="${LOG_DIR:-logs}" run_id="${CROSS_RUN_ID:-run}" interval=15
   local disk_path="${BUILDKIT_CACHE_DIR:-${HOME:-/}}" stage_log="" stage_log_dir="" label="" watch_pid=""
   while [ $# -gt 0 ]; do
     case "$1" in

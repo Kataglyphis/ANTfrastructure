@@ -59,7 +59,7 @@ Describe 'Invoke-PythonCiBuild.ps1' {
             $sync = '-v sync --dev {0} --locked'
             foreach ($want in @("uv venv --python 3.13+gil --clear <d>\.venv-3.13|uv $($sync -f '--all-extras')",
                     "uv venv --python 9.87t --clear <d>\.venv-9.87t|uv $($sync -f '--extra tests')",
-                    'uv run pytest tests/unit tests/integration -v --cov=demo_pkg --cov-report=term-missing --cov-report=html:docs/test_results/coverage-html-9.87t',
+                    'uv run pytest tests/unit tests/integration -v --cov=demo_pkg --cov-report=term-missing --cov-report=html:logs/test-results/coverage-html-9.87t',
                     'static BanditExcludes=tests,vendor ExtraPaths=bench+examples PackageName=demo_pkg RepoRoot=<d>',
                     'packaging RepoRoot=<d>')) {
                 Assert-True $calls.Contains($want) "missing: $want"

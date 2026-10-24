@@ -859,7 +859,7 @@ Run these before every chain launch (30 seconds; each one has cost a real run):
   ~35–45 % average CPU during compiles is the expected signature, not a
   fault ([`windows-build-resources.md`](windows-build-resources.md) § Maximum resource
   envelope; 32 CPU / 39 GB is the verified max on the 64 GB reference host).
-- **Logs:** per-stage under `out\windows-build-logs\`.
+- **Logs:** per-stage under `logs\windows-build-logs\`.
 - **Every solve is direct:** the warm/materialize two-step that once routed
   around the `ExportLayer 0x3` snapshotter defect was retired on 2026-08-06,
   when the patched shim (§ R1) fixed the defect at its root. The

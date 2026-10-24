@@ -43,6 +43,8 @@ Negligible. Each tick is a handful of `/proc` reads plus ~3 short-lived forks
 the whole run (`start_resource_monitor` in `lib-orchestrator.sh`, gated by
 `RESOURCE_MONITOR`, default on) and it self-terminates when the orchestrator
 exits (via `--watch-pid`), writing the summary. Output lands in `--log-dir`.
+The chain defaults to `logs/build-logs/`. If stage logging is disabled or its
+directory is unwritable, resource samples fall back to the ignored `logs/` root.
 
 ```bash
 # default: monitoring on, 15s interval, CSV+summary in the run's log dir
@@ -98,13 +100,14 @@ Capture the log in the first place — `build-cross-chain.sh` and
 hand-run one, should be teed:
 
 ```bash
-nerdctl build -t <tag> -f linux/Dockerfile.<stage> . 2>&1 | tee out/build-logs/build.log
+mkdir -p logs/build-logs
+nerdctl build -t <tag> -f linux/Dockerfile.<stage> . 2>&1 | tee logs/build-logs/build.log
 ```
 
 Then pull out the lines that actually mark failures:
 
 ```bash
-grep -nE '(^| )FAILED: |ninja: build stopped|error:|fatal error:|undefined reference|collect2: error|ld\.lld: error|permission denied|no space left on device|exit code [1-9]' out/build-logs/build.log
+grep -nE '(^| )FAILED: |ninja: build stopped|error:|fatal error:|undefined reference|collect2: error|ld\.lld: error|permission denied|no space left on device|exit code [1-9]' logs/build-logs/build.log
 ```
 
 Reading the hits, in order of what they mean:

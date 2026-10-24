@@ -9,7 +9,7 @@
     Names the other holder of the unsignalled event the silo's LSM waits on during the container boot hang.
 .DESCRIPTION
     Reads the waited handle off the LSM svchost's stack (non-invasive cdb), then matches its kernel object across all handles.
-    Run elevated; findings go to out/lsm-attach/.
+    Run elevated; findings go to logs/lsm-attach/.
 .EXAMPLE
     pwsh -File windows\scripts\diagnostics\Find-LsmEventHolder.ps1 -Handle 0x338 -LsmPid 37236
 #>

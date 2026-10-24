@@ -22,7 +22,7 @@ param(
     # Path that must exist again after the remount; empty skips the check.
     [string]$VerifyPath = '',
 
-    # Where the transcript lands. Default: <repo>\out\compact-host-vhdx.log
+    # Where the transcript lands. Default: <repo>\logs\host\compact-host-vhdx.log
     [string]$LogPath = '',
 
     # Report sizes, guest filesystem and reclaim potential, then exit without touching anything.

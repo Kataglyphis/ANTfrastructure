@@ -274,7 +274,7 @@ jobs:
         uses: ./.github/actions/run-in-linux-container
         with:
           workdir: /selftest-workspace
-          log-file: selftest-container.log
+          log-file: logs/selftest-container.log
           extra-args: -e SELFTEST_MARKER=ok
           script: >-
             bash -lc 'echo "MARKER=${SELFTEST_MARKER:-unset}"; echo "CWD=$(pwd)";
@@ -283,7 +283,7 @@ jobs:
       - name: The container saw the env, the mount and the workdir
         run: |
           set -euo pipefail
-          log='selftest-container.log'
+          log='logs/selftest-container.log'
           test -f "${log}" || { echo "::error::log-file produced no ${log}; the tee branch is broken"; exit 1; }
           cat "${log}"
           grep -qx 'MARKER=ok' "${log}" || { echo "::error::extra-args did not deliver SELFTEST_MARKER into the container"; exit 1; }

@@ -34,7 +34,7 @@ param(
     # Skip the live-build and live-shim guards.
     [switch]$Force,
 
-    # Transcript destination. Default: <repo>\out\deploy-shim-patch.log
+    # Transcript destination. Default: <repo>\logs\host\deploy-shim-patch.log
     [string]$LogPath = ''
 )
 

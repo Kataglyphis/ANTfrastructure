@@ -28,7 +28,7 @@ $failedLanes = @()
 # Zero attempted lanes must never exit 0, or a botched install would certify the host healthy.
 $attemptedLanes = @()
 # Full output per lane on disk; the console shows only the tail.
-$probeLogDir = Join-Path $repoRoot 'out\build-logs'
+$probeLogDir = Join-Path $repoRoot 'logs\build-logs'
 New-Item -ItemType Directory -Force -Path $probeLogDir | Out-Null
 $probeStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 

@@ -59,4 +59,4 @@ CENSUS | ANTfrastructure | artifact-error | 2 | The two upload sites in python-c
 #
 # Worked example of the row shape, for whoever adds the first one:
 #
-#   ANTfrastructure | .github/workflows/python-ci-windows.yml | artifact-error | Upload files, logs & Zip | The workflow header states the choice: an empty dist/ here means the build already failed upstream, and `error` would fail the job a second time for the same cause while losing the logs/ and docs/test_results/ the artifact carries for the diagnosis.
+#   ANTfrastructure | .github/workflows/python-ci-windows.yml | artifact-error | Upload files, logs & Zip | The workflow header states the choice: an empty dist/ here means the build already failed upstream, and `error` would fail the job a second time for the same cause while losing the logs/test-results/ the artifact carries for the diagnosis.

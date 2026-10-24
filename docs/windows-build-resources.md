@@ -76,7 +76,7 @@ pass under either isolation regardless of whether a hardware adapter is present.
 ## Media fan-out and memory budgeting
 
 **Media scheduling is sequential** (one log per solve —
-`out\windows-build-logs\bk-<runid>-<stage>.log`, one per media-core library, one
+`logs\windows-build-logs\bk-<runid>-<stage>.log`, one per media-core library, one
 per aux branch, one for the merge). Sequential gives media-core the *whole* host
 RAM budget — and since its parallelism is memory-bound, more RAM = more ONNX jobs,
 which matters more than overlapping the small aux branches (a former
@@ -154,7 +154,7 @@ faster configuration to unlock, and the full-chain rebuild of 2026-07-12
 
 **Per-run resource log.** Every `Build-Buildkit.ps1` run samples host CPU / free
 RAM / commit charge / container-VM (`vmmem`) size every 20 s into
-`out\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
+`logs\windows-build-logs\resources-<timestamp>.csv`, tagged with the current build
 phase — the BK stage label (`Dockerfile.media-builder:media-core-built-onnx`),
 plus `init` and `done` — and prints a per-phase exhaustion summary at the end,
 including on failure. The sampler starts only after every preflight gate has
@@ -169,7 +169,8 @@ run later with
 the summary its per-phase minimum (`MinDiskFreeGB`): export and unpack slow down as it nears a
 stage's disk floor.
 
-**Per-run record.** Beside the stage logs, every run writes `bk-<run>-driver.log`: the run, each
+**Per-run record.** In `logs\windows-build-logs\` beside the stage logs, every run
+writes `bk-<run>-driver.log`: the run, each
 stage's start, end and failure, every retry verdict with the line that made it transient, and
 every disk-gate verdict, none of which a stage log holds. `bk-<run>-manifest.txt` carries
 `status=ok`, or `status=failed:<stage>` with every stage that finished, so a stopped run keeps its

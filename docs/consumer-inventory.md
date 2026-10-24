@@ -33,7 +33,7 @@ checks; a file that exists can still reject arguments or produce the wrong resul
 
 A failed weekly run **files or updates a GitHub issue** titled
 `consumer-inventory: dangling hub references`, labelled `documentation`, with
-`out/consumer-inventory.md` as the body (the issue-filing step in that workflow,
+`logs/reports/consumer-inventory.md` as the body (the issue-filing step in that workflow,
 `if: failure()`, job-scoped `issues: write`). It updates the open issue instead
 of opening a second one, and it does not suppress the failure: the run is still
 red. This exists because the answer changes when a *consumer* changes, which this
@@ -43,14 +43,14 @@ otherwise be whoever happened to open the Actions tab.
 Run it against clones:
 
 ```bash
-python3 linux/scripts/verify_consumer_inventory.py --report out/consumer-inventory.md
+python3 linux/scripts/verify_consumer_inventory.py --report logs/reports/consumer-inventory.md
 ```
 
 Run it against checkouts you already have, with no network at all:
 
 ```bash
 python3 linux/scripts/verify_consumer_inventory.py --offline \
-    --local-root /c/GitHub --report out/consumer-inventory.md
+    --local-root /c/GitHub --report logs/reports/consumer-inventory.md
 ```
 
 `--local-root DIR` picks up `DIR/<name>` for every consumer whose name matches a

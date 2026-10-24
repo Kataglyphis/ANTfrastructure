@@ -27,7 +27,7 @@ param(
     # Volume metadata that cannot and must not be copied.
     [string[]]$ExcludeDir = @('System Volume Information', '$RECYCLE.BIN'),
 
-    # Where the transcript lands. Default: <repo>\out\rebuild-host-vhdx.log
+    # Where the transcript lands. Default: <repo>\logs\host\rebuild-host-vhdx.log
     [string]$LogPath = '',
 
     # Report sizes, guest filesystem and reclaim potential, then exit.

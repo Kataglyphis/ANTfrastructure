@@ -8,7 +8,7 @@ Set-StrictMode -Off
 
 # Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-$out = Join-Path (Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent) 'out\host-docker-forensics.txt'
+$out = Join-Path (Split-Path (Split-Path $scriptAssetRoot -Parent) -Parent) 'logs\host\host-docker-forensics.txt'
 New-Item -ItemType Directory -Force -Path (Split-Path $out -Parent) | Out-Null
 $sb = New-Object System.Text.StringBuilder
 function W([string]$s) { [void]$sb.AppendLine($s) }

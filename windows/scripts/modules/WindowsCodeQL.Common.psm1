@@ -344,7 +344,7 @@ function Invoke-BuildCodeQL {
         Download = $codeQLDownload; TimeoutMinutes = $timeoutMinutes
     }
     $dbClusterDir = Initialize-CodeQLDatabaseCluster -Run $run -InnerCommand $innerCommand -CleanCodeQLDb $cleanCodeQLDb
-    $resultsDir = Join-Path $Workspace 'codeql-results'
+    $resultsDir = Join-Path $Workspace 'logs\codeql-results'
     New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
     Invoke-CodeQLAnalyses -Run $run -DbClusterDir $dbClusterDir -ResultsDir $resultsDir
     Write-BuildLog -Context $Context -Message ''

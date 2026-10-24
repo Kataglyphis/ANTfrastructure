@@ -39,7 +39,9 @@ Runs after a Flutter app's `flutter drive --profile` performance test. It restor
 default branch's last frame timings from `actions/cache` (input `key`, one per app and arch),
 writes `frontend-perf-report.py`'s table against their median into the step summary, and
 fails when an average or 90th-percentile build time doubles. A passing push to the default
-branch joins the history, which keeps the last `keep` (20) runs.
+branch joins the history, which keeps the last `keep` (20) runs. The timing input defaults to
+`logs/perf/frontend.json`, and cached history lives in `logs/perf/baseline/`. Older default
+timing files and restored cache directories move there when the new path is absent.
 [`code-quality-tooling.md` § Frontend frame timings](../../docs/code-quality-tooling.md#frontend-frame-timings).
 
 ### `install-deps`

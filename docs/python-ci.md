@@ -23,6 +23,11 @@ A consumer's workflow is configuration, not steps: its `scripts/linux/ci_*.sh` w
 `antfrastructure_exec` into the drivers above
 ([`../shared/linux/templates/README.md`](../shared/linux/templates/README.md)).
 
+Both test drivers write the run log, JUnit results, pytest reports, coverage and the optional
+profile to the consumer workspace's ignored `logs/test-results/` directory. The reusable
+workflows upload that directory after tests, including failed tests. The docs build copies
+selected reports from there into its generated site assets for publication.
+
 ## Positional arguments: empty means default
 
 Every driver reads its positionals as `"${N:-default}"`, which treats an **empty** argument like
@@ -180,7 +185,7 @@ Two knobs decide what the six analysers grade; each has a Windows twin with the 
 | Knob | Windows twin | Default |
 |---|---|---|
 | `STATIC_ANALYSIS_EXTRA_PATHS` | `-ExtraPaths` | empty |
-| `BANDIT_EXCLUDES` | `-BanditExcludes` | `tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results` |
+| `BANDIT_EXCLUDES` | `-BanditExcludes` | `tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,logs/test-results` |
 
 `STATIC_ANALYSIS_EXTRA_PATHS` is a space-separated path **list**, word-split on purpose, so no
 element may contain a space. It exists because the first-party tree outside a consumer's importable
@@ -465,7 +470,7 @@ parameter on the command line wins; a key that is no parameter fails the run.
     PackageName           = 'orchestrant'
     FreeThreadedExtras    = 'test'
     ExtraPaths            = @('benchmarks', 'frontend', 'bench', 'examples')
-    BanditExcludes        = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results,benchmarks/tests'
+    BanditExcludes        = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,logs/test-results,benchmarks/tests'
     DataLocks             = @('resources/models/models.lock')
 }
 ```

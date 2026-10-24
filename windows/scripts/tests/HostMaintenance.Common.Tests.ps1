@@ -143,7 +143,7 @@ Describe 'Host maintenance contexts and live-process guard' {
                 }
                 Assert-Match '^\[\d\d:\d\d:\d\d\] first context$' $first.Lines[0]
                 Assert-False ($second.Lines[0].Contains('first context'))
-                Assert-Equal (Join-Path $dir 'out\first.log') $first.LogPath
+                Assert-Equal (Join-Path $dir 'logs\host\first.log') $first.LogPath
                 $template = 'count={0}; names={1}; ids={2}'
                 Assert-Equal 0 @(Get-MutHostMaintenanceProcess -Name buildctl -FailureTemplate $template).Count
                 $state.Results = @([pscustomobject]@{ Id = 12; ProcessName = 'z' }, [pscustomobject]@{ Id = 4; ProcessName = 'a' }, [pscustomobject]@{ Id = 9; ProcessName = 'z' })

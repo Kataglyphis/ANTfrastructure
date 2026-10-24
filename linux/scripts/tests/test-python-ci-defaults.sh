@@ -23,7 +23,7 @@ prepare_ci_workspace() { :; }
 derive_package_name() { printf 'pkg'; }
 uv_venv_create() { echo "interpreter $2" >> "${REC}"; _LEG="$2"; }
 uv_venv_ensure() { echo "interpreter $2" >> "${REC}"; printf -v "$4" 1; }
-uv_run() { echo "run $*" >> "${REC}"; ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }; }
+uv_run() { echo "run $*" >> "${REC}"; echo "coverage_file ${COVERAGE_FILE:-}" >> "${REC}"; ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }; }
 uv_sync_project() { echo "sync ${_LEG:-} extras=${UV_SYNC_EXTRAS:-}" >> "${REC}"; [ -z "${FAIL_SYNC_LEG:-}" ] || [ "${FAIL_SYNC_LEG}" != "${_LEG:-}" ]; }
 uv_venv_activate() { :; }; uv_venv_deactivate() { :; }; uv_venv_remove() { :; }
 uv_cache_seed_restore() { echo "seed restore" >> "${REC}"; }
@@ -44,6 +44,20 @@ t_assert_ok test -n "${IMAGE_PY}"
 t_case "ci_tests.sh with no version runs one leg, on the image interpreter the chain ORT wheels are built for"
 t_assert_ok _driver ci_tests
 t_assert_eq "${IMAGE_PY}" "$(_legs)" "no other stable leg: an older venv cannot take the chain's wheels for the pinned tag"
+t_assert_fails test -e "${WS}/docs/test_results"
+
+t_case "the default test log and raw coverage stay under logs"
+env -u CI_TESTS_LOG_FILE -u PY_VERSIONS -u EXPERIMENTAL_PYTHON_VERSIONS \
+  PATH="${_work}/bin:${PATH}" REC="${REC}" FIXTURE_WS="${WS}" GIT_CONFIG_GLOBAL="${_work}/gitconfig" \
+  bash "${TREE}/02-toolchain/python/ci_tests.sh" > "${_work}/out" 2>&1
+t_assert_ok test -d "${WS}/logs/test-results"
+t_assert_eq 1 "$(find "${WS}/logs/test-results" -maxdepth 1 -name 'ci_tests-*.log' | wc -l)"
+t_assert_contains "$(cat "${REC}")" "--junitxml=${WS}/logs/test-results/report-${IMAGE_PY}.xml"
+t_assert_contains "$(cat "${REC}")" "coverage_file ${WS}/logs/test-results/.coverage"
+
+t_case "an explicit raw coverage path still wins"
+COVERAGE_FILE="${_work}/chosen.coverage" _driver ci_tests
+t_assert_contains "$(cat "${REC}")" "coverage_file ${_work}/chosen.coverage"
 
 t_case "the empty positional the reusable lane passes falls through to the same default"
 t_assert_ok _driver ci_tests pkg ''
@@ -75,10 +89,10 @@ t_case "ci_build_docs.sh with no version publishes the coverage of the default l
 t_assert_ok _driver ci_tests
 _html="$(sed -n 's/^run pytest .*--cov-report=html:\([^ ]*\) .*/\1/p' "${REC}")"
 _xml="$(sed -n 's/^run pytest .*--cov-report=xml:\([^ ]*\) .*/\1/p' "${REC}")"
-t_assert_eq "${WS}/docs/test_results/coverage-html-${IMAGE_PY}" "${_html}" "the default leg's HTML report"
-mkdir -p "${_html}" "${WS}/docs/test_results/coverage-html-3.13"
+t_assert_eq "${WS}/logs/test-results/coverage-html-${IMAGE_PY}" "${_html}" "the default leg's HTML report"
+mkdir -p "${_html}" "${WS}/logs/test-results/coverage-html-3.13"
 echo "default leg" > "${_html}/index.html"; echo "default leg" > "${_xml}"
-echo "other leg" > "${WS}/docs/test_results/coverage-html-3.13/index.html"; echo "other leg" > "${WS}/docs/test_results/coverage-3.13.xml"
+echo "other leg" > "${WS}/logs/test-results/coverage-html-3.13/index.html"; echo "other leg" > "${WS}/logs/test-results/coverage-3.13.xml"
 t_assert_ok _driver ci_build_docs
 t_assert_eq "${IMAGE_PY}" "$(_legs)" "the docs venv syncs on the image interpreter too"
 t_assert_eq "default leg" "$(cat "${WS}/docs/source/_static/coverage/index.html" 2>&1)"
@@ -87,9 +101,9 @@ t_assert_contains "$(cat "${REC}")" "make html" "and the docs are built"
 t_assert_contains "$(cat "${REC}")" "docs-site check ${WS}/docs/build/html --if-chrome" "and their sidebar toggles clicked"
 
 t_case "ci_build_docs.sh also publishes the default leg's reports under names without a version"
-echo "gil report" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}.html"
-echo "ft report" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}t.html"
-echo "gil md" > "${WS}/docs/test_results/pytest-report-${IMAGE_PY}.md"
+echo "gil report" > "${WS}/logs/test-results/pytest-report-${IMAGE_PY}.html"
+echo "ft report" > "${WS}/logs/test-results/pytest-report-${IMAGE_PY}t.html"
+echo "gil md" > "${WS}/logs/test-results/pytest-report-${IMAGE_PY}.md"
 t_assert_ok _driver ci_build_docs
 t_assert_eq "gil report" "$(cat "${WS}/docs/source/_static/test_results/pytest-report.html" 2>&1)" "a docs page links one name across Python upgrades"
 t_assert_eq "ft report" "$(cat "${WS}/docs/source/_static/test_results/pytest-report-free-threaded.html" 2>&1)"

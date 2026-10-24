@@ -967,6 +967,14 @@ subnet-drift trap), so containerd-side networking works too and `nerdctl` (admin
 CPUs, no Hyper-V 2-CPU cap, no run+commit) and real per-stage layer caching. One-time host setup +
 launch: [`windows-build-lanes.md`](windows-build-lanes.md) § BuildKit/containerd lane.
 
+The driver writes stage and driver logs, its run manifest, phase marker and resource CSV to
+the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and coverage go to
+`logs/test-results/`; host diagnostics use `logs/build-logs/` or `logs/host/`. See
+[`windows-build-resources.md`](windows-build-resources.md) for the resource CSV and summary.
+The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
+`logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
+suites, the discovery floor and the exit code. Child suites only hand tallies to the parent.
+
 Run the driver from the repository root. It parses `linux/scripts/01-core/versions.env`, passes
 every version as `--build-arg` (the Dockerfile ARG defaults are only fallbacks), builds the stages
 in order and applies the tags:

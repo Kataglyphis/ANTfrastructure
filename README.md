@@ -18,10 +18,9 @@
 
 [**Docs site**](https://containerization.jonasheinle.de)
 
-Prebuilt container images and the build system that produces them: a multi-arch Linux stack (`amd64`/`arm64`/`riscv64`)
-with GCC, LLVM/Clang, Vulkan and a full media and inference layer; a slim nginx webserver; and a Windows Server Core
-build image with MSVC, CUDA and the same media stack, plus a cross-built arm64 artifact bundle. Around them sit the
-composite actions, reusable workflows, shell libraries and gates every repository of the family calls at `@develop`.
+Prebuilt Linux and Windows Server Core images provide GCC, LLVM/Clang, Vulkan, MSVC,
+media and inference libraries, nginx, and an arm64 artifact bundle. The composite
+actions, reusable workflows, shell libraries and gates serve the family at `@develop`.
 
 ## Highlights
 
@@ -40,7 +39,7 @@ nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
 
 git clone --recurse-submodules --branch develop https://github.com/Kataglyphis/ANTfrastructure.git
 cd ANTfrastructure
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 ```
 
 ```pwsh
@@ -48,6 +47,7 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 ```
 
 A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md).
+Generated logs and test reports go in ignored `logs/`; PowerShell complexity JSON stays in `out/complexity/`.
 
 ## Published images
 
@@ -97,5 +97,4 @@ This block is generated from the Dockerfiles and setup scripts by `python3 docs/
 
 ## Contributing and contact
 
-ANTfrastructure is one of the [Kataglyphis repositories](docs/repository-family.md), which share one way to contribute
-and one contact. Here: `make hooks` once, `make preflight` before a push ([AGENTS.md § Validation](AGENTS.md#validation)). Licence: MIT, see [LICENSE](LICENSE).
+Contribute with `make hooks` and `make preflight`; see [family rules](docs/repository-family.md) and [AGENTS.md § Validation](AGENTS.md#validation). Licence: MIT, see [LICENSE](LICENSE).

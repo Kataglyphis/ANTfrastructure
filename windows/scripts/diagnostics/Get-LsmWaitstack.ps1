@@ -22,7 +22,7 @@ $ErrorActionPreference = 'Stop'
 
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSiloProbe.Common.psm1') -Force -DisableNameChecking
 
-$OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir -DefaultSubPath 'out\lsm-dumps'
+$OutDir = Initialize-LsmProbeOutDir -OutDir $OutDir -DefaultSubPath 'logs\lsm-dumps'
 
 $baseWininit = @(Get-SiloWininitId)
 Write-Host "Baseline: $($baseWininit.Count) wininit (host + existing silos). Waiting for a NEW silo (max $WaitForSiloSec s)..."

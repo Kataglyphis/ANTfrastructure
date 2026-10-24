@@ -66,6 +66,7 @@ runs:
       shell: bash
       run: |
         if [ -n "${{ inputs.log-file }}" ]; then
+          mkdir -p "$(dirname "${{ inputs.log-file }}")"
           docker run --rm \
             ${{ inputs.extra-args }} \
             -v ${{ github.workspace }}:${{ inputs.workdir }} \

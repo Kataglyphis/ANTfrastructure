@@ -642,7 +642,7 @@ function Get-DiagnosticLogPath {
         [Parameter(Mandatory)][string]$Name,
         [int]$Keep = 60
     )
-    $dir = Join-Path $RepoRoot 'out\build-logs'
+    $dir = Join-Path $RepoRoot 'logs\build-logs'
     $null = New-Item -ItemType Directory -Force -Path $dir
     Limit-DiagnosticLogs -Directory $dir -Keep $Keep
     return Join-Path $dir ("{0}-{1}.log" -f $Name, (Get-Date -Format 'yyyyMMdd-HHmmss'))

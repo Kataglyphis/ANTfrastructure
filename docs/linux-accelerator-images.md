@@ -56,7 +56,7 @@ The NVIDIA variant chain inserts `Dockerfile.nvidia` as its `gpu` stage **after*
 
 ```bash
 CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
-  --target-arches amd64 --parallel-archs --log-dir ./out/build-logs/nvidia
+  --target-arches amd64 --parallel-archs --log-dir ./logs/build-logs/nvidia
 ```
 
 What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
@@ -75,7 +75,7 @@ What the variant changes, all in `build-cross-chain.sh` / `stage-defs.sh`:
   infix), so off linux/amd64 a variant may only run `--no-push` — the
   [Jetson lane below](#nvidia-on-arm64-sbsa-one-image-for-servers-and-jetson),
   which stays local. `build-cross-stage.sh` applies the same refusals.
-- **Its own state:** `chain-status-nvidia.json` and `out/build-logs/nvidia/`.
+- **Its own state:** `chain-status-nvidia.json` and `logs/build-logs/nvidia/`.
   Chains run **strictly one at a time**: a second chain refuses to start while
   the pidfile names a live one.
 - **The runtime lane budgets 180 GB** (`CROSS_RUNTIME_LANE_GB`), not 120.
@@ -410,7 +410,7 @@ Ubuntu 24.04 GStreamer 1.24 that NVIDIA targets.
 
 ```bash
 CROSS_VARIANT=nvidia bash linux/scripts/build-cross-chain.sh \
-  --target-arches amd64 --parallel-archs --log-dir ./out/build-logs/nvidia
+  --target-arches amd64 --parallel-archs --log-dir ./logs/build-logs/nvidia
 ```
 
 ### What ships
@@ -888,7 +888,7 @@ The ROCm variant chain inserts `Dockerfile.amd` as its `gpu` stage **after** the
 
 ```bash
 CROSS_VARIANT=rocm bash linux/scripts/build-cross-chain.sh \
-  --target-arches amd64 --log-dir ./out/build-logs/rocm
+  --target-arches amd64 --log-dir ./logs/build-logs/rocm
 ```
 
 Same variant rules as NVIDIA (starts at `gpu`, own state, one chain at a time),

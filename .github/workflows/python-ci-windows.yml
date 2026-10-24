@@ -67,7 +67,6 @@ on:
         default: |
           ./dist/
           ./logs/
-          ./docs/test_results/
       build-python-package:
         description: >-
           Run the container build job. DEFAULT TRUE, so every caller that

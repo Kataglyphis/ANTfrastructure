@@ -266,7 +266,7 @@ a `-<variant>` infix to every tag after `bk-windows-base` (`bk-windows-sdk-rocm`
 
 Commands, knob tables and per-stage recipes:
 [`linux-cross-builds.md` § The command reference AGENTS.md used to carry](docs/linux-cross-builds.md#the-command-reference-agentsmd-used-to-carry).
-Four of them are RULES and stay here:
+Five of them are RULES and stay here:
 
 - **Never `pkill` the orchestrator.** `bash linux/scripts/stop-cross-chain.sh` finds the run by
   its pidfile and reaps the orphaned nerdctl/buildctl subtree; a `pkill` orphans the children and
@@ -284,6 +284,12 @@ Four of them are RULES and stay here:
 
 - **`--log-dir` is not universal.** `build-cross-chain.sh` and `build-cross-stage.sh` tee each
   stage; the other three orchestrators do not take the flag, so pipe them through `tee` yourself.
+
+- **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
+  and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and
+  `logs/test-results/` for Python test reports. The directory is ignored by Git.
+  Live `chain-status*.json` stays at the repo root; requested complexity JSON stays in
+  the separate ignored `out/complexity/` directory.
 
 ### Windows Container Build
 
@@ -571,7 +577,7 @@ because `stage-defs.sh` builds the stage graph when it is sourced. It inserts th
 suffixes every tag from there on with `-<variant>` (`tag-naming.sh` `cross_variant_infix`), pushes
 nvidia's stages to the private `<repo>-stages` package (`cross_stage_repo`), starts
 at `gpu` and refuses the shared stages, keeps its own `chain-status-<variant>.json` and
-`out/build-logs/<variant>/`, and refuses what it cannot build (`stage-defs.sh`
+`logs/build-logs/<variant>/`, and refuses what it cannot build (`stage-defs.sh`
 `cross_variant_refusal`, shared with `build-cross-stage.sh`): rocm off amd64; any target that is
 not the build platform's arch (CUDA/ROCm install for the BUILD platform, so a cross target would
 ship its GPU libraries); and a PUSHING run off `CROSS_BUILD_PLATFORM=linux/amd64` (the shared
@@ -1191,6 +1197,7 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 - **PowerShell gate:** `pwsh -File windows/scripts/Invoke-Lint.ps1` +
   `pwsh -File windows/scripts/tests/Invoke-Tests.ps1` (CI: `.github/workflows/windows-x64.yml`).
+  The test runner writes each parent run's JSON summary to ignored `logs/windows-tests/`.
   The suite guards *classes* of defect, not instances: when you fix a bug here, prefer a guard for
   its class. Which classes, and why the linter exits 2 for an infrastructure failure:
   [`windows-builds.md`](docs/windows-builds.md).

@@ -33,7 +33,7 @@ ownership during cleanup. Rootless runs follow the documented uid/tar policy in
 Ownership restoration still runs if removing the consumer container times out.
 A container-removal or ownership-restoration error keeps the receipt failed.
 
-The receipt lands at `out/image-acceptance/<run-id>/receipt.json`, beside consumer logs.
+The receipt lands at `logs/image-acceptance/<run-id>/receipt.json`, beside consumer logs.
 It records the image digest, platform, clean hub SHA, exact plan hash, consumer SHAs,
 recursive submodule status, model/asset lock hashes, resolved Cargo/pub/uv locks and
 their contents, exit statuses, log hashes, pull time and check durations. Timeouts keep

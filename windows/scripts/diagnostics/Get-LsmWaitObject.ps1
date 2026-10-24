@@ -9,7 +9,7 @@
     Names the object LSM waits on during the container boot hang by enumerating the silo LSM svchost's handles.
 .DESCRIPTION
     Run elevated while containers start; attaches non-invasively (-pv) by default so it cannot kill the container.
-    Output goes to out/lsm-attach/.
+    Output goes to logs/lsm-attach/.
 #>
 [CmdletBinding()]
 param(

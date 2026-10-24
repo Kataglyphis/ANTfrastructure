@@ -15,6 +15,7 @@
 
 ## 2026-10-24 — Windows PowerShell quality and harness controls
 
+- Consolidate generated build logs, resource samples and test reports under ignored `logs/` paths on both lanes, including a durable Windows test summary; retain root chain status for live readers and the separate `out/complexity/` reports.
 - Move generated complexity JSON results into the Git-ignored `out/complexity/` folder; keep `-JsonPath` optional for local snapshots.
 - Add an AST-based Windows PowerShell complexity gate to Windows x64 CI, enforcing 15/5/80 across the full tracked tree; share its parser with the test harness and mutation-test its metrics.
 - Refactor Windows build, host, diagnostic and test code until the strict PowerShell scan is clear; lower 25 measured duplication budgets and remove 30 stale entries. The owner-approved budget-12 syntax exception closes the last PowerShell duplication finding without raising the threshold or narrowing coverage.

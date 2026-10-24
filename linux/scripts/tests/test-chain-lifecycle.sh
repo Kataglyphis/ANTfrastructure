@@ -91,14 +91,14 @@ rm -f "${workdir}/leaf.pid"
 # STALE-LOG: build-cross-chain.sh runs main at the bottom, so its shipped text is evaluated piece by piece
 CHAIN_SH="${TESTS_DIR}/../build-cross-chain.sh"
 
-t_case "LOG_DIR defaults to out/build-logs so both guards are armed without --log-dir"
+t_case "LOG_DIR defaults to logs/build-logs so both guards are armed without --log-dir"
 # An empty default leaves the truncate marker and the archiver inert without --log-dir.
-t_assert_eq "/repo/out/build-logs" "$(
+t_assert_eq "/repo/logs/build-logs" "$(
   unset LOG_DIR
   REPO_ROOT=/repo
   eval "$(grep -m1 '^LOG_DIR=' "${CHAIN_SH}")"
   printf '%s' "${LOG_DIR}"
-)" "the default must land in the documented out/build-logs"
+)" "the default must land in the documented logs/build-logs"
 
 t_case "an explicit LOG_DIR still wins over the default"
 t_assert_eq "/custom/logs" "$(
@@ -159,11 +159,11 @@ t_assert_fails test -d "${LOG_DIR}/archive"
 eval "$(sed -n '/^_chain_prepare_log_dir() {$/,/^}$/p' "${CHAIN_SH}")"
 REPO_ROOT="${TESTS_DIR}/../../.."
 
-t_case "preparing the log dir creates it (fresh clone has no out/)"
-LOG_DIR="${workdir}/fresh/out/build-logs"
+t_case "preparing the log dir creates it (fresh clone has no logs/)"
+LOG_DIR="${workdir}/fresh/logs/build-logs"
 _chain_prepare_log_dir
 t_assert_ok test -d "${LOG_DIR}"
-t_assert_eq "${workdir}/fresh/out/build-logs" "${LOG_DIR}" "a writable dir must be kept"
+t_assert_eq "${workdir}/fresh/logs/build-logs" "${LOG_DIR}" "a writable dir must be kept"
 
 t_case "an uncreatable log dir disables logging instead of failing the run"
 t_needs "chmod mode bits (Git Bash derives them from the file)" t_posix_modes

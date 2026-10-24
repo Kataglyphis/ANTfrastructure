@@ -6,7 +6,12 @@
 
 <a id="build-logging"></a>
 
-> **Build logging:** `build-cross-chain.sh` and `build-cross-stage.sh` accept `--log-dir ./out/build-logs` to write per-stage build logs. The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`, `build-runtime-artifacts.sh`) do not — capture their output, and any manual `nerdctl build`, with `2>&1 | tee ./out/build-logs/<name>.log`. The standard location for build logs is `out/build-logs/`.
+> **Build logging:** `build-cross-chain.sh` defaults to `logs/build-logs/`; it and
+> `build-cross-stage.sh` accept `--log-dir ./logs/build-logs` for per-stage logs.
+> The other orchestrators (`build-cross-compiler.sh`, `build-runtime-manifest.sh`,
+> `build-runtime-artifacts.sh`) do not accept it. Create the directory and capture
+> their output, or any manual `nerdctl build`, with
+> `2>&1 | tee ./logs/build-logs/<name>.log`.
 
 ## Cross-Compiler builder (nerdctl, amd64 host; amd64/arm64/riscv64 targets)
 
@@ -186,7 +191,7 @@ android are multi-GB) — transient, deleted at chain exit.
 # Build and push every cross stage with digest-pinned handoffs; stop before the
 # runtime stage if you do not want to touch the published manifest yet:
 bash linux/scripts/build-cross-chain.sh --target-arches amd64 \
-  --to-stage android --log-dir ./out/build-logs
+  --to-stage android --log-dir ./logs/build-logs
 
 # Runtime lane: build+push+smoke the per-arch wrappers WITHOUT recreating the
 # multi-arch :latest manifest (so a single-arch run cannot clobber it):
@@ -229,7 +234,7 @@ Print the full stage graph with tag names and parent chains without building:
 
 ```bash
 # Via the orchestrator:
-./linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+./linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Via the standalone verifier:
 bash linux/scripts/verify-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64
@@ -271,7 +276,7 @@ So a rebuild of `media` followed by a build of `android` can quietly use the old
 Partial runs are supported, e.g. resume from media for one arch:
 
 ```bash
-./linux/scripts/build-cross-chain.sh --target-arches arm64 --from-stage media --to-stage android --log-dir ./out/build-logs
+./linux/scripts/build-cross-chain.sh --target-arches arm64 --from-stage media --to-stage android --log-dir ./logs/build-logs
 ```
 
 When resuming mid-chain, the required upstream digest is resolved from the parent
@@ -410,16 +415,18 @@ what the check tells you to do):
 ## The command reference AGENTS.md used to carry
 
 Moved here on 2026-09-15, unedited except for this heading and the relative
-links. AGENTS.md keeps the four items that are RULES (never `pkill` the
+links. AGENTS.md keeps five items that are RULES (never `pkill` the
 orchestrator, verify the shipped bytes, the closure freeze, `--log-dir` is not
-universal); everything below is reference, which is what this page is for.
+universal, and generated run artifacts belong under `logs/`); everything below
+is reference, which is what this page is for.
 
-**Build logs.** `--log-dir ./out/build-logs` is accepted by
+**Build logs.** `--log-dir ./logs/build-logs` is accepted by
 `build-cross-chain.sh` and `build-cross-stage.sh` — the two that tee each stage
-build (the Makefile wraps them). The other three orchestrators
+build (the Makefile wraps them); `build-cross-chain.sh` uses that directory by
+default. The other three orchestrators
 (`build-cross-compiler.sh`, `build-runtime-manifest.sh`,
 `build-runtime-artifacts.sh`) do **not** take it: pipe them through
-`2>&1 | tee ./out/build-logs/<name>.log`.
+`2>&1 | tee ./logs/build-logs/<name>.log` after creating the directory.
 
 **Stopping a chain.** Use `bash linux/scripts/stop-cross-chain.sh` — it finds
 the run via its pidfile (falling back to a bracket-trick pgrep) and reaps the
@@ -451,7 +458,7 @@ Most common build commands:
 
 ```bash
 # Full cross-build chain (base -> compiler -> sdk -> media -> android -> runtime)
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Compiler image only (amd64-hosted, contains cross toolchains for all arches)
 ./linux/scripts/build-cross-compiler.sh --cross-targets amd64,arm64,riscv64
@@ -462,9 +469,9 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 # Single cross stage — the canonical way to rebuild one stage for one arch.
 # Handles parent digest pinning, build-arg assembly, log capture, and push.
 # See docs/linux-cross-builds.md § "Recommended: digest-pinned orchestrator".
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
-bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./out/build-logs
-bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./logs/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch amd64 --push --log-dir ./logs/build-logs
+bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-dir ./logs/build-logs
 
 # --no-push FULL CHAINS are SAFE since 2026-08-30 (local OCI-layout handoff):
 # every stage built locally is exported and handed to the child via
@@ -473,7 +480,7 @@ bash linux/scripts/build-cross-stage.sh --stage media --arch arm64 --push --log-
 # after base) are still REFUSED — the parent prefix was not built this run.
 # CROSS_LOCAL_CONTEXT_HANDOFF=0 reverts to the old refusal; CROSS_NO_PUSH_FORCE=1
 # bypasses. Single-stage validation stays supported:
-bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-push --log-dir ./logs/build-logs
 # Correct full-chain PUSH flow: push mode to android, then the runtime lane with
 # --skip-manifest so a partial-arch run cannot clobber the public manifest —
 # see docs/linux-cross-builds.md § "The flow that is correct today".
@@ -484,11 +491,11 @@ bash linux/scripts/build-cross-chain.sh --only media --target-arches amd64 --no-
 # (stage-defs.sh) — a launch-time value that does not show up as a
 # --build-arg in the dry-run command line is DROPPED and the sequential path
 # runs instead. Validated on a real compiler build 2026-08-30.
-GCC_PARALLEL_TARGETS=1 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+GCC_PARALLEL_TARGETS=1 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Verify chain freshness without building (real FRESH/STALE verdicts for images
 # that carry the org.kataglyphis.parent-digest ancestry annotation)
-bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Partial runs (--from-stage after base) auto-assert the ancestor chain against
 # the registry and REFUSE to build on a stale ancestor. Deliberate override:
@@ -498,10 +505,10 @@ bash linux/scripts/build-cross-chain.sh --verify-chain --target-arches amd64,arm
 bash linux/scripts/verify-cross-chain.sh --target-arches amd64,arm64,riscv64
 
 # Print the full stage graph with tag names (no builds)
-bash linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --describe-chain --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Dry-run: print all build commands without executing
-bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --dry-run --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Cheap packaging validation before publish (see docs/linux-cross-builds.md)
 # Uses the `wrapper-smoke` target in Dockerfile.package
@@ -582,7 +589,7 @@ mkdir -p "${LOG_DIR}"
 For individual SDK artifact builds, use `build-cross-stage.sh`:
 ```bash
 for arch in amd64 arm64 riscv64; do
-  bash linux/scripts/build-cross-stage.sh --stage sdk --arch "${arch}" --push --log-dir ./out/build-logs
+  bash linux/scripts/build-cross-stage.sh --stage sdk --arch "${arch}" --push --log-dir ./logs/build-logs
 done
 ```
 
@@ -935,7 +942,7 @@ Result at the time (previously, on the LLVM 22 pin): `gcc 16.2.0`, `clang 22.1.8
 ### Local wrapper smoke validation
 
 ```bash
-mkdir -p ./out/build-logs && \
+mkdir -p ./logs/build-logs && \
 nerdctl build --platform linux/amd64 \
   -t local/kataglyphis:latest-wrapper-smoke-amd64 \
   -f linux/Dockerfile.package \
@@ -950,7 +957,7 @@ nerdctl build --platform linux/amd64 \
   --build-arg USE_FAST_UBUNTU_MIRROR=true \
   --build-arg FAST_UBUNTU_MIRROR_URL=http://de.archive.ubuntu.com/ubuntu/ \
   --build-arg FAST_UBUNTU_PORTS_MIRROR_URL=http://ports.ubuntu.com/ubuntu-ports/ \
-  . 2>&1 | tee ./out/build-logs/wrapper-smoke.log
+  . 2>&1 | tee ./logs/build-logs/wrapper-smoke.log
 ```
 
 ## Centralized Version Management
@@ -1666,10 +1673,10 @@ Resuming mid-chain, building one stage, and the parallel-arch knobs.
 
 ```bash
 # Resume mid-chain (e.g., after rebuilding compiler)
-bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,arm64,riscv64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --from-stage sdk --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
 
 # Build only one stage for one architecture
-bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log-dir ./logs/build-logs
 
 # Build per-arch stages in parallel (faster on multi-core machines).
 # PAR4 (VALIDATED through wave-4, 2026-08-21): cross_build_mem_divisor
@@ -1679,10 +1686,10 @@ bash linux/scripts/build-cross-chain.sh --only media --target-arches arm64 --log
 # parallel media rounds: ONE isolated OOM kill, absorbed by retries. If a
 # lane OOMs repeatedly raise PAR_INTRA_STEP_BUDGET=3 or use
 # PARALLEL_STAGES=sdk,android. Details: docs/build-parallelism-memory-tuning.md.
-bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./out/build-logs
+bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --parallel-archs --log-dir ./logs/build-logs
 
 # Build a single cross stage standalone (with digest-pinned parent when --push)
-bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./out/build-logs
+bash linux/scripts/build-cross-stage.sh --stage sdk --arch arm64 --push --log-dir ./logs/build-logs
 ```
 
 ### A variant chain starts at `gpu` — and inherits the shared `sdk`

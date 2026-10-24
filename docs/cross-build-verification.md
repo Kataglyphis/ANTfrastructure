@@ -1481,7 +1481,7 @@ snapshot's cost lands inside the RUN vertex (8.2 s of a 27 s wait in the 2026-09
 BuildKit probe on Rancher). Compare the `wheels-source` vertex with the RUN vertex's start instead:
 
 ```bash
-LOG=out/build-logs/wheels-ab-<mode>.log   # the tee'd transcript: the runtime lane writes no stage log
+LOG=logs/build-logs/wheels-ab-<mode>.log   # the tee'd transcript: the runtime lane writes no stage log
 grep -nE '\[runtime-timing\]|\[wheels\] |\[torch-run\] start|\[torch-venv(:timing)?\] ' "$LOG"
 grep -nE '^#[0-9]+ \[wheels-source 1/1\] FROM' "$LOG"   # its vertex id N, per build
 grep -nE '^#N (resolve|sha256:|extracting|DONE|CACHED)' "$LOG"
@@ -1519,10 +1519,11 @@ the suspected eviction, runs only there. Both modes read the same published andr
 and nothing is published:
 
 ```bash
+mkdir -p logs/build-logs
 for m in image export; do
   CROSS_LOCAL_CONTEXT_HANDOFF=0 RUNTIME_WHEELS_SOURCE=$m \
     bash linux/scripts/build-cross-chain.sh --only runtime --no-push \
-      --target-arches amd64,arm64,riscv64 2>&1 | tee "out/build-logs/wheels-ab-$m.log"
+      --target-arches amd64,arm64,riscv64 2>&1 | tee "logs/build-logs/wheels-ab-$m.log"
 done
 ```
 
@@ -1542,10 +1543,11 @@ stages, seals and mounts the wheelhouse and that both modes print one digest, ne
 judge the wait:
 
 ```bash
+mkdir -p logs/build-logs
 for m in image export; do
   RUNTIME_WHEELS_SOURCE=$m bash linux/scripts/build-runtime-manifest.sh \
     --image ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest \
-    --target-arches amd64,arm64,riscv64 --skip-manifest 2>&1 | tee "out/build-logs/wheels-mech-$m.log"
+    --target-arches amd64,arm64,riscv64 --skip-manifest 2>&1 | tee "logs/build-logs/wheels-mech-$m.log"
 done
 ```
 

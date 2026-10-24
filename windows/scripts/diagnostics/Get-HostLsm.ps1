@@ -9,7 +9,7 @@
     Snapshots the host's Local Session Manager idle and during a container hang, in case a wedged host broker is the cause.
 .DESCRIPTION
     Attaches non-invasively only (deliberately no -Invasive), so it cannot take down a process the session stack needs.
-    Findings go to out/lsm-attach/.
+    Findings go to logs/lsm-attach/.
 #>
 [CmdletBinding()]
 param(

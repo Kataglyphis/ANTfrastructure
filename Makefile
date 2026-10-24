@@ -4,7 +4,7 @@ ARCHES  ?= amd64,arm64,riscv64
 STAGE   ?= base
 REPO    ?= ghcr.io/kataglyphis/kataglyphis_beschleuniger
 # Must equal build-cross-chain.sh's default, or make and a bare script call log to different places.
-LOG_DIR ?= out/build-logs
+LOG_DIR ?= logs/build-logs
 
 SCRIPTS := linux/scripts
 

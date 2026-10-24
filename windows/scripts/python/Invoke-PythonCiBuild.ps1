@@ -102,7 +102,7 @@ function Invoke-TestLeg([string]$Version, [string]$Extras) {
         $env:UV_SYNC_EXTRAS = $Extras
         try { Sync-UvProjectDependencies -UseLocked:(Test-Path -LiteralPath 'uv.lock') @uv }
         finally { Remove-Item Env:UV_SYNC_EXTRAS -ErrorAction SilentlyContinue }
-        $out = 'docs/test_results'
+        $out = 'logs/test-results'
         Invoke-BuildExternal -Context $context -File 'uv' -Parameters (@('run', 'pytest') + @(Split-PythonCiList -Value $TestPaths) + @(
                 '-v', "--cov=$PackageName", '--cov-report=term-missing', "--cov-report=html:$out/coverage-html-$Version",
                 "--cov-report=xml:$out/coverage-$Version.xml", "--junitxml=$out/report-$Version.xml",
@@ -111,7 +111,7 @@ function Invoke-TestLeg([string]$Version, [string]$Extras) {
         Invoke-BenchDemo 'demo_cprofile.py' @('python', 'bench/demo_cprofile.py')
         Invoke-BenchDemo 'demo_line_profiler.py' @('python', 'bench/demo_line_profiler.py')
         if ($EnablePySpy) {
-            Invoke-BenchDemo 'py-spy profiling' @('py-spy', 'record', '--rate', '200', '--duration', '45', '-o', 'profile.svg', '--', 'python', 'bench/demo_py_spy.py')
+            Invoke-BenchDemo 'py-spy profiling' @('py-spy', 'record', '--rate', '200', '--duration', '45', '-o', "$out/profile.svg", '--', 'python', 'bench/demo_py_spy.py')
         }
         Invoke-BenchDemo 'benchmark tests' @('pytest', 'bench/demo_pytest_benchmark.py')
     } finally {
@@ -145,7 +145,7 @@ function Invoke-PythonCiLegs {
 try {
     try {
         Write-BuildLog -Context $context -Message "=== Windows build/test pipeline: $PackageName in $repoRoot ==="
-        New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'docs\test_results') | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'logs\test-results') | Out-Null
         Invoke-PythonCiLegs -Context $context -RepoRoot $repoRoot -PythonVersions $PythonVersions -TestExtras $TestExtras -FreeThreadedExtras $FreeThreadedExtras
 
         Invoke-BuildStep -Context $context -StepName 'Static Analysis' -Critical -Script {

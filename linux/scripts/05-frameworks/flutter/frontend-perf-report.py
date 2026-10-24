@@ -5,6 +5,10 @@ import pathlib
 import statistics
 import sys
 
+DEFAULT_CURRENT = pathlib.Path("logs/perf/frontend.json")
+DEFAULT_HISTORY = pathlib.Path("logs/perf/baseline")
+LEGACY_CURRENT = pathlib.Path("out/perf/frontend.json")
+
 # FrameTimingSummarizer's keys that say most; its raster times stay 0 under Xvfb's software rendering.
 METRICS = [
     ("frame_count", "frames"),
@@ -55,13 +59,22 @@ def judge(name, key, value, earlier, args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("current", nargs="?", default="out/perf/frontend.json")
-    parser.add_argument("history", nargs="?", default=".perf-baseline", help="a directory of earlier runs' JSON, or one file")
+    parser.add_argument("current", nargs="?", default=str(DEFAULT_CURRENT))
+    parser.add_argument("history", nargs="?", default=str(DEFAULT_HISTORY), help="a directory of earlier runs' JSON, or one file")
     parser.add_argument("--warn", type=float, default=0.25, help="slower than the median by this fraction warns")
     parser.add_argument("--fail", type=float, default=1.0, help="slower than the median by this fraction fails (gated metrics)")
     args = parser.parse_args()
 
-    current = load(args.current)
+    current_path = pathlib.Path(args.current)
+    if (
+        current_path == DEFAULT_CURRENT
+        and not current_path.exists()
+        and LEGACY_CURRENT.is_file()
+    ):
+        current_path.parent.mkdir(parents=True, exist_ok=True)
+        LEGACY_CURRENT.replace(current_path)
+
+    current = load(current_path)
     runs = [r for r in history(args.history) if r]
     if not current:
         print("No frame timings found.")

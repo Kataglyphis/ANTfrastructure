@@ -57,24 +57,24 @@ jobs:
       - name: Clone every declared consumer and grade the entry points
         run: |
           python3 linux/scripts/verify_consumer_inventory.py \
-            --report out/consumer-inventory.md
+            --report logs/reports/consumer-inventory.md
 
       # The report is written before the verdict, so a red run still hands it over.
       - name: Publish the report to the run summary
         if: always()
         run: |
-          if [ -f out/consumer-inventory.md ]; then
-            cat out/consumer-inventory.md >> "$GITHUB_STEP_SUMMARY"
+          if [ -f logs/reports/consumer-inventory.md ]; then
+            cat logs/reports/consumer-inventory.md >> "$GITHUB_STEP_SUMMARY"
           else
             echo "::error::no report was produced - the run failed before any consumer was graded"
           fi
 
       - name: Upload the report
-        if: always() && hashFiles('out/consumer-inventory.md') != ''
+        if: always() && hashFiles('logs/reports/consumer-inventory.md') != ''
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: consumer-inventory
-          path: out/consumer-inventory.md
+          path: logs/reports/consumer-inventory.md
           if-no-files-found: error
           retention-days: 90
 
@@ -86,7 +86,7 @@ jobs:
           script: |
             const fs = require('fs');
             const title = 'consumer-inventory: dangling hub references';
-            const path = 'out/consumer-inventory.md';
+            const path = 'logs/reports/consumer-inventory.md';
             const report = fs.existsSync(path)
               ? fs.readFileSync(path, 'utf8')
               : '_No report was produced - the run failed before any consumer was graded._';

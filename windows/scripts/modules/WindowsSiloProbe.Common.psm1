@@ -63,14 +63,14 @@ function Grant-SiloProbeReadAccess {
 .PARAMETER OutDir
     Caller's -OutDir; empty resolves the repo default from this module's location, not the working directory.
 .PARAMETER DefaultSubPath
-    Repo-relative default: out\lsm-attach for the attach probes, out\lsm-dumps for the dump probe.
+    Repo-relative default: logs\lsm-attach for the attach probes, logs\lsm-dumps for the dump probe.
 .OUTPUTS
     [string] The directory, which exists on return.
 #>
 function Initialize-LsmProbeOutDir {
     param(
         [string]$OutDir = '',
-        [string]$DefaultSubPath = 'out\lsm-attach'
+        [string]$DefaultSubPath = 'logs\lsm-attach'
     )
     if (-not $OutDir) {
         # <repo>\windows\scripts\modules -> <repo>

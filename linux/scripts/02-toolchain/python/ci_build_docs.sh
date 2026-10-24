@@ -25,7 +25,7 @@ uv_sync_project
 cp "$WORKSPACE_ROOT/README.md" "$WORKSPACE_ROOT/docs/source/README.md" 2>/dev/null || true
 cp "$WORKSPACE_ROOT/CHANGELOG.md" "$WORKSPACE_ROOT/docs/source/CHANGELOG.md" 2>/dev/null || true
 
-SRC="$WORKSPACE_ROOT/docs/test_results"
+SRC="$WORKSPACE_ROOT/logs/test-results"
 STATIC_DIR="$WORKSPACE_ROOT/docs/source/_static"
 COVERAGE_DST=$STATIC_DIR/coverage
 TEST_RESULTS_DST=$STATIC_DIR/test_results

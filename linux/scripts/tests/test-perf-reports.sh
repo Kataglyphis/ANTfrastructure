@@ -4,7 +4,7 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 flutter_dir="$(cd "${TESTS_DIR}/.." && pwd)/05-frameworks/flutter"
-report="${flutter_dir}/frontend-perf-report.py"
+report="${1:-${flutter_dir}/frontend-perf-report.py}"
 summary="${flutter_dir}/flutter-trace-summary.py"
 work="$(mktemp -d)"
 trap 'rm -rf "${work}"' EXIT
@@ -74,6 +74,36 @@ t_assert_grep "${work}/out" '^\| `start` \| 3 \| 14\.0 \(\+40 %\)'
 report "${work}/missing.json"
 t_case "no timings: says so"
 t_assert_grep "${work}/out" '^No frame timings found\.$'
+
+mkdir -p "${work}/logs/perf"
+cp "${work}/same.json" "${work}/logs/perf/frontend.json"
+( cd "${work}" && report )
+t_case "a default report reads timings from logs/perf"
+t_assert_grep "${work}/out" '^\| `start` \| 3 \| 11\.0 \| 6\.0 \| 20\.0 \| 1 \| 0 \|$'
+
+mkdir -p "${work}/logs/perf/baseline"
+cp "${work}/history/00000001-a.json" "${work}/logs/perf/baseline/"
+( cd "${work}" && report )
+t_case "a default report reads baseline history from logs/perf"
+t_assert_grep "${work}/out" '^Against the median of 1 earlier run\(s\)\.$'
+
+legacy_case="${work}/legacy-case"
+mkdir -p "${legacy_case}/out/perf"
+timings "${legacy_case}/out/perf/frontend.json" 17.0 20.0
+( cd "${legacy_case}" && report )
+t_case "an older consumer's default timing file moves to logs before grading"
+t_assert_grep "${work}/out" '^\| `start` \| 3 \| 17\.0 \| 6\.0 \| 20\.0 \| 1 \| 0 \|$'
+t_assert_ok test -f "${legacy_case}/logs/perf/frontend.json"
+t_assert_fails test -e "${legacy_case}/out/perf/frontend.json"
+
+rm -f "${legacy_case}/logs/perf/frontend.json"
+timings "${legacy_case}/out/perf/frontend.json" 31.0 20.0
+timings "${work}/custom.json" 8.0 20.0
+( cd "${legacy_case}" && report "${work}/custom.json" )
+t_case "an explicit timing file is honored without moving the older default"
+t_assert_grep "${work}/out" '^\| `start` \| 3 \| 8\.0 \| 6\.0 \| 20\.0 \| 1 \| 0 \|$'
+t_assert_ok test -f "${legacy_case}/out/perf/frontend.json"
+t_assert_fails test -e "${legacy_case}/logs/perf/frontend.json"
 
 # Two UI frames; the slow one holds a 900 ms widget build and a zero-length span, whose B and E share a timestamp.
 cat > "${work}/trace.json" <<'EOF'

@@ -122,7 +122,7 @@ Describe 'Invoke-BuildCodeQL orchestration' {
             Assert-Match '"Release win"' $command 'forwarded value stays quoted'
             Assert-False ($command -match '-CodeQL(?:\s|$)') 'the inner build must not recurse into CodeQL'
             Assert-Equal 2 $state.Filters.Count 'both SARIF files are filtered'
-            Assert-True (Test-Path -LiteralPath (Join-Path $dir 'codeql-results')) 'result directory exists'
+            Assert-True (Test-Path -LiteralPath (Join-Path $dir 'logs\codeql-results')) 'result directory exists'
         }
     }
 

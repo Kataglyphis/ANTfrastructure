@@ -125,7 +125,7 @@ t_assert_eq "1" "$(_bandit_argv | tr ' ' '\n' | grep -c -x -- '-r' || true)"
 # BANDIT_EXCLUDES lets a consumer replace the -x list instead of hard-coding it in its own driver.
 t_case "BANDIT_EXCLUDES defaults to the literal it replaced"
 t_assert_contains "$(_bandit_argv)" \
-  "-x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results" \
+  "-x tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,logs/test-results" \
   "the default must be character-for-character what the gate line used to spell, or adding the knob moved the gate"
 
 t_case "BANDIT_EXCLUDES REPLACES the list, and reaches bandit as one -x argument"

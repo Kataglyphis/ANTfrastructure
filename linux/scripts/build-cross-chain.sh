@@ -17,7 +17,7 @@ CROSS_TARGETS="${CROSS_TARGETS:-${CROSS_DEFAULT_ARCHES}}"
 # A GPU wrapper carries the CUDA/ROCm runtime and GPU torch wheels, so budget more than the CPU 120G.
 [ -z "${CROSS_GPU_VARIANT:-}" ] || : "${CROSS_RUNTIME_LANE_GB:=180}"
 # A variant logs apart: stage log names repeat across chains, and archiving would move the default's history.
-LOG_DIR="${LOG_DIR:-${REPO_ROOT}/out/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}}"
+LOG_DIR="${LOG_DIR:-${REPO_ROOT}/logs/build-logs${CROSS_GPU_VARIANT:+/${CROSS_GPU_VARIANT}}}"
 
 # A variant starts at gpu: base, compiler and sdk are shared, and only the default chain re-pushes them.
 FROM_STAGE="base"
@@ -94,7 +94,7 @@ EOF
   --only STAGE             Shorthand for --from-stage STAGE --to-stage STAGE
   --vulkan-version VER     Vulkan SDK version for the sdk stage
   --log-dir DIR            Tee each stage build into DIR/<stage>[-<arch>].log
-                           (default out/build-logs; the empty string disables
+                           (default logs/build-logs; the empty string disables
                            per-stage logs and their per-run truncate/archive).
                            The previous run's stage logs are moved to
                            DIR/archive/<run-id>/ at start; only the newest
@@ -680,12 +680,12 @@ _chain_prepare_log_dir() {
   [ -n "${LOG_DIR:-}" ] || return 0          # `--log-dir ""` = opt out
   # A variant in the default log dir would archive the default chain's history as its own.
   if [ -n "${CROSS_GPU_VARIANT:-}" ] \
-     && [ "$(realpath -m "${LOG_DIR}")" = "$(realpath -m "${REPO_ROOT}/out/build-logs")" ]; then
+     && [ "$(realpath -m "${LOG_DIR}")" = "$(realpath -m "${REPO_ROOT}/logs/build-logs")" ]; then
     LOG_DIR="${LOG_DIR%/}/${CROSS_GPU_VARIANT:-}"
     log "variant ${CROSS_GPU_VARIANT:-}: per-stage logs go to its own ${LOG_DIR}"
   fi
   if ! mkdir -p "${LOG_DIR}" 2>/dev/null || [ ! -w "${LOG_DIR}" ]; then
-    warn "log dir ${LOG_DIR} is not writable — per-stage logs and their per-run archiving are disabled; the resource-monitor CSV falls back to ${REPO_ROOT}"
+    warn "log dir ${LOG_DIR} is not writable — per-stage logs and their per-run archiving are disabled; the resource-monitor CSV falls back to ${REPO_ROOT}/logs"
     LOG_DIR=""
     return 0
   fi

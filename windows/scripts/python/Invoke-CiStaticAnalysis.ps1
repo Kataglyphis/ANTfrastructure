@@ -25,7 +25,7 @@ Param(
     [string]$RepoRoot = '',
     [string[]]$ExtraPaths = @(),
     # Must equal the Linux twin's BANDIT_EXCLUDES default character for character.
-    [string]$BanditExcludes = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results'
+    [string]$BanditExcludes = 'tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,logs/test-results'
 )
 
 $ErrorActionPreference = "Stop"

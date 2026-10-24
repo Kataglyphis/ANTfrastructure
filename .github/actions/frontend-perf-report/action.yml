@@ -13,7 +13,7 @@ inputs:
   timings:
     description: 'The run''s timings, as the app''s test_driver wrote them.'
     required: false
-    default: 'out/perf/frontend.json'
+    default: 'logs/perf/frontend.json'
   keep:
     description: 'How many default-branch runs the history holds.'
     required: false
@@ -25,7 +25,7 @@ runs:
     - name: Restore the frontend performance history
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .perf-baseline
+        path: logs/perf/baseline
         key: ${{ inputs.key }}-${{ github.sha }}
         restore-keys: ${{ inputs.key }}-
 
@@ -34,7 +34,12 @@ runs:
       env:
         TIMINGS: ${{ inputs.timings }}
         REPORT: ${{ github.action_path }}/../../../linux/scripts/05-frameworks/flutter/frontend-perf-report.py
-      run: python3 "${REPORT}" "${TIMINGS}" .perf-baseline >> "${GITHUB_STEP_SUMMARY}"
+      run: |
+        if [ -d .perf-baseline ] && [ ! -e logs/perf/baseline ]; then
+          mkdir -p logs/perf
+          mv .perf-baseline logs/perf/baseline
+        fi
+        python3 "${REPORT}" "${TIMINGS}" logs/perf/baseline >> "${GITHUB_STEP_SUMMARY}"
 
     # After a passing report only: a failed run must not pull the median towards its own slowdown.
     - name: Keep this run as history
@@ -45,13 +50,13 @@ runs:
         TIMINGS: ${{ inputs.timings }}
         KEEP: ${{ inputs.keep }}
       run: |
-        mkdir -p .perf-baseline
-        cp "${TIMINGS}" ".perf-baseline/$(printf '%08d' "${GITHUB_RUN_NUMBER}")-${GITHUB_SHA::7}.json"
-        find .perf-baseline -name '*.json' | sort | head -n "-${KEEP}" | xargs -r rm -f
+        mkdir -p logs/perf/baseline
+        cp "${TIMINGS}" "logs/perf/baseline/$(printf '%08d' "${GITHUB_RUN_NUMBER}")-${GITHUB_SHA::7}.json"
+        find logs/perf/baseline -name '*.json' | sort | head -n "-${KEEP}" | xargs -r rm -f
 
     - name: Save the frontend performance history
       if: steps.keep.outcome == 'success'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: .perf-baseline
+        path: logs/perf/baseline
         key: ${{ inputs.key }}-${{ github.sha }}

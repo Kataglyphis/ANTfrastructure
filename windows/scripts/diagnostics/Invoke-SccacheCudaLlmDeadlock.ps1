@@ -18,7 +18,7 @@ param(
 $ErrorActionPreference = 'Stop'
 # Shared assets sit one level up in the repo layout and beside the script in the flat container mounts.
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
-if ([string]::IsNullOrWhiteSpace($OutDir)) { $OutDir = Join-Path $scriptAssetRoot '..\..\out\sccache-repro' }
+if ([string]::IsNullOrWhiteSpace($OutDir)) { $OutDir = Join-Path $scriptAssetRoot '..\..\logs\sccache-repro' }
 $repoRoot = Resolve-Path (Join-Path $scriptAssetRoot '..\..')
 
 Write-Host '=== sccache CUDA-LLM deadlock repro (mozilla/sccache#2808) ===' -ForegroundColor Cyan

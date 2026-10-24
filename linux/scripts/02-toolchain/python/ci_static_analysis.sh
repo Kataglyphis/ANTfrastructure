@@ -27,7 +27,7 @@ if [ "${#EXTRA_PATHS[@]}" -gt 0 ]; then
   info "Extra analysis paths: ${EXTRA_PATHS[*]}"
 fi
 # Setting BANDIT_EXCLUDES replaces this default list rather than extending it.
-BANDIT_EXCLUDES="${BANDIT_EXCLUDES:-tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,docs/test_results}"
+BANDIT_EXCLUDES="${BANDIT_EXCLUDES:-tests,.venv,.venv_static_analysis,ExternalLib,third_party,archive,logs/test-results}"
 
 VENV_DIR="$WORKSPACE_ROOT/.venv_static_analysis"
 

@@ -426,11 +426,11 @@ for pair in x64:x86_64 arm64:aarch64; do
 done
 
 w="${a}/python-package-windows-source-and-binaries"
-mkdir -p "${w}/dist" "${w}/docs/test_results" "${w}/logs" "${a}/packages-windows-arm64-wheels"
+mkdir -p "${w}/dist" "${w}/logs/test-results" "${a}/packages-windows-arm64-wheels"
 for abi in cp314-cp314 cp314-cp314t; do printf 'win' > "${w}/dist/${p}-${abi}-win_amd64.whl"; done
 printf 'win' > "${w}/dist/${p}-py3-none-any.whl"
 printf 'win' > "${w}/dist/${p}.tar.gz"
-printf 'cov' > "${w}/docs/test_results/coverage.tar.gz"
+printf 'cov' > "${w}/logs/test-results/coverage.tar.gz"
 printf 'log' > "${w}/logs/build-windows.whl"
 for abi in cp314-cp314 cp314-cp314t; do printf 'arm' > "${a}/packages-windows-arm64-wheels/${p}-${abi}-win_arm64.whl"; done
 

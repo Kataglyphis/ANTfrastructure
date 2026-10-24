@@ -11,7 +11,8 @@ param(
     # Internal: the one test file a child runs.
     [string]$Only,
     # Internal: where a child writes its tallies for the parent.
-    [string]$ResultFile
+    [string]$ResultFile,
+    [string]$SummaryFile = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -24,9 +25,25 @@ if ($Only) { $testFiles = @($testFiles | Where-Object { $_.Name -eq $Only }) }
 # ~1% below the measured count: raise it when suites grow, never lower it to make a red run green.
 $minTests = 2442
 
+function New-TestTally {
+    param([int]$Total, [int]$Passed, [int]$PesterFailures, [object[]]$Failed = @(), [string[]]$Skipped = @())
+    return [ordered]@{
+        Total = $Total
+        Passed = $Passed
+        PesterFailures = $PesterFailures
+        Failed = @($Failed | ForEach-Object { [pscustomobject]@{ Group = $_.Group; Name = $_.Name; Err = $_.Err } })
+        Skipped = @($Skipped)
+    }
+}
+
 # Prints the one summary and returns the exit code: either path's tallies, the sum of every child's on the parallel one.
 function Write-TestSummary {
-    param([int]$Total, [int]$Passed, [int]$PesterFailures, [object[]]$Failed = @(), [string[]]$Skipped = @(), [string[]]$Broken = @())
+    param([Parameter(Mandatory)][Collections.IDictionary]$Tally, [string[]]$Broken = @(), [string]$SummaryFile = '')
+    $Total = [int]$Tally.Total
+    $Passed = [int]$Tally.Passed
+    $PesterFailures = [int]$Tally.PesterFailures
+    $Failed = @($Tally.Failed)
+    $Skipped = @($Tally.Skipped)
     $failCount = @($Failed).Count + $PesterFailures
     Write-Host ''
     Write-Host ('=' * 60)
@@ -51,10 +68,23 @@ function Write-TestSummary {
     }
     if ($Total -lt $minTests) {
         Write-Host "  FLOOR: only $Total test(s) ran, expected at least $minTests -- suites were not discovered (glob, working directory, or a moved suite dir), not 'nothing to do'." -ForegroundColor Red
-        return 1
     }
-    if ($failCount -gt 0 -or @($Skipped).Count -gt 0 -or @($Broken).Count -gt 0) { return 1 }
-    return 0
+    $exitCode = if ($Total -lt $minTests -or $failCount -gt 0 -or @($Skipped).Count -gt 0 -or @($Broken).Count -gt 0) { 1 } else { 0 }
+    $summaryPath = if ($SummaryFile) { $SummaryFile } else {
+        $repoRoot = Split-Path (Split-Path (Split-Path $here -Parent) -Parent) -Parent
+        Join-Path $repoRoot ("logs\windows-tests\summary-{0}-{1}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'), $PID)
+    }
+    $parent = Split-Path -Parent $summaryPath
+    if ($parent) { $null = New-Item -ItemType Directory -Force -Path $parent -ErrorAction Stop }
+    $tally['RunAtUtc'] = [datetime]::UtcNow.ToString('o')
+    $tally['FailedCount'] = $failCount
+    $tally['Broken'] = @($Broken)
+    $tally['MinTests'] = $minTests
+    $tally['FloorMet'] = $Total -ge $minTests
+    $tally['ExitCode'] = $exitCode
+    ConvertTo-Json -InputObject $tally -Depth 5 | Set-Content -LiteralPath $summaryPath -Encoding utf8 -ErrorAction Stop
+    Write-Host "Run summary: $summaryPath"
+    return $exitCode
 }
 
 function Invoke-PesterSuites {
@@ -107,7 +137,8 @@ if (-not $Only -and $Jobs -gt 1 -and $testFiles.Count -gt 1) {
         $total += $r.Total; $passed += $r.Passed; $pesterFailures += $r.PesterFailures
         $failed += @($r.Failed); $skippedSuites += @($r.Skipped)
     }
-    exit (Write-TestSummary -Total $total -Passed $passed -PesterFailures $pesterFailures -Failed $failed -Skipped $skippedSuites -Broken $broken)
+    $tally = New-TestTally -Total $total -Passed $passed -PesterFailures $pesterFailures -Failed $failed -Skipped $skippedSuites
+    exit (Write-TestSummary -Tally $tally -Broken $broken -SummaryFile $SummaryFile)
 }
 
 Import-Module (Join-Path $here 'TestHarness.psm1') -Force -DisableNameChecking
@@ -158,16 +189,13 @@ $results = @(Get-TestResult)
 $failed = @($results | Where-Object { -not $_.Ok })
 $passed = $results.Count - $failed.Count + $pesterPassed
 $total = $results.Count + $pesterTotal
+$tally = New-TestTally -Total $total -Passed $passed -PesterFailures $pesterFailures -Failed $failed -Skipped $skippedSuites
 
 # A child hands its tallies to the parent, which prints the one summary and applies the floor to the sum.
 if ($ResultFile) {
-    [pscustomobject]@{
-        Total = $total; Passed = $passed; PesterFailures = $pesterFailures
-        Failed = @($failed | ForEach-Object { [pscustomobject]@{ Group = $_.Group; Name = $_.Name; Err = $_.Err } })
-        Skipped = @($skippedSuites)
-    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $ResultFile
+    ConvertTo-Json -InputObject $tally -Depth 4 | Set-Content -LiteralPath $ResultFile
     if ($failed.Count -gt 0 -or $pesterFailures -gt 0 -or $skippedSuites.Count -gt 0) { exit 1 }
     exit 0
 }
 
-exit (Write-TestSummary -Total $total -Passed $passed -PesterFailures $pesterFailures -Failed $failed -Skipped $skippedSuites)
+exit (Write-TestSummary -Tally $tally -SummaryFile $SummaryFile)
