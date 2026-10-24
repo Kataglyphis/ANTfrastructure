@@ -117,6 +117,22 @@ _gst_prepare_target_cargo_env() {
   fi
 }
 
+_gsh_prepare_c() {
+  prepare_cargo_host_linker_wrapper "${cargo_host_cc}"
+}
+
+_gsh_publish_c() {
+  export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" c "${cargo_host_linker}" host
+}
+
+_gsh_prepare_cxx() {
+  prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}"
+}
+
+_gsh_publish_cxx() {
+  export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" cxx "${cargo_host_cxx_wrapper}" host
+}
+
 prepare_host_cargo_toolchain_env() {
   local build_rust_env="X86_64_UNKNOWN_LINUX_GNU"
   local build_rust_lower="x86_64_unknown_linux_gnu"
@@ -129,6 +145,7 @@ prepare_host_cargo_toolchain_env() {
     return 0
   fi
 
+  declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\n' >&2; return 1; }
   if command -v cross_build_upper_rust >/dev/null 2>&1; then
     build_rust_env="$(cross_build_upper_rust 2>/dev/null || true)"
   fi
@@ -141,16 +158,10 @@ prepare_host_cargo_toolchain_env() {
   # No PATH scrub: /opt/cross-bin holds only triplet-prefixed names, so host build scripts already find the native cc.
 
   cargo_host_cc="$(resolve_host_gcc_for_cargo)"
-  if [ -n "${cargo_host_cc}" ]; then
-    cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
-    export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" c "${cargo_host_linker}" host
-  fi
+  prepare_and_publish_host_cargo_compiler cargo_host_linker "${cargo_host_cc}" _gsh_prepare_c _gsh_publish_c
 
   cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
-  if [ -n "${cargo_host_cxx}" ]; then
-    cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
-    export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" cxx "${cargo_host_cxx_wrapper}" host
-  fi
+  prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper "${cargo_host_cxx}" _gsh_prepare_cxx _gsh_publish_cxx
 
   _gst_prepare_target_cargo_env
 }

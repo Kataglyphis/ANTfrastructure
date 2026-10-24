@@ -3,8 +3,9 @@
 set -euo pipefail
 # shellcheck source=linux/scripts/tests/media-probe-fixture.sh
 source "$(dirname "${BASH_SOURCE[0]}")/media-probe-fixture.sh"
-t_source_functions "$repo/linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh" prepare_host_cargo_toolchain_env _gst_prepare_target_cargo_env
-t_source_functions "$repo/linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh" _gst_rs_host_cargo_config
+t_source_functions "$repo/linux/scripts/01-core/compiler-resolution.sh" prepare_and_publish_host_cargo_compiler
+t_source_functions "$repo/linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh" _gsh_prepare_c _gsh_publish_c _gsh_prepare_cxx _gsh_publish_cxx prepare_host_cargo_toolchain_env _gst_prepare_target_cargo_env
+t_source_functions "$repo/linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh" _gsrh_prepare_c _gsrh_publish_c _gsrh_prepare_cxx _gsrh_publish_cxx _gst_rs_host_cargo_config
 host_setup="$(declare -f prepare_host_cargo_toolchain_env)"
 resolve_host_gcc_for_cargo() { printf '/host compiler/cc'; }
 resolve_host_gxx_for_cargo() { printf '/host compiler/cxx'; }

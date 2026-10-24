@@ -45,9 +45,25 @@ retain partial stdout. Cargo compiler bindings share environment publication in
 `cross-env.sh`; callers keep compiler validation, wrapper choice, host variables
 and Rust-name policy.
 
+Host Cargo compiler setup shares the nonempty-compiler check, wrapper capture and
+parent-shell publication in `compiler-resolution.sh`. Each caller retains its
+resolver order and publishes from its original local slots. Selected callbacks
+run unconditionally so strict wrapper failures and partial publication keep their
+original behavior; internal argument-free calls stay argument-free.
+
+Optional runtime `libstdc++` pinning shares availability and advisory invocation
+in media's existing `core/common.sh`. FFmpeg and GStreamer bind both lookup and
+pin commands where the original commands were parsed, forwarding the original
+caller arguments to preserve prefix aliases. Compiler setup and architecture
+gates remain caller policy. A selected caller refuses an older media owner that
+lacks this transport; both producers inherit its fresh local Dockerfile copy.
+
 Test fixtures share probe execution, rescued-stage assertions and Renovate apply
 and permission lifetimes. They retain independent child cleanup so mutating a
-production stop function cannot strand the test's own processes.
+production stop function cannot strand the test's own processes. Retention
+fixtures share budget assignment followed by the real prune call, keeping that
+budget visible afterward and retaining raw failures. Archive setup and every
+literal archive expectation remain independent.
 
 ## Shared ONNX staging and report fixtures
 

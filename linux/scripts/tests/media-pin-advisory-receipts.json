@@ -1,0 +1,3074 @@
+[
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "direct",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "direct",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<late>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nPIN:<early>:<cfg><tail [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=()\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "ff",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "SETUP\nSTATUS:0 PIN:0 LOOKUP::<>\ndeclare -a cfg=([0]=\"--arch=riscv64\" [1]=\"--target-os=linux\" [2]=\"--enable-cross-compile\" [3]=\"--cross-prefix=no-such-target-\" [4]=\"--pkg-config=pkg-config\" [5]=\"--extra-cflags=--sysroot=/\" [6]=\"--extra-ldflags=--sysroot=/\" [7]=\"--extra-ldflags=-Wl,-z,notext\")\n",
+      "ARCH\nARCH\n"
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "direct",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      false,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "direct",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "before",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "function",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "function",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "function",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "function",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<function>:<riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "alias",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "PIN:<late>:<1.2.3></prefix [*]><><riscv64>:SCOPE:<UNSET>\nSTATUS:0 PIN:1 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      0,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      0
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  },
+  {
+    "case": [
+      "gst",
+      true,
+      "conditional",
+      "after",
+      "missing",
+      23,
+      1
+    ],
+    "receipt": [
+      0,
+      "STATUS:0 PIN:0 LOOKUP::<>\n",
+      ""
+    ]
+  }
+]

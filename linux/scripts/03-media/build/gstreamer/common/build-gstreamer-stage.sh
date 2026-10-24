@@ -74,11 +74,18 @@ if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" 
   fi
 fi
 
+_gst_pin_available() {
+  command -v pin_target_libstdcxx
+}
+
+_gst_pin_target_libstdcxx() {
+  pin_target_libstdcxx "${TARGET_ARCH:-${TARGETARCH:-}}"
+}
+
 # The onnx plugin link resolves the runtime libstdc++.so.6, and apt's lacks the GLIBCXX libonnxruntime needs.
 if [ "${BUILD_MODE:-native}" = "cross" ] && [ "${TARGET_ARCH:-${TARGETARCH:-}}" != "amd64" ]; then
-  if command -v pin_target_libstdcxx >/dev/null 2>&1; then
-    pin_target_libstdcxx "${TARGET_ARCH:-${TARGETARCH:-}}" || true
-  fi
+  declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\n' >&2; exit 1; }
+  media_pin_target_libstdcxx_if_available _gst_pin_available _gst_pin_target_libstdcxx "$@"
 fi
 
 cd /opt

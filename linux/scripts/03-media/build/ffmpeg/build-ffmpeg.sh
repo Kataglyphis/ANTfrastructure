@@ -89,6 +89,14 @@ fetch_ffmpeg() {
 
 # Configure
 
+_ffmpeg_pin_available() {
+    command -v pin_target_libstdcxx
+}
+
+_ffmpeg_pin_target_libstdcxx() {
+    pin_target_libstdcxx "$(cross_target_arch)"
+}
+
 # Appends the cross-compilation configure options to the named array.
 _ffmpeg_cross_args() {
     local -n _ffca_out="$1"
@@ -97,9 +105,8 @@ _ffmpeg_cross_args() {
 
         setup_linux_cross_env
         # The multiarch -L below exposes apt's libstdc++, often the wrong arch or too old for C++ probes, so pin GCC's first.
-        if command -v pin_target_libstdcxx >/dev/null 2>&1; then
-            pin_target_libstdcxx "$(cross_target_arch)" || true
-        fi
+        declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\n' >&2; return 1; }
+        media_pin_target_libstdcxx_if_available _ffmpeg_pin_available _ffmpeg_pin_target_libstdcxx "$@"
         host_cc="$(resolve_ffmpeg_host_compiler)"
         if [ -n "${host_cc}" ]; then
             host_cc="$(prepare_ffmpeg_host_compiler_wrapper "${host_cc}")"

@@ -120,21 +120,32 @@ _gst_rs_clone() {
   fi
 }
 
+_gsrh_prepare_c() {
+  prepare_cargo_host_linker_wrapper "${cargo_host_cc}"
+}
+
+_gsrh_publish_c() {
+  export_cargo_compiler_binding "X86_64_UNKNOWN_LINUX_GNU" "x86_64_unknown_linux_gnu" c "${cargo_host_linker}"
+}
+
+_gsrh_prepare_cxx() {
+  prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}"
+}
+
+_gsrh_publish_cxx() {
+  export_cargo_compiler_binding "X86_64_UNKNOWN_LINUX_GNU" "x86_64_unknown_linux_gnu" cxx "${cargo_host_cxx_wrapper}"
+}
+
 _gst_rs_host_cargo_config() {
   if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then
     prepare_host_cargo_toolchain_env
   elif cross_build_is_active; then
+    declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\n' >&2; return 1; }
     cargo_host_cc="$(resolve_host_gcc_for_cargo)"
-    if [ -n "${cargo_host_cc}" ]; then
-      cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
-      export_cargo_compiler_binding X86_64_UNKNOWN_LINUX_GNU x86_64_unknown_linux_gnu c "${cargo_host_linker}"
-    fi
+    prepare_and_publish_host_cargo_compiler cargo_host_linker "${cargo_host_cc}" _gsrh_prepare_c _gsrh_publish_c
 
     cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
-    if [ -n "${cargo_host_cxx}" ]; then
-      cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
-      export_cargo_compiler_binding X86_64_UNKNOWN_LINUX_GNU x86_64_unknown_linux_gnu cxx "${cargo_host_cxx_wrapper}"
-    fi
+    prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper "${cargo_host_cxx}" _gsrh_prepare_cxx _gsrh_publish_cxx
   fi
 
 }

@@ -223,6 +223,21 @@ _retention_fixture() {
   _mk_archive "${LOG_DIR}" "$@"
 }
 
+_prune_archive_with_keep() {
+  CROSS_LOG_ARCHIVE_KEEP="$1"
+  _chain_prune_archived_logs
+}
+
+t_case 'the retention fixture applies its budget before executing and preserves prune failure'
+rc=0
+(
+  _chain_prune_archived_logs() { printf 'PRUNE:%s\n' "$CROSS_LOG_ARCHIVE_KEEP"; return 7; }
+  CROSS_LOG_ARCHIVE_KEEP=previous
+  _prune_archive_with_keep 2
+) > "${workdir}/retention-trace" || rc=$?
+t_assert_eq 7 "$rc"
+t_assert_eq 'PRUNE:2' "$(cat "${workdir}/retention-trace")"
+
 t_case "retention keeps the newest N run dirs and removes the older ones"
 _retention_fixture ret-a 20260101-000000-a1 20260102-000000-a2 \
                          20260103-000000-a3 20260104-000000-a4
@@ -251,8 +266,7 @@ _retention_fixture ret-b 20260101-000000-b1 20260102-000000-b2 20260103-000000-b
 mkdir -p "${LOG_DIR}/archive/wave5o-transcripts"
 printf 'x\n' > "${LOG_DIR}/archive/wave5o-transcripts/keep-me.log"
 printf 'x\n' > "${LOG_DIR}/archive/notes.txt"
-CROSS_LOG_ARCHIVE_KEEP=1
-_chain_prune_archived_logs
+_prune_archive_with_keep 1
 t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-b1"
 t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-b2"
 t_assert_ok    test -d "${LOG_DIR}/archive/20260103-000000-b3"
@@ -262,8 +276,7 @@ t_assert_ok    test -f "${LOG_DIR}/archive/notes.txt"
 t_case 'a PID-named run dir (the ${CROSS_RUN_ID:-$$} fallback) is prunable by age'
 # A PID-named dir is a run dir too, and only mtime ranks it: by name a leading 3 sorts after every 2026 id.
 _retention_fixture ret-h 365161 20260101-000000-h1 1847483 20260102-000000-h2
-CROSS_LOG_ARCHIVE_KEEP=2
-_chain_prune_archived_logs
+_prune_archive_with_keep 2
 t_assert_fails test -e "${LOG_DIR}/archive/365161"
 t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-h1"
 t_assert_ok    test -d "${LOG_DIR}/archive/1847483"
@@ -276,8 +289,7 @@ _retention_fixture ret-c 20260101-000000-c1 20260102-000000-c2
 mkdir -p "${workdir}/outside-c"
 printf 'precious\n' > "${workdir}/outside-c/precious.log"
 ln -s "${workdir}/outside-c" "${LOG_DIR}/archive/20260100-000000-link"
-CROSS_LOG_ARCHIVE_KEEP=1
-_chain_prune_archived_logs
+_prune_archive_with_keep 1
 t_assert_ok    test -f "${workdir}/outside-c/precious.log"
 t_assert_ok    test -L "${LOG_DIR}/archive/20260100-000000-link"
 t_assert_fails test -e "${LOG_DIR}/archive/20260101-000000-c1"
@@ -286,8 +298,7 @@ t_assert_ok    test -d "${LOG_DIR}/archive/20260102-000000-c2"
 t_case "the run dir of the CURRENT run is never a retention candidate"
 _retention_fixture ret-g 20260101-000000-g1 20260102-000000-g2 20260103-000000-g3
 CROSS_RUN_ID="20260101-000000-g1"      # oldest => first in line to be removed
-CROSS_LOG_ARCHIVE_KEEP=1
-_chain_prune_archived_logs
+_prune_archive_with_keep 1
 t_assert_ok    test -d "${LOG_DIR}/archive/20260101-000000-g1"
 t_assert_fails test -e "${LOG_DIR}/archive/20260102-000000-g2"
 CROSS_RUN_ID="20260105-000000-current"
@@ -329,8 +340,7 @@ t_assert_ok    test -d "${LOG_DIR}/archive/20260103-000000-y3"
 
 t_case "CROSS_LOG_ARCHIVE_KEEP=0 keeps everything, a non-numeric value is refused"
 _retention_fixture ret-e 20260101-000000-e1 20260102-000000-e2 20260103-000000-e3
-CROSS_LOG_ARCHIVE_KEEP=0
-_chain_prune_archived_logs
+_prune_archive_with_keep 0
 t_assert_ok test -d "${LOG_DIR}/archive/20260101-000000-e1"
 CROSS_LOG_ARCHIVE_KEEP="five"
 _chain_prune_archived_logs

@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — share media compiler policy and retention fixtures
+
+- Share optional runtime library pinning while preserving caller-bound lookup, architecture gates and advisory failures.
+- Share host Cargo wrapper capture and parent-shell publication without changing resolver order or caller-local bindings.
+- Share retention-fixture budget assignment and execution; keep all independent archive assertions and raw failures.
+- Remove three resolved duplication exceptions and lower the retention suite's ShellCheck warning budget.
+
 ## 2026-10-24 — share probe publication and preserve callback context
 
 - Share ordered compiler candidate publication with the original caller-local state and fallback behavior.
