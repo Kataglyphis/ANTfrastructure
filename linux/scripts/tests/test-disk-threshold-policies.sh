@@ -13,8 +13,9 @@ cat > "${WORK}/worker.sh" <<'WORKER'
 set -uo pipefail
 source "$1"
 source "$2/disk-guard.sh"
+t_source_functions "$2/parallel-loop.sh" parallel_require_child_stop parallel_stop_child_advisory
 t_source_functions "$2/cross-stage-build.sh" _cross_salvage_disk_ok
-t_source_functions "$3" _chain_runtime_lane_disk_gate _chain_disk_watch_start
+t_source_functions "$3" _chain_runtime_lane_disk_gate _chain_disk_watch_start _chain_is_live_other_pid
 kind="$4" threshold="$5" measured="$6" policy="$7" fixture="$8"
 _disk_guard_free_gb() { printf 'probe\n' >> "$fixture/probes"; printf '%s' "$measured"; }
 log() { printf 'LOG %s\n' "$*"; }

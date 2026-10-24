@@ -4,7 +4,9 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 RUNTIME="${1:-${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh}"
-t_source_functions "${RUNTIME}" check_consumer_contract run_shipped_truth_probe _consumer_probe_verdict \
+CONTRACT="${TESTS_DIR}/../06-packaging/runtime-consumer-contract.sh"
+t_source_functions "${CONTRACT}" check_consumer_contract _consumer_probe_verdict || exit 1
+t_source_functions "${RUNTIME}" run_shipped_truth_probe \
   check_entrypoint check_workdir check_volume || exit 1
 for helper in _rt_image_config_value _rt_run_shell_probe _rt_config_value_verdict; do
   if grep -Eq "^${helper}\(\)" "${RUNTIME}"; then eval "$(t_fn_src "${RUNTIME}" "${helper}")"; fi

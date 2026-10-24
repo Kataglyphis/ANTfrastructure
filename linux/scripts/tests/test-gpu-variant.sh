@@ -184,7 +184,7 @@ t_assert_contains "$(env -u CROSS_VARIANT ENABLE_NVIDIA=true timeout 60 bash "${
 
 t_case "one chain at a time: the pidfile is claimed atomically at the check"
 _LK="$(mktemp -d)"
-_lock_fns="$(t_fn_src "${CHAIN}" _chain_live_sibling_pid)"$'\n'"$(t_fn_src "${CHAIN}" _chain_refuse_live_sibling)"
+_lock_fns="$(t_fn_src "${CHAIN}" _chain_is_live_other_pid)"$'\n'"$(t_fn_src "${CHAIN}" _chain_live_sibling_pid)"$'\n'"$(t_fn_src "${CHAIN}" _chain_refuse_live_sibling)"
 _lock() { CROSS_CHAIN_PIDFILE="${_LK}/pid" bash -c 'is_dry_run() { return 1; }; err() { echo "ERR $*"; exit 1; }
 cross_chain_pidfile_path() { printf "%s" "${CROSS_CHAIN_PIDFILE}"; }
 '"${_lock_fns}"'
