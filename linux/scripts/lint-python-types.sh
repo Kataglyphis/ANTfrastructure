@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# See docs/code-quality-tooling.md#python-type-analysis for the strict scope and report policy.
-# NOT covered by strict ty: files needing optional or image-only imports; the full platform reports retain them.
+# Strict ty cannot resolve optional or image-only imports here; see docs/code-quality-tooling.md#python-type-analysis.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
