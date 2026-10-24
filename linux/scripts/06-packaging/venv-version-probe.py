@@ -2,7 +2,6 @@
 """Check installed venv versions and media behavior; see docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover."""
 import os
 import re
-import sys
 import importlib
 import platform
 

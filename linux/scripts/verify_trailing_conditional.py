@@ -3,6 +3,7 @@
 
 Predicates are frozen in trailing-conditional.allow; see docs/code-quality-tooling.md#trailing-conditional-returns-trailing-conditional"""
 import argparse
+from collections.abc import Iterator
 import os
 import re
 import sys
@@ -156,7 +157,7 @@ def file_sites(path, rel):
             found[n] = calls.pop(n)[1]
 
 
-def _walk_scan(root, tops):
+def _walk_scan(root, tops) -> Iterator[str]:
     """Every *.sh under the named top-level directories."""
     for top in tops:
         for base, dirs, files in os.walk(os.path.join(root, top)):
@@ -218,7 +219,7 @@ def main():
     print("  {} function(s) ending on a conditional; {} frozen in {}".format(
         len(keys), len(allow), os.path.basename(allow_file)))
 
-    def _site(k):
+    def _site(k) -> str:
         f, n = k.split("\t")
         at = next((s for ff, nn, s in found if ff == f and nn == n), f)
         return "{}  ->  {}".format(n, at[:110])

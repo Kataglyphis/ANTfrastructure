@@ -12,7 +12,9 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Never, TypeAlias
 
 HERE = Path(__file__).resolve().parent
 HUB_ROOT = HERE.parent.parent
@@ -54,6 +56,7 @@ _KEY = re.compile(r"^(?P<key>(?:\"[^\"]*\"|'[^']*'|[^:#\s][^:#]*?))\s*:(?:\s+(?P
 _ITEM = re.compile(r"^-(?:(?P<gap>[ \t]+)(?P<rest>\S.*?))?[ \t]*$")
 _BLOCK = re.compile(r"^[|>][+-]?[0-9]*$")
 _FLOW_BREAK = ",:[]{}"
+YamlNode: TypeAlias = "str | list[YamlNode] | dict[str, tuple[YamlNode, int]] | None"
 
 
 def _strip_comment(line: str) -> str:
@@ -79,7 +82,7 @@ def _flow_ws(s: str, i: int) -> int:
     return i
 
 
-def _flow_scalar(s: str, i: int):
+def _flow_scalar(s: str, i: int) -> tuple[str, int]:
     """One quoted or plain scalar inside a flow collection -> (text, next index)."""
     if i < len(s) and s[i] in "\"'":
         end = s.find(s[i], i + 1)
@@ -97,7 +100,7 @@ def _flow_scalar(s: str, i: int):
     return text, j
 
 
-def _flow_close(s: str, i: int, close: str, what: str):
+def _flow_close(s: str, i: int, close: str, what: str) -> tuple[bool, int]:
     """(finished, next index) after one entry: a `,`, the closer, or a refusal."""
     i = _flow_ws(s, i)
     if i >= len(s):
@@ -113,7 +116,7 @@ def _flow_close(s: str, i: int, close: str, what: str):
     return False, i
 
 
-def _flow_seq(s: str, i: int, line: int):
+def _flow_seq(s: str, i: int, line: int) -> tuple[list[YamlNode], int]:
     out, i = [], _flow_ws(s, i + 1)
     if i < len(s) and s[i] == "]":
         return out, i + 1
@@ -125,7 +128,7 @@ def _flow_seq(s: str, i: int, line: int):
             return out, i
 
 
-def _flow_map(s: str, i: int, line: int):
+def _flow_map(s: str, i: int, line: int) -> tuple[dict[str, tuple[YamlNode, int]], int]:
     out, i = {}, _flow_ws(s, i + 1)
     if i < len(s) and s[i] == "}":
         return out, i + 1
@@ -144,7 +147,7 @@ def _flow_map(s: str, i: int, line: int):
             return out, i
 
 
-def _flow_node(s: str, i: int, line: int):
+def _flow_node(s: str, i: int, line: int) -> tuple[YamlNode, int]:
     i = _flow_ws(s, i)
     if i >= len(s):
         raise ParseError("a flow collection ends in the middle of a value")
@@ -155,7 +158,7 @@ def _flow_node(s: str, i: int, line: int):
     return _flow_scalar(s, i)
 
 
-def _scalar(text: str, line: int = 0):
+def _scalar(text: str, line: int = 0) -> YamlNode:
     text = text.strip()
     if len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
         return text[1:-1]
@@ -169,7 +172,7 @@ def _scalar(text: str, line: int = 0):
     return text
 
 
-def _lines(text: str):
+def _lines(text: str) -> list[tuple[int, str, int]]:
     """(indent, content, line number) for every line that carries structure."""
     out = []
     for num, raw in enumerate(text.replace("\r\n", "\n").split("\n"), 1):
@@ -189,7 +192,7 @@ class _Cursor:
         self.rows = rows
         self.i = 0
 
-    def peek(self):
+    def peek(self) -> tuple[int, str, int] | None:
         return self.rows[self.i] if self.i < len(self.rows) else None
 
 
@@ -202,7 +205,7 @@ def _skip_continuation(cur: _Cursor, indent: int) -> None:
         cur.i += 1
 
 
-def _parse(cur: _Cursor, indent: int):
+def _parse(cur: _Cursor, indent: int) -> YamlNode:
     """The node starting at the current row, at or beyond ``indent``."""
     row = cur.peek()
     if row is None or row[0] < indent:
@@ -237,7 +240,7 @@ def _parse_seq(cur: _Cursor, indent: int) -> list:
             _skip_continuation(cur, indent)
 
 
-def _child(cur: _Cursor, indent: int):
+def _child(cur: _Cursor, indent: int) -> YamlNode:
     """The node a valueless key owns, or None; a block sequence may sit flush at the key's column."""
     nxt = cur.peek()
     if nxt is None:
@@ -327,7 +330,7 @@ def _label_values(val) -> list:
     return []
 
 
-def _labels(node, out):
+def _labels(node, out) -> None:
     """Every literal value a runner label can be spelled as, with its line."""
     if isinstance(node, dict):
         for key, (val, num) in node.items():
@@ -349,7 +352,7 @@ def check_runner_ban(rel, doc):
             if EXPRESSION not in label and LATEST_LABEL.match(label)]
 
 
-def _jobs(doc):
+def _jobs(doc) -> Iterable[tuple[str, tuple[YamlNode, int]]]:
     jobs = value(doc, "jobs")
     return jobs.items() if isinstance(jobs, dict) else []
 
@@ -377,7 +380,7 @@ def check_permissions(rel, doc):
             if not isinstance(job, dict) or "permissions" not in job]
 
 
-def _steps(node, out):
+def _steps(node, out) -> None:
     if isinstance(node, dict):
         for key, (val, _num) in node.items():
             if key == "steps" and isinstance(val, list):
@@ -421,11 +424,11 @@ CHECKERS = {
 # The EXCUSED-with-reason table and the census ratchet
 
 
-def _allow_fail(path: Path, num: int, msg: str):
+def _allow_fail(path: Path, num: int, msg: str) -> Never:
     raise SystemExit("FAIL: %s:%d: %s\n" % (path.name, num, msg))
 
 
-def _census_row(path: Path, parts: list, num: int, census: dict):
+def _census_row(path: Path, parts: list, num: int, census: dict) -> None:
     """`CENSUS | <repo> | <check> | <count> | <reason>` -> into `census`."""
     if len(parts) < 5 or not parts[4]:
         _allow_fail(path, num, "expected 'CENSUS | <repo> | <check> | <count> | "
@@ -442,7 +445,7 @@ def _census_row(path: Path, parts: list, num: int, census: dict):
     census[key] = (int(parts[3]), " | ".join(parts[4:]), num)
 
 
-def _excuse_row(path: Path, parts: list, num: int, rows: list, seen: dict):
+def _excuse_row(path: Path, parts: list, num: int, rows: list, seen: dict) -> None:
     """`<repo> | <path> | <check> | <detail> | <reason>` -> onto `rows`."""
     if len(parts) < 5 or not parts[4]:
         _allow_fail(path, num, "expected '<repo> | <path> | <check> | <detail> | "

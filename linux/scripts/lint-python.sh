@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [--root <dir>] [file.py|file.sh ...]: ruff checks fatal errors and exception/closure bugs; other rules stay advisory.
+# Default hub sweeps reject unused bindings; named roots and explicit targets keep the advisory tier.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -16,6 +16,7 @@ fi
 : "${RUFF_VERSION:?RUFF_VERSION is not set (01-core/tool-pins.env parsed, but the key is gone from it)}"
 RUFF_PIN="${RUFF_VERSION}"
 GATE_SELECT="E9,F63,F7,F82,B012,B023"
+HUB_UNUSED_SELECT="F401,F841,RUF059"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
@@ -139,13 +140,22 @@ fi
 
 echo "== python lint under ${SCAN_ROOT}: ${#PY_FILES[@]} file(s), ruff via '${RUFF[*]}' =="
 
-# Gate pass catches fatal errors, suppressed exceptions and late-bound loop closures.
-if ! "${RUFF[@]}" check --quiet --select "${GATE_SELECT}" "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
-  _name_sources "${_RUFF_OUT}"
-  echo ""
-  err "python gate pass failed (${GATE_SELECT}: fatal errors / suppressed exceptions / late-bound closures)"
+_lint_python_check() {
+  local selector="$1" failed="$2" clean="$3"
+  if ! "${RUFF[@]}" check --quiet --select "${selector}" "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
+    _name_sources "${_RUFF_OUT}"
+    echo ""
+    err "${failed} (${selector})"
+  fi
+  echo "${clean} (${selector}): clean"
+}
+
+_lint_python_check "${GATE_SELECT}" "python gate pass failed" "gate pass"
+
+# Consumer roots keep the older tier until their unused bindings are reviewed.
+if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
+  _lint_python_check "${HUB_UNUSED_SELECT}" "hub unused-binding gate failed" "hub unused-binding gate"
 fi
-echo "gate pass (${GATE_SELECT}): clean"
 
 # Advisory pass — full default ruleset, informational only.
 echo ""

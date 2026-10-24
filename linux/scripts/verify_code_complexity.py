@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate_scope  # noqa: E402
@@ -49,7 +50,7 @@ class _Walker:
         self.cc, self.depth, self.top, self.parens, self.frames = 1, 0, 0, 0, []
         self.cmd = True
 
-    def word(self, tok, delimited):
+    def word(self, tok, delimited) -> str:
         """A reserved word out of command position, or a glued `}` as in `${x:-$(cmd)}`, is ordinary text."""
         if tok in KEYWORDS and not self.cmd:
             return ""
@@ -57,14 +58,14 @@ class _Walker:
             return ""
         return tok
 
-    def frame(self):
+    def frame(self) -> list[int | str] | None:
         return self.frames[-1] if self.frames else None
 
-    def arm_opens(self, tok):
+    def arm_opens(self, tok) -> bool:
         f = self.frame()
         return tok == ")" and f is not None and f[1] == "pattern" and self.parens == f[0]
 
-    def paren_delta(self, tok, arm):
+    def paren_delta(self, tok, arm) -> int:
         f = self.frame()
         if tok in ("(", "$(") and not (f and f[1] == "pattern"):
             return 1
@@ -72,7 +73,7 @@ class _Walker:
             return -1
         return 0
 
-    def case_state(self, tok, arm):
+    def case_state(self, tok, arm) -> None:
         f = self.frame()
         if tok == "case":
             self.frames.append([self.parens, "word"])
@@ -85,7 +86,7 @@ class _Walker:
         elif tok in CASE_END or (tok == "in" and f[1] == "word"):
             f[1] = "pattern"
 
-    def feed(self, raw, delimited):
+    def feed(self, raw, delimited) -> None:
         cmd, tok = self.cmd, self.word(raw, delimited)
         arm = self.arm_opens(tok)
         self.cc += tok in BRANCH or arm
@@ -105,7 +106,7 @@ def shell_metrics(body_lines):
     return w.cc, max(w.top - 1, 0)
 
 
-def _py_paths(node):
+def _py_paths(node) -> int:
     """Decision points one AST node contributes."""
     if isinstance(node, PY_BRANCH):
         return 1
@@ -124,7 +125,7 @@ def py_metrics(node):
     """(cyclomatic complexity, nesting depth) of one def, nested defs excluded; an elif keeps its parent's depth."""
     cc, top = 1, 0
 
-    def walk(n, depth):
+    def walk(n, depth) -> None:
         nonlocal cc, top
         for child in ast.iter_child_nodes(n):
             if isinstance(child, PY_DEF):
@@ -145,7 +146,7 @@ def py_functions(path, rel):
     except (OSError, SyntaxError):
         return
 
-    def walk(node, prefix):
+    def walk(node, prefix) -> Iterator[tuple[str, str, int, int]]:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ClassDef):
                 yield from walk(child, prefix + child.name + ".")
@@ -155,7 +156,7 @@ def py_functions(path, rel):
     yield from walk(tree, "")
 
 
-def _tracked(root, *suffixes: str):
+def _tracked(root, *suffixes: str) -> Iterator[tuple[str, str]]:
     """Yield (path, rel) per tracked file with one of `suffixes`; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--"]
                          + ["*" + s for s in suffixes],

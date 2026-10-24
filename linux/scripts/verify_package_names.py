@@ -12,7 +12,6 @@ import concurrent.futures
 import os
 import re
 import sys
-import tempfile
 import time
 import urllib.error
 import urllib.request

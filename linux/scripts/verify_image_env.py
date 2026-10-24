@@ -35,7 +35,7 @@ SCCACHE_MOUNTS = tuple(re.compile(r"--mount=[^\s]*target=C:\\%s(?=[,\s]|$)" % d,
 ENDPOINT_SECRET = re.compile(r"--mount=type=secret,id=sccache_webdav_endpoint,env=SCCACHE_WEBDAV_ENDPOINT(?=\s|$)")
 
 
-def _host_position(value, start, end, name):
+def _host_position(value, start, end, name) -> bool:
     """Is value[start:end] an address, or a version/path fragment that looks like one?"""
     before, after = value[:start], value[end:end + 1]
     if AUTHORITY.search(before) or before.endswith(("\\\\", "@")):
@@ -88,7 +88,7 @@ def check_env_lines(lines, label):
     return checked, findings
 
 
-def _escape_char(lines):
+def _escape_char(lines) -> str:
     """The `# escape=` parser directive, or the default backslash."""
     for line in lines:
         m = re.match(r"^#\s*escape\s*=\s*(\S)\s*$", line.strip())
@@ -122,7 +122,7 @@ def instructions(path):
         yield start, " ".join(t.strip() for t in buf if t.strip())
 
 
-def _tokens(body):
+def _tokens(body) -> list[str]:
     out, cur, quote = [], "", ""
     for char in body:
         if quote:
@@ -143,13 +143,13 @@ def _tokens(body):
     return out
 
 
-def _unquote(value):
+def _unquote(value) -> str:
     if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
         return value[1:-1]
     return value
 
 
-def _pairs(body, legacy):
+def _pairs(body, legacy) -> list[tuple[str, str | None]]:
     """(KEY, VALUE or None) pairs of an ENV/ARG body; `legacy` accepts `ENV KEY value`."""
     toks = _tokens(body)
     if legacy and toks and "=" not in toks[0]:
@@ -157,7 +157,7 @@ def _pairs(body, legacy):
     return [(t.split("=", 1)[0], _unquote(t.split("=", 1)[1]) if "=" in t else None) for t in toks]
 
 
-def _scan_arg(where, body):
+def _scan_arg(where, body) -> list[str]:
     findings = []
     for key, value in _pairs(body, legacy=False):
         if BUILD_HOST_ADDRESS_NAME.match(key) or CREDENTIAL_NAME.match(key):
@@ -168,7 +168,7 @@ def _scan_arg(where, body):
     return findings
 
 
-def _scan_env(where, body):
+def _scan_env(where, body) -> list[str]:
     findings = []
     for key, value in _pairs(body, legacy=True):
         findings += ["%s: ENV %s -- %s" % (where, key, why) for why in leak_reasons(key, value or "")]
@@ -177,7 +177,7 @@ def _scan_env(where, body):
     return findings
 
 
-def _scan_run(where, body):
+def _scan_run(where, body) -> list[str]:
     if all(m.search(body) for m in SCCACHE_MOUNTS) and not ENDPOINT_SECRET.search(body):
         return ["%s: RUN compiles through sccache (it mounts C:\\sccache and C:\\sccache-logs) but "
                 "does not mount the secret sccache_webdav_endpoint as SCCACHE_WEBDAV_ENDPOINT "

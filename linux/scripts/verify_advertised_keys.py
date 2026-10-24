@@ -49,7 +49,7 @@ SHAPED = re.compile(r"(VERSION|RELEASE|REF)$")
 FROZEN_UNPROBED = set()
 
 
-def _advertised(seen_files):
+def _advertised(seen_files) -> set[str]:
     advertised = set()
     for dpath in seen_files:
         with open(dpath) as fh:
@@ -60,7 +60,7 @@ def _advertised(seen_files):
     return advertised
 
 
-def _report_unchecked(advertised, checked):
+def _report_unchecked(advertised, checked) -> int:
     unchecked = sorted(advertised - checked - set(EXCUSED))
     for k in unchecked:
         sys.stderr.write(
@@ -70,7 +70,7 @@ def _report_unchecked(advertised, checked):
     return 1 if unchecked else 0
 
 
-def _report_stale(advertised, checked):
+def _report_stale(advertised, checked) -> int:
     stale = sorted(set(EXCUSED) - advertised - checked)
     for k in stale:
         sys.stderr.write(
@@ -79,7 +79,7 @@ def _report_stale(advertised, checked):
     return 1 if stale else 0
 
 
-def _report_new_unprobed(checked, probed):
+def _report_new_unprobed(checked, probed) -> int:
     unprobed = sorted(checked - probed)
     new_unprobed = [k for k in unprobed if k not in FROZEN_UNPROBED]
     if new_unprobed:
@@ -92,7 +92,7 @@ def _report_new_unprobed(checked, probed):
     return 0
 
 
-def _report_healed(probed):
+def _report_healed(probed) -> int:
     healed = sorted(FROZEN_UNPROBED & probed)
     if healed:
         for k in healed:
@@ -103,7 +103,7 @@ def _report_healed(probed):
     return 0
 
 
-def _report_still_unprobed(checked, probed):
+def _report_still_unprobed(checked, probed) -> None:
     still = sorted(FROZEN_UNPROBED - probed)
     if still:
         print("note: {} of {} table rows still have no ADV probe and can only SKIP "
@@ -111,7 +111,7 @@ def _report_still_unprobed(checked, probed):
               .format(len(still), len(checked), " ".join(still)))
 
 
-def _report_phantom(advertised, checked):
+def _report_phantom(advertised, checked) -> None:
     for k in sorted(checked - advertised):
         print("note: {} is checked but not ENV/ARG-set in any Dockerfile "
               "(it may come from a base image)".format(k))

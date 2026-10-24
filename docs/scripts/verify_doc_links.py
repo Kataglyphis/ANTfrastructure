@@ -363,7 +363,7 @@ def check_header_pointers(findings: list[str]) -> int:
     found = header_pointers()
     frozen = load_keys(str(HEADER_ALLOW))
     for key in sorted(found):
-        rel, page = key.split("\t")
+        _, page = key.split("\t")
         if Path(page).name in UNFREEZABLE_PAGES:
             findings.append(
                 f"[header]  {found[key]} -> {page}  (a file header must not point at an "

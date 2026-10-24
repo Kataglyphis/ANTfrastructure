@@ -1962,10 +1962,10 @@
  {
   "id": "python-lint.gate-tier-neutered",
   "target": "linux/scripts/lint-python.sh",
-  "find": "if ! \"${RUFF[@]}\" check --quiet --select \"${GATE_SELECT}\" \"${PY_FILES[@]}\" > \"${_RUFF_OUT}\" 2>&1; then",
+  "find": "if ! \"${RUFF[@]}\" check --quiet --select \"${selector}\" \"${PY_FILES[@]}\" > \"${_RUFF_OUT}\" 2>&1; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
-  "why": "the gate tier is the only tier preflight can fail; an undefined name must exit non-zero"
+  "why": "the shared gate tier must still reject an undefined name on every invocation"
  },
  {
   "id": "python-lint.tier-boundary",
@@ -27481,27 +27481,35 @@
   "why": "The focused annotation gate must refuse a missing Renovate selection."
  },
  {
-  "id": "python-types.package-names-private-return-scope",
+  "id": "python-types.verifier-private-return-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/verify_package_names.py'",
-  "replace": "'linux/scripts/no-verify_package_names.py'",
+  "find": "  'linux/scripts/verify_*.py')",
+  "replace": "  'linux/scripts/no-verify_*.py')",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "The package-name verifier must remain in the strict private-return selection."
+  "why": "Every tracked Python verifier must remain in the strict private-return selection."
  },
  {
-  "id": "python-types.comment-size-private-return-scope",
-  "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/verify_comment_size.py'",
-  "replace": "'linux/scripts/no-verify_comment_size.py'",
-  "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "The comment-size verifier must remain in the strict private-return selection."
+  "id": "python-lint.hub-unused-import-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_UNUSED_SELECT=\"F401,F841,RUF059\"",
+  "replace": "HUB_UNUSED_SELECT=\"F841,RUF059\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "An unused import in hub Python or a shell heredoc must fail the full hub sweep."
  },
  {
-  "id": "python-types.gate-registry-private-return-scope",
-  "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/verify_gate_registry.py'",
-  "replace": "'linux/scripts/no-verify_gate_registry.py'",
-  "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "The gate-registry verifier must remain in the strict private-return selection."
+  "id": "python-lint.hub-unused-assignment-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_UNUSED_SELECT=\"F401,F841,RUF059\"",
+  "replace": "HUB_UNUSED_SELECT=\"F401,RUF059\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "An unused assigned value must fail the full hub sweep."
+ },
+ {
+  "id": "python-lint.hub-unused-unpacking-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_UNUSED_SELECT=\"F401,F841,RUF059\"",
+  "replace": "HUB_UNUSED_SELECT=\"F401,F841\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "An unused unpacked binding must fail the full hub sweep."
  }
 ]

@@ -7,8 +7,8 @@ import argparse
 import ast
 import os
 import re
-import subprocess
 import sys
+from collections.abc import Iterator
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quality_allow import check_counts, load_counts  # noqa: E402
@@ -28,7 +28,7 @@ SCAN = ("linux/scripts", "linux/host-config", "docs/scripts", "linux/llm-stack")
 FLAT_SCAN = ("linux",)
 # Directories never walked.
 SKIP_DIRS = {".git", "__pycache__", "patches"}
-def _is_subject(fn):
+def _is_subject(fn) -> bool:
     return fn.endswith(".sh") or fn.endswith(".py") or fn.startswith("Dockerfile")
 # DEF_HEAD is unanchored (verify_dead_functions.py shares it); DEF is the column-0 form.
 DEF_HEAD = r"(?:function\s+([A-Za-z_][A-Za-z0-9_]*)(?:\(\))?|([A-Za-z_][A-Za-z0-9_]*)\(\))\s*\{"
@@ -39,7 +39,7 @@ HEREDOC = re.compile(r"(?<!<)<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
 QUOTE = {"'": "sq", '"': "dq"}
 
 
-def _arith_open(line, i):
+def _arith_open(line, i) -> int:
     """Length of an arithmetic opener at `i`: 3 for `$((`, 2 for a delimited `((`, else 0."""
     if line.startswith("$((", i):
         return 3
@@ -48,7 +48,7 @@ def _arith_open(line, i):
     return 0
 
 
-def _skip_quoted(line, i, stack, out):
+def _skip_quoted(line, i, stack, out) -> int:
     """Advance one char inside '...' or "..."; a $( inside "..." re-enters code."""
     c, top = line[i], stack[-1]
     if top == "dq" and c == "\\":
@@ -67,7 +67,7 @@ def _skip_quoted(line, i, stack, out):
     return i + 1
 
 
-def _open_group(line, i, stack, out):
+def _open_group(line, i, stack, out) -> int:
     """Push the $((, ((, $( or ( group opened at `i`; the next index, or 0 when the char is plain code."""
     n = _arith_open(line, i)
     if n:
@@ -83,7 +83,7 @@ def _open_group(line, i, stack, out):
     return 0
 
 
-def _close_group(line, i, stack):
+def _close_group(line, i, stack) -> int:
     """Pop the group closed by the ')' at `i`; return the next index past a `))`, else 0."""
     top = stack[-1] if stack else None
     if top == "arith" and line.startswith("))", i):
@@ -94,7 +94,7 @@ def _close_group(line, i, stack):
     return 0
 
 
-def _code_char(line, i, stack, out, docs):
+def _code_char(line, i, stack, out, docs) -> int:
     """Advance one char of code, -1 at a comment; a heredoc operator records its terminator in `docs`."""
     c = line[i]
     if c == "#" and (i == 0 or line[i - 1] in " \t;(|&"):
@@ -149,12 +149,12 @@ def code_lines(lines):
     return out
 
 
-def _rel(path, root):
+def _rel(path, root) -> str:
     """Posix-spelled relpath, since allowlist keys never carry Windows backslashes."""
     return os.path.relpath(path, root).replace(os.sep, "/")
 
 
-def _walk_scan(root, tops, match):
+def _walk_scan(root, tops, match) -> Iterator[tuple[str, str]]:
     """Yield (path, relpath) for every file under `tops` whose name `match` accepts."""
     for top in tops:
         for base, dirs, names in os.walk(os.path.join(root, top)):
@@ -165,7 +165,7 @@ def _walk_scan(root, tops, match):
                     yield path, _rel(path, root)
 
 
-def _flat_scan(root, tops, match):
+def _flat_scan(root, tops, match) -> Iterator[tuple[str, str]]:
     """Yield (path, relpath) for the files sitting directly IN `tops` -- no recursion."""
     for top in tops:
         d = os.path.join(root, top)
@@ -175,13 +175,13 @@ def _flat_scan(root, tops, match):
                 yield path, _rel(path, root)
 
 
-def _tracked_scan(root, match):
+def _tracked_scan(root, match) -> Iterator[tuple[str, str]]:
     """(path, rel) for every tracked file gate_scope admits whose basename `match` accepts."""
     for rel in gate_scope.tracked(root, ["*"]):
         if match(os.path.basename(rel)):
             yield os.path.join(root, rel), rel
 
-def _under(rel, tops):
+def _under(rel, tops) -> bool:
     """True when `rel` is one of `tops` or lives inside one."""
     return any(rel == t or rel.startswith(t.rstrip("/") + "/") for t in tops)
 
@@ -230,7 +230,7 @@ def functions(root=None, tops=None):
                 yield rel, name, len(body)
 
 
-def _line_count(path):
+def _line_count(path) -> int | None:
     """The file's line count, or None when it cannot be read."""
     try:
         return sum(1 for _ in open(path, encoding="utf-8", errors="replace"))
@@ -254,7 +254,7 @@ def files(root=None, tops=None):
             yield rel, n
 
 
-def _py_functions(path, rel):
+def _py_functions(path, rel) -> Iterator[tuple[str, str, int]]:
     """Yield (rel, qualified_name, line_count) for every def/async def."""
     try:
         tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
@@ -262,7 +262,7 @@ def _py_functions(path, rel):
         return
     stack = []
 
-    def walk(node, prefix):
+    def walk(node, prefix) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ClassDef):
                 walk(child, prefix + child.name + ".")

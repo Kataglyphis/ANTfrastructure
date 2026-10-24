@@ -4,6 +4,7 @@
 docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status
 """
 import argparse
+from collections.abc import Iterator
 import os
 import re
 import sys
@@ -20,7 +21,7 @@ SUBST = re.compile(r"\$\(|`")
 SCAN = ("linux",)
 
 
-def _walk_scan(root, tops):
+def _walk_scan(root, tops) -> Iterator[str]:
     """Every *.sh under the named top-level directories."""
     for top in tops:
         for base, dirs, files in os.walk(os.path.join(root, top)):
@@ -94,7 +95,7 @@ def main():
     print("  {} `local/export x=$(...)` site(s); {} frozen in {}".format(
         len(found), len(allow), os.path.basename(allow_path)))
 
-    def _site(k):
+    def _site(k) -> str:
         f, v = k.split("\t")
         ln = next((n for ff, n, vv in found if ff == f and vv == v), "?")
         return "{}:{}  {}".format(f, ln, v)

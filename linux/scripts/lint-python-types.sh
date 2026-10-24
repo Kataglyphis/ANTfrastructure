@@ -55,12 +55,11 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/extract_embedded_python.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 mapfile -d '' -t private_return_files < <(git ls-files -z -- 'linux/scripts/renovate_*.py' \
-  'linux/scripts/verify_package_names.py' 'linux/scripts/verify_comment_size.py' \
-  'linux/scripts/verify_gate_registry.py')
+  'linux/scripts/verify_*.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#private_return_files[@]}" -ge 7 ] || { echo "Missing tracked Python private-return targets" >&2; exit 2; }
+[ "${#private_return_files[@]}" -ge 8 ] || { echo "Missing tracked Python private-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()

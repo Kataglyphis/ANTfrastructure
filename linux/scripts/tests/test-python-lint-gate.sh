@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lint-python.sh's two tiers and target set, each case in a fixture tree; see docs/code-quality-tooling.md#proving-a-gate-can-go-red
+# Fixture roots isolate hub and consumer lint verdicts; see docs/code-quality-tooling.md#proving-a-gate-can-go-red.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -177,6 +177,28 @@ _out="$(_lint 'import os')"
 t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" "F401 is outside the gate tier"
 t_assert_contains "${_out}" "ADVISORY: findings above are informational"
 t_assert_contains "${_out}" "rc=0" "the adoption ramp must stay advisory"
+
+t_case "a full hub sweep rejects unused Python imports"
+_out="$(_targets 'import os' 'print("ok")')"
+t_assert_contains "${_out}" "F401"
+t_assert_contains "${_out}" "hub unused-binding gate failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a full hub sweep rejects unused imports in shell heredocs"
+_out="$(_targets 'print("ok")' 'import os')"
+t_assert_contains "${_out}" "F401"
+t_assert_contains "${_out}" "linux/scripts/probe.sh:3:"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a full hub sweep rejects unused assignments"
+_out="$(_targets $'def answer():\n    unused = 42\n    return 1' 'print("ok")')"
+t_assert_contains "${_out}" "F841"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a full hub sweep rejects unused unpacked variables"
+_out="$(_targets $'def answer():\n    first, second = (1, 2)\n    return first\nprint(answer())' 'print("ok")')"
+t_assert_contains "${_out}" "RUF059"
+t_assert_contains "${_out}" "rc=1"
 
 t_case "a clean tree of every target shape passes"
 _out="$(_targets 'print("ok")' 'print("ok")')"

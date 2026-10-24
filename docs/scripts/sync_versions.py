@@ -128,7 +128,7 @@ def parse_versions_env() -> dict[str, str]:
 def collect_versions() -> dict[str, str]:
     v = parse_versions_env()
 
-    linux_webserver = read_repo_file("linux/webserver/Dockerfile")
+    read_repo_file("linux/webserver/Dockerfile")
     windows_base = read_repo_file("windows/Dockerfile.base")
     windows_nvidia = read_repo_file("windows/Dockerfile.nvidia")
     windows_media = read_repo_file("windows/Dockerfile.media-merge-builder")

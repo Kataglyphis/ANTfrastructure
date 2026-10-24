@@ -9,6 +9,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Iterator
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quality_allow import check_keys, load_keys  # noqa: E402
@@ -34,20 +35,20 @@ SOURCED = re.compile(r"(?:^|[^\w.])(?:\.|source|source_module\w*)\s+\S", re.MULT
 GRADED = HUB
 
 
-def _rel(path):
+def _rel(path) -> str:
     """Posix-spelled relpath, since allowlist and corpus keys never carry Windows backslashes."""
     return os.path.relpath(path, GRADED).replace(os.sep, "/")
 
 
-def _kept(path):
+def _kept(path) -> bool:
     return _rel(path) not in SKIP_RELS
 
 
-def _code(text):
+def _code(text) -> str:
     return HEAD.sub("", COMMENT.sub("", text))
 
 
-def _tracked(root):
+def _tracked(root) -> Iterator[str]:
     """Every tracked path outside the excluded tops; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z"],
                          capture_output=True, text=True)
@@ -61,20 +62,20 @@ def _tracked(root):
         yield rel
 
 
-def _size(path):
+def _size(path) -> int:
     try:
         return os.path.getsize(path)
     except OSError:
         return 0
 
 
-def _outside(rel):
+def _outside(rel) -> bool:
     """Is this path under SKIP_DIRS or SKIP_RELS, which the hub's own walk also skips?"""
     return (bool(set(rel.split("/")[:-1]) & SKIP_DIRS)
             or any(rel == skip or rel.startswith(skip + "/") for skip in SKIP_RELS))
 
 
-def _corpus_rel(rel):
+def _corpus_rel(rel) -> bool:
     """Is this path corpus text: not a doc, patch or allow file, and not skipped?"""
     return not rel.endswith(SKIP_SUFFIXES) and not _outside(rel)
 
@@ -93,7 +94,7 @@ def def_files(root):
             for rel in _tracked(root) if rel.endswith(".sh"))
 
 
-def _walk_corpus():
+def _walk_corpus() -> Iterator[tuple[str, str]]:
     """The hub's own corpus: the CORPUS trees, walked."""
     for top in CORPUS:
         root = os.path.join(GRADED, top)
@@ -109,7 +110,7 @@ def _walk_corpus():
                     yield path, _rel(path)
 
 
-def _tracked_corpus():
+def _tracked_corpus() -> Iterator[tuple[str, str]]:
     """Any other root's corpus: every tracked file small enough to be a call site."""
     for rel in _tracked(GRADED):
         path = os.path.join(GRADED, rel)
@@ -166,7 +167,7 @@ def dead(seen):
     return defined, [(rel, name) for rel, name in defined if not seen[name]]
 
 
-def _definers():
+def _definers() -> dict[str, set[str]]:
     """Function name -> the set of files defining it."""
     out = {}
     for rel, name in definitions():
@@ -174,7 +175,7 @@ def _definers():
     return out
 
 
-def _names_of(corpus_texts):
+def _names_of(corpus_texts) -> dict[str, set[str]]:
     return {rel: set(WORD.findall(_code(text))) for rel, text in corpus_texts.items()}
 
 
@@ -184,7 +185,7 @@ def unlinked(corpus_texts):
     names = _names_of(corpus_texts)
     readers = {}
 
-    def reads(rel):
+    def reads(rel) -> set[str]:
         if rel not in readers:
             base = os.path.basename(rel)
             readers[rel] = {rel} | {o for o, text in corpus_texts.items() if base in text}
@@ -205,7 +206,7 @@ def unlinked(corpus_texts):
     return rows
 
 
-def _isolated(rel, corpus_texts):
+def _isolated(rel, corpus_texts) -> bool:
     if SOURCED.search(corpus_texts.get(rel, "")):
         return False
     base = os.path.basename(rel)
@@ -226,7 +227,7 @@ def census(corpus_texts):
             len(considered), len(unlinked(corpus_texts)))
 
 
-def _where(allow_path=None):
+def _where(allow_path=None) -> None:
     """Under a foreign root, name the tree, the freeze file and what the corpus skipped; silent for the hub."""
     if GRADED == HUB:
         return
@@ -261,7 +262,7 @@ def report_census(rows, shared, considered, unlinked_count):
     return 0
 
 
-def _stale_note(key, corpus_texts):
+def _stale_note(key, corpus_texts) -> str:
     hit = disarmer(key, corpus_texts)
     if not hit:
         return ""

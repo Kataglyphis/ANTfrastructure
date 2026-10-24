@@ -11,7 +11,8 @@ _litert_disable_qairt_header_download() {
     [ -f "${vendors}" ] || { _litert_qairt_log WARN "QAIRT download patch: ${vendors} not found -- upstream layout moved"; return 0; }
     if grep -q 'KATAGLYPHIS-NO-QAIRT-DOWNLOAD' "${vendors}"; then return 0; fi
     python3 - "${vendors}" <<'PY'
-import re, sys
+import sys
+
 p = sys.argv[1]
 s = open(p, encoding='utf-8').read()
 needle = 'if(NOT QAIRT_HEADERS_DIR)'

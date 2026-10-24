@@ -32,19 +32,19 @@ HEADER = (
 )
 
 
-def _bash():
+def _bash() -> str:
     # Windows searches System32 first, whose bash.exe is WSL's launcher and cannot read a C:\ path.
     return shutil.which("bash") or "bash"
 
 
-def _native(path):
+def _native(path) -> str:
     # Under Git Bash, --print-bin answers in MSYS form (/tmp/...), which Windows cannot exec.
     if os.name == "nt" and path.startswith("/") and shutil.which("cygpath"):
         return subprocess.run(["cygpath", "-w", path], capture_output=True, text=True).stdout.strip() or path
     return path
 
 
-def _lint(*args: str):
+def _lint(*args: str) -> subprocess.CompletedProcess[str]:
     # Anchored to this repo whatever the graded root: the shellcheck bootstrap and pins are the hub's.
     return subprocess.run([_bash(), LINT, *args], cwd=ROOT, capture_output=True, text=True)
 
@@ -70,7 +70,7 @@ def resolve(args):
     return root, args.allow or (ALLOW if root == ROOT else os.path.join(root, ALLOW_NAME))
 
 
-def _excluded(rel):
+def _excluded(rel) -> bool:
     """A vendored top-level DIRECTORY, so a file merely named third_party stays in."""
     head, _sep, rest = rel.partition("/")
     return bool(rest) and head in EXCLUDE
@@ -119,7 +119,7 @@ def warnings(shellcheck, files, root, only=None):
     return counts
 
 
-def _rel(path, root=ROOT):
+def _rel(path, root=ROOT) -> str:
     """A --files argument relative to the graded root; under a consumer root a relative name is the consumer's."""
     if root != ROOT:
         return os.path.relpath(path if os.path.isabs(path)
@@ -201,7 +201,7 @@ def main():
     return rc
 
 
-def _version(shellcheck):
+def _version(shellcheck) -> str:
     proc = subprocess.run([shellcheck, "--version"], capture_output=True, text=True)
     for line in proc.stdout.splitlines():
         if line.startswith("version:"):

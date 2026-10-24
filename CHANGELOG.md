@@ -17,9 +17,10 @@
 
 - Add a locked `quality/` uv project for the Python analysis environment and expand fatal ty checks from 129 to 140 of 146 tracked files; keep the remaining image-only and private imports visible in ignored reports.
 - Resolve all 20 missing variadic parameter annotations and make Ruff ANN002 and ANN003 fatal across every tracked Python file, with failing fixtures and mutation proofs.
-- Annotate 114 private returns in four Renovate Python scripts and three quality verifiers; make their Ruff ANN202 findings fatal, with selector and scope mutation proofs.
+- Annotate 195 private returns in Renovate Python scripts and all Linux quality verifiers; make their Ruff ANN202 findings fatal, with selector and scope mutation proofs.
+- Remove eight unused Python bindings, including one inside a shell heredoc, and make Ruff F401, F841 and RUF059 fatal in default hub preflight sweeps with failing fixtures and selector mutations.
 - Quote the cross CMake policy option as one argument, remove its frozen ShellCheck SC2206 row, and prove the argument boundary with a focused test and mutation.
-- Extend enforced Windows Pester command coverage from eleven to thirteen modules: WebDAV has a 90% floor and MSIX signing an 80% floor, with new success/failure tests and missing-target mutation proofs.
+- Extend enforced Windows Pester command coverage from eleven to fourteen modules: WebDAV has a 90% floor, MSIX signing an 80% floor, and container-image module resolution a 100% floor, with success/failure tests and missing-target mutation proofs.
 
 ## 2026-10-25 — Wider strict analysis and Windows coverage
 

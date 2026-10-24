@@ -484,12 +484,13 @@ offender passes, and that same row against the clean subject is STALE. The
 subjects are built with `printf`, not written as literal lines: a real
 `local x="$(cmd)"` in the suite would be a new offender for the gate it tests.
 
-`tests/test-python-lint-gate.sh` covers the two tiers `lint-python.sh` runs. The
-**gate tier** (`ruff check --select E9,F63,F7,F82,B012,B023`) is the one preflight can fail,
-so that is the one proven: an undefined name, a syntax error, a silenced exception
-and a late-bound closure each exit 1. The
-**advisory tier** (the full default ruleset) must report and still exit 0 — an
-unused import prints `ADVISORY:` and passes. The fixture writes `RUFF_VERSION`
+`tests/test-python-lint-gate.sh` covers the lint tiers. The shared **gate tier**
+(`ruff check --select E9,F63,F7,F82,B012,B023`) rejects an undefined name, syntax
+error, silenced exception or late-bound closure. The default hub preflight sweep also rejects
+`F401`, `F841` and `RUF059` in Python files and extracted shell heredocs; explicit
+targets and named roots retain their advisory adoption tier. The **advisory
+tier** (the full default ruleset) reports other findings without failing. The
+fixture writes `RUFF_VERSION`
 from `01-core/tool-pins.env` into its own `tool-pins.env`, so when no ruff is on
 PATH it bootstraps the same pinned `uvx ruff@<pin>` the repo does (a ruff already
 on PATH is preferred by the gate and the fixture alike).
@@ -511,6 +512,8 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `comment-size.every-language-is-a-subject`, `comment-size.heredoc-is-data`,
 `masked-decls.verdict-discarded`, `masked-decls.substitution-required`,
 `python-lint.gate-tier-neutered`, `python-lint.tier-boundary`,
+`python-lint.hub-unused-import-gate`, `python-lint.hub-unused-assignment-gate`,
+`python-lint.hub-unused-unpacking-gate`,
 `python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
 `python-lint.heredoc-python-decision` (the last targets
 `extract_embedded_python.py`, which `verify_gate_registry.py` counts among
@@ -533,8 +536,8 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 `windows/`. The four ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
-`logs/code-quality/ruff-annotations-gate.txt`. Four Renovate Python scripts
-and three quality verifiers have a separate fatal ANN202 check in
+`logs/code-quality/ruff-annotations-gate.txt`. All four Renovate Python scripts
+and all 22 Linux `verify_*.py` quality verifiers have a separate fatal ANN202 check in
 `logs/code-quality/ruff-private-returns-gate.txt`. The Linux x64 workflow uploads
 these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
@@ -558,9 +561,9 @@ Ty uses declared and inferred types. It does **not** add annotations or require 
 function to have one. Ruff's `ANN002`, `ANN003`, `ANN204`, `ANN205` and `ANN206`
 now fail on missing variadic parameter and method return annotations across every
 tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
-four `ANN205` findings were fixed; `ANN206` was already clean. The 114 private
-return findings in four Renovate scripts and three quality verifiers were fixed,
-so `ANN202` is also fatal for those seven files. Other `ANN202` findings,
+four `ANN205` findings were fixed; `ANN206` was already clean. The 195 private
+return findings in Renovate scripts and Linux quality verifiers were fixed,
+so `ANN202` is also fatal for those 26 files. Other `ANN202` findings,
 `ANN001` and `ANN201` remain in the
 full report. The focused suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
@@ -764,7 +767,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3436 entries** over **374 distinct test commands**; both digits are
+manifest holds **3437 entries** over **374 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1752,7 +1755,7 @@ The Windows test runner writes a JSON summary for each parent run to
 ## Windows Pester coverage
 
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
-for thirteen modules, each with a focused Pester suite:
+for fourteen modules, each with a focused Pester suite:
 
 | Module | Minimum command coverage |
 |---|---:|
@@ -1769,9 +1772,10 @@ for thirteen modules, each with a focused Pester suite:
 | `WindowsWasmOpt.Common.psm1` | 80% |
 | `WindowsWebDav.Common.psm1` | 90% |
 | `WindowsMsix.Signing.psm1` | 80% |
+| `WindowsContainerImage.Bootstrap.psm1` | 100% |
 
 The target-inventory test pins every suite/module pair and floor, and mutations prove
-that removing the ONNX, wasm-opt, WebDAV or MSIX signing target or lowering its floor fails the test.
+that removing the ONNX, wasm-opt, WebDAV, MSIX signing or container-image bootstrap target or lowering its floor fails the test.
 The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
 zero measured files or commands, inconsistent counts, a missing or duplicate target,
 or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict

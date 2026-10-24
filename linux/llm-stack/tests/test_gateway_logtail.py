@@ -42,4 +42,4 @@ def test_logtail_keeps_duplicate_matching_requests_visible(tmp_path):
     lines = tail.lines(settle=0, predicate=lambda line: line.get("alias") == "chat-long")
     assert len(lines) == 2
     with pytest.raises(ValueError, match="too many values"):
-        (line,) = lines
+        (_,) = lines

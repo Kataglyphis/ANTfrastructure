@@ -177,7 +177,7 @@ def main(argv=None):
     print("  site:  %s\n  allow: %s\n  pages: %d documents, %d finding(s), %d frozen"
           % (site.root, args.allow or "(none)", count, len(site.findings), len(frozen)))
 
-    def describe(key):
+    def describe(key) -> str:
         sources = sorted(site.findings.get(key, ()))
         return key.replace("\t", "  ") + ("   <- " + ", ".join(sources[:3]) if sources else "")
 

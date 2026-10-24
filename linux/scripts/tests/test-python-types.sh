@@ -65,7 +65,7 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_contains "${out}" "Ruff signature annotation gate: clean (19 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (7 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (8 files)"
 
 t_case "the locked quality environment resolves test and parser imports"
 t_assert_ok test -d "${ROOT}/quality/.venv"
