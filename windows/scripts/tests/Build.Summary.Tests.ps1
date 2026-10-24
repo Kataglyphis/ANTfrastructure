@@ -31,4 +31,43 @@ Describe 'Write-BuildSummary' {
             Assert-Equal 50 $summary.totals.successRate
         }
     }
+
+    It 'closes the log and reports only fatal failures after writing the summary' {
+        Invoke-InTestDir { param($dir)
+            $context = New-BuildContext -Workspace $dir -LogDir $dir
+            $context.Results.AllowedFailures.Add('optional lint')
+            Open-BuildLog -Context $context
+            Assert-False (Complete-CiBuildSession -Context $context) 'allowed failures do not fail CI'
+            Assert-True ($null -eq $context.LogWriter) 'the log writer is closed'
+            Assert-True (Test-Path -LiteralPath $context.SummaryPath) 'the summary is written before closing'
+
+            $failed = New-BuildContext -Workspace $dir -LogDir $dir
+            $failed.Results.Failed.Add('build')
+            $failed.Results.Errors['build'] = 'tool exited 1'
+            Open-BuildLog -Context $failed
+            Assert-True (Complete-CiBuildSession -Context $failed) 'fatal failures fail CI'
+            Assert-True ($null -eq $failed.LogWriter) 'the failed log writer is closed'
+            $summary = Get-Content -LiteralPath $failed.SummaryPath -Raw | ConvertFrom-Json
+            Assert-Equal 'build' (@($summary.failedSteps) -join ',')
+        }
+    }
+
+    It 'detects a reversed fatal-step verdict in the shared finisher' {
+        $stubs = @'
+function Write-BuildSummary { param($Context) $Context.Order.Add('summary') }
+function Close-BuildLog { param($Context) $Context.Order.Add('close') }
+'@
+        Invoke-TestFunctionMutations -ModuleArguments @{
+            ScriptPath = 'windows/scripts/modules/WindowsBuild.Common.psm1'
+            FunctionName = 'Complete-CiBuildSession'
+            Prelude = $stubs
+        } -Find 'return ($Context.Results.Failed.Count -gt 0)' -Replace 'return ($Context.Results.Failed.Count -lt 0)' `
+            -Expected 'Assert-True failed' -IncludeControl -Body {
+            $context = [pscustomobject]@{ Results = @{ Failed = [System.Collections.Generic.List[string]]::new() }
+                Order = [System.Collections.Generic.List[string]]::new() }
+            $context.Results.Failed.Add('build')
+            Assert-True (Complete-MutCiBuildSession -Context $context) 'one fatal step must fail CI'
+            Assert-Equal 'summary|close' ($context.Order -join '|')
+        }
+    }
 }

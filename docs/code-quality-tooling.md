@@ -447,6 +447,13 @@ passes. The hub sweep feeds extraction in bounded batches so Git Bash does not e
 Windows' child-command length. The extractor cannot identify Python assembled
 dynamically at runtime.
 
+The fatal Ruff tier also selects B012 (a `return`, `break` or `continue` in `finally` can
+silence an exception) and B023 (a loop variable captured by a closure can bind too late).
+It applies to tracked Python and extracted heredocs. The larger Ruff rule set remains
+advisory. `test-python-lint-gate.sh` checks both defects and a safe form. The
+`python-lint.exception-return-required` and `python-lint.loop-closure-required`
+mutations remove each selector independently and must fail.
+
 ## Proving a gate can go red
 
 Three slugs read "proven" in the registry while nothing could turn them red:
@@ -478,8 +485,9 @@ subjects are built with `printf`, not written as literal lines: a real
 `local x="$(cmd)"` in the suite would be a new offender for the gate it tests.
 
 `tests/test-python-lint-gate.sh` covers the two tiers `lint-python.sh` runs. The
-**gate tier** (`ruff check --select E9,F63,F7,F82`) is the one preflight can fail,
-so that is the one proven: an undefined name and a syntax error each exit 1. The
+**gate tier** (`ruff check --select E9,F63,F7,F82,B012,B023`) is the one preflight can fail,
+so that is the one proven: an undefined name, a syntax error, a silenced exception
+and a late-bound closure each exit 1. The
 **advisory tier** (the full default ruleset) must report and still exit 0 — an
 unused import prints `ADVISORY:` and passes. The fixture writes `RUFF_VERSION`
 from `01-core/tool-pins.env` into its own `tool-pins.env`, so when no ruff is on
@@ -740,7 +748,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3415 entries** over **373 distinct test commands**; both digits are
+manifest holds **3417 entries** over **373 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1724,6 +1732,20 @@ the chain reads them there. PowerShell complexity JSON remains in `out/complexit
 requested separately.
 The Windows test runner writes a JSON summary for each parent run to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`; child runs do not write durable copies.
+
+## Windows Pester coverage
+
+`pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
+for `WindowsAppRunner.Common.psm1` (85% floor), `WindowsBuildSweep.Common.psm1` (90%)
+and `WindowsAgenticLoop.Common.psm1` (60%). Each target has a focused Pester suite.
+The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
+zero measured files or commands, inconsistent counts, a missing or duplicate target,
+or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict
+in its JSON summary. The XML
+reports and summary live under ignored `logs/windows-tests/`; Windows x64 CI uploads
+them even when a suite fails. Coverage counts show executed commands, not whether test
+assertions prove the intended behavior. New failure-path tests plant missing, empty
+and low reports so a zero-work run cannot pass.
 
 ## Windows PowerShell complexity
 

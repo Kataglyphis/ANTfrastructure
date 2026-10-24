@@ -1962,10 +1962,26 @@
  {
   "id": "python-lint.tier-boundary",
   "target": "linux/scripts/lint-python.sh",
-  "find": "GATE_SELECT=\"E9,F63,F7,F82\"",
-  "replace": "GATE_SELECT=\"E9,F63,F7,F82,F401\"",
+  "find": "GATE_SELECT=\"E9,F63,F7,F82,B012,B023\"",
+  "replace": "GATE_SELECT=\"E9,F63,F7,F82,B012,B023,F401\"",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "the adoption ramp must stay advisory: promoting a style code into the gate tier turns a passing tree red"
+ },
+ {
+  "id": "python-lint.exception-return-required",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "GATE_SELECT=\"E9,F63,F7,F82,B012,B023\"",
+  "replace": "GATE_SELECT=\"E9,F63,F7,F82,B023\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "the lint tier must reject a return in finally that hides an exception"
+ },
+ {
+  "id": "python-lint.loop-closure-required",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "GATE_SELECT=\"E9,F63,F7,F82,B012,B023\"",
+  "replace": "GATE_SELECT=\"E9,F63,F7,F82,B012\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "the lint tier must reject late-bound closures in plain and embedded Python"
  },
  {
   "id": "env-knobs.owner-trailing-comment",

@@ -177,7 +177,5 @@ try {
     }
 } finally {
     Remove-TrackedUvEnvironment -Tracker $tracker -LogInfo $script:UvLogInfo -LogWarning $script:UvLogWarning
-    Write-BuildSummary -Context $context
-    Close-BuildLog -Context $context
-    if ($context.Results.Failed.Count -gt 0) { exit 1 }
+    if (Complete-CiBuildSession -Context $context) { exit 1 }
 }

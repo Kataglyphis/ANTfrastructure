@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [--root <dir>] [file.py|file.sh ...]: ruff, no imports run; E9,F63,F7,F82 fail, the rest is advisory.
+# [--root <dir>] [file.py|file.sh ...]: ruff checks fatal errors and exception/closure bugs; other rules stay advisory.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -15,7 +15,7 @@ fi
 . "${_core}/load-versions-env.sh" && load_versions_env "${_core}/tool-pins.env"
 : "${RUFF_VERSION:?RUFF_VERSION is not set (01-core/tool-pins.env parsed, but the key is gone from it)}"
 RUFF_PIN="${RUFF_VERSION}"
-GATE_SELECT="E9,F63,F7,F82"
+GATE_SELECT="E9,F63,F7,F82,B012,B023"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
@@ -139,11 +139,11 @@ fi
 
 echo "== python lint under ${SCAN_ROOT}: ${#PY_FILES[@]} file(s), ruff via '${RUFF[*]}' =="
 
-# Gate pass — real-error classes only, hard-fails.
+# Gate pass catches fatal errors, suppressed exceptions and late-bound loop closures.
 if ! "${RUFF[@]}" check --quiet --select "${GATE_SELECT}" "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
   _name_sources "${_RUFF_OUT}"
   echo ""
-  err "python gate pass failed (${GATE_SELECT}: syntax errors / undefined names / invalid asserts)"
+  err "python gate pass failed (${GATE_SELECT}: fatal errors / suppressed exceptions / late-bound closures)"
 fi
 echo "gate pass (${GATE_SELECT}): clean"
 

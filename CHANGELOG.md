@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — Stronger executable quality gates
+
+- Fail Python lint on suppressed exceptions and late-bound loop closures (Ruff B012/B023), including Python extracted from shell scripts; test both defects and mutation-test the selector.
+- Enforce targeted Windows Pester command-coverage floors, reject missing or empty reports, and upload ignored test and coverage artifacts from Windows x64 CI.
+- Share the Windows Python CI build finisher across three drivers and remove its stale duplication exception while preserving fatal-step reporting.
+- Allow manual dispatch of the Linux x64 and Windows x64 quality workflows and check those triggers in the workflow suite.
+
 ## 2026-10-24 — Locked docs dependencies
 
 - Replace the root theme `requirements.txt` with `docs/pyproject.toml` and `docs/uv.lock`; local docs builds use `uv sync --locked`, and image builds check the lock offline while keeping their shipped Sphinx stack.

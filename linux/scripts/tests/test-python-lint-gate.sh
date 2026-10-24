@@ -90,9 +90,24 @@ t_case "a syntax error fails the gate tier"
 _out="$(_lint 'def f(:')"
 t_assert_contains "${_out}" "rc=1" "an E9 syntax error is a real crash waiting to happen"
 
+t_case "a return in finally cannot silence an exception"
+_out="$(_lint $'def broken():\n    try:\n        raise RuntimeError("lost")\n    finally:\n        return 1')"
+t_assert_contains "${_out}" "B012" "the stricter tier must inspect exception cleanup"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a loop closure must bind the value it captures"
+_out="$(_lint $'callbacks = []\nfor value in range(2):\n    callbacks.append(lambda: value)')"
+t_assert_contains "${_out}" "B023" "late binding silently makes every callback use the last value"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "safe cleanup and explicitly bound loop closures pass"
+_out="$(_lint $'def safe():\n    try:\n        return 1\n    finally:\n        print("cleanup")\ncallbacks = []\nfor value in range(2):\n    callbacks.append(lambda value=value: value)')"
+t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean"
+t_assert_contains "${_out}" "rc=0"
+
 t_case "a clean file passes both tiers"
 _out="$(_lint 'print("ok")')"
-t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean"
+t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean"
 t_assert_contains "${_out}" "advisory pass: clean"
 t_assert_contains "${_out}" "rc=0" "nothing to report, nothing to fail"
 
@@ -101,7 +116,7 @@ _d="$(_mkroot)"
 printf 'print("ok")\n' > "${_d}/docs/scripts/subject.py"
 printf 'echo hello\n' > "${_d}/linux/scripts/plain.sh"
 _out="$(_run "${_d}")"
-t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean"
+t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean"
 t_assert_contains "${_out}" "rc=0"
 
 t_case "a missing extractor makes the gate fail before Ruff"
@@ -159,13 +174,13 @@ rm -rf "${_batch_d}" "${_batch_log}"
 
 t_case "an advisory-only finding is reported but does not fail"
 _out="$(_lint 'import os')"
-t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean" "F401 is outside the gate tier"
+t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" "F401 is outside the gate tier"
 t_assert_contains "${_out}" "ADVISORY: findings above are informational"
 t_assert_contains "${_out}" "rc=0" "the adoption ramp must stay advisory"
 
 t_case "a clean tree of every target shape passes"
 _out="$(_targets 'print("ok")' 'print("ok")')"
-t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean" \
+t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" \
   "the nginx TPL_PY_* family must not be linted as Python"
 t_assert_contains "${_out}" "rc=0"
 
@@ -179,6 +194,11 @@ _out="$(_targets 'print("ok")' 'print(nope_in_heredoc)')"
 t_assert_contains "${_out}" "nope_in_heredoc" \
   "switching extraction off leaves ~775 heredoc lines outside the gate, silently"
 t_assert_contains "${_out}" "python gate pass failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a late-bound closure inside a shell heredoc fails the gate"
+_out="$(_targets 'print("ok")' $'callbacks = []\nfor value in range(2):\n    callbacks.append(lambda: value)')"
+t_assert_contains "${_out}" "B023" "new correctness rules must cover extracted shell Python too"
 t_assert_contains "${_out}" "rc=1"
 
 t_case "the heredoc finding names the shell file and the line the reader must open"

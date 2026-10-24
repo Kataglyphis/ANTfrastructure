@@ -1,0 +1,71 @@
+#requires -Version 7.0
+# Copyright (c) 2026 Kataglyphis
+# SPDX-License-Identifier: MIT
+# NOT covered: Pester's instrumentation internals or nonselected suites; these fixtures mutate a measured result and its report.
+
+function Write-CoberturaFixture {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$ClassPath)
+    $content = "<!DOCTYPE coverage SYSTEM 'coverage-loose.dtd'[]><coverage><packages><package><classes><class filename='$ClassPath'><lines><line number='1' hits='1'/></lines></class></classes></package></packages></coverage>"
+    Set-Content -LiteralPath $Path -Value $content
+}
+
+function Invoke-CoverageFixture {
+    param([Parameter(Mandatory)][scriptblock]$Body)
+    Invoke-InTestDir { param($dir)
+        $report = Join-Path $dir 'coverage.xml'
+        $measured = [pscustomobject]@{
+            FilesAnalyzedCount = 1; CommandsAnalyzedCount = 39; CommandsExecutedCount = 35; CoveragePercent = 89.74
+        }
+        $expectedClass = 'windows/scripts/modules/WindowsAppRunner.Common.psm1'
+        Write-CoberturaFixture -Path $report -ClassPath $expectedClass
+        & $Body $report $measured $expectedClass
+    }
+}
+
+function Assert-CoverageRejected {
+    param([Parameter(Mandatory)][object]$Measured, [Parameter(Mandatory)][string]$Report,
+        [Parameter(Mandatory)][string]$ExpectedClass, [Parameter(Mandatory)][string]$Pattern)
+    $reason = Get-CoverageFailure -Coverage $Measured -ReportPath $Report -ExpectedClass $ExpectedClass -MinimumPercent 85
+    Assert-Match $Pattern $reason
+}
+
+Describe 'Invoke-Tests coverage gate' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `
+        -FunctionName Get-CoberturaModuleFailure, Get-CoverageFailure)
+
+    It 'accepts a measured module above its floor' {
+        Invoke-CoverageFixture { param($report, $measured, $expectedClass)
+            Assert-Equal '' (Get-CoverageFailure -Coverage $measured -ReportPath $report `
+                -ExpectedClass $expectedClass -MinimumPercent 85)
+        }
+    }
+
+    It 'rejects a missing or empty report even when command counts look good' {
+        Invoke-CoverageFixture { param($report, $measured, $expectedClass)
+            Remove-Item -LiteralPath $report
+            Assert-CoverageRejected -Measured $measured -Report $report -ExpectedClass $expectedClass -Pattern 'report is missing'
+            Set-Content -LiteralPath $report -Value '' -NoNewline
+            Assert-CoverageRejected -Measured $measured -Report $report -ExpectedClass $expectedClass -Pattern 'report is empty'
+        }
+    }
+
+    It 'rejects a zero-file scan and a result below the measured floor' {
+        Invoke-CoverageFixture { param($report, $mutated, $expectedClass)
+            $mutated.FilesAnalyzedCount = 0
+            Assert-CoverageRejected -Measured $mutated -Report $report -ExpectedClass $expectedClass -Pattern 'expected one measured module'
+            $mutated.FilesAnalyzedCount = 1
+            $mutated.CommandsExecutedCount = 30
+            $mutated.CoveragePercent = 76.92
+            Assert-CoverageRejected -Measured $mutated -Report $report -ExpectedClass $expectedClass -Pattern 'below 85%'
+        }
+    }
+
+    It 'rejects malformed XML and a report for the wrong module' {
+        Invoke-CoverageFixture { param($report, $measured, $expectedClass)
+            Set-Content -LiteralPath $report '<coverage><broken>'
+            Assert-CoverageRejected -Measured $measured -Report $report -ExpectedClass $expectedClass -Pattern 'invalid Cobertura XML'
+            Write-CoberturaFixture -Path $report -ClassPath 'windows/scripts/modules/Wrong.Common.psm1'
+            Assert-CoverageRejected -Measured $measured -Report $report -ExpectedClass $expectedClass -Pattern 'Cobertura class is'
+        }
+    }
+}

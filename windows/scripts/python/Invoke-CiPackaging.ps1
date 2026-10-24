@@ -136,11 +136,6 @@ try {
     Write-CiLog "=== Packaging completed ==="
 
 } finally {
-    Write-BuildSummary -Context $script:BuildContext
-    Close-BuildLog -Context $script:BuildContext
-
-    if ($script:BuildContext.Results.Failed.Count -gt 0) {
-        exit 1
-    }
+    if (Complete-CiBuildSession -Context $script:BuildContext) { exit 1 }
 }
 

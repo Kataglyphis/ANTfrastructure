@@ -485,6 +485,12 @@ with `-RepoRoot` set to the mount. The driver runs the Linux lane's four steps, 
 4. **`Invoke-FreeThreadedWheelTests.ps1`**, the tests on the installed cp3XYt wheel
    (§ The suite on the installed wheel), which gates.
 
+The pipeline, packaging and installed-wheel drivers finish through
+`Complete-CiBuildSession` in `WindowsBuild.Common`: it writes the summary,
+closes the log and returns whether a fatal step failed. Each driver exits 1
+for that verdict. The static-analysis driver keeps its separate
+`Assert-BuildGates` check.
+
 A repo keeps its values in `scripts\windows\python-ci.psd1`, under the driver's parameter names. A
 parameter on the command line wins; a key that is no parameter fails the run.
 

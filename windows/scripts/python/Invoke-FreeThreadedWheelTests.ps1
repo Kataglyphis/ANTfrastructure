@@ -103,7 +103,5 @@ try {
         }
     } | Out-Null
 } finally {
-    Write-BuildSummary -Context $context
-    Close-BuildLog -Context $context
-    if ($context.Results.Failed.Count -gt 0) { exit 1 }
+    if (Complete-CiBuildSession -Context $context) { exit 1 }
 }

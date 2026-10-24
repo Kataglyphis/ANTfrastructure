@@ -171,9 +171,12 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
+   Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
    The hub's pinned ty gate checks tracked `docs/scripts/*.py`, `linux/scripts/verify_*.py` and their shared quality helpers strictly; the full Linux and Windows Python scans and Ruff annotation audit stay visible in ignored `logs/code-quality/`. A checker setup failure is fatal. Ty checks types but does not require annotations.
+   Ruff B012 and B023 are fatal for tracked Python and extracted shell heredocs; keep the gate tier and its mutation proof intact.
    Consumer Python lint includes tracked shell heredocs; extraction failure is fatal and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
+   Windows Pester coverage must measure one file and executed commands in each targeted module; missing or empty reports and scores below the module floor fail the test run.
    Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
    Consumer Windows PowerShell lint jobs report complexity over the same selected path; enable strict verdicts with `complexity-strict` after the consumer meets the limits.
 
@@ -345,6 +348,7 @@ push to it runs the Linux x64 lane. Every other lane runs when a commit message 
 green, and only the owner moves it, or an agent the owner tells to in that turn. Every push to
 `main` runs every lane again and releases `v<version>` only when all are green. Tokens, merge
 steps, workflow shape: [`docs/branch-and-release-strategy.md`](docs/branch-and-release-strategy.md).
+The hub's Linux x64 and Windows x64 quality workflows expose manual dispatch.
 Which repo follows it yet, and this repo's own triggers:
 [`docs/ci-build-triggers.md`](docs/ci-build-triggers.md).
 

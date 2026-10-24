@@ -1,6 +1,7 @@
 # No images here, the chain builds locally (docs/windows-builds.md); named per docs/adopting-in-a-new-project.md#workflow-file-names-and-display-names
 name: Windows x64 · script tests
 on:
+  workflow_dispatch:
   push:
     branches: [main, develop]
     paths:
@@ -58,6 +59,14 @@ jobs:
       - name: Run test suites
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1
+
+      - name: Save test and coverage reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-x64-tests-${{ github.run_id }}
+          path: logs/windows-tests/
+          if-no-files-found: error
 
   # Patches against their pinned upstreams on every versions.env change; a bump still needs one local full chain.
   patch-drift:

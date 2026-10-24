@@ -15,6 +15,17 @@ _PY="${PREFLIGHT_PYTHON:-python3}"
 # preflight.sh arms the conventions gate, which would make the ramped checks below fatal.
 unset WORKFLOW_CONVENTIONS_GATE
 
+t_case "the hub quality lanes can be run on demand"
+for lane in linux-x64 windows-x64; do
+  t_assert_eq 0 "$(t_rc awk '
+    { sub(/\r$/, "") }
+    /^on:$/ { in_on = 1; next }
+    in_on && /^[^ ]/ { in_on = 0 }
+    in_on && /^  workflow_dispatch:$/ { found = 1 }
+    END { exit !found }
+  ' "${SCRIPTS}/../../.github/workflows/${lane}.yml")" "${lane} must have workflow_dispatch"
+done
+
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 

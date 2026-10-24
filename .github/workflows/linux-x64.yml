@@ -10,6 +10,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 # One run per ref; the docs site is docs.yml's, which has no cancelling group.
 concurrency:

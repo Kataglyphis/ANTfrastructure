@@ -663,6 +663,13 @@ function Write-BuildSummary {
     Write-BuildSummaryJson -Context $Context -Total $total -SuccessRate $successRate
 }
 
+function Complete-CiBuildSession {
+    param([Parameter(Mandatory)][pscustomobject]$Context)
+    Write-BuildSummary -Context $Context
+    Close-BuildLog -Context $Context
+    return ($Context.Results.Failed.Count -gt 0)
+}
+
 function Get-PyprojectPackageName {
     # pyproject.toml [project] name, else the repo-root leaf directory.
     param(
@@ -716,6 +723,7 @@ Export-ModuleMember -Function @(
     'Assert-BuildGates',
     'Invoke-BuildStep',
     'Write-BuildSummary',
+    'Complete-CiBuildSession',
     'Resolve-DirectoryPath',
     'New-Timestamp',
     'ConvertTo-ParameterList'
