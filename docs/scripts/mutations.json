@@ -21514,6 +21514,14 @@
   "why": "Owned scheduler lifecycle must preserve signal policy and fail closed after supervisor or cleanup failures."
  },
  {
+  "id": "ordered-jobs.watchdog-owns-output",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  ) </dev/null >> \"${OJ_DIR}/${index}.out\" 2>&1 &",
+  "replace": "  ) &",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-watchdog-fds.sh",
+  "why": "a watchdog that inherits captured stdout or stderr can hold the test's pipe open after its owner exits"
+ },
+ {
   "id": "ordered-jobs.publication-barrier-required",
   "target": "linux/scripts/tests/test-run-tests-reaping.sh",
   "find": "      builtin printf ready > \"$REAP_FIXTURE_ROOT/publication.ready\"",

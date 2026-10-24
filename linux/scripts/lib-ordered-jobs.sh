@@ -167,7 +167,7 @@ _oj_start_watchdog() {
       fi
       sleep 1
     done
-  ) &
+  ) </dev/null >> "${OJ_DIR}/${index}.out" 2>&1 &
   _OJ_WATCH_PID=$!
   printf '%s\n' "${_OJ_WATCH_PID}" > "${OJ_DIR}/${index}.watch"
   set +m

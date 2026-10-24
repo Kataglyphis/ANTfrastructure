@@ -23,6 +23,7 @@
 - Preserve an ignored interrupt for scheduled job commands and use a valid module spec in the free-threaded load-trace fixture, fixing two Linux preflight failures.
 - Keep the quick-start README within its 100-line gate and set the ordered-job interrupt trap without a ShellCheck warning.
 - Reap mutation test sessions when their shell exits so an inherited output pipe cannot turn a completed baseline into a timeout; refresh stale mutation recipes and the generated gate proof registry.
+- Send ordered-job watchdog output to its job log, with a live file-descriptor regression and mutation proof, so it cannot hold a captured test pipe open.
 
 ## 2026-10-24 — CI quality evidence
 
