@@ -12,6 +12,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — restore the harness byte-verdict mutation control
+
+- Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
+- Verify that removing the byte comparison still fails the suite.
+
 ## 2026-10-23 — reduce Windows fixture and tool lookup duplication
 
 - Share LLVM bare-name and `.exe` lookup while preserving optional archiver use and required MASM selection.
