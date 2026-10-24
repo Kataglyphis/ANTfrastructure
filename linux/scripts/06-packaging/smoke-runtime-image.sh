@@ -408,18 +408,24 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
     echo ""
 }
 
+_functional_smoke_gate() {
+  local image_tag="$1" target_arch="$2" title="$3" success="$4" failure="$5"
+  shift 5
+  echo "--- Functional: ${title} ---"
+  if "$@"; then
+    pass "${success}"
+  else
+    fail "${failure}"
+  fi
+  echo ""
+}
+
 check_ffmpeg() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- Functional: ffmpeg ---"
-    # pipefail is required: head's 0 would hide an ffmpeg that cannot load a .so.
-    if _rt_run \
-         bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
-      pass "ffmpeg executes (${target_arch})"
-    else
-      fail "ffmpeg failed to execute in the runtime image (${target_arch})"
-    fi
-    echo ""
+  # pipefail is required: head's 0 would hide an ffmpeg that cannot load a .so.
+  _functional_smoke_gate "$1" "$2" "ffmpeg" \
+    "ffmpeg executes ($2)" \
+    "ffmpeg failed to execute in the runtime image ($2)" \
+    _rt_run bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'
 }
 
 # As the image user, offline: --version alone passes a foreign-arch dart or root-owned .dart_tool. docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
@@ -1631,18 +1637,23 @@ _smoke_probe_required() {
   echo ""
   return 1
 }
-
 _advertised_probe_failure() {
   local target_arch="$1"
   fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
 }
-
-check_advertised_versions() {
-  local image_tag="$1"
-  local target_arch="$2"
-  echo "--- SHIPPED-TRUTH A: advertised env versions == actual (${target_arch}) ---"
-  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _advertised_probe_failure \
+_shipped_truth_section() {
+  local image_tag="$1" target_arch="$2" title="$3" failure_renderer="$4" gate="$5"
+  echo "--- SHIPPED-TRUTH ${title} (${target_arch}) ---"
+  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - "${failure_renderer}" \
     "${target_arch}" || return 0
+  "${gate}"
+  echo ""
+}
+check_advertised_versions() {
+  _shipped_truth_section "$1" "$2" "A: advertised env versions == actual" \
+    _advertised_probe_failure _check_advertised_versions
+}
+_check_advertised_versions() {
   local verb key rest ok=0 bad=0
   while read -r verb key rest; do
     [ -n "${verb}" ] || continue
@@ -1663,7 +1674,6 @@ check_advertised_versions() {
   elif [ "${bad}" -eq 0 ]; then
     pass "all ${ok} advertised version(s) match the shipped image (${target_arch})"
   fi
-  echo ""
 }
 
 # B: the venv must carry what the app's own metadata says this arch needs.
@@ -1671,19 +1681,16 @@ _venv_probe_failure() {
   local target_arch="$1"
   fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
 }
-
 check_venv_package_set() {
-  local image_tag="$1"
-  local target_arch="$2"
-  echo "--- SHIPPED-TRUTH B: venv package set vs the app's declared graph (${target_arch}) ---"
-  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _venv_probe_failure \
-    "${target_arch}" || return 0
+  _shipped_truth_section "$1" "$2" "B: venv package set vs the app's declared graph" \
+    _venv_probe_failure _check_venv_package_set
+}
+_check_venv_package_set() {
   local absent
   absent="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT //p' | head -1)"
   if [ -n "${absent}" ]; then
     echo "  SKIP venv package-set comparison UNAVAILABLE on ${target_arch}: ${absent}"
     echo "  SKIP   -- this is a loud skip, NOT a pass; the set was never compared"
-    echo ""
     return 0
   fi
   local verb extra pkg owner miss=0 asserted=0
@@ -1716,7 +1723,6 @@ check_venv_package_set() {
   elif [ "${miss}" -eq 0 ]; then
     pass "VENV-SET: all ${asserted} arch-applicable requirement edge(s) satisfied in the ${target_arch} venv"
   fi
-  echo ""
 }
 
 # Plugin failures only warn (the element is just unavailable); returns 0 when documented.
@@ -1938,30 +1944,18 @@ VK_DRIVER_FILES="${icd}" VK_ICD_FILENAMES="${icd}" timeout 120 vulkaninfo 2>/dev
 # onnxruntime inference and the cv2 round-trip live in check_app_wheel_smoke.
 
 check_gstreamer_core_pipeline() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- Functional: GStreamer core pipeline ---"
-    if _rt_run \
-         bash -lc 'gl="$(command -v gst-launch-1.0 || echo /opt/gstreamer/bin/gst-launch-1.0)"; timeout 40 "$gl" -q videotestsrc num-buffers=3 ! videoconvert ! fakesink'; then
-      pass "GStreamer core pipeline runs (${target_arch})"
-    else
-      fail "GStreamer core pipeline FAILED (${target_arch})"
-    fi
-    echo ""
+  _functional_smoke_gate "$1" "$2" "GStreamer core pipeline" \
+    "GStreamer core pipeline runs ($2)" \
+    "GStreamer core pipeline FAILED ($2)" \
+    _rt_run bash -lc 'gl="$(command -v gst-launch-1.0 || echo /opt/gstreamer/bin/gst-launch-1.0)"; timeout 40 "$gl" -q videotestsrc num-buffers=3 ! videoconvert ! fakesink'
 }
 
 # gst-inspect-1.0 <plugin> fails on a missing or undlopenable plugin; mirrors the Windows lane's contract.
 check_gstreamer_mandatory_plugins() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- Functional: GStreamer mandatory plugins (libav opencv onnx tflite) ---"
-    if _rt_run \
-         bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"; missing=""; for p in libav opencv onnx tflite; do timeout 30 "$gi" "$p" >/dev/null 2>&1 || missing="$missing $p"; done; [ -z "$missing" ] || { echo "MISSING:$missing"; exit 1; }'; then
-      pass "GStreamer mandatory plugin set loads on ${target_arch}"
-    else
-      fail "GStreamer mandatory plugins missing/unloadable on ${target_arch} (see MISSING: line above)"
-    fi
-    echo ""
+  _functional_smoke_gate "$1" "$2" "GStreamer mandatory plugins (libav opencv onnx tflite)" \
+    "GStreamer mandatory plugin set loads on $2" \
+    "GStreamer mandatory plugins missing/unloadable on $2 (see MISSING: line above)" \
+    _rt_run bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"; missing=""; for p in libav opencv onnx tflite; do timeout 30 "$gi" "$p" >/dev/null 2>&1 || missing="$missing $p"; done; [ -z "$missing" ] || { echo "MISSING:$missing"; exit 1; }'
 }
 
 check_application_import() {
