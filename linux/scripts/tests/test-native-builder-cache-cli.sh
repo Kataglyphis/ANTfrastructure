@@ -35,7 +35,11 @@ for builder in gcc clang; do
   t_case "${builder} retains both shared help descriptions with its original spacing"
   t_assert_contains "${help}" "${cache_line}"
   t_assert_contains "${help}" "${alias_line}"
-  awk '/^while \[ "\$#" -gt 0 \]; do/ { printing=1 } printing { print } printing && /^done$/ { exit }' "${file}" > "${WORK}/parser.sh"
+  : > "${WORK}/parser.sh"
+  if [ "${builder}" = clang ] && grep -q '^_clang_jobs_are_numeric()' "${file}"; then
+    t_fn_src "${file}" _clang_jobs_are_numeric > "${WORK}/parser.sh" || exit 1
+  fi
+  awk '/^while \[ "\$#" -gt 0 \]; do/ { printing=1 } printing { print } printing && /^done$/ { exit }' "${file}" >> "${WORK}/parser.sh"
   for mode in default canonical alias combined repeated help unknown following-unknown; do
     args=(); expected='0|1|0'; expected_rc=0; expected_err=''
     case "${mode}" in

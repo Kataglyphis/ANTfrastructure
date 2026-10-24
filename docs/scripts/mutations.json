@@ -23919,5 +23919,373 @@
   "replace": "01-core/python-probe.sh",
   "test": "bash linux/scripts/tests/test-python-path-policies.sh",
   "why": "the real Python CI fixture carries the new mandatory leaf alongside its copied UV module"
+ },
+ {
+  "id": "lib.binfmt-probe-old-owner-refusal",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  if ! grep -qx '# ANT_BINFMT_PROBE_SOURCE_API=1' \"$probe_owner\" 2>/dev/null; then\n    printf 'ERROR: binfmt probe owner lacks source API 1: %s\\n' \"$probe_owner\" >&2\n    exit 1\n  fi",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "An older installer must be rejected before sourcing can change globals or run install actions, even under conditional callers and CONFIRM=1."
+ },
+ {
+  "id": "lib.binfmt-probe-api-version",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "grep -qx '# ANT_BINFMT_PROBE_SOURCE_API=1'",
+  "replace": "grep -q 'ANT_BINFMT_PROBE_SOURCE_API='",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "Wrong API versions cannot satisfy the functions-only source contract merely by mentioning its marker name."
+ },
+ {
+  "id": "lib.binfmt-probe-source-status",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  source \"$probe_owner\" --source-binfmt-probe || exit \"$?\"",
+  "replace": "  source \"$probe_owner\" --source-binfmt-probe",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "Failed imports retain their raw status even when a caller predefines the probe and conditionally invokes verification."
+ },
+ {
+  "id": "lib.binfmt-probe-required-export",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "  declare -F binfmt_handler_enabled >/dev/null || {\n    printf 'ERROR: binfmt probe owner does not provide binfmt_handler_enabled\\n' >&2\n    exit 1\n  }",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "A marked source must expose the required probe; an unrelated command-not-found or final handler warning cannot replace its exact missing-export refusal."
+ },
+ {
+  "id": "lib.binfmt-probe-source-only-fastpath",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "if [ \"${1:-}\" = --source-binfmt-probe ]; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "The functions-only import returns before flags, globals, traps or installer actions and leaves caller state and positional arguments unchanged."
+ },
+ {
+  "id": "lib.binfmt-probe-source-context",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  if [ \"${BASH_SOURCE[0]}\" != \"$0\" ]; then return 0; fi",
+  "replace": "  if false; then return 0; fi",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "A sourced functions-only request succeeds from both repository and flat copied owner paths, including spaces."
+ },
+ {
+  "id": "lib.binfmt-probe-executed-refusal",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  printf 'ERROR: --source-binfmt-probe must be sourced\\n' >&2\n  exit 2",
+  "replace": "  printf 'ERROR: --source-binfmt-probe must be sourced\\n' >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "The source-only flag refuses direct execution with status2 before any installer action instead of reporting a successful no-op."
+ },
+ {
+  "id": "lib.binfmt-probe-host-first",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  grep -qs '^enabled' \"/proc/sys/fs/binfmt_misc/${handler}\" 2>/dev/null && return 0",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "Enabled host handlers short-circuit namespace lookup and execution while host grep errors retain fallback behavior."
+ },
+ {
+  "id": "lib.binfmt-probe-literal-tool-discovery",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "    tool=containerd-rootless-setuptool.sh",
+  "replace": "    tool=\"$(command -v containerd-rootless-setuptool.sh 2>/dev/null)\"",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "Installer discovery invokes the original literal tool name and performs one lazy lookup per missing host handler, preserving overrides."
+ },
+ {
+  "id": "lib.binfmt-probe-resolved-empty-is-final",
+  "target": "linux/scripts/build-runtime-manifest.sh",
+  "find": "    if binfmt_handler_enabled \"${handler}\" \"${tool}\"; then continue; fi",
+  "replace": "    if binfmt_handler_enabled \"${handler}\" \"${tool}\" discover-if-empty; then continue; fi",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "The manifest retains its upfront cached lookup; a missing tool must not be rediscovered later and turn a failed verification green."
+ },
+ {
+  "id": "lib.binfmt-probe-quoted-tool",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  \"$tool\" nsenter -- grep -qs '^enabled' \"/proc/sys/fs/binfmt_misc/${handler}\" 2>/dev/null",
+  "replace": "  $tool nsenter -- grep -qs '^enabled' \"/proc/sys/fs/binfmt_misc/${handler}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "Resolved and override tool paths remain one command word when they contain spaces."
+ },
+ {
+  "id": "lib.binfmt-probe-namespace-status",
+  "target": "linux/host-config/install-nerdctl-full.sh",
+  "find": "  \"$tool\" nsenter -- grep -qs '^enabled' \"/proc/sys/fs/binfmt_misc/${handler}\" 2>/dev/null",
+  "replace": "  \"$tool\" nsenter -- grep -qs '^enabled' \"/proc/sys/fs/binfmt_misc/${handler}\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-binfmt-probes.sh",
+  "why": "A failed namespace probe remains a missing handler, preserving advisory installer warnings and fatal manifest verification."
+ },
+ {
+  "id": "lib.clang-jobs-zeros",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "[[ \"$1\" =~ ^[0-9]+$ ]]",
+  "replace": "[[ \"$1\" =~ ^[1-9][0-9]*$ ]]",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "zero and leading-zero digit strings remain accepted without arithmetic coercion"
+ },
+ {
+  "id": "lib.clang-jobs-empty-short-circuit",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "[ -n \"$1\" ] && [[ \"$1\" =~ ^[0-9]+$ ]]",
+  "replace": "[[ \"$1\" =~ ^[0-9]+$ ]]",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "empty inputs retain the seeded BASH_REMATCH instead of executing an extra failing regex"
+ },
+ {
+  "id": "lib.clang-jobs-anchored",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "[[ \"$1\" =~ ^[0-9]+$ ]]",
+  "replace": "[[ \"$1\" =~ ^[0-9]+ ]]",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "decimal suffixes, spaces and exponents cannot masquerade as an all-digit CLI value"
+ },
+ {
+  "id": "lib.clang-jobs-cli-missing",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "_clang_jobs_are_numeric \"${2:-}\"",
+  "replace": "_clang_jobs_are_numeric \"$2\"",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "a missing jobs operand reaches the original diagnostic instead of a nounset error"
+ },
+ {
+  "id": "lib.clang-jobs-cli-shift",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "NUM_JOBS=\"$2\"\n                shift 2",
+  "replace": "NUM_JOBS=\"$2\"\n                shift",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "both jobs operands are consumed before parsing the following option"
+ },
+ {
+  "id": "lib.clang-jobs-explicit-first",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "if _clang_jobs_are_numeric \"${NUM_JOBS:-}\"; then",
+  "replace": "if _clang_jobs_are_numeric \"${CLANG_NUM_JOBS}\"; then",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "a valid explicit NUM_JOBS remains authoritative over the Clang environment override"
+ },
+ {
+  "id": "lib.clang-jobs-override-nounset",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "elif _clang_jobs_are_numeric \"${CLANG_NUM_JOBS}\"; then",
+  "replace": "elif _clang_jobs_are_numeric \"${CLANG_NUM_JOBS:-}\"; then",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "the original unset CLANG_NUM_JOBS failure remains observable when explicit jobs are invalid or absent"
+ },
+ {
+  "id": "lib.clang-jobs-override-value",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "NUM_JOBS=\"${CLANG_NUM_JOBS}\"",
+  "replace": "NUM_JOBS=\"1\"",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "the raw valid Clang override including leading zeros reaches the final job value"
+ },
+ {
+  "id": "lib.clang-jobs-memory-cap",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "compute_jobs_with_mem_cap \"\" \"${CLANG_BUILD_MB_PER_JOB}\"",
+  "replace": "compute_jobs_with_mem_cap \"\" \"0\"",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "the existing memory cap and empty first argument reach the shared mapper unchanged"
+ },
+ {
+  "id": "lib.clang-jobs-mapper-status",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "NUM_JOBS=\"$(compute_jobs_with_mem_cap \"\" \"${CLANG_BUILD_MB_PER_JOB}\")\"",
+  "replace": "NUM_JOBS=\"$(compute_jobs_with_mem_cap \"\" \"${CLANG_BUILD_MB_PER_JOB}\")\" || true",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "strict mapper assignment failure retains the producer status instead of reporting selected jobs"
+ },
+ {
+  "id": "lib.clang-jobs-nproc-fallback",
+  "target": "linux/scripts/02-toolchain/build-clang.sh",
+  "find": "nproc || echo 1",
+  "replace": "nproc",
+  "test": "bash linux/scripts/tests/test-clang-job-policy.sh",
+  "why": "a failed nproc retains the original emitted output plus fallback one"
+ },
+ {
+  "id": "lib.meson-dispatch-optional-cross",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "Absent cross providers are skipped without invoking commands or project cross-file callbacks."
+ },
+ {
+  "id": "lib.meson-dispatch-native-selected",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  if command -v append_meson_native_flags >/dev/null 2>&1; then",
+  "replace": "  if false; then",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "An available native provider receives the same array after the cross provider and project adjustment."
+ },
+ {
+  "id": "lib.meson-dispatch-array-name",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    append_meson_cross_flags \"${_amtf_array}\"",
+  "replace": "    append_meson_cross_flags MESON_SETUP_ARGS",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "The caller array name reaches the provider intact, preserving both arrays and partial modifications."
+ },
+ {
+  "id": "lib.meson-dispatch-project-callback",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "The GStreamer cross-file edit remains between cross and native provider calls."
+ },
+ {
+  "id": "lib.meson-dispatch-provider-order",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi\n  fi\n  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi",
+  "replace": "  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi\n  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi\n  fi",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "Cross flags and project adjustment precede native flags, including stream output and array mutation order."
+ },
+ {
+  "id": "lib.meson-dispatch-callback-scope",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi\n  fi",
+  "replace": "  if command -v append_meson_cross_flags >/dev/null 2>&1; then\n    append_meson_cross_flags \"${_amtf_array}\"\n  fi\n    if [ -n \"${_amtf_after_cross}\" ]; then \"${_amtf_after_cross}\"; fi",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "A project callback only runs when a cross provider was selected, even if a cross file already exists."
+ },
+ {
+  "id": "lib.meson-dispatch-cross-errexit",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    append_meson_cross_flags \"${_amtf_array}\"",
+  "replace": "    append_meson_cross_flags \"${_amtf_array}\" || true",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "Selected provider failures retain direct errexit and their original partial array changes."
+ },
+ {
+  "id": "lib.meson-dispatch-native-errexit",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "    append_meson_native_flags \"${_amtf_array}\"",
+  "replace": "    append_meson_native_flags \"${_amtf_array}\" || true",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "Selected provider failures retain direct errexit and their original partial array changes."
+ },
+ {
+  "id": "lib.meson-dispatch-gst-unconditional",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig",
+  "replace": "  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig || true",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "Dispatch remains unconditional so strict provider failures cannot continue through a conditional wrapper."
+ },
+ {
+  "id": "lib.meson-dispatch-camera-unconditional",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "append_available_meson_toolchain_flags MESON_SETUP_ARGS",
+  "replace": "append_available_meson_toolchain_flags MESON_SETUP_ARGS || true",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "Dispatch remains unconditional so strict provider failures cannot continue through a conditional wrapper."
+ },
+ {
+  "id": "lib.meson-dispatch-gst-required-api",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "  declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; return 1; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "A missing shared dispatch export must fail explicitly with the caller-specific return policy, including conditional sourcing."
+ },
+ {
+  "id": "lib.meson-dispatch-camera-required-api",
+  "target": "linux/scripts/03-media/build/libcamera/build-libcamera.sh",
+  "find": "declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\\n' >&2; exit 1; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "A missing shared dispatch export must fail explicitly with the caller-specific exit policy, including conditional sourcing."
+ },
+ {
+  "id": "lib.meson-dispatch-native-raw-status",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi\n  return $?",
+  "replace": "  if command -v append_meson_native_flags >/dev/null 2>&1; then\n    append_meson_native_flags \"${_amtf_array}\"\n  fi\n  return 0",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "The libcamera section preserves a failing native provider raw status under relaxed or conditional calls."
+ },
+ {
+  "id": "lib.meson-dispatch-cross-file-present",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-monorepo.sh",
+  "find": "  if [ -n \"${MESON_CROSS_FILE:-}\" ] && [ -f \"${MESON_CROSS_FILE}\" ]; then",
+  "replace": "  if [ -n \"${MESON_CROSS_FILE:-}\" ]; then",
+  "test": "bash linux/scripts/tests/test-meson-dispatch.sh",
+  "why": "GStreamer only edits an existing cross file; a missing optional file remains silent."
+ },
+ {
+  "id": "lib.fleet-dependency-word-boundaries",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "*\" $2 \"*",
+  "replace": "*\" $2\"*",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "dependency IDs retain both word boundaries rather than matching a longer repository name"
+ },
+ {
+  "id": "lib.fleet-dependency-literal-ids",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "*\" $2 \"*",
+  "replace": "*\" \"$2\" \"*",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "glob characters inside repository IDs remain literal membership text"
+ },
+ {
+  "id": "lib.fleet-dependency-caller-index",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "case \"${OWN_DEPS[$1]}\" in",
+  "replace": "case \"${OWN_DEPS[0]}\" in",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "membership reads the requested repository rather than the first member"
+ },
+ {
+  "id": "lib.fleet-dependency-absent-verdict",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "  case \"${OWN_DEPS[$1]}\" in *\" $2 \"*) return 0 ;; esac\n  return 1",
+  "replace": "  case \"${OWN_DEPS[$1]}\" in *\" $2 \"*) return 0 ;; esac\n  return 0",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "absent edges do not become mutual cycles or suppress new dependencies"
+ },
+ {
+  "id": "lib.fleet-dependency-present-verdict",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "  case \"${OWN_DEPS[$1]}\" in *\" $2 \"*) return 0 ;; esac",
+  "replace": "  case \"${OWN_DEPS[$1]}\" in *\" $2 \"*) return 1 ;; esac",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "present edges are recognized without duplicate dependency growth"
+ },
+ {
+  "id": "lib.fleet-dependency-append-binding",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "  fleet_has_dep \"$1\" \"$2\" && return 0",
+  "replace": "  fleet_has_dep \"$1\" \"$1\" && return 0",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "adding an edge checks its target identity and preserves existing entries"
+ },
+ {
+  "id": "lib.fleet-dependency-closure-binding",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "          fleet_has_dep \"${i}\" \"${d2}\" && continue",
+  "replace": "          fleet_has_dep \"${j}\" \"${d2}\" && continue",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "transitive closure checks whether the originating member already owns the inherited edge"
+ },
+ {
+  "id": "lib.fleet-dependency-cycle-forward",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "      fleet_has_dep \"${i}\" \"${OWN_IDS[$j]}\" || continue",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "mutual pairs require the forward dependency as well as the reverse edge"
+ },
+ {
+  "id": "lib.fleet-dependency-cycle-reverse",
+  "target": "linux/scripts/renovate-fleet.sh",
+  "find": "      fleet_has_dep \"${j}\" \"${OWN_IDS[$i]}\" || continue",
+  "replace": "      :",
+  "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
+  "why": "a one-way edge is not reported as a mutual dependency cycle"
  }
 ]

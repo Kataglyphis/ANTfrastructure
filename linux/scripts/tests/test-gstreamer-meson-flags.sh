@@ -5,9 +5,10 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/gstreamer-fixtures.sh"
 gst_test_load_functions "${TESTS_DIR}/../03-media/core/common.sh" media_prepare_cross_compilers || exit 1
+gst_test_load_functions "${TESTS_DIR}/../01-core/common.sh" append_available_meson_toolchain_flags || exit 1
 SUBJECT="${1:-${TESTS_DIR}/../03-media/build/gstreamer/common/build-gstreamer-monorepo.sh}"
 t_source_functions "${SUBJECT}" _gst_monorepo_riscv_flags _gst_monorepo_wrap_flags || exit 1
-gst_test_load_functions "${SUBJECT}" _gst_monorepo_arch_flags _gst_monorepo_python_config _gst_monorepo_cross_flags || exit 1
+gst_test_load_functions "${SUBJECT}" _gst_monorepo_arch_flags _gst_monorepo_python_config _gst_monorepo_cross_pkgconfig _gst_monorepo_cross_flags || exit 1
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 export BUILD_DIR="${WORK}" BUILD_MODE=cross TARGET_MACHINE_ARCH=riscv64 GST_RS_BUILD_ALL=false

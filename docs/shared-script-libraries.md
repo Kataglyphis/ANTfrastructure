@@ -1829,6 +1829,30 @@ beside `python_uv.sh`; Rust's Toolchain RUN binds the same fresh file. Cold impo
 tests reject absent, incomplete and failing companions and verify UV retry after
 restoration. Lifecycle tests use fake download and shell commands.
 
+The standalone nerdctl installer owns `binfmt_handler_enabled`, shared with the
+runtime manifest verifier. Its `--source-binfmt-probe` entry returns before shell
+options, global initialization or setup actions. The verifier first requires the
+exact `# ANT_BINFMT_PROBE_SOURCE_API=1` marker, then checks source status and the
+exported function. Older installers ignore unknown arguments, so checking the
+function only after sourcing would be unsafe. Copied manifest checkouts carry
+the fresh owner at `linux/host-config/install-nerdctl-full.sh`. Caller-specific
+tool lookup timing, overrides, warnings and fatal aggregation remain separate.
+
+Optional Meson cross/native flag providers share ordered dispatch in the existing
+core owner. GStreamer retains its cross-file edit callback between those providers;
+libcamera has no extra callback. Keep selected calls unconditional so strict-shell
+failures remain active. Each caller keeps its array, diagnostics and final status.
+
+Clang's CLI job input and both job-selection branches share the same numeric
+predicate. Empty values retain short-circuit match state, zero and leading zeros
+remain accepted, and unguarded override access still reports unset values.
+
+Fleet dependency insertion, transitive closure and mutual-cycle detection share
+literal token membership. Keep both word boundaries and quoted identities;
+wildcards in an identity remain data. The layer-order test's independent source
+oracle stays separate. Tiny graph fixtures retain original byte receipts and
+explicit cycle, closure and convergence assertions without running Git or Renovate.
+
 Core helpers share nondefault-host suffix formatting and caller-directory
 resolution while preserving explicit path bytes. Disk validation keeps positive
 settings distinct from nonnegative free-space readings: zero-disabled settings

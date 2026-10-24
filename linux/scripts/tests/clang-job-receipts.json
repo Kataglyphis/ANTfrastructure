@@ -1,0 +1,926 @@
+{
+  "[\"cli\", null, \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", null, \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", null, \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", null, \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"0\", \"direct\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"0\", \"direct\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"0\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"0\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00\", \"direct\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00\", \"direct\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00012\", \"direct\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00012\", \"direct\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00012\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"00012\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"99999999999999999999999999999999\", \"direct\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"99999999999999999999999999999999\", \"direct\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"99999999999999999999999999999999\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"99999999999999999999999999999999\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "ARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:0\n"
+  },
+  "[\"cli\", \"-1\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:-1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"-1\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:-1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"-1\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:-1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"-1\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:-1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1.5\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1.5\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1.5\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1.5\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1.5\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1.5\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1.5\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1.5\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1e3\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1e3\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1e3\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1e3\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1e3\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1e3\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"1e3\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:1e3\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \" 4\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x: 4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \" 4\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x: 4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \" 4\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x: 4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \" 4\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x: 4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"4 \", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4 \nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"4 \", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4 \nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"4 \", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4 \nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"4 \", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4 \nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\\u0661\\u0662\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:\u0661\u0662\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\\u0661\\u0662\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:\u0661\u0662\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\\u0661\\u0662\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:\u0661\u0662\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"\\u0661\\u0662\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:\u0661\u0662\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"0x10\", \"direct\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:0x10\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"0x10\", \"direct\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:0x10\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"0x10\", \"conditional\", false]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:0x10\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"cli\", \"0x10\", \"conditional\", true]": {
+    "rc": 67,
+    "out": "",
+    "err": "DIE:--jobs requires a numeric argument\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:0x10\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", null, \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", null, \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", null, \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", null, \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=0\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=0\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=0\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=0\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"0\")\nNUM:x:0\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00\")\nNUM:x:00\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00012\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00012\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00012\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00012\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00012\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00012\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"00012\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=00012\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"00012\")\nNUM:x:00012\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"99999999999999999999999999999999\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=99999999999999999999999999999999\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"99999999999999999999999999999999\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=99999999999999999999999999999999\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"99999999999999999999999999999999\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=99999999999999999999999999999999\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"99999999999999999999999999999999\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=99999999999999999999999999999999\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"99999999999999999999999999999999\")\nNUM:x:99999999999999999999999999999999\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"-1\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"-1\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"-1\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"-1\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1.5\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1.5\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1.5\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1.5\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1e3\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1e3\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1e3\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"1e3\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \" 4\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \" 4\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \" 4\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \" 4\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"4 \", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"4 \", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"4 \", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"4 \", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\\u0661\\u0662\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\\u0661\\u0662\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\\u0661\\u0662\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"\\u0661\\u0662\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0x10\", \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0x10\", \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0x10\", \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"selection\", \"0x10\", \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", null, null, true, 0, \"direct\", false]": {
+    "rc": 127,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", null, null, true, 0, \"direct\", true]": {
+    "rc": 1,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", null, null, true, 0, \"conditional\", false]": {
+    "rc": 127,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", null, null, true, 0, \"conditional\", true]": {
+    "rc": 1,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM::\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", null, true, 0, \"direct\", false]": {
+    "rc": 127,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", null, true, 0, \"direct\", true]": {
+    "rc": 1,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", null, true, 0, \"conditional\", false]": {
+    "rc": 127,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", null, true, 0, \"conditional\", true]": {
+    "rc": 1,
+    "out": "",
+    "err": "_: line N: CLANG_NUM_JOBS: unbound variable\n",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"03\", true, 0, \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=03\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"03\")\nNUM:x:03\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"03\", true, 0, \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=03\nARGS:0<>\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"03\")\nNUM:x:03\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"03\", true, 0, \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=03\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"03\")\nNUM:x:03\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"03\", true, 0, \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=03\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "",
+    "state": "declare -a BASH_REMATCH=([0]=\"03\")\nNUM:x:03\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", true, 41, \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", true, 41, \"direct\", true]": {
+    "rc": 41,
+    "out": "",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", true, 41, \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", true, 41, \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=17\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "mapper\n\n1234\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:17\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 0, \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 0, \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 0, \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 0, \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 47, \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\n1\nARGS:0<>\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\n1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 47, \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\n1\nARGS:0<>\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\n1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 47, \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\n1\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\n1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"\", \"\", false, 47, \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\n1\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=([0]=\"seed123\" [1]=\"123\")\nNUM:x:4\n1\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"bad\", false, 0, \"direct\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"bad\", false, 0, \"direct\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"bad\", false, 0, \"conditional\", false]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  },
+  "[\"fallback\", \"bad\", \"bad\", false, 0, \"conditional\", true]": {
+    "rc": 0,
+    "out": "INFO:Using NUM_JOBS=4\nARGS:0<>\nRETURN:0\n",
+    "err": "",
+    "trace": "nproc\n",
+    "state": "declare -a BASH_REMATCH=()\nNUM:x:4\nTARGETS:unset\nSTRIP:1\n"
+  }
+}
