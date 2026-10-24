@@ -50,6 +50,7 @@ COPY --chmod=755 \
     linux/scripts/01-core/module-bootstrap.sh \
     linux/scripts/01-core/path-helpers.sh \
     linux/scripts/01-core/common.sh \
+    linux/scripts/01-core/sudo-policy.sh \
     linux/scripts/01-core/cross-active-fallback.sh \
     linux/scripts/01-core/sccache-server-address.sh \
     linux/scripts/01-core/load-versions-env.sh \

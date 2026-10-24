@@ -65,6 +65,36 @@ fixtures share budget assignment followed by the real prune call, keeping that
 budget visible afterward and retaining raw failures. Archive setup and every
 literal archive expectation remain independent.
 
+## Privilege, APT and target Cargo policy
+
+`sudo-policy.sh` owns privilege selection and availability enforcement. Caller-bound
+publishers retain the original `SUDO` and optional `SUDO_WRAP` assignments, including
+readonly failures and attributes. Common keeps SDK delegation ahead of import;
+bootstrap loads the policy only when its common lookup misses. Its internal leaf
+lookup remembers the bootstrap owner at import time, independently of later
+directory changes and the project directory passed to the common lookup. Copied modules carry the policy: base and compiler recipes
+use narrow readonly binds, SDK copies it, and existing whole-core provisions carry
+it without extra inputs. The policy is an L0 leaf.
+
+`cross-apt.sh` owns update selection. `apt_update_smart` alone supplies its historical
+`-y` default; GStreamer passes its original arguments unchanged. Lookup and update
+commands retain their caller bindings and parent-shell effects. Helper lookup
+prefers the current repository owner, then the installed layout, while leaving
+the SDK updater itself unchanged. The internal
+`--ant-source-apt-update-only` mode exports selection before the loaded flag and
+full-module provider definitions. GStreamer validates the exact first-line
+`# ANT_APT_UPDATE_SOURCE_API=1` marker before sourcing that mode, so older owners
+cannot ignore the argument and replace an SDK updater. Owned selection exports
+are refreshed, with unset, source and missing-export failures kept visible.
+Existing fresh cross-APT provisions carry this API without another companion.
+
+Target Cargo setup shares the optional resolver guard and selected `CC`/`CXX`
+value transport in `compiler-resolution.sh`. Rice keeps one capture and GStreamer
+two separate captures; callbacks remain inside them so late aliases bind at the
+same point. Caller-local compiler slots, Rust-name derivation and parent-shell
+publication keep their original lifetimes and order. Offline tests use fake
+providers; they do not compile Rust or install packages.
+
 ## Shared ONNX staging and report fixtures
 
 ONNX Runtime and GenAI append their shared cross-toolchain definitions from the

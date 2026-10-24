@@ -1741,7 +1741,7 @@ Dockerfile stage — the worst place to find one. `tests/test-layer-order.sh`
 freezes the table: L0 true leaves that source no other `01-core` file
 (`logging.sh`, `load-versions-env.sh`, `path-helpers.sh`, `platform.sh`,
 `guard-helpers.sh`, `compiler-cache-utils.sh`, `sccache-s3-level.sh`,
-`sccache-server-address.sh`), L1 above them (`arch-mapping.sh`, `ubuntu-mirror.sh`,
+`sccache-server-address.sh`, `cross-active-fallback.sh`, `sudo-policy.sh`), L1 above them (`arch-mapping.sh`, `ubuntu-mirror.sh`,
 `downloads.sh`, `parallelism.sh`), L2 (`common.sh`), and L3 (`cross-env.sh` and
 its four `cross-*` siblings, with `cross-env.sh` additionally the aggregator).
 Each module may only reach DOWN.

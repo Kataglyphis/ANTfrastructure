@@ -53,16 +53,28 @@ if [ "${BUILD_MODE:-native}" = "cross" ]; then
   echo "Cross build: cinstalling rice-proto for target '${rust_target:-<default>}'"
 
   # Without a target linker cargo links the cdylib with the host cc; target-only vars keep host build scripts native.
-  if [ -n "${rust_target}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
-    rice_cross_cc="$( resolve_cross_cc_cxx_for_arch "${TARGET_ARCH:-${TARGETARCH:-}}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
-    rice_rust_env="$(printf '%s' "${rust_target}" | tr 'a-z-' 'A-Z_')"
-    rice_rust_lower="$(printf '%s' "${rust_target}" | tr '-' '_')"
+  _rice_target_resolver_available() {
+    command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1
+  }
+  _rice_target_publish() {
     if export_cargo_target_linker "${rice_rust_env}" "${rice_rust_lower}" "${rice_cross_cc}"; then
       echo "Cross build: rice-proto target linker = ${rice_cross_cc} (CARGO_TARGET_${rice_rust_env}_LINKER)"
     else
       echo "WARN: could not resolve cross gcc for '${TARGET_ARCH:-?}'; rice-proto may fail to link (webrtcbin2 skipped)" >&2
     fi
-  fi
+  }
+  _rice_target_prepare_publish() {
+    rice_cross_cc="$(
+      _rice_target_resolve() { resolve_cross_cc_cxx_for_arch "${TARGET_ARCH:-${TARGETARCH:-}}"; }
+      _rice_target_printf() { local _crtp_value="$1"; set --; printf '%s' "${_crtp_value}"; }
+      cargo_resolved_compiler_field CC _rice_target_resolve _rice_target_printf
+    )"
+    rice_rust_env="$(printf '%s' "${rust_target}" | tr 'a-z-' 'A-Z_')"
+    rice_rust_lower="$(printf '%s' "${rust_target}" | tr '-' '_')"
+    _rice_target_publish
+  }
+  declare -F cargo_target_pipeline cargo_resolved_compiler_field >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks target cargo pipeline exports\n' >&2; exit 1; }
+  cargo_target_pipeline "${rust_target}" _rice_target_resolver_available _rice_target_prepare_publish
 
   # openssl-sys's probe: the cross gcc skips /usr/include/<triplet> (opensslconf.h), and openssl.pc has empty Cflags.
   target_triplet=""

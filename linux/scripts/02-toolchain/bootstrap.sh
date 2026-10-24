@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Relative imports retain their owner after callers change directories.
+declare -g +x _TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${BASH_SOURCE[0]}"
+case "$_TOOLCHAIN_BOOTSTRAP_OWNER_DIR" in
+  /*) ;;
+  *) _TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${PWD:-$(builtin pwd)}/${_TOOLCHAIN_BOOTSTRAP_OWNER_DIR}" ;;
+esac
+_TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${_TOOLCHAIN_BOOTSTRAP_OWNER_DIR%/*}"
+_TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${_TOOLCHAIN_BOOTSTRAP_OWNER_DIR:-/}"
+
 # An optional status output observes source failures without suppressing direct errexit.
 _source_toolchain_first_available() {
   local -n _toolchain_source_result="$1"
@@ -39,13 +48,15 @@ source_toolchain_common_or_fallback() {
   warn() { printf '[WARN] %s\n' "$*" >&2; }
   err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
   die()  { err "$@"; }
+  unset -f sudo_policy_select || exit $?
+  source_toolchain_required "$_TOOLCHAIN_BOOTSTRAP_OWNER_DIR" sudo-policy.sh exit core-paths-only sudo_policy_select
+  _toolchain_sudo_nonroot() { [ "${EUID:-$(id -u)}" -ne 0 ]; return $?; }
+  _toolchain_sudo_available() { command -v sudo; }
+  _toolchain_sudo_die() { die "This script requires sudo or root."; }
+  _toolchain_sudo_publish_nonroot() { SUDO="sudo"; }
+  _toolchain_sudo_publish_root() { SUDO=""; }
   require_sudo() {
-    if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-      command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-      SUDO="sudo"
-    else
-      SUDO=""
-    fi
+    sudo_policy_select _toolchain_sudo_nonroot _toolchain_sudo_available _toolchain_sudo_die _toolchain_sudo_publish_nonroot _toolchain_sudo_publish_root "$@"
   }
   apt_install() {
     ${SUDO:-} apt-get update -qq

@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — share privilege, APT and target Cargo policy
+
+- Share privilege selection with caller-bound publication, original readonly behavior and module-owned companion lookup.
+- Share APT update dispatch through a checked helper-only source API without replacing supplied SDK updaters or adding a companion.
+- Share target Cargo resolver policy while preserving the original captures, late aliases and parent publication.
+- Carry the privilege policy through narrow fresh bindings and verify copied fallbacks independently of image builds.
+- Remove three resolved duplication exceptions without increasing frozen budgets or changing scanner coverage.
+
 ## 2026-10-24 — share media compiler policy and retention fixtures
 
 - Share optional runtime library pinning while preserving caller-bound lookup, architecture gates and advisory failures.

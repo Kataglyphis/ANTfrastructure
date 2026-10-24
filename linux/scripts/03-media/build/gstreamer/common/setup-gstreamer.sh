@@ -97,24 +97,42 @@ prepare_cargo_host_cxx_wrapper() {
   prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR}"
 }
 
-_gst_prepare_target_cargo_env() {
-  # Without a target-triple linker cargo links the cross cdylibs with the host cc and fails "incompatible with elf64-x86-64".
-  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
-  local -A gst_rust_names=([upper]="${target_rust_env}" [lower]="${target_rust_lower}")
-  cross_collect_target_rust_env gst_rust_names
-  target_rust_env="${gst_rust_names[upper]}"
-  target_rust_lower="${gst_rust_names[lower]}"
-  if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
-    local _tgt_arch
-    _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
-    target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
-    target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
+_gst_target_resolver_available() {
+  command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1
+}
+
+_gst_target_publish() {
     if export_cargo_target_linker "${target_rust_env}" "${target_rust_lower}" "${target_cc}" "${target_cxx}"; then
       echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
     else
       echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
     fi
-  fi
+}
+
+_gst_target_prepare_publish() {
+  local _tgt_arch
+  _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
+  target_cc="$(
+    _gst_target_resolve() { resolve_cross_cc_cxx_for_arch "${_tgt_arch}"; }
+    _gst_target_printf() { local _crtp_value="$1"; set --; printf '%s' "${_crtp_value}"; }
+    cargo_resolved_compiler_field CC _gst_target_resolve _gst_target_printf
+  )"
+  target_cxx="$(
+    _gst_target_resolve() { resolve_cross_cc_cxx_for_arch "${_tgt_arch}"; }
+    _gst_target_printf() { local _crtp_value="$1"; set --; printf '%s' "${_crtp_value}"; }
+    cargo_resolved_compiler_field CXX _gst_target_resolve _gst_target_printf
+  )"
+  _gst_target_publish
+}
+
+_gst_prepare_target_cargo_env() {
+  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
+  local -A gst_rust_names=([upper]="${target_rust_env}" [lower]="${target_rust_lower}")
+  cross_collect_target_rust_env gst_rust_names
+  target_rust_env="${gst_rust_names[upper]}"
+  target_rust_lower="${gst_rust_names[lower]}"
+  declare -F cargo_target_pipeline cargo_resolved_compiler_field >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks target cargo pipeline exports\n' >&2; return 1; }
+  cargo_target_pipeline "${target_rust_env}" _gst_target_resolver_available _gst_target_prepare_publish
 }
 
 _gsh_prepare_c() {
