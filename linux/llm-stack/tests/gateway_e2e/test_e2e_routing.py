@@ -47,9 +47,11 @@ def test_every_client_has_its_own_key(gateway, key, status):
     reply = gateway.post("chat", key=key)
     assert reply.status == status
     assert gateway.counts()["npu"] == (1 if status == 200 else 0)
+    (line,) = gateway.log.lines(predicate=lambda entry: entry.get("status") == status and
+                                (status != 200 or entry.get("consumer") == key))
+    assert line["status"] == status
     if status == 200:
-        lines = gateway.log.lines()
-        assert [line["consumer"] for line in lines] == [key]
+        assert line["consumer"] == key
 
 
 def test_the_lane_never_sees_the_client_key(gateway):
@@ -239,5 +241,5 @@ def test_a_client_that_hangs_up_mid_stream_frees_the_lane(gateway):
     time.sleep(4.5)  # longer than the whole fake stream (7 events, 0.5 s apart)
     assert gateway.counts() == {"npu": 0, "gpu": 1, "cpu": 0}, "no retry after a hang-up"
     assert gateway.lanes["gpu"].sent == [], "the gateway closed the lane's connection too"
-    (line,) = gateway.log.lines()
+    (line,) = gateway.log.lines(predicate=lambda entry: entry.get("alias") == "chat-long")
     assert line["aborted"] == "client_disconnect"

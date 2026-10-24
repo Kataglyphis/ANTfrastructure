@@ -66,12 +66,16 @@ class LogTail:
     def mark(self):
         self.offset = self._size()
 
-    def lines(self, expect=1, timeout=5.0, settle=0.4):
+    def lines(self, expect=1, timeout=5.0, settle=0.4, *, predicate=None):
+        def matching():
+            lines = self._read()
+            return [line for line in lines if predicate(line)] if predicate else lines
+
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline and len(self._read()) < expect:
+        while time.monotonic() < deadline and len(matching()) < expect:
             time.sleep(0.1)
         time.sleep(settle)
-        return self._read()
+        return matching()
 
     def _read(self):
         if not os.path.exists(self.path):
