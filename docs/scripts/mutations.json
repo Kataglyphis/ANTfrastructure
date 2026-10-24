@@ -17526,8 +17526,8 @@
  {
   "id": "probe.runtime-dry-run-no-heartbeat",
   "target": "linux/scripts/01-core/runtime-build-fns.sh",
-  "find": "  if ! is_dry_run; then\n    _runtime_heartbeat",
-  "replace": "  if true; then\n    _runtime_heartbeat",
+  "find": "  if ! is_dry_run; then\n    parallel_require_child_stop || return $?\n    _runtime_heartbeat",
+  "replace": "  if true; then\n    parallel_require_child_stop || return $?\n    _runtime_heartbeat",
   "test": "bash linux/scripts/tests/test-runtime-heartbeat.sh",
   "why": "a dry-run timer must preserve command status without creating or cleaning up a background heartbeat"
  },
@@ -19974,8 +19974,8 @@
  {
   "id": "lib.cache-readiness-base-companion",
   "target": "linux/Dockerfile.base",
-  "find": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
-  "replace": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
+  "find": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-active-fallback.sh,target=/tmp/scripts/01-core/cross-active-fallback.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
+  "replace": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-active-fallback.sh,target=/tmp/scripts/01-core/cross-active-fallback.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
   "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
   "why": "Every narrow common RUN closure must carry its side-effect-free utility."
  },
@@ -21645,8 +21645,8 @@
  {
   "id": "lib.image-ref-toolchain-closure",
   "target": "linux/Dockerfile.toolchain",
-  "find": "    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
-  "replace": "    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-active-fallback.sh,target=/opt/scripts/core/cross-active-fallback.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
+  "replace": "    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-active-fallback.sh,target=/opt/scripts/core/cross-active-fallback.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n",
   "test": "bash linux/scripts/tests/test-image-ref-cli.sh",
   "why": "both minimal compiler mount closures carry the mandatory leaf"
  },
@@ -24287,5 +24287,525 @@
   "replace": "      :",
   "test": "bash linux/scripts/tests/test-fleet-dependencies.sh",
   "why": "a one-way edge is not reported as a mutual dependency cycle"
+ },
+ {
+  "id": "lib.cross-active-preserves-provider",
+  "target": "linux/scripts/01-core/cross-active-fallback.sh",
+  "find": "  if ! command -v cross_build_is_active >/dev/null 2>&1; then",
+  "replace": "  if true; then",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Existing function and PATH providers remain authoritative under both registration policies."
+ },
+ {
+  "id": "lib.cross-active-native-false",
+  "target": "linux/scripts/01-core/cross-active-fallback.sh",
+  "find": "      native) cross_build_is_active() { false; } ;;",
+  "replace": "      native) cross_build_is_active() { true; } ;;",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Native fallback retains the exact false callback, including late shell-alias binding."
+ },
+ {
+  "id": "lib.cross-active-core-enabled-choice",
+  "target": "linux/scripts/01-core/cross-active-fallback.sh",
+  "find": "        if command -v cross_build_enabled >/dev/null 2>&1; then",
+  "replace": "        if false; then",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Core selects an existing enabled provider at registration time and keeps later callback replacement observable."
+ },
+ {
+  "id": "lib.cross-active-core-approximation-choice",
+  "target": "linux/scripts/01-core/cross-active-fallback.sh",
+  "find": "          cross_build_is_active() { core_cross_build_is_active; }",
+  "replace": "          cross_build_is_active() { cross_build_enabled; }",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "An enabled provider introduced later cannot replace the previously selected approximation."
+ },
+ {
+  "id": "lib.cross-active-typed-profile",
+  "target": "linux/scripts/01-core/cross-active-fallback.sh",
+  "find": "    *) printf 'ERROR: register_cross_active_fallback requires core or native\\n' >&2; return 2 ;;",
+  "replace": "    *) return 0 ;;",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Invalid profiles retain exact status2 diagnostics without changing prior binding or state."
+ },
+ {
+  "id": "lib.cross-active-core-source-failure",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "source \"${_COMMON_SH_DIR}/cross-active-fallback.sh\" || { unset _COMMON_SH_LOADED; return 1; }",
+  "replace": "source \"${_COMMON_SH_DIR}/cross-active-fallback.sh\"",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "A failed source defining the API cannot turn green; its caller loaded flag clears for retry."
+ },
+ {
+  "id": "lib.cross-active-core-registration-failure",
+  "target": "linux/scripts/01-core/common.sh",
+  "find": "register_cross_active_fallback core || { unset _COMMON_SH_LOADED; return 1; }",
+  "replace": "register_cross_active_fallback core",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Missing exports and failed registration cannot poison the loaded flag or bypass a failing import."
+ },
+ {
+  "id": "lib.cross-active-native-source-failure",
+  "target": "linux/scripts/01-core/install-deps-preamble.sh",
+  "find": "source \"$(dirname \"${BASH_SOURCE[0]}\")/cross-active-fallback.sh\" || { unset _INSTALL_DEPS_PREAMBLE_LOADED; return 1; }",
+  "replace": "source \"$(dirname \"${BASH_SOURCE[0]}\")/cross-active-fallback.sh\"",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "A failed source defining the API cannot turn green; its caller loaded flag clears for retry."
+ },
+ {
+  "id": "lib.cross-active-native-registration-failure",
+  "target": "linux/scripts/01-core/install-deps-preamble.sh",
+  "find": "register_cross_active_fallback native || { unset _INSTALL_DEPS_PREAMBLE_LOADED; return 1; }",
+  "replace": "register_cross_active_fallback native",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Missing exports and failed registration cannot poison the loaded flag or bypass a failing import."
+ },
+ {
+  "id": "lib.cross-active-base-closure",
+  "target": "linux/Dockerfile.base",
+  "find": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-active-fallback.sh,target=/tmp/scripts/01-core/cross-active-fallback.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
+  "replace": "RUN --mount=type=bind,source=linux/scripts/01-core/base-image.sh,target=/tmp/scripts/01-core/base-image.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/tmp/scripts/01-core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/tmp/scripts/01-core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/tmp/scripts/01-core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/tmp/scripts/01-core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/scripts/01-core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/tmp/scripts/01-core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/tmp/scripts/01-core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/scripts/01-core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/tmp/scripts/01-core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/tmp/scripts/01-core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/use-fast-ubuntu-mirror.sh,target=/tmp/scripts/01-core/use-fast-ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/tmp/scripts/01-core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/tmp/scripts/01-core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/package-lists.sh,target=/tmp/scripts/01-core/package-lists.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/cmake.sh,target=/tmp/scripts/02-toolchain/cmake.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/packaging-deps.sh,target=/tmp/scripts/02-toolchain/packaging-deps.sh,ro \\\n    --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    /bin/bash /tmp/scripts/01-core/base-image.sh bootstrap-ca\n",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Cold per-file common imports carry the adjacent pure registration owner without a cached ancestor."
+ },
+ {
+  "id": "lib.cross-active-toolchain-closure",
+  "target": "linux/Dockerfile.toolchain",
+  "find": "RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh,target=/opt/scripts/core/sccache-s3-level.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-server-address.sh,target=/opt/scripts/core/sccache-server-address.sh,ro \\\n    --mount=type=secret,id=sccache_s3,required=false \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/opt/scripts/core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/build-helpers.sh,target=/opt/scripts/core/build-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/elf-strip.sh,target=/opt/scripts/core/elf-strip.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-active-fallback.sh,target=/opt/scripts/core/cross-active-fallback.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \\\n    --mount=type=tmpfs,target=/tmp \\\n    --mount=type=tmpfs,target=/var/tmp \\\n    set -euo pipefail; \\\n    SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \\\n    bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-gcc; \\\n    bash /opt/scripts/core/sccache-s3-level.sh drain\n",
+  "replace": "RUN     --mount=type=cache,target=/var/cache/apt,sharing=locked,id=apt-cache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/lib/apt,sharing=locked,id=apt-lib-${TARGETARCH} \\\n    --mount=type=cache,target=/var/cache/ccache,id=ccache-${TARGETARCH} \\\n    --mount=type=cache,target=/var/cache/sccache,id=sccache-${TARGETARCH} \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-s3-level.sh,target=/opt/scripts/core/sccache-s3-level.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-server-address.sh,target=/opt/scripts/core/sccache-server-address.sh,ro \\\n    --mount=type=secret,id=sccache_s3,required=false \\\n    --mount=type=bind,source=linux/scripts/01-core/arch-mapping.sh,target=/opt/scripts/core/arch-mapping.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/build-helpers.sh,target=/opt/scripts/core/build-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/elf-strip.sh,target=/opt/scripts/core/elf-strip.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/image-ref-args.sh,target=/opt/scripts/core/image-ref-args.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/common.sh,target=/opt/scripts/core/common.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-apt.sh,target=/opt/scripts/core/cross-apt.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-env.sh,target=/opt/scripts/core/cross-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-gcc.sh,target=/opt/scripts/core/cross-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-meson.sh,target=/opt/scripts/core/cross-meson.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/cross-python.sh,target=/opt/scripts/core/cross-python.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/path-helpers.sh,target=/opt/scripts/core/path-helpers.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/downloads.sh,target=/opt/scripts/core/downloads.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/load-versions-env.sh,target=/opt/scripts/core/load-versions-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/logging.sh,target=/opt/scripts/core/logging.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/meson-rust-wrapper.sh,target=/opt/scripts/core/meson-rust-wrapper.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/module-bootstrap.sh,target=/opt/scripts/core/module-bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/compiler-cache-utils.sh,target=/opt/scripts/core/compiler-cache-utils.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/modules.sh,target=/opt/scripts/core/modules.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/parallelism.sh,target=/opt/scripts/core/parallelism.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/opt/scripts/core/platform.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/repos.sh,target=/opt/scripts/core/repos.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/sccache-launcher.sh,target=/opt/scripts/core/sccache-launcher.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/ubuntu-mirror.sh,target=/opt/scripts/core/ubuntu-mirror.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/verify.sh,target=/opt/scripts/core/verify.sh,ro \\\n    --mount=type=bind,source=linux/scripts/01-core/versions.env,target=/opt/scripts/core/versions.env,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap.sh,target=/opt/scripts/toolchain/bootstrap.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/bootstrap-import.sh,target=/opt/scripts/toolchain/bootstrap-import.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/build-gcc.sh,target=/opt/scripts/toolchain/build-gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/configure-gcc-env.sh,target=/opt/scripts/toolchain/configure-gcc-env.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/core.sh,target=/opt/scripts/toolchain/core.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/gcc.sh,target=/opt/scripts/toolchain/gcc.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/setup-dependencies.sh,target=/opt/scripts/toolchain/setup-dependencies.sh,ro \\\n    --mount=type=bind,source=linux/scripts/02-toolchain/verify-gcc.sh,target=/opt/scripts/toolchain/verify-gcc.sh,ro \\\n    --mount=type=tmpfs,target=/tmp \\\n    --mount=type=tmpfs,target=/var/tmp \\\n    set -euo pipefail; \\\n    SETUP_DEPENDENCIES_SKIP_CORE_TOOLS=true \\\n    bash /opt/scripts/toolchain/setup-dependencies.sh dockerfile-gcc; \\\n    bash /opt/scripts/core/sccache-s3-level.sh drain\n",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Cold per-file common imports carry the adjacent pure registration owner without a cached ancestor."
+ },
+ {
+  "id": "lib.cross-active-sdk-closure",
+  "target": "linux/Dockerfile.sdk",
+  "find": "    linux/scripts/01-core/cross-active-fallback.sh \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "The SDK common refresh includes its new required owner even over an older compiler ancestor."
+ },
+ {
+  "id": "lib.cross-active-media-closure",
+  "target": "linux/Dockerfile.media",
+  "find": "linux/scripts/01-core/cross-active-fallback.sh ",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-cross-active-registration.sh",
+  "why": "Fresh dependency preambles carry their adjacent owner rather than assuming its presence in an SDK ancestor."
+ },
+ {
+  "id": "lib.cross-active-layer0-classification",
+  "target": "linux/scripts/tests/test-layer-order.sh",
+  "find": " sccache-server-address.sh cross-active-fallback.sh)",
+  "replace": " sccache-server-address.sh)",
+  "test": "bash linux/scripts/tests/test-layer-order.sh",
+  "why": "The import-free leaf remains in the independent architectural layer0 classification."
+ },
+ {
+  "id": "lib.directory-visitor-directory-only",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "path_visit_existing_directories() {\n  local _pved_callback=\"$1\" _pved_state=\"$2\"\n  shift 2\n  for dir in \"$@\"; do\n    [ -d \"${dir}\" ] || continue\n    \"${_pved_callback}\" \"${_pved_state}\" \"${dir}\"\n  done\n  return $?\n}",
+  "replace": "path_visit_existing_directories() {\n  local _pved_callback=\"$1\" _pved_state=\"$2\"\n  shift 2\n  for dir in \"$@\"; do\n    [ -e \"${dir}\" ] || continue\n    \"${_pved_callback}\" \"${_pved_state}\" \"${dir}\"\n  done\n  return $?\n}",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "A regular file is not a runtime library directory, including the final loop entry."
+ },
+ {
+  "id": "lib.directory-visitor-raw-arguments",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "path_visit_existing_directories() {\n  local _pved_callback=\"$1\" _pved_state=\"$2\"\n  shift 2\n  for dir in \"$@\"; do\n    [ -d \"${dir}\" ] || continue\n    \"${_pved_callback}\" \"${_pved_state}\" \"${dir}\"\n  done\n  return $?\n}",
+  "replace": "path_visit_existing_directories() {\n  local _pved_callback=\"$1\" _pved_state=\"$2\"\n  shift 2\n  for dir in $*; do\n    [ -d \"${dir}\" ] || continue\n    \"${_pved_callback}\" \"${_pved_state}\" \"${dir}\"\n  done\n  return $?\n}",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Quoted candidates preserve empty entries, raw newlines, glob characters and caller IFS semantics."
+ },
+ {
+  "id": "lib.directory-visitor-input-order",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "  shift 2\n  for dir in \"$@\"; do",
+  "replace": "  shift 2\n  local -a _bad_order=(\"$@\")\n  for dir in \"${_bad_order[@]:1}\" \"${_bad_order[0]}\"; do",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Probes and append callbacks retain original input order and the final caller loop slot."
+ },
+ {
+  "id": "lib.directory-visitor-caller-slot",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "  local _pved_callback=\"$1\" _pved_state=\"$2\"",
+  "replace": "  local _pved_callback=\"$1\" _pved_state=\"$2\" dir",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "The shared for loop updates the existing caller-owned local or global dir rather than a shadow."
+ },
+ {
+  "id": "lib.directory-visitor-state-binding",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "    \"${_pved_callback}\" \"${_pved_state}\" \"${dir}\"",
+  "replace": "    \"${_pved_callback}\" dir \"${dir}\"",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Callbacks update the selected accumulation variable without corrupting the loop slot."
+ },
+ {
+  "id": "lib.directory-visitor-cross-duplicates",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "  _calp_state=\"${_calp_state:+${_calp_state}:}$2\"",
+  "replace": "  case \":${_calp_state}:\" in *\":$2:\"*) return 0 ;; esac\n  _calp_state=\"${_calp_state:+${_calp_state}:}$2\"",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Cross paths retain repeated directories instead of borrowing LLVM deduplication policy."
+ },
+ {
+  "id": "lib.directory-visitor-llvm-deduplication",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  case \":${_larlp_state}:\" in\n    *\":${dir}:\"*) ;;\n    *) _larlp_state=\"${_larlp_state:+${_larlp_state}:}${dir}\" ;;\n  esac",
+  "replace": "  _larlp_state=\"${_larlp_state:+${_larlp_state}:}${dir}\"",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "LLVM retains exact colon-membership deduplication and first occurrence order."
+ },
+ {
+  "id": "lib.directory-visitor-duplicate-success",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "    *\":${dir}:\"*) ;;",
+  "replace": "    *\":${dir}:\"*) return 1 ;;",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Skipping an existing LLVM directory succeeds under direct errexit and continues remaining candidates."
+ },
+ {
+  "id": "lib.directory-visitor-cross-post-loop",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "    \"/usr/${_elp[triplet]}/lib\"\n  if [ -n \"${target_link_path}\" ]; then",
+  "replace": "    \"/usr/${_elp[triplet]}/lib\" || return $?\n  if [ -n \"${target_link_path}\" ]; then",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "An ignored readonly for-control failure still reaches export or printf when errexit is suppressed."
+ },
+ {
+  "id": "lib.directory-visitor-llvm-post-loop",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "    \"/usr/${triplet}/lib\"\n\n  printf '%s' \"${path}\"",
+  "replace": "    \"/usr/${triplet}/lib\" || return $?\n\n  printf '%s' \"${path}\"",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "An ignored readonly for-control failure still reaches export or printf when errexit is suppressed."
+ },
+ {
+  "id": "lib.directory-visitor-required-callback",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "  if ! declare -F path_visit_existing_directories \"$1\" >/dev/null; then",
+  "replace": "  if ! declare -F path_visit_existing_directories >/dev/null; then",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Readiness requires the selected callback as well as the visitor before probing or accumulation."
+ },
+ {
+  "id": "lib.directory-visitor-required-visitor",
+  "target": "linux/scripts/01-core/platform.sh",
+  "find": "  if ! declare -F path_visit_existing_directories \"$1\" >/dev/null; then",
+  "replace": "  if ! declare -F \"$1\" >/dev/null; then",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "A partial platform cannot pass readiness with a callback but no directory visitor."
+ },
+ {
+  "id": "lib.directory-visitor-cross-readiness",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "  path_require_directory_visitor _cross_append_library_path || return $?\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Both callers fail before iteration when their required platform readiness API is absent or incomplete."
+ },
+ {
+  "id": "lib.directory-visitor-llvm-readiness",
+  "target": "linux/scripts/02-toolchain/llvm.sh",
+  "find": "  path_require_directory_visitor _llvm_append_runtime_library_path || return $?\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "Both callers fail before iteration when their required platform readiness API is absent or incomplete."
+ },
+ {
+  "id": "lib.directory-visitor-sdk-fresh-platform",
+  "target": "linux/Dockerfile.sdk",
+  "find": "COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "SDK refreshes the platform owner from the current context alongside its LLVM module."
+ },
+ {
+  "id": "lib.directory-visitor-android-fresh-platform",
+  "target": "linux/Dockerfile.android",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/platform.sh,target=/tmp/wlt/01-core/platform.sh,ro \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-directory-visitor.sh",
+  "why": "The Android web build mounts the same fresh platform owner as its cross-environment module."
+ },
+ {
+  "id": "lib.media-file-set-regular-type",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "[ -f \"${_mrf_path}\" ]",
+  "replace": "[ -e \"${_mrf_path}\" ]",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "directories must not satisfy a regular-file SDK completeness check while regular symlinks still do"
+ },
+ {
+  "id": "lib.media-file-set-all-members",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "case \"${_mrf_status}\" in 0) ;; *) return \"${_mrf_status}\" ;; esac",
+  "replace": "return \"${_mrf_status}\"",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "a present first member cannot hide missing later library or header artifacts"
+ },
+ {
+  "id": "lib.media-file-set-failure-status",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "_mrf_status=$?",
+  "replace": "_mrf_status=1",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "the first failed file probe retains its actual status and stops further probes"
+ },
+ {
+  "id": "lib.media-file-set-quoted-paths",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "for _mrf_path in \"$@\"; do",
+  "replace": "for _mrf_path in $*; do",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "literal spaces and glob characters in SDK roots or version stamps must reach each original -f test unchanged"
+ },
+ {
+  "id": "lib.media-file-set-tf-stamp",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+  "find": "media_regular_files_present \"${tf_dir}/.complete-${tf_version}\" \\",
+  "replace": "media_regular_files_present \\",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "library and header presence without the current completion stamp cannot accept an interrupted TensorFlow extract"
+ },
+ {
+  "id": "lib.media-file-set-tf-api",
+  "target": "linux/scripts/03-media/build/ffmpeg/ffmpeg-dnn-backends.sh",
+  "find": "if ! declare -F media_regular_files_present >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "a selected TensorFlow probe with an old media owner fails closed before treating missing API as a stale cache"
+ },
+ {
+  "id": "lib.media-file-set-hb-api",
+  "target": "linux/scripts/03-media/build/opencv/install-deps.sh",
+  "find": "if [ -n \"${_hb_triplet}\" ] && ! declare -F media_regular_files_present >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "selected HarfBuzz staging validation cannot turn a missing required API into an ordinary warning and success"
+ },
+ {
+  "id": "lib.media-file-set-hb-triplet",
+  "target": "linux/scripts/03-media/build/opencv/install-deps.sh",
+  "find": "if [ -n \"${_hb_triplet}\" ] \\\n       && media_regular_files_present",
+  "replace": "if media_regular_files_present",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "an empty triplet skips the regular-file query and does not newly require the shared API"
+ },
+ {
+  "id": "lib.media-file-set-hb-header",
+  "target": "linux/scripts/03-media/build/opencv/install-deps.sh",
+  "find": "\"/usr/${_hb_triplet}/include/harfbuzz/hb-ft.h\" \"/usr/${_hb_triplet}/lib/pkgconfig/harfbuzz.pc\"",
+  "replace": "\"/usr/${_hb_triplet}/lib/pkgconfig/harfbuzz.pc\"",
+  "test": "bash linux/scripts/tests/test-media-file-sets.sh",
+  "why": "the static target HarfBuzz verdict requires the FreeType integration header as well as archive and pkgconfig file"
+ },
+ {
+  "id": "lib.media-file-set-dnn-fixture-copy",
+  "target": "linux/scripts/tests/test-ffmpeg-dnn-contract.sh",
+  "find": "    ${_files}\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-ffmpeg-dnn-contract.sh",
+  "why": "the executable DNN fixture carries the actual shared helper before reaching the selected download branch"
+ },
+ {
+  "id": "lib.qnn-query-regular-type",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "find \"$1\" -maxdepth 1 -name \"$2\" -type f",
+  "replace": "find \"$1\" -maxdepth 1 -name \"$2\" -type d",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "directories cannot satisfy the shallow regular backend library query"
+ },
+ {
+  "id": "lib.qnn-query-shallow",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "find \"$1\" -maxdepth 1 -name \"$2\" -type f",
+  "replace": "find \"$1\" -maxdepth 4 -name \"$2\" -type f",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "a nested library does not satisfy the sibling backend library contract"
+ },
+ {
+  "id": "lib.qnn-query-find-status",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "find \"$1\" -maxdepth 1 -name \"$2\" -type f 2>/dev/null | grep -q .",
+  "replace": "find \"$1\" -maxdepth 1 -name \"$2\" -type f 2>/dev/null | grep -q . || true",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "the shared query retains the original pipeline status rather than accepting a failed or empty producer"
+ },
+ {
+  "id": "lib.qnn-query-inherited-pipefail",
+  "target": "linux/scripts/01-core/qnn-sdk.sh",
+  "find": "    find \"$1\" -maxdepth 1 -name \"$2\" -type f",
+  "replace": "    set -o pipefail\n    find \"$1\" -maxdepth 1 -name \"$2\" -type f",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "querying libraries must preserve the caller pipeline policy rather than turning it on globally"
+ },
+ {
+  "id": "lib.qnn-query-backend-pattern",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "qnn_has_runtime_libraries \"${PREFIX}/lib\" 'libQnn*.so'",
+  "replace": "qnn_has_runtime_libraries \"${PREFIX}/lib\" 'libonnxruntime*.so'",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "an ONNX provider cannot stand in for its required sibling QNN backend library"
+ },
+ {
+  "id": "lib.qnn-query-mandatory-import",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "source \"${BASH_SOURCE[0]%/*}/../../01-core/qnn-sdk.sh\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "the EP-present verifier physically imports the canonical query owner"
+ },
+ {
+  "id": "lib.qnn-query-source-status",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "[ \"${_qnn_verifier_source_status}\" -eq 0 ] || exit \"${_qnn_verifier_source_status}\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "a companion that defines the API then returns23 must fail the conditional verifier with raw status23"
+ },
+ {
+  "id": "lib.qnn-query-export",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "if ! declare -F qnn_has_runtime_libraries >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "an empty old companion fails with a named API error before its absent query can become an ordinary backend miss"
+ },
+ {
+  "id": "lib.qnn-query-lazy-provider",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "if find \"${PREFIX}/lib\" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | grep -q .; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "provider-absent builds do not import or require the QNN-specific query owner"
+ },
+ {
+  "id": "lib.qnn-query-cpu-closure",
+  "target": "linux/Dockerfile.media",
+  "find": "    --mount=type=bind,source=linux/scripts/01-core/qnn-sdk.sh,target=/opt/scripts/01-core/qnn-sdk.sh,readonly \\\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "the CPU verification RUN carries a freshly changed query owner, with the physical fixture built from the actual bind map"
+ },
+ {
+  "id": "lib.qnn-query-child-strict",
+  "target": "linux/scripts/03-media/runtime/verify-media-artifacts.sh",
+  "find": "set -euo pipefail",
+  "replace": "set -uo pipefail",
+  "test": "bash linux/scripts/tests/test-qnn-runtime-query.sh",
+  "why": "the sole CPU verification child retains strict flags independently of the redundant removed outer set command"
+ },
+ {
+  "id": "lib.child-stop-signal",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "for _psca_action in kill wait; do",
+  "replace": "for _psca_action in wait; do",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "signaling is attempted before reaping an advisory child"
+ },
+ {
+  "id": "lib.child-stop-reap",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "for _psca_action in kill wait; do",
+  "replace": "for _psca_action in kill; do",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "the child is reaped even when signaling reports it already exited"
+ },
+ {
+  "id": "lib.child-stop-order",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "for _psca_action in kill wait; do",
+  "replace": "for _psca_action in wait kill; do",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "signal precedes the wait rather than blocking on a still-running child"
+ },
+ {
+  "id": "lib.child-stop-advisory",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "    \"${_psca_action}\" \"$1\" 2>/dev/null || true",
+  "replace": "    \"${_psca_action}\" \"$1\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "signal and wait failures stay advisory while timer commands retain their own status"
+ },
+ {
+  "id": "lib.child-stop-diagnostics",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "    \"${_psca_action}\" \"$1\" 2>/dev/null || true",
+  "replace": "    \"${_psca_action}\" \"$1\" || true",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "expected cleanup errors remain silent while command stdout is preserved"
+ },
+ {
+  "id": "lib.child-stop-quoted-pid",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "    \"${_psca_action}\" \"$1\" 2>/dev/null || true",
+  "replace": "    \"${_psca_action}\" $1 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "literal supplied PID strings remain one argument without glob expansion"
+ },
+ {
+  "id": "lib.child-stop-timed-owner",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "    parallel_stop_child_advisory \"${hb}\"",
+  "replace": "    parallel_stop_child_advisory 999",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "timer cleanup targets its own heartbeat rather than an unrelated numeric PID"
+ },
+ {
+  "id": "lib.child-stop-disk-reset",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  parallel_stop_child_advisory \"${_CHAIN_DISK_WATCH_PID}\"\n  _CHAIN_DISK_WATCH_PID=\"\"",
+  "replace": "  parallel_stop_child_advisory \"${_CHAIN_DISK_WATCH_PID}\"",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "stopped disk watchers clear the saved PID even after advisory cleanup failures"
+ },
+ {
+  "id": "lib.child-stop-fixture-companion",
+  "target": "linux/scripts/tests/runtime-flow-fixtures.sh",
+  "find": "  t_fn_src \"${scripts}/01-core/parallel-loop.sh\" parallel_stop_child_advisory || return 1",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "isolated timer workers carry the actual process companion before running production timer functions"
+ },
+ {
+  "id": "lib.child-stop-required-api",
+  "target": "linux/scripts/01-core/parallel-loop.sh",
+  "find": "if ! declare -F parallel_stop_child_advisory >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "an incomplete shared process owner is refused before child work starts"
+ },
+ {
+  "id": "lib.child-stop-timed-api",
+  "target": "linux/scripts/01-core/runtime-build-fns.sh",
+  "find": "  if ! is_dry_run; then\n    parallel_require_child_stop || return $?",
+  "replace": "  if ! is_dry_run; then",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "a selected timer cannot spawn a heartbeat without its required cleanup API"
+ },
+ {
+  "id": "lib.child-stop-watch-start-api",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  _disk_guard_positive_integer \"${threshold}\" || return 0\n  parallel_require_child_stop || return $?",
+  "replace": "  _disk_guard_positive_integer \"${threshold}\" || return 0",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "a selected disk watcher checks cleanup readiness before starting its child"
+ },
+ {
+  "id": "lib.child-stop-watch-stop-api",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "  [ -n \"${_CHAIN_DISK_WATCH_PID}\" ] || return 0\n  parallel_require_child_stop || return $?",
+  "replace": "  [ -n \"${_CHAIN_DISK_WATCH_PID}\" ] || return 0",
+  "test": "bash linux/scripts/tests/test-runtime-child-stop.sh",
+  "why": "missing cleanup API cannot clear a saved watcher PID and report a successful stop"
+ },
+ {
+  "id": "lib.cache-readiness-positive-complete-closure",
+  "target": "linux/scripts/tests/test-compiler-cache-companions.sh",
+  "find": "for companion in compiler-cache-utils.sh load-versions-env.sh versions.env platform.sh cross-active-fallback.sh; do",
+  "replace": "for companion in compiler-cache-utils.sh load-versions-env.sh versions.env platform.sh; do",
+  "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
+  "why": "A complete common-module initialization must succeed before the missing-cache comparison; another missing companion cannot mask cache-guard regressions."
  }
 ]

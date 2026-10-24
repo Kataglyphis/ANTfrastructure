@@ -3,17 +3,14 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
+source "${TESTS_DIR}/runtime-flow-fixtures.sh"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 _LOG="${_work}/log"
 : > "${_LOG}"
 
-_FNS=""
-for _fn in runtime_build_wrapper_image _runtime_wrapper_then_ship _runtime_ship_image _runtime_timed _runtime_heartbeat; do
-  _FNS+="$(t_fn_src "${RBF}" "${_fn}")"$'\n' || exit 1
-done
+_FNS="$(runtime_test_timer_sources "${TESTS_DIR}/.." runtime_build_wrapper_image _runtime_wrapper_then_ship _runtime_ship_image _runtime_timed _runtime_heartbeat)" || exit 1
 eval "${_FNS}"
 
 # The build takes 1 s, the gate wait 3 s: the build's timer must read 1 or 2, never 4.

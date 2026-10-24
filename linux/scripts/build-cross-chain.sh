@@ -523,6 +523,7 @@ _chain_disk_watch_start() {
   is_dry_run && return 0
   local threshold="${CROSS_DISK_GUARD_GB:-40}" secs="${CROSS_DISK_WATCH_SECS:-120}"
   _disk_guard_positive_integer "${threshold}" || return 0
+  parallel_require_child_stop || return $?
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected
   protected="$(_disk_guard_protected_slugs '')"
@@ -535,8 +536,8 @@ _chain_disk_watch_start() {
 
 _chain_disk_watch_stop() {
   [ -n "${_CHAIN_DISK_WATCH_PID}" ] || return 0
-  kill "${_CHAIN_DISK_WATCH_PID}" 2>/dev/null || true
-  wait "${_CHAIN_DISK_WATCH_PID}" 2>/dev/null || true
+  parallel_require_child_stop || return $?
+  parallel_stop_child_advisory "${_CHAIN_DISK_WATCH_PID}"
   _CHAIN_DISK_WATCH_PID=""
 }
 

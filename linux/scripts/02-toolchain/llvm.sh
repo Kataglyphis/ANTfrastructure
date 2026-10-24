@@ -288,6 +288,16 @@ llvm_cross_qemu_sysroot() {
   return 1
 }
 
+_llvm_append_runtime_library_path() {
+  local -n _larlp_state="$1"
+  local dir="$2"
+  case ":${_larlp_state}:" in
+    *":${dir}:"*) ;;
+    *) _larlp_state="${_larlp_state:+${_larlp_state}:}${dir}" ;;
+  esac
+  return 0
+}
+
 llvm_cross_target_runtime_library_path() {
   local target_label="$1"
   local prefix triplet gcc_prefix gcc_major runtime_libdir path="" dir
@@ -300,7 +310,8 @@ llvm_cross_target_runtime_library_path() {
   gcc_major="$(version_major "${gcc_major}")"
   runtime_libdir="${gcc_prefix}/lib/gcc/${triplet}/${gcc_major}"
 
-  for dir in \
+  path_require_directory_visitor _llvm_append_runtime_library_path || return $?
+  path_visit_existing_directories _llvm_append_runtime_library_path path \
     "${prefix}/lib" \
     "${prefix}/lib64" \
     "${runtime_libdir}" \
@@ -310,16 +321,7 @@ llvm_cross_target_runtime_library_path() {
     "${gcc_prefix}/lib" \
     "/lib/${triplet}" \
     "/usr/lib/${triplet}" \
-    "/usr/${triplet}/lib"; do
-    [ -d "${dir}" ] || continue
-    case ":${path}:" in
-      *":${dir}:"*)
-        ;;
-      *)
-        path="${path:+${path}:}${dir}"
-        ;;
-    esac
-  done
+    "/usr/${triplet}/lib"
 
   printf '%s' "${path}"
 }

@@ -46,13 +46,9 @@ core_cross_build_is_active() {
 }
 
 # Full cross modules remain authoritative; core-only consumers use the normalized approximation.
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  if command -v cross_build_enabled >/dev/null 2>&1; then
-    cross_build_is_active() { cross_build_enabled; }
-  else
-    cross_build_is_active() { core_cross_build_is_active; }
-  fi
-fi
+# shellcheck source=linux/scripts/01-core/cross-active-fallback.sh
+source "${_COMMON_SH_DIR}/cross-active-fallback.sh" || { unset _COMMON_SH_LOADED; return 1; }
+register_cross_active_fallback core || { unset _COMMON_SH_LOADED; return 1; }
 
 if [ -z "${LLVM_WANTED:-}" ]; then
   LLVM_WANTED="${LLVM_RELEASE}"

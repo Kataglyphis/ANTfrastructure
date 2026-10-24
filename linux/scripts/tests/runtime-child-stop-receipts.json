@@ -1,0 +1,2562 @@
+[
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   0,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   0,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   0,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   0,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   9,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   9,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   9,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   0,
+   9,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   0,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   0,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   0,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   0,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   9,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   9,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   9,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   0,
+   17,
+   9,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   0,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   0,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   0,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   0,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   9,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   9,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   9,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   0,
+   9,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   0,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   0,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   0,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   0,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=0\nresult:0 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   9,
+   0,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   9,
+   0,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nkill:<OWN_CHILD>\nwait:<OWN_CHILD>\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   9,
+   1,
+   0,
+   "unused"
+  ],
+  "receipt": [
+   9,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "timed",
+   23,
+   17,
+   9,
+   1,
+   1,
+   "unused"
+  ],
+  "receipt": [
+   0,
+   "command\nlog:[runtime-timing] arch=arm64 step=probe secs=0 rc=9\nresult:9 pid:<unused>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   0,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   0,
+   9,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   0,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   0,
+   17,
+   9,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   0,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   0,
+   9,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   0,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   0,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   0,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   0,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   0,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   0,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   1,
+   ""
+  ],
+  "receipt": [
+   0,
+   "result:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   1,
+   "123"
+  ],
+  "receipt": [
+   0,
+   "kill:<123>\nwait:<123>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   1,
+   "7 8"
+  ],
+  "receipt": [
+   0,
+   "kill:<7 8>\nwait:<7 8>\nresult:0 pid:<>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "chain",
+   23,
+   17,
+   9,
+   1,
+   1,
+   "*"
+  ],
+  "receipt": [
+   0,
+   "kill:<*>\nwait:<*>\nresult:0 pid:<>\n",
+   ""
+  ]
+ }
+]

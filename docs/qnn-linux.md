@@ -24,6 +24,14 @@ three canaries: the `include/QNN/QnnInterface.h` anchor, `libQnnCpu.so` under
 `QNN_OP_STFT` in `QnnOpDef.h` — the QNN API 2.25+ marker ORT has needed since
 1.29.
 
+Staging and the CPU artifact verifier share the shallow regular-library query in
+`qnn-sdk.sh`. Staging keeps its `*.so*` pattern; verification keeps `libQnn*.so`.
+Nested files and symlinks do not satisfy that query. The verifier imports the
+canonical helper only after detecting a QNN provider. That RUN carries a fresh,
+readonly `qnn-sdk.sh` mount at `/opt/scripts/01-core/qnn-sdk.sh`; a missing export
+or failed selected import fails verification. Offline fixtures test path and
+failure behavior, not QNN execution on hardware.
+
 <a id="qairt_headers_dir"></a>
 ## `QAIRT_HEADERS_DIR` — the trap that cost a build
 

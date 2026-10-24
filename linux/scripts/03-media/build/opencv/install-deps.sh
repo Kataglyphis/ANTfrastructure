@@ -138,6 +138,10 @@ fi
 if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
     _hb_triplet="$(cross_target_triplet 2>/dev/null || true)"
     _hb_ver="${HARFBUZZ_VERSION:-12.3.2}"
+    if [ -n "${_hb_triplet}" ] && ! declare -F media_regular_files_present >/dev/null; then
+        printf 'ERROR: HarfBuzz staging validation requires media_regular_files_present from media core/common.sh\n' >&2
+        exit 1
+    fi
     if [ -n "${_hb_triplet}" ] \
        && [ -f "/usr/lib/${_hb_triplet}/libfreetype.so" ] \
        && [ -f /usr/include/freetype2/ft2build.h ]; then
@@ -163,9 +167,8 @@ if is_cross && [ "$(cross_target_arch 2>/dev/null || true)" = "riscv64" ]; then
     fi
     # Best-effort must not mean silent: log whether it was staged.
     if [ -n "${_hb_triplet}" ] \
-       && [ -f "/usr/${_hb_triplet}/lib/libharfbuzz.a" ] \
-       && [ -f "/usr/${_hb_triplet}/include/harfbuzz/hb-ft.h" ] \
-       && [ -f "/usr/${_hb_triplet}/lib/pkgconfig/harfbuzz.pc" ]; then
+       && media_regular_files_present "/usr/${_hb_triplet}/lib/libharfbuzz.a" \
+       "/usr/${_hb_triplet}/include/harfbuzz/hb-ft.h" "/usr/${_hb_triplet}/lib/pkgconfig/harfbuzz.pc"; then
         echo "[INFO] harfbuzz (riscv64): static target harfbuzz ${_hb_ver} staged at /usr/${_hb_triplet} (lib+hb-ft.h+pc)"
     else
         echo "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF"

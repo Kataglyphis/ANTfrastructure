@@ -648,13 +648,13 @@ _runtime_timed() {
   shift 2
   t0="$(date +%s)"
   if ! is_dry_run; then
+    parallel_require_child_stop || return $?
     _runtime_heartbeat "${step}" "${arch}" "${t0}" &
     hb=$!
   fi
   "$@" || rc=$?
   if [ -n "${hb}" ]; then
-    kill "${hb}" 2>/dev/null || true
-    wait "${hb}" 2>/dev/null || true
+    parallel_stop_child_advisory "${hb}"
   fi
   log "[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}"
   return "${rc}"

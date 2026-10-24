@@ -7,3 +7,14 @@ runtime_test_preparation_step() {
     t_assert_eq "${expected}" "$(grep -F -A1 "${anchor}" "${scripts}/01-core/runtime-flow-common.sh" | sed -n 2p)" "${entry} preparation order"
   done
 }
+
+# Timer workers carry their process companion without executing entrypoint initialization.
+runtime_test_timer_sources() {
+  local scripts="$1" fn
+  shift
+  t_fn_src "${scripts}/01-core/parallel-loop.sh" parallel_require_child_stop || return 1
+  t_fn_src "${scripts}/01-core/parallel-loop.sh" parallel_stop_child_advisory || return 1
+  for fn in "$@"; do
+    t_fn_src "${scripts}/01-core/runtime-build-fns.sh" "${fn}" || return 1
+  done
+}

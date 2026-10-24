@@ -87,6 +87,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install.
    Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
+   Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
+   Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
+   QNN artifact verification carries the fresh SDK query owner; import it only when its provider is present and fail on selected import errors.
+   Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations.

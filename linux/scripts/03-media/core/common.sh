@@ -3,6 +3,16 @@
 
 set -euo pipefail
 
+media_regular_files_present() {
+  local _mrf_path _mrf_status
+  for _mrf_path in "$@"; do
+    [ -f "${_mrf_path}" ]
+    _mrf_status=$?
+    case "${_mrf_status}" in 0) ;; *) return "${_mrf_status}" ;; esac
+  done
+  return 0
+}
+
 media_missing_dev_symlink() {
   local destination="$1" source_file="$2"
   case "${source_file}" in

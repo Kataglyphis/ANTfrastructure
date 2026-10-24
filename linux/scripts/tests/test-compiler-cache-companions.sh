@@ -11,10 +11,26 @@ COMMON="${5:-${TESTS_DIR}/../01-core/common.sh}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 
-t_case 'cache modules reject a missing companion even when source runs under if'
-mkdir "${WORK}/missing"
+mkdir "${WORK}/complete" "${WORK}/missing"
+for companion in compiler-cache-utils.sh load-versions-env.sh versions.env platform.sh cross-active-fallback.sh; do
+  install -m 0644 "${TESTS_DIR}/../01-core/${companion}" "${WORK}/complete/"
+done
 for module in "${CACHE}" "${CMAKE}" "${COMMON}"; do
-  install -m 0644 "${module}" "${WORK}/missing/${module##*/}"
+  install -m 0644 "${module}" "${WORK}/complete/${module##*/}"
+done
+
+t_case 'cache modules initialize with their complete companion closure'
+for module in "${CACHE}" "${CMAKE}" "${COMMON}"; do
+  rc=0
+  result="$(bash -euc 'source "$1"; declare -F compiler_tool_enabled >/dev/null; printf READY' _ "${WORK}/complete/${module##*/}")" || rc=$?
+  t_assert_eq 0 "${rc}"
+  t_assert_eq READY "${result}"
+done
+
+t_case 'cache modules reject a missing companion even when source runs under if'
+cp -a "${WORK}/complete/." "${WORK}/missing/"
+rm "${WORK}/missing/compiler-cache-utils.sh"
+for module in "${CACHE}" "${CMAKE}" "${COMMON}"; do
   result="$(bash -c 'if source "$1" 2>/dev/null; then printf GREEN; else printf REJECTED; fi; if source "$1" 2>/dev/null; then printf GREEN; else printf REJECTED; fi' _ "${WORK}/missing/${module##*/}")"
   t_assert_eq REJECTEDREJECTED "${result}" 'a failed load cannot mark the module successfully loaded'
 done

@@ -91,6 +91,25 @@ deb_multiarch_triplet_best_effort() {
   return 0
 }
 
+# The caller owns dir; moving a readonly assignment out of for changes Bash unwinding.
+path_visit_existing_directories() {
+  local _pved_callback="$1" _pved_state="$2"
+  shift 2
+  for dir in "$@"; do
+    [ -d "${dir}" ] || continue
+    "${_pved_callback}" "${_pved_state}" "${dir}"
+  done
+  return $?
+}
+
+path_require_directory_visitor() {
+  if ! declare -F path_visit_existing_directories "$1" >/dev/null; then
+    printf 'ERROR: directory visitor requires path_visit_existing_directories and %s\n' "$1" >&2
+    return 1
+  fi
+  return 0
+}
+
 arch_deb_multiarch_triplet_for() {
   case "$(arch_normalize "$1")" in
     amd64) printf '%s' "x86_64-linux-gnu" ;;

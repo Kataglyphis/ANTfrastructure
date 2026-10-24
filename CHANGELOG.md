@@ -13,6 +13,17 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — share ordered artifact checks and compatibility registration
+
+- Share media regular-file checks while retaining completion stamps, lazy branches and raw probe status.
+- Share directory visitation with distinct duplicate policies and unchanged shell loop bindings.
+- Share typed cross-build fallback registration at the original alias-binding point; carry fresh companions in narrow build closures.
+- Share shallow QNN library queries with lazy required imports and one fresh CPU-verification companion mount.
+- Share advisory child signaling and reaping while retaining timer status, watcher reset and independent process tests.
+- Validate copied cache modules before removing one companion so unrelated missing files cannot mask a removed guard.
+- Remove seven resolved duplication exceptions while preserving the independent cleanup oracle.
+- Verify original/current receipts and cold failure controls without changing scanner settings or independent expected results.
+
 ## 2026-10-24 — share binfmt probes, Meson dispatch and dependency queries
 
 - Share host/rootless binfmt checks while preserving caller-specific tool discovery and verdicts.
