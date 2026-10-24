@@ -76,6 +76,26 @@ function Invoke-HealthToolVersion {
     }
 }
 
+function Invoke-HealthGstPluginChecks {
+    param([switch]$Cross, [string]$Inspect, [string[]]$RequiredPlugins)
+
+    if ($Cross -and $RequiredPlugins.Count -gt 0) {
+        Write-Host "[SKIP] gst-plugin probes for: $($RequiredPlugins -join ', ') (payload execution; gst-inspect-1.0.exe is aarch64 on this lane)"
+        return
+    }
+    foreach ($gstPlugin in $RequiredPlugins) {
+        # Stale LASTEXITCODE: `& $null` throws but keeps the previous call's 0, a false [PASS].
+        if (-not $Inspect -or -not (Test-Path $Inspect)) {
+            Write-Host "[SKIP] gst-plugin $gstPlugin not probed (gst-inspect-1.0.exe not found)"
+            continue
+        }
+        $global:LASTEXITCODE = 1
+        $null = & $Inspect $gstPlugin 2>&1
+        if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" }
+        else { Write-Host "[FAIL] gst-plugin $gstPlugin MISSING - this image is incomplete (mandatory integration)" }
+    }
+}
+
 Invoke-HealthToolVersion -Label 'ffmpeg --version' -BinEnvVar FFMPEG_BIN -ExeName ffmpeg.exe -VersionArgument '-version' -Cross:$hcCross
 Invoke-HealthToolVersion -Label 'gst-launch-1.0 --version' -BinEnvVar GSTREAMER_BIN -ExeName gst-launch-1.0.exe -VersionArgument '--version' -Cross:$hcCross
 
@@ -92,21 +112,7 @@ $requiredGstPlugins = if (Test-Path $gstPluginModule) {
     Write-Host '[SKIP] gst-plugin contract not probed (WindowsGstPlugins.Common.psm1 absent in this image)'
     @()
 }
-if ($hcCross -and $requiredGstPlugins.Count -gt 0) {
-    Write-Host "[SKIP] gst-plugin probes for: $($requiredGstPlugins -join ', ') (payload execution; gst-inspect-1.0.exe is aarch64 on this lane)"
-    $requiredGstPlugins = @()
-}
-foreach ($gstPlugin in $requiredGstPlugins) {
-    # Stale LASTEXITCODE: `& $null` throws but keeps the previous call's 0, a false [PASS]; hence the guard and the reset.
-    if (-not $gstInspect -or -not (Test-Path $gstInspect)) {
-        Write-Host "[SKIP] gst-plugin $gstPlugin not probed (gst-inspect-1.0.exe not found)"
-        continue
-    }
-    $global:LASTEXITCODE = 1
-    $null = & $gstInspect $gstPlugin 2>&1
-    if ($LASTEXITCODE -eq 0) { Write-Host "[PASS] gst-plugin $gstPlugin found" }
-    else { Write-Host "[FAIL] gst-plugin $gstPlugin MISSING - this image is incomplete (mandatory integration)" }
-}
+Invoke-HealthGstPluginChecks -Cross:$hcCross -Inspect $gstInspect -RequiredPlugins $requiredGstPlugins
 
 foreach ($hostTool in 'cmake', 'clang-cl') {
     Check "$hostTool --version" {

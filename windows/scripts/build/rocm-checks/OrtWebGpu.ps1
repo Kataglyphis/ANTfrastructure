@@ -142,6 +142,29 @@ function Invoke-OrtWebGpuProbe {
     }
 }
 
+function Get-OrtWebGpuDxcFinding {
+    param([string]$Tag, [System.Collections.IDictionary]$Dlls, [hashtable]$Marker)
+
+    $keys = Get-OrtWebGpuDxcKey
+    foreach ($dll in $keys.Keys) {
+        $d = $Dlls[$dll]
+        if ($d -isnot [System.Collections.IDictionary]) { "${Tag}: onnxruntime\capi has no $dll"; continue }
+        if ("$($d['sha256'])" -ne "$($Marker[$keys[$dll]])") { "${Tag}: onnxruntime\capi\$dll is $($d['sha256']), the build staged $($Marker[$keys[$dll]])" }
+        if ($d['entry'] -ne $true) { "${Tag}: onnxruntime\capi\$dll does not load or lacks DxcCreateInstance" }
+    }
+    foreach ($dll in @(Get-OrtWebGpuRetiredDxcDll | Where-Object { $Dlls.Contains($_) })) { "${Tag}: onnxruntime\capi carries $dll, which nothing loads since ORT v1.31.0" }
+}
+
+function Get-OrtWebGpuGenaiFinding {
+    param([string]$Tag, [hashtable]$Report)
+
+    if ($Report['genai_error']) { return "${Tag}: import onnxruntime_genai failed: $($Report['genai_error'])" }
+    $capiOrt = [System.IO.Path]::GetFullPath((Join-Path "$($Report['capi'])" 'onnxruntime.dll'))
+    $genaiOrt = if ($Report['genai_ort']) { [System.IO.Path]::GetFullPath("$($Report['genai_ort'])") } else { '' }
+    if (-not [string]::Equals($genaiOrt, $capiOrt, [StringComparison]::OrdinalIgnoreCase)) { "${Tag}: GenAI runs on '$genaiOrt', not this interpreter's WebGPU ORT '$capiOrt'" }
+    if (-not (Test-OrtWebGpuOutcome "$($Report['genai_session'])")) { "${Tag}: GenAI's WebGPU model failed, and not for want of an adapter: $($Report['genai_session'])" }
+}
+
 # One interpreter's report ($Report: hashtable, or the probe's failure string) against the marker.
 function Get-OrtWebGpuInterpreterFinding {
     param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][AllowNull()]$Report, [bool]$WebGpu, [hashtable]$Marker = @{})
@@ -157,19 +180,8 @@ function Get-OrtWebGpuInterpreterFinding {
     }
     if (-not $listed) { return "${tag}: onnxruntime lists [$(@($Report['providers']) -join ', ')], no WebGpuExecutionProvider" }
     if (-not (Test-OrtWebGpuOutcome "$($Report['session'])")) { "${tag}: a WebGpuExecutionProvider session failed, and not for want of an adapter: $($Report['session'])" }
-    $keys = Get-OrtWebGpuDxcKey
-    foreach ($dll in $keys.Keys) {
-        $d = $dlls[$dll]
-        if ($d -isnot [System.Collections.IDictionary]) { "${tag}: onnxruntime\capi has no $dll"; continue }
-        if ("$($d['sha256'])" -ne "$($Marker[$keys[$dll]])") { "${tag}: onnxruntime\capi\$dll is $($d['sha256']), the build staged $($Marker[$keys[$dll]])" }
-        if ($d['entry'] -ne $true) { "${tag}: onnxruntime\capi\$dll does not load or lacks DxcCreateInstance" }
-    }
-    foreach ($dll in @(Get-OrtWebGpuRetiredDxcDll | Where-Object { $dlls.Contains($_) })) { "${tag}: onnxruntime\capi carries $dll, which nothing loads since ORT v1.31.0" }
-    if ($Report['genai_error']) { return "${tag}: import onnxruntime_genai failed: $($Report['genai_error'])" }
-    $capiOrt = [System.IO.Path]::GetFullPath((Join-Path "$($Report['capi'])" 'onnxruntime.dll'))
-    $genaiOrt = if ($Report['genai_ort']) { [System.IO.Path]::GetFullPath("$($Report['genai_ort'])") } else { '' }
-    if (-not [string]::Equals($genaiOrt, $capiOrt, [StringComparison]::OrdinalIgnoreCase)) { "${tag}: GenAI runs on '$genaiOrt', not this interpreter's WebGPU ORT '$capiOrt'" }
-    if (-not (Test-OrtWebGpuOutcome "$($Report['genai_session'])")) { "${tag}: GenAI's WebGPU model failed, and not for want of an adapter: $($Report['genai_session'])" }
+    Get-OrtWebGpuDxcFinding -Tag $tag -Dlls $dlls -Marker $Marker
+    Get-OrtWebGpuGenaiFinding -Tag $tag -Report $Report
 }
 
 # Dot-sourced = definitions only; Test-RocmImage.ps1 runs it with &.

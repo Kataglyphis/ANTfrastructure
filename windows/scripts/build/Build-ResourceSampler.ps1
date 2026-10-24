@@ -31,6 +31,41 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Start-ResourceSampling {
+    param([string]$CsvPath, [string]$PhaseFile, [int]$IntervalSeconds, [string]$Drive)
+
+    # The parent owns the sampler's lifecycle and kills it after the build.
+    $csvDir = Split-Path -Parent $CsvPath
+    if ($csvDir -and -not (Test-Path $csvDir)) { New-Item -ItemType Directory -Force $csvDir | Out-Null }
+    if (-not (Test-Path $CsvPath)) {
+        'ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB,diskFreeGB' | Set-Content -Path $CsvPath
+    }
+    while ($true) {
+        try {
+            $phase = if ($PhaseFile -and (Test-Path $PhaseFile)) { (Get-Content $PhaseFile -First 1 -ErrorAction SilentlyContinue) } else { '' }
+            if ([string]::IsNullOrWhiteSpace($phase)) { $phase = '-' }
+            $cpu = [int](Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
+            $os = Get-CimInstance Win32_OperatingSystem
+            $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
+            $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
+            $usedGB = [math]::Round($totalGB - $freeGB, 1)
+            $committedGB = [math]::Round(($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB, 1)
+            $vmmem = (Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue | Measure-Object -Property WorkingSet64 -Sum).Sum
+            $vmmemGB = if ($vmmem) { [math]::Round($vmmem / 1GB, 1) } else { 0 }
+            $disk = Get-PSDrive -Name $Drive -ErrorAction SilentlyContinue
+            $diskFreeGB = if ($disk -and $null -ne $disk.Free) { [math]::Round($disk.Free / 1GB, 1) } else { '' }
+            # Phase labels come from the driver, but a comma still must not split the CSV row.
+            $phase = $phase -replace ',', ';'
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB,$diskFreeGB" | Add-Content -Path $CsvPath
+        } catch {
+            # A transient CIM hiccup must not kill the series, but the row carries its reason.
+            $why = ($_.Exception.Message -replace '[,\r\n]', ';')
+            "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,$why,,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
+        }
+        Start-Sleep -Seconds $IntervalSeconds
+    }
+}
+
 if ($Summarize) {
     if (-not (Test-Path $CsvPath)) { Write-Warning "no resource CSV at $CsvPath"; return }
     $rows = @(Import-Csv $CsvPath | Where-Object { $_.cpuPct -match '^\d' })
@@ -69,34 +104,5 @@ if ($Summarize) {
     return
 }
 
-# Sampling loop; the parent owns the lifecycle and kills it
-$csvDir = Split-Path -Parent $CsvPath
-if ($csvDir -and -not (Test-Path $csvDir)) { New-Item -ItemType Directory -Force $csvDir | Out-Null }
-if (-not (Test-Path $CsvPath)) {
-    'ts,phase,cpuPct,freeGB,usedGB,committedGB,vmmemGB,diskFreeGB' | Set-Content -Path $CsvPath
-}
-while ($true) {
-    try {
-        $phase = if ($PhaseFile -and (Test-Path $PhaseFile)) { (Get-Content $PhaseFile -First 1 -ErrorAction SilentlyContinue) } else { '' }
-        if ([string]::IsNullOrWhiteSpace($phase)) { $phase = '-' }
-        $cpu = [int](Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average
-        $os = Get-CimInstance Win32_OperatingSystem
-        $freeGB = [math]::Round($os.FreePhysicalMemory / 1MB, 1)
-        $totalGB = [math]::Round($os.TotalVisibleMemorySize / 1MB, 1)
-        $usedGB = [math]::Round($totalGB - $freeGB, 1)
-        $committedGB = [math]::Round(($os.TotalVirtualMemorySize - $os.FreeVirtualMemory) / 1MB, 1)
-        $vmmem = (Get-Process -Name 'vmmem*' -ErrorAction SilentlyContinue | Measure-Object -Property WorkingSet64 -Sum).Sum
-        $vmmemGB = if ($vmmem) { [math]::Round($vmmem / 1GB, 1) } else { 0 }
-        $disk = Get-PSDrive -Name $Drive -ErrorAction SilentlyContinue
-        $diskFreeGB = if ($disk -and $null -ne $disk.Free) { [math]::Round($disk.Free / 1GB, 1) } else { '' }
-        # phase strings come from driver labels (no commas), but sanitize anyway
-        $phase = $phase -replace ',', ';'
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),$phase,$cpu,$freeGB,$usedGB,$committedGB,$vmmemGB,$diskFreeGB" | Add-Content -Path $CsvPath
-    } catch {
-        # A transient CIM hiccup must not kill the series, but the row carries its reason.
-        $why = ($_.Exception.Message -replace '[,\r\n]', ';')
-        "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'),sample-error,$why,,,,," | Add-Content -Path $CsvPath -ErrorAction SilentlyContinue
-    }
-    Start-Sleep -Seconds $IntervalSeconds
-}
+Start-ResourceSampling -CsvPath $CsvPath -PhaseFile $PhaseFile -IntervalSeconds $IntervalSeconds -Drive $Drive
 

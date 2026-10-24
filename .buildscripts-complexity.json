@@ -6,8 +6,8 @@
     "CodeLines": 80
   },
   "FileCount": 62,
-  "UnitCount": 389,
-  "FindingCount": 35,
+  "UnitCount": 391,
+  "FindingCount": 33,
   "Units": [
     {
       "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
@@ -680,9 +680,9 @@
       "Name": "<script>",
       "Kind": "Script",
       "Line": 1,
-      "Cyclomatic": 16,
+      "Cyclomatic": 14,
       "Nesting": 1,
-      "CodeLines": 101
+      "CodeLines": 93
     },
     {
       "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
@@ -710,6 +710,15 @@
       "Cyclomatic": 2,
       "Nesting": 1,
       "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
+      "Name": "Assert-LlvmSourcePatches",
+      "Kind": "Function",
+      "Line": 87,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 12
     },
     {
       "File": "windows/scripts/build/Build-MediaCoreAll.ps1",
@@ -3182,9 +3191,18 @@
       "Name": "<script>",
       "Kind": "Script",
       "Line": 1,
-      "Cyclomatic": 17,
+      "Cyclomatic": 15,
       "Nesting": 3,
-      "CodeLines": 62
+      "CodeLines": 49
+    },
+    {
+      "File": "windows/scripts/build/Set-TensorrtTree.ps1",
+      "Name": "Assert-TensorrtRuntimeDll",
+      "Kind": "Function",
+      "Line": 14,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 17
     },
     {
       "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
@@ -3585,14 +3603,6 @@
       "Limit": 5
     },
     {
-      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
-      "Line": 1,
-      "Name": "<script>",
-      "Metric": "Cyclomatic",
-      "Actual": 16,
-      "Limit": 15
-    },
-    {
       "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
       "Line": 1,
       "Name": "<script>",
@@ -3718,14 +3728,6 @@
       "Name": "Get-TorchRocmFinding",
       "Metric": "Cyclomatic",
       "Actual": 20,
-      "Limit": 15
-    },
-    {
-      "File": "windows/scripts/build/Set-TensorrtTree.ps1",
-      "Line": 1,
-      "Name": "<script>",
-      "Metric": "Cyclomatic",
-      "Actual": 17,
       "Limit": 15
     },
     {

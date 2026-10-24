@@ -10,7 +10,8 @@ function Get-DriverVariantDeclaredArg([string]$Dockerfile, [string]$NamePattern 
 function Get-DriverVariantPin { return ConvertFrom-VersionsEnv -Path (Join-Path (Get-RepoRoot) 'linux\scripts\01-core\versions.env') }
 
 Describe 'Resolve-BkVariant' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' -FunctionName 'Resolve-BkVariant')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' `
+        -FunctionName @('Resolve-BkVariant', 'Assert-BkRocmStageClosure', 'Assert-BkVariantPushRef'))
     $script:DefaultStages = @('base', 'sdk', 'toolchain', 'media', 'migraphx', 'llama', 'torch', 'final')
     function Invoke-Resolve {
         param([string]$Variant = '', [bool]$Gpu = $false, [string]$TargetArch = 'amd64',

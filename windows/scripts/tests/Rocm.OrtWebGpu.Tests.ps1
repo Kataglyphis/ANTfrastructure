@@ -424,7 +424,8 @@ Describe 'Build-OnnxFromSource WebGPU: cmake args, configure/install/wheel gates
 
 Describe 'rocm-checks\OrtWebGpu.ps1: the spike mode, the DXC DLLs and each interpreter' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtWebGpuCheck -FunctionName 'Read-OrtWebGpuMarker', 'Get-OrtWebGpuDxcKey',
-        'Get-OrtWebGpuRetiredDxcDll', 'Get-OrtWebGpuMarkerFinding', 'Test-OrtWebGpuOutcome', 'Get-OrtWebGpuProbeSource', 'Get-OrtWebGpuInterpreterFinding')
+        'Get-OrtWebGpuRetiredDxcDll', 'Get-OrtWebGpuMarkerFinding', 'Test-OrtWebGpuOutcome', 'Get-OrtWebGpuProbeSource',
+        'Get-OrtWebGpuDxcFinding', 'Get-OrtWebGpuGenaiFinding', 'Get-OrtWebGpuInterpreterFinding')
     # A spike-on ORT root: bin\ with dxcompiler.dll and the licence, and the marker naming its hash.
     function New-OrtWebGpuTestRoot([string]$Dir, [string]$Mode = '1') {
         [void](New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'bin'), (Join-Path $Dir 'licenses\directx-shader-compiler'))

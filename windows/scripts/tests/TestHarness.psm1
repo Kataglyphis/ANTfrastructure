@@ -655,37 +655,28 @@ function Invoke-WithFunctionModule {
     }
 }
 
-function Invoke-TestFunctionMutations {
-    param([Collections.IDictionary]$ModuleArguments, [scriptblock]$ModuleArgumentsFactory, [string]$ScriptPath, [string[]]$FunctionName = @(),
-        [object[]]$BodyArgumentList = @(), [string]$Find, [AllowEmptyString()][string]$Replace, [string]$Expected, [string]$Throws,
-        [AllowNull()][AllowEmptyCollection()][Collections.IDictionary[]]$Case, [switch]$IncludeControl,
-        [Parameter(Mandatory)][scriptblock]$Body)
-    $ErrorActionPreference = 'Stop'
-    if ($PSBoundParameters.ContainsKey('ModuleArgumentsFactory')) {
-        foreach ($key in @('ModuleArguments', 'ScriptPath', 'FunctionName', 'BodyArgumentList')) {
-            if ($PSBoundParameters.ContainsKey($key)) { throw "ModuleArgumentsFactory cannot be mixed with $key" }
-        }
-        if ($null -eq $ModuleArgumentsFactory) { throw 'ModuleArgumentsFactory must be a scriptblock' }
-        $factory = $ModuleArgumentsFactory
-        $executor = $MyInvocation.MyCommand
-        $forwardedOptions = [hashtable]$PSBoundParameters
-        $null = $forwardedOptions.Remove('ModuleArgumentsFactory')
-        Invoke-InTestDir { param($dir)
-            $recipe = & $factory $dir
-            if ($recipe -isnot [Collections.IDictionary]) { throw 'ModuleArgumentsFactory must return exactly one dictionary' }
-            & $executor -ModuleArguments $recipe @forwardedOptions
-        }.GetNewClosure()
-        return
+function Invoke-TestMutationFactory {
+    param([Collections.IDictionary]$BoundArguments, [scriptblock]$Factory, $Executor)
+    foreach ($key in @('ModuleArguments', 'ScriptPath', 'FunctionName', 'BodyArgumentList')) {
+        if ($BoundArguments.ContainsKey($key)) { throw "ModuleArgumentsFactory cannot be mixed with $key" }
     }
-    if ($ScriptPath) {
-        if ($ModuleArguments) { throw 'ScriptPath and ModuleArguments cannot be mixed' }
-        $ModuleArguments = @{ ScriptPath = $ScriptPath; FunctionName = $FunctionName; BodyArgumentList = $BodyArgumentList }
-    }
-    if ($null -eq $ModuleArguments) { throw 'A source path or module arguments are required' }
-    if (-not $PSBoundParameters.ContainsKey('Case')) {
+    if ($null -eq $Factory) { throw 'ModuleArgumentsFactory must be a scriptblock' }
+    $forwardedOptions = [hashtable]$BoundArguments
+    $null = $forwardedOptions.Remove('ModuleArgumentsFactory')
+    Invoke-InTestDir { param($dir)
+        $recipe = & $Factory $dir
+        if ($recipe -isnot [Collections.IDictionary]) { throw 'ModuleArgumentsFactory must return exactly one dictionary' }
+        & $Executor -ModuleArguments $recipe @forwardedOptions
+    }.GetNewClosure()
+}
+
+function Resolve-TestMutationCases {
+    param([Collections.IDictionary]$BoundArguments, [Collections.IDictionary[]]$Case,
+        [string]$Find, [AllowEmptyString()][string]$Replace, [string]$Expected, [string]$Throws)
+    if (-not $BoundArguments.ContainsKey('Case')) {
         if ($Throws -and -not $Expected) { $Expected = 'expected an exception but none was thrown' }
         $Case = @(@{ Find = $Find; Replace = $Replace; Expected = $Expected })
-    } elseif ($PSBoundParameters.ContainsKey('Find') -or $PSBoundParameters.ContainsKey('Replace') -or $PSBoundParameters.ContainsKey('Expected')) {
+    } elseif ($BoundArguments.ContainsKey('Find') -or $BoundArguments.ContainsKey('Replace') -or $BoundArguments.ContainsKey('Expected')) {
         throw 'Case and individual mutation fields cannot be mixed'
     }
     if ($null -eq $Case -or $Case.Count -eq 0) { throw 'Case must contain at least one mutation' }
@@ -697,6 +688,49 @@ function Invoke-TestFunctionMutations {
             throw 'Mutation Find and Expected must be nonempty'
         }
     }
+    return [pscustomobject]@{ Cases = $Case }
+}
+
+function Invoke-TestMutationCases {
+    param([Collections.IDictionary]$ModuleArguments, [Collections.IDictionary[]]$Case,
+        [scriptblock]$ExerciseBody, $AssertThrows, [switch]$IncludeControl)
+    $arguments = @{}
+    foreach ($key in $ModuleArguments.Keys) { $arguments[$key] = $ModuleArguments[$key] }
+    if ($IncludeControl) {
+        $arguments.Body = $ExerciseBody
+        Invoke-WithFunctionModule @arguments
+    }
+    foreach ($mutation in $Case) {
+        $expected = [string]$mutation.Expected
+        $guardedBody = {
+            $forwarded = @($args)
+            $runExercise = $ExerciseBody
+            & $AssertThrows -Body { & $runExercise @forwarded }.GetNewClosure() -MessagePattern $expected
+        }.GetNewClosure()
+        $arguments.Find = [string]$mutation.Find
+        $arguments.Replace = [string]$mutation.Replace
+        $arguments.Body = $guardedBody
+        # Import and parse failures cannot satisfy the assertion expected from the original test body.
+        Invoke-WithFunctionModule @arguments
+    }
+}
+
+function Invoke-TestFunctionMutations {
+    param([Collections.IDictionary]$ModuleArguments, [scriptblock]$ModuleArgumentsFactory, [string]$ScriptPath, [string[]]$FunctionName = @(),
+        [object[]]$BodyArgumentList = @(), [string]$Find, [AllowEmptyString()][string]$Replace, [string]$Expected, [string]$Throws,
+        [AllowNull()][AllowEmptyCollection()][Collections.IDictionary[]]$Case, [switch]$IncludeControl,
+        [Parameter(Mandatory)][scriptblock]$Body)
+    $ErrorActionPreference = 'Stop'
+    if ($PSBoundParameters.ContainsKey('ModuleArgumentsFactory')) {
+        Invoke-TestMutationFactory -BoundArguments $PSBoundParameters -Factory $ModuleArgumentsFactory -Executor $MyInvocation.MyCommand
+        return
+    }
+    if ($ScriptPath) {
+        if ($ModuleArguments) { throw 'ScriptPath and ModuleArguments cannot be mixed' }
+        $ModuleArguments = @{ ScriptPath = $ScriptPath; FunctionName = $FunctionName; BodyArgumentList = $BodyArgumentList }
+    }
+    if ($null -eq $ModuleArguments) { throw 'A source path or module arguments are required' }
+    $Case = (Resolve-TestMutationCases -BoundArguments $PSBoundParameters -Case $Case -Find $Find -Replace $Replace -Expected $Expected -Throws $Throws).Cases
     foreach ($key in @('Body', 'Find', 'Replace')) {
         if ($ModuleArguments.Contains($key)) { throw "ModuleArguments cannot supply $key" }
     }
@@ -710,25 +744,7 @@ function Invoke-TestFunctionMutations {
         if ($expectedThrow) { & $assertThrows -Body $operation -MessagePattern $expectedThrow }
         else { & $operation }
     }.GetNewClosure()
-    $arguments = @{}
-    foreach ($key in $ModuleArguments.Keys) { $arguments[$key] = $ModuleArguments[$key] }
-    if ($IncludeControl) {
-        $arguments.Body = $exerciseBody
-        Invoke-WithFunctionModule @arguments
-    }
-    foreach ($mutation in $Case) {
-        $expected = [string]$mutation.Expected
-        $guardedBody = {
-            $forwarded = @($args)
-            $runExercise = $exerciseBody
-            & $assertThrows -Body { & $runExercise @forwarded }.GetNewClosure() -MessagePattern $expected
-        }.GetNewClosure()
-        $arguments.Find = [string]$mutation.Find
-        $arguments.Replace = [string]$mutation.Replace
-        $arguments.Body = $guardedBody
-        # Import and parse failures cannot satisfy the assertion expected from the original test body.
-        Invoke-WithFunctionModule @arguments
-    }
+    Invoke-TestMutationCases -ModuleArguments $ModuleArguments -Case $Case -ExerciseBody $exerciseBody -AssertThrows $assertThrows -IncludeControl:$IncludeControl
 }
 
 Export-ModuleMember -Function Invoke-TestFunctionMutations

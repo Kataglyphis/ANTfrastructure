@@ -137,26 +137,34 @@ function Resolve-BkVariant {
             if ($StagesBound) { throw '-Stages migraphx contradicts -NoRocmSpikes, which skips it' }
             $Stages = @($Stages | Where-Object { $_ -ne 'migraphx' })
         }
-        # Each post-media stage builds FROM the previous tag, final too (rocm is amd64-only), so a gap inherits an older image.
-        $chain = @(@('media', 'migraphx', 'llama', 'torch', 'final') | Where-Object { -not ($NoRocmSpikes -and $_ -eq 'migraphx') })
-        $built = @(for ($i = 0; $i -lt $chain.Count; $i++) { if ($Stages -contains $chain[$i]) { $i } })
-        $gap = @(if ($built.Count -gt 1) { $chain[$built[0]..$built[-1]] | Where-Object { $Stages -notcontains $_ } })
-        if ($gap.Count -gt 0) {
-            throw ("-Variant rocm -Stages $($Stages -join ',') skips $($gap -join ','): the next stage would build FROM " +
-                   "an earlier run's $($gap[-1]) image (stale parent, backlog #39). Add $($gap -join ',') to -Stages" +
-                   $(if ($gap -contains 'migraphx') { ', or pass -NoRocmSpikes to skip migraphx deliberately.' } else { '.' }))
-        }
+        Assert-BkRocmStageClosure -Stages $Stages -NoRocmSpikes $NoRocmSpikes
     }
-    if ($PushRef) {
-        $lastSegment = ($PushRef -split '/')[-1]
-        $pushTag = if ($lastSegment -match ':') { ($lastSegment -split ':')[-1] } else { '' }
-        # A variant's bytes never go under another lane's tag (AGENTS.md § Image and tag naming).
-        $foreign = @('nvidia', 'rocm') | Where-Object { $_ -ne $Variant -and $pushTag -like "*-$_" }
-        if ($foreign) { throw "-PushRef '$PushRef' names the $foreign variant's tag, but this run is not -Variant $foreign" }
-        $own = (Get-WindowsTargetTagSuffix -Arch $TargetArch) + $(if ($Variant) { "-$Variant" })
-        if ($Variant -and $pushTag -ne $own) { throw "-Variant $Variant pushes only to a ':$own' tag; got -PushRef '$PushRef'" }
-    }
+    if ($PushRef) { Assert-BkVariantPushRef -PushRef $PushRef -Variant $Variant -TargetArch $TargetArch }
     return @{ Variant = $Variant; Stages = $Stages }
+}
+
+function Assert-BkRocmStageClosure {
+    param([string[]]$Stages, [bool]$NoRocmSpikes)
+    # Each post-media stage builds FROM the previous tag, so a gap inherits an older image.
+    $chain = @(@('media', 'migraphx', 'llama', 'torch', 'final') | Where-Object { -not ($NoRocmSpikes -and $_ -eq 'migraphx') })
+    $built = @(for ($i = 0; $i -lt $chain.Count; $i++) { if ($Stages -contains $chain[$i]) { $i } })
+    $gap = @(if ($built.Count -gt 1) { $chain[$built[0]..$built[-1]] | Where-Object { $Stages -notcontains $_ } })
+    if ($gap.Count -gt 0) {
+        throw ("-Variant rocm -Stages $($Stages -join ',') skips $($gap -join ','): the next stage would build FROM " +
+               "an earlier run's $($gap[-1]) image (stale parent, backlog #39). Add $($gap -join ',') to -Stages" +
+               $(if ($gap -contains 'migraphx') { ', or pass -NoRocmSpikes to skip migraphx deliberately.' } else { '.' }))
+    }
+}
+
+function Assert-BkVariantPushRef {
+    param([string]$PushRef, [AllowEmptyString()][string]$Variant, [string]$TargetArch)
+    $lastSegment = ($PushRef -split '/')[-1]
+    $pushTag = if ($lastSegment -match ':') { ($lastSegment -split ':')[-1] } else { '' }
+    # A variant's bytes never go under another lane's tag (AGENTS.md § Image and tag naming).
+    $foreign = @('nvidia', 'rocm') | Where-Object { $_ -ne $Variant -and $pushTag -like "*-$_" }
+    if ($foreign) { throw "-PushRef '$PushRef' names the $foreign variant's tag, but this run is not -Variant $foreign" }
+    $own = (Get-WindowsTargetTagSuffix -Arch $TargetArch) + $(if ($Variant) { "-$Variant" })
+    if ($Variant -and $pushTag -ne $own) { throw "-Variant $Variant pushes only to a ':$own' tag; got -PushRef '$PushRef'" }
 }
 
 <#

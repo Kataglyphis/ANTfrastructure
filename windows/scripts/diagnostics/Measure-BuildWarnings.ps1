@@ -41,6 +41,38 @@ function Get-WarningFamily {
     return "(ungrouped) $msg"
 }
 
+function Write-BaselineWarningSummary {
+    param([Parameter(Mandatory)][hashtable]$Families)
+    # Pre-suppression counts show whether a later -W flag overrode a suppression.
+    $known = [ordered]@{
+        '-Wdeprecated-copy'                = @{ Was = 7700; Where = 'OpenCV core/matx.hpp'; Flag = '-Wno-deprecated-copy (Build-OpencvFromSource.ps1)' }
+        '-Wunused-value'                   = @{ Was = 2460; Where = 'ONNX stream_handles.h / execution_provider.h'; Flag = '/clang:-Wno-unused-value (Build-OnnxFromSource.ps1)' }
+        '-Wdocumentation-unknown-command'  = @{ Was = 900; Where = 'TVM tvm/ffi/reflection/accessor.h'; Flag = '-Wno-documentation-unknown-command (Build-TvmFromSource.ps1)' }
+        'STL4037'                          = @{ Was = 657; Where = 'IREE/MLIR BuiltinAttributes.h'; Flag = '_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING (patches/iree/enable-ehsc.cmake)' }
+    }
+    Write-Host ""
+    Write-Host "== known floods (baseline: 2026-08-07 chain, pre-suppression) ==" -ForegroundColor Cyan
+    foreach ($name in $known.Keys) {
+        $info = $known[$name]
+        $now = if ($Families.ContainsKey($name)) { $Families[$name] } else { 0 }
+        # clang reports the narrower subgroup, so it counts toward -Wdeprecated-copy.
+        if ($name -eq '-Wdeprecated-copy' -and $Families.ContainsKey('-Wdeprecated-copy-with-user-provided-copy')) {
+            $now += $Families['-Wdeprecated-copy-with-user-provided-copy']
+        }
+        $verdict, $colour = if ($now -eq 0) {
+            'SILENCED', 'Green'
+        } elseif ($now -lt [int]($info.Was * 0.1)) {
+            'mostly silenced', 'Green'
+        } else {
+            'STILL FLOODING -- suppression did not take', 'Red'
+        }
+        Write-Host ("  {0,-34} {1,7:N0} -> {2,7:N0}  {3}" -f $name, $info.Was, $now, $verdict) -ForegroundColor $colour
+        Write-Host ("  {0,-34} {1}" -f '', "$($info.Where); $($info.Flag)") -ForegroundColor DarkGray
+    }
+    Write-Host ""
+    Write-Host 'A family that is still flooding is a bug in the suppression, not a reason to reach for a blanket -w.' -ForegroundColor DarkGray
+}
+
 if (-not (Test-Path $LogPath -PathType Leaf)) {
     throw "Build log not found: $LogPath"
 }
@@ -71,33 +103,4 @@ foreach ($entry in $ranked) {
     Write-Host ("{0,8:N0}  {1}" -f $entry.Value, $entry.Key)
 }
 
-if ($Baseline) {
-    # Pre-suppression counts; near-baseline means a later -W flag overrode the suppression or the group moved.
-    $known = [ordered]@{
-        '-Wdeprecated-copy'                = @{ Was = 7700; Where = 'OpenCV core/matx.hpp'; Flag = '-Wno-deprecated-copy (Build-OpencvFromSource.ps1)' }
-        '-Wunused-value'                   = @{ Was = 2460; Where = 'ONNX stream_handles.h / execution_provider.h'; Flag = '/clang:-Wno-unused-value (Build-OnnxFromSource.ps1)' }
-        '-Wdocumentation-unknown-command'  = @{ Was = 900; Where = 'TVM tvm/ffi/reflection/accessor.h'; Flag = '-Wno-documentation-unknown-command (Build-TvmFromSource.ps1)' }
-        'STL4037'                          = @{ Was = 657; Where = 'IREE/MLIR BuiltinAttributes.h'; Flag = '_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING (patches/iree/enable-ehsc.cmake)' }
-    }
-    Write-Host ""
-    Write-Host "== known floods (baseline: 2026-08-07 chain, pre-suppression) ==" -ForegroundColor Cyan
-    foreach ($name in $known.Keys) {
-        $info = $known[$name]
-        $now = if ($families.ContainsKey($name)) { $families[$name] } else { 0 }
-        # clang reports the narrower subgroup, so it counts toward -Wdeprecated-copy.
-        if ($name -eq '-Wdeprecated-copy' -and $families.ContainsKey('-Wdeprecated-copy-with-user-provided-copy')) {
-            $now += $families['-Wdeprecated-copy-with-user-provided-copy']
-        }
-        $verdict, $colour = if ($now -eq 0) {
-            'SILENCED', 'Green'
-        } elseif ($now -lt [int]($info.Was * 0.1)) {
-            'mostly silenced', 'Green'
-        } else {
-            'STILL FLOODING -- suppression did not take', 'Red'
-        }
-        Write-Host ("  {0,-34} {1,7:N0} -> {2,7:N0}  {3}" -f $name, $info.Was, $now, $verdict) -ForegroundColor $colour
-        Write-Host ("  {0,-34} {1}" -f '', "$($info.Where); $($info.Flag)") -ForegroundColor DarkGray
-    }
-    Write-Host ""
-    Write-Host 'A family that is still flooding is a bug in the suppression, not a reason to reach for a blanket -w.' -ForegroundColor DarkGray
-}
+if ($Baseline) { Write-BaselineWarningSummary -Families $families }
