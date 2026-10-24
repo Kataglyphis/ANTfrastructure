@@ -147,7 +147,7 @@ _core="$(sed -n 's|^COPY [^/]* linux/scripts/01-core/ /\(.*\)/$|\1|p' "${_torch_
 _cen="$(sed -n 's|^COPY [^/]* linux/scripts/03-media/runtime/ort-venv-census.py /\(.*\)$|\1|p' "${_torch_df}")"
 t_assert_ok test -n "${_core}" -a -n "${_cen}"
 _img="${_work}/img"; mkdir -p "${_img}/${_core}" "$(dirname "${_img}/${_cen}")"
-cp "${UV_SH}" "${TESTS_DIR}/../01-core/logging.sh" "${TESTS_DIR}/../01-core/python-probe.sh" "${_img}/${_core}/"; cp "${CENSUS}" "${_img}/${_cen}"
+cp "${UV_SH}" "${TESTS_DIR}/../01-core/logging.sh" "${TESTS_DIR}/../01-core/python-probe.sh" "${TESTS_DIR}/../01-core/verified-script-install.sh" "${_img}/${_core}/"; cp "${CENSUS}" "${_img}/${_cen}"
 t_assert_eq "${_img}/${_cen}" \
   "$(bash -c 'source "$1"; printf %s "${_UV_ORT_CENSUS}"' _ "${_img}/${_core}/python_uv.sh")"
 t_assert_eq "03-media/runtime/ort-venv-census.py" "$(bash -c 'source "$1"; printf %s "${_UV_ORT_CENSUS##*/scripts/}"' _ "${UV_SH}")" \

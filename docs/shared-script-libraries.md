@@ -1811,6 +1811,24 @@ exclusion. Partial traversal findings and advisory failure diagnostics remain.
 Stream fixtures share workspace and optional receipt initialization while keeping
 each suite's expected outputs independent.
 
+Rootless binfmt setup shares requested-architecture CSV parsing in its existing
+script. Extraction, registration and verification retain separate unknown-target
+and status policies. Array scope, IFS behavior and the literal namespace command
+remain unchanged; offline tests never enter a real namespace.
+
+The existing platform owner shares best-effort Debian triplet queries. Optional
+mapper failures keep their stdout and suppress stderr and failure status, while
+compiler and GStreamer callers retain their defaults and directory choices.
+An unavailable canonical query helper fails before caller fallbacks can hide it.
+
+`01-core/verified-script-install.sh` owns curl, optional checksum verification,
+shell execution and final cleanup for UV and Rust installers. Callers retain
+temporary-file allocation, pin lookup and mismatch callbacks, including their
+different diagnostics and cleanup order. Copy this functions-only companion
+beside `python_uv.sh`; Rust's Toolchain RUN binds the same fresh file. Cold import
+tests reject absent, incomplete and failing companions and verify UV retry after
+restoration. Lifecycle tests use fake download and shell commands.
+
 Core helpers share nondefault-host suffix formatting and caller-directory
 resolution while preserving explicit path bytes. Disk validation keeps positive
 settings distinct from nonnegative free-space readings: zero-disabled settings

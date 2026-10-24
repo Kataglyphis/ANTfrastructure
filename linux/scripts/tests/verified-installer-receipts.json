@@ -1,0 +1,386 @@
+{
+  "uv:success:strict:pin": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:success:strict:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:success:conditional:pin": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:success:conditional:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:temp:strict:pin": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:temp:strict:": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:temp:conditional:pin": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:temp:conditional:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:curl:strict:pin": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:curl:strict:": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:curl:conditional:pin": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:curl:conditional:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:hash:strict:pin": {
+    "rc": 1,
+    "out": "Installing uv...\n",
+    "err": "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:hash:strict:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:hash:conditional:pin": {
+    "rc": 1,
+    "out": "Installing uv...\n",
+    "err": "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)\n",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:hash:conditional:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:sh:strict:pin": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:sh:strict:": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:sh:conditional:pin": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:sh:conditional:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": null
+  },
+  "uv:rm:strict:pin": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:rm:strict:": {
+    "rc": 23,
+    "out": "Installing uv...\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:rm:conditional:pin": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "uv:rm:conditional:": {
+    "rc": 0,
+    "out": "Installing uv...\nuv version: uv-fixture\nSTATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/uv-install-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://astral.sh/uv/install.sh\nsh\nWORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "",
+    "remaining": "partial"
+  },
+  "rust:success:strict:pin": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:success:strict:": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:success:conditional:pin": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:success:conditional:": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:temp:strict:pin": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:temp:strict:": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:temp:conditional:pin": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:temp:conditional:": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:curl:strict:pin": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:curl:strict:": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:curl:conditional:pin": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:curl:conditional:": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:hash:strict:pin": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: rustup-init script does not match pinned RUSTUP_INIT_SHA256 (upstream rotated it, or tampering)\n",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:hash:strict:": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:hash:conditional:pin": {
+    "rc": 1,
+    "out": "",
+    "err": "ERROR: rustup-init script does not match pinned RUSTUP_INIT_SHA256 (upstream rotated it, or tampering)\n",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:hash:conditional:": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:sh:strict:pin": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:sh:strict:": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:sh:conditional:pin": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:sh:conditional:": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": null
+  },
+  "rust:rm:strict:pin": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:rm:strict:": {
+    "rc": 23,
+    "out": "",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:rm:conditional:pin": {
+    "rc": 0,
+    "out": "STATUS:23\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsha256sum\n-c\n-\npin  WORK/fixture path\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  },
+  "rust:rm:conditional:": {
+    "rc": 0,
+    "out": "STATUS:23\n",
+    "err": "",
+    "trace": "mktemp\n/tmp/rustup-init-XXXXXX.sh\ncurl\n--proto\n=https\n--tlsv1.2\n-fsSL\n--retry\n3\n-o\nWORK/fixture path\nhttps://sh.rustup.rs\nsh\nWORK/fixture path\n-y\n--profile\nminimal\n--default-toolchain\n1 fixture\nrm\n-f\nWORK/fixture path\n",
+    "state": "declare -- rustup_init=\"WORK/fixture path\"\n",
+    "remaining": "partial"
+  }
+}

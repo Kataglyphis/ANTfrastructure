@@ -10,6 +10,15 @@ _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
 # shellcheck source=linux/scripts/01-core/python-probe.sh
 source "$_MODULE_DIR/python-probe.sh" || return 1
+# shellcheck source=linux/scripts/01-core/verified-script-install.sh
+source "$_MODULE_DIR/verified-script-install.sh"
+_uv_installer_source_status=$?
+if [ "${_uv_installer_source_status}" -ne 0 ]; then return "${_uv_installer_source_status}"; fi
+unset _uv_installer_source_status
+if ! declare -F verified_script_install >/dev/null; then
+  printf 'ERROR: python_uv.sh requires verified_script_install from verified-script-install.sh\n' >&2
+  return 1
+fi
 
 _PYTHON_UV_LOADED=1
 
@@ -67,6 +76,11 @@ is_experimental_python() {
   return 1
 }
 
+_uv_install_hash_failure() {
+  rm -f "$1"
+  die "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)"
+}
+
 uv_ensure_installed() {
   local uv_install_sh uv_install_sha
   if ! command -v uv >/dev/null 2>&1; then
@@ -77,15 +91,8 @@ uv_ensure_installed() {
       uv_install_sha="$(sed -n 's/^UV_INSTALL_SH_SHA256=//p' "$_MODULE_DIR/versions.env")"
     fi
     uv_install_sh="$(mktemp "${TMPDIR:-/tmp}/uv-install-XXXXXX.sh")"
-    curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$uv_install_sh" https://astral.sh/uv/install.sh
-    if [ -n "$uv_install_sha" ]; then
-      printf '%s  %s\n' "$uv_install_sha" "$uv_install_sh" | sha256sum -c - || {
-        rm -f "$uv_install_sh"
-        die "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)"
-      }
-    fi
-    sh "$uv_install_sh"
-    rm -f "$uv_install_sh"
+    verified_script_install "$uv_install_sh" \
+      https://astral.sh/uv/install.sh "$uv_install_sha" _uv_install_hash_failure
     export PATH="$HOME/.local/bin:$PATH"
   fi
   info "uv version: $(uv --version)"

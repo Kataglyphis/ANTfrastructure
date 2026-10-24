@@ -143,9 +143,7 @@ pin_target_libstdcxx() {
   _compiler_target_is_foreign "${arch}" || return 0
 
   local triplet=""
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${arch}" 2>/dev/null || true)"
-  fi
+  triplet="$(deb_multiarch_triplet_best_effort "${arch}")" || return $?
   case "${arch}" in
     arm64)   [ -n "${triplet}" ] || triplet="aarch64-linux-gnu" ;;
     riscv64) [ -n "${triplet}" ] || triplet="riscv64-linux-gnu" ;;
