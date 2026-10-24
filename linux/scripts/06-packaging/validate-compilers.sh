@@ -42,14 +42,19 @@ _vc_elf_header_matches() {
   echo "$1" | grep -qi "$2"
 }
 
+_vc_gcc_version_matches() {
+  local -n _vc_version_result="$2"
+  _vc_version_result="$("$1" --version 2>/dev/null | head -1 || true)"
+  echo "${_vc_version_result}" | grep -q "${GCC_VERSION:-16.2.0}"
+}
+
 _artifact_source_check_host_gcc() {
   local target_arch="${_VCS_TARGET_ARCH}"
   local gcc_prefix="${_VCS_GCC_PREFIX}"
   # host GCC
   if [ -x "${gcc_prefix}/bin/gcc" ]; then
     local host_ver host_elf
-    host_ver="$("${gcc_prefix}/bin/gcc" --version 2>/dev/null | head -1 || true)"
-    if echo "${host_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
+    if _vc_gcc_version_matches "${gcc_prefix}/bin/gcc" host_ver; then
       echo "OK: host gcc ${gcc_prefix}/bin/gcc reports ${host_ver}"
     elif host_elf="$(_vc_elf_machine_header "${gcc_prefix}/bin/gcc")"; then
       # A target-native GCC cannot run on the build host; check its ELF machine instead.
@@ -141,8 +146,7 @@ _artifact_source_check_native_gcc() {
     local native_gcc="/opt/gcc-${GCC_VERSION:-16.2.0}-native-${target_arch}"
     if [ -d "${native_gcc}" ] && [ -x "${native_gcc}/bin/gcc" ]; then
       local native_ver
-      native_ver="$("${native_gcc}/bin/gcc" --version 2>/dev/null | head -1 || true)"
-      if echo "${native_ver}" | grep -q "${GCC_VERSION:-16.2.0}"; then
+      if _vc_gcc_version_matches "${native_gcc}/bin/gcc" native_ver; then
         echo "OK: target-native ${native_gcc}/bin/gcc reports ${native_ver}"
       else
         _artifact_source_check_target_elf "${native_gcc}/bin/gcc" "target-native ${native_gcc}/bin/gcc" \
@@ -542,9 +546,25 @@ _smoke_optimization_level() {
 
 # Compile+link only; smoke-runtime-image.sh runs it natively. docs/cross-build-verification.md#the-native-gcc-ships-libsanitizer
 _smoke_gcc_sanitizers() {
-  local d dyn=""; d="$(mktemp -d)"
+  local dyn=""
+  _vc_source_fixture _smoke_gcc_sanitizer_source _smoke_gcc_sanitizer_probe
+}
+
+# Probes inherit d so their compiler arguments and cleanup retain the same temporary directory.
+_vc_source_fixture() {
+  local d
+  d="$(mktemp -d)"
+  "$1"
+  "$2"
+  rm -rf "${d}"
+}
+
+_smoke_gcc_sanitizer_source() {
   # (8 >> c): a variable shift exponent keeps a UBSan call under GCC 16's C++20 default.
   printf '#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\n' > "${d}/s.cpp"
+}
+
+_smoke_gcc_sanitizer_probe() {
   if g++ -O1 -fsanitize=address,undefined "${d}/s.cpp" -o "${d}/s" 2>"${d}/e"; then
     dyn="$(readelf -d "${d}/s" 2>/dev/null || true)"
   fi
@@ -554,7 +574,6 @@ _smoke_gcc_sanitizers() {
     sed 's/^/    /' "${d}/e" >&2 || true
     validate_fail "gcc-sanitizers" "g++ -fsanitize=address,undefined failed or did not link libasan/libubsan"
   fi
-  rm -rf "${d}"
 }
 
 # A bare clang++, and clang-tidy through the /usr/bin link, find the image's GCC via setup-package-image.sh's clang config file.
@@ -605,16 +624,20 @@ _smoke_llvm_tool_versions() {
 
 # clang ships libFuzzer (llvm-cross.sh, BACKLOG CON17): a fuzz target links and runs.
 _smoke_clang_libfuzzer() {
-  local d
-  d="$(mktemp -d)"
+  _vc_source_fixture _smoke_clang_fuzzer_source _smoke_clang_fuzzer_probe
+}
+
+_smoke_clang_fuzzer_source() {
   printf 'int LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\n' > "${d}/f.c"
+}
+
+_smoke_clang_fuzzer_probe() {
   if clang -fsanitize=fuzzer "${d}/f.c" -o "${d}/f" 2>"${d}/e" && "${d}/f" -runs=10 >/dev/null 2>&1; then
     echo "SMOKE OK: clang -fsanitize=fuzzer links and runs"
   else
     sed 's/^/    /' "${d}/e" >&2 || true
     validate_fail "clang-libfuzzer" "clang -fsanitize=fuzzer failed to link or run a trivial target"
   fi
-  rm -rf "${d}"
 }
 
 # Ports atheris' own find_libfuzzer.sh probe, which walks -print-search-dirs for the legacy lib/linux names (CON38).

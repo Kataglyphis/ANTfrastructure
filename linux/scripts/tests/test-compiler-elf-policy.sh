@@ -19,7 +19,7 @@ set -euo pipefail
 source "$1"
 validator="$2"; fixture="$3"; caller="$4"; export MODE="$5"
 t_source_functions "$validator" validate_fail _artifact_source_check_host_gcc _artifact_source_check_swapped_gcc _artifact_source_check_target_elf
-for fn in _vc_elf_machine_header _vc_elf_header_matches; do
+for fn in _vc_elf_machine_header _vc_elf_header_matches _vc_gcc_version_matches; do
   if grep -q "^${fn}() {" "$validator"; then t_source_functions "$validator" "$fn"; fi
 done
 readelf() {

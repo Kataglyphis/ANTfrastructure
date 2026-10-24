@@ -159,6 +159,18 @@ media_install_deps_init() {
   media_load_arch_flags
 }
 
+# Keep selection separate from the GI lookup so both target probes retain their original order.
+media_gstreamer_foreign_target() {
+  local -n _mgft_match="$1"
+  _mgft_match=0
+  if cross_build_is_active && command -v cross_target_arch >/dev/null 2>&1; then
+    case "$(cross_target_arch)" in
+      arm64|riscv64) _mgft_match=1 ;;
+    esac
+  fi
+  return 0
+}
+
 # media_jobs [cap_mb]: job count under a per-job memory cap (default 2000 MB).
 media_jobs() {
   if declare -F compute_jobs_with_mem_cap >/dev/null 2>&1; then

@@ -18,6 +18,15 @@
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.
 
+## 2026-10-24 — share compiler probes, ORT selectors and wheel platform policies
+
+- Share compiler source-fixture transport and GCC version capture without changing probe verdicts, temporary state or strict-shell failures.
+- Share ORT component exclusions and file predicates while retaining shallow record scans, tree archive candidates and partial traversal findings.
+- Share wheel platform resolution with distinct LiteRT and Torch fallback policies; preserve each GStreamer architecture lookup and its failure status.
+- Share stream-fixture startup while retaining independent tag, packaging and provenance expectations.
+- Point Linux action image inputs at the existing common defaults contract.
+- Remove four resolved duplication exceptions without changing scanner thresholds or independent expected results.
+
 ## 2026-10-24 — share lint scope, wheel transport and packaging execution
 
 - Share lint scope initialization in the driver shell while preserving root selection, remaining arguments and rejected-root errors.

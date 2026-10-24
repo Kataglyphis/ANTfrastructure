@@ -112,14 +112,7 @@ require_host_python() {
 }
 
 wheel_platform_tag() {
-    if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
-        cross_wheel_platform_tag
-        return $?
-    fi
-    if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
-        return 1
-    fi
-    arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
+    wheel_platform_tag_with_fallback best-effort
 }
 
 prepare_workspace() {

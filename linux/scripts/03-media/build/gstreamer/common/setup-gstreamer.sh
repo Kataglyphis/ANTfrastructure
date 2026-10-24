@@ -8,24 +8,24 @@ _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SETUP_GST_DIR}/../../../core/common.sh"
 media_common_init "${_SETUP_GST_DIR}"
 
-if cross_build_is_active && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-    case "$(cross_target_arch)" in
-        arm64|riscv64)
-            # Meson's C++ dependency probes (GLib's builtin iconv) fail under lld here when g++ links libstdc++.
-            export USE_LLD=false
-            ;;
-    esac
+declare _gst_foreign_target
+media_gstreamer_foreign_target _gst_foreign_target
+if [ "${_gst_foreign_target}" = 1 ]; then
+    unset _gst_foreign_target
+    # Meson's C++ dependency probes (GLib's builtin iconv) fail under lld here when g++ links libstdc++.
+    export USE_LLD=false
+else
+    unset _gst_foreign_target
 fi
 
 # Meson's C++ stdlib probe fails on GCC 16's cross libstdc++ headers; defining _LIBCPP_VERSION satisfies it without changing the library.
-if cross_build_is_active && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-    case "$(cross_target_arch)" in
-        arm64|riscv64)
-            export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"
-            ;;
-    esac
+declare _gst_foreign_target
+media_gstreamer_foreign_target _gst_foreign_target
+if [ "${_gst_foreign_target}" = 1 ]; then
+    unset _gst_foreign_target
+    export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"
+else
+    unset _gst_foreign_target
 fi
 
 # media_common_init ran setup_lld_linker before the cross USE_LLD=false above, so run it again.

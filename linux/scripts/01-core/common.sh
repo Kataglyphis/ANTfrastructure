@@ -284,6 +284,23 @@ wheel_archive_run() {
   "$@" -m wheel "${action}" "${source}" -d "${destination}" >/dev/null 2>&1
 }
 
+# Older callers retain their distinct required-target and best-effort architecture lookup policies.
+wheel_platform_tag_with_fallback() {
+  local _wptf_policy="$1"
+  if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
+    cross_wheel_platform_tag
+    return $?
+  fi
+  command -v arch_linux_platform_tag_for >/dev/null 2>&1 || return 1
+  if [ "${_wptf_policy}" = required ]; then
+    command -v cross_target_arch >/dev/null 2>&1 || return 1
+    arch_linux_platform_tag_for "$(cross_target_arch)"
+  else
+    arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
+  fi
+  return $?
+}
+
 cross_wheel_platform_tag() {
   if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
     return 1

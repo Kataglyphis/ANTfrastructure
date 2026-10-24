@@ -2,6 +2,14 @@
 # Separate-stream workers share capture and byte receipts while consumer expectations stay in their suites.
 source "${BASH_SOURCE[0]%/*}/test-harness.sh"
 
+t_stream_workspace() {
+  source "${BASH_SOURCE[0]%/*}/test-workspace-fixture.sh"
+  t_fixture_workspace_init "$1" || return "$?"
+  local -n _tsw_receipt="$2"
+  _tsw_receipt="${3:-}"
+  [ -z "$_tsw_receipt" ] || : > "$_tsw_receipt"
+}
+
 t_stream_hex() {
   local bytes
   if ! bytes="$(od -An -v -tx1 "$1")"; then printf 'unreadable:%s' "$1"; return 1; fi

@@ -1,0 +1,1312 @@
+{
+  "_smoke_gcc_sanitizers:success:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:success:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:temp-failure:strict": {
+    "status": 23,
+    "stdout": "",
+    "stderr": "",
+    "trace": "mktemp\n-d\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:temp-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:write-failure:strict": {
+    "status": 29,
+    "stdout": "",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": [
+      [
+        "tmp/s.cpp",
+        "partial-source"
+      ]
+    ]
+  },
+  "_smoke_gcc_sanitizers:write-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\npartial-sourcesource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:compile-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:compile-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:run-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:run-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:cleanup-failure:strict": {
+    "status": 41,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": [
+      [
+        "tmp/e",
+        "compiler-stderr\n"
+      ],
+      [
+        "tmp/s",
+        "#!/usr/bin/env bash\nprintf 'run:%s\\n' \"$*\" >> \"$TRACE\"\necho run-stdout\necho run-stderr >&2\nexit \"$RUN_STATUS\"\n"
+      ],
+      [
+        "tmp/s.cpp",
+        "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\n"
+      ]
+    ]
+  },
+  "_smoke_gcc_sanitizers:cleanup-failure:conditional": {
+    "status": 41,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": [
+      [
+        "tmp/e",
+        "compiler-stderr\n"
+      ],
+      [
+        "tmp/s",
+        "#!/usr/bin/env bash\nprintf 'run:%s\\n' \"$*\" >> \"$TRACE\"\necho run-stdout\necho run-stderr >&2\nexit \"$RUN_STATUS\"\n"
+      ],
+      [
+        "tmp/s.cpp",
+        "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\n"
+      ]
+    ]
+  },
+  "_smoke_gcc_sanitizers:readelf-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:readelf-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:head-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:head-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: g++ -fsanitize=address,undefined compiles+links (libasan+libubsan NEEDED)\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:grep-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:grep-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:missing-ubsan:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:missing-ubsan:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\ngrep\n-q\nNEEDED.*libubsan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:missing-asan:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:missing-asan:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:missing-both:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_gcc_sanitizers:missing-both:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [gcc-sanitizers]: g++ -fsanitize=address,undefined failed or did not link libasan/libubsan\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:g++\n-O1\n-fsanitize=address,undefined\nWORK/tmp/s.cpp\n-o\nWORK/tmp/s\nscope-d:WORK/tmp\nscope-dyn:\nsource-begin\n#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c, char **) {\n  __sanitizer_annotate_contiguous_container(b, b + 8, b + 8, b + 8);\n  return (8 >> c) == 4 ? 0 : 1;\n}\nsource-end\nreadelf\n-d\nWORK/tmp/s\ngrep\n-q\nNEEDED.*libasan\\.so\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:success:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:success:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:temp-failure:strict": {
+    "status": 23,
+    "stdout": "",
+    "stderr": "",
+    "trace": "mktemp\n-d\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:temp-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:write-failure:strict": {
+    "status": 29,
+    "stdout": "",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": [
+      [
+        "tmp/f.c",
+        "partial-source"
+      ]
+    ]
+  },
+  "_smoke_clang_libfuzzer:write-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\npartial-sourcesource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:compile-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [clang-libfuzzer]: clang -fsanitize=fuzzer failed to link or run a trivial target\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:compile-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [clang-libfuzzer]: clang -fsanitize=fuzzer failed to link or run a trivial target\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:run-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [clang-libfuzzer]: clang -fsanitize=fuzzer failed to link or run a trivial target\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:run-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\n",
+    "stderr": "    compiler-stderr\nCOMPILER FAIL [clang-libfuzzer]: clang -fsanitize=fuzzer failed to link or run a trivial target\n",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:cleanup-failure:strict": {
+    "status": 41,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": [
+      [
+        "tmp/e",
+        "compiler-stderr\n"
+      ],
+      [
+        "tmp/f",
+        "#!/usr/bin/env bash\nprintf 'run:%s\\n' \"$*\" >> \"$TRACE\"\necho run-stdout\necho run-stderr >&2\nexit \"$RUN_STATUS\"\n"
+      ],
+      [
+        "tmp/f.c",
+        "int LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\n"
+      ]
+    ]
+  },
+  "_smoke_clang_libfuzzer:cleanup-failure:conditional": {
+    "status": 41,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": [
+      [
+        "tmp/e",
+        "compiler-stderr\n"
+      ],
+      [
+        "tmp/f",
+        "#!/usr/bin/env bash\nprintf 'run:%s\\n' \"$*\" >> \"$TRACE\"\necho run-stdout\necho run-stderr >&2\nexit \"$RUN_STATUS\"\n"
+      ],
+      [
+        "tmp/f.c",
+        "int LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\n"
+      ]
+    ]
+  },
+  "_smoke_clang_libfuzzer:readelf-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:readelf-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:head-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:head-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:grep-failure:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:grep-failure:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:missing-ubsan:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:missing-ubsan:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:missing-asan:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:missing-asan:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:missing-both:strict": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_smoke_clang_libfuzzer:missing-both:conditional": {
+    "status": 0,
+    "stdout": "compiler-stdout\nSMOKE OK: clang -fsanitize=fuzzer links and runs\n",
+    "stderr": "",
+    "trace": "mktemp\n-d\nwrite-source\ncompiler:clang\n-fsanitize=fuzzer\nWORK/tmp/f.c\n-o\nWORK/tmp/f\nscope-d:WORK/tmp\nscope-dyn:caller-dyn\nsource-begin\nint LLVMFuzzerTestOneInput(const unsigned char *d, unsigned long n) { (void)d; (void)n; return 0; }\nsource-end\nrun:-runs=10\nrm\n-rf\nWORK/tmp\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:matching:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:matching:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:version-failure-with-match:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:version-failure-with-match:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:wrong-first-line:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:wrong-first-line:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:empty-version:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:empty-version:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:elf-wrong:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc]: WORK/host/bin/gcc --version: wrong (expected 16.2.0), ELF:  Machine: X86-64\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:elf-wrong:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc]: WORK/host/bin/gcc --version: wrong (expected 16.2.0), ELF:  Machine: X86-64\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:elf-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc]: WORK/host/bin/gcc --version: wrong (expected 16.2.0)\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:elf-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc]: WORK/host/bin/gcc --version: wrong (expected 16.2.0)\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:arch-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:arch-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:arch-empty:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\n\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:arch-empty:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\n\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:missing-binary:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc-missing]: WORK/host/bin/gcc not found\n",
+    "trace": "",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:missing-binary:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc-missing]: WORK/host/bin/gcc not found\n",
+    "trace": "",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:invalid-version-regex:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "grep: Invalid regular expression\n",
+    "trace": "version:--version\ngrep\n-q\n[\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:invalid-version-regex:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "grep: Invalid regular expression\n",
+    "trace": "version:--version\ngrep\n-q\n[\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:head-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:head-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "OK: host gcc WORK/host/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:grep-failure:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc]: WORK/host/bin/gcc --version: gcc fixture 16.2.0 (expected 16.2.0)\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_host_gcc:grep-failure:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [host-gcc]: WORK/host/bin/gcc --version: gcc fixture 16.2.0 (expected 16.2.0)\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/host/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:matching:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:matching:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:version-failure-with-match:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:version-failure-with-match:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:wrong-first-line:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:wrong-first-line:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:empty-version:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:empty-version:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:elf-wrong:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [native-gcc]: WORK/opt/gcc-16.2.0-native-arm64/bin/gcc --version: wrong ELF:  Machine: X86-64\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:elf-wrong:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [native-gcc]: WORK/opt/gcc-16.2.0-native-arm64/bin/gcc --version: wrong ELF:  Machine: X86-64\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:elf-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:elf-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:arch-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:arch-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:arch-empty:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [native-gcc]: WORK/opt/gcc-16.2.0-native-arm64/bin/gcc --version: wrong ELF:  Machine: AArch64\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:arch-empty:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [native-gcc]: WORK/opt/gcc-16.2.0-native-arm64/bin/gcc --version: wrong ELF:  Machine: AArch64\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:missing-binary:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "trace": "",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:missing-binary:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "",
+    "trace": "",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:invalid-version-regex:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-[-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "grep: Invalid regular expression\n",
+    "trace": "version:--version\ngrep\n-q\n[\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-[-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:invalid-version-regex:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-[-native-arm64/bin/gcc is cross-built ELF for arm64 ( Machine: AArch64)\n",
+    "stderr": "grep: Invalid regular expression\n",
+    "trace": "version:--version\ngrep\n-q\n[\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-[-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:head-failure-with-data:strict": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:head-failure-with-data:conditional": {
+    "status": 0,
+    "stdout": "OK: target-native WORK/opt/gcc-16.2.0-native-arm64/bin/gcc reports gcc fixture 16.2.0\n",
+    "stderr": "",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\n",
+    "pipeline_calls": {
+      "readelf": "",
+      "head": "head\n-1\n",
+      "grep": ""
+    },
+    "state": "errors=0\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:grep-failure:strict": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [native-gcc]: WORK/opt/gcc-16.2.0-native-arm64/bin/gcc --version: gcc fixture 16.2.0\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  },
+  "_artifact_source_check_native_gcc:grep-failure:conditional": {
+    "status": 0,
+    "stdout": "",
+    "stderr": "COMPILER FAIL [native-gcc]: WORK/opt/gcc-16.2.0-native-arm64/bin/gcc --version: gcc fixture 16.2.0\n",
+    "trace": "version:--version\ngrep\n-q\n16.2.0\narchitecture\narm64\ngrep\n-qi\nAArch64\n",
+    "pipeline_calls": {
+      "readelf": "readelf\n-h\nWORK/opt/gcc-16.2.0-native-arm64/bin/gcc\n",
+      "head": "head\n-1\nhead\n-1\n",
+      "grep": "grep\nMachine:\n"
+    },
+    "state": "errors=1\nd=caller-d\ndyn=caller-dyn\n",
+    "remaining": []
+  }
+}
