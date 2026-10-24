@@ -21,6 +21,7 @@ import os
 import stat
 import sys
 import tempfile
+from collections.abc import Iterator
 from typing import TypedDict
 
 import renovate_audit
@@ -106,7 +107,7 @@ def resolved_config(log):
     return out
 
 
-def _first_match(pats, files):
+def _first_match(pats, files) -> str:
     for pat in pats or []:
         rx = renovate_locator.renovate_pattern(pat)
         for f in files:
@@ -129,7 +130,7 @@ def managers(cfg, listing):
             print("%s\t%s\t%s" % (name, off, hit))
 
 
-def _deps(report):
+def _deps(report) -> Iterator[tuple[str, dict, dict]]:
     """(manager, packageFile entry, dep) for every dependency the report carries."""
     for repo in (report.get("repositories") or {}).values():
         for mgr, files in (repo.get("packageFiles") or {}).items():
@@ -153,7 +154,7 @@ BY_DESIGN = {"disabled", "ignored", "package-rules", "path-dependency", "local-d
              "contains-variable"}
 
 
-def _skip_reason(dep):
+def _skip_reason(dep) -> str:
     """Why Renovate never compared this dep's value; "" when it did."""
     if dep.get("skipReason"):
         return dep["skipReason"]
@@ -177,7 +178,7 @@ def skipped(report):
     return listed, design
 
 
-def _row(mgr, f, dep, up):
+def _row(mgr, f, dep, up) -> dict[str, str]:
     return {"manager": mgr, "file": f.get("packageFile") or "",
             "dep": dep.get("depName") or dep.get("packageName") or "?",
             "pkg": dep.get("packageName") or dep.get("depName") or "",
@@ -191,7 +192,7 @@ def _row(mgr, f, dep, up):
             "updateType": up.get("updateType") or ""}
 
 
-def _one(pat, val):
+def _one(pat, val) -> bool:
     neg = pat.startswith("!")
     if neg:
         pat = pat[1:]
@@ -239,7 +240,7 @@ LOCK_MANAGERS = ("cargo", "npm", "pep621", "pub")
 LOCK_ALL = "*"
 
 
-def _maint_on(cfg, mgr, path):
+def _maint_on(cfg, mgr, path) -> bool:
     """Renovate's own layering: the top-level switch, the manager's block, then the last matching packageRule."""
     top = cfg.get("lockFileMaintenance")
     on = isinstance(top, dict) and top.get("enabled") is True
@@ -265,7 +266,7 @@ def lock_maintenance(report, cfg):
                     yield mgr, path
 
 
-def _clean(text):
+def _clean(text) -> str:
     """One plan column, flattened: a tab would add a column and a newline a row."""
     return (text or DASH).replace("\t", " ").replace("\r", "") \
                          .replace("\n", " ") or DASH
@@ -279,7 +280,7 @@ def emit(kind, row, line, detail, before=DASH, after=DASH):
         line, detail, before, after)))
 
 
-def _read_lines(path):
+def _read_lines(path) -> list[str]:
     """newline="" keeps a CRLF checkout CRLF."""
     with open(path, encoding="utf-8", newline="") as fh:
         return fh.read().split("\n")
@@ -348,7 +349,7 @@ def plan(report, cfg, root, planpath):
         json.dump(edits, fh)
 
 
-def _writable(path, rel):
+def _writable(path, rel) -> None:
     """Probe that the file and its directory are writable; os.access says yes on a read-only mount."""
     try:
         with open(path, "r+", encoding="utf-8"):
@@ -367,7 +368,7 @@ def _writable(path, rel):
     os.unlink(probe)
 
 
-def _verify(steps, root):
+def _verify(steps, root) -> dict[str, PendingTarget]:
     """Re-read, contain and prove writable every target before the first byte: the run writes all or nothing."""
     files: dict[str, PendingTarget] = {}
     seen = set()
@@ -412,7 +413,7 @@ def groups_of(steps):
     return [key + (n,) for key, n in counts.items()]
 
 
-def _manager_of(steps, rel):
+def _manager_of(steps, rel) -> str:
     names = {e["manager"] for e in steps}
     if len(names) != 1:
         sys.exit("%s is planned under %d managers (%s); one file has one syntax, "
@@ -421,7 +422,7 @@ def _manager_of(steps, rel):
     return names.pop()
 
 
-def _sanction(rel, target):
+def _sanction(rel, target) -> None:
     """What a real parser lets this run change in one file; per file, so two groups claiming one value fail."""
     target["syntax"] = renovate_locator.syntax(_manager_of(target["steps"], rel), rel)
     target["before"] = "\n".join(target["lines"])
@@ -432,7 +433,7 @@ def _sanction(rel, target):
         sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
 
 
-def _edited(target):
+def _edited(target) -> str:
     """The exact text this plan would put on disk for one file."""
     lines = list(target["lines"])
     for e in target["steps"]:
@@ -449,7 +450,7 @@ def predict(files):
             sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
 
 
-def _replace(path, text):
+def _replace(path, text) -> None:
     """`text` onto `path` via a temp file and os.replace, never truncating; the mode survives mkstemp's 0600."""
     handle, temp = tempfile.mkstemp(dir=os.path.dirname(path),
                                     prefix=".renovate-", suffix=".tmp")
@@ -464,7 +465,7 @@ def _replace(path, text):
         raise
 
 
-def _audited(files):
+def _audited(files) -> list[str]:
     """Why each written file, read back off disk and re-parsed, is not what the plan claimed."""
     out = []
     for rel, target in files.items():
@@ -476,7 +477,7 @@ def _audited(files):
     return out
 
 
-def _put_back(files):
+def _put_back(files) -> list[str]:
     """Restore bytes, mode and mtime (a fresh one fools make and cargo); returns what would not go back."""
     stuck = []
     for rel, target in files.items():
@@ -489,7 +490,7 @@ def _put_back(files):
     return stuck
 
 
-def _refused(problems, files):
+def _refused(problems, files) -> str:
     return "\n".join(
         ["the edit did not survive being read back by a real parser, so it "
          "was not the edit the report described:"] + problems
@@ -559,14 +560,14 @@ def lock_readable(root, rel, dep):
     print("  %s: parses as %s, and %s %r" % (rel, kind, said, dep))
 
 
-def _print_config(log):
+def _print_config(log) -> None:
     cfg = resolved_config(log)
     if cfg is None:
         sys.exit("no --print-config record in %s" % log)
     json.dump(cfg, sys.stdout)
 
 
-def _print_rows(path):
+def _print_rows(path) -> None:
     for row in rows(load_report(path)):
         print("%s\t%s\t%s\t%s\t%s" % (
             row["manager"], row["file"], row["dep"],
@@ -574,7 +575,7 @@ def _print_rows(path):
             (row["newDigest"] or row["new"])[:12]))
 
 
-def _print_skipped(path):
+def _print_skipped(path) -> None:
     listed, design = skipped(load_report(path))
     for row in listed:
         print("SKIP\t%s\t%s\t%s\t%s\t%s" % row)
@@ -582,7 +583,7 @@ def _print_skipped(path):
         print("DESIGN\t%s\t%d" % (why, n))
 
 
-def _print_lockmaint(report, cfg):
+def _print_lockmaint(report, cfg) -> None:
     for mgr, path in lock_maintenance(load_report(report), load_obj(cfg)):
         print("%s\t%s" % (mgr, path))
 

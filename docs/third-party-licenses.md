@@ -419,6 +419,9 @@ halves fit together and why neither is sufficient alone.
 | --- | --- | --- | --- |
 | Ruff | 0.17.0 | [github.com/astral-sh/ruff](https://github.com/astral-sh/ruff) | MIT |
 | ty | 0.0.91 | [github.com/astral-sh/ty](https://github.com/astral-sh/ty) | MIT |
+| markdown-it-py (quality analysis) | locked in quality/uv.lock | [github.com/executablebooks/markdown-it-py](https://github.com/executablebooks/markdown-it-py) | MIT |
+| pytest (quality analysis) | locked in quality/uv.lock | [github.com/pytest-dev/pytest](https://github.com/pytest-dev/pytest) | MIT |
+| PyYAML (quality analysis) | locked in quality/uv.lock | [github.com/yaml/pyyaml](https://github.com/yaml/pyyaml) | MIT |
 
 
 ---

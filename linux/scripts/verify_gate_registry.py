@@ -45,7 +45,7 @@ COLUMNS = ("slug", "preflight name", "script", "allow files", "tests",
            "mutations", "hook tier", "proof")
 
 
-def _read(path):
+def _read(path) -> str:
     with open(path, encoding="utf-8") as fh:
         return fh.read()
 
@@ -113,7 +113,7 @@ def resolve_script(tokens, cmd, defs, preflight_rel):
     return None, None, None
 
 
-def _rel(path):
+def _rel(path) -> str:
     """Posix-spelled repo-relative path, since mutations.json targets never carry backslashes."""
     return os.path.relpath(path, ROOT).replace(os.sep, "/")
 
@@ -198,7 +198,7 @@ def mutation_ids(entries, slug, script, files, tests):
             and (e["target"] in files or calls_the_gate(e, script, files, tests))]
 
 
-def _id_verdict(e, known, owners, files, credited):
+def _id_verdict(e, known, owners, files, credited) -> str | None:
     """Why a mutation id credits no gate, or None when it does or its prefix is a family."""
     slug, target = id_slug(e), e["target"]
     names = ", ".join(sorted(s for s, fs in owners.items() if target in fs))
@@ -337,7 +337,7 @@ def proof_of(row):
 
 
 def render(table):
-    def cell(v):
+    def cell(v) -> str:
         if isinstance(v, list):
             v = ", ".join(v)
         return (v or EMPTY).replace("|", "\\|")

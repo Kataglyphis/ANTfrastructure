@@ -15,11 +15,11 @@ SCRIPT = Path(__file__).resolve().parents[1] / "01-core/download-webdav-files.py
 
 
 class Client:
-    def __init__(self, *args) -> None:
+    def __init__(self, *args: str) -> None:
         self.calls = []
         self.failure = None
 
-    def download_all_files_iterative(self, remote, local, **options):
+    def download_all_files_iterative(self, remote, local, **options: str):
         self.calls.append((remote, local, options))
         if self.failure:
             raise self.failure

@@ -16,6 +16,7 @@ import tempfile
 import time
 import urllib.error
 import urllib.request
+from typing import TypeAlias
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPTS = os.path.join(REPO_ROOT, "linux", "scripts")
@@ -107,6 +108,11 @@ class Req:
         self.scope, self.guarded, self.why = scope, guarded, why
 
 
+PackageIndex: TypeAlias = tuple[set[str], dict[str, set[str]]]
+IndexByArch: TypeAlias = dict[str, PackageIndex]
+Suspects: TypeAlias = dict[str, list[tuple[Req, list[str]]]]
+
+
 def strip_comment(text):
     out, quote = [], None
     for ch in text:
@@ -173,12 +179,12 @@ def logical_lines(raw):
 ARRAY_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\[[@*]\]\}")
 
 
-def _array_refs(text):
+def _array_refs(text) -> set[str]:
     """Names of the package arrays one line expands."""
     return {m.group(1) for m in ARRAY_REF_RE.finditer(text)}
 
 
-def _scan_arrays(raw):
+def _scan_arrays(raw) -> dict[str, list[tuple[int, list[tuple[int, str]]]]]:
     """*packages/*pkgs NAME=( ... ) literals, multi-line bodies included -> {name: [(lineno, [(lineno, pkg)])]}."""
     arrays, i = {}, 0
     while i < len(raw):
@@ -204,7 +210,7 @@ def _scan_arrays(raw):
     return arrays
 
 
-def _scan_cpython_table(raw, rel):
+def _scan_cpython_table(raw, rel) -> list[Req]:
     """The CPython dev-package table: rows of "<dev-package> <required|optional> <ext>..."."""
     out = []
     for n, text in enumerate(raw, 1):
@@ -214,7 +220,7 @@ def _scan_cpython_table(raw, rel):
     return out
 
 
-def _track_guard_stack(stripped, guard_stack):
+def _track_guard_stack(stripped, guard_stack) -> None:
     """The enclosing if/elif/fi conditions, so a call under an apt probe reads guarded."""
     if re.match(r"^(if|elif)\s", stripped):
         cond = stripped.split(";")[0]
@@ -226,7 +232,7 @@ def _track_guard_stack(stripped, guard_stack):
         guard_stack.pop()
 
 
-def _guard_disposition(cmd, pre, trailer, block_guard):
+def _guard_disposition(cmd, pre, trailer, block_guard) -> tuple[bool, str]:
     """(guarded, why) for one call site: four ways a dead name cannot kill the stage."""
     in_cond = bool(re.match(r"\s*(if|elif|while|until|!)\s", pre)) or "$(" in pre
     if not (cmd in SELF_FILTERING or trailer.lstrip().startswith("||")
@@ -241,7 +247,7 @@ def _guard_disposition(cmd, pre, trailer, block_guard):
     return True, "in a condition"
 
 
-def _call_site(text, m, rel, lineno, block_guard):
+def _call_site(text, m, rel, lineno, block_guard) -> tuple[list[Req], set[str]]:
     """One installer invocation -> (reqs, arrays it expands)."""
     cmd = re.sub(r"\s+", " ", m.group(1))
     base = cmd.split()[0] if cmd.startswith("apt-get") else cmd
@@ -265,7 +271,7 @@ def _call_site(text, m, rel, lineno, block_guard):
     return [Req(name, rel, lineno, scope, guarded, why) for name in names], refs
 
 
-def _scan_call_sites(raw, rel):
+def _scan_call_sites(raw, rel) -> tuple[list[Req], set[str]]:
     """(reqs, referenced arrays) per installer call; a for-loop over an array counts as a reference."""
     reqs, refs, guard_stack = [], set(), []
     for lineno, acc in logical_lines(raw):
@@ -348,7 +354,7 @@ def collect():
 _ARRAY_CACHE = {}
 
 
-def _array_disposition(rel, aname):
+def _array_disposition(rel, aname) -> tuple[bool, str]:
     """Guard + arch scope of an array = those of the installers consuming it."""
     key = (rel, aname)
     if key in _ARRAY_CACHE:
@@ -442,7 +448,7 @@ def parse_index(blob):
     return real, virtual
 
 
-def _read_cache(stamp, vstamp):
+def _read_cache(stamp, vstamp) -> PackageIndex:
     real = set(read_text(stamp).split())
     virtual = {}
     if os.path.exists(vstamp):
@@ -453,7 +459,7 @@ def _read_cache(stamp, vstamp):
     return real, virtual
 
 
-def _merge_indices(blobs):
+def _merge_indices(blobs) -> tuple[set[str], dict[str, set[str]], int]:
     """Parse every fetched index into one (real, virtual, how-many-arrived) triple."""
     real, virtual, ok_n = set(), {}, 0
     for blob in blobs:
@@ -467,7 +473,7 @@ def _merge_indices(blobs):
     return real, virtual, ok_n
 
 
-def _write_stamps(stamp, vstamp, real, virtual):
+def _write_stamps(stamp, vstamp, real, virtual) -> None:
     with open(stamp, "w", encoding="utf-8") as fh:
         fh.write("\n".join(sorted(real)))
     with open(vstamp, "w", encoding="utf-8") as fh:
@@ -507,7 +513,7 @@ def load_arch(arch, codename, pocket, mirrors, cdir, ttl, timeout, refresh):
     return real, virtual, "network"
 
 
-def _try(url, timeout):
+def _try(url, timeout) -> bytes | None:
     try:
         return fetch(url, timeout)
     except (urllib.error.URLError, OSError, ValueError):
@@ -529,11 +535,11 @@ def self_check(reqs):
     return broken
 
 
-def _installable(index):
+def _installable(index) -> dict[str, set[str]]:
     return {a: index[a][0] | set(index[a][1]) for a in ARCHES}
 
 
-def _load_indices(codename, mirrors, cdir, args):
+def _load_indices(codename, mirrors, cdir, args) -> tuple[IndexByArch, dict[str, str]] | None:
     """-> (index, sources), or None after logging the SKIP that unreachable must be."""
     index, sources = {}, {}
     for arch in ARCHES:
@@ -548,7 +554,7 @@ def _load_indices(codename, mirrors, cdir, args):
     return index, sources
 
 
-def _suspects(reqs, installable):
+def _suspects(reqs, installable) -> Suspects:
     """{name: [(req, the arches it is missing on)]}; a host-scope name only owes amd64."""
     out = {}
     for req in reqs:
@@ -559,7 +565,7 @@ def _suspects(reqs, installable):
     return out
 
 
-def _recheck_extra_pockets(suspects, index, codename, mirrors, cdir, args):
+def _recheck_extra_pockets(suspects, index, codename, mirrors, cdir, args) -> Suspects:
     """Second pass over -updates/-security, paid for only when a name would FAIL."""
     if not any(not r.guarded and not is_vendor(r.path, r.name)
                for rows in suspects.values() for r, _ in rows):
@@ -580,7 +586,10 @@ def _recheck_extra_pockets(suspects, index, codename, mirrors, cdir, args):
     return out
 
 
-def _classify(suspects):
+def _classify(suspects) -> tuple[
+    list[tuple[str, Req, list[str]]], list[tuple[str, Req]],
+    dict[str, list[int]], dict[tuple[str, str], list[Req]],
+]:
     """-> (dead_unguarded, vendor, somap, dead_guarded): only the first one FAILS."""
     dead_unguarded, vendor, somap, dead_guarded = [], [], {}, {}
     for name, rows in sorted(suspects.items()):
@@ -596,7 +605,7 @@ def _classify(suspects):
     return dead_unguarded, vendor, somap, dead_guarded
 
 
-def _log_notes(codename, skipped_arrays, virtual_only, vendor, somap, dead_guarded):
+def _log_notes(codename, skipped_arrays, virtual_only, vendor, somap, dead_guarded) -> None:
     """Everything that is worth saying but is not a verdict."""
     for rel, lineno, aname, count in skipped_arrays:
         log(f"note: {rel}:{lineno} {aname}[] ({count} names) is never handed "
@@ -619,7 +628,7 @@ def _log_notes(codename, skipped_arrays, virtual_only, vendor, somap, dead_guard
             f"(guarded: {reqs_at[0].why or 'guarded'}); a wasted apt round-trip every run")
 
 
-def _verdict(codename, args, reqs, names, skipped_arrays):
+def _verdict(codename, args, reqs, names, skipped_arrays) -> int:
     """The network half: 0 = clean or SKIP, 1 = a dead name at an unguarded site."""
     mirrors = read_mirrors()
     cdir = cache_dir(codename)
@@ -661,7 +670,7 @@ def _verdict(codename, args, reqs, names, skipped_arrays):
     return 0
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--list", action="store_true", help="print every extracted name and exit")
     ap.add_argument("--refresh", action="store_true", help="ignore the index cache")

@@ -2000,6 +2000,45 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
       "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--e3fc17ab",
+      "name": "markdown-it-py (quality analysis)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/executablebooks/markdown-it-py",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--3c7f46b3",
+      "name": "pytest (quality analysis)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/pytest-dev/pytest",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--d23fc132",
+      "name": "PyYAML (quality analysis)",
+      "versionInfo": "locked in quality/uv.lock",
+      "downloadLocation": "https://github.com/yaml/pyyaml",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
     }
   ],
   "relationships": [
@@ -2762,6 +2801,21 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--ed347a45"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--e3fc17ab"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--3c7f46b3"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--d23fc132"
     }
   ]
 }

@@ -46,6 +46,8 @@ Describe 'Invoke-Tests coverage gate' {
             'WindowsMsix.Common.Tests.ps1=WindowsMsix.Common.psm1:80'
             'WindowsSlang.Common.Tests.ps1=WindowsSlang.Common.psm1:65'
             'WindowsWasmOpt.Common.Tests.ps1=WindowsWasmOpt.Common.psm1:80'
+            'WindowsWebDav.Common.Tests.ps1=WindowsWebDav.Common.psm1:90'
+            'WindowsMsix.Signing.Tests.ps1=WindowsMsix.Signing.psm1:80'
         ) | Sort-Object
         $targets = Get-CoverageTargets
         $actual = @($targets.Keys | ForEach-Object { "$_=$($targets[$_].Module):$($targets[$_].MinimumPercent)" } | Sort-Object)
@@ -56,6 +58,8 @@ Describe 'Invoke-Tests coverage gate' {
         foreach ($target in @(
             @{ Suite = 'WindowsOnnx.Common.Tests.ps1'; Module = 'WindowsOnnx.Common.psm1'; Floor = 100 }
             @{ Suite = 'WindowsWasmOpt.Common.Tests.ps1'; Module = 'WindowsWasmOpt.Common.psm1'; Floor = 80 }
+            @{ Suite = 'WindowsWebDav.Common.Tests.ps1'; Module = 'WindowsWebDav.Common.psm1'; Floor = 90 }
+            @{ Suite = 'WindowsMsix.Signing.Tests.ps1'; Module = 'WindowsMsix.Signing.psm1'; Floor = 80 }
         )) {
             $row = "'$($target.Suite)' = @{ Module = '$($target.Module)'; MinimumPercent = $($target.Floor) }"
             Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `

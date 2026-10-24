@@ -41,7 +41,7 @@ def pypi(site, name, version, pkg, payload):
             fh.write(data)
 
 
-def reset(*dirs):
+def reset(*dirs: str):
     for d in dirs:
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)

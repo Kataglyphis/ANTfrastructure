@@ -974,12 +974,16 @@ the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and cove
 The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
 suites, the discovery floor, targeted Pester coverage and the exit code. Child suites only
-hand tallies to the parent. Coverage XML for the eleven measured modules also stays under
+hand tallies to the parent. Coverage XML for the thirteen measured modules also stays under
 `logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports. The MSIX,
 Slang and wasm-opt module floors are 80%, 65% and 80%, against measured command coverage
 of 233/282, 229/342 and 87/108 respectively. The wasm-opt suite now exercises cached
 installs, checksum failures, command arguments and retry verdicts. The runner requires
-one measured report per target even when another target has a duplicate report.
+one measured report per target even when another target has a duplicate report. The
+WebDAV bootstrap now has a 90% floor against 59/62 measured commands, including its
+pinned archive, password redaction and advisory setup failures. MSIX signing has an
+80% floor against 90/104 measured commands, including an in-memory signing certificate
+and fatal missing-command versus advisory lookup failures.
 
 Run the driver from the repository root. It parses `linux/scripts/01-core/versions.env`, passes
 every version as `--build-arg` (the Dockerfile ARG defaults are only fallbacks), builds the stages
@@ -2602,7 +2606,7 @@ fixtures exercise these policies with independent expectations; they do not
 replace container, compiler, certificate or GPU acceptance.
 
 
-The Windows unit runner's discovery floor is 2,686 after a complete 2,712-test
+The Windows unit runner's discovery floor is 2,695 after a complete 2,721-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
 

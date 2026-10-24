@@ -155,7 +155,7 @@ def py_functions(path, rel):
     yield from walk(tree, "")
 
 
-def _tracked(root, *suffixes):
+def _tracked(root, *suffixes: str):
     """Yield (path, rel) per tracked file with one of `suffixes`; ls-files keeps submodules and build output out."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-z", "--"]
                          + ["*" + s for s in suffixes],

@@ -1,5 +1,13 @@
 [
  {
+  "id": "lib.cmake-policy-single-argument",
+  "target": "linux/scripts/01-core/cross-env.sh",
+  "find": "    \"-DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}\"",
+  "replace": "    -DCMAKE_POLICY_VERSION_MINIMUM=${CMAKE_POLICY_VERSION_MINIMUM:-3.5}",
+  "test": "bash linux/scripts/tests/test-cross-cmake-argv.sh",
+  "why": "an operator-provided policy value must remain one CMake option without splitting or globbing"
+ },
+ {
   "id": "lib.cmake-build-empty-positional",
   "target": "linux/scripts/lib/cli-value-options.sh",
   "find": "_cpo_remaining+=(\"$@\")",
@@ -27377,27 +27385,123 @@
   "why": "Windows Python source must retain a strict Windows-platform type check."
  },
  {
+  "id": "python-types.llm-test-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/llm-stack/tests/*.py'",
+  "replace": "'linux/llm-stack/tests/no_matches_*.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "LLM stack tests must remain in the strict type scope."
+ },
+ {
+  "id": "python-types.wheel-test-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/02-toolchain/python/free-threaded-wheel-tests.py'",
+  "replace": "'linux/scripts/02-toolchain/python/no-matches.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Free-threaded wheel tests must remain in the strict type scope."
+ },
+ {
+  "id": "python-types.renovate-audit-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/renovate_audit.py'",
+  "replace": "'linux/scripts/no-renovate-audit.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Renovate's YAML audit must remain in the strict type scope."
+ },
+ {
+  "id": "python-types.markdown-parser-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/lib/dartdoc-guides.py'",
+  "replace": "'linux/scripts/lib/no-dartdoc-guides.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The Markdown parser helper must remain in the strict type scope."
+ },
+ {
+  "id": "python-types.locked-environment-wiring",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--python \"${quality_python}\"",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "ty must resolve the locked quality environment so selected third-party imports are checked."
+ },
+ {
   "id": "python-types.staticmethod-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "--select ANN204,ANN205,ANN206",
-  "replace": "--select ANN204,ANN206",
+  "find": "--select ANN002,ANN003,ANN204,ANN205,ANN206",
+  "replace": "--select ANN002,ANN003,ANN204,ANN206",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "A missing staticmethod return annotation must fail the full tracked-tree gate."
  },
  {
   "id": "python-types.classmethod-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "--select ANN204,ANN205,ANN206",
-  "replace": "--select ANN204,ANN205",
+  "find": "--select ANN002,ANN003,ANN204,ANN205,ANN206",
+  "replace": "--select ANN002,ANN003,ANN204,ANN205",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "A missing classmethod return annotation must fail the full tracked-tree gate."
  },
  {
   "id": "python-types.constructor-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "--select ANN204,ANN205,ANN206",
-  "replace": "--select ANN205,ANN206",
+  "find": "--select ANN002,ANN003,ANN204,ANN205,ANN206",
+  "replace": "--select ANN002,ANN003,ANN205,ANN206",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "A missing constructor return annotation must fail the full tracked-tree gate."
+ },
+ {
+  "id": "python-types.variadic-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN002,ANN003,ANN204,ANN205,ANN206",
+  "replace": "--select ANN003,ANN204,ANN205,ANN206",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A missing variadic positional annotation must fail the full tracked-tree gate."
+ },
+ {
+  "id": "python-types.keyword-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN002,ANN003,ANN204,ANN205,ANN206",
+  "replace": "--select ANN002,ANN204,ANN205,ANN206",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A missing variadic keyword annotation must fail the full tracked-tree gate."
+ },
+ {
+  "id": "python-types.renovate-private-return-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN202 --output-format concise",
+  "replace": "--select ANN204 --output-format concise",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A missing private return annotation in a Renovate script must fail the focused gate."
+ },
+ {
+  "id": "python-types.renovate-private-return-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/renovate_*.py'",
+  "replace": "'linux/scripts/no-renovate_*.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The focused annotation gate must refuse a missing Renovate selection."
+ },
+ {
+  "id": "python-types.package-names-private-return-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/verify_package_names.py'",
+  "replace": "'linux/scripts/no-verify_package_names.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The package-name verifier must remain in the strict private-return selection."
+ },
+ {
+  "id": "python-types.comment-size-private-return-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/verify_comment_size.py'",
+  "replace": "'linux/scripts/no-verify_comment_size.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The comment-size verifier must remain in the strict private-return selection."
+ },
+ {
+  "id": "python-types.gate-registry-private-return-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/verify_gate_registry.py'",
+  "replace": "'linux/scripts/no-verify_gate_registry.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The gate-registry verifier must remain in the strict private-return selection."
  }
 ]

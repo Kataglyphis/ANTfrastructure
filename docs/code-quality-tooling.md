@@ -532,16 +532,22 @@ The script passes tracked Python paths to ty rather than scanning a directory of
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
 `windows/`. The four ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
-The full-tree ANN204/ANN205/ANN206 gate writes `logs/code-quality/ruff-annotations-gate.txt`. The
-Linux x64 workflow uploads these files after preflight. Reports with findings state that
+The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
+`logs/code-quality/ruff-annotations-gate.txt`. Four Renovate Python scripts
+and three quality verifiers have a separate fatal ANN202 check in
+`logs/code-quality/ruff-private-returns-gate.txt`. The Linux x64 workflow uploads
+these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
-**129 of 146 tracked Python files are a strict type gate.** This includes all tracked
+**140 of 146 tracked Python files are a strict type gate.** This includes all tracked
 `docs/scripts/*.py`, `linux/scripts/verify_*.py`, `linux/scripts/tests/*.py`,
-dependency-free Linux build helpers, shared Python helpers and the Windows certificate
-helper. The Linux and Windows strict results have separate ignored reports.
-The full first-party ty scan remains a report for the 17 files that import optional or
-image-only packages unavailable in this CI lane. A new Python path outside the strict
+Linux LLM stack tests, dependency-free build helpers, shared Python helpers and the
+Windows certificate helper. `quality/pyproject.toml` and the committed
+`quality/uv.lock` supply pytest, PyYAML and markdown-it-py to a Python 3.14 environment;
+the gate syncs it with `uv sync --project quality --locked` and passes that interpreter
+to ty. The Linux and Windows strict results have separate ignored reports.
+The full first-party ty scan remains a report for six files that need image-only,
+submodule or private dependencies. A new Python path outside the strict
 patterns also starts in that report until the strict scope is extended.
 There is no allowlist or raised diagnostic threshold. The full report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
@@ -549,12 +555,15 @@ return and errors in selected Linux and Windows helpers, requiring the gate to f
 Mutation cases remove the verdict and path selections; the suite must catch each.
 
 Ty uses declared and inferred types. It does **not** add annotations or require every
-function to have one. Ruff's `ANN204`, `ANN205` and `ANN206` now fail on missing
-special-method, static-method and class-method return annotations across every tracked
-Python file. The 22 existing `ANN204` findings and four `ANN205` findings were fixed;
-`ANN206` was already clean. `ANN001`–`ANN003`, `ANN201` and `ANN202` remain reports.
-The focused suite injects unannotated methods, and selector mutations prove
-the gate can fail. The Ruff annotation and ty checks share one fatal report/exit path so
+function to have one. Ruff's `ANN002`, `ANN003`, `ANN204`, `ANN205` and `ANN206`
+now fail on missing variadic parameter and method return annotations across every
+tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
+four `ANN205` findings were fixed; `ANN206` was already clean. The 114 private
+return findings in four Renovate scripts and three quality verifiers were fixed,
+so `ANN202` is also fatal for those seven files. Other `ANN202` findings,
+`ANN001` and `ANN201` remain in the
+full report. The focused suite injects unannotated signatures, and selector and
+scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
@@ -755,7 +764,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3423 entries** over **373 distinct test commands**; both digits are
+manifest holds **3436 entries** over **374 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1743,7 +1752,7 @@ The Windows test runner writes a JSON summary for each parent run to
 ## Windows Pester coverage
 
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
-for eleven modules, each with a focused Pester suite:
+for thirteen modules, each with a focused Pester suite:
 
 | Module | Minimum command coverage |
 |---|---:|
@@ -1758,9 +1767,11 @@ for eleven modules, each with a focused Pester suite:
 | `WindowsMsix.Common.psm1` | 80% |
 | `WindowsSlang.Common.psm1` | 65% |
 | `WindowsWasmOpt.Common.psm1` | 80% |
+| `WindowsWebDav.Common.psm1` | 90% |
+| `WindowsMsix.Signing.psm1` | 80% |
 
 The target-inventory test pins every suite/module pair and floor, and mutations prove
-that removing the ONNX or wasm-opt target or lowering its floor fails the test.
+that removing the ONNX, wasm-opt, WebDAV or MSIX signing target or lowering its floor fails the test.
 The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
 zero measured files or commands, inconsistent counts, a missing or duplicate target,
 or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict
@@ -2106,7 +2117,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 935 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 938 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -2117,7 +2128,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **371** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **374** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -2248,10 +2259,10 @@ survives it, not with a grep. `package_archive.sh` stays at 4 by DECISION, not
 by inertia: nothing in this repo invokes it and no stage copies it, so its three
 parsed-and-ignored flags are a CLI contract for callers outside this repo — one
 exists (OxidANT's Linux lane runs the hub path directly, found 2026-09-18)
-— and no build can rule on them either. The two `SC2206` cmake-argv rows also stay, with
-sharper reasons: `build-clang.sh`'s two values are file literals, so quoting is
-provably a no-op, while `cross-env.sh`'s is operator-reachable, so quoting is a
-real argv change only a build can price.
+— and no build can rule on them either. The last frozen `SC2206` row, in
+`cross-env.sh`, closed on 2026-10-25: its operator-provided CMake policy value
+now stays one argument, proven by `test-cross-cmake-argv.sh` and a mutation that
+restores the unsafe split. This does not exercise a cross compiler build.
 
 **Why it exists.** `lint-shell.sh` gates at `-S error` and prints warnings as
 advisory noise (only with `--warning`), so those 177 findings were watched by nothing: the 178th was

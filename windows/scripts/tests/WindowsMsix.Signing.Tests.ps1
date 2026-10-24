@@ -23,6 +23,22 @@ Describe 'WindowsMsix.Signing' {
         -MsixOutPath $script:msixOut -InvokerScriptBlock $invoker
       return , $calls
     }
+    function Assert-MsixPfx {
+      param([Parameter(Mandatory)][string]$PfxPath, [securestring]$Password,
+        [Parameter(Mandatory)][string]$Thumbprint)
+      Test-Path $PfxPath | Should -BeTrue
+      $private = if ($Password) {
+        [Security.Cryptography.X509Certificates.X509Certificate2]::new($PfxPath, $Password,
+          [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+      } else {
+        [Security.Cryptography.X509Certificates.X509Certificate2]::new($PfxPath, '',
+          [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+      }
+      try {
+        $private.Thumbprint | Should -Be $Thumbprint
+        $private.HasPrivateKey | Should -BeTrue
+      } finally { $private.Dispose() }
+    }
   }
 
   AfterAll {
@@ -53,6 +69,23 @@ Describe 'WindowsMsix.Signing' {
       $calls = Invoke-MsixSigningFixture
 
       $calls.Count | Should -Be 0
+    }
+
+    It 'propagates a missing signing command instead of shipping unsigned' {
+      Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath {
+        throw [System.Management.Automation.CommandNotFoundException]::new('sdk resolver sentinel')
+      }
+
+      { Invoke-MsixSigningFixture } | Should -Throw '*sdk resolver sentinel*'
+    }
+
+    It 'keeps an ordinary signtool lookup failure advisory' {
+      Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { throw 'sdk lookup sentinel' }
+      Mock -ModuleName WindowsMsix.Signing -CommandName Write-BuildLogWarning {}
+
+      { Invoke-MsixSigningFixture } | Should -Not -Throw
+      Should -Invoke Write-BuildLogWarning -ModuleName WindowsMsix.Signing -Times 1 -Exactly `
+        -ParameterFilter { $Message -match 'MSIX signing step failed: sdk lookup sentinel' }
     }
 
     It 'signs and then verifies when a .pfx is present' {
@@ -89,6 +122,36 @@ Describe 'WindowsMsix.Signing' {
       $calls[1][0] | Should -Be 'verify'
       Should -Invoke Import-PfxCertificate -ModuleName WindowsMsix.Signing -Times 1 -Exactly
     }
+    }
+  }
+
+  Context 'New-TestSigningCertificate' {
+    It 'writes a PFX with a private key and a matching public certificate' {
+      $pfx = Join-Path $script:workspace 'throwaway.pfx'
+      $cer = Join-Path $script:workspace 'throwaway.cer'
+      $password = [securestring]::new()
+      foreach ($char in 'fixture-password'.ToCharArray()) { $password.AppendChar($char) }
+      try {
+        $thumbprint = New-TestSigningCertificate -Subject 'CN=ANTfrastructure Test' `
+          -PfxPath $pfx -CerPath $cer -Password $password
+        Assert-MsixPfx -PfxPath $pfx -Password $password -Thumbprint $thumbprint
+      } finally { $password.Dispose() }
+
+      Test-Path $cer | Should -BeTrue
+      $public = [Security.Cryptography.X509Certificates.X509Certificate2]::new($cer)
+      try {
+        $public.Thumbprint | Should -Be $thumbprint
+        $public.HasPrivateKey | Should -BeFalse
+      } finally { $public.Dispose() }
+    }
+
+    It 'writes an unprotected PFX without a separate public file by default' {
+      $pfx = Join-Path $script:workspace 'unprotected.pfx'
+      $cer = Join-Path $script:workspace 'unprotected.cer'
+      $thumbprint = New-TestSigningCertificate -Subject 'CN=ANTfrastructure Unprotected Test' -PfxPath $pfx
+
+      Test-Path $cer | Should -BeFalse
+      Assert-MsixPfx -PfxPath $pfx -Thumbprint $thumbprint
     }
   }
 }

@@ -9,6 +9,8 @@ import collections
 import json
 import re
 import tomllib
+from collections.abc import Iterator
+from types import ModuleType
 
 import renovate_cmake
 import renovate_locator
@@ -16,6 +18,8 @@ import renovate_locator
 # start/end: the version's half-open span in leaf; why: "" or the reason a readable declaration may not move.
 Decl = collections.namedtuple("Decl", "path leaf start end why",
                               defaults=("",))
+DeclPath = tuple[object, ...]
+Leaves = dict[DeclPath, tuple[str, object]]
 
 # Every manager renovate_locator.py can edit must be verifiable here; test-renovate-audit.sh asserts it.
 FORMATS = {
@@ -46,7 +50,7 @@ class Unreadable(Exception):
     """This file's meaning cannot be read, so an edit to it cannot be audited."""
 
 
-def _yaml():
+def _yaml() -> ModuleType:
     """PyYAML, or a refusal: a hand-rolled fallback is exactly what this module replaces."""
     try:
         import yaml
@@ -58,12 +62,12 @@ def _yaml():
     return yaml
 
 
-def _oneline(text):
+def _oneline(text) -> str:
     """One line: these messages travel through a tab-separated plan row."""
     return " ".join(str(text).split())
 
 
-def _duplicate(kind, key):
+def _duplicate(kind, key) -> str:
     """The one wording for a repeated key; last-wins parsing would hide the second declaration."""
     return ("this %s declares %r twice, so the file says two things about it. "
             "Which one a report means is not knowable, and a manifest that "
@@ -75,7 +79,7 @@ def _duplicate(kind, key):
 _LOADER = None
 
 
-def _loader():
+def _loader() -> type:
     """A SafeLoader that refuses a duplicate mapping key instead of resolving it last-wins."""
     global _LOADER
     if _LOADER is not None:
@@ -83,7 +87,7 @@ def _loader():
     yaml = _yaml()
 
     class Loader(yaml.SafeLoader):
-        def construct_mapping(self, node, deep=False):
+        def construct_mapping(self, node, deep=False) -> dict[object, object]:
             seen = set()
             for key_node, _value in node.value:
                 key = self.construct_object(key_node, deep=True)
@@ -98,7 +102,7 @@ def _loader():
     return _LOADER
 
 
-def _parse_yaml(body):
+def _parse_yaml(body) -> object:
     yaml = _yaml()
     try:
         return yaml.load(body, Loader=_loader())
@@ -106,7 +110,7 @@ def _parse_yaml(body):
         raise Unreadable("PyYAML cannot read it: %s" % _oneline(exc)) from exc
 
 
-def _json_pairs(pairs):
+def _json_pairs(pairs) -> dict[str, object]:
     """One JSON object, refusing a key written twice (json alone takes last-wins)."""
     out = {}
     for key, value in pairs:
@@ -116,11 +120,11 @@ def _json_pairs(pairs):
     return out
 
 
-def _parse_json(body):
+def _parse_json(body) -> object:
     return json.loads(body, object_pairs_hook=_json_pairs)
 
 
-def _parse_env(body):
+def _parse_env(body) -> dict[str, dict[str, str]]:
     """An annotated env file as {depName: {KEY: value}}, read independently of the locator's regexes."""
     ann = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
     kv = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
@@ -150,7 +154,7 @@ def _parse_env(body):
     return out
 
 
-def _joined(lines):
+def _joined(lines) -> list[str]:
     """requirements.txt lines with pip's backslash continuations joined."""
     out = []
     held = ""
@@ -188,7 +192,7 @@ def parse_requirements(text):
     return out
 
 
-def _spec_and_options(text):
+def _spec_and_options(text) -> tuple[str, str]:
     """(specifier, glued-on options such as --hash), so the digests are not compared as the version."""
     cut = text.find(" --")
     if cut < 0:
@@ -279,25 +283,25 @@ def show(path):
     return out or "(the document root)"
 
 
-def _paths(paths):
+def _paths(paths) -> str:
     return ", ".join(sorted(show(path) for path in paths)) or "(none)"
 
 
 # Declarations, read off the parsed document where the locator has to guess with regexes
-def _mapping(node):
+def _mapping(node) -> dict[object, object]:
     return node if isinstance(node, dict) else {}
 
 
-def _sequence(node):
+def _sequence(node) -> list[object]:
     return node if isinstance(node, list) else []
 
 
-def _whole(path, text):
+def _whole(path, text) -> Decl:
     """A Decl over a whole string leaf, where pub, npm and cargo state only the version."""
     return Decl(path, text, 0, len(text))
 
 
-def _step_nodes(struct):
+def _step_nodes(struct) -> Iterator[tuple[DeclPath, dict[object, object]]]:
     """(path, mapping) for each job, job step and composite step: the only places `uses:` declares."""
     root = _mapping(struct)
     for job, node in _mapping(root.get("jobs")).items():
@@ -312,7 +316,7 @@ def _step_nodes(struct):
             yield ("runs", "steps", i), step
 
 
-def _uses(path, node, want):
+def _uses(path, node, want) -> Decl | None:
     """The Decl for one `uses:` naming this action, split at the last `@`."""
     text = node.get("uses")
     if not isinstance(text, str):
@@ -335,9 +339,12 @@ def decl_actions(struct, dep):
 def decl_pub(struct, dep):
     """The dep's scalar in a top-level pubspec section; a map-shaped dep states no version here."""
     root = _mapping(struct)
-    return [_whole((section, dep), root[section][dep])
-            for section in renovate_locator.PUB_SECTIONS
-            if isinstance(_mapping(root.get(section)).get(dep), str)]
+    out = []
+    for section in renovate_locator.PUB_SECTIONS:
+        version = _mapping(root.get(section)).get(dep)
+        if isinstance(version, str):
+            out.append(_whole((section, dep), version))
+    return out
 
 
 def decl_precommit(struct, dep):
@@ -351,14 +358,14 @@ def decl_precommit(struct, dep):
     return out
 
 
-def _dig(struct, path):
+def _dig(struct, path) -> object:
     node = struct
     for part in path:
         node = _mapping(node).get(part)
     return node
 
 
-def _array(out, array, path, want):
+def _array(out, array, path, want) -> None:
     """Every PEP 508 string in one dependency array that names `want`."""
     for i, text in enumerate(_sequence(array)):
         if not isinstance(text, str):
@@ -383,12 +390,13 @@ def decl_pep621(struct, dep):
     return out
 
 
-def _cargo_roots(struct):
+def _cargo_roots(struct) -> Iterator[tuple[DeclPath, dict[object, object]]]:
     """Mappings whose `[dependencies]` are cargo's: root, `[workspace]`, each `[target.<cfg>]`."""
     root = _mapping(struct)
     yield (), root
-    if isinstance(root.get("workspace"), dict):
-        yield ("workspace",), root["workspace"]
+    workspace = root.get("workspace")
+    if isinstance(workspace, dict):
+        yield ("workspace",), workspace
     for cfg, node in _mapping(root.get("target")).items():
         if isinstance(node, dict):
             yield ("target", cfg), node
@@ -402,17 +410,20 @@ def decl_cargo(struct, dep):
             spec = _mapping(node.get(table)).get(dep)
             if isinstance(spec, str):
                 out.append(_whole(base + (table, dep), spec))
-            elif isinstance(_mapping(spec).get("version"), str):
+            elif isinstance(version := _mapping(spec).get("version"), str):
                 out.append(_whole(base + (table, dep, "version"),
-                                  spec["version"]))
+                                  version))
     return out
 
 
 def decl_npm(struct, dep):
     root = _mapping(struct)
-    return [_whole((obj, dep), root[obj][dep])
-            for obj in renovate_locator.NPM_OBJECTS
-            if isinstance(_mapping(root.get(obj)).get(dep), str)]
+    out = []
+    for obj in renovate_locator.NPM_OBJECTS:
+        version = _mapping(root.get(obj)).get(dep)
+        if isinstance(version, str):
+            out.append(_whole((obj, dep), version))
+    return out
 
 
 def decl_annotated(struct, dep):
@@ -426,6 +437,8 @@ def decl_requirements(struct, dep):
     want = renovate_locator.normalise(dep)
     out = []
     for i, entry in enumerate(_sequence(struct)):
+        if not isinstance(entry, dict):
+            continue
         if entry.get("name") is None:
             continue
         if renovate_locator.normalise(entry["name"]) != want:
@@ -457,7 +470,7 @@ DECLARERS = {
 
 
 # The invariant, computed before the edit and checked after it
-def _miscount(dep, old, count, found, at_old):
+def _miscount(dep, old, count, found, at_old) -> str:
     """Why the parse and the report disagree: declared nowhere, elsewhere, or more often."""
     where = ", ".join("%s=%s" % (show(d.path), d.leaf[d.start:d.end])
                       for d in found)
@@ -476,7 +489,7 @@ def _miscount(dep, old, count, found, at_old):
             % (dep, where, len(at_old), old, count))
 
 
-def _crashed(doing, exc):
+def _crashed(doing, exc) -> str:
     """A refusal naming an unexpected exception, which must not escape past the rollback."""
     return ("%s raised %s: %s. That is a defect in the auditor rather than a "
             "verdict on the file, and an audit that cannot finish does not "
@@ -484,7 +497,7 @@ def _crashed(doing, exc):
             % (doing, type(exc).__name__, _oneline(exc)))
 
 
-def _expected(manager, text, groups):
+def _expected(manager, text, groups) -> tuple[dict[DeclPath, str], Leaves, str]:
     struct = parse(manager, text)
     leaves = flatten(struct)
     want = {}
@@ -522,7 +535,7 @@ def expected(manager, text, groups):
         return {}, {}, _crashed("working out what the edit may change", exc)
 
 
-def _shape(gone, born):
+def _shape(gone, born) -> str:
     """A bump adds and removes no path; one that does escaped its quoting or changed the format's reading."""
     parts = []
     if gone:
@@ -533,7 +546,7 @@ def _shape(gone, born):
             + ". A version bump adds and removes nothing")
 
 
-def _elsewhere(moved, want):
+def _elsewhere(moved, want) -> str:
     stray = moved - set(want)
     missed = set(want) - moved
     parts = []
@@ -555,7 +568,7 @@ def audit(manager, before_text, after_text, groups):
         return _crashed("auditing the file after the write", exc)
 
 
-def _audit(manager, before_text, after_text, groups):
+def _audit(manager, before_text, after_text, groups) -> str:
     want, before_leaves, why = expected(manager, before_text, groups)
     if why:
         return why

@@ -84,11 +84,11 @@ def uncomment(line, quotes=""):
     return line
 
 
-def _indent(line):
+def _indent(line) -> int:
     return len(line) - len(line.lstrip(" "))
 
 
-def _key_value(line, quotes="\"'"):
+def _key_value(line, quotes="\"'") -> Key | None:
     """The Key on a `key: value` line, or None; start indexes into `line`."""
     match = _YAML_KEY.match(line)
     if not match:
@@ -98,24 +98,24 @@ def _key_value(line, quotes="\"'"):
     return Key(match.group(1), match.start(1), match.end() + lead, body.strip())
 
 
-def _unquote(value, start):
+def _unquote(value, start) -> tuple[str, int]:
     """A YAML scalar with its surrounding quotes removed, span adjusted."""
     if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
         return value[1:-1], start + 1
     return value, start
 
 
-def _site(line_no, start, value):
+def _site(line_no, start, value) -> Site:
     return Site(line_no, start, start + len(value), value)
 
 
-def _blank_or_comment(line):
+def _blank_or_comment(line) -> bool:
     stripped = line.strip()
     return not stripped or stripped.startswith("#")
 
 
 # One YAML walk, three managers
-def _open_node(nodes, stack, name, col):
+def _open_node(nodes, stack, name, col) -> None:
     """Push a new mapping at `col`, closing everything it dedents out of."""
     while len(stack) > 1 and stack[-1]["col"] >= col:
         stack.pop()
@@ -153,7 +153,7 @@ def yaml_nodes(lines):
     return nodes
 
 
-def _named(node, name):
+def _named(node, name) -> bool:
     return node["parent"] is not None and node["parent"]["name"] == name
 
 
@@ -190,7 +190,7 @@ def find_pub(lines, dep, _dep_type):
 
 
 # pip_requirements
-def _requirement_body(line):
+def _requirement_body(line) -> str:
     """One line without its comment or a trailing continuation `\\`, which is not part of the specifier."""
     body = uncomment(line)
     stripped = body.rstrip()
@@ -224,12 +224,12 @@ PEP621_TABLES = (("project", "optional-dependencies"),
                  ("tool", "pdm", "dev-dependencies"))
 
 
-def _is_dep_array(path, key):
+def _is_dep_array(path, key) -> bool:
     table = tuple(path)
     return table in PEP621_TABLES or key in PEP621_KEYS.get(table, ())
 
 
-def _bracket_delta(body):
+def _bracket_delta(body) -> int:
     """`[` minus `]` outside quoted strings, so a bracket in a URL or marker cannot close the array."""
     depth = 0
     quote = ""
@@ -251,7 +251,7 @@ def _bracket_delta(body):
     return depth
 
 
-def _pep508_sites(body, num, want):
+def _pep508_sites(body, num, want) -> list[Site]:
     """Every quoted PEP 508 requirement on this line whose name is `want`."""
     out = []
     for match in _QUOTED.finditer(body):
@@ -335,7 +335,7 @@ def toml_path(header):
     return [part for part in out if part]
 
 
-def _toml_key(line, num, key):
+def _toml_key(line, num, key) -> Site | None:
     """The Site of `key = <value>` on this line, value UNPARSED, or None."""
     body = uncomment(line, "\"'")
     match = _TOML_KV.match(body)
@@ -349,7 +349,7 @@ def _toml_key(line, num, key):
     return _site(num, match.end() + lead, rest.strip())
 
 
-def _cargo_value(site):
+def _cargo_value(site) -> Site:
     """A cargo requirement narrowed to its version span; an inline table without `version` comes back empty."""
     text = site.value
     if len(text) >= 2 and text[0] in "\"'" and text[-1] == text[0]:
@@ -360,7 +360,7 @@ def _cargo_value(site):
     return Site(site.line, site.start, site.end, "")
 
 
-def _cargo_table(path):
+def _cargo_table(path) -> tuple[str, str | None] | None:
     """(table, crate or None) when the whole path is a cargo dependency table, else None."""
     parts = list(path)
     if parts[:1] == ["workspace"]:
@@ -400,7 +400,7 @@ def find_cargo(lines, dep, _dep_type):
 
 
 # npm
-def _json_string_end(text, start):
+def _json_string_end(text, start) -> int:
     """The index of the quote closing the JSON string that opens at `start`."""
     i = start + 1
     while i < len(text):
@@ -564,11 +564,11 @@ def sites(manager, lines, dep, dep_type=""):
     return finder([line.rstrip("\r") for line in lines], dep, dep_type)
 
 
-def _numbers(found):
+def _numbers(found) -> str:
     return ",".join(str(site.line + 1) for site in found)
 
 
-def _values(found):
+def _values(found) -> str:
     return ", ".join("%d:%s" % (site.line + 1, site.value or "(no value)")
                      for site in found)
 

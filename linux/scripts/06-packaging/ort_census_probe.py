@@ -25,7 +25,7 @@ CHUNK = 16 << 20
 OVERLAP = 512
 
 
-def emit(*fields):
+def emit(*fields: object):
     print("\t".join("-" if f in (None, "") else str(f) for f in fields))
 
 

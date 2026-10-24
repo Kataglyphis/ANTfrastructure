@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-25 — Quality debt cleanup
+
+- Add a locked `quality/` uv project for the Python analysis environment and expand fatal ty checks from 129 to 140 of 146 tracked files; keep the remaining image-only and private imports visible in ignored reports.
+- Resolve all 20 missing variadic parameter annotations and make Ruff ANN002 and ANN003 fatal across every tracked Python file, with failing fixtures and mutation proofs.
+- Annotate 114 private returns in four Renovate Python scripts and three quality verifiers; make their Ruff ANN202 findings fatal, with selector and scope mutation proofs.
+- Quote the cross CMake policy option as one argument, remove its frozen ShellCheck SC2206 row, and prove the argument boundary with a focused test and mutation.
+- Extend enforced Windows Pester command coverage from eleven to thirteen modules: WebDAV has a 90% floor and MSIX signing an 80% floor, with new success/failure tests and missing-target mutation proofs.
+
 ## 2026-10-25 — Wider strict analysis and Windows coverage
 
 - Expand fatal ty checks from 93 to 129 of 146 tracked Python files, including the Windows certificate helper; retain full Linux and Windows diagnostic reports for the remaining optional-dependency files.

@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from collections.abc import Mapping
 from pathlib import Path
 
 SCRIPTS = Path(sys.argv.pop(1)).resolve()
@@ -28,9 +29,9 @@ consume() {
 """
 
 
-def run(command, **kwargs):
+def run(command, *, env: Mapping[str, str] | None = None):
     return subprocess.run(
-        command, check=False, capture_output=True, text=True, timeout=15, **kwargs
+        command, check=False, capture_output=True, text=True, timeout=15, env=env
     )
 
 

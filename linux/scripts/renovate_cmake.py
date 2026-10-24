@@ -7,6 +7,7 @@ See docs/dependency-updates.md#cmake-dependencies
 """
 import bisect
 import re
+from typing import NotRequired, TypedDict
 
 _IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _BRACKET = re.compile(r"\[(=*)\[")
@@ -18,7 +19,18 @@ _BLANK = " \t\r\n"
 _UNQUOTED_END = _BLANK + '()#"'
 
 
-def _bracket_end(text, i):
+class CmakeToken(TypedDict):
+    arg: NotRequired[str]
+    comment: NotRequired[str]
+    line: NotRequired[int]
+    paren: NotRequired[str]
+    quoted: NotRequired[bool]
+
+
+CmakeSite = tuple[tuple[str, str, int, str], str, int, int, str]
+
+
+def _bracket_end(text, i) -> int:
     """The index past a bracket argument opening at i, or -1 when none opens there."""
     match = _BRACKET.match(text, i)
     if match is None:
@@ -29,7 +41,7 @@ def _bracket_end(text, i):
     return close + len(match.group(1)) + 2
 
 
-def _comment(text, i):
+def _comment(text, i) -> tuple[int, str]:
     """(end, text) of the comment at i: a bracket comment, or the rest of the line."""
     end = _bracket_end(text, i + 1)
     if end < 0:
@@ -38,7 +50,7 @@ def _comment(text, i):
     return end, text[i:end]
 
 
-def _quoted(text, i):
+def _quoted(text, i) -> tuple[int, str]:
     """(end, content) of the quoted argument opening at i; a backslash escapes the next character."""
     j = i + 1
     while j < len(text):
@@ -51,7 +63,7 @@ def _quoted(text, i):
     raise ValueError(f"a quoted argument opening at offset {i} never closes")
 
 
-def _unquoted(text, i):
+def _unquoted(text, i) -> tuple[int, str]:
     """(end, text) of the unquoted argument at i."""
     j = i
     while j < len(text) and text[j] not in _UNQUOTED_END:
@@ -59,7 +71,7 @@ def _unquoted(text, i):
     return j, text[i:j]
 
 
-def _token(text, i, line):
+def _token(text, i, line) -> tuple[int, CmakeToken]:
     """(end, token) for one argument-list token at i that is not a paren."""
     if text[i] == "#":
         end, body = _comment(text, i)
@@ -74,7 +86,7 @@ def _token(text, i, line):
     return end, {"arg": body, "line": line, "quoted": False}
 
 
-def _arguments(text, i, lines):
+def _arguments(text, i, lines) -> tuple[int, list[CmakeToken]]:
     """(end, tokens) of the argument list opening at i; nested parens stay tokens, as CMake keeps them."""
     depth, args = 0, []
     i += 1
@@ -94,7 +106,7 @@ def _arguments(text, i, lines):
     raise ValueError("an argument list never closes")
 
 
-def _put(out, name, line, item):
+def _put(out, name, line, item) -> None:
     """Key a top-level item by what a reader looks for, `<command>@<line>`, unique even for two on one line."""
     key = f"{name}@{line}"
     n = 2
@@ -108,7 +120,7 @@ def parse(text):
     """Every top-level command and comment, in file order; a file CMake would not read raises ValueError."""
     breaks = [m.start() for m in re.finditer("\n", text)]
 
-    def lines(i):
+    def lines(i) -> int:
         return bisect.bisect_left(breaks, i) + 1
 
     out, i = {}, 0
@@ -131,24 +143,24 @@ def parse(text):
     return out
 
 
-def _names(token, dep):
+def _names(token, dep) -> bool:
     match = _ANNOTATION.match(token.get("comment", ""))
     return match is not None and match.group(1) == dep
 
 
-def _keyword(token, word):
+def _keyword(token, word) -> bool:
     return token.get("arg") == word and not token.get("quoted")
 
 
-def _at(args, j):
+def _at(args, j) -> CmakeToken:
     return args[j] if 0 <= j < len(args) else {}
 
 
-def _whole(key, j, token):
+def _whole(key, j, token) -> CmakeSite:
     return ((key, "args", j, "arg"), token["arg"], 0, len(token["arg"]), "")
 
 
-def _annotated(key, args, j):
+def _annotated(key, args, j) -> list[CmakeSite]:
     """The value the annotation at args[j] points at on the very next line: `GIT_TAG <v>` or `"<v>"`."""
     nxt = _at(args, j + 1)
     if nxt.get("line") != args[j]["line"] + 1:
@@ -160,12 +172,12 @@ def _annotated(key, args, j):
     return []
 
 
-def _github(url, dep):
+def _github(url, dep) -> bool:
     return url in {host + dep + tail for host in ("https://github.com/", "git@github.com:")
                    for tail in ("", ".git")}
 
 
-def _git(key, args, j, dep):
+def _git(key, args, j, dep) -> list[CmakeSite]:
     """GIT_REPOSITORY <dep's URL> GIT_TAG <dotted tag>, with nothing between them; a branch or a SHA is no version."""
     url, tag, value = _at(args, j + 1), _at(args, j + 2), _at(args, j + 3)
     if not (_github(url.get("arg"), dep) and _keyword(tag, "GIT_TAG")):
@@ -175,7 +187,7 @@ def _git(key, args, j, dep):
     return [_whole(key, j + 3, value)]
 
 
-def _hashed(args):
+def _hashed(args) -> str:
     """Why a tag archive checked by a hash is not moved, or ""."""
     for word in ("URL_HASH", "URL_MD5"):
         if any(_keyword(token, word) for token in args):
@@ -185,7 +197,7 @@ def _hashed(args):
     return ""
 
 
-def _archive(key, args, j, dep):
+def _archive(key, args, j, dep) -> list[CmakeSite]:
     """URL https://github.com/<dep>/archive/refs/tags/<tag>.zip|.tar.gz: the tag inside the URL."""
     url = _at(args, j + 1).get("arg") or ""
     match = _ARCHIVE.fullmatch(url)
@@ -194,7 +206,7 @@ def _archive(key, args, j, dep):
     return [((key, "args", j + 1, "arg"), url, match.start(2), match.end(2), _hashed(args))]
 
 
-def _in_command(key, args, dep):
+def _in_command(key, args, dep) -> list[CmakeSite]:
     out = []
     for j, token in enumerate(args):
         if _names(token, dep):
@@ -206,7 +218,7 @@ def _in_command(key, args, dep):
     return out
 
 
-def _set_after(annotation, item):
+def _set_after(annotation, item) -> list[CmakeSite]:
     """`set(<NAME> <v>` on the line right below a top-level annotation: <v> is the second argument."""
     key, command = item
     args = command.get("args") or []

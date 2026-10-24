@@ -48,11 +48,11 @@ def style(rel):
     return None
 
 
-def _prose(text):
+def _prose(text) -> bool:
     return bool(text.strip()) and not NOT_PROSE.search(text.strip())
 
 
-def _heredoc_word(line):
+def _heredoc_word(line) -> str | None:
     """The delimiter of a heredoc this shell line opens; `<<` inside quotes or a comment opens none."""
     quote, i = None, 0
     while i < len(line):
@@ -75,7 +75,7 @@ def _heredoc_word(line):
     return None
 
 
-def _ps_quote_after(line, quote):
+def _ps_quote_after(line, quote) -> str | None:
     """What is still open at the end of a PowerShell ``line``: None, "'", '"' or "<#" (a block comment)."""
     i = 0
     while i < len(line):
@@ -107,7 +107,7 @@ def _ps_quote_after(line, quote):
     return quote
 
 
-def _hash_flags(src, shell, powershell):
+def _hash_flags(src, shell, powershell) -> list[bool]:
     flags, end, here, quote = [], None, False, None
     for line in src.split("\n"):
         s = line.strip()
@@ -134,7 +134,7 @@ def _hash_flags(src, shell, powershell):
     return flags
 
 
-def _python_flags(src):
+def _python_flags(src) -> list[bool]:
     lines = src.split("\n")
     flags, code = [False] * len(lines), set()
     try:
@@ -149,7 +149,7 @@ def _python_flags(src):
     return [f and i not in code for i, f in enumerate(flags)]
 
 
-def _slash_flags(src):
+def _slash_flags(src) -> list[bool]:
     flags, in_block, doc = [], False, False
     for line in src.split("\n"):
         s = line.strip()
@@ -245,7 +245,7 @@ def main():
         print("  allow: {}".format(allow))
     print("  {} block(s) over the limit; {} frozen".format(len(keys), len(frozen)))
 
-    def _block(k):
+    def _block(k) -> str:
         rel, _ = k.split("\t")
         start, n = keys[k]
         return "{}:{}  {} lines".format(rel, start, n)

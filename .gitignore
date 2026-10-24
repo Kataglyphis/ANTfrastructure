@@ -4,6 +4,7 @@ docs/_build/*
 # uv project environments are local build products.
 /.venv/
 /docs/.venv/
+/quality/.venv/
 # Older Python CI revisions still write reports here.
 /docs/test_results/
 # The docs build stages report copies here for publication.

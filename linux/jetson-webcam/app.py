@@ -163,7 +163,7 @@ def make_handler(jpegs):
     return Handler
 
 
-def run_or_die(target, *args):
+def run_or_die(target, *args: object):
     # A dead worker thread must stop the server, not leave it streaming nothing.
     try:
         target(*args)

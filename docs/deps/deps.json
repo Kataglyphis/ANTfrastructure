@@ -1513,6 +1513,30 @@
               "url": "https://github.com/astral-sh/ty",
               "license": "MIT",
               "spdx": "MIT"
+            },
+            {
+              "name": "markdown-it-py (quality analysis)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/executablebooks/markdown-it-py",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "pytest (quality analysis)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/pytest-dev/pytest",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "PyYAML (quality analysis)",
+              "var": null,
+              "version_fixed": "locked in quality/uv.lock",
+              "url": "https://github.com/yaml/pyyaml",
+              "license": "MIT",
+              "spdx": "MIT"
             }
           ]
         }

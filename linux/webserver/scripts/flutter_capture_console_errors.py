@@ -69,7 +69,7 @@ class SpaHandler(http.server.SimpleHTTPRequestHandler):
             return os.path.join(self.directory, "index.html")
         return translated
 
-    def log_message(self, format, *args):
+    def log_message(self, format: str, *args: object) -> None:
         pass
 
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Strict ty cannot resolve optional or image-only imports here; see docs/code-quality-tooling.md#python-type-analysis.
+# Image-only imports and remaining annotation debt stay report-only; see docs/code-quality-tooling.md#python-type-analysis.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -11,7 +11,14 @@ load_versions_env linux/scripts/01-core/tool-pins.env
 : "${TY_VERSION:?TY_VERSION is missing from tool-pins.env}"
 : "${RUFF_VERSION:?RUFF_VERSION is missing from tool-pins.env}"
 command -v uvx >/dev/null 2>&1 || { echo "uvx is required for ty@${TY_VERSION}" >&2; exit 2; }
+command -v uv >/dev/null 2>&1 || { echo "uv is required for the locked Python type environment" >&2; exit 2; }
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "A Git worktree is required for the Python type scan" >&2; exit 2; }
+
+quality_venv="${ROOT}/quality/.venv"
+UV_PROJECT_ENVIRONMENT="${quality_venv}" uv sync --project "${ROOT}/quality" --locked --python 3.14
+quality_python="${quality_venv}/bin/python"
+if [ ! -f "${quality_python}" ]; then quality_python="${quality_venv}/Scripts/python.exe"; fi
+[ -f "${quality_python}" ] || { echo "The locked Python type environment has no interpreter" >&2; exit 2; }
 
 report_dir="${ROOT}/logs/code-quality"
 mkdir -p "${report_dir}"
@@ -21,15 +28,17 @@ strict_report="${report_dir}/ty-quality-gate.txt"
 windows_gate_report="${report_dir}/ty-windows-gate.txt"
 annotations_report="${report_dir}/ruff-annotations.txt"
 annotations_gate_report="${report_dir}/ruff-annotations-gate.txt"
+private_returns_report="${report_dir}/ruff-private-returns-gate.txt"
 
 mapfile -d '' -t py_files < <(git ls-files -z -- '*.py')
 mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs/scripts/*.py' \
   'linux/ansible/scripts/*.py' 'linux/host-config/*.py' 'linux/llm-stack/gateway/*.py' \
-  'linux/llm-stack/tests/gateway_e2e/gw_*.py' \
+  'linux/llm-stack/tests/*.py' \
   'linux/scripts/01-core/manifest-*.py' 'linux/scripts/01-core/registry-*.py' \
   'linux/scripts/02-toolchain/oci-layers-extract.py' \
   'linux/scripts/02-toolchain/registry-platform-digest.py' \
   'linux/scripts/02-toolchain/python/free-threaded-wheel.py' \
+  'linux/scripts/02-toolchain/python/free-threaded-wheel-tests.py' \
   'linux/scripts/02-toolchain/python/verify-test-reports.py' \
   'linux/scripts/02-toolchain/python/wheel-smoke.py' \
   'linux/scripts/03-media/*.py' 'linux/scripts/05-frameworks/*.py' \
@@ -38,15 +47,20 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/06-packaging/python-app-selftest.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' \
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
-  'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/renovate_cmake.py' \
+  'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
+  'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \
   'linux/scripts/renovate_locator.py' 'linux/scripts/renovate_planner.py' \
   'linux/scripts/verify_*.py' \
   'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
   'linux/scripts/extract_embedded_python.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
+mapfile -d '' -t private_return_files < <(git ls-files -z -- 'linux/scripts/renovate_*.py' \
+  'linux/scripts/verify_package_names.py' 'linux/scripts/verify_comment_size.py' \
+  'linux/scripts/verify_gate_registry.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
+[ "${#private_return_files[@]}" -ge 7 ] || { echo "Missing tracked Python private-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()
@@ -58,7 +72,7 @@ for file in "${py_files[@]}"; do
   fi
 done
 
-ty=(uvx "ty@${TY_VERSION}" check --python-version 3.14 --output-format concise)
+ty=(uvx "ty@${TY_VERSION}" check --python "${quality_python}" --python-version 3.14 --output-format concise)
 search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python)
 
 # Findings remain visible during adoption; setup and checker crashes still fail CI.
@@ -98,9 +112,11 @@ strict_scan() {
   printf '%s: clean (%s files); %s\n' "${label}" "${count}" "${report}"
 }
 
-# Other ANN rules have existing findings, so only clean method-return rules can fail CI today.
-strict_scan "Ruff method annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
-  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN204,ANN205,ANN206 --output-format concise "${py_files[@]}"
+# ANN001/ANN201 and non-Renovate ANN202 findings stay report-only.
+strict_scan "Ruff signature annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
+  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN002,ANN003,ANN204,ANN205,ANN206 --output-format concise "${py_files[@]}"
+strict_scan "Ruff private return gate" "${private_returns_report}" "${#private_return_files[@]}" \
+  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN202 --output-format concise "${private_return_files[@]}"
 strict_scan "ty quality gate" "${strict_report}" "${#quality_files[@]}" \
   "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}"
 strict_scan "ty Windows gate" "${windows_gate_report}" "${#windows_quality_files[@]}" \

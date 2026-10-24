@@ -9,6 +9,8 @@ import subprocess
 
 from gw_client import LogTail, call
 
+type JsonValue = str | int | float | bool | None | list[JsonValue] | dict[str, JsonValue]
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 STACK = os.path.dirname(os.path.dirname(HERE))
 SERVE = os.path.join(STACK, "scripts", "serve-stack.sh")
@@ -73,11 +75,11 @@ class Gateway:
         self.write_registry()
         self.log = LogTail(os.path.join(self.state, "logs", "requests.jsonl"))
 
-    def write_registry(self, **kw):
+    def write_registry(self, *, budget: int = 3900, listen: str | None = None):
         with open(self.registry_path, "w", encoding="utf-8") as fh:
-            json.dump(registry(self.lanes, self.ports, **kw), fh, indent=1)
+            json.dump(registry(self.lanes, self.ports, budget=budget, listen=listen), fh, indent=1)
 
-    def serve(self, *args, timeout=300):
+    def serve(self, *args: str, timeout=300):
         return subprocess.run(["bash", SERVE, *args], env=self.env, capture_output=True,
                               text=True, timeout=timeout, check=False)
 
@@ -91,14 +93,14 @@ class Gateway:
     def route(self, rid):
         return next(r for r in self.live("apisix.json")["routes"] if r["id"] == rid)
 
-    def post(self, model, key="lab", path="/v1/chat/completions", fake=None, **body):
+    def post(self, model, key="lab", path="/v1/chat/completions", fake=None, **body: JsonValue):
         body.setdefault("messages", [{"role": "user", "content": "hi"}])
         body = {k: v for k, v in body.items() if v is not None}
         headers = {f"X-Fake-{lane.capitalize()}": d for lane, d in (fake or {}).items()}
         return call(self.port, path, dict(body, model=model), key=self.keys.get(key, key),
                     headers=headers)
 
-    def exec(self, *cmd):
+    def exec(self, *cmd: str):
         """Run a command inside the live gateway container (not a validation one)."""
         engine = os.environ.get("ANTFRASTRUCTURE_LLM_ENGINE") or next(
             n for n in ("nerdctl", "docker") if shutil.which(n))

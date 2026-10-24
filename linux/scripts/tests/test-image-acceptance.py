@@ -13,6 +13,7 @@ import unittest
 import urllib.error
 from email.message import Message
 from pathlib import Path
+from typing import IO, Literal, TypedDict, Unpack
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "image-acceptance.py"
@@ -23,6 +24,15 @@ module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(module)
 INDEX_MEDIA = "application/vnd.oci.image.index.v1+json"
 MANIFEST_MEDIA = "application/vnd.oci.image.manifest.v1+json"
+
+
+class RunOptions(TypedDict, total=False):
+    text: Literal[True]
+    capture_output: bool
+    check: bool
+    timeout: float | None
+    stdout: IO[bytes] | int | None
+    stderr: IO[bytes] | int | None
 
 
 def index_bytes(platforms, *, attestations=False):
@@ -185,7 +195,7 @@ class ReceiptTests(unittest.TestCase):
                                      receipt=root / "result.json", engine="engine", replay=None)
         snapshot = {"repository": "owner/first", "revision": "c" * 40, "submodules": "", "data_locks": {}}
         cleanup_failed = False
-        def fake_run(command, **kwargs):
+        def fake_run(command, **kwargs: object):
             nonlocal cleanup_failed
             if command[1] == "run":
                 if timeout:
@@ -198,7 +208,7 @@ class ReceiptTests(unittest.TestCase):
         def fake_snapshot(checkout, spec, expected):
             checkout.mkdir(parents=True, exist_ok=True)
             return dict(snapshot, repository=spec["repository"])
-        def fake_git(checkout, *command):
+        def fake_git(checkout, *command: str):
             if command[0] == "status":
                 return " M Cargo.lock" if dirty_after and Path(checkout) != module.ROOT else ""
             return "b" * 40
@@ -237,7 +247,7 @@ class ReceiptTests(unittest.TestCase):
                 module.git(checkout, "add", ".")
                 module.git(checkout, "-c", "user.name=Acceptance test", "-c", "user.email=acceptance@example.invalid",
                            "commit", "--quiet", "-m", "fixture")
-                def fake_engine(command, checkout=checkout, **kwargs):
+                def fake_engine(command, checkout=checkout, **kwargs: Unpack[RunOptions]):
                     if command[0] != "engine":
                         return original_run(command, **kwargs)
                     if command[1] == "run":

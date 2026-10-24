@@ -146,6 +146,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Native and cross LLVM builds share source-cache validation and eviction in `common.sh`; retain their distinct fetch and build-directory policies.
    Cross and Canadian GCC share builder invocation; both callers raise builder failures explicitly, even when installed tools already exist.
    Android CMake consumers use `android_cmake_target_args` for NDK, ABI and API selection; keep their project options in the caller.
+   Cross CMake source builds pass `CMAKE_POLICY_VERSION_MINIMUM` as one argument, including operator-provided values with spaces; preserve caller option boundaries.
    Libstdc++ repair and pinning share the foreign-target predicate; keep raw arch comparison, probe fallback and unconditional target resolution.
    Cross-Python path helpers share context and directory lookup; preserve staged precedence, argument forwarding and failure short circuits.
    Vulkan target components share launcher and accounting; preserve required-component verdicts, WSI checks and glslang pass order.
@@ -172,11 +173,11 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
-   The hub's pinned ty gate strictly checks the tracked Python quality tools, tests and dependency-free build helpers on Linux, plus the Windows certificate helper; the full Linux and Windows Python scans and Ruff annotation audit stay visible in ignored `logs/code-quality/`. Ruff ANN204, ANN205 and ANN206 are strict over every tracked Python file; the other ANN findings remain reports. A checker setup failure is fatal. Ty checks types but does not require annotations.
+   The hub's locked `quality/` environment and pinned ty gate strictly check 140 tracked Python files, including quality tools, tests, build helpers and the Windows certificate helper; the full Linux and Windows scans stay visible in ignored `logs/code-quality/`. Ruff ANN002, ANN003, ANN204, ANN205 and ANN206 are strict over every tracked Python file; ANN202 is strict for four Renovate scripts and three quality verifiers. ANN001, ANN201 and remaining ANN202 findings stay in reports. A checker setup failure is fatal. Ty checks types but does not require annotations.
    Ruff B012 and B023 are fatal for tracked Python and extracted shell heredocs; keep the gate tier and its mutation proof intact.
    Consumer Python lint includes tracked shell heredocs; extraction failure is fatal and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
-   Windows Pester coverage must measure one file and executed commands in each of its eleven named modules; missing or empty reports, missing targets and scores below the module floor fail the test run.
+   Windows Pester coverage must measure one file and executed commands in each of its thirteen named modules; missing or empty reports, missing targets and scores below the module floor fail the test run.
    Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
    Consumer Windows PowerShell lint jobs report complexity over the same selected path; enable strict verdicts with `complexity-strict` after the consumer meets the limits.
 

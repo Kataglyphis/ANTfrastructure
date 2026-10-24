@@ -43,7 +43,7 @@ def _load(path):
     return yaml.load((HERE / path).read_text(encoding="utf-8"), Loader=_ComposeLoader)
 
 
-def _compose(*paths):
+def _compose(*paths: str):
     doc = _load(paths[0])
     for extra in paths[1:]:
         overlay = _load(extra)

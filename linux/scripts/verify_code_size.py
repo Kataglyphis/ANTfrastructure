@@ -195,7 +195,7 @@ def subjects(root, match, tops=None):
             if not tops or _under(rel, tops))
 
 
-def scan(*suffixes, root=None, tops=None):
+def scan(*suffixes: str, root=None, tops=None):
     """(path, relpath) per scan-set file ending in `suffixes`; with no root, sibling gates get the hub corpus."""
     return subjects(root, lambda fn: fn.endswith(suffixes), tops)
 

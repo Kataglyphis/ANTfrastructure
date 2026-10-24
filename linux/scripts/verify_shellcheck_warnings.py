@@ -44,7 +44,7 @@ def _native(path):
     return path
 
 
-def _lint(*args):
+def _lint(*args: str):
     # Anchored to this repo whatever the graded root: the shellcheck bootstrap and pins are the hub's.
     return subprocess.run([_bash(), LINT, *args], cwd=ROOT, capture_output=True, text=True)
 

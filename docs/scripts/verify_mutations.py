@@ -139,7 +139,7 @@ def _kill_group(pid, grace=5.0):
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
 
 
-def _kill_live_groups(*_):
+def _kill_live_groups(*_: object):
     """On exit or SIGTERM/SIGINT/SIGHUP: a test session started with start_new_session never sees the gate die."""
     with _LIVE_LOCK:
         groups = list(_LIVE_GROUPS)

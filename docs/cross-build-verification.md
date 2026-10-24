@@ -1601,6 +1601,9 @@ download_and_extract for curl --retry + temp-file hygiene (a hand-rolled
 `curl | tar` had neither). Never hard-fails: a download/build failure logs a
 WARN and returns 0 so the caller can degrade (e.g. OpenCV falls back to
 WITH_<lib>=OFF) instead of aborting the whole media stage.
+`CMAKE_POLICY_VERSION_MINIMUM` stays one CMake argument even when supplied by an
+operator with spaces; `test-cross-cmake-argv.sh` verifies the argument boundary
+with a CMake stub, without compiling a target library.
 
 ### `python_uv.sh`: which interpreter `uv sync` is pinned to
 

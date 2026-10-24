@@ -118,7 +118,7 @@ def read_plan(path):
     return plan
 
 
-def git(root, *args):
+def git(root, *args: str):
     return subprocess.run(["git", "-c", f"safe.directory={root}", "-C", str(root), *args],
                           text=True, capture_output=True, check=True, timeout=300).stdout.strip()
 
