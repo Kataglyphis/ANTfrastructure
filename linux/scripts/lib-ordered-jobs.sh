@@ -40,6 +40,11 @@ _oj_signal_policy() {
   [ -z "${definition}" ] || eval "_oj_capture_policy ${definition#trap }"
 }
 
+# An ignored caller INT must stay ignored in every owned child, including the watchdog.
+_oj_child_int_trap() {
+  if [ -n "${OJ_INT_POLICY}" ]; then trap "$1" INT; else trap '' INT; fi
+}
+
 _oj_dispatch_signal() {
   local pending="${OJ_SIGNAL}" policy
   [ "${pending}" -ne 0 ] || return 0
@@ -120,7 +125,8 @@ _oj_spawn_command() {
   [ "${OJ_GROUPS}" -eq 0 ] || set -m
   (
     set +m
-    trap - INT QUIT TERM USR1 EXIT
+    trap - QUIT TERM USR1 EXIT
+    _oj_child_int_trap -
     while [ ! -f "${OJ_DIR}/${index}.go" ]; do
       kill -0 "${_OJ_OWNER_PID}" 2>/dev/null || exit 143
       [ ! -e "${OJ_DIR}/cancelled" ] || exit 143
@@ -145,7 +151,8 @@ _oj_start_watchdog() {
   set -m
   (
     set +m
-    trap - INT QUIT TERM USR1 EXIT
+    trap - QUIT TERM USR1 EXIT
+    _oj_child_int_trap -
     while kill -0 "${_OJ_COMMAND_PID}" 2>/dev/null; do
       if [ "${SECONDS}" -ge "${end}" ]; then
         : > "${OJ_DIR}/${index}.timeout"
@@ -169,7 +176,8 @@ _oj_start() {
   _OJ_COMMAND_PID=""; _OJ_WATCH_PID=""; _OJ_COMPLETED=0; OJ_REAPING=0
   trap '_oj_worker_exit $?' EXIT
   trap '_oj_signal 143' TERM
-  trap ':' INT QUIT
+  trap ':' QUIT
+  _oj_child_int_trap ':'
   trap '_oj_signal 124' USR1
   _oj_spawn_command "${index}"
   if [ "${OJ_GROUPS}" -ne 0 ] && [ -n "${OJ_TIMEOUT:-}" ]; then _oj_start_watchdog "${index}"; fi
@@ -184,7 +192,7 @@ _oj_start() {
 _oj_launch() {
   local index="$1"
   OJ_LAUNCHING=1
-  ( trap - TERM USR1 EXIT; trap ':' INT QUIT; _oj_start "${index}" ) &
+  ( trap - TERM USR1 EXIT; trap ':' QUIT; _oj_child_int_trap ':'; _oj_start "${index}" ) &
   OJ_WORKERS[${index}]=$!
   OJ_LAUNCHING=0
   _oj_dispatch_signal

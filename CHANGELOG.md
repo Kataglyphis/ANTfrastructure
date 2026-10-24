@@ -20,6 +20,7 @@
 - Correct type errors in quality scripts, build helpers and tests; prove that a planted type error fails the new gate and that a failed consumer ty check fails the existing static-analysis driver.
 - Keep curated SBOM `--stdout` byte-identical to the generated file on Windows as well as Linux.
 - Refresh the mutation manifest totals so the documentation-number suite and Linux preflight agree with the measured inventory.
+- Preserve an ignored interrupt for scheduled job commands and use a valid module spec in the free-threaded load-trace fixture, fixing two Linux preflight failures.
 
 ## 2026-10-24 — CI quality evidence
 

@@ -690,6 +690,8 @@ GIL when it loads, and the proof below fails.
    `.pyd` counts as a module only when it exports `PyInit_<name>`, so a library the wheel bundles
    beside its modules is not loaded as one. The step fails when `sys._is_gil_enabled()` is true
    afterwards, and names each module whose `RuntimeWarning` re-enabled it.
+   A missing module spec or loader fails the proof; tests exercising the load trace use a
+   valid `ModuleSpec` with a loader.
 
 The image's own wheels get the same twin and the same proof in the media stage, decided by a table
 rather than a classifier

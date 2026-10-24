@@ -290,7 +290,7 @@ t_assert_eq "seen app.a seen app.b left ''" "$(FT_PROVE_TRACE="${_work}/trace" _
 import os
 trace = os.environ["FT_PROVE_TRACE"]
 seen = []
-ftw.importlib.util.spec_from_file_location = lambda name, path: name
+ftw.importlib.util.spec_from_file_location = lambda name, path: ftw.importlib.machinery.ModuleSpec(name, loader=object())
 def load(name):
     seen.append("seen " + open(trace).read())
 ftw.importlib.util.module_from_spec = load

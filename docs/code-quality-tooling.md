@@ -363,6 +363,9 @@ workers and stops their watchdogs and command groups. Nested runners receive a
 chance to run their own exit cleanup before forced termination. A lost supervisor
 or failed cleanup must reach the job report as an error. Caller-owned background
 jobs and returning or ignored signal handlers retain their existing policies.
+An ignored INT is also retained by the supervisor, watchdog and scheduled command
+when a signal reaches their process groups; otherwise an interrupted wait can report 130
+despite its caller ignoring INT.
 The lifecycle fixtures use bounded local processes; deliberately detached sessions
 and kernel signal-delivery failures are outside their coverage.
 
