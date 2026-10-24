@@ -112,6 +112,8 @@ _rust() {
     _rt_run() { printf "%s\n" "${RUST_OUT}"; }
     smoke_rust_target() { printf "x86_64-unknown-linux-gnu"; }
     _rt_versions_env_pin() { printf "1.98.0"; }
+    '"$(_extract _rt_run_optional)"'
+    '"$(_extract _smoke_runtime_pin_matches)"'
     '"$(_extract check_rust_toolchain)"'
     check_rust_toolchain img amd64' 2>&1
 }
@@ -146,6 +148,8 @@ _flutter() {
     _rt_run() { printf "opts=%s\n" "$*" > "${OPTS}"; printf "%s\n" "${FLUTTER_OUT}"; }
     smoke_elf_machine_grep() { case "$1" in amd64) printf "X86-64";; arm64) printf "AArch64";; esac; }
     _rt_versions_env_pin() { printf "3.47.1"; }
+    '"$(_extract _rt_run_optional)"'
+    '"$(_extract _smoke_runtime_pin_matches)"'
     '"$(_extract check_flutter)"'
     check_flutter img '"${2:-arm64}"'' 2>&1
   cat "${opts}"; rm -f "${opts}"
@@ -193,31 +197,31 @@ FOREIGN /opt/flutter/.git/FETCH_HEAD")" \
 
 
 # Advertised keys: neither "the image did not tell us" arm may be a SKIP
-_advert_gate() {
-  VERDICTS="$1" PROBE_RC="${2:-0}" bash -c '
+_truth_gate_output() {
+  local verdicts="$1" probe_rc="$2" gate="$3"
+  VERDICTS="${verdicts}" PROBE_RC="${probe_rc}" bash -c '
     '"${_STUBS}"'
-    _advert_verdicts() { printf "%s\n" "${VERDICTS}"; }
+    _truth_fixture_verdicts() { printf "%s\n" "${VERDICTS}"; }
+    _advert_verdicts() { _truth_fixture_verdicts; }
+    _venv_set_verdicts() { _truth_fixture_verdicts; }
     _SHIPPED_TRUTH_PROBE=""
     _SHIPPED_TRUTH_PROBE_RC="${PROBE_RC}"
     '"$(_extract _smoke_probe_required)"'
     '"$(_extract _smoke_unknown_verdict)"'
     '"$(_extract _advertised_probe_failure)"'
+    '"$(_extract _venv_probe_failure)"'
+    '"$(_extract _shipped_truth_section)"'
+    '"$(_extract _shipped_truth_verdict_rows)"'
+    '"$(_extract _advertised_verdict_line)"'
+    '"$(_extract _check_advertised_versions)"'
+    '"$(_extract _check_venv_package_set)"'
     '"$(_extract check_advertised_versions)"'
-    check_advertised_versions img amd64' 2>&1
+    '"$(_extract check_venv_package_set)"'
+    '"${gate}"' img amd64' 2>&1
 }
 
-_venv_gate() {
-  VERDICTS="${2:-ASSERTED 1}" PROBE_RC="${1:-0}" bash -c '
-    '"${_STUBS}"'
-    _venv_set_verdicts() { printf "%s\n" "${VERDICTS}"; }
-    _SHIPPED_TRUTH_PROBE=""
-    _SHIPPED_TRUTH_PROBE_RC="${PROBE_RC}"
-    '"$(_extract _smoke_probe_required)"'
-    '"$(_extract _smoke_unknown_verdict)"'
-    '"$(_extract _venv_probe_failure)"'
-    '"$(_extract check_venv_package_set)"'
-    check_venv_package_set img amd64' 2>&1
-}
+_advert_gate() { _truth_gate_output "$1" "${2:-0}" check_advertised_versions; }
+_venv_gate() { _truth_gate_output "${2:-ASSERTED 1}" "${1:-0}" check_venv_package_set; }
 
 t_case "an incomplete shared probe fails the advertised gate with its own diagnostic"
 _out="$(_advert_gate "OK RUST_VERSION 1.98.0" 1)"

@@ -44,6 +44,42 @@ _gate() {
     printf "FAILURES=%s\n" "${FAILURES}"' 2>&1
 }
 
+_functional_output() {
+  local fn="$1" run_rc="$2"
+  FUNCTIONAL_RUN_RC="${run_rc}" bash -c '
+    '"${_STUBS}"'
+    RUN_COUNT=0
+    _rt_run() {
+      RUN_COUNT=$((RUN_COUNT+1))
+      printf "RUN_CONTEXT=<%s><%s> ARGC=%s ARGV=<%s>\n" "${image_tag}" "${target_arch}" "$#" "$1"
+      printf "RUN_ARGS=<%s>\n" "$2"
+      printf "RUN_COMMAND=<%s>\n" "$3"
+      return "${FUNCTIONAL_RUN_RC}"
+    }
+    '"$(_extract _functional_smoke_gate)"'
+    '"$(_extract "$1")"'
+    '"$1"' img amd64
+    printf "RUN_COUNT=%s\nFAILURES=%s\n" "${RUN_COUNT}" "${FAILURES}"' _ "${fn}" 2>&1
+}
+
+_assert_functional_output() {
+  local fn="$1" run_rc="$2" verdict="$3" command_marker="$4" failures="$5" out
+  out="$(_functional_output "${fn}" "${run_rc}")"
+  t_assert_contains "${out}" "${verdict}" "${fn} keeps its exact verdict"
+  t_assert_contains "${out}" "RUN_CONTEXT=<img><amd64> ARGC=3 ARGV=<bash>" "${fn} keeps image and arch in dynamic scope"
+  t_assert_contains "${out}" 'RUN_ARGS=<-lc>' "${fn} keeps its shell invocation"
+  t_assert_contains "${out}" "${command_marker}" "${fn} keeps its probe command"
+  t_assert_contains "${out}" 'RUN_COUNT=1' "${fn} runs one probe"
+  t_assert_contains "${out}" "FAILURES=${failures}" "${fn} reports only the expected gate verdict"
+}
+
+_assert_functional_output check_ffmpeg 0 'PASS ffmpeg executes (amd64)' 'set -o pipefail' 0
+_assert_functional_output check_ffmpeg 1 'FAIL ffmpeg failed to execute in the runtime image (amd64)' '-version | head -1' 1
+_assert_functional_output check_gstreamer_core_pipeline 0 'PASS GStreamer core pipeline runs (amd64)' 'timeout 40' 0
+_assert_functional_output check_gstreamer_core_pipeline 1 'FAIL GStreamer core pipeline FAILED (amd64)' 'videotestsrc num-buffers=3' 1
+_assert_functional_output check_gstreamer_mandatory_plugins 0 'PASS GStreamer mandatory plugin set loads on amd64' 'timeout 30' 0
+_assert_functional_output check_gstreamer_mandatory_plugins 1 'FAIL GStreamer mandatory plugins missing/unloadable on amd64 (see MISSING: line above)' 'libav opencv onnx tflite' 1
+
 # The three ratchet cases differ only in the summary line and what must appear.
 _ratchet_says() {
   local summary="$1" want="$2" why="$3"

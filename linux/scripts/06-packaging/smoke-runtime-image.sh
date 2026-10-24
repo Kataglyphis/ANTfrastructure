@@ -408,18 +408,24 @@ echo "$o" | grep -Eq "\b5(\.0+)?\b" || exit 2' 2>&1)"; then
     echo ""
 }
 
+_functional_smoke_gate() {
+  local image_tag="$1" target_arch="$2" title="$3" success="$4" failure="$5"
+  shift 5
+  echo "--- Functional: ${title} ---"
+  if "$@"; then pass "${success}"; else fail "${failure}"; fi
+  echo ""
+}
+
+_rt_run_optional() { _rt_run "$@" 2>&1 || true; }
+
+_smoke_runtime_pin_matches() { printf '%s\n' "$1" | grep -qE "^$2 ${3:-[0-9]}"; }
+
 check_ffmpeg() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- Functional: ffmpeg ---"
-    # pipefail is required: head's 0 would hide an ffmpeg that cannot load a .so.
-    if _rt_run \
-         bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'; then
-      pass "ffmpeg executes (${target_arch})"
-    else
-      fail "ffmpeg failed to execute in the runtime image (${target_arch})"
-    fi
-    echo ""
+  # pipefail is required: head's 0 would hide an ffmpeg that cannot load a .so.
+  _functional_smoke_gate "$1" "$2" "ffmpeg" \
+    "ffmpeg executes ($2)" \
+    "ffmpeg failed to execute in the runtime image ($2)" \
+    _rt_run bash -lc 'set -o pipefail; v="$(command -v ffmpeg || echo /opt/ffmpeg/bin/ffmpeg)"; "$v" -version | head -1'
 }
 
 # As the image user, offline: --version alone passes a foreign-arch dart or root-owned .dart_tool. docs/artifact-copy-completeness.md#bootstrapping-flutter-in-the-package-stage
@@ -439,8 +445,8 @@ check_flutter() {
   fi
   pin="$(_rt_versions_env_pin FLUTTER_VERSION)"
   machine="$(smoke_elf_machine_grep "${target_arch}")"
-  out="$(_rt_run --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine; for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w "$d" ] || printf "UNWRITABLE %s\n" "$d"; done; find /opt/flutter ! -user "$(id -u)" -printf "FOREIGN %p\n" 2>/dev/null | head -3' 2>&1 || true)"
-  if ! printf '%s\n' "${out}" | grep -qE "^Flutter ${pin:-[0-9]}"; then
+  out="$(_rt_run_optional --network none bash -lc 'flutter --suppress-analytics --version 2>&1 | grep -m1 -E "^Flutter "; LC_ALL=C readelf -h /opt/flutter/bin/cache/dart-sdk/bin/dart 2>&1 | grep -m1 Machine; for d in /opt/flutter/bin/cache /opt/flutter/packages/flutter_tools/.dart_tool; do [ -w "$d" ] || printf "UNWRITABLE %s\n" "$d"; done; find /opt/flutter ! -user "$(id -u)" -printf "FOREIGN %p\n" 2>/dev/null | head -3')"
+  if ! _smoke_runtime_pin_matches "${out}" Flutter "${pin}"; then
     fail "flutter does not run offline as the image user, or is not FLUTTER_VERSION=${pin:-?} (${target_arch}): $(printf '%s' "${out}" | head -1)"
   elif ! printf '%s\n' "${out}" | grep -qF "${machine}"; then
     fail "the cached Dart SDK is not ${machine} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- bootstrapped on the wrong arch"
@@ -462,8 +468,8 @@ check_rust_toolchain() {
   echo "--- Functional: rust toolchain ---"
   triple="$(smoke_rust_target "${target_arch}")"
   pin="$(_rt_versions_env_pin RUST_VERSION)"
-  out="$(_rt_run bash -lc 'rustc --version 2>&1 | head -1; rustup show active-toolchain 2>&1 | head -1; command -v cargo-cbuild' 2>&1 || true)"
-  if ! printf '%s\n' "${out}" | grep -qE "^rustc ${pin:-[0-9]}"; then
+  out="$(_rt_run_optional bash -lc 'rustc --version 2>&1 | head -1; rustup show active-toolchain 2>&1 | head -1; command -v cargo-cbuild')"
+  if ! _smoke_runtime_pin_matches "${out}" rustc "${pin}"; then
     fail "rustc does not run or is not RUST_VERSION=${pin:-?} in the ${target_arch} image: $(printf '%s' "${out}" | head -1)"
   elif ! printf '%s\n' "${out}" | grep -qF -- "-${triple}"; then
     fail "the active rust toolchain is not ${triple} on ${target_arch}: $(printf '%s\n' "${out}" | sed -n 2p) -- the builder's toolchain was shipped instead of a native one"
@@ -1529,15 +1535,11 @@ _rvv_verdicts() {
 }
 
 # Shared shipped-truth records count only explicit OK and BAD results.
-_shipped_truth_verdict_gate() {
-  local probe_failure="$1" pass_prefix="$2" pass_suffix="$3" parser="$4" renderer="$5"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "${probe_failure}"
-    echo ""
-    return 0
-  fi
+_shipped_truth_verdict_rows() {
+  local pass_prefix="$1" pass_suffix="$2" parser="$3" renderer="$4" empty_failure="${5:-}"
   local line verb ok=0 bad=0
   while IFS= read -r line; do
+    [ -n "${line}" ] || continue
     verb="${line%% *}"
     case "${verb}" in
       OK)  ok=$((ok + 1)) ;;
@@ -1546,7 +1548,18 @@ _shipped_truth_verdict_gate() {
     "${renderer}" "${line}"
   done < <("${parser}" "${_SHIPPED_TRUTH_PROBE}")
   [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "${pass_prefix}${ok}${pass_suffix}"
+  if [ "${ok}" -eq 0 ] && [ "${bad}" -eq 0 ] && [ -n "${empty_failure}" ]; then fail "${empty_failure}"; fi
   echo ""
+}
+
+_shipped_truth_verdict_gate() {
+  local probe_failure="$1" pass_prefix="$2" pass_suffix="$3" parser="$4" renderer="$5" empty_failure="${6:-}"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "${probe_failure}"
+    echo ""
+    return 0
+  fi
+  _shipped_truth_verdict_rows "${pass_prefix}" "${pass_suffix}" "${parser}" "${renderer}" "${empty_failure}"
 }
 
 _rvv_verdict_line() {
@@ -1631,39 +1644,36 @@ _smoke_probe_required() {
   echo ""
   return 1
 }
-
 _advertised_probe_failure() {
   local target_arch="$1"
   fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
 }
-
-check_advertised_versions() {
-  local image_tag="$1"
-  local target_arch="$2"
-  echo "--- SHIPPED-TRUTH A: advertised env versions == actual (${target_arch}) ---"
-  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _advertised_probe_failure \
+_shipped_truth_section() {
+  local image_tag="$1" target_arch="$2" title="$3" failure_renderer="$4" gate="$5"
+  echo "--- SHIPPED-TRUTH ${title} (${target_arch}) ---"
+  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - "${failure_renderer}" \
     "${target_arch}" || return 0
-  local verb key rest ok=0 bad=0
-  while read -r verb key rest; do
-    [ -n "${verb}" ] || continue
-    case "${verb}" in
-      OK)     echo "  OK   ${key}=${rest} matches the image"; ok=$((ok + 1)) ;;
-      BAD)    bad=$((bad + 1))
-              fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
-      UNSET)  bad=$((bad + 1))
-              fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
-      UNREAD) bad=$((bad + 1))
-              fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
-      *)      _smoke_unknown_verdict bad advertised-version "${verb}" "${key}" "${target_arch}" \
-                " -- a verb no arm handles is a silently dropped row" ;;
-    esac
-  done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
-  if [ "$((ok + bad))" -eq 0 ]; then
-    fail "advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image"
-  elif [ "${bad}" -eq 0 ]; then
-    pass "all ${ok} advertised version(s) match the shipped image (${target_arch})"
-  fi
+  "${gate}"
   echo ""
+}
+check_advertised_versions() {
+  _shipped_truth_section "$1" "$2" "A: advertised env versions == actual" _advertised_probe_failure _check_advertised_versions
+}
+_advertised_verdict_line() {
+  local verb key rest
+  read -r verb key rest <<< "$1"
+  case "${verb}" in
+    OK)     echo "  OK   ${key}=${rest} matches the image" ;;
+    BAD)    fail "the ${target_arch} image ADVERTISES ${key}=${rest%% *} but actually has ${rest##* } -- everything downstream reads the env, so the label must be corrected (or the component rebuilt)" ;;
+    UNSET)  bad=$((bad + 1)); fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
+    UNREAD) bad=$((bad + 1)); fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
+    *)      _smoke_unknown_verdict bad advertised-version "${verb}" "${key}" "${target_arch}" \
+              " -- a verb no arm handles is a silently dropped row" ;;
+  esac
+}
+_check_advertised_versions() {
+  _shipped_truth_verdict_rows "all " " advertised version(s) match the shipped image (${target_arch})" _advert_verdicts _advertised_verdict_line \
+    "advertised-version gate asserted NOTHING on ${target_arch}: _ADVERTISED_VERSION_KEYS is empty -- a vacuous pass, not a green image"
 }
 
 # B: the venv must carry what the app's own metadata says this arch needs.
@@ -1671,19 +1681,15 @@ _venv_probe_failure() {
   local target_arch="$1"
   fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
 }
-
 check_venv_package_set() {
-  local image_tag="$1"
-  local target_arch="$2"
-  echo "--- SHIPPED-TRUTH B: venv package set vs the app's declared graph (${target_arch}) ---"
-  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _venv_probe_failure \
-    "${target_arch}" || return 0
+  _shipped_truth_section "$1" "$2" "B: venv package set vs the app's declared graph" _venv_probe_failure _check_venv_package_set
+}
+_check_venv_package_set() {
   local absent
   absent="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT //p' | head -1)"
   if [ -n "${absent}" ]; then
     echo "  SKIP venv package-set comparison UNAVAILABLE on ${target_arch}: ${absent}"
     echo "  SKIP   -- this is a loud skip, NOT a pass; the set was never compared"
-    echo ""
     return 0
   fi
   local verb extra pkg owner miss=0 asserted=0
@@ -1716,7 +1722,6 @@ check_venv_package_set() {
   elif [ "${miss}" -eq 0 ]; then
     pass "VENV-SET: all ${asserted} arch-applicable requirement edge(s) satisfied in the ${target_arch} venv"
   fi
-  echo ""
 }
 
 # Plugin failures only warn (the element is just unavailable); returns 0 when documented.
@@ -1938,30 +1943,18 @@ VK_DRIVER_FILES="${icd}" VK_ICD_FILENAMES="${icd}" timeout 120 vulkaninfo 2>/dev
 # onnxruntime inference and the cv2 round-trip live in check_app_wheel_smoke.
 
 check_gstreamer_core_pipeline() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- Functional: GStreamer core pipeline ---"
-    if _rt_run \
-         bash -lc 'gl="$(command -v gst-launch-1.0 || echo /opt/gstreamer/bin/gst-launch-1.0)"; timeout 40 "$gl" -q videotestsrc num-buffers=3 ! videoconvert ! fakesink'; then
-      pass "GStreamer core pipeline runs (${target_arch})"
-    else
-      fail "GStreamer core pipeline FAILED (${target_arch})"
-    fi
-    echo ""
+  _functional_smoke_gate "$1" "$2" "GStreamer core pipeline" \
+    "GStreamer core pipeline runs ($2)" \
+    "GStreamer core pipeline FAILED ($2)" \
+    _rt_run bash -lc 'gl="$(command -v gst-launch-1.0 || echo /opt/gstreamer/bin/gst-launch-1.0)"; timeout 40 "$gl" -q videotestsrc num-buffers=3 ! videoconvert ! fakesink'
 }
 
 # gst-inspect-1.0 <plugin> fails on a missing or undlopenable plugin; mirrors the Windows lane's contract.
 check_gstreamer_mandatory_plugins() {
-  local image_tag="$1"
-  local target_arch="$2"
-    echo "--- Functional: GStreamer mandatory plugins (libav opencv onnx tflite) ---"
-    if _rt_run \
-         bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"; missing=""; for p in libav opencv onnx tflite; do timeout 30 "$gi" "$p" >/dev/null 2>&1 || missing="$missing $p"; done; [ -z "$missing" ] || { echo "MISSING:$missing"; exit 1; }'; then
-      pass "GStreamer mandatory plugin set loads on ${target_arch}"
-    else
-      fail "GStreamer mandatory plugins missing/unloadable on ${target_arch} (see MISSING: line above)"
-    fi
-    echo ""
+  _functional_smoke_gate "$1" "$2" "GStreamer mandatory plugins (libav opencv onnx tflite)" \
+    "GStreamer mandatory plugin set loads on $2" \
+    "GStreamer mandatory plugins missing/unloadable on $2 (see MISSING: line above)" \
+    _rt_run bash -lc 'gi="$(command -v gst-inspect-1.0 || echo /opt/gstreamer/bin/gst-inspect-1.0)"; missing=""; for p in libav opencv onnx tflite; do timeout 30 "$gi" "$p" >/dev/null 2>&1 || missing="$missing $p"; done; [ -z "$missing" ] || { echo "MISSING:$missing"; exit 1; }'
 }
 
 check_application_import() {
