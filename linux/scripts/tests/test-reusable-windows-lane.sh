@@ -44,8 +44,9 @@ t_assert_eq "True" "$(_q "all('@' in str(V.value(s,'uses')) and len(str(V.value(
 
 t_case "PSScriptAnalyzer is installed at a pinned version"
 # Unpinned, a new analyzer rule fails the lane with no commit to blame.
-t_assert_eq "True" "$(_q "'-RequiredVersion' in run_text()")"
-t_assert_eq "False" "$(_q "'Install-Module PSScriptAnalyzer -Force' in run_text()")"
+t_assert_eq "True" "$(_q "'PSSCRIPTANALYZER_VERSION' in run_blocks('lint-powershell')")"
+t_assert_eq "True" "$(_q "'-RequiredVersion \$pin' in run_blocks('lint-powershell')")"
+t_assert_eq "False" "$(_q "'Install-Module PSScriptAnalyzer -Force' in run_blocks('lint-powershell')")"
 
 t_case "the gate is the HUB's script, pointed at the CALLER's tree"
 t_assert_eq "True" "$(_raw_has '$gate = '"'"'third_party/ANTfrastructure/windows/scripts/Invoke-Lint.ps1'"'"'')"

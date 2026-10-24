@@ -8550,7 +8550,7 @@
  {
   "id": "windows-lane.powershell-analyzer-is-version-pinned",
   "target": ".github/workflows/python-ci-windows.yml",
-  "find": "Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser",
+  "find": "Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser",
   "replace": "Install-Module PSScriptAnalyzer -Force -Scope CurrentUser",
   "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
   "why": "an unpinned analyzer lets a new release add a rule that fails the lane with no commit to blame"
