@@ -288,9 +288,10 @@ t_assert_eq "ort.capi ort.capi.onnxruntime_pybind11_state" \
 t_case "prove: FT_PROVE_TRACE names each module while it loads and is empty once every load returned"
 t_assert_eq "seen app.a seen app.b left ''" "$(FT_PROVE_TRACE="${_work}/trace" _ftw <<'PY'
 import os
+from importlib.machinery import ModuleSpec
 trace = os.environ["FT_PROVE_TRACE"]
 seen = []
-ftw.importlib.util.spec_from_file_location = lambda name, path: ftw.importlib.machinery.ModuleSpec(name, loader=object())
+ftw.importlib.util.spec_from_file_location = lambda name, path: ModuleSpec(name, loader=object())
 def load(name):
     seen.append("seen " + open(trace).read())
 ftw.importlib.util.module_from_spec = load
