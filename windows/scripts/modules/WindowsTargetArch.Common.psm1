@@ -229,6 +229,19 @@ function Get-PeFileMachine {
     } finally { $fs.Dispose() }
 }
 
+# Binary readers share bounds handling before format-specific parsing; see docs/windows-builds.md under Shared Windows behavior.
+function Test-BytePrefix {
+    param(
+        [Parameter(Mandatory)][byte[]]$Bytes,
+        [Parameter(Mandatory)][byte[]]$Signature
+    )
+    if ($Signature.Length -eq 0 -or $Signature.Length -gt $Bytes.Length) { return $false }
+    for ($i = 0; $i -lt $Signature.Length; $i++) {
+        if ($Bytes[$i] -ne $Signature[$i]) { return $false }
+    }
+    return $true
+}
+
 function Get-CoffObjectMachineFromBytes {
     param([Parameter(Mandatory)][byte[]]$Bytes, [int]$Offset = 0, [switch]$AllowShortImport, [switch]$AllowUnknownMachine)
     if ($Offset -lt 0 -or ($Offset + 2) -gt $Bytes.Length) { return $null }
@@ -692,6 +705,8 @@ Export-ModuleMember -Function @(
     'Get-PeFileMachine',
     'Get-CoffMachine',
     'Get-CoffObjectMachineFromBytes',
+    'Test-BytePrefix',
+    'Read-PeLayout',
     'Test-PeRichHeader',
     'Get-PeImportNames',
     'Get-PeExportNames',

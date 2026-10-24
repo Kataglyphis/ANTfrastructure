@@ -2356,8 +2356,13 @@ the body throws; callers keep their fixture state and command policy.
 Source-build and container-image wrappers keep their distinct version-prefix rules.
 Meson native and cross files share binary rendering. IREE and LiteRT share ordered
 per-file ARM feature selection and application while keeping different minimum
-architectures and source predicates. PE and COFF checks share machine names through
-`WindowsTargetArch.Common`. Handoff transfers share context and curl execution;
+architectures and source predicates. PE and COFF checks share machine names and layout parsing
+through WindowsTargetArch.Common; Meson keeps its export and BSS-tail policy. Archive and offload
+readers use its bounded ASCII signature check.
+FFmpeg pkg-config edits and OpenCV probe diagnostics share indexed line selection through
+WindowsSourceBuild.Common, while callers keep their match, context and failure policies.
+TVM marker and Torch probe lists share empty-token handling through WindowsNative.Common.
+Handoff transfers share context and curl execution;
 source-build sccache sessions share lookup and command capture without changing
 startup, upload-drain or completion policy. ONNX, GenAI, OpenCV and TVM share
 `Test-CudaTargetUsable`: cross builds require the arm64 payload while native builds

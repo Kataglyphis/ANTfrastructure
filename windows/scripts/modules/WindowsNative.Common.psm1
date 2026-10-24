@@ -86,6 +86,17 @@ function ConvertFrom-PythonJsonProbeOutput {
 
 Export-ModuleMember -Function ConvertFrom-PythonJsonProbeOutput
 
+# Marker and probe target strings share one empty-token policy; see docs/windows-builds.md under Shared Windows behavior.
+function ConvertFrom-DelimitedTargetList {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][string]$SeparatorPattern
+    )
+    return @($Text -split $SeparatorPattern | Where-Object { $_ })
+}
+
+Export-ModuleMember -Function ConvertFrom-DelimitedTargetList
+
 function Invoke-PythonJsonProbe {
     param(
         [Parameter(Mandatory)][string]$Python,

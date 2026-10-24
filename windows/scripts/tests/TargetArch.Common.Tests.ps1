@@ -319,8 +319,16 @@ Describe 'COFF machine decoding (byte-shift trap)' {
     }
 }
 
-Describe 'WINDOWS_TARGET_ARCH crosses stage boundaries' {
+Describe 'Test-BytePrefix' {
+    It 'matches exact bytes and rejects mismatches or short buffers' {
+        $bytes = [System.Text.Encoding]::ASCII.GetBytes('!<arch>')
+        Assert-True (Test-BytePrefix -Bytes $bytes -Signature ([System.Text.Encoding]::ASCII.GetBytes('!<arch>'))) 'matching prefix'
+        Assert-False (Test-BytePrefix -Bytes $bytes -Signature ([System.Text.Encoding]::ASCII.GetBytes('!<bad>'))) 'signature mismatch'
+        Assert-False (Test-BytePrefix -Bytes $bytes -Signature ([System.Text.Encoding]::ASCII.GetBytes('!<arch>long'))) 'signature longer than buffer'
+    }
+}
 
+Describe 'WINDOWS_TARGET_ARCH crosses stage boundaries' {
     # See docs/windows-cross-builds.md § Cache discipline: the base image is shared
     It 'every stage built FROM an external image reference redeclares the ARG' {
         # Only a `${...}` FROM starts from a separate solve; an in-file parent passes its ENV down.

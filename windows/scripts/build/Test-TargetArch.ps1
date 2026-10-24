@@ -90,7 +90,9 @@ function Format-Machine {
 function Get-ArchiveMachine {
     param([Parameter(Mandatory)][string]$LiteralPath)
     try { $bytes = [System.IO.File]::ReadAllBytes($LiteralPath) } catch { return $null }
-    if ($bytes.Length -lt 8 -or [System.Text.Encoding]::ASCII.GetString($bytes, 0, 8) -ne "!<arch>`n") { return $null }
+    $archiveSignature = [System.Text.Encoding]::ASCII.GetBytes("!<arch>`n")
+    if ($bytes.Length -lt 8) { return $null }
+    if (-not (Test-BytePrefix -Bytes $bytes -Signature $archiveSignature)) { return $null }
     try {
         $pos = 8
         while (($pos + 60) -le $bytes.Length) {

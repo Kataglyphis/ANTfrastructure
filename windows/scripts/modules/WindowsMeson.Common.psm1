@@ -1,7 +1,9 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Dependency-free merge-lane leaf, never in the media-builder buildmods: see docs/windows-build-resources.md § The Windows cache, tier by tier
+# Read-PeLayout is shared so this merge leaf keeps one PE parser; see docs/windows-build-resources.md under The Windows cache, tier by tier.
+
+Import-Module (Join-Path $PSScriptRoot 'WindowsTargetArch.Common.psm1') -ErrorAction Stop
 
 Set-StrictMode -Version Latest
 
@@ -271,25 +273,27 @@ function Read-PeExportData {
         [int]$Count = 16
     )
     $img = [System.IO.File]::ReadAllBytes($Path)
+    $dosSignature = [byte[]](0x4D, 0x5A)
+    if ($img.Length -lt 0x40 -or -not (Test-BytePrefix -Bytes $img -Signature $dosSignature)) {
+        throw "Read-PeExportData: $Path is not a PE image (no MZ header)"
+    }
+    try {
+        $pe = Read-PeLayout -Path $Path -Caller 'Read-PeExportData'
+    } catch {
+        if ($_.Exception.Message -match ' is not a PE file$') { throw "Read-PeExportData: $Path has no PE signature" }
+        throw
+    }
+    $img = $pe.Bytes
     $u16 = { param($o) [BitConverter]::ToUInt16($img, $o) }
     $u32 = { param($o) [BitConverter]::ToUInt32($img, $o) }
-    if ($img.Length -lt 0x40 -or (& $u16 0) -ne 0x5A4D) { throw "Read-PeExportData: $Path is not a PE image (no MZ header)" }
-    $nt = [int](& $u32 0x3C)
-    if ($nt + 24 -gt $img.Length -or (& $u32 $nt) -ne 0x4550) { throw "Read-PeExportData: $Path has no PE signature" }
-    $sectionCount = & $u16 ($nt + 6)
-    $opt = $nt + 24
-    $exportDirRva = & $u32 ($opt + $(if ((& $u16 $opt) -eq 0x20B) { 112 } else { 96 }))
-    $firstSection = $opt + (& $u16 ($nt + 20))
-    $sections = @(for ($i = 0; $i -lt $sectionCount; $i++) {
-        $h = $firstSection + 40 * $i
-        @{ Va = & $u32 ($h + 12); VirtualSize = & $u32 ($h + 8); RawSize = & $u32 ($h + 16); RawPtr = & $u32 ($h + 20) }
-    })
+    $exportDirRva = & $u32 $pe.DdOff
+    $sections = $pe.Sections
     $toFile = {
         param([uint32]$rva)
         foreach ($s in $sections) {
-            if ($rva -ge $s.Va -and $rva -lt $s.Va + [Math]::Max($s.VirtualSize, $s.RawSize)) {
-                $delta = $rva - $s.Va
-                return [pscustomobject]@{ Offset = [long]($s.RawPtr + $delta); Raw = ($delta -lt $s.RawSize) }
+            if ($rva -ge $s.VA -and $rva -lt $s.VA + [Math]::Max($s.VSize, $s.RawSize)) {
+                $delta = $rva - $s.VA
+                return [pscustomobject]@{ Offset = [long]($s.Raw + $delta); Raw = ($delta -lt $s.RawSize) }
             }
         }
         throw "Read-PeExportData: RVA 0x$($rva.ToString('X')) of $Path lies in no section"

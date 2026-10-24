@@ -21,6 +21,7 @@ Set-StrictMode -Version Latest
 
 $nativeRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path (Split-Path $PSScriptRoot -Parent) -Parent }
 Import-Module (Join-Path $nativeRoot 'modules\WindowsNative.Common.psm1')
+Import-Module (Join-Path $nativeRoot 'modules\WindowsTargetArch.Common.psm1') -ErrorAction Stop
 
 
 <#
@@ -118,7 +119,9 @@ function Get-PeSymbolTable {
 function Get-ClangOffloadBundleTarget {
     param([Parameter(Mandatory)][byte[]]$Header)
     $magic = '__CLANG_OFFLOAD_BUNDLE__'
-    if ($Header.Length -lt 32 -or [System.Text.Encoding]::ASCII.GetString($Header, 0, 24) -ne $magic) {
+    $magicBytes = [System.Text.Encoding]::ASCII.GetBytes($magic)
+    $isHeaderValid = $Header.Length -ge 32 -and (Test-BytePrefix -Bytes $Header -Signature $magicBytes)
+    if (-not $isHeaderValid) {
         $start = [System.Text.Encoding]::ASCII.GetString($Header, 0, [Math]::Min(4, $Header.Length))
         throw "not an uncompressed clang offload bundle (starts '$start'; 'CCOB' is the compressed form)"
     }

@@ -67,6 +67,11 @@ Describe 'Assert-LibffiTypeExport (the shipped-bytes guard for ffi-7.dll)' {
         Invoke-InTestDir { param($dir)
             New-LibffiTestPe -Path (Join-Path $dir 'ffi-7.dll') -Type $script:goodTypes
             Assert-Throws { Read-PeExportData -Path (Join-Path $dir 'ffi-7.dll') -Name 'ffi_type_double' } -MessagePattern 'does not export ffi_type_double'
+            $badSignature = [System.IO.File]::ReadAllBytes((Join-Path $dir 'ffi-7.dll'))
+            $peOffset = [BitConverter]::ToUInt32($badSignature, 0x3C)
+            $badSignature[[int]$peOffset] = 0
+            [System.IO.File]::WriteAllBytes((Join-Path $dir 'bad-signature.dll'), $badSignature)
+            Assert-Throws { Read-PeExportData -Path (Join-Path $dir 'bad-signature.dll') -Name 'x' } -MessagePattern 'has no PE signature'
             Set-Content -Path (Join-Path $dir 'not-pe.dll') -Value 'text'
             Assert-Throws { Read-PeExportData -Path (Join-Path $dir 'not-pe.dll') -Name 'x' } -MessagePattern 'not a PE image'
         }

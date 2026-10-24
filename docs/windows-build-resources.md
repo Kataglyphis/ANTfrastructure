@@ -242,7 +242,8 @@ there; the tiers, the numbers and the two incidents are here.
       and `Get-PyprojectDependencies` moved off the tier-1 facade into this leaf
       on 2026-08-31 — `Build-TvmFromSource.ps1` is their only caller.
    3. The **merge leaves** in `Dockerfile.media-merge-builder`'s `buildmods`:
-      `WindowsGstPlugins.Common`, `WindowsMeson.Common`,
+      `WindowsGstPlugins.Common`, `WindowsMeson.Common` (which imports the already-copied
+      `WindowsTargetArch.Common` PE layout reader),
       `WindowsRustToolchain.Common`, `WindowsInstaller.Common`. An edit costs
       the GStreamer layer.
    4. `Dockerfile.toolchain-builder`'s **`patched-llvm`** RUN mounts the same six

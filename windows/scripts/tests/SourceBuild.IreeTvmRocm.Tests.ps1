@@ -1,4 +1,6 @@
 #requires -Version 7.0
+
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # IREE + TVM on the rocm lane: cpu/nvidia unchanged, carried patches against pinned excerpts, pins, markers and checks.
 
 $script:IreeScript = 'windows\scripts\build\Build-IreeFromSource.ps1'
@@ -14,6 +16,14 @@ $script:PatchedLlvm = 'C:\llvm-patched\bin\llvm-config.exe'
 $script:NeverAsked = { param($c) throw "llvm-config --targets-built of $c was queried off the ROCm spike" }
 # tvm.target.codegen.llvm_get_targets() against LLVM 23.1.1 (X86;AArch64;NVPTX;AMDGPU): Triple::getArchTypeName.
 $script:Llvm23Arches = @('aarch64', 'aarch64_32', 'aarch64_be', 'amdgpu', 'i386', 'nvptx', 'nvptx64', 'r600', 'x86_64')
+
+Describe 'ConvertFrom-DelimitedTargetList' {
+    It 'keeps caller separators and drops only empty fields' {
+        Assert-Equal 'X86,AMDGPU' (@(ConvertFrom-DelimitedTargetList -Text 'X86;;AMDGPU;' -SeparatorPattern ';') -join ',') 'TVM marker list'
+        Assert-Equal 'gfx1200,gfx1201' (@(ConvertFrom-DelimitedTargetList -Text ' gfx1200; gfx1201, ' -SeparatorPattern '[\s;,]+') -join ',') 'Torch probe list'
+        Assert-Equal 0 @(ConvertFrom-DelimitedTargetList -Text '' -SeparatorPattern ';').Count 'missing list'
+    }
+}
 
 # Excerpts of the pinned upstream files, verbatim (LF); the suite also runs them as CRLF.
 $script:IreeDynamicSymbols = @'

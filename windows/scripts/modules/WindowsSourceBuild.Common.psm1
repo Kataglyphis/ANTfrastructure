@@ -292,6 +292,19 @@ function Assert-CmakeArgsConsumed {
     }
 }
 
+# Source-build readers share the same indexed line scan; see docs/windows-builds.md under Shared Windows behavior.
+function Find-TextLineIndexes {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Lines,
+        [Parameter(Mandatory)][string]$Pattern
+    )
+    $indexes = [Collections.Generic.List[int]]::new()
+    for ($index = 0; $index -lt $Lines.Count; $index++) {
+        if ($Lines[$index] -match $Pattern) { $indexes.Add($index) }
+    }
+    return $indexes.ToArray()
+}
+
 function Get-CmakeCacheEntries {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Text)
     foreach ($line in ($Text -split '\r?\n')) {
@@ -2603,6 +2616,7 @@ Export-ModuleMember -Function @(
     'Get-CMakeRocmIsolationArgs',
     'Assert-CmakeArgsConsumed',
     'Get-CmakeCacheEntries',
+    'Find-TextLineIndexes',
     'Test-SccacheRemoteConfigured',
     # Re-exported from WindowsScripts.Shared: scripts cannot see nested-module exports.
     'Get-SccacheStatsText',

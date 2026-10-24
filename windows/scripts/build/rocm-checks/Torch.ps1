@@ -142,7 +142,7 @@ function Get-TorchRocmFinding {
         if ("$($dists[$dist])" -ne $Release) { "Torch: dist $dist is '$($dists[$dist])', expected $Release" }
     }
     # torch's kernels come from PYTORCH_ROCM_ARCH, ROCm's from rocm-sdk-device-<gfx> wheels; both must cover every rocBLAS GPU.
-    $arch = @("$($Report['arch'])" -split '[\s;,]+' | Where-Object { $_ })
+    $arch = @(ConvertFrom-DelimitedTargetList -Text "$($Report['arch'])" -SeparatorPattern '[\s;,]+')
     if ($arch.Count -eq 0) { 'Torch: torch reports no compiled GPU arch (torch._C._cuda_getArchFlags): it carries no kernels' }
     $sdkDevice = @($dists.Keys | Where-Object { $_.StartsWith('rocm-sdk-device-') })
     if ($sdkDevice.Count -eq 0) { "Torch: no rocm-sdk-device-* dist: ROCm's libraries have no GPU kernels" }

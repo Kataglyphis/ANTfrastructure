@@ -1,6 +1,7 @@
 #requires -Version 7.0
 
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
+Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Set-Alias -Name Invoke-LlamaCppProcess -Value Invoke-NativeProbeProcess
 # llama.cpp HIP (source-built ggml-hip) + Vulkan on the rocm lane with downloads stubbed: gate, pins, layout, PE walk, loaders and wiring.
 

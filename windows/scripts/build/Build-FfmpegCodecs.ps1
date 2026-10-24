@@ -51,7 +51,7 @@ function Copy-CodecStaticLib([string]$From, [string]$PcName) {
 # A static lib's system imports its .pc omits; FFmpeg's link test needs them on Libs: (msvc maps -l<name> to <name>.lib).
 function Add-CodecPcSystemLib([string]$Pc, [string[]]$Name) {
     $lines = @(Get-Content -LiteralPath $Pc)
-    $at = @(for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i] -match '^Libs:') { $i } })
+    $at = @(Find-TextLineIndexes -Lines $lines -Pattern '^Libs:')
     if ($at.Count -ne 1) { throw "$Pc has $($at.Count) Libs: line(s), expected exactly one" }
     foreach ($n in $Name) {
         if ($lines[$at[0]] -notmatch "(?:^|\s)-l$([regex]::Escape($n))(?:\s|$)") { $lines[$at[0]] += " -l$n" }

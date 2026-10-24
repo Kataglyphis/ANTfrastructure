@@ -548,12 +548,13 @@ function Write-OpenCvProbeDiagnostics {
     if (Test-Path $errLog) {
         Write-Host "--- CMakeError.log excerpts for the NEON probes ($errLog) ---"
         $lines = @(Get-Content $errLog)
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match 'cpu_neon_(fp16|dotprod|bf16)|NEON_(FP16|DOTPROD|BF16)') {
-                $from = [math]::Max(0, $i - 2); $to = [math]::Min($lines.Count - 1, $i + 40)
-                $lines[$from..$to] | ForEach-Object { Write-Host "  $_" }
-                $i = $to
-            }
+        $matchingLineIndexes = @(Find-TextLineIndexes -Lines $lines -Pattern 'cpu_neon_(fp16|dotprod|bf16)|NEON_(FP16|DOTPROD|BF16)')
+        $lastContextEnd = -1
+        foreach ($i in $matchingLineIndexes) {
+            if ($i -le $lastContextEnd) { continue }
+            $from = [math]::Max(0, $i - 2); $to = [math]::Min($lines.Count - 1, $i + 40)
+            $lines[$from..$to] | ForEach-Object { Write-Host "  $_" }
+            $lastContextEnd = $to
         }
     } else { Write-Host "  (no $errLog)" }
 }

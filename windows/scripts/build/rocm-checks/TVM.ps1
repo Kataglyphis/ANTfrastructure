@@ -78,7 +78,7 @@ print(json.dumps({"opencl": bool(tvm.runtime.enabled("opencl")), "rocm": bool(tv
 #>
 function Get-TvmRocmMarkerFinding {
     param([Parameter(Mandatory)][hashtable]$Features)
-    $targets = @("$($Features['LLVM_TARGETS'])" -split ';' | Where-Object { $_ })
+    $targets = @(ConvertFrom-DelimitedTargetList -Text "$($Features['LLVM_TARGETS'])" -SeparatorPattern ';')
     if ($targets.Count -eq 0) { return 'TVM: the marker records no LLVM_TARGETS -- the build did not read back llvm-config --targets-built' }
     if ($Features['TVM_ROCM'] -eq '1' -and $targets -cnotcontains 'AMDGPU') {
         "TVM: the marker says TVM_ROCM=1 but LLVM_TARGETS=$($Features['LLVM_TARGETS']) has no AMDGPU -- the rocm codegen cannot emit hsaco"
