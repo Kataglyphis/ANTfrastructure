@@ -12350,8 +12350,8 @@
  {
   "id": "gst-blacklist.unreadable",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "    fail \"the GStreamer registry blacklist could not be read",
-  "replace": "    pass \"the GStreamer registry blacklist could not be read",
+  "find": "GST_BLACKLIST_DONE fail \\\n    \"the GStreamer registry blacklist could not be read",
+  "replace": "GST_BLACKLIST_DONE pass \\\n    \"the GStreamer registry blacklist could not be read",
   "test": "bash linux/scripts/tests/test-gst-validate-ssim.sh",
   "why": "an unread blacklist is not an empty one"
  },
@@ -12422,8 +12422,8 @@
  {
   "id": "no-libunwind.smoke-done",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "    if ! printf '%s\\n' \"${out}\" | grep -q '^UNWIND_SCAN_DONE$'; then",
-  "replace": "    if false; then",
+  "find": "    _smoke_probe_required marker \"${out}\" UNWIND_SCAN_DONE fail \\\n      \"the libunwind scan did not complete in the ${target_arch} image: $(printf '%s\\n' \"${out}\" | tail -1)\" || return 0",
+  "replace": "    :",
   "test": "bash linux/scripts/tests/test-no-libunwind.sh",
   "why": "an unfinished scan is not a clean one"
  },

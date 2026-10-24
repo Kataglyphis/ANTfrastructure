@@ -1833,10 +1833,8 @@ if [ -f "${stubs}/libcuda.so" ] && ! ldconfig -p 2>/dev/null | grep -q "libcuda\
 fi
 "$gi" -b 2>/dev/null | sed -n "s/^  *\([^ ]*\.so\)\$/BLACKLISTED \1/p"
 echo "GST_BLACKLIST_DONE"' 2>/dev/null)" || true
-  if ! printf '%s\n' "${out}" | grep -q '^GST_BLACKLIST_DONE$'; then
-    fail "the GStreamer registry blacklist could not be read in the ${target_arch} image"
-    return 0
-  fi
+  _smoke_probe_required marker "${out}" GST_BLACKLIST_DONE fail \
+    "the GStreamer registry blacklist could not be read in the ${target_arch} image" || return 0
   # A GPU-less smoke has no driver libcuda; the CUDA stubs stand in, as deepstream-verify.sh's element check does.
   if printf '%s\n' "${out}" | grep -q '^DRIVER_STUBS '; then
     echo "  ~~   scanned with the CUDA driver stubs ($(printf '%s\n' "${out}" | sed -n 's/^DRIVER_STUBS //p' | head -1)): no GPU in this container"
@@ -1897,11 +1895,8 @@ find /opt /usr/local -xdev \( -path /opt/android -o -path /opt/android-sdk -o -p
 echo "SCANNED $(wc -l < /tmp/elfs)"
 xargs -a /tmp/elfs -d "\n" -P "$(nproc)" -n 64 sh -c "for f; do readelf -d \"\$f\" 2>/dev/null | grep -q \"Shared library: .libunwind\\.so\\.8.\" && echo \"NEEDS \$f\"; done; exit 0" _
 echo "UNWIND_SCAN_DONE"' 2>/dev/null)" || true
-    if ! printf '%s\n' "${out}" | grep -q '^UNWIND_SCAN_DONE$'; then
-      fail "the libunwind scan did not complete in the ${target_arch} image: $(printf '%s\n' "${out}" | tail -1)"
-      echo ""
-      return 0
-    fi
+    _smoke_probe_required marker "${out}" UNWIND_SCAN_DONE fail \
+      "the libunwind scan did not complete in the ${target_arch} image: $(printf '%s\n' "${out}" | tail -1)" || return 0
     scanned="$(printf '%s\n' "${out}" | sed -n 's/^SCANNED //p' | head -1)"
     hits="$(printf '%s\n' "${out}" | sed -n 's/^NEEDS //p' | sort)"
     if [ -n "${hits}" ]; then
