@@ -27,6 +27,7 @@
 - Keep the mutation suite's CI shard assertion readable in both LF and Windows CRLF checkouts, with fixtures for both forms.
 - Send ordered-job watchdog output to its job log, with a live file-descriptor regression and mutation proof, so it cannot hold a captured test pipe open.
 - Send ordered-job supervisor output to the same job log and append command output so earlier diagnostics survive; live descriptor and cleanup assertions plus two mutations prove the behavior.
+- Remove a reentrant Bash `wait` from trapped ordered-job cleanup after the watchdog fired; bound the reaping fixture's joins, report its active case, and prove both failures with mutations under single-CPU stress.
 
 ## 2026-10-24 — CI quality evidence
 

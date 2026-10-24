@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# An owned child retaining the caller's capture pipe can delay a completed suite until its timeout.
+# A child-held capture pipe or reentrant trapped wait can turn a completed job into a hung suite.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -63,5 +63,27 @@ command_pid="$(cat "${OJ_DIR}/0.pgid")"
 t_assert_ok oj_reap
 t_assert_eq dead "$(t_pid_state "${_OJ_SUPERVISOR_PID}")" "supervisor survived cleanup"
 t_assert_eq dead "$(t_pid_state "${command_pid}")" "command survived cleanup"
+_OJ_SUPERVISOR_PID=""
+
+t_case "timeout cleanup never reenters a trapped wait"
+OJ_DIR="${_WORK}/timeout"
+mkdir -p "${OJ_DIR}"
+OJ_CMDS=()
+OJ_WORKERS=()
+OJ_TIMEOUT=1
+WAIT_MARKER="${OJ_DIR}/reentrant-wait"
+wait() {
+  if [[ " ${FUNCNAME[*]} " == *" _oj_stop_owned "* ]]; then
+    printf '%s\n' 'reentrant wait' > "${WAIT_MARKER}"
+    return 88
+  fi
+  builtin wait "$@"
+}
+oj_add bash -c 'sleep 30'
+_oj_launch 0
+_OJ_SUPERVISOR_PID="${OJ_WORKERS[0]}"
+t_assert_ok _oj_join 0
+t_assert_eq 124 "$(cat "${OJ_DIR}/0.rc")" "a timed-out command was reported as success"
+t_assert_fails test -e "${WAIT_MARKER}"
 _OJ_SUPERVISOR_PID=""
 t_summary

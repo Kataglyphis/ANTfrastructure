@@ -94,7 +94,7 @@ _oj_stop_owned() {
       return 1
     fi
   fi
-  wait "${pid}" 2>/dev/null || true
+  # A wait here can reenter the interrupted wait when cleanup runs from a trap.
 }
 
 _oj_worker_reap() {

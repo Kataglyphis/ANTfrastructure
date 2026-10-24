@@ -21538,6 +21538,22 @@
   "why": "a command truncation could erase a supervisor diagnostic already written to the shared job report"
  },
  {
+  "id": "ordered-jobs.bounded-runner-join",
+  "target": "linux/scripts/tests/test-run-tests-reaping.sh",
+  "find": "  return 1\n}\n_require_join() {",
+  "replace": "  return 0\n}\n_require_join() {",
+  "test": "bash linux/scripts/tests/test-run-tests-reaping.sh",
+  "why": "a stuck runner must fail the suite after its process group is killed, not silently pass"
+ },
+ {
+  "id": "ordered-jobs.no-trapped-wait",
+  "target": "linux/scripts/lib-ordered-jobs.sh",
+  "find": "  # A wait here can reenter the interrupted wait when cleanup runs from a trap.",
+  "replace": "  wait \"${pid}\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-ordered-jobs-watchdog-fds.sh",
+  "why": "a wait inside the watchdog's trapped cleanup can reenter Bash's interrupted wait and hang the supervisor after timeout"
+ },
+ {
   "id": "ordered-jobs.publication-barrier-required",
   "target": "linux/scripts/tests/test-run-tests-reaping.sh",
   "find": "      builtin printf ready > \"$REAP_FIXTURE_ROOT/publication.ready\"",

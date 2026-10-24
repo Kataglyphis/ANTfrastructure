@@ -771,7 +771,9 @@ transcript. Each was a child that outlived whatever started it. So:
    EXIT trap, when the run is interrupted. Register ownership before suite work starts; cancellation
    covers pending launches and joins owned supervisors and watchdogs. Supervisors and watchdogs
    write to job logs, never to a caller's captured pipe; commands append so earlier diagnostics
-   survive. The mutation gate ends each test's session after it, and
+   survive. Cleanup in a signal or EXIT trap checks group disappearance without reentering Bash's
+   `wait`; a trapped wait can hang after a watchdog timeout. The mutation gate ends each test's
+   session after it, and
    every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
    runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
    `test-mutation-gate.sh`).

@@ -212,6 +212,13 @@ an inherited command-substitution pipe could hold the baseline open when either
 process lingered. Commands append to the same log so opening one cannot erase an
 earlier supervisor diagnostic. `test-ordered-jobs-watchdog-fds.sh` checks their
 live file descriptors, log contents and cleanup.
+If the baseline leader is still running and its last case is a timed-out suite,
+check whether an `ordered-jobs.*/*.timeout` marker exists while its supervisor
+and command group remain alive. Bash can reenter an interrupted `wait` when an
+EXIT trap waits again for the watchdog. The ordered-job cleanup checks process
+group disappearance instead; `test-run-tests-reaping.sh` bounds its own joins and
+names the stuck case. Under a single CPU this previously held a mutation baseline
+until its 90- or 300-second limit.
 
 ### `exec format error` on a foreign-arch build
 

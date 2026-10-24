@@ -34,21 +34,64 @@ _launch_runner() {
   runner=$!
   printf '%s\n' "$runner" > "${_WORK}/runner.group"
 }
+_wait_runner() {
+  local label="$1" output="$2" limit="${3:-20}" state deadline
+  deadline=$((SECONDS + limit))
+  RUNNER_STATUS=0
+  printf 'reaping wait: %s\n' "$label" >&2
+  while :; do
+    state="$(ps -o stat= -p "$runner" 2>/dev/null)"
+    state="${state//[[:space:]]/}"
+    case "$state" in
+      ''|Z*|X*) wait "$runner" 2>/dev/null || RUNNER_STATUS=$?; return 0 ;;
+    esac
+    [ "$SECONDS" -lt "$deadline" ] || break
+    sleep 0.1
+  done
+  printf 'FAIL: runner still active after %ss in %s\n' "$limit" "$label" >&2
+  [ ! -f "$output" ] || tail -n 20 "$output" >&2
+  kill -TERM -- "-$runner" 2>/dev/null || true
+  sleep 1
+  kill -KILL -- "-$runner" 2>/dev/null || true
+  wait "$runner" 2>/dev/null || true
+  return 1
+}
+_require_join() {
+  _wait_runner "$@" && return 0
+  t_assert_eq joined timed-out "runner $1 failed to stop after cancellation"
+  t_summary
+  exit 1
+}
 _require_file() {
   t_assert_ok t_wait_file "$1"
   [ -s "$1" ] || { t_summary; exit 1; }
 }
 
+t_case "a stuck runner has a bounded join and its process group is killed"
+printf 'reaping case: %s\n' "$_T_CASE" >&2
+setsid sleep 300 </dev/null >"${_WORK}/join.out" 2>&1 &
+runner=$!
+printf '%s\n' "$runner" > "${_WORK}/runner.group"
+join_rc=0
+_wait_runner forced-timeout "${_WORK}/join.out" 0 2>"${_WORK}/join.diagnostic" || join_rc=$?
+t_assert_eq 1 "$join_rc" "a stuck runner was reported as joined"
+t_assert_contains "$(cat "${_WORK}/join.diagnostic")" "runner still active after 0s in forced-timeout"
+t_assert_eq dead "$(t_pid_state "$runner")" "a stuck runner survived its bounded join"
+_clear
+
 t_case "a child the suite leaves running is killed when the suite ends"
+printf 'reaping case: %s\n' "$_T_CASE" >&2
 _suite test-a-leak.sh "sleep 300 & echo \$! > '${_WORK}/leak.pid'"
-out="$(bash "${_WORK}/tests/run-tests.sh" </dev/null 2>&1)"
+out="$(timeout --kill-after=2s 20s bash "${_WORK}/tests/run-tests.sh" </dev/null 2>&1)"; rc=$?
+t_assert_eq 0 "$rc" "the runner did not finish after its suite ended"
 t_assert_contains "${out}" "All linux script test suites passed"
 t_assert_eq "dead" "$(_alive leak)" "the leaked sleep outlived its suite"
 _clear
 
 t_case "a suite past RUN_TESTS_SUITE_TIMEOUT is killed with its children and fails the run"
+printf 'reaping case: %s\n' "$_T_CASE" >&2
 _suite test-b-hang.sh "sleep 300 & echo \$! > '${_WORK}/hang.pid'; wait"
-out="$(RUN_TESTS_SUITE_TIMEOUT=2 timeout 12 bash "${_WORK}/tests/run-tests.sh" </dev/null 2>&1)"; rc=$?
+out="$(RUN_TESTS_SUITE_TIMEOUT=2 timeout --kill-after=2s 12s bash "${_WORK}/tests/run-tests.sh" </dev/null 2>&1)"; rc=$?
 t_assert_eq "1" "${rc}"
 [ "${rc}" -eq 1 ] || { t_summary; exit 1; }
 t_assert_contains "${out}" "TIMEOUT: killed after 2s"
@@ -56,15 +99,17 @@ t_assert_eq "dead" "$(_alive hang)" "the hung suite's child survived its timeout
 _clear
 
 t_case "a run killed mid-suite takes the running suite's group with it"
+printf 'reaping case: %s\n' "$_T_CASE" >&2
 _suite test-c-slow.sh "sleep 300 & echo \$! > '${_WORK}/slow.pid'; wait"
-bash "${_WORK}/tests/run-tests.sh" </dev/null >/dev/null 2>&1 &
-runner=$!
+_launch_runner "${_WORK}/slow.out"
 _require_file "${_WORK}/slow.pid"
-kill -TERM "${runner}"; wait "${runner}" 2>/dev/null
+kill -TERM "${runner}"
+_require_join mid-suite "${_WORK}/slow.out"
 t_assert_eq "dead" "$(_alive slow)" "an interrupted run left its suite's child running"
 
 _clear
 t_case "interruption during PGID publication cannot leave a supervising worker or late suite alive"
+printf 'reaping case: %s\n' "$_T_CASE" >&2
 mkfifo "${_WORK}/release"
 exec {release_fd}<>"${_WORK}/release"
 cat > "${_WORK}/barrier.sh" <<'BASH'
@@ -95,7 +140,7 @@ _require_file "${_WORK}/publication.ready"
 kill -TERM "$runner"
 _require_file "${_WORK}/reaping"
 printf 'release\n' >&"$release_fd"
-wait "$runner" 2>/dev/null
+_require_join publication "${_WORK}/race.out"
 t_assert_eq dead "$(_alive publication)" "the runner exited before joining its blocked supervising worker"
 t_assert_eq dead "$(_alive race)" "a suite started or survived after cancellation during publication"
 exec {release_fd}>&-
@@ -103,6 +148,7 @@ exec {release_fd}>&-
 for mode in interrupt timeout; do
   _clear
   t_case "a nested runner is reaped through its own EXIT cleanup on $mode"
+  printf 'reaping case: %s\n' "$_T_CASE" >&2
   mkdir -p "${_WORK}/nested/tests"
   cp "${_WORK}/tests/run-tests.sh" "${_WORK}/tests/test-harness.sh" "${_WORK}/nested/tests/"
   cp "${_WORK}/lib-ordered-jobs.sh" "${_WORK}/nested/"
@@ -112,7 +158,8 @@ for mode in interrupt timeout; do
   _launch_runner "${_WORK}/nested.out" RUN_TESTS_SUITE_TIMEOUT="$duration"
   _require_file "${_WORK}/nested-child.pid"
   if [ "$mode" = interrupt ]; then kill -TERM "$runner"; fi
-  status=0; wait "$runner" 2>/dev/null || status=$?
+  _require_join "nested $mode" "${_WORK}/nested.out"
+  status="$RUNNER_STATUS"
   expected=143; [ "$mode" != timeout ] || expected=1
   t_assert_eq "$expected" "$status"
   t_assert_eq dead "$(_alive nested-owner)" "a nested runner outlived cancellation"
