@@ -21,6 +21,7 @@
 - Keep curated SBOM `--stdout` byte-identical to the generated file on Windows as well as Linux.
 - Refresh the mutation manifest totals so the documentation-number suite and Linux preflight agree with the measured inventory.
 - Preserve an ignored interrupt for scheduled job commands and use a valid module spec in the free-threaded load-trace fixture, fixing two Linux preflight failures.
+- Keep the quick-start README within its 100-line gate and set the ordered-job interrupt trap without a ShellCheck warning.
 
 ## 2026-10-24 — CI quality evidence
 

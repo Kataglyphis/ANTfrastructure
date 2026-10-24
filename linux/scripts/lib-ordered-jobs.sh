@@ -42,7 +42,13 @@ _oj_signal_policy() {
 
 # An ignored caller INT must stay ignored in every owned child, including the watchdog.
 _oj_child_int_trap() {
-  if [ -n "${OJ_INT_POLICY}" ]; then trap "$1" INT; else trap '' INT; fi
+  if [ -z "${OJ_INT_POLICY}" ]; then
+    trap '' INT
+  elif [ "$1" = - ]; then
+    trap - INT
+  else
+    trap ':' INT
+  fi
 }
 
 _oj_dispatch_signal() {

@@ -36,7 +36,6 @@ actions, reusable workflows, shell libraries and gates serve the family at `@dev
 ```bash
 # use the image; its default CMD is a shell
 nerdctl run -it --rm ghcr.io/kataglyphis/kataglyphis_beschleuniger:latest
-
 git clone --recurse-submodules --branch develop https://github.com/Kataglyphis/ANTfrastructure.git
 cd ANTfrastructure
 bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --log-dir ./logs/build-logs
