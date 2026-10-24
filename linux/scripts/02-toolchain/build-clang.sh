@@ -48,6 +48,11 @@ Examples:
 USAGE
 }
 
+_clang_jobs_are_numeric() {
+  [ -n "$1" ] && [[ "$1" =~ ^[0-9]+$ ]]
+  return $?
+}
+
 # Defaults
 LLVM_VERSION=""
 LLVM_RELEASE="${LLVM_RELEASE:-}"
@@ -97,7 +102,7 @@ while [ "$#" -gt 0 ]; do
         --compiler-cache|--ccache)
             USE_CCACHE="1"; shift ;;
         --jobs|-j)
-            if [ -n "${2:-}" ] && [[ "$2" =~ ^[0-9]+$ ]]; then
+            if _clang_jobs_are_numeric "${2:-}"; then
                 NUM_JOBS="$2"
                 shift 2
             else
@@ -186,9 +191,9 @@ run_preflight_checks() {
 }
 
 # Job count
-if [ -n "${NUM_JOBS:-}" ] && [[ "${NUM_JOBS}" =~ ^[0-9]+$ ]]; then
+if _clang_jobs_are_numeric "${NUM_JOBS:-}"; then
     : # Explicitly set by user, respect it.
-elif [ -n "${CLANG_NUM_JOBS}" ] && [[ "${CLANG_NUM_JOBS}" =~ ^[0-9]+$ ]]; then
+elif _clang_jobs_are_numeric "${CLANG_NUM_JOBS}"; then
     NUM_JOBS="${CLANG_NUM_JOBS}"
 elif command -v compute_jobs_with_mem_cap >/dev/null 2>&1; then
     NUM_JOBS="$(compute_jobs_with_mem_cap "" "${CLANG_BUILD_MB_PER_JOB}")"

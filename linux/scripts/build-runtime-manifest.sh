@@ -263,17 +263,22 @@ _binfmt_qemu_name() {
 }
 
 verify_foreign_binfmt() {
+  local probe_owner="${REPO_ROOT}/linux/host-config/install-nerdctl-full.sh"
+  if ! grep -qx '# ANT_BINFMT_PROBE_SOURCE_API=1' "$probe_owner" 2>/dev/null; then
+    printf 'ERROR: binfmt probe owner lacks source API 1: %s\n' "$probe_owner" >&2
+    exit 1
+  fi
+  # shellcheck source=linux/host-config/install-nerdctl-full.sh
+  source "$probe_owner" --source-binfmt-probe || exit "$?"
+  declare -F binfmt_handler_enabled >/dev/null || {
+    printf 'ERROR: binfmt probe owner does not provide binfmt_handler_enabled\n' >&2
+    exit 1
+  }
   local arches="$1" a handler missing="" tool
   tool="$(command -v containerd-rootless-setuptool.sh 2>/dev/null || true)"
   for a in $(arch_list_to_words "${arches}"); do
     handler="$(_binfmt_qemu_name "${a}")"
-    # Rootful / CI hosts register in the HOST namespace (update-binfmts).
-    grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && continue
-    # Rootless registration lives in the rootlesskit namespace, not the host's binfmt_misc.
-    if [ -n "${tool}" ] && "${tool}" nsenter -- \
-         grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null; then
-      continue
-    fi
+    if binfmt_handler_enabled "${handler}" "${tool}"; then continue; fi
     missing="${missing:+${missing}, }${a} (${handler})"
   done
   [ -z "${missing}" ] || err "no QEMU binfmt handler for: ${missing} -- foreign-arch wrappers are built ON the target platform, so this fails as an empty BuildKit step error hours from now. Fix first: bash linux/scripts/setup-rootless-binfmt.sh  (RUNTIME_REGISTER_BINFMT=0 skips registration entirely)"

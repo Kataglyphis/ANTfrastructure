@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
 # Installs or upgrades nerdctl-full, dry run unless NERDCTL_INSTALL_CONFIRM=1: docs/linux-host-setup.md#b3b-install-or-upgrade-nerdctl-full
+
+# ANT_BINFMT_PROBE_SOURCE_API=1
+binfmt_handler_enabled() {
+  local handler="$1" tool="${2:-}"
+  grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && return 0
+  if [ -z "$tool" ] && [ "${3:-}" = discover-if-empty ]; then
+    [ -n "$(command -v containerd-rootless-setuptool.sh 2>/dev/null)" ] || return 1
+    tool=containerd-rootless-setuptool.sh
+  fi
+  [ -n "$tool" ] || return 1
+  "$tool" nsenter -- grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null
+}
+
+if [ "${1:-}" = --source-binfmt-probe ]; then
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then return 0; fi
+  printf 'ERROR: --source-binfmt-probe must be sourced\n' >&2
+  exit 2
+fi
+
 set -euo pipefail
 
 UNIT_DIR="${NERDCTL_UNIT_DIR:-${HOME}/.config/systemd/user}"
@@ -468,11 +487,7 @@ fi
 # The restart dropped the QEMU binfmt registration with the rootlesskit namespace: docs/failure-modes.md#exec-format-error-on-a-foreign-arch-build
 _binfmt_missing=""
 for _h in qemu-aarch64 qemu-riscv64; do
-  grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue
-  if [ -n "${_SETUPTOOL:-$(command -v containerd-rootless-setuptool.sh 2>/dev/null)}" ]; then
-    "${_SETUPTOOL:-containerd-rootless-setuptool.sh}" nsenter -- \
-      grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue
-  fi
+  if binfmt_handler_enabled "${_h}" "${_SETUPTOOL:-}" discover-if-empty; then continue; fi
   _binfmt_missing="${_binfmt_missing:+${_binfmt_missing} }${_h}"
 done
 if [ -n "${_binfmt_missing}" ]; then

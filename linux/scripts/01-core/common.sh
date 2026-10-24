@@ -301,6 +301,19 @@ wheel_platform_tag_with_fallback() {
   return $?
 }
 
+# Project cross-file adjustments run between optional cross and native flag providers.
+append_available_meson_toolchain_flags() {
+  local _amtf_array="$1" _amtf_after_cross="${2:-}"
+  if command -v append_meson_cross_flags >/dev/null 2>&1; then
+    append_meson_cross_flags "${_amtf_array}"
+    if [ -n "${_amtf_after_cross}" ]; then "${_amtf_after_cross}"; fi
+  fi
+  if command -v append_meson_native_flags >/dev/null 2>&1; then
+    append_meson_native_flags "${_amtf_array}"
+  fi
+  return $?
+}
+
 cross_wheel_platform_tag() {
   if ! command -v arch_linux_platform_tag_for >/dev/null 2>&1; then
     return 1

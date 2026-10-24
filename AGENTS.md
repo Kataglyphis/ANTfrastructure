@@ -85,6 +85,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
    ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
+   Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install.
+   Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations.

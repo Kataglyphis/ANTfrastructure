@@ -300,6 +300,12 @@ Knobs: `NERDCTL_VERSION=x.y.z` pins a release (default: latest),
 `NERDCTL_SKIP_CACHE_CENSUS=1` (proceed without a cache baseline when buildkitd
 is down).
 
+The installer also owns the binfmt probe used by the runtime manifest verifier.
+Copied manifest checkouts carry the matching installer under `linux/host-config`.
+The verifier checks its source API marker before loading the probe entrypoint,
+which returns before setup actions; older installer copies are rejected first.
+The contract and offline coverage are in [shared-script-libraries.md](shared-script-libraries.md).
+
 **This host runs rootless AND rootful side by side, and that changes the
 procedure.** The `systemd --user` units are the rootless stack the chain builds
 with; but a rootful `containerd.service` *and* `buildkit.service` also run, and
