@@ -680,6 +680,10 @@ _consumer_contract_fact() {
   printf '%s\n' "$1" | sed -n "s/^$2 $3 //p" | head -1
 }
 
+_consumer_required_facts_continue() {
+  [ "$1" = continue ]
+}
+
 # Outside /workspace, the consumer's bind-mounted checkout, and writable by the image user.
 _consumer_dir_verdict() {
   local row="$1" val="$2" write="$3"
@@ -712,7 +716,7 @@ _consumer_tool_verdict() {
   local row="$1" path readable required_verdict
   _consumer_collect_required_facts "$2" required_verdict "${row}" 'no FACT appimagetool-readable line' \
     path ENV appimagetool optional readable FACT appimagetool-readable required
-  if [ "${required_verdict}" != continue ]; then return "${required_verdict}"; fi
+  _consumer_required_facts_continue "${required_verdict}" || return "${required_verdict}"
   if [ -z "${path}" ]; then
     printf 'BAD %s appimagetool is not on PATH at all' "${row}"
   elif [ "${readable}" != yes ]; then
@@ -726,7 +730,7 @@ _consumer_jdk_verdict() {
   local row="$1" home onpath javac required_verdict
   _consumer_collect_required_facts "$2" required_verdict "${row}" 'no FACT java-on-path / FACT javac line' \
     home ENV java-home optional onpath FACT java-on-path required javac FACT javac required
-  if [ "${required_verdict}" != continue ]; then return "${required_verdict}"; fi
+  _consumer_required_facts_continue "${required_verdict}" || return "${required_verdict}"
   if [ "${onpath}" != yes ]; then
     printf 'BAD %s no java on PATH' "${row}"
   elif [ -z "${home}" ]; then
@@ -743,7 +747,7 @@ _consumer_android_verdict() {
   # The NDK is linux-x86_64 only; prune-host-payload.sh (or android-sdk.sh on a foreign host) writes the marker.
   _consumer_collect_required_facts "$2" required_verdict "${row}" 'no FACT android-payload-off line' \
     off FACT android-payload-off required
-  if [ "${required_verdict}" != continue ]; then return 0; fi
+  _consumer_required_facts_continue "${required_verdict}" || return 0
   _consumer_collect_required_facts "$2" required_verdict "${row}" '' \
     val ENV android-home optional root ENV android-sdk-root optional
   if [ "${off}" = yes ]; then
@@ -758,7 +762,7 @@ _consumer_android_verdict() {
   fi
   _consumer_collect_required_facts "$2" required_verdict "${row}" 'no DIR android-platform-tools / FACT android-path line' \
     dir DIR android-platform-tools required onpath FACT android-path required
-  if [ "${required_verdict}" != continue ]; then return "${required_verdict}"; fi
+  _consumer_required_facts_continue "${required_verdict}" || return "${required_verdict}"
   if [ -z "${val}" ] || [ -z "${root}" ]; then
     printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while the SDK ships in the image' "${row}" "${val:-<unset>}" "${root:-<unset>}"
   elif [ "${dir}" != yes ]; then
@@ -1246,29 +1250,63 @@ PY
 }
 
 # One OK|BAD|NOELF|MISSING line per tree; NONE when the scanner saw nothing.
+_smoke_probe_values() {
+  printf '%s\n' "$1" | sed -n "s/^$2 //p"
+}
+
+_smoke_read_probe_records() {
+  local probe="$1" tag="$2" reader="$3" count_records="${4:-0}" record
+  while IFS= read -r record; do
+    if [ "${count_records}" = "1" ] && [ -n "${record//[[:space:]]/}" ]; then
+      n=$((n + 1))
+    fi
+    "${reader}" "${record}"
+  done < <(_smoke_probe_values "${probe}" "${tag}")
+}
+
+_tree_missing_record() {
+  [ -n "$1" ] || return 0
+  printf 'MISSING %s\n' "$1"
+}
+
+_tree_noelf_record() {
+  [ -n "$1" ] || return 0
+  printf 'NOELF %s\n' "$1"
+}
+
+_tree_capped_record() {
+  local tree cap
+  read -r tree cap <<< "$1"
+  [ -n "${tree}" ] || return 0
+  printf 'CAPPED %s %s -\n' "${tree}" "${cap}"
+}
+
+_tree_machine_record() {
+  local tree machine count sample
+  read -r tree machine count sample <<< "$1"
+  [ -n "${tree}" ] || return 0
+  case "${machine}" in
+    *"${want}"*) printf 'OK %s %s %s\n' "${tree}" "${machine}" "${count}" ;;
+    *)           printf 'BAD %s %s %s %s\n' "${tree}" "${machine}" "${count}" "${sample}" ;;
+  esac
+}
+
+_soname_record() {
+  local so win ours
+  read -r so win ours <<< "$1"
+  [ -n "${so}" ] || return 0
+  case "${win}" in
+    /opt/*|/usr/local/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
+    *)                   printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
+  esac
+}
+
 _tree_arch_verdicts() {
-  local probe="$1" want="$2" tree machine count sample n=0
-  while read -r tree; do
-    [ -n "${tree}" ] || continue
-    printf 'MISSING %s\n' "${tree}"
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREEMISS //p')
-  while read -r tree; do
-    [ -n "${tree}" ] || continue
-    printf 'NOELF %s\n' "${tree}"
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREENOELF //p')
-  while read -r tree cap; do
-    [ -n "${tree}" ] || continue
-    n=$((n + 1))
-    printf 'CAPPED %s %s -\n' "${tree}" "${cap}"
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREECAP //p')
-  while read -r tree machine count sample; do
-    [ -n "${tree}" ] || continue
-    n=$((n + 1))
-    case "${machine}" in
-      *"${want}"*) printf 'OK %s %s %s\n' "${tree}" "${machine}" "${count}" ;;
-      *)           printf 'BAD %s %s %s %s\n' "${tree}" "${machine}" "${count}" "${sample}" ;;
-    esac
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREE //p')
+  local probe="$1" want="$2" n=0
+  _smoke_read_probe_records "${probe}" TREEMISS _tree_missing_record
+  _smoke_read_probe_records "${probe}" TREENOELF _tree_noelf_record
+  _smoke_read_probe_records "${probe}" TREECAP _tree_capped_record 1
+  _smoke_read_probe_records "${probe}" TREE _tree_machine_record 1
   [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
 }
 
@@ -1304,6 +1342,18 @@ _tree_arch_collect_manifest() {
   done < <(_rt_manifest_trees)
 }
 
+_tree_arch_probe_failure() {
+  local target_arch="$1" out="$2"
+  fail "tree-arch gate could not run in the ${target_arch} image (no TREESCAN_DONE marker) -- a gate that cannot run is not a pass: $(printf '%s' "${out}" | head -1)"
+}
+
+_smoke_unknown_verdict() {
+  local -n bad_count="$1"
+  local gate="$2" verb="$3" item="$4" target_arch="$5" suffix="${6:-}"
+  bad_count=$((bad_count + 1))
+  fail "${gate} gate: unknown verdict '${verb}' for ${item} on ${target_arch}${suffix}"
+}
+
 check_manifest_tree_arch() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1314,11 +1364,8 @@ check_manifest_tree_arch() {
   out="$(_rt_run -e "RT_TREES=${trees# }" -e "RT_TREE_PY=$(_tree_arch_py)" \
            bash -lc 'p=/opt/venv/bin/python; [ -x "$p" ] || p="$(command -v python3)"
 printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
-  if ! printf '%s\n' "${out}" | grep -qxF -- 'TREESCAN_DONE'; then
-    fail "tree-arch gate could not run in the ${target_arch} image (no TREESCAN_DONE marker) -- a gate that cannot run is not a pass: $(printf '%s' "${out}" | head -1)"
-    echo ""
-    return 0
-  fi
+  _smoke_probe_required marker "${out}" TREESCAN_DONE _tree_arch_probe_failure \
+    "${target_arch}" "${out}" || return 0
 
   while read -r verb tree machine count sample; do
     [ -n "${verb}" ] || continue
@@ -1332,8 +1379,7 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
                fail "tree-arch: the walk of ${tree} hit the ${machine}-file cap, so everything past it was never read -- a partial scan is not a pass. Raise RT_TREE_CAP or narrow the tree" ;;
       NONE)    bad=$((bad + 1))
                fail "tree-arch: the scanner found NO tree at all on ${target_arch} -- a vacuous pass, not a green image" ;;
-      *)       bad=$((bad + 1))
-               fail "tree-arch gate: unknown verdict '${verb}' for ${tree} on ${target_arch}" ;;
+      *)       _smoke_unknown_verdict bad tree-arch "${verb}" "${tree}" "${target_arch}" ;;
     esac
   done < <(_tree_arch_verdicts "${out}" "${want}")
   [ "${bad}" -ne 0 ] || pass "all ${ok} asserted artifact tree(s) are ${want} on ${target_arch}"
@@ -1805,7 +1851,7 @@ run_shipped_truth_probe() {
 # riscv64 ISA gate: one OK|BAD|SKIP <lib> <attr> line per shipped object.
 _rvv_verdicts() {
   local probe="$1" lib attr n=0 cc vcc=0
-  cc="$(printf '%s\n' "${probe}" | sed -n 's/^RVCC //p' | head -1)"
+  cc="$(_smoke_probe_values "${probe}" RVCC | head -1)"
   # Demand vector only once the image's own toolchain defaults to it; before that plain objects are expected.
   case "${cc}" in rva23*|*gcv*|*_v|*_v_*) vcc=1 ;; esac
   while read -r lib attr; do
@@ -1817,8 +1863,40 @@ _rvv_verdicts() {
       *)         if [ "${vcc}" = "1" ]; then printf 'BAD %s %s\n' "${lib}" "${attr}"
                  else printf 'OLD %s %s\n' "${lib}" "${attr}"; fi ;;
     esac
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^RVARCH //p')
+  done < <(_smoke_probe_values "${probe}" RVARCH)
   [ "${n}" -gt 0 ] || printf 'NONE - -\n'
+}
+
+# Shared shipped-truth records count only explicit OK and BAD results.
+_shipped_truth_verdict_gate() {
+  local probe_failure="$1" pass_prefix="$2" pass_suffix="$3" parser="$4" renderer="$5"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "${probe_failure}"
+    echo ""
+    return 0
+  fi
+  local line verb ok=0 bad=0
+  while IFS= read -r line; do
+    verb="${line%% *}"
+    case "${verb}" in
+      OK)  ok=$((ok + 1)) ;;
+      BAD) bad=$((bad + 1)) ;;
+    esac
+    "${renderer}" "${line}"
+  done < <("${parser}" "${_SHIPPED_TRUTH_PROBE}")
+  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "${pass_prefix}${ok}${pass_suffix}"
+  echo ""
+}
+
+_rvv_verdict_line() {
+  local verb lib attr
+  read -r verb lib attr <<< "$1"
+  case "${verb}" in
+    BAD)  fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
+    SKIP) echo "  ~~   ${lib}: ${attr}" ;;
+    OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
+    NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
+  esac
 }
 
 # C: riscv64 objects must carry the vector extension Ubuntu's own userland requires.
@@ -1826,61 +1904,34 @@ check_riscv64_isa() {
   local image_tag="$1" target_arch="$2"
   [ "${target_arch}" = riscv64 ] || return 0
   echo "--- SHIPPED-TRUTH C: riscv64 ISA of the shipped objects ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE"
-    echo ""
-    return 0
-  fi
-  local verb lib attr bad=0 ok=0
-  while read -r verb lib attr; do
-    case "${verb}" in
-      OK)   ok=$((ok + 1)) ;;
-      BAD)  bad=$((bad + 1))
-            fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
-      SKIP) echo "  ~~   ${lib}: ${attr}" ;;
-      OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
-      NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
-    esac
-  done < <(_rvv_verdicts "${_SHIPPED_TRUTH_PROBE}")
-  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "RVV: all ${ok} checked object(s) carry v1p0"
-  echo ""
+  _shipped_truth_verdict_gate \
+    "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE" \
+    "RVV: all " " checked object(s) carry v1p0" _rvv_verdicts _rvv_verdict_line
 }
 
 # Pure verdict function for the soname-precedence gate.
 _soname_verdicts() {
-  local probe="$1" so win ours n=0
-  while read -r so win ours; do
-    [ -n "${so}" ] || continue
-    n=$((n + 1))
-    # Ours lives under /opt and /usr/local; the failure is a distro copy from a system dir winning.
-    case "${win}" in
-      /opt/*|/usr/local/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
-      *)                   printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
-    esac
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^SONAME //p')
+  local probe="$1" n=0
+  _smoke_read_probe_records "${probe}" SONAME _soname_record 1
   [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
+}
+
+_soname_verdict_line() {
+  local verb so win ours
+  read -r verb so win ours <<< "$1"
+  case "${verb}" in
+    BAD)  fail "SONAME: ${so} resolves to ${win}, NOT to our ${ours} -- a consumer linking it gets the distro build. Give our tree a 000-*.conf in /etc/ld.so.conf.d (docs/cross-build-verification.md)." ;;
+    NONE) fail "SONAME: the probe found no shipped sonames at all -- a vacuous pass, not a green image" ;;
+  esac
 }
 
 # D: a library we ship must not lose the ld.so lookup to a distro copy.
 check_soname_precedence() {
   local image_tag="$1" target_arch="$2"
   echo "--- SHIPPED-TRUTH D: our libraries win the ld.so lookup (${target_arch}) ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "soname-precedence gate could not run: the in-image probe never printed RTPROBE_DONE"
-    echo ""
-    return 0
-  fi
-  local verb so win ours bad=0 ok=0
-  while read -r verb so win ours; do
-    case "${verb}" in
-      OK)   ok=$((ok + 1)) ;;
-      BAD)  bad=$((bad + 1))
-            fail "SONAME: ${so} resolves to ${win}, NOT to our ${ours} -- a consumer linking it gets the distro build. Give our tree a 000-*.conf in /etc/ld.so.conf.d (docs/cross-build-verification.md)." ;;
-      NONE) fail "SONAME: the probe found no shipped sonames at all -- a vacuous pass, not a green image" ;;
-    esac
-  done < <(_soname_verdicts "${_SHIPPED_TRUTH_PROBE}")
-  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "SONAME: all ${ok} shipped library(ies) win their lookup"
-  echo ""
+  _shipped_truth_verdict_gate \
+    "soname-precedence gate could not run: the in-image probe never printed RTPROBE_DONE" \
+    "SONAME: all " " shipped library(ies) win their lookup" _soname_verdicts _soname_verdict_line
 }
 
 # Probes in-image so ld.so and LD_LIBRARY_PATH are the image's own; check-ort-provenance.sh decides.
@@ -1905,15 +1956,32 @@ check_ort_census() {
   echo ""
 }
 
+_smoke_probe_required() {
+  local protocol="$1" evidence="$2" marker="$3" failure_renderer="$4"
+  shift 4
+  case "${protocol}" in
+    status) [ "${evidence}" = "0" ] && return 0 ;;
+    marker) printf '%s\n' "${evidence}" | grep -qxF -- "${marker}" && return 0 ;;
+    *) fail "unknown smoke probe completion protocol '${protocol}'"
+       echo ""
+       return 1 ;;
+  esac
+  "${failure_renderer}" "$@"
+  echo ""
+  return 1
+}
+
+_advertised_probe_failure() {
+  local target_arch="$1"
+  fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
+}
+
 check_advertised_versions() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- SHIPPED-TRUTH A: advertised env versions == actual (${target_arch}) ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
-    echo ""
-    return 0
-  fi
+  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _advertised_probe_failure \
+    "${target_arch}" || return 0
   local verb key rest ok=0 bad=0
   while read -r verb key rest; do
     [ -n "${verb}" ] || continue
@@ -1925,8 +1993,8 @@ check_advertised_versions() {
               fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
       UNREAD) bad=$((bad + 1))
               fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
-      *)      bad=$((bad + 1))
-              fail "advertised-version gate: unknown verdict '${verb}' for ${key} on ${target_arch} -- a verb no arm handles is a silently dropped row" ;;
+      *)      _smoke_unknown_verdict bad advertised-version "${verb}" "${key}" "${target_arch}" \
+                " -- a verb no arm handles is a silently dropped row" ;;
     esac
   done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
   if [ "$((ok + bad))" -eq 0 ]; then
@@ -1938,15 +2006,17 @@ check_advertised_versions() {
 }
 
 # B: the venv must carry what the app's own metadata says this arch needs.
+_venv_probe_failure() {
+  local target_arch="$1"
+  fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
+}
+
 check_venv_package_set() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- SHIPPED-TRUTH B: venv package set vs the app's declared graph (${target_arch}) ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
-    echo ""
-    return 0
-  fi
+  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _venv_probe_failure \
+    "${target_arch}" || return 0
   local absent
   absent="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT //p' | head -1)"
   if [ -n "${absent}" ]; then

@@ -21,6 +21,7 @@ cat > "$WORK/worker.sh" <<'WORKER'
 set -u
 harness="$1" root="$2" operation="$3" ARCHES="$4" ifs_mode="$5" scope="$6" strict="$7" context="$8" ns_status="$9"
 source "${harness%/*}/shell-context-fixture.sh"
+source "${harness%/*}/stream-receipt-fixture.sh"
 source "$root/functions.sh"
 cd "$root" || exit 1
 QDIR='emulators with spaces'
@@ -41,25 +42,20 @@ containerd-rootless-setuptool.sh() {
   printf '\n' >> trace
   return "$ns_status"
 }
-invoke() {
-  case "$operation" in
-    parse)
-      if [ "$scope" = local ]; then local -a _arr=(local seed); fi
-      if [ "$scope" = readonly ]; then readonly -a _arr; fi
-      _binfmt_read_arches
-      parse_status=$?
-      dump_state
-      cp array parsed-array
-      cp count parsed-count
-      return "$parse_status" ;;
-    extract) extract_emulators ;;
-    register) register ;;
-    verify) verify ;;
-  esac
+_binfmt_parse() {
+  if [ "$scope" = local ]; then local -a _arr=(local seed); fi
+  if [ "$scope" = readonly ]; then readonly -a _arr; fi
+  _binfmt_read_arches
+  parse_status=$?
+  dump_state
+  cp array parsed-array
+  cp count parsed-count
+  return "$parse_status"
 }
-[ "$strict" != strict ] || set -e
-shell_fixture_run_context "$context" status invoke
-printf '%s\n' "$status" > returned
+_binfmt_extract() { extract_emulators; }
+_binfmt_register() { register; }
+_binfmt_verify() { verify; }
+t_stream_run_worker "$context" "$strict" status "_binfmt_${operation}" returned
 exit "$status"
 WORKER
 

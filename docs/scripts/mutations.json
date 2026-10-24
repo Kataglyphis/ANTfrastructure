@@ -19900,6 +19900,14 @@
   "why": "Same-file diagnostics must report each distinct unit pair once and must not compare a function with itself."
  },
  {
+  "id": "code-dupes.shell-quoted-brace-boundaries",
+  "target": "docs/scripts/verify_code_dupes.py",
+  "find": "return _brace_units(lines, SHELL_FUNC, code_lines(lines))",
+  "replace": "return _brace_units(lines, SHELL_FUNC)",
+  "test": "SKIP_REAL_TREE=1 bash linux/scripts/tests/test-code-dupes.sh",
+  "why": "Quoted braces must not merge later shell functions and hide real duplication pairs."
+ },
+ {
   "id": "lib.deb-control-empty-homepage",
   "target": "linux/scripts/lib/app-packaging.sh",
   "find": "if [ \"$#\" -gt 8 ]; then",

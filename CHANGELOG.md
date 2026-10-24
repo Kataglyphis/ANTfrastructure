@@ -19,6 +19,11 @@
 - Preserve installed-before-repository order, caller arguments, source-visible path variables and fatal statuses.
 - Remove one measured duplication exception without changing scanner thresholds or coverage.
 
+## 2026-10-24 — keep shell function boundaries accurate in code-dupes
+
+- Reuse the code-size shell lexer so braces in strings, comments and here-docs cannot merge later function units.
+- Add a regression and mutation proof for a quoted `${` opener; keep token normalization, shingle width and owner cutoff unchanged.
+
 ## 2026-10-24 — share privilege, APT and target Cargo policy
 
 - Share privilege selection with caller-bound publication, original readonly behavior and module-owned companion lookup.

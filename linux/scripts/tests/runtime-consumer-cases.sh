@@ -51,12 +51,14 @@ t_assert_contains "${_CC_ROWS_SRC}" "ccache-dir" "the row list moved -- every ca
 eval "${_CC_ROWS_SRC}"
 
 _CC_FACT_PARTS="$(_extract _consumer_contract_fact)
-$(_extract _consumer_collect_required_facts)"
+$(_extract _consumer_collect_required_facts)
+$(_extract _consumer_required_facts_continue)"
 
 _CC_PARTS="${_CC_ROWS_SRC}
 $(_extract _consumer_contract_exempt)
 $(_extract _consumer_exempt_fact)
 ${_CC_FACT_PARTS}
+$(_extract _consumer_required_facts_continue)
 $(_extract _consumer_dir_verdict)
 $(_extract _consumer_exempt_verdict)
 $(_extract _consumer_android_verdict)

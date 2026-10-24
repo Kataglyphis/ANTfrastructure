@@ -34,6 +34,14 @@ _assert_layer() {
     "${file} sources module(s) outside its allowed layers: ${bad}"
 }
 
+_for_each_dockerfile() {
+  local _dockerfile callback="$1"
+  for _dockerfile in "${TESTS_DIR}"/../../Dockerfile.*; do
+    [ -f "${_dockerfile}" ] || continue
+    "${callback}" "${_dockerfile}"
+  done
+}
+
 t_case "L0 leaves source no other 01-core module"
 for f in "${L0[@]}"; do
   _assert_layer "${f}" ""
@@ -73,18 +81,18 @@ t_assert_eq "" "${offenders}" \
 # Only this pair: ubuntu-mirror.sh finds platform.sh by a file test in its own dir, which a per-file mount leaves empty.
 t_case "a per-file ubuntu-mirror.sh mount also mounts its platform.sh leaf"
 _perfile_mount_violations=""
-for _df in "${TESTS_DIR}"/../../Dockerfile.*; do
-  [ -f "${_df}" ] || continue
-  while IFS= read -r _run; do
-    # per-file mount == the SOURCE path ends in the .sh itself
-    case "${_run}" in *"source=linux/scripts/01-core/ubuntu-mirror.sh"*) ;; *) continue ;; esac
-    case "${_run}" in
+_check_ubuntu_mirror_mount_pair() {
+  local df="$1" run
+  while IFS= read -r run; do
+    case "${run}" in *"source=linux/scripts/01-core/ubuntu-mirror.sh"*) ;; *) continue ;; esac
+    case "${run}" in
       *"source=linux/scripts/01-core/platform.sh"*) ;;
-      *) _perfile_mount_violations="${_perfile_mount_violations}$(basename "${_df}") " ;;
+      *) _perfile_mount_violations="${_perfile_mount_violations}$(basename "${df}") " ;;
     esac
-  done < <(sed 's/\\$//' "${_df}" \
+  done < <(sed 's/\\$//' "${df}" \
             | awk '/^RUN/{if(b)print b; b=$0; next} b&&/^[[:space:]]/{b=b" "$0; next} b{print b; b=""} END{if(b)print b}')
-done
+}
+_for_each_dockerfile _check_ubuntu_mirror_mount_pair
 t_assert_eq "" "${_perfile_mount_violations}" \
   "ubuntu-mirror.sh per-file mount without platform.sh makes is_truthy undefined and the knob a silent no-op: ${_perfile_mount_violations}"
 
@@ -92,12 +100,13 @@ t_assert_eq "" "${_perfile_mount_violations}" \
 # See docs/failure-modes.md#apt-gpgv-exits-111-after-a-copy---link-into-tmp
 t_case "a COPY --link into /tmp restores /tmp's 1777 mode"
 _tmp_link_offenders=""
-for _df in "${TESTS_DIR}"/../../Dockerfile.*; do
-  [ -f "${_df}" ] || continue
-  grep -qE '^COPY[[:space:]]+--link[^#]*[[:space:]]/tmp/' "${_df}" || continue
-  grep -qE 'chmod[[:space:]]+1777[[:space:]]+/tmp' "${_df}" \
-    || _tmp_link_offenders="${_tmp_link_offenders}$(basename "${_df}") "
-done
+_check_tmp_link_permissions() {
+  local df="$1"
+  grep -qE '^COPY[[:space:]]+--link[^#]*[[:space:]]/tmp/' "${df}" || return 0
+  grep -qE 'chmod[[:space:]]+1777[[:space:]]+/tmp' "${df}" \
+    || _tmp_link_offenders="${_tmp_link_offenders}$(basename "${df}") "
+}
+_for_each_dockerfile _check_tmp_link_permissions
 t_assert_eq "" "${_tmp_link_offenders}" \
   "COPY --link into /tmp without a later chmod 1777 /tmp silently breaks apt for every descendant image: ${_tmp_link_offenders}"
 

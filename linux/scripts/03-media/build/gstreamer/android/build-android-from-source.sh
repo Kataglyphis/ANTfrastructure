@@ -335,11 +335,16 @@ cerbero_state_is_mounted() {
     return 1
 }
 
+cerbero_state_empty() {
+    local state_dir="$1"
+    find "${state_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+}
+
 # Contents only: rm -rf on the mountpoint itself fails EBUSY after emptying it and kills the run.
 CERBERO_CACHE_RESET="${CERBERO_CACHE_RESET:-0}"
 if [ "${CERBERO_CACHE_RESET}" = "1" ]; then
     echo "==> CERBERO_CACHE_RESET=1 — clearing ${CERBERO_HOME} for a cold cerbero build"
-    find "${CERBERO_HOME}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    cerbero_state_empty "${CERBERO_HOME}"
 fi
 
 if cerbero_state_is_mounted; then
@@ -538,6 +543,6 @@ if cerbero_state_is_mounted; then
     echo "==> Kept cerbero state on the cachemount ${CERBERO_HOME} ($(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo unknown)) for the next attempt."
 else
     CERBERO_STATE_SIZE=$(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo "unknown")
-    find "${CERBERO_HOME}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    cerbero_state_empty "${CERBERO_HOME}"
     echo "==> No cerbero cachemount: emptied ${CERBERO_HOME} (freed ${CERBERO_STATE_SIZE}) to keep it out of the image."
 fi

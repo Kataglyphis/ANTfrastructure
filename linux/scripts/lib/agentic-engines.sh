@@ -292,18 +292,64 @@ opencode_run_args() {
     if [[ "$agent" == "executor" ]]; then echo --auto; fi
 }
 
+_agentic_execute_command() {
+    local executable="$1" timeout_s="$2" renderer="$3" message="$4"
+    shift 4
+    local exit_code=0
+    if [[ "$timeout_s" -gt 0 ]] && command -v timeout &>/dev/null; then
+        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" "$executable" "$@" 2>&1 | "$renderer"
+        exit_code=${PIPESTATUS[1]}
+    else
+        printf '%s' "$message" | "$executable" "$@" 2>&1 | "$renderer"
+        exit_code=${PIPESTATUS[1]}
+    fi
+    return "$exit_code"
+}
+
+_agentic_report_engine_result() {
+    local engine="$1" identity="$2" model="$3" timeout_s="$4" exit_code="$5"
+    if [[ "$exit_code" -eq 124 ]]; then
+        log "$engine timed out after ${timeout_s}s (${identity})" "ERROR"
+    elif [[ "$exit_code" -ne 0 ]]; then
+        log "$engine exited with code $exit_code (${identity})" "WARN"
+        if [[ "$engine" == "opencode" ]]; then
+            if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model|unknown model|model unavailable"; then
+                log "Model '$model' was rejected. Run 'opencode models' to list valid IDs." "ERROR"
+            fi
+            if tail -n 50 "$LOG_FILE" | grep -qiE "API key|unauthorized|401|403"; then
+                log "Authentication error. Run 'opencode auth login'." "ERROR"
+            fi
+        else
+            if tail -n 50 "$LOG_FILE" | grep -qiE "not logged in|invalid api key|401|403"; then
+                log "Authentication error. Run 'claude' interactively once to log in." "ERROR"
+            fi
+            if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model"; then
+                log "Model '$model' was rejected by claude. Check the model ID." "ERROR"
+            fi
+        fi
+    fi
+    log "$engine finished (exit $exit_code)"
+    return "$exit_code"
+}
+
+_agentic_dry_run() {
+    [[ "${DRY_RUN:-false}" == "true" ]] || return 1
+    log "$1"
+}
+
+_agentic_require_command() {
+    local executable="$1" missing_message="$2"
+    if command -v "$executable" &>/dev/null; then return 0; fi
+    log "$missing_message" "FATAL"
+    return 1
+}
+
 invoke_opencode() {
     local agent="$1" model="$2" message="$3"
     local -a run_args
     mapfile -t run_args < <(opencode_run_args "$agent" "$model")
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log "[DRY RUN] opencode ${run_args[*]}"
-        return 0
-    fi
-    if ! command -v opencode &>/dev/null; then
-        log "opencode not found on PATH. Install v2: curl -fsSL https://opencode.ai/v2/install | bash" "FATAL"
-        return 1
-    fi
+    _agentic_dry_run "[DRY RUN] opencode ${run_args[*]}" && return 0
+    _agentic_require_command opencode "opencode not found on PATH. Install v2: curl -fsSL https://opencode.ai/v2/install | bash" || return 1
     # v1 takes neither flag above; `run --standalone` there is not a run.
     local version_text
     version_text="$(opencode --version 2>/dev/null || true)"
@@ -315,26 +361,8 @@ invoke_opencode() {
     timeout_s=$(agent_timeout_for_role "$agent")
     log "Invoking opencode: agent=$agent model=$model timeout=${timeout_s}s"
     local exit_code=0
-    if [[ "$timeout_s" -gt 0 ]] && command -v timeout &>/dev/null; then
-        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" opencode "${run_args[@]}" 2>&1 | agent_stream_passthrough
-        exit_code=${PIPESTATUS[1]}
-    else
-        printf '%s' "$message" | opencode "${run_args[@]}" 2>&1 | agent_stream_passthrough
-        exit_code=${PIPESTATUS[1]}
-    fi
-    if [[ $exit_code -eq 124 ]]; then
-        log "opencode timed out after ${timeout_s}s (agent=$agent)" "ERROR"
-    elif [[ $exit_code -ne 0 ]]; then
-        log "opencode exited with code $exit_code (agent=$agent)" "WARN"
-        if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model|unknown model|model unavailable"; then
-            log "Model '$model' was rejected. Run 'opencode models' to list valid IDs." "ERROR"
-        fi
-        if tail -n 50 "$LOG_FILE" | grep -qiE "API key|unauthorized|401|403"; then
-            log "Authentication error. Run 'opencode auth login'." "ERROR"
-        fi
-    fi
-    log "opencode finished (exit $exit_code)"
-    return $exit_code
+    _agentic_execute_command opencode "$timeout_s" agent_stream_passthrough "$message" "${run_args[@]}" || exit_code=$?
+    _agentic_report_engine_result opencode "agent=$agent" "$model" "$timeout_s" "$exit_code"
 }
 
 _claude_build_args() {
@@ -383,14 +411,8 @@ _claude_build_args() {
 # Claude Code invocation: planner sandboxed by --allowed-tools; executor defaults to bypassPermissions (trusted repos only).
 invoke_claude() {
     local role="$1" model="$2" message="$3"
-    if [[ "${DRY_RUN:-false}" == "true" ]]; then
-        log "[DRY RUN] claude -p --model $model (role=$role)"
-        return 0
-    fi
-    if ! command -v claude &>/dev/null; then
-        log "claude not found on PATH. Install: npm install -g @anthropic-ai/claude-code" "FATAL"
-        return 1
-    fi
+    _agentic_dry_run "[DRY RUN] claude -p --model $model (role=$role)" && return 0
+    _agentic_require_command claude "claude not found on PATH. Install: npm install -g @anthropic-ai/claude-code" || return 1
 
     local args=(-p --model "$model")
     _claude_build_args "$role"
@@ -401,26 +423,8 @@ invoke_claude() {
     local renderer="agent_stream_passthrough"
     [[ "${CLAUDE_STREAM_OUTPUT:-true}" == "true" ]] && renderer="claude_stream_render"
     local exit_code=0
-    if [[ "$timeout_s" -gt 0 ]] && command -v timeout &>/dev/null; then
-        printf '%s' "$message" | timeout --kill-after=30 "$timeout_s" claude "${args[@]}" 2>&1 | "$renderer"
-        exit_code=${PIPESTATUS[1]}
-    else
-        printf '%s' "$message" | claude "${args[@]}" 2>&1 | "$renderer"
-        exit_code=${PIPESTATUS[1]}
-    fi
-    if [[ $exit_code -eq 124 ]]; then
-        log "claude timed out after ${timeout_s}s (role=$role)" "ERROR"
-    elif [[ $exit_code -ne 0 ]]; then
-        log "claude exited with code $exit_code (role=$role)" "WARN"
-        if tail -n 50 "$LOG_FILE" | grep -qiE "not logged in|invalid api key|401|403"; then
-            log "Authentication error. Run 'claude' interactively once to log in." "ERROR"
-        fi
-        if tail -n 50 "$LOG_FILE" | grep -qiE "model.*not found|invalid model"; then
-            log "Model '$model' was rejected by claude. Check the model ID." "ERROR"
-        fi
-    fi
-    log "claude finished (exit $exit_code)"
-    return $exit_code
+    _agentic_execute_command claude "$timeout_s" "$renderer" "$message" "${args[@]}" || exit_code=$?
+    _agentic_report_engine_result claude "role=$role" "$model" "$timeout_s" "$exit_code"
 }
 
 # Usage limits: prints seconds to the stated reset (+2 min), 0 if none hit, 1800 if the reset is unparseable.

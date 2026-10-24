@@ -79,6 +79,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    entries are debt; remove them when the underlying finding is fixed. The function-size, complexity, comment-size
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
+   The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
    Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.

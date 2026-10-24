@@ -23,6 +23,7 @@ ALLOW_FMT = "a | b | budget | reason"
 sys.path.insert(0, str(HUB_ROOT / "linux" / "scripts"))
 from quality_allow import iter_rows  # noqa: E402
 import gate_scope  # noqa: E402
+from verify_code_size import code_lines  # noqa: E402
 
 # Never scanned: vendored trees, generated output, and records that narrate the same work on purpose.
 SKIP_DIRS = {".git", "external", "third_party", "node_modules", "out", "archive",
@@ -160,8 +161,8 @@ def _brace_units(lines: list[str], header: re.Pattern,
 
 def shell_units(path: Path) -> list[tuple[int, str]]:
     """Shell functions; anything outside one is chunked on blank lines."""
-    return _brace_units(path.read_text(encoding="utf-8", errors="replace").split("\n"),
-                        SHELL_FUNC)
+    lines = path.read_text(encoding="utf-8", errors="replace").split("\n")
+    return _brace_units(lines, SHELL_FUNC, code_lines(lines))
 
 
 def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str):

@@ -27,6 +27,13 @@ t_stream_capture() {
   return 0
 }
 
+t_stream_run_worker() {
+  local context="$1" strict="$2" status_name="$3" function_name="$4" returned_file="$5"
+  [ "${strict}" != strict ] || set -e
+  shell_fixture_run_context "${context}" "${status_name}" "${function_name}"
+  printf '%s\n' "${!status_name}" > "${returned_file}"
+}
+
 t_stream_assert_files() {
   local directory="$1" field
   shift

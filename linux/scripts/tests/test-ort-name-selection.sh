@@ -45,6 +45,7 @@ cat > "$WORK/worker.sh" <<'WORKER'
 set -u
 source "$1"
 source "${1%/*}/shell-context-fixture.sh"
+source "${1%/*}/stream-receipt-fixture.sh"
 subject="$2" directory="$3" operation="$4" value="$5" failure="$6" strict="$7" context="$8"
 source "$subject"
 cd "$directory" || exit 1
@@ -65,18 +66,13 @@ _ortg_split_tokens() {
   _ORTG_OTHERS=(tree)
   _ORTG_OTHER_REALS=(tree)
 }
-invoke() {
-  case "$operation" in
-    classify)
-      if _ortg_is_bin "$value"; then printf 'BIN:0\n'; else printf 'BIN:1\n'; fi
-      _ortg_name_finding "names/$value" ' (suffix)' ;;
-    tree) _ortg_scan_root tree '' ;;
-    record) _ortg_record_findings record ;;
-  esac
+_ort_classify() {
+  if _ortg_is_bin "$value"; then printf 'BIN:0\n'; else printf 'BIN:1\n'; fi
+  _ortg_name_finding "names/$value" ' (suffix)'
 }
-[ "$strict" != strict ] || set -e
-shell_fixture_run_context "$context" status invoke
-printf '%s\n' "$status" > returned
+_ort_tree() { _ortg_scan_root tree ''; }
+_ort_record() { _ortg_record_findings record; }
+t_stream_run_worker "$context" "$strict" status "_ort_${operation}" returned
 printf 'FILES:%s COMPARED:%s LINKS:%s\n' "$_ORTG_FILES" "$_ORTG_COMPARED" "${#_ORTG_FOUND_LINKS[@]}" > state
 exit "$status"
 WORKER
