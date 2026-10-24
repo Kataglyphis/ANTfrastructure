@@ -4,6 +4,9 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
+eval "$(sed -n '/^_smoke_probe_values()/,/^}/p' "${SMOKE}")"
+eval "$(sed -n '/^_smoke_read_probe_records()/,/^}/p' "${SMOKE}")"
+eval "$(sed -n '/^_soname_record()/,/^}/p' "${SMOKE}")"
 eval "$(sed -n '/^_soname_verdicts()/,/^}/p' "${SMOKE}")"
 
 _GST=libgstreamer-1.0.so.0

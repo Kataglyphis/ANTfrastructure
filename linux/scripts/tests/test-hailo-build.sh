@@ -3,6 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/runtime-flow-fixtures.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 HAILO_DIR="${SCRIPTS}/03-media/build/hailo"
 LIB="${HAILO_DIR}/hailo-build-lib.sh"
@@ -456,9 +457,7 @@ t_assert_contains "$(cat "${SCRIPTS}/lib-orchestrator.sh")" "_VERSION_BUILD_ARG_
 t_assert_contains "$(cat "${SCRIPTS}/lib-orchestrator.sh")" 'source "${_LIB_ORCHESTRATOR_DIR}/03-media/build/hailo/hailo-build-lib.sh"'
 t_assert_contains "$(t_fn_src "${SCRIPTS}/build-cross-chain.sh" _chain_validate_stages)" "hailo_validate_knobs || exit 2" \
   "a typo stops the chain at its start, not at the wrapper hours later"
-for _o in build-runtime-manifest.sh build-runtime-artifacts.sh; do
-  t_assert_eq "  hailo_validate_knobs || exit 2" "$(grep -A1 'runtime_wheels_setup || exit \$?' "${SCRIPTS}/${_o}" | sed -n 2p)" "${_o}"
-done
+runtime_test_preparation_step "${SCRIPTS}" 'runtime_wheels_setup || exit $?' '  hailo_validate_knobs || exit 2'
 
 t_case "build-hailort.sh: the configure goes through the carrier, pyhailort through both checks"
 _bh="$(cat "${BUILD}")"

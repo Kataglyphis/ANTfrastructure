@@ -21,9 +21,9 @@ usage() {
 Usage: build-runtime-manifest.sh --image IMAGE [options]
 
 Builds the documented cross publish flow end-to-end:
-1. clean per-architecture base images
-2. package images that layer target-built payload from cross-android-${arch}
-3. final wrapper images (includes torch venv + app + runtime scripts)
+EOF
+  runtime_usage_build_steps ''
+  cat <<'EOF'
 4. one multi-architecture manifest
 
 Options:
@@ -40,14 +40,12 @@ Options:
                                 span multiple generations (skip the XC3 coherence gate)
   --push                       Short for --push-images --push-manifest (intermediates stay local)
 EOF
-  runtime_shared_usage_options
-  cat <<'EOF'
+  runtime_usage_shared_sections <<'EOF'
   -h, --help                   Show this help text
 
 Environment overrides:
   IMAGE_NAME                   Final manifest image ref, equivalent to --image
 EOF
-  runtime_shared_usage_env_overrides
 }
 
 # Collection fills the gate's local run_ids and missing count without capturing logs.
@@ -218,18 +216,14 @@ _manifest_accept_and_promote() {
 }
 
 _manifest_extra_arg() {
-  # shellcheck disable=SC2034 # --push-all sets it for context-management.sh
   case "$1" in
     --image) IMAGE_NAME="$2"; _OARG_SHIFT=2 ;;
-    --push-images) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
     --push-manifest) PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
     --skip-manifest) CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --manifest-only|--repair) BUILD_IMAGES=0; _OARG_SHIFT=1 ;;
     --gates-only) GATES_ONLY=1; BUILD_IMAGES=0; CREATE_MANIFEST=0; _OARG_SHIFT=1 ;;
     --force) FORCE_MANIFEST=1; _OARG_SHIFT=1 ;;
-    --push) PUSH_IMAGES=1; PUSH_MANIFEST=1; _OARG_SHIFT=1 ;;
-    --push-all) PUSH_IMAGES=1; PUSH_MANIFEST=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
-    *) return 1 ;;
+    *) orchestrator_consume_runtime_push_arg manifest "$1" ;;
   esac
 }
 
@@ -269,17 +263,22 @@ _binfmt_qemu_name() {
 }
 
 verify_foreign_binfmt() {
+  local probe_owner="${REPO_ROOT}/linux/host-config/install-nerdctl-full.sh"
+  if ! grep -qx '# ANT_BINFMT_PROBE_SOURCE_API=1' "$probe_owner" 2>/dev/null; then
+    printf 'ERROR: binfmt probe owner lacks source API 1: %s\n' "$probe_owner" >&2
+    exit 1
+  fi
+  # shellcheck source=linux/host-config/install-nerdctl-full.sh
+  source "$probe_owner" --source-binfmt-probe || exit "$?"
+  declare -F binfmt_handler_enabled >/dev/null || {
+    printf 'ERROR: binfmt probe owner does not provide binfmt_handler_enabled\n' >&2
+    exit 1
+  }
   local arches="$1" a handler missing="" tool
   tool="$(command -v containerd-rootless-setuptool.sh 2>/dev/null || true)"
   for a in $(arch_list_to_words "${arches}"); do
     handler="$(_binfmt_qemu_name "${a}")"
-    # Rootful / CI hosts register in the HOST namespace (update-binfmts).
-    grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && continue
-    # Rootless registration lives in the rootlesskit namespace, not the host's binfmt_misc.
-    if [ -n "${tool}" ] && "${tool}" nsenter -- \
-         grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null; then
-      continue
-    fi
+    if binfmt_handler_enabled "${handler}" "${tool}"; then continue; fi
     missing="${missing:+${missing}, }${a} (${handler})"
   done
   [ -z "${missing}" ] || err "no QEMU binfmt handler for: ${missing} -- foreign-arch wrappers are built ON the target platform, so this fails as an empty BuildKit step error hours from now. Fix first: bash linux/scripts/setup-rootless-binfmt.sh  (RUNTIME_REGISTER_BINFMT=0 skips registration entirely)"
@@ -417,11 +416,7 @@ main() {
     err "--image is required"
   fi
 
-  export DRY_RUN
-  runtime_post_parse_setup TARGET_ARCHES "${IMAGE_NAME}"
-  runtime_wheels_setup || exit $?
-  hailo_validate_knobs || exit 2
-  runtime_host_payload_arches >/dev/null || exit 2
+  runtime_prepare_flow "${IMAGE_NAME}"
 
   # One run-id for every wrapper so the coherence gate passes on a same-run push.
   : "${CROSS_RUN_ID:=runtime-$(date -u +%Y%m%d-%H%M%S)-$$}"

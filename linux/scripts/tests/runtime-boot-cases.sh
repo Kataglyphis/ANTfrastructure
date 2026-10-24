@@ -194,14 +194,46 @@ FOREIGN /opt/flutter/.git/FETCH_HEAD")" \
 
 # Advertised keys: neither "the image did not tell us" arm may be a SKIP
 _advert_gate() {
-  VERDICTS="$1" bash -c '
+  VERDICTS="$1" PROBE_RC="${2:-0}" bash -c '
     '"${_STUBS}"'
     _advert_verdicts() { printf "%s\n" "${VERDICTS}"; }
     _SHIPPED_TRUTH_PROBE=""
-    _SHIPPED_TRUTH_PROBE_RC=0
+    _SHIPPED_TRUTH_PROBE_RC="${PROBE_RC}"
+    '"$(_extract _smoke_probe_required)"'
+    '"$(_extract _smoke_unknown_verdict)"'
+    '"$(_extract _advertised_probe_failure)"'
     '"$(_extract check_advertised_versions)"'
     check_advertised_versions img amd64' 2>&1
 }
+
+_venv_gate() {
+  VERDICTS="${2:-ASSERTED 1}" PROBE_RC="${1:-0}" bash -c '
+    '"${_STUBS}"'
+    _venv_set_verdicts() { printf "%s\n" "${VERDICTS}"; }
+    _SHIPPED_TRUTH_PROBE=""
+    _SHIPPED_TRUTH_PROBE_RC="${PROBE_RC}"
+    '"$(_extract _smoke_probe_required)"'
+    '"$(_extract _smoke_unknown_verdict)"'
+    '"$(_extract _venv_probe_failure)"'
+    '"$(_extract check_venv_package_set)"'
+    check_venv_package_set img amd64' 2>&1
+}
+
+t_case "an incomplete shared probe fails the advertised gate with its own diagnostic"
+_out="$(_advert_gate "OK RUST_VERSION 1.98.0" 1)"
+t_assert_contains "${_out}" "FAIL advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (amd64) -- a gate that cannot run is not a pass"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c '^PASS ')" "the unavailable probe cannot pass"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'matches the image')" "the verdict table is not consumed"
+
+t_case "an incomplete shared probe fails the venv gate with its own diagnostic"
+_out="$(_venv_gate 1 "ASSERTED 1")"
+t_assert_contains "${_out}" "FAIL venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (amd64) -- a gate that cannot run is not a pass"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c '^PASS ')" "the unavailable probe cannot pass"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c 'requirement edge')" "the verdict table is not consumed"
+
+t_case "an empty venv assertion count remains a failure"
+t_assert_contains "$(_venv_gate 0 "ASSERTED 0")" "FAIL VENV-SET asserted NOTHING on amd64" \
+  "the common probe check cannot turn an empty contract into a pass"
 
 t_case "an unset key fails the gate instead of printing a SKIP"
 t_assert_contains "$(_advert_gate "UNSET RUST_VERSION")" "could only ever SKIP" \
@@ -215,6 +247,8 @@ t_case "a verdict verb no arm handles fails instead of being dropped"
 # Without a default arm a new verb vanishes silently.
 t_assert_contains "$(_advert_gate "WHAT RUST_VERSION 1.98.0")" "unknown verdict" \
   "an unhandled verb is a silently dropped row"
+t_assert_contains "$(_advert_gate "WHAT RUST_VERSION 1.98.0")" \
+  "advertised-version gate: unknown verdict 'WHAT' for RUST_VERSION on amd64 -- a verb no arm handles is a silently dropped row"
 
 t_case "an EMPTY verdict table is a vacuous pass, not a green image"
 # An empty key list asserts nothing at all.
@@ -252,6 +286,12 @@ t_assert_contains "${_SCAN_OUT}" "TREESCAN_DONE" "exit status is not evidence; t
 
 _verdicts() {
   bash -c '
+    '"$(_extract _smoke_probe_values)"'
+    '"$(_extract _smoke_read_probe_records)"'
+    '"$(_extract _tree_missing_record)"'
+    '"$(_extract _tree_noelf_record)"'
+    '"$(_extract _tree_capped_record)"'
+    '"$(_extract _tree_machine_record)"'
     '"$(_extract _tree_arch_verdicts)"'
     _tree_arch_verdicts "$1" "$2"' _ "$1" "$2" 2>&1
 }
@@ -311,17 +351,29 @@ rm -rf "${_HT1_BIG}"
 
 # The gate itself with the container stubbed: SCAN is what the image's scanner printed.
 _ht1_gate() {
-  SCAN="$1" WANT="$2" bash -c '
+  SCAN="$1" WANT="$2" RAW_VERDICTS="${3:-}" bash -c '
     '"${_STUBS}"'
     _rt_run() { printf "%s\n" "${SCAN}"; }
     smoke_elf_machine_grep() { printf "%s" "${WANT}"; }
     _rt_manifest_trees() { printf "%s\n" "'"${_HT1_FIX}"'/native"; }
     _rt_tree_arch_exempt() { return 1; }
+    '"$(_extract _smoke_probe_required)"'
+    '"$(_extract _tree_arch_probe_failure)"'
+    '"$(_extract _smoke_unknown_verdict)"'
+    '"$(_extract _smoke_probe_values)"'
+    '"$(_extract _smoke_read_probe_records)"'
+    '"$(_extract _tree_missing_record)"'
+    '"$(_extract _tree_noelf_record)"'
+    '"$(_extract _tree_capped_record)"'
+    '"$(_extract _tree_machine_record)"'
     '"$(_extract _tree_arch_verdicts)"'
     '"$(_extract _tree_arch_py)"'
     '"$(_extract _tree_arch_collect_manifest)"'
     '"$(_extract _tree_arch_bad_verdict)"'
     '"$(_extract check_manifest_tree_arch)"'
+    if [ -n "${RAW_VERDICTS}" ]; then
+      _tree_arch_verdicts() { printf "%s\n" "${RAW_VERDICTS}"; }
+    fi
     check_manifest_tree_arch img arm64' 2>&1
 }
 
@@ -331,6 +383,12 @@ t_assert_contains "$(_ht1_gate "${_SCAN_OUT}" AArch64)" "FAIL" "a BAD verdict mu
 t_case "a scanner that never ran fails instead of passing empty"
 t_assert_contains "$(_ht1_gate "python3: command not found" AArch64)" "could not run" \
   "no TREESCAN_DONE marker means the gate asserted nothing"
+
+t_case "an unknown tree-arch verdict fails with its gate-specific diagnostic"
+_out="$(_ht1_gate TREESCAN_DONE AArch64 "FUTURE /tree - 0 -")"
+t_assert_contains "${_out}" "tree-arch gate: unknown verdict 'FUTURE' for /tree on arm64"
+t_assert_eq 0 "$(printf '%s\n' "${_out}" | grep -c '^PASS ')" \
+  "an unknown tree verdict cannot pass"
 
 t_case "the correct shape passes"
 t_assert_contains "$(_ht1_gate "TREE ${_HT1_FIX}/native AArch64 2 x

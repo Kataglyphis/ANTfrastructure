@@ -332,7 +332,8 @@ t_assert_contains "${_out}" "KEEP: no GLib in the GStreamer prefix"
 
 t_case "the shipped-image contract row reads the same gate as uid 1001"
 _smoke="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
-_row="$(t_fn_src "${_smoke}" _consumer_contract_fact)"$'\n'"$(t_fn_src "${_smoke}" _consumer_gtk4_verdict)" || exit 1
+_consumer="${_smoke%/*}/runtime-consumer-contract.sh"
+_row="$(t_fn_src "${_smoke}" _consumer_contract_fact)"$'\n'"$(t_fn_src "${_consumer}" _consumer_gtk4_verdict)" || exit 1
 _g4row() { bash -c "${_row}"$'\n''_consumer_gtk4_verdict gtk4-dev "$1"' _ "$1"; }
 t_assert_eq "OK gtk4-dev gtk4 4.22.4 at /usr/lib/riscv64-linux-gnu/libgtk-4.so.1: every Requires, NEEDED and symbol resolves" \
   "$(_g4row 'FACT gtk4-dev OK: gtk4 4.22.4 at /usr/lib/riscv64-linux-gnu/libgtk-4.so.1: every Requires, NEEDED and symbol resolves')"

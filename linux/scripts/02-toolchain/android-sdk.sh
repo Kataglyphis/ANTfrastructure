@@ -17,18 +17,10 @@ if [ -f /opt/scripts/core/ubuntu-mirror.sh ]; then
 fi
 
 # This installer runs without the module chain, so load downloads.sh directly.
-if ! command -v download_file >/dev/null 2>&1; then
-  for _asdk_dl in \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
-    "/opt/scripts/core/downloads.sh"; do
-    if [ -f "${_asdk_dl}" ]; then
-      # shellcheck disable=SC1090
-      source "${_asdk_dl}"
-      break
-    fi
-  done
-  unset _asdk_dl
-fi
+# shellcheck source=bootstrap-import.sh
+source "$(dirname "${BASH_SOURCE[0]}")/bootstrap-import.sh" || exit $?
+source_toolchain_downloads "${BASH_SOURCE[0]}"
+source_toolchain_required "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" load-versions-env.sh exit core-paths-only load_raw_pin_if_empty
 
 ensure_host_apt_architectures() {
   apt_sources_set_architectures "/etc/apt/sources.list.d/ubuntu.sources" "amd64 i386"
@@ -193,9 +185,7 @@ if [ "${sdk_restored}" -eq 0 ]; then
   cd "${tmpdir}"
   zip_name="commandlinetools-linux-${ANDROID_SDK_VERSION}_latest.zip"
   # Verified fetch: sdkmanager bootstraps the NDK; its pin is noforward, so read it from versions.env.
-  if [ -z "${ANDROID_CMDLINE_TOOLS_SHA256:-}" ] && [ -f /opt/scripts/core/versions.env ]; then
-    ANDROID_CMDLINE_TOOLS_SHA256="$(sed -n 's/^ANDROID_CMDLINE_TOOLS_SHA256=//p' /opt/scripts/core/versions.env)"
-  fi
+  load_raw_pin_if_empty ANDROID_CMDLINE_TOOLS_SHA256 ANDROID_CMDLINE_TOOLS_SHA256 /opt/scripts/core/versions.env
   # The zip is cached by file name and re-verified, so it survives bumps of the other pins.
   cached_zip=""
   if [ -n "${ANDROID_SDK_CACHE_DIR}" ] && [ -d "${ANDROID_SDK_CACHE_DIR}" ]; then

@@ -1,4 +1,25 @@
+# ANT_APT_UPDATE_SOURCE_API=1
 # shellcheck shell=bash
+unset -f apt_update_select
+case "$?" in 0) ;; *) return "$?" ;; esac
+
+apt_update_select() {
+  if "$1" "${@:4}" >/dev/null 2>&1; then
+    "$2" "${@:4}"
+  else
+    "$3" "${@:4}"
+  fi
+  return $?
+}
+
+if [ "${1:-}" = --ant-source-apt-update-only ]; then
+  if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+    printf 'ERROR: --ant-source-apt-update-only must be sourced\n' >&2
+    exit 1
+  fi
+  return 0
+fi
+
 # Cross-compilation apt helpers, sourced by cross-env.sh.
 
 if [ "${BASH_SOURCE[0]}" = "$0" ]; then
@@ -184,6 +205,18 @@ cross_prepare_apt_sources_for_target() {
   fi
 }
 
+_apt_smart_cross_available() {
+  command -v cross_apt_update
+}
+
+_apt_smart_cross_update() {
+  cross_apt_update "${extra_args[@]}"
+}
+
+_apt_smart_system_update() {
+  apt-get update "${extra_args[@]}"
+}
+
 apt_update_smart() {
   local -a extra_args=()
   if [ "$#" -gt 0 ]; then
@@ -192,11 +225,8 @@ apt_update_smart() {
     extra_args=(-y)
   fi
 
-  if command -v cross_apt_update >/dev/null 2>&1; then
-    cross_apt_update "${extra_args[@]}"
-  else
-    apt-get update "${extra_args[@]}"
-  fi
+  declare -F apt_update_select >/dev/null || { printf 'ERROR: cross-apt.sh lacks apt_update_select\n' >&2; return 1; }
+  apt_update_select _apt_smart_cross_available _apt_smart_cross_update _apt_smart_system_update "$@"
 }
 
 cross_apt_update() {

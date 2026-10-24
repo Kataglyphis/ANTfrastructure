@@ -297,6 +297,25 @@ _gst_monorepo_wrap_flags() {
   append_meson_arg "-Dpygobject:tests=false"
 }
 
+_gst_monorepo_cross_pkgconfig() {
+  # The SDK cross file pins host pkgconfig paths; without the key meson uses the PKG_CONFIG_LIBDIR set below.
+  if [ -n "${MESON_CROSS_FILE:-}" ] && [ -f "${MESON_CROSS_FILE}" ]; then
+    sed -i '/^pkg_config_libdir = /d' "${MESON_CROSS_FILE}"
+  fi
+}
+
+_gst_monorepo_meson_cross() {
+  local -a _gmmc_exec_argv=("$@")
+  set --
+  append_meson_cross_flags "${_gmmc_exec_argv[@]}"
+}
+
+_gst_monorepo_meson_native() {
+  local -a _gmmn_exec_argv=("$@")
+  set --
+  append_meson_native_flags "${_gmmn_exec_argv[@]}"
+}
+
 _gst_monorepo_cross_flags() {
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
@@ -307,16 +326,8 @@ _gst_monorepo_cross_flags() {
 
   media_prepare_cross_compilers
 
-  if command -v append_meson_cross_flags >/dev/null 2>&1; then
-    append_meson_cross_flags MESON_FLAGS
-    # The SDK cross file pins host pkgconfig paths; without the key meson uses the PKG_CONFIG_LIBDIR set below.
-    if [ -n "${MESON_CROSS_FILE:-}" ] && [ -f "${MESON_CROSS_FILE}" ]; then
-      sed -i '/^pkg_config_libdir = /d' "${MESON_CROSS_FILE}"
-    fi
-  fi
-  if command -v append_meson_native_flags >/dev/null 2>&1; then
-    append_meson_native_flags MESON_FLAGS
-  fi
+  declare -F append_available_meson_toolchain_flags append_available_meson_provider >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\n' >&2; return 1; }
+  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig _gst_monorepo_meson_cross _gst_monorepo_meson_native
 
   _gst_monorepo_wrap_flags
 

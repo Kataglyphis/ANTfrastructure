@@ -7,18 +7,10 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 
 # Load downloads.sh directly when this file is sourced without the common.sh module chain.
-if ! command -v download_file >/dev/null 2>&1; then
-  for _vulkan_dl in \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/downloads.sh" \
-    "/opt/scripts/core/downloads.sh"; do
-    if [ -f "${_vulkan_dl}" ]; then
-      # shellcheck disable=SC1090
-      source "${_vulkan_dl}"
-      break
-    fi
-  done
-  unset _vulkan_dl
-fi
+# shellcheck source=bootstrap-import.sh
+source "$(dirname "${BASH_SOURCE[0]}")/bootstrap-import.sh" || return $?
+source_toolchain_downloads "${BASH_SOURCE[0]}"
+source_toolchain_required "$(dirname "${BASH_SOURCE[0]}")" path-helpers.sh exit core-paths-only path_symlink_missing
 
 # Logs the link-time .so symlinks vulkan-tools needs, so a later "cannot find -lxcb" is diagnosable.
 _vulkan_report_wsi_link_libs() {
@@ -155,17 +147,15 @@ _vulkan_setup_sdk_includes() {
     if [[ -d "${SDK_ARCHDIR}/include" ]]; then
       ${SUDO:-} mkdir -p /usr/include /usr/local/include "${target_include_dir}"
       for entry in X11 xcb GL KHR EGL GLES2 GLES3; do
-        if [[ -e "/usr/include/${entry}" && ! -e "${target_include_dir}/${entry}" ]]; then
-          ${SUDO:-} ln -s "/usr/include/${entry}" "${target_include_dir}/${entry}"
+        if [[ -e "/usr/include/${entry}" ]]; then
+          path_symlink_missing "/usr/include/${entry}" "${target_include_dir}/${entry}" -s optional
         fi
       done
       local header base
       for header in /usr/include/wayland*.h /usr/include/xf86drm*.h; do
         [[ -e "${header}" ]] || continue
         base="$(basename "${header}")"
-        if [[ ! -e "${target_include_dir}/${base}" ]]; then
-          ${SUDO:-} ln -s "${header}" "${target_include_dir}/${base}"
-        fi
+        path_symlink_missing "${header}" "${target_include_dir}/${base}" -s optional
       done
       export CMAKE_INCLUDE_PATH="${SDK_ARCHDIR}/include:/usr/include${CMAKE_INCLUDE_PATH:+:${CMAKE_INCLUDE_PATH}}"
       # Never put /usr/include in CPATH: it breaks libstdc++'s `#include_next <stdlib.h>`.

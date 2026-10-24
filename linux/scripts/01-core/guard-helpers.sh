@@ -4,7 +4,17 @@
 # first_match <path> [find-predicate...]: first hit or ""; -print -quit avoids SIGPIPE, || true a set -e abort.
 first_match() {
   local _path="$1"; shift
-  find "${_path}" "$@" -print -quit 2>/dev/null || true
+  first_match_using _first_match_find "${_path}" "$@"
+}
+
+_first_match_find() {
+  find "$@"
+}
+
+# Captured callbacks retain each caller's find alias while sharing first-match output policy.
+first_match_using() {
+  local _fmu_find="$1" _fmu_path="$2"; shift 2
+  "${_fmu_find}" "${_fmu_path}" "$@" -print -quit 2>/dev/null || true
 }
 
 # probe <cmd...>: a boolean check whose output is deliberately discarded.

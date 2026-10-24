@@ -3,10 +3,12 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/python-ci-fixture.sh
+source "${TESTS_DIR}/python-ci-fixture.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-t_python_ci_fixture "${_work}" "${SCRIPTS}" 02-toolchain/python/free-threaded-wheel.py || exit 1
+python_ci_fixture "${_work}" "${SCRIPTS}" 02-toolchain/python/free-threaded-wheel.py || exit 1
 PYROOT="${_work}/pyroot"
 SYSROOT_DIR="${_work}/sysroot"
 mkdir -p "${TREE}/06-packaging" "${TREE}/lib" "${WS}/packaging" "${PYROOT}" "${SYSROOT_DIR}/usr/include/python3.14"

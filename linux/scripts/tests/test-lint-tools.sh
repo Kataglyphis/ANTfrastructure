@@ -101,10 +101,14 @@ t_assert_contains "${_torch}" "install-lint-tools.sh /usr/local/bin /tmp/hadolin
 
 t_case "the shipped-image contract row holds both tools to their tool-pins.env pins (mutation)"
 SMOKE="${SCRIPTS}/06-packaging/smoke-runtime-image.sh"
+CONSUMER="${SCRIPTS}/06-packaging/runtime-consumer-contract.sh"
 mkdir -p "${_work}/rt/06-packaging" "${_work}/rt/01-core"; cp "${PINS}" "${_work}/rt/01-core/"
-for _fn in _consumer_contract_fact _consumer_lint_tools_verdict _rt_env_pin _rt_tool_pin; do
-  t_fn_src "${SMOKE}" "${_fn}" >> "${_work}/rt/06-packaging/row.sh" || exit 1
+t_fn_src "${SMOKE}" _consumer_contract_fact >> "${_work}/rt/06-packaging/row.sh" || exit 1
+for _fn in _consumer_lint_tools_verdict _consumer_versioned_contract_verdict; do
+  t_fn_src "${CONSUMER}" "${_fn}" >> "${_work}/rt/06-packaging/row.sh" || exit 1
 done
+t_fn_src "${SMOKE}" _rt_env_pin >> "${_work}/rt/06-packaging/row.sh" || exit 1
+t_fn_src "${CONSUMER}" _rt_tool_pin >> "${_work}/rt/06-packaging/row.sh" || exit 1
 _lint_row() { bash -c 'source "$1"; _consumer_lint_tools_verdict lint-tools "$2" "$3"' _ "${_work}/rt/06-packaging/row.sh" "$@"; }
 _pins_want="shellcheck=${SC_V#v} hadolint=${HL_V#v}"
 t_assert_eq "OK lint-tools ${_pins_want}" "$(_lint_row "FACT lint-tools ${_pins_want}" "${_pins_want}")"

@@ -117,14 +117,14 @@ COPY --link --chown=${RUNTIME_UID}:${RUNTIME_UID} --from=artifact-source /usr/lo
 # docs/artifact-copy-completeness.md#the-llvm-target-prefix-fills-what-it-needs-and-nothing-else
 COPY --link --from=artifact-source /opt/llvm-target /usr/local/llvm-target
 # Tolerant per-path copies: variant payloads such as onnxruntime-gpu may be absent.
-COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh /tmp/
+COPY --chmod=755 linux/scripts/06-packaging/copy-media-payloads.sh linux/scripts/06-packaging/media-payloads.sh linux/scripts/lib/log-bootstrap.sh /tmp/
 RUN --mount=type=bind,from=artifact-source,source=/,target=/artifact-src \
     set -euo pipefail; \
     # No soname repair here: that belongs to the sdk stage alone (materialize-llvm-target.sh).
     ENABLE_NVIDIA="${ENABLE_NVIDIA:-false}" ENABLE_AMD="${ENABLE_AMD:-false}" \
       ENABLE_ROCM_ASAN="${ENABLE_ROCM_ASAN:-false}" ENABLE_DEEPSTREAM="${ENABLE_DEEPSTREAM:-false}" \
       ENABLE_TENSORRT="${ENABLE_TENSORRT:-false}" SRCPREFIX=/artifact-src bash /tmp/copy-media-payloads.sh; \
-    rm -f /tmp/copy-media-payloads.sh /tmp/media-payloads.sh
+    rm -f /tmp/copy-media-payloads.sh /tmp/media-payloads.sh /tmp/log-bootstrap.sh
 
 FROM ${PACKAGE_BASE_STAGE} AS package
 
@@ -284,7 +284,7 @@ RUN printf '%s\n' \
 
 COPY linux/scripts/01-core/ /opt/scripts/core/
 COPY linux/scripts/02-toolchain/ /opt/scripts/toolchain/
-COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh /opt/scripts/android-sdk.sh
+COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/
 COPY --chmod=755 linux/scripts/03-media/runtime/ /opt/scripts/03-media/final/
 # The final install-deps.sh sources media_load_arch_flags from here.
 COPY --chmod=755 linux/scripts/03-media/core/ /opt/scripts/03-media/core/

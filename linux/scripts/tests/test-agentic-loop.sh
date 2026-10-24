@@ -156,12 +156,75 @@ t_case "a dry run shows the v2 command line"
 _out="$(_lib 'DRY_RUN=true invoke_opencode executor m msg')"
 t_assert_contains "${_out}" "[DRY RUN] opencode run --agent executor --model m --standalone --auto"
 
+t_case "a claude dry run retains its role and model"
+_out="$(_lib 'DRY_RUN=true invoke_claude planner m msg')"
+t_assert_contains "${_out}" "[DRY RUN] claude -p --model m (role=planner)"
+
+t_case "the shared required-command check reports a fatal missing executable"
+_out="$(_lib '_agentic_require_command "'"${_work}"'/missing-engine" "install the engine"; echo rc=$?')"
+t_assert_contains "${_out}" "[FATAL] install the engine"
+t_assert_contains "${_out}" "rc=1"
+
 t_case "a v1 opencode on PATH is FATAL and never gets a run"
 _out="$(_lib 'opencode() { if [[ "$1" == --version ]]; then echo 1.18.33; else echo RAN-RUN; fi; }
 invoke_opencode executor m msg; echo "rc=$?"')"
 t_assert_contains "${_out}" "opencode v2 is required; PATH has '1.18.33'"
 t_assert_contains "${_out}" "rc=1"
 t_assert_eq "0" "$(grep -c RAN-RUN <<< "${_out}")" "v1 must not be handed v2's flags"
+
+t_case "both CLIs share prompt transport, argument boundaries and raw status"
+cat > "${_work}/engine-runner.sh" <<'EOF'
+set -u
+LOG_FILE="$1"
+ARGV_FILE="$2"
+MESSAGE_FILE="$3"
+TIMEOUT_FILE="$4"
+source "$5"
+LOG_FILE="$1"
+timeout() {
+    printf '%s\n' "$@" > "${TIMEOUT_FILE}"
+    shift 2
+    "$@"
+}
+opencode() {
+    if [[ "${1:-}" == --version ]]; then echo 'opencode v2.0.0'; return 0; fi
+    printf '%s\n' "$@" > "${ARGV_FILE}.opencode"
+    cat > "${MESSAGE_FILE}.opencode"
+    echo 'opencode reply: model not found; API key unauthorized'
+    return 37
+}
+claude() {
+    printf '%s\n' "$@" > "${ARGV_FILE}.claude"
+    cat > "${MESSAGE_FILE}.claude"
+    echo 'claude reply: not logged in; invalid model'
+    return 38
+}
+AGENT_EXECUTOR_TIMEOUT=7 invoke_opencode executor 'model with spaces' 'opencode prompt' || _opencode_rc=$?
+CLAUDE_STREAM_OUTPUT=false invoke_claude planner 'model with spaces' 'claude prompt' || _claude_rc=$?
+echo "rc_opencode=${_opencode_rc:-0}|rc_claude=${_claude_rc:-0}"
+EOF
+_out="$(bash "${_work}/engine-runner.sh" "${_work}/engine.log" "${_work}/argv" "${_work}/message" "${_work}/timeout" "${LIB}" 2>&1)"
+t_assert_contains "${_out}" "opencode reply: model not found; API key unauthorized"
+t_assert_contains "${_out}" "claude reply: not logged in; invalid model"
+t_assert_contains "${_out}" "rc_opencode=37|rc_claude=38"
+t_assert_contains "${_out}" "Model 'model with spaces' was rejected. Run 'opencode models' to list valid IDs."
+t_assert_contains "${_out}" "Authentication error. Run 'opencode auth login'."
+t_assert_contains "${_out}" "Authentication error. Run 'claude' interactively once to log in."
+t_assert_contains "${_out}" "Model 'model with spaces' was rejected by claude. Check the model ID."
+_opencode_model_line="$(grep -nF "Model 'model with spaces' was rejected. Run 'opencode models'" <<< "${_out}" | cut -d: -f1)"
+_opencode_auth_line="$(grep -nF "Authentication error. Run 'opencode auth login'." <<< "${_out}" | cut -d: -f1)"
+_claude_auth_line="$(grep -nF "Authentication error. Run 'claude' interactively once to log in." <<< "${_out}" | cut -d: -f1)"
+_claude_model_line="$(grep -nF "Model 'model with spaces' was rejected by claude." <<< "${_out}" | cut -d: -f1)"
+t_assert_ok test "${_opencode_model_line}" -lt "${_opencode_auth_line}"
+t_assert_ok test "${_claude_auth_line}" -lt "${_claude_model_line}"
+t_assert_eq "opencode prompt" "$(cat "${_work}/message.opencode")"
+t_assert_eq "claude prompt" "$(cat "${_work}/message.claude")"
+t_assert_eq $'run\n--agent\nexecutor\n--model\nmodel with spaces\n--standalone\n--auto' \
+  "$(cat "${_work}/argv.opencode")"
+t_assert_eq $'-p\n--model\nmodel with spaces\n--output-format\ntext\n--dangerously-skip-permissions' \
+  "$(cat "${_work}/argv.claude")"
+t_assert_eq $'--kill-after=30\n7\nopencode\nrun\n--agent\nexecutor\n--model\nmodel with spaces\n--standalone\n--auto' \
+  "$(cat "${_work}/timeout")"
 
 # ── 4. the F2 seam: the entry point loads the engine half, and no function lives in both ──
 ENGINES="${TESTS_DIR}/../lib/agentic-engines.sh"

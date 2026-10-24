@@ -17,9 +17,9 @@ usage() {
 Usage: build-runtime-artifacts.sh [options]
 
 Builds the same cross runtime flow used for publishable images:
-1. clean per-architecture base images
-2. package images that layer target-built payload from cross-android-${arch}
-3. final wrapper images (includes torch venv + app + runtime scripts) from linux/Dockerfile.torch
+EOF
+  runtime_usage_build_steps ' from linux/Dockerfile.torch'
+  cat <<'EOF'
 4. exports the final wrapper rootfs for each architecture
 
 Options:
@@ -27,15 +27,13 @@ Options:
   --push                        Push wrapper images after export (intermediates stay local)
   --push-all                    Push ALL intermediate images too (base/package)
 EOF
-  runtime_shared_usage_options
-  cat <<'EOF'
+  runtime_usage_shared_sections <<'EOF'
   -h, --help                    Show this help text
 
 Environment overrides:
   OUTPUT_ROOT                   Root directory for exported rootfs artifacts
   IMAGE_PREFIX                  Prefix for wrapper image tags
 EOF
-  runtime_shared_usage_env_overrides
 }
 
 _build_one_artifact() {
@@ -58,25 +56,17 @@ _build_one_artifact() {
 }
 
 _artifacts_extra_arg() {
-  # shellcheck disable=SC2034 # --push-all sets it for context-management.sh
   case "$1" in
     --output-root) OUTPUT_ROOT="$2"; _OARG_SHIFT=2 ;;
     --image-prefix) IMAGE_PREFIX="$2"; _OARG_SHIFT=2 ;;
-    --push) PUSH_IMAGES=1; _OARG_SHIFT=1 ;;
-    --push-all) PUSH_IMAGES=1; PUSH_INTERMEDIATE_IMAGES=1; _OARG_SHIFT=1 ;;
-    *) return 1 ;;
+    *) orchestrator_consume_runtime_push_arg artifacts "$1" ;;
   esac
 }
 
 main() {
   run_runtime_arg_loop usage _artifacts_extra_arg "$@"
 
-  # Post-parse setup (replaces runtime_flow_export_setup)
-  export DRY_RUN
-  runtime_post_parse_setup TARGET_ARCHES "${IMAGE_PREFIX}"
-  runtime_wheels_setup || exit $?
-  hailo_validate_knobs || exit 2
-  runtime_host_payload_arches >/dev/null || exit 2
+  runtime_prepare_flow "${IMAGE_PREFIX}"
   # Resolved ONCE: every arch below builds the same OrchestrANT commit.
   runtime_resolve_app_ref
 

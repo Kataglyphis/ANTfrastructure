@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Package-stage fixes to the toolchain and runtime a consumer sees; sourced by setup-package-image.sh.
 
+clear_unmounted_apt_lists() {
+    mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+}
+
 # Empty where the prefix has no GTK 4: arm64 and riscv64 cross-build GStreamer without it.
 prefix_gtk4_lib() {
     find "${GSTREAMER_PREFIX:-/opt/gstreamer}/lib" -maxdepth 2 -name libgtk-4.so.1 -print -quit 2>/dev/null || true

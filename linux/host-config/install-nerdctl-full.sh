@@ -1,5 +1,24 @@
 #!/usr/bin/env bash
 # Installs or upgrades nerdctl-full, dry run unless NERDCTL_INSTALL_CONFIRM=1: docs/linux-host-setup.md#b3b-install-or-upgrade-nerdctl-full
+
+# ANT_BINFMT_PROBE_SOURCE_API=1
+binfmt_handler_enabled() {
+  local handler="$1" tool="${2:-}"
+  grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null && return 0
+  if [ -z "$tool" ] && [ "${3:-}" = discover-if-empty ]; then
+    [ -n "$(command -v containerd-rootless-setuptool.sh 2>/dev/null)" ] || return 1
+    tool=containerd-rootless-setuptool.sh
+  fi
+  [ -n "$tool" ] || return 1
+  "$tool" nsenter -- grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${handler}" 2>/dev/null
+}
+
+if [ "${1:-}" = --source-binfmt-probe ]; then
+  if [ "${BASH_SOURCE[0]}" != "$0" ]; then return 0; fi
+  printf 'ERROR: --source-binfmt-probe must be sourced\n' >&2
+  exit 2
+fi
+
 set -euo pipefail
 
 UNIT_DIR="${NERDCTL_UNIT_DIR:-${HOME}/.config/systemd/user}"
@@ -87,6 +106,21 @@ _check_dropin_prefix() {
   return 1
 }
 
+_stop_user_services() {
+  systemctl --user stop buildkit.service containerd.service 2>/dev/null || true
+  return 0
+}
+
+# Unit lists retain the caller's splitting/globbing and failed warnings retain their status.
+_rootful_service_action() {
+  local action="$1" units="$2" description="${3:-$1}" status
+  # shellcheck disable=SC2086
+  if sudo systemctl "$action" ${units}; then return 0; fi
+  warn "could not ${description} ${units}"
+  status=$?
+  return "$status"
+}
+
 # Rollback: bin/ and units only; libexec/ and share/ stay new, so a full downgrade reinstalls NERDCTL_VERSION=<previous>
 if [ "${1:-}" = "--rollback" ]; then
   [ -d "${BACKUP_DIR}" ] || err "no backup at ${BACKUP_DIR}"
@@ -97,13 +131,12 @@ if [ "${1:-}" = "--rollback" ]; then
   done
   if [ -n "${_rb_rootful}" ]; then
     log "stopping rootful ${_rb_rootful} first (sudo) so they do not keep the old inode"
-    # shellcheck disable=SC2086  # deliberate split: unit LIST
-    sudo systemctl stop ${_rb_rootful} || warn "could not stop ${_rb_rootful}"
+    _rootful_service_action stop "${_rb_rootful}"
   fi
   log "restoring bin/ binaries (+ lib/systemd/system units, if backed up) from ${BACKUP_DIR}"
   log "note: libexec/ (CNI) and share/ stay at the installed version;"
   log "      for a full downgrade re-run with NERDCTL_VERSION=<previous> instead"
-  systemctl --user stop buildkit.service containerd.service 2>/dev/null || true
+  _stop_user_services
   _as_root cp -a "${BACKUP_DIR}/bin/." "${PREFIX}/bin/" \
     || err "restore failed — binaries may be inconsistent, re-run the installer"
   if [ -d "${BACKUP_DIR}/lib/systemd/system" ]; then
@@ -117,8 +150,7 @@ if [ "${1:-}" = "--rollback" ]; then
   fi
   systemctl --user start containerd.service buildkit.service 2>/dev/null || true
   if [ -n "${_rb_rootful}" ]; then
-    # shellcheck disable=SC2086  # deliberate split: unit LIST
-    sudo systemctl start ${_rb_rootful} || warn "could not restart ${_rb_rootful}"
+    _rootful_service_action start "${_rb_rootful}" restart
   fi
   log "rolled back. Installed now: $(nerdctl --version 2>/dev/null || echo '?')"
   exit 0
@@ -199,7 +231,7 @@ if [ "${CURRENT#v}" = "${TARGET#v}" ] && [ -x "${PREFIX}/bin/nerdctl" ] && [ "${
       exit 0
     fi
     log "already on v${TARGET#v}; repointing units ${DETECTED_PREFIX:-<none>} -> ${PREFIX}"
-    systemctl --user stop buildkit.service containerd.service 2>/dev/null || true
+    _stop_user_services
     _repoint_user_units
     systemctl --user start containerd.service 2>/dev/null || true
     systemctl --user start buildkit.service 2>/dev/null || true
@@ -325,11 +357,10 @@ log "backed up $(find "${BACKUP_DIR}/bin" -type f | wc -l) binary/ies + $(find "
 _ok=1
 
 log "stopping user services"
-systemctl --user stop buildkit.service containerd.service 2>/dev/null || true
+_stop_user_services
 if [ -n "${_rootful_active}" ] && [ "${NERDCTL_INCLUDE_ROOTFUL:-0}" = "1" ]; then
   log "stopping rootful ${_rootful_active} (sudo)"
-  # shellcheck disable=SC2086  # deliberate split: _rootful_active is a unit LIST
-  sudo systemctl stop ${_rootful_active} || warn "could not stop ${_rootful_active}"
+  _rootful_service_action stop "${_rootful_active}"
 fi
 sleep 2
 
@@ -360,8 +391,7 @@ systemctl --user start buildkit.service 2>/dev/null || warn "buildkit.service di
 _wait_ready "buildkitd" 90 buildctl debug workers || _ok=0
 if [ -n "${_rootful_active}" ] && [ "${NERDCTL_INCLUDE_ROOTFUL:-0}" = "1" ]; then
   log "starting rootful ${_rootful_active} (sudo)"
-  # shellcheck disable=SC2086  # deliberate split: _rootful_active is a unit LIST
-  sudo systemctl start ${_rootful_active} || warn "could not restart ${_rootful_active}"
+  _rootful_service_action start "${_rootful_active}" restart
 fi
 
 # Prove it works
@@ -457,11 +487,7 @@ fi
 # The restart dropped the QEMU binfmt registration with the rootlesskit namespace: docs/failure-modes.md#exec-format-error-on-a-foreign-arch-build
 _binfmt_missing=""
 for _h in qemu-aarch64 qemu-riscv64; do
-  grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue
-  if [ -n "${_SETUPTOOL:-$(command -v containerd-rootless-setuptool.sh 2>/dev/null)}" ]; then
-    "${_SETUPTOOL:-containerd-rootless-setuptool.sh}" nsenter -- \
-      grep -qs '^enabled' "/proc/sys/fs/binfmt_misc/${_h}" 2>/dev/null && continue
-  fi
+  if binfmt_handler_enabled "${_h}" "${_SETUPTOOL:-}" discover-if-empty; then continue; fi
   _binfmt_missing="${_binfmt_missing:+${_binfmt_missing} }${_h}"
 done
 if [ -n "${_binfmt_missing}" ]; then

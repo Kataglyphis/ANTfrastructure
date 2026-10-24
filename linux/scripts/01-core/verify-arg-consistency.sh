@@ -73,6 +73,15 @@ _fail_arg_consistency() {
   exit 1
 }
 
+_finish_fatal_check() {
+  local errors="$1" success_message="$2"
+  shift 2
+  if [ "${errors}" -gt 0 ]; then
+    _fail_arg_consistency "$@"
+  fi
+  echo "${success_message}"
+}
+
 MISSING=0
 _verify_dockerfile_args _verify_arg_forwarding defaulted
 
@@ -89,12 +98,9 @@ echo "=== ARG default value check ==="
 VALUE_ERRORS=0
 _verify_dockerfile_args _verify_arg_default_value defaulted
 
-if [ "$VALUE_ERRORS" -gt 0 ]; then
-  _fail_arg_consistency "ERROR: ${VALUE_ERRORS} ARG default(s) differ from versions.env" \
-    "Run: python3 docs/scripts/sync_versions.py --write"
-else
-  echo "All ARG defaults match versions.env"
-fi
+_finish_fatal_check "${VALUE_ERRORS}" "All ARG defaults match versions.env" \
+  "ERROR: ${VALUE_ERRORS} ARG default(s) differ from versions.env" \
+  "Run: python3 docs/scripts/sync_versions.py --write"
 
 echo ""
 echo "=== ARG safety-net default presence check ==="
@@ -123,12 +129,9 @@ _verify_arg_default_presence() {
 DEFAULTLESS_ERRORS=0
 _verify_dockerfile_args _verify_arg_default_presence defaultless
 
-if [ "$DEFAULTLESS_ERRORS" -gt 0 ]; then
-  echo "ERROR: ${DEFAULTLESS_ERRORS} versions.env-named ARG(s) lack a safety-net default"
-  exit 1
-else
-  echo "All versions.env-named ARGs have a safety-net default in their file"
-fi
+_finish_fatal_check "${DEFAULTLESS_ERRORS}" \
+  "All versions.env-named ARGs have a safety-net default in their file" \
+  "ERROR: ${DEFAULTLESS_ERRORS} versions.env-named ARG(s) lack a safety-net default"
 
 echo ""
 echo "=== Script :- default drift check (advisory) ==="
@@ -184,12 +187,8 @@ if [ -n "${_llvm_full}" ]; then
     LITERAL_ERRORS=$((LITERAL_ERRORS + 1))
   fi
 fi
-if [ "${LITERAL_ERRORS}" -gt 0 ]; then
-  echo "ERROR: ${LITERAL_ERRORS} case-mapped version literal(s) drifted from versions.env"
-  exit 1
-else
-  echo "Case-mapped version literals match versions.env"
-fi
+_finish_fatal_check "${LITERAL_ERRORS}" "Case-mapped version literals match versions.env" \
+  "ERROR: ${LITERAL_ERRORS} case-mapped version literal(s) drifted from versions.env"
 
 echo ""
 echo "=== GCC toolchain default literal check ==="
@@ -229,12 +228,9 @@ else
   fi
   echo "Scanned ${_gcc_sites} inline GCC version default(s) under linux/"
 fi
-if [ "${GCC_LITERAL_ERRORS}" -gt 0 ]; then
-  _fail_arg_consistency "ERROR: ${GCC_LITERAL_ERRORS} inline GCC toolchain default(s) drifted from versions.env" \
-    "Update every listed site to versions.env GCC_VERSION=${_gcc_env_full} (they all name /opt/gcc-<ver>)"
-else
-  echo "All inline GCC toolchain defaults match versions.env"
-fi
+_finish_fatal_check "${GCC_LITERAL_ERRORS}" "All inline GCC toolchain defaults match versions.env" \
+  "ERROR: ${GCC_LITERAL_ERRORS} inline GCC toolchain default(s) drifted from versions.env" \
+  "Update every listed site to versions.env GCC_VERSION=${_gcc_env_full} (they all name /opt/gcc-<ver>)"
 
 echo ""
 echo "=== hand-forward of auto-forwarded ARG check ==="
@@ -247,11 +243,8 @@ while IFS= read -r hit; do
   HANDFWD_ERRORS=$((HANDFWD_ERRORS + 1))
 done < <(grep -rnP --include='*.sh' --exclude-dir=tests \
            -e "--build-arg\s+\"?(${_vars_alt})=" "${REPO_ROOT}/linux/scripts" 2>/dev/null || true)
-if [ "$HANDFWD_ERRORS" -gt 0 ]; then
-  _fail_arg_consistency "ERROR: ${HANDFWD_ERRORS} literal --build-arg line(s) hand-forward an auto-forwarded versions.env variable" \
-    "Delete the hand-forward; append_version_build_args already forwards it"
-else
-  echo "No hand-forwards of auto-forwarded versions.env variables"
-fi
+_finish_fatal_check "${HANDFWD_ERRORS}" "No hand-forwards of auto-forwarded versions.env variables" \
+  "ERROR: ${HANDFWD_ERRORS} literal --build-arg line(s) hand-forward an auto-forwarded versions.env variable" \
+  "Delete the hand-forward; append_version_build_args already forwards it"
 
 echo "DONE: version ARG consistency check"

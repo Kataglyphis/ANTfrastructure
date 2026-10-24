@@ -6,6 +6,7 @@ source "${TESTS_DIR}/test-harness.sh"
 CORE="${TESTS_DIR}/../03-media/core/common.sh"
 STAGE="${1:-${TESTS_DIR}/../03-media/build/gstreamer/common/build-gstreamer-stage.sh}"
 eval "$(t_fn_src "$CORE" media_prepare_cross_compilers)"
+eval "$(t_fn_src "$CORE" media_pin_target_libstdcxx_if_available)"
 _stage_prefix=$(sed -n '/^ensure_gstreamer_multiarch_layout$/,/^cd \/opt$/p' "$STAGE" | sed '$d')
 _work=$(mktemp -d)
 trap 'rm -rf "$_work"' EXIT

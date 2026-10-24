@@ -638,6 +638,11 @@ The **runtime** stage is different: `build-runtime-manifest.sh` builds the per-a
 `dpkg`) execute under QEMU user-mode emulation, which requires QEMU emulators
 registered in `binfmt_misc` in the namespace where builds run.
 
+The verifier shares the host installer's probe through its versioned source-only
+entrypoint. A copied checkout must carry `linux/host-config/install-nerdctl-full.sh`
+with the manifest script; an absent or older source API fails before setup code
+can run. See [the installer contract](linux-host-setup.md#b3b-install-or-upgrade-nerdctl-full).
+
 #### Rootless setup (this host — no sudo)
 
 Run the helper once per boot (it is idempotent, and `--install-service` makes it

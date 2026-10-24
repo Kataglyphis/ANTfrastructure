@@ -42,34 +42,32 @@ best_effort_mode() {
     return 1
 }
 
-run_step() {
-    local label="$1"
+_packaging_execute() {
+    local _pe_failure_handler="$1" status=0
     shift
-    local status=0
-
     "$@" || status=$?
-    if [ "$status" -eq 0 ]; then
-        return 0
-    fi
+    if [ "$status" -eq 0 ]; then return 0; fi
+    "$_pe_failure_handler" "$status" "$@"
+}
 
+_packaging_step_failure() {
     if best_effort_mode; then
         warn "${label} failed; continuing because PACKAGING_DEPS_MODE=${PACKAGING_DEPS_MODE}"
         return 0
     fi
 
-    return "$status"
+    return "$1"
 }
 
-# Run a command, retrying with sudo on failure
+run_step() {
+    local label="$1"
+    shift
+    _packaging_execute _packaging_step_failure "$@"
+}
 
-try_or_sudo() {
-    local status=0
-
-    "$@" || status=$?
-    if [ "$status" -eq 0 ]; then
-        return 0
-    fi
-
+_packaging_sudo_failure() {
+    local status="$1"
+    shift
     if [ "${EUID:-$(id -u)}" -eq 0 ]; then
         return "$status"
     elif command -v sudo >/dev/null 2>&1; then
@@ -79,6 +77,10 @@ try_or_sudo() {
         warn "Command failed and sudo unavailable: $*"
         return "$status"
     fi
+}
+
+try_or_sudo() {
+    _packaging_execute _packaging_sudo_failure "$@"
 }
 
 # APT dependencies

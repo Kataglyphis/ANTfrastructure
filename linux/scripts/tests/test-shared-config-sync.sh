@@ -2,14 +2,14 @@
 # sync-shared-config.sh must agree with its twin Sync-SharedConfig.ps1 on verdicts, exit codes and both modes.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${TESTS_DIR}/test-harness.sh"
-HUB="$(cd "${TESTS_DIR}/../../.." && pwd)"
+# shellcheck source=linux/scripts/tests/test-workspace-fixture.sh
+source "${TESTS_DIR}/test-workspace-fixture.sh"
+declare HUB _work
+t_fixture_workspace_init _work HUB || exit 1
 SYNC="${HUB}/shared/config/sync-shared-config.sh"
 CANON_EXACT="${HUB}/shared/config/.clang-format"
 CANON_BODY="${HUB}/shared/linux/templates/antfrastructure.sh"
 
-_work="$(mktemp -d)"
-trap 'rm -rf "${_work}"' EXIT
 
 # A faithful consumer with one 'exact' and one 'body' asset; each case breaks one thing.
 _consumer() {

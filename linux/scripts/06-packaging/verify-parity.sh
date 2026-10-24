@@ -376,6 +376,11 @@ check_imports() {
 
 # Main
 
+# Bind usage aliases at the original parser declaration phase.
+_parity_usage() {
+  usage
+}
+
 verify_parity_parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -384,7 +389,8 @@ verify_parity_parse_args() {
       --checks)    CHECKS="$2";       shift 2 ;;
       --verbose)   VERBOSE=1;         shift ;;
       --diff-tool) DIFF_TOOL="$2";    shift 2 ;;
-      -h|--help)   usage; exit 0 ;;
+      # A stale logging owner must not let conditional help repeat the argument loop.
+      -h|--help)   show_usage_and_exit _parity_usage "$@"; exit $? ;;
       *) reject_unknown_option "$1" ;;
     esac
   done

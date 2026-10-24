@@ -43,9 +43,9 @@ fi
 if ! command -v cross_build_enabled >/dev/null 2>&1; then
   cross_build_enabled() { false; }
 fi
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  cross_build_is_active() { false; }
-fi
+# shellcheck source=linux/scripts/01-core/cross-active-fallback.sh
+source "$(dirname "${BASH_SOURCE[0]}")/cross-active-fallback.sh" || { unset _INSTALL_DEPS_PREAMBLE_LOADED; return 1; }
+register_cross_active_fallback native || { unset _INSTALL_DEPS_PREAMBLE_LOADED; return 1; }
 if ! command -v install_host_packages >/dev/null 2>&1; then
   install_host_packages() {
     [ "$#" -gt 0 ] || return 0

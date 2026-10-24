@@ -3,6 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=../01-core/compiler-cache-utils.sh
+source "${TESTS_DIR}/../01-core/compiler-cache-utils.sh"
 : "${FFMPEG_PROBE_SOURCE:=${TESTS_DIR}/../03-media/build/ffmpeg/ffmpeg-probe-framework.sh}"
 # shellcheck source=../03-media/build/ffmpeg/ffmpeg-probe-framework.sh
 source "${FFMPEG_PROBE_SOURCE}"

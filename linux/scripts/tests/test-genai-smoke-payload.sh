@@ -3,7 +3,7 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-SMOKE_COMMON="${TESTS_DIR}/../06-packaging/smoke-common.sh"
+SMOKE_COMMON="${1:-${TESTS_DIR}/../06-packaging/smoke-common.sh}"
 
 _WORK="$(mktemp -d)"
 trap 'rm -rf "${_WORK}"' EXIT
@@ -52,8 +52,13 @@ _ext = types.ModuleType("onnxruntime_genai.onnxruntime_genai")
 _ext.__file__ = os.environ.get("STUB_GENAI_EXT", "")
 sys.modules[__name__ + ".onnxruntime_genai"] = _ext
 onnxruntime_genai = _ext
+class TensorProbeError(ValueError):
+    def __format__(self, spec): raise AssertionError("exception formatting must use str")
 class Tensor:
-    def __init__(self, arr): self._a = arr
+    def __init__(self, arr):
+        if os.environ.get("STUB_TENSOR_FAIL"):
+            raise TensorProbeError("tensor %s bytes")
+        self._a = arr
     def shape(self): return [1, 4]
     def as_numpy(self): return self._a
 class Config:
@@ -224,5 +229,20 @@ t_case "the shared wrapper guards the payload before starting Python"
 t_assert_contains "${_WRAP}" "GENAI-BIND ABSENT:" "wrapper lost its ABSENT sentinel"
 t_assert_contains "${_WRAP}" "exit 4" "wrapper no longer exits 4 on an empty payload"
 t_assert_contains "$(t_fn_src "${_SRI}" check_genai_binding)" '_rt_run_python_probe SMOKE_GENAI_PY GENAI-BIND'
+
+t_case "native and generation exceptions keep exact diagnostics and accumulate independently"
+mkdir -p "${_WORK}/model"
+_run_stub_binding STUB_TENSOR_FAIL=1 GENAI_MODEL_DIR="${_WORK}/model"
+t_assert_eq 1 "${_RC}"
+t_assert_contains "${_OUT}" "  DEFECT   og.Tensor round-trip raised TensorProbeError: tensor %s bytes"
+t_assert_contains "${_OUT}" "  DEFECT   generate() raised RuntimeError: stub: no weights"
+t_assert_contains "${_OUT}" "GENAI-BIND FAIL: 2 defect(s)"
+
+t_case "generation failure alone remains fatal without altering the native successes"
+_run_stub_binding GENAI_MODEL_DIR="${_WORK}/model"
+t_assert_eq 1 "${_RC}"
+t_assert_contains "${_OUT}" "og.Tensor round-tripped a float32 buffer"
+t_assert_contains "${_OUT}" "  DEFECT   generate() raised RuntimeError: stub: no weights"
+t_assert_contains "${_OUT}" "GENAI-BIND FAIL: 1 defect(s)"
 
 t_summary

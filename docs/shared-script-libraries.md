@@ -31,6 +31,70 @@ The Slang twins accept additional pinned source roots and import an owner's
 WGSL manifest without a copied definition; their caller parameters and ownership
 rules are in [`slang-shader-compilation.md`](slang-shader-compilation.md#caller-variables).
 
+## Shared compiler and media probe policies
+
+Smoke ELF inspection calls the canonical `platform.sh` parser. A preloaded parser
+keeps precedence; otherwise the existing platform loader runs in a subshell so its
+functions and flags do not change the smoke caller. Toolchain copies carry that
+platform owner. Compiler validation shares its separate raw `Machine:` query and
+case-insensitive comparison, retaining host versus swapped/target failure policy.
+
+GStreamer and OpenCV collect optional target-Python paths in caller-selected order
+through `cross-python.sh`. Missing probes preserve existing fields; failed probes
+retain partial stdout. Cargo compiler bindings share environment publication in
+`cross-env.sh`; callers keep compiler validation, wrapper choice, host variables
+and Rust-name policy.
+
+Host Cargo compiler setup shares the nonempty-compiler check, wrapper capture and
+parent-shell publication in `compiler-resolution.sh`. Each caller retains its
+resolver order and publishes from its original local slots. Selected callbacks
+run unconditionally so strict wrapper failures and partial publication keep their
+original behavior; internal argument-free calls stay argument-free.
+
+Optional runtime `libstdc++` pinning shares availability and advisory invocation
+in media's existing `core/common.sh`. FFmpeg and GStreamer bind both lookup and
+pin commands where the original commands were parsed, forwarding the original
+caller arguments to preserve prefix aliases. Compiler setup and architecture
+gates remain caller policy. A selected caller refuses an older media owner that
+lacks this transport; both producers inherit its fresh local Dockerfile copy.
+
+Test fixtures share probe execution, rescued-stage assertions and Renovate apply
+and permission lifetimes. They retain independent child cleanup so mutating a
+production stop function cannot strand the test's own processes. Retention
+fixtures share budget assignment followed by the real prune call, keeping that
+budget visible afterward and retaining raw failures. Archive setup and every
+literal archive expectation remain independent.
+
+## Privilege, APT and target Cargo policy
+
+`sudo-policy.sh` owns privilege selection and availability enforcement. Caller-bound
+publishers retain the original `SUDO` and optional `SUDO_WRAP` assignments, including
+readonly failures and attributes. Common keeps SDK delegation ahead of import;
+bootstrap loads the policy only when its common lookup misses. Its internal leaf
+lookup remembers the bootstrap owner at import time, independently of later
+directory changes and the project directory passed to the common lookup. Copied modules carry the policy: base and compiler recipes
+use narrow readonly binds, SDK copies it, and existing whole-core provisions carry
+it without extra inputs. The policy is an L0 leaf.
+
+`cross-apt.sh` owns update selection. `apt_update_smart` alone supplies its historical
+`-y` default; GStreamer passes its original arguments unchanged. Lookup and update
+commands retain their caller bindings and parent-shell effects. Helper lookup
+prefers the current repository owner, then the installed layout, while leaving
+the SDK updater itself unchanged. The internal
+`--ant-source-apt-update-only` mode exports selection before the loaded flag and
+full-module provider definitions. GStreamer validates the exact first-line
+`# ANT_APT_UPDATE_SOURCE_API=1` marker before sourcing that mode, so older owners
+cannot ignore the argument and replace an SDK updater. Owned selection exports
+are refreshed, with unset, source and missing-export failures kept visible.
+Existing fresh cross-APT provisions carry this API without another companion.
+
+Target Cargo setup shares the optional resolver guard and selected `CC`/`CXX`
+value transport in `compiler-resolution.sh`. Rice keeps one capture and GStreamer
+two separate captures; callbacks remain inside them so late aliases bind at the
+same point. Caller-local compiler slots, Rust-name derivation and parent-shell
+publication keep their original lifetimes and order. Offline tests use fake
+providers; they do not compile Rust or install packages.
+
 ## Shared ONNX staging and report fixtures
 
 ONNX Runtime and GenAI append their shared cross-toolchain definitions from the
@@ -51,7 +115,9 @@ cleanup and input trees. Fixtures continue to execute the actual subject gates.
 `01-core/compiler-cache-utils.sh` supplies launcher selection and start/health probes
 without initializing defaults or starting a server when sourced. Copy it beside
 `common.sh`, `compiler-cache.sh` and standalone cache probes. Base-image steps use
-narrow companion mounts. Callers retain hook versus direct startup, stream routing,
+narrow companion mounts. Copied-module refusal fixtures first load the complete
+closure successfully, then remove only the targeted companion. Another missing
+dependency cannot stand in for the protected failure. Callers retain hook versus direct startup, stream routing,
 S3 defaults and failure policy.
 
 `install-deps-preamble.sh` reports staged target Python development readiness;
@@ -72,6 +138,114 @@ preserve ordered shell-quoted fields, and worker invocations pass the harness pa
 explicitly. `t_capture_command` captures merged output and raw failure status for
 assertions; it does not turn a failed command into a successful test. These fixtures
 exercise stubbed operations and do not prove live cache servers or package builds.
+
+## Ordered probes and compatibility fallbacks
+
+Media core shares ordered regular-file checks for TensorFlow SDK completeness and
+staged HarfBuzz development files. Each caller keeps its branch selection,
+completion-stamp policy and diagnostics. Missing selected helper APIs fail before
+an absent function can be mistaken for an ordinary cache miss.
+
+The platform owner visits existing directories in caller order. Cross environment
+publication keeps duplicate entries; LLVM keeps its colon-based deduplication.
+The visitor uses the caller's `dir` loop binding so readonly-variable failures and
+shell state remain unchanged. Check the visitor and callback before invocation,
+then invoke it unconditionally and retain the caller's final status policy.
+
+`01-core/cross-active-fallback.sh` registers the core and native compatibility
+profiles. Source it at the original registration point so optional providers and
+aliases retain their binding time. Existing functions and commands keep precedence;
+the native profile keeps its false fallback. Narrow copies of `common.sh` and
+`install-deps-preamble.sh` carry the companion. Failed imports clear the caller's
+loaded flag and permit retry after restoration.
+
+QNN staging and CPU artifact verification share the shallow regular-library query
+in `qnn-sdk.sh`, with caller-specific filename patterns. The verifier imports it
+only for a detected QNN provider and requires successful sourcing and its export.
+The CPU verification RUN binds that exact companion without widening core mounts.
+
+`parallel-loop.sh` owns advisory child signaling followed by reaping. Runtime
+timers and chain disk watchers keep their PID guards, variable reset and command
+status. Both cleanup commands remain advisory; their stderr stays suppressed.
+Selected timers and watchers require the cleanup API before spawning; an older
+loaded owner or incomplete definition cannot leave a child behind and report success.
+Timer fixtures share function-source assembly and carry the process definition,
+while real heartbeat lifetime
+and process-tree assertions remain independent.
+
+The chain and single-stage CLI handlers share log-directory consumption through
+`orchestrator_consume_log_dir`. Pass their complete argument list: Bash nameref
+subscripts may read later positional parameters or the argument count. The consumer
+keeps assignment order and introduces no local alias that could shadow a target.
+Cross-target handling retains its separate existing policy.
+
+## Bound commands and artifact queries
+
+`guard-helpers.sh` owns `first_match_using`, which appends `-print -quit`, hides
+finder stderr and retains partial stdout on failure. The original `first_match`
+entry keeps its argument and local-binding behavior. LiteRT FlatBuffers and ORT
+TensorRT discovery bind their find command inside the existing capture, so later
+aliases retain their original effect without leaving callback functions in the
+parent shell. Existing headers still bypass the selected discovery requirement.
+Both producer RUNs already bind the fresh core owner.
+
+Media smoke queries share producer stderr suppression and the `grep -q .` verdict.
+Caller callbacks retain find and grep bindings at their original declaration
+points. Python-library and JS-loader predicates stay separate, as do native import
+fallbacks and optional web diagnostics. Unlike first-match lookup, the query keeps
+its raw pipeline status, including producer failures after partial output.
+
+The npm vendor script shares quiet Python invocation for metadata and archive
+digests. Each command binds inside its existing capture and leaves no parent
+callback behind. Metadata remains advisory; digest failures retain their original
+strict-shell behavior. Download retries, integrity comparisons, tar fallback and
+cleanup remain caller policy. Offline receipts use fake HTTP and tar commands;
+they do not establish registry trust or archive validity.
+
+## Probe publication, reporting and callback context
+
+Compiler resolution shares ordered primary and alternate GCC probes in a private
+helper. It publishes through the caller's existing `resolved` local so provider
+hooks retain that binding. Keep probe order, nonempty-test order and direct printf
+failure behavior; filesystem and PATH fallbacks remain outside the collector.
+
+The chain shares its nonempty, non-self, live sibling-PID predicate. Both callers
+keep their original pidfile reads, output, refusal and write policies. The helper
+retains raw `kill -0` status and does not signal a process.
+
+Libcamera's optional component report shares availability, quiet presence probing
+and found/missing reporting after the original path initialization. Bound pkg-config
+and GStreamer callbacks keep their original aliases, version fallback and messages.
+Its standalone file still needs no extra companion.
+
+Callback dispatch must retain the bindings visible to supplied Bash wrappers.
+Wheel transport and packaging failure dispatch use private names; media queries
+and component reports use positional arguments. Generic helper locals such as
+`tool`, `producer` or `source` must not replace caller configuration. Literal global
+and caller-local controls complement the frozen behavior receipts. Bound literal
+commands also retain the original positional context when an alias expands
+`"$@"`; command arguments and enclosing caller arguments are separate contracts.
+Meson providers keep each original binding phase: libcamera binds its native
+provider after the cross provider has run, while GStreamer binds both with its
+function declaration. GStreamer's cross-flag setup and wheel stripping keep
+those internal callers' existing argument-free contracts; their adapters restore
+an empty enclosing context before executing the tool arguments. Finder callbacks
+retain their enclosing argument context
+separately from the shared first-match helper's generated finder arguments.
+Target Python path probes share quiet best-effort capture in the existing
+cross-Python owner. Each caller binds its literal provider inside the original
+capture; the readiness API rejects older or incomplete owners. OpenCV retains
+its output argument context. GStreamer's internal resolver keeps its existing
+argument-free call from the preparation function, whose extra arguments remain
+ignored.
+
+Help rendering and termination share `show_usage_and_exit` in the existing logging
+owner. Each CLI binds usage at its original parser declaration and forwards the remaining
+parser arguments to preserve alias positional expansion. Keep the selected
+call unconditional so strict callback failures retain their status. The following
+raw-status exit refuses a missing helper even when the parser runs conditionally;
+otherwise help could repeat the argument loop or reach later work. Copied fixtures
+first prove complete help output, then exercise an older logging owner.
 
 ## The tree, as AGENTS.md drew it
 
@@ -219,6 +393,13 @@ caller, and its in-image consumers load it via `source_module`.
 
 `runtime-flow-common.sh` is sourced by `lib-orchestrator.sh` inside `runtime_flow_preamble()`; `build-runtime-artifacts.sh` and `build-runtime-manifest.sh` reach it by sourcing `lib-orchestrator.sh`.
 
+Both runtime mains call `runtime_prepare_flow` unconditionally so Bash retains
+the existing errexit behavior. It exports `DRY_RUN`, binds `TARGET_ARCHES` by
+name, resolves wheel delivery, then validates Hailo and host payloads. Wheel
+failures keep their status; validation failures exit 2 and payload validation
+stdout stays quiet. Image prefixes and provenance placement remain caller policy.
+
+
 `lib-runtime-wheels.sh` (`RUNTIME_WHEELS_SOURCE`) is sourced by `lib-orchestrator.sh` at top level, right after `artifact-common.sh`. It sits beside `01-core`, not in it, because `01-core` is in the compiler image's closure and this file is host-only. `append_wrapper_build_args` calls into it only while `RUNTIME_WHEELS_EXPORT_ROOT` is set, which only its own `runtime_wheels_setup` does ([both deliveries](linux-cross-builds.md#the-wrappers-wheelhouse-two-deliveries)).
 
 `03-media/build/hailo/hailo-build-lib.sh` is sourced there too, right after it, for one function: `hailo_validate_knobs`, which the chain and both runtime orchestrators call before they build anything. The same file is the Hailo build's own library inside the wrapper image, so it sets no shell options and runs nothing at load, and a change to it re-keys only the wrapper's Hailo RUN ([two switches](hailo-support.md#the-nested-build-cache-and-pyhailort-two-switches)).
@@ -258,6 +439,22 @@ expected results. Both suites pass the same assertions before and after the
 extraction; status-swallowing and dropped-environment mutations must fail.
 
 ## The logging bootstrap
+
+The bootstrap also owns fallback registration for standalone Abseil, Torch
+wheelhouse and payload-copy scripts. A scoped `_LOG_BOOTSTRAP_REGISTRAR_ONLY=1`
+source imports only the registrar; it loads no real logger and leaves the
+bootstrap guard and caller arguments unchanged. Standalone scripts retain
+command lookup, plain prefixes and their selected logger names. Library
+fallbacks retain function-only lookup, ANSI prefixes, stderr warnings and fatal
+errors. Existing callbacks keep their own status and output policy.
+
+Toolchain and Media carry `lib/log-bootstrap.sh` for the core Abseil module,
+including a partial Media rebuild against an older SDK parent. Adjacent Media
+core copies share the same pre-RUN source set and permissions.
+The isolated package payload COPY carries the same file beside its entry point
+and inventory. Keep these companions when copying either closure; missing
+companions fail instead of restoring private fallback definitions.
+
 
 `log-bootstrap.sh` is the one owner of the block every other library needs
 before it can say anything: resolve `../01-core/logging.sh` if the caller has
@@ -886,6 +1083,12 @@ the inline fallbacks in `lib/code-quality.sh` and `lib/coverage.sh` were, and
 those two now source this instead of carrying a copy each.
 
 ### Python interpreter probe (`01-core/python-probe.sh`)
+
+`python_venv_executable` selects an executable `bin/python`, then
+`Scripts/python.exe`, preserving the raw venv path. UV and WebDAV retain their
+own named errors and checks. Copies of either module require the pure probe
+beside it. UV and Python CI also share the `/workspace/pyproject.toml` override;
+caller defaults, cwd changes and PATH setup remain caller policy.
 
 `preflight_python_require <caller>` returns 0 with `PREFLIGHT_PYTHON` exported
 when that value (or, unset, `python3`) runs `-c pass`, and 1 naming the caller
@@ -1725,6 +1928,87 @@ adding an environment export. Linter-specific options and pinned-tool handling
 remain in each driver. ShellCheck fatal reports share diagnostic replay while
 retaining distinct flags and headings and the original exit status.
 
+The shell, Python and Dockerfile drivers source `01-core/lint-scope-init.sh`
+in their own shell. It loads the root parser, publishes the selected tree and
+replaces positional arguments with the unconsumed arguments. Keep this initializer
+beside `lint-root.sh` when copying a driver. A function call would isolate `set --`
+from the driver. Empty arguments, line breaks, repeated root options and rejected
+roots have frozen original receipts; linter execution has separate driver tests.
+The ShellCheck root-contract test copies a small hub separately from its consumer
+fixture so ignoring `--root` reaches the same assertions without scanning the
+entire repository. The live-tree warning check remains separate.
+
+`01-core/common.sh` owns `wheel_archive_run` for quiet wheel unpack and pack
+commands, including multiword Python launchers and their raw status. LiteRT
+renaming and runtime stripping retain their own payload edits, verdicts and
+temporary cleanup. Repacking still regenerates RECORD through the wheel tool.
+
+`02-toolchain/packaging-deps.sh` shares command execution and status capture
+between packaging steps and sudo retries. Separate failure handlers retain
+best-effort warnings, root refusal and the original sudo arguments and status.
+Offline fixtures cover the current user's branch; they do not change privilege
+or run package installation.
+
+Wheel platform resolution shares canonical-helper precedence while preserving
+LiteRT's required target lookup and Torch's best-effort fallback. GStreamer
+shares foreign-target selection through its existing media owner. Keep each
+original lookup separate. Remove scratch
+state before the selected action so a failed lookup retains its status.
+
+Compiler validation shares GCC version capture and source-fixture transport.
+Source writers and probes remain unconditional, with caller-specific source bytes,
+compiler arguments, link checks and diagnostics. Dynamic temporary-directory and
+sanitizer state keep their original scope; cleanup retains its failure behavior.
+
+ORT provenance shares component-name exclusions and filename candidate predicates.
+Tree scans include `.tar.lzma2` archives; build-record scans stay at depth one and
+omit that extra suffix. The concatenated GenAI spelling remains an archive-only
+exclusion. Partial traversal findings and advisory failure diagnostics remain.
+Stream fixtures share workspace and optional receipt initialization while keeping
+each suite's expected outputs independent.
+
+Rootless binfmt setup shares requested-architecture CSV parsing in its existing
+script. Extraction, registration and verification retain separate unknown-target
+and status policies. Array scope, IFS behavior and the literal namespace command
+remain unchanged; offline tests never enter a real namespace.
+
+The existing platform owner shares best-effort Debian triplet queries. Optional
+mapper failures keep their stdout and suppress stderr and failure status, while
+compiler and GStreamer callers retain their defaults and directory choices.
+An unavailable canonical query helper fails before caller fallbacks can hide it.
+
+`01-core/verified-script-install.sh` owns curl, optional checksum verification,
+shell execution and final cleanup for UV and Rust installers. Callers retain
+temporary-file allocation, pin lookup and mismatch callbacks, including their
+different diagnostics and cleanup order. Copy this functions-only companion
+beside `python_uv.sh`; Rust's Toolchain RUN binds the same fresh file. Cold import
+tests reject absent, incomplete and failing companions and verify UV retry after
+restoration. Lifecycle tests use fake download and shell commands.
+
+The standalone nerdctl installer owns `binfmt_handler_enabled`, shared with the
+runtime manifest verifier. Its `--source-binfmt-probe` entry returns before shell
+options, global initialization or setup actions. The verifier first requires the
+exact `# ANT_BINFMT_PROBE_SOURCE_API=1` marker, then checks source status and the
+exported function. Older installers ignore unknown arguments, so checking the
+function only after sourcing would be unsafe. Copied manifest checkouts carry
+the fresh owner at `linux/host-config/install-nerdctl-full.sh`. Caller-specific
+tool lookup timing, overrides, warnings and fatal aggregation remain separate.
+
+Optional Meson cross/native flag providers share ordered dispatch in the existing
+core owner. GStreamer retains its cross-file edit callback between those providers;
+libcamera has no extra callback. Keep selected calls unconditional so strict-shell
+failures remain active. Each caller keeps its array, diagnostics and final status.
+
+Clang's CLI job input and both job-selection branches share the same numeric
+predicate. Empty values retain short-circuit match state, zero and leading zeros
+remain accepted, and unguarded override access still reports unset values.
+
+Fleet dependency insertion, transitive closure and mutual-cycle detection share
+literal token membership. Keep both word boundaries and quoted identities;
+wildcards in an identity remain data. The layer-order test's independent source
+oracle stays separate. Tiny graph fixtures retain original byte receipts and
+explicit cycle, closure and convergence assertions without running Git or Renovate.
+
 Core helpers share nondefault-host suffix formatting and caller-directory
 resolution while preserving explicit path bytes. Disk validation keeps positive
 settings distinct from nonnegative free-space readings: zero-disabled settings
@@ -1739,3 +2023,251 @@ fixtures share document and job construction while preserving malformed YAML and
 line-sensitive findings. Flatpak failure fixtures forward every per-case tool
 and payload override. Offline characterization and mutation proofs validate these
 contracts without starting container engines, builds, pruning or disk watchers.
+
+### Repository keys and media development links
+
+`download_optional_verified_file` shares the existing repository-key policy:
+a supplied checksum uses verified fetching; an empty checksum prints the caller's
+warning and uses three download attempts. CUDA installation and ROCm dearmoring
+retain their own cleanup and failure context. ROCm's private stanza renderer
+preserves URI order, amd64, keyring paths and optional ASAN separators; independent
+golden files check complete source bytes.
+
+`media_missing_dev_symlink` only decides whether a destination is absent and its
+source exists, resolving relative sources beside the destination. ArmNN and FFmpeg
+retain their own `ln` flags, output order and direct/conditional failure handling.
+
+Test companions share fixture construction and shell invocation context, while
+expected output, exit statuses and filesystem receipts remain independent of the
+production helpers. `runtime-flow-fixtures.sh` checks shared preparation wiring;
+its own positive and negative fixtures ensure a missing step fails the assertion.
+
+### Fetch and runtime validation lifecycles
+
+ONNX fetch uses a private clone-if-missing helper in `20-fetch.sh`. Both
+checkouts keep shallow branch cloning with three attempts and ten-second retry
+spacing. ORT retains retried submodule commands; GenAI retains one-shot commands
+and its existing-directory message. Every cwd change and requirements/emsdk step
+remains caller-owned. Frozen offline receipts compare command boundaries, output
+and failures; they do not execute Git, downloads or SDK setup.
+
+`validate-media-runtime.sh` shares complete-line unresolved-library collection
+and counted summary rendering. Binary scans still accept dangling symlinks while
+plugin scans select regular `*.so` paths and live links. Empty records are skipped;
+duplicates, whitespace and partial output before resolver failure are retained.
+The resolver's failure remains advisory. Repair advice, source-built denial
+counters and final fatal gates stay in their original callers.
+
+`runtime-consumer-contract.sh` owns the ordered required-fact guard used by
+appimagetool, JDK and Android verdicts. It uses the original first-match fact
+reader and preserves exact values. Callers retain their diagnostic priority and
+failure status; Android retains its environment reads but skips platform-tools
+and PATH fact checks after an explicit payload-off marker. The helper already travels with the smoke script; no new production
+companion or image closure is required.
+
+Runtime and SDK help share row descriptions and padding in
+`runtime-build-fns.sh`. Callers retain row order, description columns, wrapping
+and profile-specific wording. Complete output receipts cover both runtime
+entrypoints and SDK help. The environment contract renders runtime help before
+checking its names against runtime consumers; documentation functions and SDK-only
+references cannot make a dead runtime override appear live.
+
+Torch venv setup shares best-effort missing-marker writes inside
+`setup-torch-venv.sh`; cache-aware apt-list cleanup lives in
+`package-image-wiring.sh` and is also called by package setup. Copied Torch setup
+requires that companion before its first execution, including the early selective
+image COPY. Marker reasons, neutral-cwd imports, OpenCV fallback, package choices
+and warning/fatal policies remain local. Offline receipts cover failed marker
+operations and mount probes without running apt or installing packages.
+
+The Python payload emitted by `smoke-common.sh` uses one exception recorder for
+native Tensor and generation failures. Existing operation labels, exception names,
+`str` formatting and final defect counts remain unchanged; the recorder does not
+invoke custom exception formatting methods.
+
+### Containment, image arguments and runtime enumeration
+
+`01-core/path-helpers.sh` owns the lexical root predicate used by ORT provenance
+and GStreamer's ORT checks. GStreamer retains roots verbatim; provenance trims
+exactly one trailing slash before ignoring an empty root. Neither policy resolves
+symlinks or dot components. Copied callers require the existing helper in their
+relative `01-core` layout. Five media recipes mount those same canonical bytes
+at the matching installed path; cache IDs and the stage graph stay unchanged.
+
+`image-ref-args.sh` binds the optional container CLI and image reference for
+`build-helpers.sh` and `digest-pinning.sh`. One argument uses `NERDCTL_BIN` or
+`nerdctl`; multiple arguments retain the explicit first two values and ignore
+extras. The callers retain their own inspect/registry work, errors and shell
+failure contexts. No new argument validation changes their existing zero-argument
+behavior. Both compiler recipes and isolated copied bundles carry the mandatory
+pure companion.
+
+FFmpeg's SDK bundler and apt manifest share their existing bin-then-lib runtime
+file enumeration. It keeps depth limits, regular-file selection and suppressed
+find diagnostics. The bundler retains advisory process-substitution failures;
+the manifest retains its pipeline status. Independent byte receipts cover both
+producers failing under direct/conditional and strict/relaxed shell contexts.
+
+The runtime help pages also share the three common build-stage descriptions and
+options/footer/environment rendering. Caller heredocs retain their own text and
+literal values; the independent full-help receipts verify the original byte order.
+
+Cross-chain and cross-compiler help use the common repository-description row
+with their original columns. Their `--cross-targets` callbacks share raw assignment
+and argument consumption through `orchestrator_set_cross_targets`; compiler targets
+remain distinct from the chain's per-stage architecture list. Independent fixtures
+exercise empty values, commas, spaces, literal shell text and newlines inside
+caller-local variables. Complete help receipts also cover both cross entrypoints.
+
+### Runtime selectors, compiler tools and wheel manifests
+
+`orchestrator_consume_runtime_push_arg` owns the shared runtime push selectors.
+Each entrypoint keeps its accepted flag set and unique options. The helper keeps
+assignment order and argument consumption; untouched fields remain unset or keep
+the caller's existing value. Gates-only handling stays in the manifest caller.
+
+`compiler_tool_enabled` probes availability before checking its explicit tool
+policy and retains suppressed lookup output and original lookup status. FFmpeg
+and ORT retain the historical off spellings `0`, `false`, `FALSE`, `no`, `NO`,
+`off`, `OFF`; their `False` input still enables the optional tool. Other cache
+readers retain their established default handling, including `False` as disabled.
+
+`wheelhouse-manifest.sh` owns sorted, null-safe regular-file discovery and binary
+hash-separator normalization. The host library retains strict failure behavior;
+Torch diagnostics retain their best-effort behavior and separate count/log policy.
+Both imports require the canonical companion; Torch's early image COPY carries it.
+An independent three-file golden checks complete manifest bytes and hashes, beside
+original/current failure receipts and the existing host/image agreement check.
+
+### Native GCC system paths and test dependencies
+
+`01-core/native-gcc-system-paths.sh` owns the system include and library exports
+used by Torch setup and the native GCC shell profile. Torch retains directory
+discovery. The generated profile imports the same helper when sourced, so flags
+set after image construction still precede the appended paths. Repeated sourcing,
+empty values and the existing `_idaf` side effect retain their original behavior.
+Android and Torch copy the helper before use; the package image's full core copy
+also includes it. Independent environment receipts cover both callers.
+
+The FFmpeg TensorFlow fixture reads the canonical `is_truthy` function instead of
+maintaining its own implementation. Its expected flags and default-off assertions
+remain independent. Chain lifecycle fixtures share process cleanup and archive
+construction, while retaining explicit assertions for leaf termination, retained
+and removed run IDs, symlinks and foreign files. Cleanup tracks fixture processes
+without relying on the production subtree terminator under test.
+
+### Cross-chain verification help
+
+Cross-chain and verification-wrapper help share architecture rows through
+`runtime_usage_chain_arches` and the repository row through `runtime_usage_row`.
+The `chain` profile preserves the original arch-list wording and column widths.
+The verification wrapper loads the function-only renderer inside `usage`; normal
+forwarding does not depend on it or initialize build helpers. Its independent
+receipts cover full help bytes, a missing renderer, empty and multiline forwarded
+arguments, describe mode and the child process's nonzero exit status.
+
+### Optional linkers, installer services and cache removal
+
+FFmpeg and ORT use the optional-tool predicate's explicit literal-false policy
+for LLD: only `false` disables it. Values such as `0`, `FALSE`, `no` and `off`
+retain their historical enabled behavior. Lookup still precedes the policy check;
+lookup failure keeps its original status and suppresses diagnostics. Caller
+compiler arguments and logs remain separate. Their offline suites share fixture
+setup while retaining independent policy expectations and complete byte receipts.
+
+The nerdctl installer shares its user-stack stop and rootful service actions
+inside the installer file. Callers retain service guards, stop/start order,
+logging, unit-list splitting and best-effort behavior. Offline fixtures exercise
+actual service sections with stubbed commands; they never execute installation
+or real service operations.
+
+`_disk_guard_remove_slug` owns guarded, quiet removal and remaining-path evidence.
+The in-stage trimmer stops at an undeletable slug; the chain protects it and keeps
+looking. Both retain advisory removal-command failure and their original logs
+and counters. Unit tests cover actual filesystem outcomes and independent caller
+assertions, including empty-root refusal and strict-shell command failure.
+
+### Host Python path policies
+
+`platform.sh` owns `host_python_path` with explicit and derived profiles. Both
+retain the ordered executable pins from `MEDIA_HOST_PYTHON`, `UV_PYTHON`,
+`VIRTUAL_ENV` and `PYTHON_MAJOR_MINOR`, followed by PATH lookup. The canonical
+cross-Python caller retains optional `PYTHON_VERSION` derivation; GStreamer's
+fallback does not gain it and still prefers an existing `host_python_bin` override.
+Inputs remain raw and are read when called. Each profile retains its original
+trailing-newline and output-failure behavior. Both imports require the existing
+platform companion rather than loading the broader cross environment or providing
+a private fallback. Independent receipts cover pin order, failed lookups, version
+policy, overrides, source guards and copied-companion failures.
+
+### Artifact refusal, media dispatch and standalone downloads
+
+`tag-naming.sh` owns the unsupported artifact-mode diagnostic in one private
+helper. Platform and image-reference callers retain their own native/cross
+branches and lazy access to their environment. Extracted test fixtures carry
+the rejection helper so invalid-mode assertions still exercise its exact status
+and stderr rather than an undefined-function error.
+
+`smoke_native_dispatch` shares cross-target presence checking and calls the native
+callback unconditionally when execution is appropriate. It introduces no local
+variables that could shadow caller globals. FFmpeg's shared test-pattern encoder
+and null decoder retain exact arguments and streams; callers retain codec policy,
+rate and preset choices, the H264 interstitial success message and cleanup order.
+Independent complete-section receipts cover tool calls, shell failure contexts,
+global state and temporary files without running real media tools.
+
+`source_toolchain_downloads` uses only the historical repository-core and installed
+core candidates, in that order, and leaves a supplied `download_file` untouched.
+The shared selector's `core-paths-only` mode excludes an adjacent downloads file.
+Both standalone callers carry `bootstrap.sh` beside their entrypoint; SDK and
+package copies refresh it and Android's flattened layout includes it. Torch's
+`/usr/local/bin/vulkan.sh` also carries `vulkan-install.sh`. The bootstrap contains
+function definitions and shell options; the downloads module's actual top-level
+state remains global when selected. Source calls keep their original strict and
+conditional failure behavior, and no private download fallback is restored.
+
+### Numeric versions, guarded links and raw pin lookup
+
+`version_has_numeric_parts` in `load-versions-env.sh` owns three- and four-part
+numeric shape checks. Its constructed expression has no capture groups, preserving
+`BASH_REMATCH`. It checks shape rather than version ranges or tool availability.
+Callers retain their policies: GCC selects its fallback, the builder warns,
+Dartdoc rejects invalid pins, and Rust appends the fourth part or selects its
+existing fallback. The Rust version utility carries the canonical core loader
+beside its existing logging companion.
+
+`path_symlink_missing` checks destination presence and performs the caller's
+link action. Source checks and basename calls stay in their original callers,
+so a source disappearing after that check keeps its original link behavior.
+GCC retains required `SUDO` and `ln -sfn`; Vulkan retains optional `SUDO` and `ln -s`. Expansion stays
+lazy, including when a destination exists. Fresh per-file Toolchain mounts and
+SDK copies carry the owner; Torch's full core copy refreshes it before use.
+
+`load_raw_pin_if_empty` shares Android/Rust's raw lookup without sourcing pin data.
+It retains all matching lines, quotes, whitespace, target export state and read
+status, including the original command substitution handling of trailing newlines.
+It does not replace the whole-file loader, whose parsing policy differs,
+or Package's existing separate policy. The Android copy and Rust mount carry a
+fresh owner even when their parent image contains an older loader.
+
+`source_toolchain_required` accepts the required leaf, the action when it is
+missing, lookup priority and optional expected function. Calls that name an
+expected function validate it and preserve a selected file's nonzero status.
+Calls that require only a file retain their historical result policy. Source transport
+and required-loader calls remain unconditional so strict failures keep their
+original effect. Missing cache helpers still exit; the ELF wrapper retains its
+return policy. `bootstrap-import.sh` owns the initial bootstrap source and dispatcher check
+at source scope. It returns failures explicitly, and each entrypoint retains its
+exit or return policy; selected-leaf calls remain separate and unconditional.
+Older bootstraps cannot hide a missing dispatcher in conditional source contexts. Tests cover missing files and exports, stale loaded guards,
+partial definitions followed by failure, and complete copied entrypoints.
+
+The tag and numeric suites share `stream-receipt-fixture.sh` for stream capture,
+byte comparison, return markers and serialization. Their expected consumer data
+remains separate and literal. A small contract suite checks NUL and trailing
+newline bytes, nonzero capture status and mismatches beyond the initial bytes.
+
+The initializer is carried beside both the entrypoint and `bootstrap.sh` in
+standalone bundles and fresh per-stage copy/mount closures. It is sourced directly
+rather than invoked through a function that an older bootstrap may not provide.
+This shares the import policy without changing source scope or using `eval`.

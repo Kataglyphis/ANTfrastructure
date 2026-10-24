@@ -5,6 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 SMOKE="${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh"
 
+eval "$(sed -n '/^_smoke_probe_values()/,/^}/p' "${SMOKE}")"
 eval "$(sed -n '/^_rvv_verdicts()/,/^}/p' "${SMOKE}")"
 
 _UBUNTU_LIBC='rv64i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_b1p0_v1p0_zicond1p0_zvl128b1p0'

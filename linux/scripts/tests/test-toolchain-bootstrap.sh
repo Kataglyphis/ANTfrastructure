@@ -45,6 +45,7 @@ done
 t_case "common fallback keeps logging streams, sudo selection and apt argument order"
 _plant_bootstrap_candidates common.sh
 rm "${work}"/{toolchain,01-core,mounted}/common.sh
+cp "${TESTS_DIR}/../01-core/sudo-policy.sh" "${work}/mounted/"
 output="$(bash -c 'source "$1"; source_toolchain_common_or_fallback "$2"
   info message; warn warning
   require_sudo

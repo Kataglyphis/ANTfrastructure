@@ -206,8 +206,9 @@ t_assert_contains "$(cat "${SCRIPTS}/02-toolchain/python/ci_tests.sh")" "uv_cach
 
 t_case "the shipped-image contract row: riscv64 must verify seeded, every other arch must say not seeded (mutation)"
 SMOKE="${SCRIPTS}/06-packaging/smoke-runtime-image.sh"
+CONSUMER="${SCRIPTS}/06-packaging/runtime-consumer-contract.sh"
 _fns="$(t_fn_src "${SMOKE}" _consumer_contract_fact)
-$(t_fn_src "${SMOKE}" _consumer_uv_seed_verdict)" || exit 1
+$(t_fn_src "${CONSUMER}" _consumer_uv_seed_verdict)" || exit 1
 _row() { bash -c "${_fns}"$'\n''_consumer_uv_seed_verdict uv-cache-seed "$1" "$2"' _ "$1" "$2"; }
 _ok_rv=$'ENV uv-cache-seed /opt/uv-cache-seed\nFACT uv-cache-seed [uv-cache-seed] seeded for riscv64: 16 wheel(s) for Python 3.15.0 3.15.0t, proved'
 _no_amd=$'ENV uv-cache-seed /opt/uv-cache-seed\nFACT uv-cache-seed [uv-cache-seed] not seeded: only riscv64 is seeded, PyPI publishes the other arches their wheels'

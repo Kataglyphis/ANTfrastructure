@@ -1,0 +1,127 @@
+{
+  "torch:unset:both": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:unset:none": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include\nCPPFLAGS=-idirafter /usr/include\nCFLAGS=-idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include\nLIBRARY_PATH=/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:unset:include-only": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:unset:library-only": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include\nCPPFLAGS=-idirafter /usr/include\nCFLAGS=-idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include\nLIBRARY_PATH=/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:empty:both": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:empty:none": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include\nCPPFLAGS=-idirafter /usr/include\nCFLAGS=-idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include\nLIBRARY_PATH=/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:empty:include-only": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:empty:library-only": {
+    "status": 0,
+    "stdout": "CPATH=/usr/include\nCPPFLAGS=-idirafter /usr/include\nCFLAGS=-idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include\nLIBRARY_PATH=/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:preset:both": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:preset:none": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:preset:include-only": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:preset:library-only": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:late:both": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:late:none": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:late:include-only": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:late:library-only": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:twice:both": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "torch:twice:none": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:twice:include-only": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=/usr/include/fixture-linux-gnu\n_ml=\n",
+    "stderr": ""
+  },
+  "torch:twice:library-only": {
+    "status": 0,
+    "stdout": "CPATH=prior CPATH:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include\n_mi=\n_ml=/usr/lib/fixture-linux-gnu\n",
+    "stderr": ""
+  },
+  "profile:unset:both": {
+    "status": 0,
+    "stdout": "Wrote WORK/profile/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)\nCPATH=/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=<unset>\n_ml=<unset>\n",
+    "stderr": ""
+  },
+  "profile:empty:both": {
+    "status": 0,
+    "stdout": "Wrote WORK/profile/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)\nCPATH=/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=<unset>\n_ml=<unset>\n",
+    "stderr": ""
+  },
+  "profile:preset:both": {
+    "status": 0,
+    "stdout": "Wrote WORK/profile/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)\nCPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=<unset>\n_ml=<unset>\n",
+    "stderr": ""
+  },
+  "profile:late:both": {
+    "status": 0,
+    "stdout": "Wrote WORK/profile/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)\nCPATH=late-include:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=late-cpp -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=late-c -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=late-cxx -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=late-lib:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=<unset>\n_ml=<unset>\n",
+    "stderr": ""
+  },
+  "profile:twice:both": {
+    "status": 0,
+    "stdout": "Wrote WORK/profile/50-native-gcc-paths.sh (CPATH/*FLAGS/LIBRARY_PATH -> system dirs)\nCPATH=prior CPATH:/usr/include/fixture-linux-gnu:/usr/include:/usr/include/fixture-linux-gnu:/usr/include\nCPPFLAGS=prior CPPFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCFLAGS=prior CFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nCXXFLAGS=prior CXXFLAGS -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include -idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\nLIBRARY_PATH=prior LIBRARY_PATH:/usr/lib/fixture-linux-gnu:/usr/lib:/usr/lib/fixture-linux-gnu:/usr/lib\n_idaf=-idirafter /usr/include/fixture-linux-gnu -idirafter /usr/include\n_mi=<unset>\n_ml=<unset>\n",
+    "stderr": ""
+  }
+}

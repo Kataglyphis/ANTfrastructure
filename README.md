@@ -67,15 +67,14 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | I want to… | Read |
 | --- | --- |
 | Find the page that owns a topic | [docs/INDEX.md](docs/INDEX.md) |
-| Wire a new project or reuse shared helpers | [Adoption](docs/adopting-in-a-new-project.md) · [Shared libraries](docs/shared-script-libraries.md) |
+| Wire a new project or reuse build, installer, discovery, reporting and process helpers | [Adoption](docs/adopting-in-a-new-project.md) · [Shared libraries](docs/shared-script-libraries.md) · [Image defaults](.github/actions/README.md#the-two-images-and-the-one-place-they-are-named) |
 | Upgrade dependencies, Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published, how the chain is laid out, what is in it | [docs/overview.md](docs/overview.md) |
 | Build and accept the Linux images | [Basics](docs/linux-build-basics.md) · [Cross builds](docs/linux-cross-builds.md) · [Accelerators](docs/linux-accelerator-images.md) · [Consumer acceptance](docs/image-acceptance.md) |
 | Build the Windows image, and its arm64 bundle | [docs/windows-builds.md](docs/windows-builds.md) · [docs/windows-build-lanes.md](docs/windows-build-lanes.md) · [docs/windows-cross-builds.md](docs/windows-cross-builds.md) · [ROCm details](docs/windows-rocm.md) |
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
 | Know which workflow runs when | [docs/ci-build-triggers.md](docs/ci-build-triggers.md) |
-| Know every quality gate, the exception policy and shared build behavior | [Quality tooling](docs/code-quality-tooling.md#the-allowlist-contract) · [Gate registry](docs/code-quality-gates.md) · [Linux build, staging, packaging and fixture helpers](docs/shared-script-libraries.md) · [Windows dependency graphs, bounded TCP probes and fixtures](docs/windows-builds.md#shared-windows-behavior) |
-| Measure Windows PowerShell complexity | [PowerShell complexity command and limits](docs/code-quality-tooling.md#windows-powershell-complexity) |
+| Know every quality gate, the exception policy and shared build behavior | [Quality tooling, including duplication scan boundaries](docs/code-quality-tooling.md#the-allowlist-contract) · [Gate registry](docs/code-quality-gates.md) · [Test worker cleanup](docs/code-quality-tooling.md#the-gates-run-side-by-side) · [Linux compiler, APT and privilege policies](docs/shared-script-libraries.md) · [Windows dependency graphs, bounded TCP probes and fixtures](docs/windows-builds.md#shared-windows-behavior) |
 | Know what is inside an image, and under which licence | [docs/third-party-licenses.md](docs/third-party-licenses.md) · [docs/sbom.md](docs/sbom.md) · [docs/vulnerability-scanning.md](docs/vulnerability-scanning.md) |
 | Serve LLMs on the family's reference server | [linux/llm-stack/README.md](linux/llm-stack/README.md) |
 | Run a coding agent on-device on a Snapdragon (GenieX) | [docs/geniex-local-ai-setup.md](docs/geniex-local-ai-setup.md) |

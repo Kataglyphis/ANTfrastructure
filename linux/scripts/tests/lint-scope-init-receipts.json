@@ -1,0 +1,242 @@
+{
+  "lint-shell.sh:u:0": [
+    0,
+    "40574f524b402f687562003000300000",
+    ""
+  ],
+  "lint-shell.sh:u:1": [
+    0,
+    "40574f524b402f68756200300034006120622e707900000a002d2d7761726e696e6700",
+    ""
+  ],
+  "lint-shell.sh:u:2": [
+    0,
+    "40574f524b402f636f6e73756d657200310032006120622e70790000",
+    ""
+  ],
+  "lint-shell.sh:u:3": [
+    0,
+    "40574f524b402f636f6e73756d657200310032002d2d007800",
+    ""
+  ],
+  "lint-shell.sh:u:4": [
+    0,
+    "40574f524b402f636f6e73756d657200310031007800",
+    ""
+  ],
+  "lint-shell.sh:u:5": [
+    1,
+    "",
+    "ERROR: --root needs a directory argument.\n"
+  ],
+  "lint-shell.sh:u:6": [
+    1,
+    "",
+    "ERROR: lint root not found: @WORK@/absent\n"
+  ],
+  "lint-shell.sh:u:7": [
+    1,
+    "",
+    "ERROR: --root @WORK@/plain is not a git checkout; a consumer's scope is read from git ls-files.\n"
+  ],
+  "lint-shell.sh:eu:0": [
+    0,
+    "40574f524b402f687562003000300000",
+    ""
+  ],
+  "lint-shell.sh:eu:1": [
+    0,
+    "40574f524b402f68756200300034006120622e707900000a002d2d7761726e696e6700",
+    ""
+  ],
+  "lint-shell.sh:eu:2": [
+    0,
+    "40574f524b402f636f6e73756d657200310032006120622e70790000",
+    ""
+  ],
+  "lint-shell.sh:eu:3": [
+    0,
+    "40574f524b402f636f6e73756d657200310032002d2d007800",
+    ""
+  ],
+  "lint-shell.sh:eu:4": [
+    0,
+    "40574f524b402f636f6e73756d657200310031007800",
+    ""
+  ],
+  "lint-shell.sh:eu:5": [
+    1,
+    "",
+    "ERROR: --root needs a directory argument.\n"
+  ],
+  "lint-shell.sh:eu:6": [
+    1,
+    "",
+    "ERROR: lint root not found: @WORK@/absent\n"
+  ],
+  "lint-shell.sh:eu:7": [
+    1,
+    "",
+    "ERROR: --root @WORK@/plain is not a git checkout; a consumer's scope is read from git ls-files.\n"
+  ],
+  "lint-python.sh:u:0": [
+    0,
+    "40574f524b402f687562003000300000",
+    ""
+  ],
+  "lint-python.sh:u:1": [
+    0,
+    "40574f524b402f68756200300034006120622e707900000a002d2d7761726e696e6700",
+    ""
+  ],
+  "lint-python.sh:u:2": [
+    0,
+    "40574f524b402f636f6e73756d657200310032006120622e70790000",
+    ""
+  ],
+  "lint-python.sh:u:3": [
+    0,
+    "40574f524b402f636f6e73756d657200310032002d2d007800",
+    ""
+  ],
+  "lint-python.sh:u:4": [
+    0,
+    "40574f524b402f636f6e73756d657200310031007800",
+    ""
+  ],
+  "lint-python.sh:u:5": [
+    1,
+    "",
+    "ERROR: --root needs a directory argument.\n"
+  ],
+  "lint-python.sh:u:6": [
+    1,
+    "",
+    "ERROR: lint root not found: @WORK@/absent\n"
+  ],
+  "lint-python.sh:u:7": [
+    1,
+    "",
+    "ERROR: --root @WORK@/plain is not a git checkout; a consumer's scope is read from git ls-files.\n"
+  ],
+  "lint-python.sh:eu:0": [
+    0,
+    "40574f524b402f687562003000300000",
+    ""
+  ],
+  "lint-python.sh:eu:1": [
+    0,
+    "40574f524b402f68756200300034006120622e707900000a002d2d7761726e696e6700",
+    ""
+  ],
+  "lint-python.sh:eu:2": [
+    0,
+    "40574f524b402f636f6e73756d657200310032006120622e70790000",
+    ""
+  ],
+  "lint-python.sh:eu:3": [
+    0,
+    "40574f524b402f636f6e73756d657200310032002d2d007800",
+    ""
+  ],
+  "lint-python.sh:eu:4": [
+    0,
+    "40574f524b402f636f6e73756d657200310031007800",
+    ""
+  ],
+  "lint-python.sh:eu:5": [
+    1,
+    "",
+    "ERROR: --root needs a directory argument.\n"
+  ],
+  "lint-python.sh:eu:6": [
+    1,
+    "",
+    "ERROR: lint root not found: @WORK@/absent\n"
+  ],
+  "lint-python.sh:eu:7": [
+    1,
+    "",
+    "ERROR: --root @WORK@/plain is not a git checkout; a consumer's scope is read from git ls-files.\n"
+  ],
+  "lint-dockerfiles.sh:u:0": [
+    0,
+    "40574f524b402f687562003000300000",
+    ""
+  ],
+  "lint-dockerfiles.sh:u:1": [
+    0,
+    "40574f524b402f68756200300034006120622e707900000a002d2d7761726e696e6700",
+    ""
+  ],
+  "lint-dockerfiles.sh:u:2": [
+    0,
+    "40574f524b402f636f6e73756d657200310032006120622e70790000",
+    ""
+  ],
+  "lint-dockerfiles.sh:u:3": [
+    0,
+    "40574f524b402f636f6e73756d657200310032002d2d007800",
+    ""
+  ],
+  "lint-dockerfiles.sh:u:4": [
+    0,
+    "40574f524b402f636f6e73756d657200310031007800",
+    ""
+  ],
+  "lint-dockerfiles.sh:u:5": [
+    1,
+    "",
+    "ERROR: --root needs a directory argument.\n"
+  ],
+  "lint-dockerfiles.sh:u:6": [
+    1,
+    "",
+    "ERROR: lint root not found: @WORK@/absent\n"
+  ],
+  "lint-dockerfiles.sh:u:7": [
+    1,
+    "",
+    "ERROR: --root @WORK@/plain is not a git checkout; a consumer's scope is read from git ls-files.\n"
+  ],
+  "lint-dockerfiles.sh:eu:0": [
+    0,
+    "40574f524b402f687562003000300000",
+    ""
+  ],
+  "lint-dockerfiles.sh:eu:1": [
+    0,
+    "40574f524b402f68756200300034006120622e707900000a002d2d7761726e696e6700",
+    ""
+  ],
+  "lint-dockerfiles.sh:eu:2": [
+    0,
+    "40574f524b402f636f6e73756d657200310032006120622e70790000",
+    ""
+  ],
+  "lint-dockerfiles.sh:eu:3": [
+    0,
+    "40574f524b402f636f6e73756d657200310032002d2d007800",
+    ""
+  ],
+  "lint-dockerfiles.sh:eu:4": [
+    0,
+    "40574f524b402f636f6e73756d657200310031007800",
+    ""
+  ],
+  "lint-dockerfiles.sh:eu:5": [
+    1,
+    "",
+    "ERROR: --root needs a directory argument.\n"
+  ],
+  "lint-dockerfiles.sh:eu:6": [
+    1,
+    "",
+    "ERROR: lint root not found: @WORK@/absent\n"
+  ],
+  "lint-dockerfiles.sh:eu:7": [
+    1,
+    "",
+    "ERROR: --root @WORK@/plain is not a git checkout; a consumer's scope is read from git ls-files.\n"
+  ]
+}

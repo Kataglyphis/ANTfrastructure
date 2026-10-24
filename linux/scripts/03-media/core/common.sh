@@ -3,6 +3,34 @@
 
 set -euo pipefail
 
+media_regular_files_present() {
+  local _mrf_path _mrf_status
+  for _mrf_path in "$@"; do
+    [ -f "${_mrf_path}" ]
+    _mrf_status=$?
+    case "${_mrf_status}" in 0) ;; *) return "${_mrf_status}" ;; esac
+  done
+  return 0
+}
+
+# Caller-bound commands retain parse-time aliases and positional arguments without helper locals.
+media_pin_target_libstdcxx_if_available() {
+  if "$1" "${@:3}" >/dev/null 2>&1; then
+    "$2" "${@:3}" || true
+  fi
+  return 0
+}
+
+media_missing_dev_symlink() {
+  local destination="$1" source_file="$2"
+  case "${source_file}" in
+    /*) ;;
+    *) source_file="${destination%/*}/${source_file}" ;;
+  esac
+  if [ ! -e "${destination}" ] && [ -e "${source_file}" ]; then return 0; fi
+  return 1
+}
+
 # The container's /opt/scripts/core first, else an upward walk for the repo's 01-core.
 _media_find_core_dir() {
   local d; d="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -26,6 +54,28 @@ _media_find_core_dir() {
   return 1
 }
 
+# Resolve paths in the caller so sourced files keep their dynamic bindings.
+_media_candidate_exists() {
+  [ -f "${_mfef_candidate}" ]
+  return $?
+}
+
+_media_first_existing_file() {
+  local -n _mfef_slot="$1"
+  local _mfef_arg_count="$2"
+  shift 2
+  local -a _mfef_caller_args=("${@:1:_mfef_arg_count}")
+  shift "${_mfef_arg_count}"
+  local _mfef_candidate
+  for _mfef_candidate in "$@"; do
+    _mfef_slot="${_mfef_candidate}"
+    if _media_candidate_exists "${_mfef_caller_args[@]}"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # See docs/cross-build-verification.md
 media_load_arch_flags() {
   local arch="amd64" candidate flags_file=""
@@ -36,14 +86,12 @@ media_load_arch_flags() {
   fi
 
   # Container layout first, then this file's own dir.
-  for candidate in \
+  if ! _media_first_existing_file candidate "$#" "$@" \
       "/opt/scripts/03-media/core/arch-flags-${arch}.env" \
-      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/arch-flags-${arch}.env"; do
-    if [ -f "${candidate}" ]; then
-      flags_file="${candidate}"
-      break
-    fi
-  done
+      "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/arch-flags-${arch}.env"; then
+    return 0
+  fi
+  flags_file="${candidate}"
 
   # No flag file for this arch → keep the all-unset defaults (do not skip).
   [ -n "${flags_file}" ] || return 0
@@ -82,6 +130,7 @@ _media_assert_critical_fns() {
 media_common_init() {
   local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
   local core_dir
+  local -a _media_arch_flags_args=()
   core_dir="$(_media_find_core_dir "${script_dir}")" || {
     echo "ERROR: could not locate 01-core module framework from ${script_dir}" >&2
     return 1
@@ -107,7 +156,7 @@ media_common_init() {
   _media_setup_rust_cache
   _media_load_modules compiler-resolution.sh python-host.sh cmake-cache-linker.sh abseil-headers.sh
 
-  media_load_arch_flags
+  media_load_arch_flags "${_media_arch_flags_args[@]}"
 
   # Stats at exit: setup_ccache's own snapshot prints before the first object.
   if command -v dump_compiler_cache_stats >/dev/null 2>&1; then
@@ -136,17 +185,27 @@ media_load_vulkan_toolchain() {
 media_install_deps_init() {
   local script_dir; script_dir="${1:-$(cd "$(dirname "${BASH_SOURCE[1]}")" && pwd)}"
   local _dep_env
-  for _dep_env in \
+  local -a _media_arch_flags_args=()
+  if _media_first_existing_file _dep_env "$#" "$@" \
       "/opt/scripts/core/install-deps-preamble.sh" \
-      "${script_dir}/../../../01-core/install-deps-preamble.sh"; do
-    if [ -f "${_dep_env}" ]; then
-      # shellcheck disable=SC1090
-      source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
-      break
-    fi
-  done
+      "${script_dir}/../../../01-core/install-deps-preamble.sh"; then
+    # shellcheck disable=SC1090
+    source "${_dep_env}" || { echo "FATAL: cannot load ${_dep_env}" >&2; exit 1; }
+  fi
 
-  media_load_arch_flags
+  media_load_arch_flags "${_media_arch_flags_args[@]}"
+}
+
+# Keep selection separate from the GI lookup so both target probes retain their original order.
+media_gstreamer_foreign_target() {
+  local -n _mgft_match="$1"
+  _mgft_match=0
+  if cross_build_is_active && command -v cross_target_arch >/dev/null 2>&1; then
+    case "$(cross_target_arch)" in
+      arm64|riscv64) _mgft_match=1 ;;
+    esac
+  fi
+  return 0
 }
 
 # media_jobs [cap_mb]: job count under a per-job memory cap (default 2000 MB).

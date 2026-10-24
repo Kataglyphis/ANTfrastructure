@@ -79,11 +79,14 @@ build-runtime-manifest.sh to build per-arch base/package/torch wrapper images on
 the real target platform and publish the multi-arch manifest.
 
 Options:
-  --target-arches LIST     Comma-separated arch list (default: amd64,arm64,riscv64)
-  --architectures LIST     Alias for --target-arches
+EOF
+  runtime_usage_chain_arches
+  cat <<'EOF'
   --cross-targets LIST     Compiler target list baked into the compiler image
                            (default: amd64,arm64,riscv64; must cover --target-arches)
-  --image-repo REPO        Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
+EOF
+  runtime_usage_row '--image-repo REPO' 27
+  cat <<'EOF'
   --final-image REF        Final multi-arch manifest ref (default: REPO:latest)
   --from-stage STAGE       First stage to run: base|compiler|sdk|[gpu|]media|android|runtime
                            (a variant chain defaults to, and must start at or after, gpu)
@@ -188,12 +191,12 @@ _cross_per_arch_build() {
 
 _chain_extra_arg() {
   case "$1" in
-    --cross-targets) CROSS_TARGETS="$2"; _OARG_SHIFT=2 ;;
+    --cross-targets) orchestrator_set_cross_targets "$2" ;;
     --final-image) FINAL_IMAGE="$2"; FINAL_IMAGE_SET=1; _OARG_SHIFT=2 ;;
     --from-stage) FROM_STAGE="$2"; _OARG_SHIFT=2 ;;
     --to-stage) TO_STAGE="$2"; _OARG_SHIFT=2 ;;
     --only) ONLY_STAGE="$2"; _OARG_SHIFT=2 ;;
-    --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
+    --log-dir) orchestrator_consume_log_dir "$@" ;;
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
     --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1
@@ -421,8 +424,7 @@ _chain_evict_slugs() {
     victim="$(_disk_guard_pick_victim "${bc_dir}" "${_prot_ref}")"
     [ -n "${victim}" ] || break
     log "[disk-guard]   pruning slug ${victim} ($(du -sh "${bc_dir}/${victim}" 2>/dev/null | cut -f1 || echo '?'))"
-    rm -rf "${bc_dir:?}/${victim}" 2>/dev/null || true
-    if [ -e "${bc_dir}/${victim}" ]; then
+    if ! _disk_guard_remove_slug "${bc_dir}" "${victim}"; then
       warn "[disk-guard]   could not remove ${victim}; skipping it"
       _prot_ref="${_prot_ref},${victim}"
     fi
@@ -521,6 +523,7 @@ _chain_disk_watch_start() {
   is_dry_run && return 0
   local threshold="${CROSS_DISK_GUARD_GB:-40}" secs="${CROSS_DISK_WATCH_SECS:-120}"
   _disk_guard_positive_integer "${threshold}" || return 0
+  parallel_require_child_stop || return $?
   local bc_dir="${BUILDKIT_CACHE_DIR:-${HOME:-/root}/.cache/kata-buildcache}"
   local protected
   protected="$(_disk_guard_protected_slugs '')"
@@ -533,8 +536,8 @@ _chain_disk_watch_start() {
 
 _chain_disk_watch_stop() {
   [ -n "${_CHAIN_DISK_WATCH_PID}" ] || return 0
-  kill "${_CHAIN_DISK_WATCH_PID}" 2>/dev/null || true
-  wait "${_CHAIN_DISK_WATCH_PID}" 2>/dev/null || true
+  parallel_require_child_stop || return $?
+  parallel_stop_child_advisory "${_CHAIN_DISK_WATCH_PID}"
   _CHAIN_DISK_WATCH_PID=""
 }
 
@@ -579,13 +582,18 @@ _chain_start_resource_monitor() { start_resource_monitor cross; }
 _CHAIN_PIDFILE=""
 _CHAIN_SIGNAL_HANDLED=0
 
+_chain_is_live_other_pid() {
+  [ -n "$1" ] && [ "$1" != "$$" ] || return 1
+  kill -0 "$1" 2>/dev/null
+}
+
 # Reads the pidfile directly: runs before _chain_write_pidfile.
 _chain_live_sibling_pid() {
   local pf other
   pf="$(cross_chain_pidfile_path)"
   [ -f "${pf}" ] || return 0
   other="$(cat "${pf}" 2>/dev/null || true)"
-  [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null || return 0
+  _chain_is_live_other_pid "${other}" || return 0
   printf '%s' "${other}"
 }
 
@@ -611,7 +619,7 @@ _chain_write_pidfile() {
   # Never clobber a live sibling's pidfile; stop-cross-chain.sh is the way to stop it.
   if [ -f "${_CHAIN_PIDFILE}" ]; then
     local other; other="$(cat "${_CHAIN_PIDFILE}" 2>/dev/null || true)"
-    if [ -n "${other}" ] && [ "${other}" != "$$" ] && kill -0 "${other}" 2>/dev/null; then
+    if _chain_is_live_other_pid "${other}"; then
       warn "another cross chain is running (pid ${other}); leaving ${_CHAIN_PIDFILE} pointing at IT so stop-cross-chain.sh still reaches it. This run continues WITHOUT a pidfile and cannot be stopped that way."
       _CHAIN_PIDFILE=""
       return 0

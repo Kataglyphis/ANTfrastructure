@@ -79,7 +79,25 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    entries are debt; remove them when the underlying finding is fixed. The function-size, complexity, comment-size
    and masked-declaration lists are empty; keep them empty. Share duplicated behavior; do not rename
    variables, reformat copies or add suppressions to evade a duplication finding.
+   The duplication scanner shares the code-size shell lexer so quoted braces and here-doc bodies do not merge function units.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
+   Copied lint drivers carry `lint-scope-init.sh` and `lint-root.sh`; source initialization in the driver shell so remaining positional arguments survive.
+   Wheel unpack/pack transport keeps Python argument boundaries and raw status; packaging execution keeps best-effort and sudo failure policies separate.
+   Compiler smoke callbacks stay unconditional; preserve GStreamer's separate target lookups, temporary cleanup and raw failure statuses.
+   ORT tree scans retain archive candidates; record scans stay shallow and preserve component-name exclusions.
+   Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
+   Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install.
+   Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
+   Callback dispatch preserves caller-visible bindings and positional context; generic helper locals must not hide configuration used by supplied shell wrappers.
+   Host compiler wrappers retain parent-shell publication and original local slots; optional media pinning retains caller-bound lookup and invocation.
+   Copied common and minimal bootstrap modules carry `sudo-policy.sh`; retain SDK delegation before importing the policy from its module owner.
+   Validate cross-apt's first-line source API marker before its helper-only import; older full imports must not overwrite provided SDK updaters.
+   Shared CLI consumers retain complete argument lists when nameref assignments can read positional parameters.
+   Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies.
+   Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
+   Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
+   QNN artifact verification carries the fresh SDK query owner; import it only when its provider is present and fail on selected import errors.
+   Require child cleanup APIs before starting timers or watchers; advisory cleanup signals then reaps and retains caller PID guards, reset and command status.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
    Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
@@ -102,11 +120,23 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
    Core disk probes share validation without merging zero-disabled and nonnegative-free-space policies.
    Test workers use the harness optional-function emitter; keep required definitions mandatory.
+   Stream receipt suites carry `stream-receipt-fixture.sh`; keep their expected results independent of production code.
    Named mutation-check suites carry their case-executor companion; failed controls and invalid recipes remain failed results.
    Shared mirror enumeration preserves source-file order and original shell-option behavior; artifact and image probes retain caller failure policies.
    ORT and GenAI provenance checks share hashing and chain-byte membership; keep their distinct archive and exemption policies.
    Copy `compiler-cache-utils.sh` beside `common.sh`, cache modules and standalone cache probes and `media-payloads.sh` beside packaging copy/validation scripts; preserve narrow mounts.
-   Copy `elf-strip.sh` beside `build-helpers.sh` or a minimal toolchain bootstrap; keep its narrow GCC/LLVM mounts.
+   Copy `elf-strip.sh` and `image-ref-args.sh` beside `build-helpers.sh`; `digest-pinning.sh` also requires `image-ref-args.sh`.
+   Minimal toolchain bootstraps carry `elf-strip.sh` and `load-versions-env.sh`; keep the narrow GCC/LLVM mounts.
+   New required toolchain imports validate their expected export and preserve selected-file failures; legacy file-only imports retain their caller policy.
+   Copied GCC/Vulkan modules carry fresh `path-helpers.sh`; copied Rust version utilities carry `load-versions-env.sh` beside the existing core companions.
+   Standalone Android, GCC and Vulkan entries carry `bootstrap-import.sh` and `bootstrap.sh` beside them; Vulkan also carries `vulkan-install.sh`, and supplied download helpers retain precedence.
+   Copied ORT provenance and GStreamer ORT checks carry `path-helpers.sh` in their relative `01-core` layout.
+   Copies of `python_uv.sh` and `webdav-download.sh` carry `python-probe.sh`; missing companions fail rather than restoring interpreter-selection copies.
+   Runtime consumer probes retain lazy required-fact checks and distinguish missing facts from failed facts.
+   Copied Torch setup carries `package-image-wiring.sh`, `wheelhouse-manifest.sh` and `native-gcc-system-paths.sh` before its first execution.
+   Native GCC profiles carry `native-gcc-system-paths.sh`; preserve flag expansion when the profile is sourced.
+   `verify-cross-chain.sh` help carries `runtime-build-fns.sh`; ordinary forwarding must not load build helpers.
+   Copied `lib-runtime-wheels.sh` carries `01-core/wheelhouse-manifest.sh`.
    Windows formatting preserves distinct C/C++ fallback and tracked-only Dart policies; copied source-build suites carry their retry and media wiring fixture companions.
    Repository refresh shares best-effort fetches; callers retain checkout failure policy. Linux parser destination maps preserve raw values and consumed-argument counts.
    Object smokes share compile/cleanup lifecycle while retaining caller ELF policies; allocation or cleanup failure cannot pass.
@@ -122,6 +152,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    TVM compiler validation and selection share GCC-name resolution; keep override validation and wrapper argument order.
    Logging prefixes share severity formatting; preserve ANSI bytes, streams and NO_COLOR precedence.
    Windows TCP reachability shares one bounded dual-stack socket probe; malformed URLs stay closed and the socket helper stays private.
+   Standalone fallback registration keeps caller lookup policy; copied Abseil and payload entry points carry the logging bootstrap in its documented layout.
+   Smoke ELF inspection carries its platform owner and preserves caller parser overrides without leaking platform initialization.
    Bundle packagers share scoped facts, bundle copying, desktop/icon staging and artifact verdicts; invoke renderers unconditionally so Bash errexit remains active.
    ONNX web steps share lockfile retries and JS artifact verdicts; keep install failures fatal and check both source and copied artifacts.
    Agentic build, test and quality phases share execution; preserve fatal build/test results and advisory quality results.
@@ -724,7 +756,8 @@ transcript. Each was a child that outlived whatever started it. So:
 3. **Tests run as process groups that are killed whole.** `lib-ordered-jobs.sh` starts every job of
    `run-tests.sh` and `preflight.sh` as its own process group and kills it when the job ends, after
    `OJ_TIMEOUT` (`RUN_TESTS_SUITE_TIMEOUT`, 900 s per suite) and, through `oj_reap` in the runner's
-   EXIT trap, when the run is interrupted. The mutation gate ends each test's session after it, and
+   EXIT trap, when the run is interrupted. Register ownership before suite work starts; cancellation
+   covers pending launches and joins owned supervisors and watchdogs. The mutation gate ends each test's session after it, and
    every live one when it is itself killed, SIGTERM first so a runner inside can reap its own. A new
    runner that starts tests uses one of the two (`test-run-tests-reaping.sh`, the reaping cases of
    `test-mutation-gate.sh`).
@@ -810,6 +843,7 @@ grades this repo's own surface against them.
 - **Dry-run guard:** `build-helpers.sh` → `is_dry_run()`, `_bool_truthy()`, instead of `[ "${DRY_RUN:-0}" -eq 1 ]`.
 - **Module loading:** `modules.sh` → `source_modules_framework()`, the bootstrap for sourcing 01-core.
 - **Media bootstrap:** `03-media/core/common.sh` → `media_common_init <script_dir>`: the one entry that sources the 01-core module framework; every media build script sources it instead of copying a preamble block. (The old `media_build_preamble_init` alias is gone: zero callers, no definition.)
+- **Media file selection:** `03-media/core/common.sh` → `_media_first_existing_file <caller-slot> <argc> <argv...> <candidates...>`; callers keep their own `source` command so dynamic bindings stay visible.
 - **CC validation:** `validate-compilers.sh` → `_validate_cc_target()` (dumpmachine/ELF/cc1/link smoke).
 - **Cross-chain tags:** `tag-naming.sh` → `cross_base_tag()`, `cross_compiler_tag()`, `cross_sdk_tag()`, `cross_media_tag()`, `cross_android_tag()`, `cross_stage_repo()` (nvidia's private stage package), the runtime tag functions. Never construct tags by hand.
 - **Stage graph:** `stage-defs.sh` → `CROSS_STAGE_ORDER` (base→compiler→sdk→media→android→runtime), `RUNTIME_STAGE_ORDER` (base→package→wrapper). Pin init: `cross_stage_init_pins()`. Validation: `cross_stage_validate_graph()`. Cross→runtime handoff: `cross_stage_ensure_parent_available()`.

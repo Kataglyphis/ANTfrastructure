@@ -489,7 +489,6 @@ _consumer_present_verdict() {
 
 # Quotes each row's consumer-side symptom so a red run names the failure in the other repo.
 
-
 # Key <arch>:<row>; an arm that stops applying fails. docs/consumer-image-contract.md#per-arch-exemptions
 _consumer_contract_exempt() {
   case "$1:$2" in
@@ -680,254 +679,9 @@ _consumer_contract_fact() {
   printf '%s\n' "$1" | sed -n "s/^$2 $3 //p" | head -1
 }
 
-# Outside /workspace, the consumer's bind-mounted checkout, and writable by the image user.
-_consumer_dir_verdict() {
-  local row="$1" val="$2" write="$3"
-  case "${write}" in
-    yes|no) ;;
-    *) printf 'NOFACT %s no WRITE line\n' "${row}"; return 0 ;;
-  esac
-  case "${val}" in
-    "")          printf 'BAD %s the variable is unset, so the consumer inherits no location at all\n' "${row}" ;;
-    /workspace*) printf 'BAD %s points into the bind-mounted checkout: %s\n' "${row}" "${val}" ;;
-    *)           if [ "${write}" = yes ]; then
-                   printf 'OK %s %s\n' "${row}" "${val}"
-                 else
-                   printf 'BAD %s not writable by the image user: %s\n' "${row}" "${val}"
-                 fi ;;
-  esac
-}
-
-# An exemption re-proves itself from the row's own fact; a missing fact is NOFACT, never a grant.
-_consumer_exempt_verdict() {
-  case "$3" in
-    yes) printf 'STALE %s FACT %s says it IS present on %s -- delete the %s:%s arm from _consumer_contract_exempt' "$1" "$4" "$2" "$2" "$1" ;;
-    no)  printf 'EXEMPT %s' "$1" ;;
-    *)   printf 'NOFACT %s no FACT %s, so the exemption cannot be re-checked' "$1" "$4" ;;
-  esac
-}
-
-# Executable-but-unreadable runs for root only; the probe answers as the shipped image user.
-_consumer_tool_verdict() {
-  local row="$1" path readable
-  path="$(_consumer_contract_fact "$2" ENV appimagetool)"
-  readable="$(_consumer_contract_fact "$2" FACT appimagetool-readable)"
-  if [ -z "${readable}" ]; then
-    printf 'NOFACT %s no FACT appimagetool-readable line' "${row}"
-  elif [ -z "${path}" ]; then
-    printf 'BAD %s appimagetool is not on PATH at all' "${row}"
-  elif [ "${readable}" != yes ]; then
-    printf 'BAD %s %s is not readable by the image user' "${row}" "${path}"
-  else
-    printf 'OK %s %s readable' "${row}" "${path}"
-  fi
-}
-
-_consumer_jdk_verdict() {
-  local row="$1" home onpath javac
-  home="$(_consumer_contract_fact "$2" ENV java-home)"
-  onpath="$(_consumer_contract_fact "$2" FACT java-on-path)"
-  javac="$(_consumer_contract_fact "$2" FACT javac)"
-  if [ -z "${onpath}" ] || [ -z "${javac}" ]; then
-    printf 'NOFACT %s no FACT java-on-path / FACT javac line' "${row}"
-  elif [ "${onpath}" != yes ]; then
-    printf 'BAD %s no java on PATH' "${row}"
-  elif [ -z "${home}" ]; then
-    printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' "${row}"
-  elif [ "${javac}" != yes ]; then
-    printf 'BAD %s JAVA_HOME=%s has no bin/javac -- a JRE cannot compile' "${row}" "${home}"
-  else
-    printf 'OK %s java + JAVA_HOME=%s with javac' "${row}" "${home}"
-  fi
-}
-
-_consumer_android_verdict() {
-  local row="$1" val root dir onpath off
-  # The NDK is linux-x86_64 only; prune-host-payload.sh (or android-sdk.sh on a foreign host) writes the marker.
-  off="$(_consumer_contract_fact "$2" FACT android-payload-off)"
-  if [ -z "${off}" ]; then
-    printf 'NOFACT %s no FACT android-payload-off line' "${row}"
-    return 0
-  fi
-  val="$(_consumer_contract_fact "$2" ENV android-home)"
-  root="$(_consumer_contract_fact "$2" ENV android-sdk-root)"
-  if [ "${off}" = yes ]; then
-    # An empty /opt/android-sdk behind ANDROID_HOME is the same "No Android SDK found", one probe later.
-    if [ -n "${val}" ] || [ -n "${root}" ]; then
-      printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while /opt/android/.android-payload-off says the image ships no SDK' \
-        "${row}" "${val:-<unset>}" "${root:-<unset>}"
-    else
-      printf 'SKIP %s the android payload is off for this image (/opt/android/.android-payload-off)' "${row}"
-    fi
-    return 0
-  fi
-  dir="$(_consumer_contract_fact "$2" DIR android-platform-tools)"
-  onpath="$(_consumer_contract_fact "$2" FACT android-path)"
-  if [ -z "${dir}" ] || [ -z "${onpath}" ]; then
-    printf 'NOFACT %s no DIR android-platform-tools / FACT android-path line' "${row}"
-  elif [ -z "${val}" ] || [ -z "${root}" ]; then
-    printf 'BAD %s ANDROID_HOME=%s / ANDROID_SDK_ROOT=%s while the SDK ships in the image' "${row}" "${val:-<unset>}" "${root:-<unset>}"
-  elif [ "${dir}" != yes ]; then
-    printf 'BAD %s %s/platform-tools does not exist' "${row}" "${val}"
-  elif [ "${onpath}" != yes ]; then
-    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' "${row}" "${val}"
-  else
-    printf 'OK %s %s' "${row}" "${val}"
-  fi
-}
-
-# A missing count is NOFACT, not zero: the defect is root writing into the tree after the COPY.
-_consumer_owner_verdict() {
-  local row="$1" n
-  n="$(_consumer_contract_fact "$2" FACT flutter-foreign)"
-  if [ -z "${n}" ]; then
-    printf 'NOFACT %s no FACT flutter-foreign line' "${row}"
-  elif [ "${n}" != 0 ]; then
-    printf 'BAD %s %s path(s) under /opt/flutter are not owned by the runtime uid: %s' "${row}" "${n}" \
-      "$(_consumer_contract_fact "$2" FACT flutter-foreign-examples)"
-  else
-    printf 'OK %s every path under /opt/flutter belongs to the runtime uid' "${row}"
-  fi
-}
-
-# EMPTY when ort-sys and load-dynamic both resolve the chain ORT. docs/consumer-image-contract.md#the-ort-crate-links-the-chain-onnx-runtime
-_consumer_ort_env_problem() {
-  local p="$1" lreal dreal v
-  lreal="$(_consumer_contract_fact "${p}" FACT ort-lib-real)"
-  dreal="$(_consumer_contract_fact "${p}" FACT ort-dylib-real)"
-  case "${lreal}" in
-    /usr/local/lib/onnxruntime-cpu/lib|/usr/local/lib/onnxruntime-gpu/lib) ;;
-    *) printf 'ORT_LIB_LOCATION (%s) resolves to %s, not the chain ORT lib dir' \
-         "$(_consumer_contract_fact "${p}" ENV ort-lib-location)" "${lreal:-nothing}"; return 0 ;;
-  esac
-  if [ "$(_consumer_contract_fact "${p}" FACT ort-link-lib)" != yes ]; then
-    printf '%s has no libonnxruntime.so for ort-sys to link' "${lreal}"
-    return 0
-  fi
-  case "${dreal}" in
-    "${lreal}"/libonnxruntime.so*) ;;
-    *) printf 'ORT_DYLIB_PATH (%s) resolves to %s, not a chain libonnxruntime.so' \
-         "$(_consumer_contract_fact "${p}" ENV ort-dylib-path)" "${dreal:-nothing}"; return 0 ;;
-  esac
-  for v in ort-prefer-dynamic ort-skip-download; do
-    case "$(_consumer_contract_fact "${p}" ENV "${v}" | tr '[:upper:]' '[:lower:]')" in
-      1|true) ;;
-      *) printf 'ENV %s is "%s", not 1' "${v}" "$(_consumer_contract_fact "${p}" ENV "${v}")"; return 0 ;;
-    esac
-  done
-  v="$(_consumer_contract_fact "${p}" ENV ort-lib-path)"
-  if [ "${v}" != '<unset>' ]; then
-    printf 'ORT_LIB_PATH is set (%s), and ort-sys reads it before ORT_LIB_LOCATION, even empty' "${v}"
-    return 0
-  fi
-  case "$(_consumer_contract_fact "${p}" ENV cargo-net-offline | tr '[:upper:]' '[:lower:]')" in
-    '<unset>'|1|true) ;;
-    *) printf 'CARGO_NET_OFFLINE is falsy (set, and not 1/true), and ort-sys reads it before ORT_SKIP_DOWNLOAD' ;;
-  esac
-}
-
-_consumer_ort_env_verdict() {
-  local row="$1" problem
-  if [ "$(_consumer_contract_fact "$2" FACT ort-probe)" != yes ]; then
-    printf 'NOFACT %s no FACT ort-probe line' "${row}"
-    return 0
-  fi
-  problem="$(_consumer_ort_env_problem "$2")"
-  if [ -n "${problem}" ]; then
-    printf 'BAD %s %s' "${row}" "${problem}"
-  else
-    printf 'OK %s ORT_LIB_LOCATION -> %s, dynamic link, download disarmed' "${row}" \
-      "$(_consumer_contract_fact "$2" FACT ort-lib-real)"
-  fi
-}
-
-# CON65's three tools at their pins: docs/consumer-image-contract.md#the-cargo-qa-tools
-_consumer_cargo_qa_verdict() {
-  local row="$1" p="$2" pins="$3" have
-  case "$(_consumer_contract_fact "${p}" FACT cargo-qa-tools)" in
-    yes|no) ;;
-    *) printf 'NOFACT %s no FACT cargo-qa-tools line' "${row}"; return 0 ;;
-  esac
-  have="$(_consumer_contract_fact "${p}" FACT cargo-qa-tools-versions)"
-  if [ "${have}" = "${pins}" ]; then
-    printf 'OK %s %s' "${row}" "${have}"
-  else
-    printf 'BAD %s the image has %s, the pins are %s' "${row}" "${have:-nothing}" "${pins}"
-  fi
-}
-
-# CON66's interpreter: PYTHON_VERSION, the GIL really off, and the toolchain's source build. docs/consumer-image-contract.md#the-free-threaded-python
-_consumer_free_threaded_verdict() {
-  local row="$1" want="$3" have build
-  have="$(_consumer_contract_fact "$2" FACT free-threaded-python)"
-  build="$(_consumer_contract_fact "$2" FACT free-threaded-python-build)"
-  if [ -z "${have}" ]; then
-    printf 'NOFACT %s no FACT free-threaded-python line' "${row}"
-  elif [ "${have}" != "${want} gil=False" ]; then
-    printf 'BAD %s python3.*t reports %s, expected %s gil=False' "${row}" "${have}" "${want}"
-  # A python-build-standalone tree reports its own prefix; a missing stdlib module leaves its ImportError here.
-  elif [ "${build}" != "prefix=/opt/python-freethreaded Py_GIL_DISABLED=1" ]; then
-    printf 'BAD %s python3.*t is not the source build in /opt/python-freethreaded with its stdlib: %s' "${row}" "${build:-no FACT free-threaded-python-build line}"
-  else
-    printf 'OK %s CPython %s without the GIL, built from source in /opt/python-freethreaded' "${row}" "${want}"
-  fi
-}
-
-# A tool-pins.env pin, for the rows whose tools the torch stage installs from it (CON83).
-_rt_tool_pin() {
-  _rt_env_pin tool-pins.env "$1"
-}
-
-# CON83's lint tools on PATH at their pins: docs/consumer-image-contract.md#shellcheck-and-hadolint
-_consumer_lint_tools_verdict() {
-  local row="$1" want="$3" have
-  have="$(_consumer_contract_fact "$2" FACT lint-tools)"
-  if [ -z "${have}" ]; then
-    printf 'NOFACT %s no FACT lint-tools line' "${row}"
-  elif [ "${have}" != "${want}" ]; then
-    printf 'BAD %s the image has %s, the pins are %s' "${row}" "${have}" "${want}"
-  else
-    printf 'OK %s %s' "${row}" "${have}"
-  fi
-}
-
-# CON83's seed, read through its own verify: docs/consumer-image-contract.md#the-riscv64-uv-cache-seed
-_consumer_uv_seed_verdict() {
-  local row="$1" arch="$3" env have
-  env="$(_consumer_contract_fact "$2" ENV uv-cache-seed)"
-  have="$(_consumer_contract_fact "$2" FACT uv-cache-seed)"
-  if [ -z "${have}" ]; then
-    printf 'NOFACT %s no FACT uv-cache-seed line' "${row}"
-  elif [ "${env}" != /opt/uv-cache-seed ]; then
-    printf 'BAD %s PYTHON_UV_CACHE_SEED is "%s", not /opt/uv-cache-seed' "${row}" "${env}"
-  elif [ "${arch}" = riscv64 ]; then
-    case "${have}" in
-      "[uv-cache-seed] seeded for riscv64: "*", proved") printf 'OK %s %s' "${row}" "${have#*seeded for riscv64: }" ;;
-      *) printf 'BAD %s the riscv64 seed does not verify: %s' "${row}" "${have}" ;;
-    esac
-  else
-    case "${have}" in
-      "[uv-cache-seed] not seeded: "*) printf 'OK %s not seeded on %s, by its record' "${row}" "${arch}" ;;
-      *) printf 'BAD %s the %s record is not a "not seeded" one: %s' "${row}" "${arch}" "${have}" ;;
-    esac
-  fi
-}
-
-# CON129's GTK 4, read through the package stage's own gate: docs/consumer-image-contract.md#gtk-4-for-gtk4-rs
-_consumer_gtk4_verdict() {
-  local row="$1" have
-  have="$(_consumer_contract_fact "$2" FACT gtk4-dev)"
-  case "${have}" in
-    '')           printf 'NOFACT %s no FACT gtk4-dev line' "${row}" ;;
-    "OK: gtk4 "*) printf 'OK %s %s' "${row}" "${have#OK: }" ;;
-    *)            printf 'BAD %s %s' "${row}" "${have}" ;;
-  esac
-}
+source "${_SCRIPT_DIR}/runtime-consumer-contract.sh"
 
 # <row> <probe> <pin>; a rendered page proves V8 and the renderer, not only that the binary exists.
-
-
-
 
 _consumer_chrome_verdict() {
   local row="$1" p="$2" want="$3" have drv
@@ -971,99 +725,6 @@ _consumer_emulator_verdict() {
     printf 'OK %s emulator %s with %s' "${row}" "${want}" "${img}"
   fi
 }
-
-# Pure verdicts from probe text, so every failure path is testable. docs/consumer-image-contract.md#how-the-gate-proves-it
-
-
-_consumer_contract_row_verdict() {
-  local row="$1" probe="$2" arch="$3" line
-      case "${row}" in
-        android-home)  line="$(_consumer_android_verdict "${row}" "${probe}")" ;;
-        jdk)           line="$(_consumer_jdk_verdict "${row}" "${probe}")" ;;
-        appimagetool)  line="$(_consumer_tool_verdict "${row}" "${probe}")" ;;
-        flutter-owner) line="$(_consumer_owner_verdict "${row}" "${probe}")" ;;
-        ort-crate-env) line="$(_consumer_ort_env_verdict "${row}" "${probe}")" ;;
-        chrome|android-emulator|cargo-qa-tools|free-threaded-python|lint-tools|uv-cache-seed|gtk4-dev)
-          line="$(_consumer_versioned_verdict "${row}" "${probe}" "${arch}")" ;;
-        flatpak-runtimes|appimage-runtime|web-lane-tools)
-                       line="$(_consumer_present_verdict "${row}" \
-                                 "$(_consumer_contract_fact "${probe}" FACT "${row}")")" ;;
-        *)             line="$(_consumer_dir_verdict "${row}" \
-                                 "$(_consumer_contract_fact "${probe}" ENV "${row}")" \
-                                 "$(_consumer_contract_fact "${probe}" WRITE "${row}")")" ;;
-      esac
-  printf '%s' "${line}"
-}
-
-_consumer_contract_verdicts() {
-  local arch="$1" probe="$2" row fact line asserted=0
-  for row in ${_CONSUMER_CONTRACT_ROWS}; do
-    if _consumer_contract_exempt "${arch}" "${row}"; then
-      fact="$(_consumer_exempt_fact "${row}")"
-      line="$(_consumer_exempt_verdict "${row}" "${arch}" \
-                "$(_consumer_contract_fact "${probe}" FACT "${fact}")" "${fact}")"
-    else
-      line="$(_consumer_contract_row_verdict "${row}" "${probe}" "${arch}")"
-    fi
-    printf '%s\n' "${line}"
-    case "${line}" in OK\ *) asserted=$((asserted + 1)) ;; esac
-  done
-  printf 'ASSERTED %d\n' "${asserted}"
-}
-
-# Usable only if the probe completed as the image user (root sees every dir writable); EMPTY when usable.
-_consumer_probe_verdict() {
-  local probe="$1" want="$2" who
-  if ! printf '%s\n' "${probe}" | grep -qxF -- 'CCPROBE_DONE'; then
-    printf 'the probe did not complete, so the gate asserted NOTHING: %s' \
-      "$(printf '%s' "${probe}" | tr '\n' ';' | head -c 300)"
-  elif [ -z "${want}" ]; then
-    printf '%s' "the image declares no USER, so nothing pins who a consumer runs as -- every writability answer would be root's"
-  else
-    who="$(printf '%s\n' "${probe}" | sed -n 's/^WHO //p' | head -1)"
-    case " ${who} " in
-      *" ${want} "*) ;;
-      *) printf "the probe ran as '%s', not the image's own USER '%s' -- as root every directory answers writable and the gate proves nothing" "${who}" "${want}" ;;
-    esac
-  fi
-}
-
-# Probe as the image's own user: a root probe answers yes to every writability question.
-check_consumer_contract() {
-  local image_tag="$1"
-  local target_arch="$2"
-  local probe want stop verb row rest asserted=""
-  echo "--- CONSUMER CONTRACT (${target_arch}) ---"
-  want="$(_rt_image_config_value User)"
-  probe="$(_rt_run_shell_probe RT_CONTRACT_SH CCPROBE_EMPTY "$(_consumer_contract_probe)" 2>/dev/null)" || true
-  stop="$(_consumer_probe_verdict "${probe}" "${want}")"
-  if [ -n "${stop}" ]; then
-    fail "CONSUMER CONTRACT (${target_arch}): ${stop}"
-    echo ""
-    return 0
-  fi
-  while read -r verb row rest; do
-    [ -n "${verb}" ] || continue
-    case "${verb}" in
-      OK)       echo "  OK   ${row} ${rest}" ;;
-      EXEMPT)   echo "  ~~   ${row} (documented ${target_arch} exception)" ;;
-      SKIP)     echo "  --   ${row} ${rest}" ;;
-      BAD)      fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- $(_consumer_contract_symptom "${row}")" ;;
-      STALE)    fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest}" ;;
-      NOFACT)   fail "CONSUMER CONTRACT ${row} (${target_arch}): ${rest} -- the probe reported no fact, so the gate could not judge the row" ;;
-      ASSERTED) asserted="${row}" ;;
-      *)        fail "CONSUMER CONTRACT: unknown verdict '${verb} ${row} ${rest}' -- an unhandled verb is a silently dropped row" ;;
-    esac
-  done < <(_consumer_contract_verdicts "${target_arch}" "${probe}")
-  if [ "${asserted:-0}" = 0 ]; then
-    fail "CONSUMER CONTRACT asserted NOTHING on ${target_arch} (${asserted:-no ASSERTED line}) -- an empty row table is a vacuous pass, not a compliant image"
-  else
-    pass "CONSUMER CONTRACT: ${asserted} row(s) hold as ${want} on ${target_arch}"
-  fi
-  echo ""
-}
-
-source "${_SCRIPT_DIR}/runtime-consumer-contract.sh"
 
 # Venv extensions are excluded: they add package lib dirs at import time, which bare ldd cannot see.
 check_native_so_closure() {
@@ -1202,7 +863,6 @@ CROSS_PAYLOAD = (
 )
 GCC_TARGET_DIR = re.compile(r"/gcc-[^/]+/[a-z0-9_]+(?:-[a-z0-9]+)?-linux-[a-z0-9]+/")
 
-
 def _cross_payload(path):
     if any(marker in path for marker in CROSS_PAYLOAD):
         return True
@@ -1252,29 +912,63 @@ PY
 }
 
 # One OK|BAD|NOELF|MISSING line per tree; NONE when the scanner saw nothing.
+_smoke_probe_values() {
+  printf '%s\n' "$1" | sed -n "s/^$2 //p"
+}
+
+_smoke_read_probe_records() {
+  local probe="$1" tag="$2" reader="$3" count_records="${4:-0}" record
+  while IFS= read -r record; do
+    if [ "${count_records}" = "1" ] && [ -n "${record//[[:space:]]/}" ]; then
+      n=$((n + 1))
+    fi
+    "${reader}" "${record}"
+  done < <(_smoke_probe_values "${probe}" "${tag}")
+}
+
+_tree_missing_record() {
+  [ -n "$1" ] || return 0
+  printf 'MISSING %s\n' "$1"
+}
+
+_tree_noelf_record() {
+  [ -n "$1" ] || return 0
+  printf 'NOELF %s\n' "$1"
+}
+
+_tree_capped_record() {
+  local tree cap
+  read -r tree cap <<< "$1"
+  [ -n "${tree}" ] || return 0
+  printf 'CAPPED %s %s -\n' "${tree}" "${cap}"
+}
+
+_tree_machine_record() {
+  local tree machine count sample
+  read -r tree machine count sample <<< "$1"
+  [ -n "${tree}" ] || return 0
+  case "${machine}" in
+    *"${want}"*) printf 'OK %s %s %s\n' "${tree}" "${machine}" "${count}" ;;
+    *)           printf 'BAD %s %s %s %s\n' "${tree}" "${machine}" "${count}" "${sample}" ;;
+  esac
+}
+
+_soname_record() {
+  local so win ours
+  read -r so win ours <<< "$1"
+  [ -n "${so}" ] || return 0
+  case "${win}" in
+    /opt/*|/usr/local/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
+    *)                   printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
+  esac
+}
+
 _tree_arch_verdicts() {
-  local probe="$1" want="$2" tree machine count sample n=0
-  while read -r tree; do
-    [ -n "${tree}" ] || continue
-    printf 'MISSING %s\n' "${tree}"
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREEMISS //p')
-  while read -r tree; do
-    [ -n "${tree}" ] || continue
-    printf 'NOELF %s\n' "${tree}"
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREENOELF //p')
-  while read -r tree cap; do
-    [ -n "${tree}" ] || continue
-    n=$((n + 1))
-    printf 'CAPPED %s %s -\n' "${tree}" "${cap}"
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREECAP //p')
-  while read -r tree machine count sample; do
-    [ -n "${tree}" ] || continue
-    n=$((n + 1))
-    case "${machine}" in
-      *"${want}"*) printf 'OK %s %s %s\n' "${tree}" "${machine}" "${count}" ;;
-      *)           printf 'BAD %s %s %s %s\n' "${tree}" "${machine}" "${count}" "${sample}" ;;
-    esac
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^TREE //p')
+  local probe="$1" want="$2" n=0
+  _smoke_read_probe_records "${probe}" TREEMISS _tree_missing_record
+  _smoke_read_probe_records "${probe}" TREENOELF _tree_noelf_record
+  _smoke_read_probe_records "${probe}" TREECAP _tree_capped_record 1
+  _smoke_read_probe_records "${probe}" TREE _tree_machine_record 1
   [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
 }
 
@@ -1310,6 +1004,18 @@ _tree_arch_collect_manifest() {
   done < <(_rt_manifest_trees)
 }
 
+_tree_arch_probe_failure() {
+  local target_arch="$1" out="$2"
+  fail "tree-arch gate could not run in the ${target_arch} image (no TREESCAN_DONE marker) -- a gate that cannot run is not a pass: $(printf '%s' "${out}" | head -1)"
+}
+
+_smoke_unknown_verdict() {
+  local -n bad_count="$1"
+  local gate="$2" verb="$3" item="$4" target_arch="$5" suffix="${6:-}"
+  bad_count=$((bad_count + 1))
+  fail "${gate} gate: unknown verdict '${verb}' for ${item} on ${target_arch}${suffix}"
+}
+
 check_manifest_tree_arch() {
   local image_tag="$1"
   local target_arch="$2"
@@ -1320,11 +1026,8 @@ check_manifest_tree_arch() {
   out="$(_rt_run -e "RT_TREES=${trees# }" -e "RT_TREE_PY=$(_tree_arch_py)" \
            bash -lc 'p=/opt/venv/bin/python; [ -x "$p" ] || p="$(command -v python3)"
 printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
-  if ! printf '%s\n' "${out}" | grep -qxF -- 'TREESCAN_DONE'; then
-    fail "tree-arch gate could not run in the ${target_arch} image (no TREESCAN_DONE marker) -- a gate that cannot run is not a pass: $(printf '%s' "${out}" | head -1)"
-    echo ""
-    return 0
-  fi
+  _smoke_probe_required marker "${out}" TREESCAN_DONE _tree_arch_probe_failure \
+    "${target_arch}" "${out}" || return 0
 
   while read -r verb tree machine count sample; do
     [ -n "${verb}" ] || continue
@@ -1338,8 +1041,7 @@ printf "%s\n" "${RT_TREE_PY:-}" | "$p" -' 2>&1 || true)"
                fail "tree-arch: the walk of ${tree} hit the ${machine}-file cap, so everything past it was never read -- a partial scan is not a pass. Raise RT_TREE_CAP or narrow the tree" ;;
       NONE)    bad=$((bad + 1))
                fail "tree-arch: the scanner found NO tree at all on ${target_arch} -- a vacuous pass, not a green image" ;;
-      *)       bad=$((bad + 1))
-               fail "tree-arch gate: unknown verdict '${verb}' for ${tree} on ${target_arch}" ;;
+      *)       _smoke_unknown_verdict bad tree-arch "${verb}" "${tree}" "${target_arch}" ;;
     esac
   done < <(_tree_arch_verdicts "${out}" "${want}")
   [ "${bad}" -ne 0 ] || pass "all ${ok} asserted artifact tree(s) are ${want} on ${target_arch}"
@@ -1690,7 +1392,6 @@ echo RTPROBE_DONE
 PROBE
 }
 
-
 # One in-image script: what the image advertises, what it is, and what it holds.
 _shipped_truth_probe() {
   _probe_advertised
@@ -1811,7 +1512,7 @@ run_shipped_truth_probe() {
 # riscv64 ISA gate: one OK|BAD|SKIP <lib> <attr> line per shipped object.
 _rvv_verdicts() {
   local probe="$1" lib attr n=0 cc vcc=0
-  cc="$(printf '%s\n' "${probe}" | sed -n 's/^RVCC //p' | head -1)"
+  cc="$(_smoke_probe_values "${probe}" RVCC | head -1)"
   # Demand vector only once the image's own toolchain defaults to it; before that plain objects are expected.
   case "${cc}" in rva23*|*gcv*|*_v|*_v_*) vcc=1 ;; esac
   while read -r lib attr; do
@@ -1823,8 +1524,40 @@ _rvv_verdicts() {
       *)         if [ "${vcc}" = "1" ]; then printf 'BAD %s %s\n' "${lib}" "${attr}"
                  else printf 'OLD %s %s\n' "${lib}" "${attr}"; fi ;;
     esac
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^RVARCH //p')
+  done < <(_smoke_probe_values "${probe}" RVARCH)
   [ "${n}" -gt 0 ] || printf 'NONE - -\n'
+}
+
+# Shared shipped-truth records count only explicit OK and BAD results.
+_shipped_truth_verdict_gate() {
+  local probe_failure="$1" pass_prefix="$2" pass_suffix="$3" parser="$4" renderer="$5"
+  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
+    fail "${probe_failure}"
+    echo ""
+    return 0
+  fi
+  local line verb ok=0 bad=0
+  while IFS= read -r line; do
+    verb="${line%% *}"
+    case "${verb}" in
+      OK)  ok=$((ok + 1)) ;;
+      BAD) bad=$((bad + 1)) ;;
+    esac
+    "${renderer}" "${line}"
+  done < <("${parser}" "${_SHIPPED_TRUTH_PROBE}")
+  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "${pass_prefix}${ok}${pass_suffix}"
+  echo ""
+}
+
+_rvv_verdict_line() {
+  local verb lib attr
+  read -r verb lib attr <<< "$1"
+  case "${verb}" in
+    BAD)  fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
+    SKIP) echo "  ~~   ${lib}: ${attr}" ;;
+    OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
+    NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
+  esac
 }
 
 # C: riscv64 objects must carry the vector extension Ubuntu's own userland requires.
@@ -1832,61 +1565,34 @@ check_riscv64_isa() {
   local image_tag="$1" target_arch="$2"
   [ "${target_arch}" = riscv64 ] || return 0
   echo "--- SHIPPED-TRUTH C: riscv64 ISA of the shipped objects ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE"
-    echo ""
-    return 0
-  fi
-  local verb lib attr bad=0 ok=0
-  while read -r verb lib attr; do
-    case "${verb}" in
-      OK)   ok=$((ok + 1)) ;;
-      BAD)  bad=$((bad + 1))
-            fail "RVV: ${lib} was built WITHOUT the vector extension (${attr}) -- the image's own glibc requires it, so this object is below the platform baseline. See docs/riscv64-rva23-baseline.md" ;;
-      SKIP) echo "  ~~   ${lib}: ${attr}" ;;
-      OLD)  echo "  ~~   ${lib} predates the RVA23 switch (${attr}); the image's own gcc has no vector default either" ;;
-      NONE) fail "RVV: the probe found none of the objects it checks -- a vacuous pass, not a green image" ;;
-    esac
-  done < <(_rvv_verdicts "${_SHIPPED_TRUTH_PROBE}")
-  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "RVV: all ${ok} checked object(s) carry v1p0"
-  echo ""
+  _shipped_truth_verdict_gate \
+    "riscv64 ISA gate could not run: the in-image probe never printed RTPROBE_DONE" \
+    "RVV: all " " checked object(s) carry v1p0" _rvv_verdicts _rvv_verdict_line
 }
 
 # Pure verdict function for the soname-precedence gate.
 _soname_verdicts() {
-  local probe="$1" so win ours n=0
-  while read -r so win ours; do
-    [ -n "${so}" ] || continue
-    n=$((n + 1))
-    # Ours lives under /opt and /usr/local; the failure is a distro copy from a system dir winning.
-    case "${win}" in
-      /opt/*|/usr/local/*) printf 'OK %s %s\n' "${so}" "${win}" ;;
-      *)                   printf 'BAD %s %s %s\n' "${so}" "${win}" "${ours}" ;;
-    esac
-  done < <(printf '%s\n' "${probe}" | sed -n 's/^SONAME //p')
+  local probe="$1" n=0
+  _smoke_read_probe_records "${probe}" SONAME _soname_record 1
   [ "${n}" -gt 0 ] || printf 'NONE - - -\n'
+}
+
+_soname_verdict_line() {
+  local verb so win ours
+  read -r verb so win ours <<< "$1"
+  case "${verb}" in
+    BAD)  fail "SONAME: ${so} resolves to ${win}, NOT to our ${ours} -- a consumer linking it gets the distro build. Give our tree a 000-*.conf in /etc/ld.so.conf.d (docs/cross-build-verification.md)." ;;
+    NONE) fail "SONAME: the probe found no shipped sonames at all -- a vacuous pass, not a green image" ;;
+  esac
 }
 
 # D: a library we ship must not lose the ld.so lookup to a distro copy.
 check_soname_precedence() {
   local image_tag="$1" target_arch="$2"
   echo "--- SHIPPED-TRUTH D: our libraries win the ld.so lookup (${target_arch}) ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "soname-precedence gate could not run: the in-image probe never printed RTPROBE_DONE"
-    echo ""
-    return 0
-  fi
-  local verb so win ours bad=0 ok=0
-  while read -r verb so win ours; do
-    case "${verb}" in
-      OK)   ok=$((ok + 1)) ;;
-      BAD)  bad=$((bad + 1))
-            fail "SONAME: ${so} resolves to ${win}, NOT to our ${ours} -- a consumer linking it gets the distro build. Give our tree a 000-*.conf in /etc/ld.so.conf.d (docs/cross-build-verification.md)." ;;
-      NONE) fail "SONAME: the probe found no shipped sonames at all -- a vacuous pass, not a green image" ;;
-    esac
-  done < <(_soname_verdicts "${_SHIPPED_TRUTH_PROBE}")
-  [ "${bad}" -ne 0 ] || [ "${ok}" -eq 0 ] || pass "SONAME: all ${ok} shipped library(ies) win their lookup"
-  echo ""
+  _shipped_truth_verdict_gate \
+    "soname-precedence gate could not run: the in-image probe never printed RTPROBE_DONE" \
+    "SONAME: all " " shipped library(ies) win their lookup" _soname_verdicts _soname_verdict_line
 }
 
 # Probes in-image so ld.so and LD_LIBRARY_PATH are the image's own; check-ort-provenance.sh decides.
@@ -1911,15 +1617,32 @@ check_ort_census() {
   echo ""
 }
 
+_smoke_probe_required() {
+  local protocol="$1" evidence="$2" marker="$3" failure_renderer="$4"
+  shift 4
+  case "${protocol}" in
+    status) [ "${evidence}" = "0" ] && return 0 ;;
+    marker) printf '%s\n' "${evidence}" | grep -qxF -- "${marker}" && return 0 ;;
+    *) fail "unknown smoke probe completion protocol '${protocol}'"
+       echo ""
+       return 1 ;;
+  esac
+  "${failure_renderer}" "$@"
+  echo ""
+  return 1
+}
+
+_advertised_probe_failure() {
+  local target_arch="$1"
+  fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
+}
+
 check_advertised_versions() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- SHIPPED-TRUTH A: advertised env versions == actual (${target_arch}) ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "advertised-version gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
-    echo ""
-    return 0
-  fi
+  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _advertised_probe_failure \
+    "${target_arch}" || return 0
   local verb key rest ok=0 bad=0
   while read -r verb key rest; do
     [ -n "${verb}" ] || continue
@@ -1931,8 +1654,8 @@ check_advertised_versions() {
               fail "the ${target_arch} image sets NO ${key}, so its row could only ever SKIP -- advertise it as ENV in Dockerfile.package, or excuse it in verify_advertised_keys.py and drop the row from _ADVERTISED_VERSION_KEYS" ;;
       UNREAD) bad=$((bad + 1))
               fail "the ${target_arch} image advertises ${key}=${rest} but the in-image probe could NOT read the actual value -- that is the shape the builder's rustc shipped in for months; fix the probe or the component, never the verdict" ;;
-      *)      bad=$((bad + 1))
-              fail "advertised-version gate: unknown verdict '${verb}' for ${key} on ${target_arch} -- a verb no arm handles is a silently dropped row" ;;
+      *)      _smoke_unknown_verdict bad advertised-version "${verb}" "${key}" "${target_arch}" \
+                " -- a verb no arm handles is a silently dropped row" ;;
     esac
   done < <(_advert_verdicts "${_SHIPPED_TRUTH_PROBE}")
   if [ "$((ok + bad))" -eq 0 ]; then
@@ -1944,15 +1667,17 @@ check_advertised_versions() {
 }
 
 # B: the venv must carry what the app's own metadata says this arch needs.
+_venv_probe_failure() {
+  local target_arch="$1"
+  fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
+}
+
 check_venv_package_set() {
   local image_tag="$1"
   local target_arch="$2"
   echo "--- SHIPPED-TRUTH B: venv package set vs the app's declared graph (${target_arch}) ---"
-  if [ "${_SHIPPED_TRUTH_PROBE_RC}" != "0" ]; then
-    fail "venv package-set gate could not run: the in-image probe never printed RTPROBE_DONE (${target_arch}) -- a gate that cannot run is not a pass"
-    echo ""
-    return 0
-  fi
+  _smoke_probe_required status "${_SHIPPED_TRUTH_PROBE_RC}" - _venv_probe_failure \
+    "${target_arch}" || return 0
   local absent
   absent="$(printf '%s\n' "${_SHIPPED_TRUTH_PROBE}" | sed -n 's/^VENV ABSENT //p' | head -1)"
   if [ -n "${absent}" ]; then
@@ -2557,17 +2282,24 @@ EOF
     echo ""
 }
 
-# Runs the compiled programs on-target, which the x86_64 build host never can; RUNTIME_COMPILER_SMOKE=0 skips.
+# Runtime feature flags share one gate and heading path.
+_run_optional_runtime_smoke() {
+  local enabled="$1" heading="$2" arch="$3" runner="$4"; shift 4
+  [ "${enabled}" = "1" ] || return 0
+  printf '%s (%s) ---\n' "${heading}" "${arch}"
+  "${runner}" "$@"
+}
+
 check_native_compiler_battery() {
-  local image_tag="$1"
-  local target_arch="$2"
-    if [ "${RUNTIME_COMPILER_SMOKE}" = "1" ]; then
-      echo "--- Functional: native compiler battery compile+link+run (${target_arch}) ---"
-      # Exceptions+STL guards swap-native-gcc.sh's -idirafter fix; sources avoid single quotes for bash -lc.
-      local _san_run=0
-      if [ "${target_arch}" = "$(smoke_host_arch)" ]; then _san_run=1; fi
-      if _rt_run -e "SAN_RUN=${_san_run}" \
-           bash -lc 'set -uo pipefail
+  _run_optional_runtime_smoke "${RUNTIME_COMPILER_SMOKE}" "--- Functional: native compiler battery compile+link+run" "$2" _check_native_compiler_battery "$@"
+}
+_check_native_compiler_battery() {
+  local image_tag="$1" target_arch="$2"
+  # Exceptions+STL guards swap-native-gcc.sh's -idirafter fix; sources avoid single quotes for bash -lc.
+  local _san_run=0
+  if [ "${target_arch}" = "$(smoke_host_arch)" ]; then _san_run=1; fi
+  if _rt_run -e "SAN_RUN=${_san_run}" \
+       bash -lc 'set -uo pipefail
 cc="$(command -v gcc || command -v cc || true)"
 cxx="$(command -v g++ || command -v c++ || true)"
 [ -n "$cc" ] || { echo "no gcc/cc on PATH"; exit 3; }
@@ -2586,66 +2318,64 @@ printf "#include <math.h>\nint main(void){double x=sqrt(2.0)*sqrt(2.0);return (i
 printf "#include <stdio.h>\nint main(void){long long v=0;__atomic_fetch_add(&v,42,__ATOMIC_SEQ_CST);return v==42?0:1;}\n" > "$d/a.c"
 { "$cc" -O2 "$d/a.c" -o "$d/a" -latomic 2>"$d/e" && "$d/a"; }; report "C   libatomic (-latomic)" $?
 if [ -n "$cxx" ]; then
-  # C++: hello (compile+link+RUN libstdc++, verify stdout)
-  printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/x.cpp"
-  { "$cxx" -O2 "$d/x.cpp" -o "$d/x" 2>"$d/e" && [ "$("$d/x")" = cxx-ok ]; }; report "C++ hello (stdout=cxx-ok)" $?
-  # C++: exceptions + STL -- regression guard for the -idirafter wrapper fix
-  printf "#include <vector>\n#include <string>\n#include <stdexcept>\n#include <algorithm>\nint main(){std::vector<std::string> v{\"c\",\"a\",\"b\"};std::sort(v.begin(),v.end());std::string j;for(auto&s:v)j+=s;try{throw std::runtime_error(\"x\");}catch(const std::exception&e){j+=e.what();}return j==\"abcx\"?0:1;}\n" > "$d/e.cpp"
-  { "$cxx" -O2 "$d/e.cpp" -o "$d/ex" 2>"$d/e" && "$d/ex"; }; report "C++ exceptions+STL (throw/catch/sort)" $?
-  # C++: std::thread
-  printf "#include <thread>\n#include <atomic>\nint main(){std::atomic<int> n{0};std::thread t([&]{n=42;});t.join();return n==42?0:1;}\n" > "$d/t.cpp"
-  { "$cxx" -O2 "$d/t.cpp" -o "$d/tt" -pthread 2>"$d/e" && "$d/tt"; }; report "C++ std::thread" $?
-  # C++: link-time optimization
-  printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
-  { "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
-  # C++: the header abseil includes, libasan+libubsan NEEDED ((8>>c) is a UBSan call under C++20 too); RUN only natively
-  printf "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c,char**){__sanitizer_annotate_contiguous_container(b,b+8,b+8,b+8);return (8>>c)==4?0:1;}\n" > "$d/s.cpp"
-  { "$cxx" -O1 -fsanitize=address,undefined "$d/s.cpp" -o "$d/s" 2>"$d/e" && readelf -d "$d/s" > "$d/dyn" && grep -q "NEEDED.*libasan" "$d/dyn" && grep -q "NEEDED.*libubsan" "$d/dyn"; }; report "C++ -fsanitize=address,undefined compile+link" $?
-  if [ "$SAN_RUN" = 1 ]; then { ASAN_OPTIONS=detect_leaks=0 "$d/s" 2>"$d/e"; }; report "C++ sanitizer RUN (native)" $?
-  else echo "  --  sanitizer RUN skipped: emulated arch (qemu-user cannot host ASan/LSan reliably)"; fi
+# C++: hello (compile+link+RUN libstdc++, verify stdout)
+printf "#include <iostream>\nint main(){std::cout<<\"cxx-ok\"<<std::endl;return 0;}\n" > "$d/x.cpp"
+{ "$cxx" -O2 "$d/x.cpp" -o "$d/x" 2>"$d/e" && [ "$("$d/x")" = cxx-ok ]; }; report "C++ hello (stdout=cxx-ok)" $?
+# C++: exceptions + STL -- regression guard for the -idirafter wrapper fix
+printf "#include <vector>\n#include <string>\n#include <stdexcept>\n#include <algorithm>\nint main(){std::vector<std::string> v{\"c\",\"a\",\"b\"};std::sort(v.begin(),v.end());std::string j;for(auto&s:v)j+=s;try{throw std::runtime_error(\"x\");}catch(const std::exception&e){j+=e.what();}return j==\"abcx\"?0:1;}\n" > "$d/e.cpp"
+{ "$cxx" -O2 "$d/e.cpp" -o "$d/ex" 2>"$d/e" && "$d/ex"; }; report "C++ exceptions+STL (throw/catch/sort)" $?
+# C++: std::thread
+printf "#include <thread>\n#include <atomic>\nint main(){std::atomic<int> n{0};std::thread t([&]{n=42;});t.join();return n==42?0:1;}\n" > "$d/t.cpp"
+{ "$cxx" -O2 "$d/t.cpp" -o "$d/tt" -pthread 2>"$d/e" && "$d/tt"; }; report "C++ std::thread" $?
+# C++: link-time optimization
+printf "int sq(int x){return x*x;}\nint main(){return sq(7)==49?0:1;}\n" > "$d/l.cpp"
+{ "$cxx" -O2 -flto "$d/l.cpp" -o "$d/l" 2>"$d/e" && "$d/l"; }; report "C++ LTO (-flto)" $?
+# C++: the header abseil includes, libasan+libubsan NEEDED ((8>>c) is a UBSan call under C++20 too); RUN only natively
+printf "#include <sanitizer/common_interface_defs.h>\nalignas(8) static char b[8];\nint main(int c,char**){__sanitizer_annotate_contiguous_container(b,b+8,b+8,b+8);return (8>>c)==4?0:1;}\n" > "$d/s.cpp"
+{ "$cxx" -O1 -fsanitize=address,undefined "$d/s.cpp" -o "$d/s" 2>"$d/e" && readelf -d "$d/s" > "$d/dyn" && grep -q "NEEDED.*libasan" "$d/dyn" && grep -q "NEEDED.*libubsan" "$d/dyn"; }; report "C++ -fsanitize=address,undefined compile+link" $?
+if [ "$SAN_RUN" = 1 ]; then { ASAN_OPTIONS=detect_leaks=0 "$d/s" 2>"$d/e"; }; report "C++ sanitizer RUN (native)" $?
+else echo "  --  sanitizer RUN skipped: emulated arch (qemu-user cannot host ASan/LSan reliably)"; fi
 fi
 echo "  gcc $("$cc" -dumpversion) [$("$cc" -dumpmachine)]"
 exit $rc'; then
-        pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO/sanitizers) all pass on ${target_arch}"
-      else
-        fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
-      fi
-      echo ""
-    fi
+    pass "native compiler battery (C hello/pthreads/libm/atomic + C++ hello/exceptions/thread/LTO/sanitizers) all pass on ${target_arch}"
+  else
+    fail "native compiler battery had FAILURES in the runtime image (${target_arch}) -- see XX lines above"
+  fi
+  echo ""
 }
 
 # Clang/LLVM version on the shipped image, per arch: the toolchain-stage checks cannot see a stale reused sdk (RUNTIME_CLANG_VERSION_SMOKE=0 disables).
 check_clang_llvm_release() {
-  local image_tag="$1"
-  local target_arch="$2"
-    if [ "${RUNTIME_CLANG_VERSION_SMOKE}" = "1" ]; then
-      echo "--- Functional: clang/clang++ version == LLVM_RELEASE (${target_arch}) ---"
-      local _llvm_release="${LLVM_RELEASE:-}"
-      if [ -z "${_llvm_release}" ]; then
-        local _venv
-        _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
-        # `|| true`: under pipefail an absent key would abort the smoke without a summary; the fail below reports it.
-        [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2 || true)"
-      fi
-      if [ -z "${_llvm_release}" ]; then
-        fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"
-      elif _rt_run -e "WANT_LLVM=${_llvm_release}" \
-             bash -lc 'set -uo pipefail
+  _run_optional_runtime_smoke "${RUNTIME_CLANG_VERSION_SMOKE}" "--- Functional: clang/clang++ version == LLVM_RELEASE" "$2" _check_clang_llvm_release "$@"
+}
+_check_clang_llvm_release() {
+  local image_tag="$1" target_arch="$2"
+  local _llvm_release="${LLVM_RELEASE:-}"
+  if [ -z "${_llvm_release}" ]; then
+    local _venv
+    _venv="$(cd "$(dirname "${BASH_SOURCE[0]}")/../01-core" 2>/dev/null && pwd)/versions.env"
+    # `|| true`: under pipefail an absent key would abort the smoke without a summary; the fail below reports it.
+    [ -f "${_venv}" ] && _llvm_release="$(grep -E '^LLVM_RELEASE=' "${_venv}" | head -1 | cut -d= -f2 || true)"
+  fi
+  if [ -z "${_llvm_release}" ]; then
+    fail "clang-version smoke: could not resolve LLVM_RELEASE (env or versions.env)"
+  elif _rt_run -e "WANT_LLVM=${_llvm_release}" \
+         bash -lc 'set -uo pipefail
 rc=0
 for tool in clang clang++; do
-  p="$(command -v "$tool" || true)"
-  [ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
-  # Run the tool for its version, never strings(1): a dylib-linked clang keeps its version in libLLVM.so.
-  ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
-  if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
+p="$(command -v "$tool" || true)"
+[ -n "$p" ] || { echo "  XX  $tool not on PATH"; rc=1; continue; }
+# Run the tool for its version, never strings(1): a dylib-linked clang keeps its version in libLLVM.so.
+ver="$("$tool" --version 2>/dev/null | head -1 | grep -oE "[0-9]+\.[0-9]+\.[0-9]+" | head -1 || true)"
+if [ "$ver" = "$WANT_LLVM" ]; then echo "  OK  $tool $ver == LLVM_RELEASE"; else echo "  XX  $tool ${ver:-NO-VERSION-OUTPUT} != LLVM_RELEASE $WANT_LLVM"; rc=1; fi
 done
 exit $rc'; then
-        pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"
-      else
-        fail "clang/clang++ version != LLVM_RELEASE ${_llvm_release} on ${target_arch} (stale toolchain / cross-sdk not rebuilt?)"
-      fi
-      echo ""
-    fi
+    pass "clang/clang++ report LLVM_RELEASE ${_llvm_release} on ${target_arch}"
+  else
+    fail "clang/clang++ version != LLVM_RELEASE ${_llvm_release} on ${target_arch} (stale toolchain / cross-sdk not rebuilt?)"
+  fi
+  echo ""
 }
 
 # DeepStream only on the nvidia variant, then its own gates in the image: docs/linux-accelerator-images.md#deepstream-nvidia-variant

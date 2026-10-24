@@ -3,17 +3,17 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/runtime-flow-fixtures.sh"
 source "${TESTS_DIR}/runtime-wheels-fixtures.sh"
 rw_hermetic_env
 SCRIPTS="${TESTS_DIR}/.."
 LIB="${SCRIPTS}/lib-runtime-wheels.sh"
-RBF="${SCRIPTS}/01-core/runtime-build-fns.sh"
 CTX="${SCRIPTS}/01-core/context-management.sh"
 TORCH="${SCRIPTS}/../Dockerfile.torch"
 STV="${SCRIPTS}/06-packaging/setup-torch-venv.sh"
 
 # The real wrapper path: argument assembly, the chain, and the context helpers it calls.
-_FNS="$(rw_fns "${RBF}" append_wrapper_build_args runtime_wheels_image_ref _append_wheels_image_args \
+_FNS="$(runtime_test_timer_sources "${SCRIPTS}" append_wrapper_build_args runtime_wheels_image_ref _append_wheels_image_args \
   runtime_gpu_backend_pair _runtime_timed runtime_build_chain _runtime_build_wrapper runtime_build_wrapper_image _runtime_wrapper_then_ship _runtime_ship_image _runtime_ship_rootfs \
   _runtime_push_wrapper_tag _runtime_smoke_start _runtime_smoke_wait)" || exit 1
 # These cases pin the steps' order; test-runtime-smoke-overlap.sh owns the overlapped smoke.
@@ -263,8 +263,8 @@ t_assert_contains "$(grep -A2 -F 'from=wheels-source,source=/opt/wheels,target=/
   'echo "[torch-run] start epoch=$(date -u +%s) arch=${TARGETARCH}"' "the torch RUN's first statement stamps its start"
 
 t_case "the lanes: both runtime orchestrators set up and loop through the lib, the chain checks the knob first"
+runtime_test_preparation_step "${SCRIPTS}" 'runtime_post_parse_setup TARGET_ARCHES' '  runtime_wheels_setup || exit $?'
 for _o in build-runtime-manifest.sh build-runtime-artifacts.sh; do
-  t_assert_eq "  runtime_wheels_setup || exit \$?" "$(grep -A1 'runtime_post_parse_setup TARGET_ARCHES' "${SCRIPTS}/${_o}" | sed -n 2p)" "${_o} sets up after parsing"
   t_assert_eq "" "$(grep -n 'runtime_build_chain' "${SCRIPTS}/${_o}" || true)" "${_o} never calls runtime_build_chain around the lib"
 done
 t_assert_contains "$(cat "${SCRIPTS}/build-runtime-manifest.sh")" "run_parallel_arch_loop runtime_wheels_arch_chain "
@@ -278,7 +278,7 @@ t_case "setup-torch-venv.sh: the in-RUN wheelhouse line is never fatal and match
 _STV_FN="$(t_fn_src "${STV}" _stv_wheelhouse_line)" || exit 1
 _WH="$(mktemp -d)"
 printf a > "${_WH}/torch-2.9.0-cp314-cp314-linux_aarch64.whl"; printf bb > "${_WH}/onnxruntime-1.30.0-cp314-cp314-linux_aarch64.whl"
-_strict() { bash -c "set -Eeuo pipefail; trap 'echo ERR-TRAP' ERR"$'\n'"$1"$'\n'"${_STV_FN}"$'\n'"_stv_wheelhouse_line $(printf '%q' "$2"); echo \"rc=\$?\"" 2>&1; }
+_strict() { bash -c "set -Eeuo pipefail; trap 'echo ERR-TRAP' ERR"$'\n'"$1"$'\n'"source $(printf '%q' "${SCRIPTS}/01-core/wheelhouse-manifest.sh")"$'\n'"${_STV_FN}"$'\n'"_stv_wheelhouse_line $(printf '%q' "$2"); echo \"rc=\$?\"" 2>&1; }
 _out="$(_strict ':' "${_WH}/absent")"
 t_assert_eq $'[torch-venv] wheelhouse files=0 bytes=0 sha256=none\nrc=0' "${_out}" "a missing wheelhouse prints zeros"
 _out="$(_strict 'find() { command find "$@"; return 3; }' "${_WH}")"

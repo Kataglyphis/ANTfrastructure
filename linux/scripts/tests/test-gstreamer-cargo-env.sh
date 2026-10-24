@@ -6,9 +6,10 @@ source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/gstreamer-fixtures.sh"
 SETUP="${1:-${TESTS_DIR}/../03-media/build/gstreamer/common/setup-gstreamer.sh}"
 RUST="${2:-${TESTS_DIR}/../03-media/build/gstreamer/common/build-gst-plugins-rs.sh}"
-t_source_functions "${SETUP}" _gst_prepare_target_cargo_env || exit 1
-t_source_functions "${RUST}" _gst_rs_host_cargo_config _gst_rs_riscv_cargo_config _gst_rs_apply_exclusions || exit 1
-gst_test_load_functions "${SETUP}" prepare_host_cargo_toolchain_env dump_debug_info || exit 1
+t_source_functions "${SETUP}" _gst_target_resolver_available _gst_target_publish _gst_target_prepare_publish _gst_prepare_target_cargo_env || exit 1
+t_source_functions "${TESTS_DIR}/../01-core/compiler-resolution.sh" prepare_and_publish_host_cargo_compiler cargo_target_pipeline cargo_resolved_compiler_field || exit 1
+t_source_functions "${RUST}" _gsrh_prepare_c _gsrh_publish_c _gsrh_prepare_cxx _gsrh_publish_cxx _gst_rs_host_cargo_config _gst_rs_riscv_cargo_config _gst_rs_apply_exclusions || exit 1
+gst_test_load_functions "${SETUP}" _gsh_prepare_c _gsh_publish_c _gsh_prepare_cxx _gsh_publish_cxx prepare_host_cargo_toolchain_env dump_debug_info || exit 1
 gst_test_load_functions "${RUST}" _gst_rs_cargo_config _gst_rs_build_plugins || exit 1
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT

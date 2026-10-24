@@ -1,0 +1,3662 @@
+[
+ {
+  "case": [
+   "valid",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "valid",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_missing",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_invalid",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "tar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "WARN:could not fetch dist.integrity for @scope/pkg [*]@1 [*] \u2014 proceeding WITHOUT integrity verification\n",
+   {
+    "binding.calls": "late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_partial",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "metadata_python_partial",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   31,
+   "",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   31,
+   "",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   31,
+   "",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "digest_failure",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== != downloaded sha512-partial \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   1,
+   "",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   1,
+   "",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   1,
+   "",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "mismatch",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:1 TARS:0\nCALLBACKS:CLEAN\n",
+   "WARN:INTEGRITY MISMATCH @scope/pkg [*]@1 [*]: registry sha512-wrong != downloaded sha512-k1L2OVn+BO+ybXTp8hoQ0vmRjprFk33cvhWWA7DUTmH6EVQnL/8lj0aGRB1De+fFS2Eedj1yflX1BRLSAm7oiw== \u2014 refusing (tampering/corruption)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "retry",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:2 TARS:1\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\n",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   1,
+   "",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   1,
+   "",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   1,
+   "",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "download_failure",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "STATUS:1 DOWNLOADS:3 TARS:0\nCALLBACKS:CLEAN\n",
+   "download diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 1/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 2/3)\ndownload diagnostic\nWARN:download @scope/pkg [*]@1 [*] failed (try 3/3)\nWARN:giving up on @scope/pkg [*]@1 [*]\n",
+   {
+    "binding.calls": "",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "sleep\u00002\u0000sleep\u00002\u0000sleep\u00002\u0000",
+    "tar.calls": ""
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_retry",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   37,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   37,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   37,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "tar_failure",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:0 DOWNLOADS:1 TARS:2\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000"
+   },
+   {}
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   false,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   false,
+   false,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   false,
+   false,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   false,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   false,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   false,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   true,
+   false,
+   "plain"
+  ],
+  "receipt": [
+   17,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   true,
+   false,
+   "before"
+  ],
+  "receipt": [
+   17,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   true,
+   false,
+   "after"
+  ],
+  "receipt": [
+   17,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "",
+    "sleep.calls": "",
+    "tar.calls": ""
+   },
+   {
+    "tmp/pkg.tgz": "npm fixture payload"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   true,
+   true,
+   "plain"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "plain\u0000plain\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   true,
+   true,
+   "before"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "early\u0000early\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ },
+ {
+  "case": [
+   "info_failure",
+   true,
+   true,
+   "after"
+  ],
+  "receipt": [
+   0,
+   "INFO:integrity verified @scope/pkg [*]@1 [*] (sha512)\ntar stdout\nINFO:vendored @scope/pkg [*]@1 [*] -> @WORK@/dest [*]\nSTATUS:17 DOWNLOADS:1 TARS:1\nCALLBACKS:CLEAN\n",
+   "",
+   {
+    "binding.calls": "late\u0000late\u0000",
+    "curl.calls": "curl\u0000-fsSL\u0000--max-time\u0000120\u0000https://registry.invalid/root [*]/@scope/pkg [*]/-/pkg [*]-1 [*].tgz\u0000-o\u0000@WORK@/tmp/pkg.tgz\u0000curl\u0000-fsSL\u0000--max-time\u000030\u0000https://registry.invalid/root [*]/@scope/pkg [*]/1 [*]\u0000",
+    "mkdir.calls": "mkdir\u0000-p\u0000@WORK@/tmp\u0000mkdir\u0000-p\u0000@WORK@/dest [*]\u0000",
+    "mktemp.calls": "mktemp\u0000-d\u0000",
+    "python.calls": "python\u0000-c\u0000import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))\u0000python\u0000-c\u0000import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())\u0000@WORK@/tmp/pkg.tgz\u0000",
+    "rm.calls": "rm\u0000-rf\u0000@WORK@/tmp\u0000",
+    "sleep.calls": "",
+    "tar.calls": "tar\u0000xzf\u0000@WORK@/tmp/pkg.tgz\u0000-C\u0000@WORK@/dest [*]\u0000--strip-components=1\u0000package/\u0000"
+   },
+   {
+    "dest [*]/result": "unpacked"
+   }
+  ]
+ }
+]

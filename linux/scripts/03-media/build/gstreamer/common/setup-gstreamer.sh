@@ -8,24 +8,24 @@ _SETUP_GST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SETUP_GST_DIR}/../../../core/common.sh"
 media_common_init "${_SETUP_GST_DIR}"
 
-if cross_build_is_active && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-    case "$(cross_target_arch)" in
-        arm64|riscv64)
-            # Meson's C++ dependency probes (GLib's builtin iconv) fail under lld here when g++ links libstdc++.
-            export USE_LLD=false
-            ;;
-    esac
+declare _gst_foreign_target
+media_gstreamer_foreign_target _gst_foreign_target
+if [ "${_gst_foreign_target}" = 1 ]; then
+    unset _gst_foreign_target
+    # Meson's C++ dependency probes (GLib's builtin iconv) fail under lld here when g++ links libstdc++.
+    export USE_LLD=false
+else
+    unset _gst_foreign_target
 fi
 
 # Meson's C++ stdlib probe fails on GCC 16's cross libstdc++ headers; defining _LIBCPP_VERSION satisfies it without changing the library.
-if cross_build_is_active && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-    case "$(cross_target_arch)" in
-        arm64|riscv64)
-            export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"
-            ;;
-    esac
+declare _gst_foreign_target
+media_gstreamer_foreign_target _gst_foreign_target
+if [ "${_gst_foreign_target}" = 1 ]; then
+    unset _gst_foreign_target
+    export CXXFLAGS="${CXXFLAGS:-} -D_LIBCPP_VERSION=20220101"
+else
+    unset _gst_foreign_target
 fi
 
 # media_common_init ran setup_lld_linker before the cross USE_LLD=false above, so run it again.
@@ -97,26 +97,58 @@ prepare_cargo_host_cxx_wrapper() {
   prepare_host_compiler_wrapper "${compiler}" host-g++ "${GSTREAMER_CARGO_HOST_TOOLCHAIN_DIR}"
 }
 
-_gst_prepare_target_cargo_env() {
-  # Without a target-triple linker cargo links the cross cdylibs with the host cc and fails "incompatible with elf64-x86-64".
-  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
-  if command -v cross_target_upper_rust >/dev/null 2>&1; then
-    target_rust_env="$(cross_target_upper_rust 2>/dev/null || true)"
-  fi
-  if command -v cross_target_lower_rust >/dev/null 2>&1; then
-    target_rust_lower="$(cross_target_lower_rust 2>/dev/null || true)"
-  fi
-  if [ -n "${target_rust_env}" ] && command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1; then
-    local _tgt_arch
-    _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
-    target_cc="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CC:-}" )"
-    target_cxx="$( resolve_cross_cc_cxx_for_arch "${_tgt_arch}" >/dev/null 2>&1 && printf '%s' "${CXX:-}" )"
+_gst_target_resolver_available() {
+  command -v resolve_cross_cc_cxx_for_arch >/dev/null 2>&1
+}
+
+_gst_target_publish() {
     if export_cargo_target_linker "${target_rust_env}" "${target_rust_lower}" "${target_cc}" "${target_cxx}"; then
       echo "Cross cargo: target linker ${target_cc} (CARGO_TARGET_${target_rust_env}_LINKER)"
     else
       echo "WARN: could not resolve cross gcc for target; Rust target crates may fail to link" >&2
     fi
-  fi
+}
+
+_gst_target_prepare_publish() {
+  local _tgt_arch
+  _tgt_arch="$(cross_target_arch 2>/dev/null || true)"
+  target_cc="$(
+    _gst_target_resolve() { resolve_cross_cc_cxx_for_arch "${_tgt_arch}"; }
+    _gst_target_printf() { local _crtp_value="$1"; set --; printf '%s' "${_crtp_value}"; }
+    cargo_resolved_compiler_field CC _gst_target_resolve _gst_target_printf
+  )"
+  target_cxx="$(
+    _gst_target_resolve() { resolve_cross_cc_cxx_for_arch "${_tgt_arch}"; }
+    _gst_target_printf() { local _crtp_value="$1"; set --; printf '%s' "${_crtp_value}"; }
+    cargo_resolved_compiler_field CXX _gst_target_resolve _gst_target_printf
+  )"
+  _gst_target_publish
+}
+
+_gst_prepare_target_cargo_env() {
+  local target_rust_env="" target_rust_lower="" target_cc="" target_cxx=""
+  local -A gst_rust_names=([upper]="${target_rust_env}" [lower]="${target_rust_lower}")
+  cross_collect_target_rust_env gst_rust_names
+  target_rust_env="${gst_rust_names[upper]}"
+  target_rust_lower="${gst_rust_names[lower]}"
+  declare -F cargo_target_pipeline cargo_resolved_compiler_field >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks target cargo pipeline exports\n' >&2; return 1; }
+  cargo_target_pipeline "${target_rust_env}" _gst_target_resolver_available _gst_target_prepare_publish
+}
+
+_gsh_prepare_c() {
+  prepare_cargo_host_linker_wrapper "${cargo_host_cc}"
+}
+
+_gsh_publish_c() {
+  export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" c "${cargo_host_linker}" host
+}
+
+_gsh_prepare_cxx() {
+  prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}"
+}
+
+_gsh_publish_cxx() {
+  export_cargo_compiler_binding "${build_rust_env}" "${build_rust_lower}" cxx "${cargo_host_cxx_wrapper}" host
 }
 
 prepare_host_cargo_toolchain_env() {
@@ -131,6 +163,7 @@ prepare_host_cargo_toolchain_env() {
     return 0
   fi
 
+  declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\n' >&2; return 1; }
   if command -v cross_build_upper_rust >/dev/null 2>&1; then
     build_rust_env="$(cross_build_upper_rust 2>/dev/null || true)"
   fi
@@ -143,19 +176,10 @@ prepare_host_cargo_toolchain_env() {
   # No PATH scrub: /opt/cross-bin holds only triplet-prefixed names, so host build scripts already find the native cc.
 
   cargo_host_cc="$(resolve_host_gcc_for_cargo)"
-  if [ -n "${cargo_host_cc}" ]; then
-    cargo_host_linker="$(prepare_cargo_host_linker_wrapper "${cargo_host_cc}")"
-    export "CARGO_TARGET_${build_rust_env}_LINKER=${cargo_host_linker}"
-    export "CC_${build_rust_lower}=${cargo_host_linker}"
-    export HOST_CC="${cargo_host_linker}"
-  fi
+  prepare_and_publish_host_cargo_compiler cargo_host_linker "${cargo_host_cc}" _gsh_prepare_c _gsh_publish_c
 
   cargo_host_cxx="$(resolve_host_gxx_for_cargo)"
-  if [ -n "${cargo_host_cxx}" ]; then
-    cargo_host_cxx_wrapper="$(prepare_cargo_host_cxx_wrapper "${cargo_host_cxx}")"
-    export "CXX_${build_rust_lower}=${cargo_host_cxx_wrapper}"
-    export HOST_CXX="${cargo_host_cxx_wrapper}"
-  fi
+  prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper "${cargo_host_cxx}" _gsh_prepare_cxx _gsh_publish_cxx
 
   _gst_prepare_target_cargo_env
 }
@@ -193,15 +217,19 @@ _gst_xpy_resolve_target_paths() {
     return 1
   fi
 
-  if command -v cross_target_python_include_dir >/dev/null 2>&1; then
-    target_python_include="$(cross_target_python_include_dir 2>/dev/null || true)"
-  fi
-  if command -v cross_target_python_library >/dev/null 2>&1; then
-    target_python_library="$(cross_target_python_library 2>/dev/null || true)"
-  fi
-  if command -v cross_target_python_pkgconfig_dir >/dev/null 2>&1; then
-    target_python_pkgconfig_dir="$(cross_target_python_pkgconfig_dir 2>/dev/null || true)"
-  fi
+  cross_python_provider_api_ready || return $?
+  target_python_include="$(
+    _gst_python_provider() { cross_target_python_include_dir; }
+    cross_capture_python_dev_path include_dir "${target_python_include}" _gst_python_provider
+  )"
+  target_python_library="$(
+    _gst_python_provider() { cross_target_python_library; }
+    cross_capture_python_dev_path library "${target_python_library}" _gst_python_provider
+  )"
+  target_python_pkgconfig_dir="$(
+    _gst_python_provider() { cross_target_python_pkgconfig_dir; }
+    cross_capture_python_dev_path pkgconfig_dir "${target_python_pkgconfig_dir}" _gst_python_provider
+  )"
   # The resolvers can return the host's /usr/local Python; use the staged cross Python instead.
   local _py_pv="${PYTHON_VERSION:-}"
   local _py_mm="${PYTHON_MAJOR_MINOR:-${_py_pv%.*}}"

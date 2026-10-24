@@ -53,10 +53,8 @@ err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 # --root is parsed and resolved by the contract's one owner; what comes back is
 # the tree to grade. The remaining arguments go back into "$@", so the explicit
 # file-list call shape below is untouched.
-# shellcheck source=01-core/lint-root.sh
-. "${CORE_DIR}/lint-root.sh"
-lint_scope_begin SCAN_ROOT "${REPO_ROOT}" "$@" || exit 1
-set -- ${LINT_ROOT_REST[@]+"${LINT_ROOT_REST[@]}"}
+# shellcheck source=01-core/lint-scope-init.sh
+. "${CORE_DIR}/lint-scope-init.sh" || exit 1
 
 # The hub's .hadolint.yaml unless the consumer ships one of its own.
 HADOLINT_CONFIG="${REPO_ROOT}/.hadolint.yaml"

@@ -166,10 +166,13 @@ ensure_tensorflow_c_sdk() {
     local tf_version="${TENSORFLOW_C_VERSION:-2.18.0}"
     local tf_archive
 
+    if ! declare -F media_regular_files_present >/dev/null; then
+        printf 'ERROR: TensorFlow cache validation requires media_regular_files_present from media core/common.sh\n' >&2
+        exit 1
+    fi
     # A stamp, not file presence: an interrupted extract leaves the files behind for a retry to accept.
-    if [ -f "${tf_dir}/.complete-${tf_version}" ] \
-       && [ -f "${tf_dir}/lib/libtensorflow.so" ] \
-       && [ -f "${tf_dir}/include/tensorflow/c/c_api.h" ]; then
+    if media_regular_files_present "${tf_dir}/.complete-${tf_version}" \
+       "${tf_dir}/lib/libtensorflow.so" "${tf_dir}/include/tensorflow/c/c_api.h"; then
         echo "TensorFlow C SDK ${tf_version} already cached at ${tf_dir}"
         return 0
     fi

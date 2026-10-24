@@ -6,6 +6,8 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 usage() {
+  # Loading only function definitions keeps help independent of build initialization.
+  source "${REPO_ROOT}/linux/scripts/01-core/runtime-build-fns.sh" || return 1
   cat <<'EOF'
 Usage: verify-cross-chain.sh [options]
 
@@ -14,9 +16,10 @@ whether downstream images may be stale relative to their parent.  No builds
 are performed.  Forwards to build-cross-chain.sh --verify-chain.
 
 Options:
-  --target-arches LIST     Comma-separated arch list (default: amd64,arm64,riscv64)
-  --architectures LIST     Alias for --target-arches
-  --image-repo REPO        Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)
+EOF
+  runtime_usage_chain_arches
+  runtime_usage_row '--image-repo REPO' 27 chain
+  cat <<'EOF'
   --describe-chain          Print the full stage graph with tag names
   -h, --help               Show this help text
 EOF

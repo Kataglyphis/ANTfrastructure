@@ -5,10 +5,22 @@ _PYTHON_UV_LOADED="${_PYTHON_UV_LOADED:-}"
 
 if [ -z "$_PYTHON_UV_LOADED" ]; then
 set -euo pipefail
-_PYTHON_UV_LOADED=1
 
 _MODULE_DIR="${BASH_SOURCE[0]%/*}"
 source "$_MODULE_DIR/logging.sh" || { echo "Error: failed to source logging.sh" >&2; exit 1; }
+# shellcheck source=linux/scripts/01-core/python-probe.sh
+source "$_MODULE_DIR/python-probe.sh" || return 1
+# shellcheck source=linux/scripts/01-core/verified-script-install.sh
+source "$_MODULE_DIR/verified-script-install.sh"
+_uv_installer_source_status=$?
+if [ "${_uv_installer_source_status}" -ne 0 ]; then return "${_uv_installer_source_status}"; fi
+unset _uv_installer_source_status
+if ! declare -F verified_script_install >/dev/null; then
+  printf 'ERROR: python_uv.sh requires verified_script_install from verified-script-install.sh\n' >&2
+  return 1
+fi
+
+_PYTHON_UV_LOADED=1
 
 # X.Y of the pinned interpreter: the image's own ENV, else versions.env beside this file. docs/python-ci.md#upgrading-python
 python_pinned_major_minor() {
@@ -35,15 +47,21 @@ timestamp() {
   date +%Y%m%d-%H%M%S
 }
 
+python_workspace_prefer_mount() {
+  local mount="${1:-/workspace}"
+  if [ -d "$mount" ] && [ -f "$mount/pyproject.toml" ]; then
+    WORKSPACE_ROOT="$mount"
+  fi
+  return 0
+}
+
 detect_workspace() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[1]:-${BASH_SOURCE[0]}}")" && pwd)"
   local repo_root
   repo_root="$(cd "$script_dir/../.." 2>/dev/null && pwd || cd "$script_dir/.." && pwd)"
   WORKSPACE_ROOT="${WORKSPACE_ROOT:-$repo_root}"
-  if [ -d /workspace ] && [ -f /workspace/pyproject.toml ]; then
-    WORKSPACE_ROOT="/workspace"
-  fi
+  python_workspace_prefer_mount
   export WORKSPACE_ROOT
   info "Workspace: $WORKSPACE_ROOT"
 }
@@ -58,6 +76,11 @@ is_experimental_python() {
   return 1
 }
 
+_uv_install_hash_failure() {
+  rm -f "$1"
+  die "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)"
+}
+
 uv_ensure_installed() {
   local uv_install_sh uv_install_sha
   if ! command -v uv >/dev/null 2>&1; then
@@ -68,15 +91,8 @@ uv_ensure_installed() {
       uv_install_sha="$(sed -n 's/^UV_INSTALL_SH_SHA256=//p' "$_MODULE_DIR/versions.env")"
     fi
     uv_install_sh="$(mktemp "${TMPDIR:-/tmp}/uv-install-XXXXXX.sh")"
-    curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$uv_install_sh" https://astral.sh/uv/install.sh
-    if [ -n "$uv_install_sha" ]; then
-      printf '%s  %s\n' "$uv_install_sha" "$uv_install_sh" | sha256sum -c - || {
-        rm -f "$uv_install_sh"
-        die "uv install.sh does not match pinned UV_INSTALL_SH_SHA256 (upstream rotated it, or tampering)"
-      }
-    fi
-    sh "$uv_install_sh"
-    rm -f "$uv_install_sh"
+    verified_script_install "$uv_install_sh" \
+      https://astral.sh/uv/install.sh "$uv_install_sha" _uv_install_hash_failure
     export PATH="$HOME/.local/bin:$PATH"
   fi
   info "uv version: $(uv --version)"
@@ -175,10 +191,8 @@ uv_pip_install_requirements() {
   local venv_path="${1:-.venv}"
   local requirements_file="${2:-requirements.txt}"
 
-  # Git Bash venvs carry Scripts/python.exe instead of bin/python.
-  local venv_python="$venv_path/bin/python"
-  [ -x "$venv_python" ] || venv_python="$venv_path/Scripts/python.exe"
-  if [ ! -x "$venv_python" ]; then
+  local venv_python
+  if ! venv_python="$(python_venv_executable "$venv_path")"; then
     die "No usable venv at $venv_path (neither bin/python nor Scripts/python.exe) - create it first with uv_venv_create"
   fi
   if [ ! -f "$requirements_file" ]; then

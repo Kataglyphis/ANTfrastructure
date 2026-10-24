@@ -26,15 +26,9 @@ _tree() {
   _write "${d}/linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh" <<'F'
 sed -i 's|#include <opencv2/core.hpp>|&\n#include <opencv2/geometry.hpp>|' gstsegmentation.cpp
 F
-  _write "${d}/linux/scripts/06-packaging/setup-torch-venv.sh" <<'F'
-export CFLAGS="-idirafter /usr/include"
-export CXXFLAGS="-idirafter /usr/include"
-touch /opt/venv/.torch-missing
-F
-  _write "${d}/linux/scripts/06-packaging/swap-native-gcc.sh" <<'F'
-printf 'CFLAGS="-idirafter /usr/include"\n' > /etc/profile.d/00-native-gcc.sh
-note "benign: invalid -march= skew"
-F
+  install -D -m 0644 "${PKG}/setup-torch-venv.sh" "${d}/linux/scripts/06-packaging/setup-torch-venv.sh"
+  install -D -m 0644 "${PKG}/swap-native-gcc.sh" "${d}/linux/scripts/06-packaging/swap-native-gcc.sh"
+  install -D -m 0644 "${TESTS_DIR}/../01-core/native-gcc-system-paths.sh" "${d}/linux/scripts/01-core/native-gcc-system-paths.sh"
   _write "${d}/linux/scripts/03-media/runtime/install-deps.sh" <<'F'
   libjpeg-dev
 F
@@ -280,8 +274,12 @@ while IFS="$(printf '\t')" read -r _g _f _e _m; do
   _red "${_g%% *}" "${_f}" "${_e//@LHS@/${_bare_export_lhs}}" "${_m}"
 done <<'ROWS'
 fix5 — the geometry.hpp patch	linux/scripts/03-media/build/gstreamer/common/patch-gstreamer-sources.sh	s|geometry.hpp|core.hpp|	missing geometry.hpp reference
-fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/setup-torch-venv.sh	s|-idirafter /usr/include||g	lost the -idirafter CXXFLAGS injection
-fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/swap-native-gcc.sh	s|-idirafter /usr/include||	lost the -idirafter profile.d injection
+fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/setup-torch-venv.sh	s|^native_gcc_system_paths |missing_gcc_system_paths |	lost the -idirafter CXXFLAGS injection
+fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/swap-native-gcc.sh	s|native_gcc_system_paths /usr/include/|missing_gcc_system_paths /usr/include/|	lost the -idirafter profile.d injection
+fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/01-core/native-gcc-system-paths.sh	s|export CXXFLAGS=|export LOST_CXXFLAGS=|	lost the -idirafter CXXFLAGS injection
+fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/01-core/native-gcc-system-paths.sh	s|-idirafter /usr/include||g	lost the -idirafter CXXFLAGS injection
+fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/setup-torch-venv.sh	s|source /opt/scripts/core/native-gcc-system-paths.sh|missing /opt/scripts/core/native-gcc-system-paths.sh|	lost the -idirafter CXXFLAGS injection
+fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/swap-native-gcc.sh	s|. /opt/scripts/core/native-gcc-system-paths.sh|missing /opt/scripts/core/native-gcc-system-paths.sh|	lost the -idirafter profile.d injection
 fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/03-media/runtime/install-deps.sh	s|libjpeg-dev|libjpeg62|	no longer installs libjpeg-dev
 fix6 — the native-GCC system paths and the numpy seeding ban	linux/scripts/06-packaging/setup-torch-venv.sh	1i for pkg in numpy pillow; do :; done	re-seeds apt numpy into the venv
 fix7 — cache shape, the always-sccache decision, base pin, non-root, apt retry, mount scope	linux/scripts/01-core/cross-stage-build.sh	s|type=local,dest="${dir}"|type=registry,ref=${tag}-buildcache|	reverted to the self-defeating registry -buildcache

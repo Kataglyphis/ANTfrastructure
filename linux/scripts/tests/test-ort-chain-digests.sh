@@ -7,10 +7,12 @@ PROVENANCE="${1:-${TESTS_DIR}/../03-media/ort-provenance.sh}"
 GENAI="${2:-${TESTS_DIR}/../03-media/verify-genai-ort.sh}"
 WORK="$(mktemp -d '/tmp/ant-ORT digest fixture.XXXXXXXX')"
 trap 'rm -rf "${WORK}"' EXIT
-cp "${PROVENANCE}" "${WORK}/ort-provenance.sh"
-sed '/^main "\$@"$/d' "${GENAI}" > "${WORK}/genai.sh"
+mkdir -p "${WORK}/03-media" "${WORK}/01-core"
+cp "${PROVENANCE}" "${WORK}/03-media/ort-provenance.sh"
+cp "${TESTS_DIR}/../01-core/path-helpers.sh" "${WORK}/01-core/path-helpers.sh"
+sed '/^main "\$@"$/d' "${GENAI}" > "${WORK}/03-media/genai.sh"
 # shellcheck source=/dev/null
-source "${WORK}/genai.sh"
+source "${WORK}/03-media/genai.sh"
 set +e
 mkdir -p "${WORK}/tree" "${WORK}/chain A/include" "${WORK}/chain A/lib" "${WORK}/chain B/include" "${WORK}/chain B/lib"
 for tag in A B; do

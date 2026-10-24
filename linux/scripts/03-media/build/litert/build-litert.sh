@@ -126,17 +126,7 @@ source "${SCRIPT_DIR}/android/litert-qairt-guard.sh"
 source "${SCRIPT_DIR}/android/litert-tensor-examples.sh"
 
 litert_cross_wheel_platform_tag() {
-    if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
-        cross_wheel_platform_tag
-        return $?
-    fi
-    # Reuse the canonical arch->wheel-tag map rather than keep a private copy.
-    if command -v arch_linux_platform_tag_for >/dev/null 2>&1 \
-       && command -v cross_target_arch >/dev/null 2>&1; then
-        arch_linux_platform_tag_for "$(cross_target_arch)"
-        return $?
-    fi
-    return 1
+    wheel_platform_tag_with_fallback required
 }
 
 # Must name the dir that directly HOLDS Qnn*.h; see docs/qnn-linux.md#qairt_headers_dir
@@ -489,7 +479,19 @@ _install_manual_flatbuffers() {
     fi
     if [ "$fb_found" -eq 0 ]; then
         local fbheader fbdir
-        fbheader=$(find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h" -print -quit 2>/dev/null || true)
+        if ! declare -F first_match_using >/dev/null; then
+            printf 'ERROR: FlatBuffers header discovery requires first_match_using from guard-helpers.sh\n' >&2
+            exit 1
+        fi
+        fbheader=$(
+            _litert_header_caller_argv=("$@")
+            _litert_header_find() {
+                local -a _litert_header_exec_argv=("$@")
+                set -- "${_litert_header_caller_argv[@]}"
+                find "${_litert_header_exec_argv[@]}"
+            }
+            first_match_using _litert_header_find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h"
+        )
         if [ -n "$fbheader" ]; then
             fbdir=$(dirname "$fbheader")
             info "Found flatbuffers header at $fbheader; copying from $fbdir..."

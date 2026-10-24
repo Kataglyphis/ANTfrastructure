@@ -27,3 +27,27 @@ load_versions_env() {
     fi
   done < "${_ve_file}"
 }
+
+# Constructing the pattern without groups preserves callers' BASH_REMATCH shape.
+version_has_numeric_parts() {
+  local value="$1" parts="$2" regex='^[0-9]+'
+  case "$parts" in 3|4) ;; *) return 2 ;; esac
+  while [ "$parts" -gt 1 ]; do
+    regex+='\.[0-9]+'
+    parts=$((parts - 1))
+  done
+  regex+='$'
+  if [[ "$value" =~ $regex ]]; then return 0; fi
+  return 1
+}
+
+# Raw pin lookups preserve duplicate lines and literal quoting instead of interpreting the whole file.
+load_raw_pin_if_empty() {
+  local -n _rpi_value="$1"
+  local _rpi_key="$2" _rpi_file="$3" _rpi_status=0
+  if [ -z "${_rpi_value:-}" ] && [ -f "${_rpi_file}" ]; then
+    _rpi_value="$(sed -n "s/^${_rpi_key}=//p" "${_rpi_file}")"
+    _rpi_status=$?
+  fi
+  return "${_rpi_status}"
+}

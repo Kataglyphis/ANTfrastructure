@@ -13,10 +13,27 @@ _COMPILER_RESOLUTION_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -n "${_CROSS_GCC_LOADED:-}" ] || \
   { [ -f "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh" ] && source "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh"; }
 
+# Producer hooks need the caller's resolved local, without another capture changing publication failures.
+_resolve_build_gcc_candidates() {
+  local -n _rbg_found="$1"
+  local _rbg_tool _rbg_first=1
+  shift
+  _rbg_found=0
+  for _rbg_tool in "$@"; do
+    case "${_rbg_first}" in
+      1) _rbg_first=0 ;;
+      *) [ -n "${resolved}" ] && break ;;
+    esac
+    resolved="$(resolve_build_gcc_tool "${_rbg_tool}" 2>/dev/null || true)"
+  done
+  [ -n "${resolved}" ] && { printf '%s' "${resolved}"; _rbg_found=1; }
+  return 0
+}
+
 # resolve_host_compiler_for_lang <c|cxx>: prints the path.
 resolve_host_compiler_for_lang() {
   local lang="$1" compiler alternate clang_compiler candidate
-  local triplet="" resolved=""
+  local triplet="" resolved="" _rhcf_found=0
   case "${lang}" in
     c) compiler=gcc; alternate=cc; clang_compiler=clang ;;
     cxx) compiler=g++; alternate=c++; clang_compiler=clang++ ;;
@@ -24,9 +41,8 @@ resolve_host_compiler_for_lang() {
   esac
 
   if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-    resolved="$(resolve_build_gcc_tool "${compiler}" 2>/dev/null || true)"
-    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool "${alternate}" 2>/dev/null || true)"
-    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+    _resolve_build_gcc_candidates _rhcf_found "${compiler}" "${alternate}"
+    case "${_rhcf_found}" in 1) return 0 ;; esac
   fi
 
   if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
@@ -143,9 +159,7 @@ pin_target_libstdcxx() {
   _compiler_target_is_foreign "${arch}" || return 0
 
   local triplet=""
-  if command -v arch_deb_multiarch_triplet_for >/dev/null 2>&1; then
-    triplet="$(arch_deb_multiarch_triplet_for "${arch}" 2>/dev/null || true)"
-  fi
+  triplet="$(deb_multiarch_triplet_best_effort "${arch}")" || return $?
   case "${arch}" in
     arm64)   [ -n "${triplet}" ] || triplet="aarch64-linux-gnu" ;;
     riscv64) [ -n "${triplet}" ] || triplet="riscv64-linux-gnu" ;;
@@ -163,4 +177,38 @@ pin_target_libstdcxx() {
     echo "WARN: no target-arch GCC libstdc++ found under /opt/gcc-*/${triplet}/; C++ cross link may fail" >&2
   fi
   return 0
+}
+
+prepare_and_publish_host_cargo_compiler() {
+  local -n _pphc_wrapper="$1"
+  local _pphc_compiler="$2" _pphc_prepare="$3" _pphc_publish="$4"
+  if [ -n "${_pphc_compiler}" ]; then
+    _pphc_wrapper="$("${_pphc_prepare}")"
+    "${_pphc_publish}"
+  fi
+  return $?
+}
+
+# Selected preparation stays unconditional so strict failures and parent publication retain the caller's policy.
+cargo_target_pipeline() {
+  local _ctp_target="$1" _ctp_available="$2" _ctp_prepare_publish="$3"
+  if [ -n "${_ctp_target}" ] && "${_ctp_available}"; then
+    "${_ctp_prepare_publish}"
+  fi
+  return $?
+}
+
+# Callers retain each capture so successful resolver mutations cannot leak into the parent environment.
+cargo_resolved_compiler_field() {
+  local _crcf_field="$1" _crcf_resolve="$2" _crcf_printf="$3"
+  if "${_crcf_resolve}" >/dev/null 2>&1; then
+    case "${_crcf_field}" in
+      CC) "${_crcf_printf}" "${CC:-}" ;;
+      CXX) "${_crcf_printf}" "${CXX:-}" ;;
+      *) return 2 ;;
+    esac
+  else
+    return $?
+  fi
+  return $?
 }

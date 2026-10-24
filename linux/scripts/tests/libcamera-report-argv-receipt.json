@@ -1,0 +1,6 @@
+[
+  0,
+  "libcamera-env: LIBCAMERA_PREFIX = fixture\n  MULTIARCH_TRIPLET = triplet\n  PATH = /fixture/path\n  PKG_CONFIG_PATH = fixture\n  LD_LIBRARY_PATH = fixture\n  GST_PLUGIN_PATH = fixture\n  PYTHONPATH = fixture\n  pkg-config: libcamera found -> fixture-version\n  gst-inspect-1.0: libcamerasrc plugin found \u2713\n",
+  "",
+  "PKG<head with spaces><head with spaces><><tail><--exists><libcamera>\nPKG<head with spaces><head with spaces><><tail><--modversion><libcamera>\nGST<head with spaces><head with spaces><><tail><libcamerasrc>\n"
+]

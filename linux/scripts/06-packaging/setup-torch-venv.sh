@@ -12,22 +12,22 @@ TORCH_APP_MODE="${TORCH_APP_MODE:-all}"
 VENV="${VENV:-/opt/venv}"
 BUILD_MODE="${BUILD_MODE:-native}"
 
-# The native GCC's sysroot lacks /usr/include and #include_next needs -idirafter; inline copy of append_cross_idirafter.
+# Discovery stays here because an image can lack either multiarch directory.
 _mi="$(compgen -G '/usr/include/*-linux-gnu' 2>/dev/null | head -1 || true)"
 _ml="$(compgen -G '/usr/lib/*-linux-gnu' 2>/dev/null | head -1 || true)"
-_idaf="-idirafter /usr/include"
-[ -n "${_mi}" ] && _idaf="-idirafter ${_mi} ${_idaf}"
-export CPATH="${CPATH:+${CPATH}:}${_mi:+${_mi}:}/usr/include"
-export CPPFLAGS="${CPPFLAGS:+${CPPFLAGS} }${_idaf}"
-export CFLAGS="${CFLAGS:+${CFLAGS} }${_idaf}"
-export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${_idaf}"
-export LIBRARY_PATH="${LIBRARY_PATH:+${LIBRARY_PATH}:}${_ml:+${_ml}:}/usr/lib"
+source /opt/scripts/core/native-gcc-system-paths.sh || exit 1
+native_gcc_system_paths "${_mi}" "${_ml}"
 
 # Hard-require platform.sh: it feeds a fail-loud gate that a silent skip would disarm.
 # shellcheck source=linux/scripts/01-core/module-bootstrap.sh
 source /opt/scripts/core/module-bootstrap.sh
 source_required_symbol elf_unresolved_needed 'FATAL: platform.sh (elf_unresolved_needed) not found' \
   /opt/scripts/core/platform.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/platform.sh"
+source_required_symbol clear_unmounted_apt_lists 'FATAL: package-image-wiring.sh (clear_unmounted_apt_lists) not found' \
+  /opt/scripts/packaging/package-image-wiring.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/package-image-wiring.sh"
+
+source_required_symbol wheelhouse_manifest 'FATAL: wheelhouse-manifest.sh (wheelhouse_manifest) not found' \
+  /opt/scripts/core/wheelhouse-manifest.sh "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../01-core/wheelhouse-manifest.sh"
 
 cross_skip() {
   if [ "${BUILD_MODE}" = "cross" ]; then
@@ -181,6 +181,16 @@ _assert_ffmpeg_so_closure() {
   fi
 }
 
+_torch_clear_unmounted_apt_lists() {
+  clear_unmounted_apt_lists
+}
+
+_torch_write_missing_marker() {
+  local arch="$1" reason="$2"
+  mkdir -p "${VENV}" 2>/dev/null || true
+  printf '%s: %s\n' "${arch}" "${reason}" > "${VENV}/.torch-missing" 2>/dev/null || true
+}
+
 setup_torch_deps() {
   cross_skip "torch environment assembly" && return 0
 
@@ -193,7 +203,7 @@ setup_torch_deps() {
   _assert_ffmpeg_so_closure
 
   # A cache mount here: wiping it saves nothing and costs sibling arches a re-download.
-  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+  _torch_clear_unmounted_apt_lists
 }
 
 install_riscv64_runtime_libs() {
@@ -201,8 +211,7 @@ install_riscv64_runtime_libs() {
   # The riscv64 torch links libsleef.so.3 dynamically and is never auditwheel-repaired.
   apt-get install -y --no-install-recommends libsleef3 \
     || echo "WARNING: libsleef3 unavailable via apt; import torch will fail (libsleef.so.3 missing)"
-  # Skip the wipe on a cache mount.
-  mountpoint -q /var/lib/apt || rm -rf /var/lib/apt/lists/*
+  _torch_clear_unmounted_apt_lists
 }
 
 torch_wheel_missing_fallback() {
@@ -227,9 +236,7 @@ torch_wheel_missing_fallback() {
     echo "WARNING: cv2 not available (cross-compiled OpenCV may lack Python bindings for riscv64)"
   fi
   # The sentinel smoke-runtime-image.sh surfaces, so a torch-less image cannot pass unnoticed.
-  mkdir -p "${VENV}" 2>/dev/null || true
-  printf '%s: no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped\n' \
-    "${arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
+  _torch_write_missing_marker "${arch}" 'no torch wheel in /opt/wheels at build time; assemble-torch-app.sh skipped'
   {
     echo "############################################################"
     echo "WARNING: SHIPPING ${arch} RUNTIME IMAGE WITHOUT PYTORCH"
@@ -317,9 +324,7 @@ verify_torch_import_or_fail() {
   # Name the real import error, from the same neutral dir.
   _import_err="$(cd / && "${VENV}/bin/python" -c 'import torch' 2>&1 || true)"
   if [ "${ALLOW_TORCHLESS_RUNTIME:-0}" = "1" ]; then
-    mkdir -p "${VENV}" 2>/dev/null || true
-    printf '%s: torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1\n' \
-      "${host_arch}" > "${VENV}/.torch-missing" 2>/dev/null || true
+    _torch_write_missing_marker "${host_arch}" 'torch not importable after assemble-torch-app; ALLOW_TORCHLESS_RUNTIME=1'
     echo "WARNING: torch not importable but ALLOW_TORCHLESS_RUNTIME=1 -- shipping torch-less (sentinel written)" >&2
     return 0
   fi
@@ -399,8 +404,7 @@ _stv_wheelhouse_line() {
   local d="${1:-/opt/wheels}" counts="" digest=""
   if [ -d "${d}" ]; then
     counts="$(find "${d}" -type f -printf '%s\n' 2>/dev/null | awk '{n++; s+=$1} END {printf "files=%d bytes=%d", n, s}' || true)"
-    digest="$( (cd "${d}" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum \
-      | awk '{print substr($0, 1, 64) "  " substr($0, 67)}' | sha256sum) 2>/dev/null || true)"
+    digest="$( (wheelhouse_manifest "${d}" | sha256sum) 2>/dev/null || true)"
   fi
   digest="${digest%% *}"
   echo "[torch-venv] wheelhouse ${counts:-files=0 bytes=0} sha256=${digest:-none}"

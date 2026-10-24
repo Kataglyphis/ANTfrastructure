@@ -648,13 +648,13 @@ _runtime_timed() {
   shift 2
   t0="$(date +%s)"
   if ! is_dry_run; then
+    parallel_require_child_stop || return $?
     _runtime_heartbeat "${step}" "${arch}" "${t0}" &
     hb=$!
   fi
   "$@" || rc=$?
   if [ -n "${hb}" ]; then
-    kill "${hb}" 2>/dev/null || true
-    wait "${hb}" 2>/dev/null || true
+    parallel_stop_child_advisory "${hb}"
   fi
   log "[runtime-timing] arch=${arch} step=${step} secs=$(( $(date +%s) - t0 )) rc=${rc}"
   return "${rc}"
@@ -674,15 +674,74 @@ ARTIFACT_IMAGE=$(runtime_artifact_image_ref "${arch}")
 EOF
 }
 
+runtime_usage_description() {
+  local key="$1" description
+  case "$key" in
+    '--image-repo REPO') description='Image repository (default: ghcr.io/kataglyphis/kataglyphis_beschleuniger)' ;;
+    '--target-arches LIST') description='Comma-separated target list (default: amd64,arm64,riscv64)' ;;
+    '--architectures LIST') description='Alias for --target-arches' ;;
+    --parallel-archs) description='Build per-architecture images in parallel' ;;
+    '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc, 4 if unknown)' ;;
+    NERDCTL_BIN) description='nerdctl executable to use' ;;
+    TARGET_ARCHES) description='Comma-separated architecture list' ;;
+    TARGET_ARCH) description='Alias for TARGET_ARCHES' ;;
+    ARCHITECTURES) description='Alias for TARGET_ARCHES' ;;
+    USE_FAST_UBUNTU_MIRROR) description='Set to true to replace archive/security/ports Ubuntu mirrors' ;;
+    FAST_UBUNTU_MIRROR_URL) description='Mirror URL used when the fast mirror is enabled' ;;
+    FAST_UBUNTU_PORTS_MIRROR_URL) description='Optional ports mirror URL used when the fast mirror is enabled' ;;
+    *) printf 'Unknown shared help row: %s\n' "$key" >&2; return 1 ;;
+  esac
+  printf '%s' "$description"
+}
+
+# The public help layouts differ, so callers supply the original description column.
+runtime_usage_row() {
+  local key="$1" column="$2" description padding
+  description="$(runtime_usage_description "$key" "${3:-runtime}")" || return 1
+  if [ "${3:-runtime}" = sdk ]; then
+    case "$key" in
+      '--max-parallel-archs N') description='Max concurrent arch builds (default: nproc)' ;;
+      TARGET_ARCHES) description='Comma-separated target list' ;;
+    esac
+  elif [ "${3:-runtime}" = chain ] && [ "$key" = '--target-arches LIST' ]; then
+    description='Comma-separated arch list (default: amd64,arm64,riscv64)'
+  fi
+  padding=$((column - 2 - ${#key}))
+  [ "$padding" -gt 0 ] || padding=1
+  printf '  %s%*s%s\n' "$key" "$padding" '' "$description"
+}
+
+runtime_usage_chain_arches() {
+  runtime_usage_row '--target-arches LIST' 27 chain
+  runtime_usage_row '--architectures LIST' 27 chain
+}
+
+# A shared description keeps both entrypoints aligned with the build flow.
+runtime_usage_build_steps() {
+  cat <<'EOF'
+1. clean per-architecture base images
+2. package images that layer target-built payload from cross-android-${arch}
+EOF
+  printf '3. final wrapper images (includes torch venv + app + runtime scripts)%s\n' "$1"
+}
+
+runtime_usage_shared_sections() {
+  runtime_shared_usage_options
+  cat
+  runtime_shared_usage_env_overrides
+}
+
 # Options both runtime orchestrators document; they live here because this library handles them.
 runtime_shared_usage_options() {
   cat <<'EOF'
   --image-prefix TAG            Prefix for built wrapper image tags
   --dry-run                    Print build commands without executing them
-  --parallel-archs              Build per-architecture images in parallel
-  --max-parallel-archs N        Max concurrent arch builds (default: nproc, 4 if unknown)
-  --target-arches LIST          Comma-separated target list (default: amd64,arm64,riscv64)
-  --architectures LIST          Alias for --target-arches
+EOF
+  runtime_usage_row --parallel-archs 32 runtime
+  runtime_usage_row '--max-parallel-archs N' 32 runtime
+  runtime_usage_row '--target-arches LIST' 32 runtime
+  runtime_usage_row '--architectures LIST' 32 runtime
+  cat <<'EOF'
   --artifact-image-prefix TAG   Cross tag prefix, or exact artifact image ref in native mode
   --artifact-build-mode MODE    Artifact source mode: cross or native (default: cross)
   --base-dockerfile PATH        Base Dockerfile (default: linux/Dockerfile.base)
@@ -700,11 +759,15 @@ EOF
 runtime_shared_usage_env_overrides() {
   cat <<'EOF'
 Environment overrides:
-  NERDCTL_BIN                  nerdctl executable to use
+EOF
+  runtime_usage_row NERDCTL_BIN 31 runtime
+  cat <<'EOF'
   BUILDKIT_HOST                Optional BuildKit socket/address passed to nerdctl build
-  TARGET_ARCHES                Comma-separated architecture list
-  TARGET_ARCH                  Alias for TARGET_ARCHES
-  ARCHITECTURES                Alias for TARGET_ARCHES
+EOF
+  runtime_usage_row TARGET_ARCHES 31 runtime
+  runtime_usage_row TARGET_ARCH 31 runtime
+  runtime_usage_row ARCHITECTURES 31 runtime
+  cat <<'EOF'
   RUNTIME_USE_LOCAL_CONTEXT_CHAIN
                                 true/false/auto (default: auto)
   RUNTIME_CONTEXT_ROOT         Temporary directory root for local stage handoff
@@ -718,9 +781,11 @@ Environment overrides:
   ENABLE_AMD                   Optional accelerator flag passed to package/torch/wrapper builds
   ONNX_PACKAGE                 Optional torch ONNX package override
   PYTORCH_EXTRA                Optional torch PyTorch extra override
-  USE_FAST_UBUNTU_MIRROR       Set to true to replace archive/security/ports Ubuntu mirrors
-  FAST_UBUNTU_MIRROR_URL       Mirror URL used when the fast mirror is enabled
-  FAST_UBUNTU_PORTS_MIRROR_URL Optional ports mirror URL used when the fast mirror is enabled
+EOF
+  runtime_usage_row USE_FAST_UBUNTU_MIRROR 31 runtime
+  runtime_usage_row FAST_UBUNTU_MIRROR_URL 31 runtime
+  runtime_usage_row FAST_UBUNTU_PORTS_MIRROR_URL 31 runtime
+  cat <<'EOF'
   WRAPPER_SMOKE_GATE          1 (default) = run the wrapper-smoke gate after
                                 package build; 0 = skip
   RUNTIME_WHEELS_SOURCE        Where the wrapper's /opt/wheels comes from: auto

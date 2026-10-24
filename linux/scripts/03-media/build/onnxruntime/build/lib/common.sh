@@ -550,7 +550,7 @@ append_onnx_lld_build_args() {
   # shellcheck disable=SC2178
   local -n build_args_ref="${build_args_name}"
 
-  if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+  if compiler_tool_enabled ld.lld "${USE_LLD:-true}" literal-false; then
     build_args_ref+=(
       --cmake_extra_defines
       CMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
@@ -602,7 +602,7 @@ append_onnx_ccache_build_args() {
   # shellcheck disable=SC2178
   local -n build_args_ref="${build_args_name}"
 
-  if command -v ccache >/dev/null 2>&1 && { case "${USE_CCACHE:-true}" in 0|false|FALSE|no|NO|off|OFF) false ;; *) true ;; esac; }; then
+  if compiler_tool_enabled ccache "${USE_CCACHE:-true}"; then
     if [ -z "${CMAKE_C_COMPILER_LAUNCHER:-}" ]; then
       # The resolved launcher may be sccache, so ccache is only the fallback.
       _ort_launcher=""

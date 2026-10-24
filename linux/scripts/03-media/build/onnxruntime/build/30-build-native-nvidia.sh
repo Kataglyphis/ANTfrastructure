@@ -15,7 +15,19 @@ init_nvidia_defaults() {
 
   TENSORRT_HOME="${TENSORRT_HOME:-/usr/local/tensorrt}"
   if [ ! -d "${TENSORRT_HOME}" ] || [ ! -f "${TENSORRT_HOME}/include/NvInfer.h" ]; then
-    TRT_INC=$(find /usr/include /usr/local -name "NvInfer.h" -print -quit 2>/dev/null || true)
+    if ! declare -F first_match_using >/dev/null; then
+      printf 'ERROR: TensorRT header discovery requires first_match_using from guard-helpers.sh\n' >&2
+      exit 1
+    fi
+    TRT_INC=$(
+      _ort_trt_header_caller_argv=("$@")
+      _ort_trt_header_find() {
+        local -a _ort_trt_header_exec_argv=("$@")
+        set -- "${_ort_trt_header_caller_argv[@]}"
+        find "${_ort_trt_header_exec_argv[@]}"
+      }
+      first_match_using _ort_trt_header_find /usr/include /usr/local -name "NvInfer.h"
+    )
     if [ -n "$TRT_INC" ]; then
       # build.sh wants TENSORRT_HOME/{include,lib}, which the distro packages split, so link a merged tree.
       mkdir -p /tmp/tensorrt/include /tmp/tensorrt/lib

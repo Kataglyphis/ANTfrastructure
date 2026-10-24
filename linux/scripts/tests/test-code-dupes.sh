@@ -84,7 +84,8 @@ _fixture() {
   mkdir -p "${fix}/docs/scripts" "${fix}/linux/scripts"
   cp "${GATE}" "${fix}/docs/scripts/"
   # The gate imports gate_scope.py at module level; without it the fixture tracebacks.
-  cp "${SCRIPTS_DIR}/quality_allow.py" "${SCRIPTS_DIR}/gate_scope.py" "${fix}/linux/scripts/"
+  cp "${SCRIPTS_DIR}/quality_allow.py" "${SCRIPTS_DIR}/gate_scope.py" \
+    "${SCRIPTS_DIR}/verify_code_size.py" "${fix}/linux/scripts/"
   _twin > "${fix}/${A}"
   _twin | sed 's/probe_widget/probe_gadget/' > "${fix}/${B}"
   [ $# -gt 0 ] && printf '%s\n' "$@" > "${fix}/docs/scripts/code-dupes.allow"
@@ -92,6 +93,20 @@ _fixture() {
 }
 _gate() { "${PY}" "${fix}/docs/scripts/verify_code_dupes.py" "$@"; }
 _allow() { cat "${fix}/docs/scripts/code-dupes.allow"; }
+_shell_units() {
+  "${PY}" - "${fix}/docs/scripts/verify_code_dupes.py" "$1" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("dupes", sys.argv[1])
+dupes = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = dupes
+spec.loader.exec_module(dupes)
+units = dupes.shell_units(Path(sys.argv[2]))
+print(f"{len(units)}|{units[-1][1].splitlines()[0]}")
+PY
+}
 # Run the gate on the current fixture; leaves rc and out behind for the asserts.
 _verdict() { out="$(_gate "$@" 2>&1)"; rc=$?; }
 # Build from the given rows, run, tear down.
@@ -108,6 +123,21 @@ t_case "a row at exactly the measured budget passes"
 _check "${A} | ${B} | ${N} | ${WHY}"
 t_assert_eq "0" "${rc}" "the baseline is the contract"
 t_assert_contains "${out}" "1 allowlisted pair(s)"
+
+t_case "a quoted shell brace cannot absorb the following function"
+_fixture
+cat > "${fix}/${A}" <<'EOF'
+brace_literal() {
+  local pattern='${'
+  printf '%s\n' "${pattern}"
+}
+following_function() {
+  printf 'kept separate\n'
+}
+EOF
+units="$(_shell_units "${fix}/${A}")"
+t_assert_eq "2|following_function() {" "${units}"
+rm -rf "${fix}"
 
 t_case "the pair key is unordered: b | a matches a | b"
 _check "${B} | ${A} | ${N} | ${WHY}"

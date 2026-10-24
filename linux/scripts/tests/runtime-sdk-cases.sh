@@ -342,7 +342,7 @@ t_assert_contains "$(_extract check_android_abi)" "ANDROID_TARGET_ABI" \
 # check_consumer_contract's reader reports an unknown verb as a dropped row.
 t_case "every verdict verb a producer emits is one the reader's case list handles"
 _VERBS_READ="$(_extract check_consumer_contract | sed -n 's/^ *\([A-Z]\{2,\}\)).*/\1/p' | sort -u)"
-_VERBS_EMITTED="$(for _f in _consumer_present_verdict _consumer_dir_verdict _consumer_jdk_verdict \
+_VERBS_EMITTED="$(for _f in _consumer_present_verdict _consumer_dir_verdict _consumer_tooling_verdict _consumer_versioned_contract_verdict _consumer_jdk_verdict \
                             _consumer_tool_verdict _consumer_owner_verdict _consumer_android_verdict \
                             _consumer_exempt_verdict; do
     _extract "${_f}" 2>/dev/null | grep -o "printf '[A-Z]\{2,\}" | sed "s/printf '//"

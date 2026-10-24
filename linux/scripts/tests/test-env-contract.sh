@@ -3,7 +3,8 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
-CORE="${TESTS_DIR}/../01-core"
+SCRIPTS="${1:-${TESTS_DIR}/..}"
+CORE="${SCRIPTS}/01-core"
 RBF="${CORE}/runtime-build-fns.sh"
 
 # Documented-but-dead names with a pending fix; the self-retiring guard fails once one is consumed.
@@ -13,9 +14,10 @@ t_case "runtime-build-fns.sh exists and parses"
 t_assert_ok test -f "${RBF}"
 t_assert_ok bash -n "${RBF}"
 
-# Documented names: ALL-CAPS first tokens inside the usage-overrides heredoc.
-_doc_vars="$(awk '/runtime_shared_usage_env_overrides\(\)/,/^}/' "${RBF}" \
-  | grep -oE '^  [A-Z][A-Z0-9_]+' | tr -d ' ' | sort -u)"
+# Render the documented contract so shared rows remain visible to the independent consumption check.
+t_source_functions "${RBF}" runtime_usage_description runtime_usage_row runtime_shared_usage_env_overrides || exit 1
+_doc_output="$(runtime_shared_usage_env_overrides)" || exit 1
+_doc_vars="$(printf '%s\n' "${_doc_output}" | grep -oE '^  [A-Z][A-Z0-9_]+' | tr -d ' ' | sort -u)"
 
 t_case "usage-overrides block found and non-trivial"
 t_assert_ok test "$(printf '%s\n' "${_doc_vars}" | wc -l)" -ge 5
@@ -23,15 +25,15 @@ t_assert_ok test "$(printf '%s\n' "${_doc_vars}" | wc -l)" -ge 5
 # Wide on purpose: siblings legitimately consume overrides, so only a name referenced nowhere is a defect.
 _surface="$(mktemp)"
 {
-  awk '/runtime_shared_usage_env_overrides\(\)/,/^}/ {next} {print}' "${RBF}"
+  awk '/^(runtime_shared_usage_env_overrides|runtime_usage_row|runtime_usage_description)\(\)/ { skip=1 } skip && /^}/ { skip=0; next } !skip { print }' "${RBF}"
   for f in "${CORE}"/*.sh; do
     [ "${f}" = "${RBF}" ] && continue
     cat "${f}"
   done
-  cat "${TESTS_DIR}/../build-runtime-artifacts.sh" 2>/dev/null || true
-  cat "${TESTS_DIR}/../build-runtime-manifest.sh" 2>/dev/null || true
-  cat "${TESTS_DIR}/../build-cross-chain.sh" 2>/dev/null || true
-  cat "${TESTS_DIR}/../lib-runtime-wheels.sh"   # consumes RUNTIME_WHEELS_SOURCE
+  cat "${SCRIPTS}/build-runtime-artifacts.sh" 2>/dev/null || true
+  cat "${SCRIPTS}/build-runtime-manifest.sh" 2>/dev/null || true
+  cat "${SCRIPTS}/build-cross-chain.sh" 2>/dev/null || true
+  cat "${SCRIPTS}/lib-runtime-wheels.sh"   # consumes RUNTIME_WHEELS_SOURCE
 } > "${_surface}"
 
 _dead="" _zombie=""

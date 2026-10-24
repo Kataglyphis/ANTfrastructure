@@ -46,13 +46,9 @@ core_cross_build_is_active() {
 }
 
 # Full cross modules remain authoritative; core-only consumers use the normalized approximation.
-if ! command -v cross_build_is_active >/dev/null 2>&1; then
-  if command -v cross_build_enabled >/dev/null 2>&1; then
-    cross_build_is_active() { cross_build_enabled; }
-  else
-    cross_build_is_active() { core_cross_build_is_active; }
-  fi
-fi
+# shellcheck source=linux/scripts/01-core/cross-active-fallback.sh
+source "${_COMMON_SH_DIR}/cross-active-fallback.sh" || { unset _COMMON_SH_LOADED; return 1; }
+register_cross_active_fallback core || { unset _COMMON_SH_LOADED; return 1; }
 
 if [ -z "${LLVM_WANTED:-}" ]; then
   LLVM_WANTED="${LLVM_RELEASE}"
@@ -111,21 +107,32 @@ tool_version() {
   fi
 }
 
-# Delegates to logging.sh's guard, which sets SUDO and SUDO_WRAP; inline fallback if it was not sourced.
+_common_sudo_nonroot() { [ "${EUID:-$(id -u)}" -ne 0 ]; return $?; }
+_common_sudo_available() { command -v sudo; }
+_common_sudo_die() { die "This script requires sudo or root."; }
+
+_common_sudo_publish_nonroot() {
+  SUDO="sudo"
+  SUDO_WRAP="sudo"
+}
+
+_common_sudo_publish_root() {
+  SUDO=""
+  # shellcheck disable=SC2034 # set beside SUDO; read by the scripts that source common.sh
+  SUDO_WRAP=""
+}
+
+# Logging owns initialized wrappers; minimal source layouts use the pure policy leaf.
 require_sudo() {
   if command -v _ensure_sudo_wrapper >/dev/null 2>&1; then
     _ensure_sudo_wrapper "This script requires sudo or root."
     return
   fi
-  if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-    command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-    SUDO="sudo"
-    SUDO_WRAP="sudo"
-  else
-    SUDO=""
-    # shellcheck disable=SC2034 # set beside SUDO; read by the scripts that source common.sh
-    SUDO_WRAP=""
-  fi
+  unset -f sudo_policy_select || return $?
+  # shellcheck source=linux/scripts/01-core/sudo-policy.sh
+  source "${_COMMON_SH_DIR}/sudo-policy.sh" || return $?
+  declare -F sudo_policy_select >/dev/null || { printf 'ERROR: sudo policy API missing\n' >&2; return 1; }
+  sudo_policy_select _common_sudo_nonroot _common_sudo_available _common_sudo_die _common_sudo_publish_nonroot _common_sudo_publish_root "$@"
 }
 
 detect_system() {
@@ -275,6 +282,60 @@ llvm_prepare_source_checkout() {
     rm -rf "${old_source}" || return 1
   done
   rm -rf "${source_dir}"
+}
+
+# Wheel payload edits must repack through wheel so RECORD is regenerated.
+wheel_archive_run() {
+  local _war_action="$1" _war_source="$2" _war_destination="$3"
+  shift 3
+  "$@" -m wheel "${_war_action}" "${_war_source}" -d "${_war_destination}" >/dev/null 2>&1
+}
+
+# Older callers retain their distinct required-target and best-effort architecture lookup policies.
+wheel_platform_tag_with_fallback() {
+  local _wptf_policy="$1"
+  if command -v cross_wheel_platform_tag >/dev/null 2>&1; then
+    cross_wheel_platform_tag
+    return $?
+  fi
+  command -v arch_linux_platform_tag_for >/dev/null 2>&1 || return 1
+  if [ "${_wptf_policy}" = required ]; then
+    command -v cross_target_arch >/dev/null 2>&1 || return 1
+    arch_linux_platform_tag_for "$(cross_target_arch)"
+  else
+    arch_linux_platform_tag_for "$(cross_target_arch 2>/dev/null || true)"
+  fi
+  return $?
+}
+
+# Project cross-file adjustments run between optional cross and native flag providers.
+_common_meson_cross() {
+  local -a _cmc_exec_argv=("$@")
+  set -- "${_amtf_caller_argv[@]}"
+  append_meson_cross_flags "${_cmc_exec_argv[@]}"
+}
+
+_common_meson_native() {
+  local -a _cmn_exec_argv=("$@")
+  set -- "${_amtf_caller_argv[@]}"
+  append_meson_native_flags "${_cmn_exec_argv[@]}"
+}
+
+append_available_meson_provider() {
+  local _amp_name="$1" _amp_invoke="$2" _amp_array="$3" _amp_after="${4:-}" _amp_status
+  if command -v "${_amp_name}" >/dev/null 2>&1; then
+    "${_amp_invoke}" "${_amp_array}"
+    _amp_status=$?
+    if [ -n "${_amp_after}" ]; then "${_amp_after}"; else return "${_amp_status}"; fi
+  fi
+  return $?
+}
+
+append_available_meson_toolchain_flags() {
+  local -a _amtf_caller_argv=("$@")
+  local _amtf_array="$1" _amtf_after_cross="${2:-}"
+  append_available_meson_provider append_meson_cross_flags "${3:-_common_meson_cross}" "${_amtf_array}" "${_amtf_after_cross}"
+  append_available_meson_provider append_meson_native_flags "${4:-_common_meson_native}" "${_amtf_array}"
 }
 
 cross_wheel_platform_tag() {

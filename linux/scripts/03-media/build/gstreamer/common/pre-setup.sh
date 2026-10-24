@@ -9,12 +9,35 @@ media_load_vulkan_toolchain
 
 vulkan_prefix="${VULKAN_PREFIX:-${VULKAN_INSTALL_ROOT:-/opt/vulkan}}"
 
+_gst_cross_apt_available() {
+  command -v cross_apt_update
+}
+
+_gst_cross_apt_update() {
+  cross_apt_update "$@"
+}
+
+_gst_system_apt_update() {
+  apt-get update "$@"
+}
+
 _apt_refresh() {
-  if command -v cross_apt_update >/dev/null 2>&1; then
-    cross_apt_update "$@"
-  else
-    apt-get update "$@"
+  local _gar_owner _gar_marker
+  _gar_owner="${_PRE_SETUP_DIR}/../../../../01-core/cross-apt.sh"
+  if [ ! -f "${_gar_owner}" ]; then
+    _gar_owner=/opt/scripts/core/cross-apt.sh
   fi
+  if ! IFS= read -r _gar_marker < "${_gar_owner}" || [ "${_gar_marker}" != '# ANT_APT_UPDATE_SOURCE_API=1' ]; then
+    printf 'ERROR: apt update owner lacks source API 1: %s\n' "${_gar_owner}" >&2
+    exit 1
+  fi
+  unset -f apt_update_select
+  case "$?" in 0) ;; *) exit "$?" ;; esac
+  # shellcheck source=../../../../01-core/cross-apt.sh
+  source "${_gar_owner}" --ant-source-apt-update-only
+  case "$?" in 0) ;; *) exit "$?" ;; esac
+  declare -F apt_update_select >/dev/null || { printf 'ERROR: cross-apt.sh helper source mode lacks apt_update_select\n' >&2; exit 1; }
+  apt_update_select _gst_cross_apt_available _gst_cross_apt_update _gst_system_apt_update "$@"
 }
 
 _apt_refresh
@@ -22,13 +45,13 @@ _apt_refresh
 is_riscv64_cross=$(is_cross_riscv64 && echo true || echo false)
 
 gi_cross_wrapper_arch=""
-if cross_build_is_active && \
-   command -v cross_target_arch >/dev/null 2>&1; then
-  case "$(cross_target_arch)" in
-    arm64|riscv64)
-      gi_cross_wrapper_arch="$(cross_target_arch)"
-      ;;
-  esac
+declare _gst_foreign_target
+media_gstreamer_foreign_target _gst_foreign_target
+if [ "${_gst_foreign_target}" = 1 ]; then
+  unset _gst_foreign_target
+  gi_cross_wrapper_arch="$(cross_target_arch)"
+else
+  unset _gst_foreign_target
 fi
 
 prefer_toolchain_vulkan=false

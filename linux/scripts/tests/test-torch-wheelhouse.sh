@@ -5,6 +5,7 @@ TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 source "${TESTS_DIR}/../01-core/logging.sh"
 WHEELHOUSE="${1:-${TESTS_DIR}/../05-frameworks/torch/build-app-wheelhouse.sh}"
+eval "$(t_fn_src "$WHEELHOUSE" _torch_select_max_jobs)"
 for fn in build_torch_wheel build_torchvision_wheel _collect_torch_wheel _collect_torchvision_wheel parse_wheel_version; do
     eval "$(t_fn_src "$WHEELHOUSE" "$fn")"
 done
@@ -14,6 +15,35 @@ done
 eval "$(t_fn_src "${TESTS_DIR}/../01-core/common.sh" shell_quote_args)"
 _work=$(mktemp -d)
 trap 'rm -rf "$_work"' EXIT
+
+t_case "Torch honors an explicit MAX_JOBS override"
+MAX_JOBS=7
+t_assert_eq 7 "$MAX_JOBS"
+t_assert_eq 7 "$(_torch_select_max_jobs)"
+unset MAX_JOBS
+
+t_case "Torch prefers the memory-heavy parallelism profile"
+compute_cpp_heavy_jobs() { if [ "$#" -eq 1 ] && [ -z "$1" ]; then printf 'heavy'; fi; }
+compute_jobs_with_mem_cap() { printf 'generic-%s-%s' "$1" "$2"; }
+nproc() { printf 'cores'; }
+t_assert_eq heavy "$(compute_cpp_heavy_jobs '')"
+t_assert_eq heavy "$(_torch_select_max_jobs)"
+unset -f compute_cpp_heavy_jobs
+
+t_case "Torch falls back to the 4096 MB generic cap"
+t_assert_eq generic--4096 "$(compute_jobs_with_mem_cap '' 4096)"
+t_assert_eq generic--4096 "$(_torch_select_max_jobs)"
+unset -f compute_jobs_with_mem_cap
+
+t_case "Torch falls back to nproc when parallelism helpers are absent"
+t_assert_eq cores "$(nproc)"
+t_assert_eq cores "$(_torch_select_max_jobs)"
+
+t_case "common.sh remains the single owner of parallelism loading"
+t_assert_contains "$(cat "${TESTS_DIR}/../01-core/common.sh")" \
+    "[ -f \"\${_COMMON_SH_DIR}/parallelism.sh\" ] && source \"\${_COMMON_SH_DIR}/parallelism.sh\""
+t_assert_contains "$(cat "$WHEELHOUSE")" '"/opt/scripts/core/common.sh"'
+t_assert_eq 0 "$(grep -c 'source /opt/scripts/core/parallelism.sh' "$WHEELHOUSE" || true)"
 
 src_dir=parent dist_dir=parent wheel_platform=parent python_sysconfig_export=parent cmake_args_string=parent
 target_torch_include=parent target_torch_csrc=parent target_torch_lib=parent

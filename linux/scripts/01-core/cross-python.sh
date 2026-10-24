@@ -6,31 +6,12 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
 fi
 
 [ -z "${_CROSS_PYTHON_LOADED:-}" ] || return 0
+source "$(dirname "${BASH_SOURCE[0]}")/platform.sh" || exit $?
+declare -F host_python_path >/dev/null || { echo "Error: platform.sh lacks host_python_path" >&2; exit 1; }
 _CROSS_PYTHON_LOADED=1
 
-# Prints its first argument if it is an executable path, else fails; an unset pin is an empty argument.
-_host_python_try() {
-  [ -n "$1" ] && [ -x "$1" ] || return 1
-  printf '%s' "$1"
-}
-
 host_python_bin() {
-  local interpreter
-  interpreter="$(_resolve_first_path -x \
-    "${MEDIA_HOST_PYTHON:-}" \
-    "${UV_PYTHON:-}" \
-    "${VIRTUAL_ENV:+${VIRTUAL_ENV}/bin/python}" \
-    "${PYTHON_MAJOR_MINOR:+/usr/local/bin/python${PYTHON_MAJOR_MINOR}}")" && {
-    printf '%s' "${interpreter}"
-    return 0
-  }
-
-  if [ -n "${PYTHON_VERSION:-}" ] && command -v version_major_minor >/dev/null 2>&1; then
-    local python_mm=""
-    python_mm="$(version_major_minor "${PYTHON_VERSION}" 2>/dev/null || true)"
-    _host_python_try "${python_mm:+/usr/local/bin/python${python_mm}}" && return 0
-  fi
-  command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+  host_python_path derived
 }
 
 host_python_major_minor() {
@@ -203,4 +184,31 @@ cross_target_python_dev_ready() {
   [ -f "${pc_file}" ] || return 1
   [ -f "${embed_pc_file}" ] || return 1
   cross_target_python_library >/dev/null
+}
+
+cross_collect_python_dev_paths() {
+  local -n _ccpdp_paths="$1"
+  shift
+  while [ "$#" -gt 0 ]; do
+    if command -v "cross_target_python_$1" >/dev/null 2>&1; then
+      _ccpdp_paths["$1"]="$("cross_target_python_$1" 2>/dev/null || true)"
+    fi
+    shift
+  done
+}
+
+# Literal caller-bound providers retain alias argv while absent probes keep the prior value.
+cross_capture_python_dev_path() {
+  if command -v "cross_target_python_$1" >/dev/null 2>&1; then
+    "$3" "${@:4}" 2>/dev/null || true
+  else
+    printf '%s' "$2"
+  fi
+}
+
+cross_python_provider_api_ready() {
+  if ! declare -F cross_capture_python_dev_path >/dev/null; then
+    printf '%s\n' 'ERROR: target Python probes require cross_capture_python_dev_path' >&2
+    return 1
+  fi
 }

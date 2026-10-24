@@ -6,6 +6,11 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 1
 fi
 
+# shellcheck source=./bootstrap-import.sh
+source "$(dirname "${BASH_SOURCE[0]}")/bootstrap-import.sh" || exit "$?"
+source_toolchain_required "$(dirname "${BASH_SOURCE[0]}")" load-versions-env.sh exit core-first version_has_numeric_parts
+source_toolchain_required "$(dirname "${BASH_SOURCE[0]}")" path-helpers.sh exit core-paths-only path_symlink_missing
+
 gcc_reported_version() {
   local tool="$1"
   local version=""
@@ -61,9 +66,7 @@ stage_cross_gcc_sysroot_libs() {
   for entry in "${src_dir}"/*; do
     [ -e "${entry}" ] || continue
     base="$(basename "${entry}")"
-    if [ ! -e "${dst_dir}/${base}" ]; then
-      $SUDO ln -sfn "${entry}" "${dst_dir}/${base}"
-    fi
+    path_symlink_missing "${entry}" "${dst_dir}/${base}" -sfn required
   done
   log "Staged target sysroot libs for ${triplet} into ${dst_dir}"
 }
@@ -269,7 +272,7 @@ Fix: apt install libc6-dev-${normalized_target}-cross linux-libc-dev-${normalize
 # Strict X.Y.Z, else <default>.
 gcc_resolve_full_version() {
   local full="$1" default="$2"
-  if [[ ! "${full}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  if ! version_has_numeric_parts "${full}" 3; then
     full="${default}"
   fi
   printf '%s' "${full}"

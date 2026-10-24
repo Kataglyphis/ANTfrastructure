@@ -6,19 +6,17 @@ if [ -f /opt/scripts/core/platform.sh ]; then
   source /opt/scripts/core/platform.sh
 fi
 
-# The prebuilt-tarball fallback needs download_and_extract from 01-core/downloads.sh.
-if ! command -v download_and_extract >/dev/null 2>&1; then
-  for _gst_dl in \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../../01-core/downloads.sh" \
-    "/opt/scripts/core/downloads.sh"; do
-    if [ -f "${_gst_dl}" ]; then
-      # shellcheck disable=SC1090
-      source "${_gst_dl}"
-      break
-    fi
-  done
-  unset _gst_dl
+# One helper owns the repo and image lookup while preserving a caller's downloader.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_ROOT="$(cd "${SCRIPT_DIR}/../../../../" && pwd)"
+if [ -f "${SCRIPTS_ROOT}/01-core/modules.sh" ]; then
+  # shellcheck source=../../../../01-core/modules.sh
+  source "${SCRIPTS_ROOT}/01-core/modules.sh"
+else
+  source "${SCRIPTS_ROOT}/core/modules.sh"
 fi
+source_module download-loader.sh
+download_module_load
 
 if ! android_require_amd64_build_host "GStreamer Android installation"; then
   exit 0
@@ -37,10 +35,8 @@ else
   # These prebuilt .so's ship in the Android artifacts, so verify whenever a pin exists; it bumps with GSTREAMER_VERSION.
   if [ -n "${GSTREAMER_ANDROID_UNIVERSAL_SHA256:-}" ]; then
     _gst_univ_tmp="$(mktemp /tmp/gst-android-universal-XXXXXX.tar.xz)"
-    download_verified_file "${_gst_univ_url}" "${GSTREAMER_ANDROID_UNIVERSAL_SHA256}" "${_gst_univ_tmp}"
-    mkdir -p "${GSTREAMER_ROOT_ANDROID}"
-    tar -xJf "${_gst_univ_tmp}" -C "${GSTREAMER_ROOT_ANDROID}"
-    rm -f "${_gst_univ_tmp}"
+    download_verified_extract_xz "${_gst_univ_url}" "${GSTREAMER_ANDROID_UNIVERSAL_SHA256}" \
+      "${_gst_univ_tmp}" "${GSTREAMER_ROOT_ANDROID}"
   else
     echo "WARNING: GSTREAMER_ANDROID_UNIVERSAL_SHA256 unset — fetching prebuilt GStreamer UNVERIFIED" >&2
     download_and_extract "${_gst_univ_url}" "${GSTREAMER_ROOT_ANDROID}"

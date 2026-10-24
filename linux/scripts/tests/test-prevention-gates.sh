@@ -80,26 +80,28 @@ t_case "licence headers and tool directives are not prose"
 _out="$(_size "$(printf '#!/usr/bin/env bash\n# Copyright (c) 2025 Kataglyphis\n# SPDX-License-Identifier: MIT\n# why\n# shellcheck disable=SC2034\n:')")"
 t_assert_contains "${_out}" "rc=0" "a header plus one why-line plus a directive is one comment"
 
+_comment_case() {
+  local path="$1" escaped_subject="$2" expected="$3" reason="$4"
+  t_assert_contains "$(_size_at "$path" "$(printf '%b' "$escaped_subject")")" "rc=$expected" "$reason"
+}
+
 t_case "a heredoc body is data, and a quoted << opens none"
-t_assert_contains "$(_size "$(printf 'cat <<EOF\n# a\n# b\nEOF')")" "rc=0" "heredoc lines are not comments"
-t_assert_contains "$(_size "$(printf 'printf "a<<b"\n# c1\n# c2\n:')")" "rc=1" \
-  "a << inside quotes must not hide the block after it"
+_comment_case linux/scripts/subject.sh 'cat <<EOF\n# a\n# b\nEOF' 0 "heredoc lines are not comments"
+_comment_case linux/scripts/subject.sh 'printf "a<<b"\n# c1\n# c2\n:' 1 "a << inside quotes must not hide the block after it"
 
 t_case "every language: PowerShell, with its here-strings as data"
-t_assert_contains "$(_size_at windows/scripts/subject.ps1 "$(printf '# a\n# b\n$x = 1')")" "rc=1" "a PowerShell block fails"
-t_assert_contains "$(_size_at windows/scripts/subject.ps1 "$(printf '$x = @"\n# a\n# b\n"@')")" "rc=0" \
-  "here-string lines are not comments"
+_comment_case windows/scripts/subject.ps1 '# a\n# b\n$x = 1' 1 "a PowerShell block fails"
+_comment_case windows/scripts/subject.ps1 '$x = @"\n# a\n# b\n"@' 0 "here-string lines are not comments"
 t_assert_contains "$(_size_at windows/scripts/subject.ps1 "$(printf "\$h = 'it''s\n#define a b\n#define c d'\n# e\n# f")")" "rc=1" \
   "a multi-line string is data, and a block after it still counts"
 
 t_case "every language: Python, with its strings as data"
-t_assert_contains "$(_size_at docs/scripts/subject.py "$(printf '# a\n# b\nx = 1')")" "rc=1" "a Python block fails"
-t_assert_contains "$(_size_at docs/scripts/subject.py "$(printf 'x = """\n# a\n# b\n"""')")" "rc=0" \
-  "a string is not a comment"
+_comment_case docs/scripts/subject.py '# a\n# b\nx = 1' 1 "a Python block fails"
+_comment_case docs/scripts/subject.py 'x = """\n# a\n# b\n"""' 0 "a string is not a comment"
 
 t_case "every language: C family, where /* */ counts and /// API docs do not"
-t_assert_contains "$(_size_at src/subject.cpp "$(printf '/* a\n   b */\nint y;')")" "rc=1" "a block comment fails"
-t_assert_contains "$(_size_at src/subject.rs "$(printf '/// a\n/// b\nfn f() {}')")" "rc=0" "API docs stay"
+_comment_case src/subject.cpp '/* a\n   b */\nint y;' 1 "a block comment fails"
+_comment_case src/subject.rs '/// a\n/// b\nfn f() {}' 0 "API docs stay"
 
 t_case "a masked declaration fails, and says which variable"
 _out="$(_masked "${MASKED}")"

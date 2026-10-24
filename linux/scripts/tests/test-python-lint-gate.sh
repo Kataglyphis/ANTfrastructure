@@ -20,7 +20,7 @@ _mkroot() {
            "${d}/linux/host-config/git-hooks"
   cp "${S}/lint-python.sh" "${d}/linux/scripts/"
   # The gate sources these 01-core files; without them every case fails on a missing source.
-  cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" \
+  cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" "${S}/01-core/lint-scope-init.sh" \
      "${S}/01-core/python-probe.sh" \
      "${d}/linux/scripts/01-core/"
   printf 'RUFF_VERSION=%s\n' "${PIN}" > "${d}/linux/scripts/01-core/tool-pins.env"

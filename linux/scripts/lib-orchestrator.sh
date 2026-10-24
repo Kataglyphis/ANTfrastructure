@@ -37,6 +37,13 @@ orchestrator_usage_mirror_options() {
 EOF
 }
 
+# Compiler targets remain independent of the per-stage architecture list.
+orchestrator_set_cross_targets() {
+  local -n _oct_targets=CROSS_TARGETS
+  _oct_targets="$1"
+  _OARG_SHIFT=2
+}
+
 # <usage_fn> <case_fn> <7 nameref names> "$@"; case_fn sets _OARG_SHIFT and returns 0, else non-zero.
 run_orchestrator_arg_loop() {
   local _usage_fn="$1" _case_fn="$2"
@@ -72,6 +79,23 @@ runtime_flow_preamble() {
   TARGET_ARCHES="$(resolve_arch_list)"
 }
 
+orchestrator_consume_runtime_push_arg() {
+  local mode="$1" flag="$2"
+  case "$flag" in
+    --push|--push-all) : ;;
+    --push-images) [ "$mode" = manifest ] || return 1 ;;
+    *) return 1 ;;
+  esac
+  local -n _orp_images=PUSH_IMAGES _orp_intermediates=PUSH_INTERMEDIATE_IMAGES _orp_shift=_OARG_SHIFT
+  _orp_images=1
+  if [ "$mode" = manifest ] && [ "$flag" != --push-images ]; then
+    local -n _orp_manifest=PUSH_MANIFEST
+    _orp_manifest=1
+  fi
+  if [ "$flag" = --push-all ]; then _orp_intermediates=1; fi
+  _orp_shift=1
+}
+
 # <usage_fn> <case_fn> "$@"; both runtime scripts share the 11-nameref list, so it is fixed here.
 run_runtime_arg_loop() {
   local _usage_fn="$1" _case_fn="$2"
@@ -94,6 +118,11 @@ run_runtime_arg_loop() {
     fi
     reject_unknown_option "$1" "${_usage_fn}"
   done
+}
+
+orchestrator_consume_log_dir() {
+  LOG_DIR="$2"
+  _OARG_SHIFT=2
 }
 
 # $1 is the run id when CROSS_RUN_ID is unset; RESOURCE_MONITOR=0 disables. See docs/build-resource-monitoring.md

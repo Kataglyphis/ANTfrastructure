@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Relative imports retain their owner after callers change directories.
+declare -g +x _TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${BASH_SOURCE[0]}"
+case "$_TOOLCHAIN_BOOTSTRAP_OWNER_DIR" in
+  /*) ;;
+  *) _TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${PWD:-$(builtin pwd)}/${_TOOLCHAIN_BOOTSTRAP_OWNER_DIR}" ;;
+esac
+_TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${_TOOLCHAIN_BOOTSTRAP_OWNER_DIR%/*}"
+_TOOLCHAIN_BOOTSTRAP_OWNER_DIR="${_TOOLCHAIN_BOOTSTRAP_OWNER_DIR:-/}"
+
+# An optional status output observes source failures without suppressing direct errexit.
 _source_toolchain_first_available() {
   local -n _toolchain_source_result="$1"
-  local script_dir="$2" leaf="$3" priority="${4:-core-first}" candidate
-  local candidates=("${script_dir}/${leaf}")
+  local script_dir="$2" leaf="$3" priority="${4:-core-first}" candidate source_status status_output="${5:-}"
+  if [ -n "$status_output" ]; then
+    local -n _toolchain_status_result="$status_output"
+    _toolchain_status_result=0
+  fi
+  local candidates=()
+  [ "$priority" = core-paths-only ] || candidates=("${script_dir}/${leaf}")
   if [ "$priority" = mounted-first ]; then
     candidates+=("/opt/scripts/core/${leaf}" "${script_dir}/../01-core/${leaf}")
   else
@@ -15,6 +30,8 @@ _source_toolchain_first_available() {
     [ -f "$candidate" ] || continue
     # shellcheck disable=SC1090
     source "$candidate"
+    source_status=$?
+    if [ -n "$status_output" ]; then _toolchain_status_result="$source_status"; fi
     _toolchain_source_result=1
     return 0
   done
@@ -31,13 +48,15 @@ source_toolchain_common_or_fallback() {
   warn() { printf '[WARN] %s\n' "$*" >&2; }
   err()  { printf '[ERROR] %s\n' "$*" >&2; exit 1; }
   die()  { err "$@"; }
+  unset -f sudo_policy_select || exit $?
+  source_toolchain_required "$_TOOLCHAIN_BOOTSTRAP_OWNER_DIR" sudo-policy.sh exit core-paths-only sudo_policy_select
+  _toolchain_sudo_nonroot() { [ "${EUID:-$(id -u)}" -ne 0 ]; return $?; }
+  _toolchain_sudo_available() { command -v sudo; }
+  _toolchain_sudo_die() { die "This script requires sudo or root."; }
+  _toolchain_sudo_publish_nonroot() { SUDO="sudo"; }
+  _toolchain_sudo_publish_root() { SUDO=""; }
   require_sudo() {
-    if [ "${EUID:-$(id -u)}" -ne 0 ]; then
-      command -v sudo >/dev/null 2>&1 || die "This script requires sudo or root."
-      SUDO="sudo"
-    else
-      SUDO=""
-    fi
+    sudo_policy_select _toolchain_sudo_nonroot _toolchain_sudo_available _toolchain_sudo_die _toolchain_sudo_publish_nonroot _toolchain_sudo_publish_root "$@"
   }
   apt_install() {
     ${SUDO:-} apt-get update -qq
@@ -56,12 +75,24 @@ source_toolchain_build_helpers_or_fallback() {
   source_toolchain_elf_strip "${script_dir}"
 }
 
+# Expected exports require successful sourcing; file-only callers retain their historical normalization.
+source_toolchain_required() {
+  local script_dir="$1" leaf="$2" missing="${3:-return}" priority="${4:-core-first}" symbol="${5:-}" _toolchain_source_matched=0 _toolchain_status=0 failure=1
+  _source_toolchain_first_available _toolchain_source_matched "$script_dir" "$leaf" "$priority" _toolchain_status
+  if [ "$_toolchain_source_matched" -eq 0 ]; then
+    printf 'ERROR: toolchain bootstrap requires %s\n' "$leaf" >&2
+  elif [ -n "$symbol" ] && [ "$_toolchain_status" -ne 0 ]; then
+    printf 'ERROR: toolchain bootstrap source %s failed with status %s\n' "$leaf" "$_toolchain_status" >&2
+    failure="$_toolchain_status"
+  elif [ -n "$symbol" ] && ! declare -F "$symbol" >/dev/null; then
+    printf 'ERROR: toolchain bootstrap requires %s from %s\n' "$symbol" "$leaf" >&2
+  else return 0; fi
+  if [ "$missing" = exit ]; then exit "$failure"; fi
+  return "$failure"
+}
+
 source_toolchain_elf_strip() {
-  local script_dir="$1" _toolchain_source_matched=0
-  _source_toolchain_first_available _toolchain_source_matched "$script_dir" elf-strip.sh
-  [ "$_toolchain_source_matched" -eq 0 ] || return 0
-  printf 'ERROR: toolchain bootstrap requires elf-strip.sh\n' >&2
-  return 1
+  source_toolchain_required "$1" elf-strip.sh
 }
 
 toolchain_cache_usage() {
@@ -74,4 +105,13 @@ toolchain_unknown_option() {
   warn "Unknown option: $1"
   usage >&2
   exit 1
+}
+
+# Supplied download helpers win; standalone callers use exactly the two historical core locations.
+source_toolchain_downloads() {
+  local caller="$1" _std_found
+  if command -v download_file >/dev/null 2>&1; then return 0; fi
+  _source_toolchain_first_available _std_found \
+    "$(cd "$(dirname "$caller")" && pwd)" downloads.sh core-paths-only
+  return 0
 }

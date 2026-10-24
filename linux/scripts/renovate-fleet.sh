@@ -234,11 +234,14 @@ classify_vendored() {
   return 0
 }
 
+fleet_has_dep() {
+  case "${OWN_DEPS[$1]}" in *" $2 "*) return 0 ;; esac
+  return 1
+}
+
 add_dep() {
-  case "${OWN_DEPS[$1]}" in
-    *" $2 "*) return 0 ;;
-    *) OWN_DEPS[$1]="${OWN_DEPS[$1]}$2 " ;;
-  esac
+  fleet_has_dep "$1" "$2" && return 0
+  OWN_DEPS[$1]="${OWN_DEPS[$1]}$2 "
 }
 
 own_index() {
@@ -261,7 +264,7 @@ close_deps() {
         j="$(own_index "${d}")" || continue
         for d2 in ${OWN_DEPS[$j]}; do
           [ "${d2}" != "${OWN_IDS[$i]}" ] || continue
-          case "${OWN_DEPS[$i]}" in *" ${d2} "*) continue ;; esac
+          fleet_has_dep "${i}" "${d2}" && continue
           OWN_DEPS[$i]="${OWN_DEPS[$i]}${d2} "
           changed=1
         done
@@ -278,8 +281,8 @@ find_cycles() {
   for i in "${!OWN_IDS[@]}"; do
     for j in "${!OWN_IDS[@]}"; do
       [ "${i}" -lt "${j}" ] || continue
-      case "${OWN_DEPS[$i]}" in *" ${OWN_IDS[$j]} "*) ;; *) continue ;; esac
-      case "${OWN_DEPS[$j]}" in *" ${OWN_IDS[$i]} "*) ;; *) continue ;; esac
+      fleet_has_dep "${i}" "${OWN_IDS[$j]}" || continue
+      fleet_has_dep "${j}" "${OWN_IDS[$i]}" || continue
       CYCLES+=("${OWN_NAMES[$i]} and ${OWN_NAMES[$j]} vendor EACH OTHER")
     done
   done

@@ -1,0 +1,84 @@
+no-roots	_gst_onnx_under	1	''	/root/child 
+no-roots	_ortg_under	1	''	/root/child 
+empty-root	_gst_onnx_under	1	''	/root/child '' 
+empty-root	_ortg_under	1	''	/root/child '' 
+empty-path	_gst_onnx_under	1	''	'' '' 
+empty-path	_ortg_under	1	''	'' '' 
+empty-path-real-root	_gst_onnx_under	1	''	'' /root 
+empty-path-real-root	_ortg_under	1	''	'' /root 
+exact	_gst_onnx_under	0	''	/root /root 
+exact	_ortg_under	0	''	/root /root 
+child	_gst_onnx_under	0	''	/root/child /root 
+child	_ortg_under	0	''	/root/child /root 
+grandchild	_gst_onnx_under	0	''	/root/child/file /root 
+grandchild	_ortg_under	0	''	/root/child/file /root 
+sibling	_gst_onnx_under	1	''	/root-other/child /root 
+sibling	_ortg_under	1	''	/root-other/child /root 
+shorter	_gst_onnx_under	1	''	/roo /root 
+shorter	_ortg_under	1	''	/roo /root 
+root-with-slash	_gst_onnx_under	1	''	/root /root/ 
+root-with-slash	_ortg_under	0	''	/root /root/ 
+child-with-slash	_gst_onnx_under	1	''	/root/child /root/ 
+child-with-slash	_ortg_under	0	''	/root/child /root/ 
+exact-with-slash	_gst_onnx_under	0	''	/root/ /root/ 
+exact-with-slash	_ortg_under	0	''	/root/ /root/ 
+double-path-slash	_gst_onnx_under	0	''	/root//child /root/ 
+double-path-slash	_ortg_under	0	''	/root//child /root/ 
+root-two-slashes	_gst_onnx_under	1	''	/root/child /root// 
+root-two-slashes	_ortg_under	1	''	/root/child /root// 
+exact-two-slashes	_gst_onnx_under	0	''	/root// /root// 
+exact-two-slashes	_ortg_under	0	''	/root// /root// 
+double-child-two-slashes	_gst_onnx_under	1	''	/root//child /root// 
+double-child-two-slashes	_ortg_under	0	''	/root//child /root// 
+triple-child-two-slashes	_gst_onnx_under	0	''	/root///child /root// 
+triple-child-two-slashes	_ortg_under	0	''	/root///child /root// 
+filesystem-root	_gst_onnx_under	0	''	/ / 
+filesystem-root	_ortg_under	1	''	/ / 
+filesystem-child	_gst_onnx_under	1	''	/child / 
+filesystem-child	_ortg_under	1	''	/child / 
+filesystem-double-child	_gst_onnx_under	0	''	//child / 
+filesystem-double-child	_ortg_under	1	''	//child / 
+double-root	_gst_onnx_under	1	''	/ // 
+double-root	_ortg_under	0	''	/ // 
+double-root-child	_gst_onnx_under	1	''	/child // 
+double-root-child	_ortg_under	1	''	/child // 
+double-root-double-child	_gst_onnx_under	1	''	//child // 
+double-root-double-child	_ortg_under	0	''	//child // 
+relative-exact	_gst_onnx_under	0	''	relative relative 
+relative-exact	_ortg_under	0	''	relative relative 
+relative-child	_gst_onnx_under	0	''	relative/child relative 
+relative-child	_ortg_under	0	''	relative/child relative 
+relative-sibling	_gst_onnx_under	1	''	relative-other relative 
+relative-sibling	_ortg_under	1	''	relative-other relative 
+relative-dot	_gst_onnx_under	1	''	./relative/child relative 
+relative-dot	_ortg_under	1	''	./relative/child relative 
+dot-root	_gst_onnx_under	0	''	./child . 
+dot-root	_ortg_under	0	''	./child . 
+dot-dot-root	_gst_onnx_under	0	''	../child .. 
+dot-dot-root	_ortg_under	0	''	../child .. 
+lexical-parent	_gst_onnx_under	0	''	/root/../outside /root 
+lexical-parent	_ortg_under	0	''	/root/../outside /root 
+literal-star	_gst_onnx_under	0	''	/a\*/file /a\* 
+literal-star	_ortg_under	0	''	/a\*/file /a\* 
+wildcard-not-expanded	_gst_onnx_under	1	''	/actual/file /a\* 
+wildcard-not-expanded	_ortg_under	1	''	/actual/file /a\* 
+literal-question	_gst_onnx_under	0	''	/a\?/file /a\? 
+literal-question	_ortg_under	0	''	/a\?/file /a\? 
+literal-brackets	_gst_onnx_under	0	''	/a\[bc\]/file /a\[bc\] 
+literal-brackets	_ortg_under	0	''	/a\[bc\]/file /a\[bc\] 
+brackets-not-expanded	_gst_onnx_under	1	''	/ab/file /a\[bc\] 
+brackets-not-expanded	_ortg_under	1	''	/ab/file /a\[bc\] 
+spaced	_gst_onnx_under	0	''	/root\ with\ spaces/child /root\ with\ spaces 
+spaced	_ortg_under	0	''	/root\ with\ spaces/child /root\ with\ spaces 
+newline	_gst_onnx_under	0	''	$'/root\nname/child' $'/root\nname' 
+newline	_ortg_under	0	''	$'/root\nname/child' $'/root\nname' 
+backslash	_gst_onnx_under	1	''	/root\\child /root 
+backslash	_ortg_under	1	''	/root\\child /root 
+percent	_gst_onnx_under	0	''	/root%s/child /root%s 
+percent	_ortg_under	0	''	/root%s/child /root%s 
+multiple-roots	_gst_onnx_under	0	''	/root/child '' /other /root 
+multiple-roots	_ortg_under	0	''	/root/child '' /other /root 
+later-slash-root	_gst_onnx_under	1	''	/root/child /other /root/ 
+later-slash-root	_ortg_under	0	''	/root/child /other /root/ 
+no-match-many	_gst_onnx_under	1	''	/outside '' /other /root 
+no-match-many	_ortg_under	1	''	/outside '' /other /root 

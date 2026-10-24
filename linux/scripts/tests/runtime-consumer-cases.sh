@@ -50,10 +50,15 @@ _CC_ROWS_SRC="$(sed -n '/^_CONSUMER_CONTRACT_ROWS=/p' "${SMOKE}")"
 t_assert_contains "${_CC_ROWS_SRC}" "ccache-dir" "the row list moved -- every case below reads nothing"
 eval "${_CC_ROWS_SRC}"
 
+_CC_FACT_PARTS="$(_extract _consumer_contract_fact)
+$(_extract _consumer_collect_required_facts)
+$(_extract _consumer_tooling_verdict)
+$(_extract _consumer_required_facts_continue)"
+
 _CC_PARTS="${_CC_ROWS_SRC}
 $(_extract _consumer_contract_exempt)
 $(_extract _consumer_exempt_fact)
-$(_extract _consumer_contract_fact)
+${_CC_FACT_PARTS}
 $(_extract _consumer_dir_verdict)
 $(_extract _consumer_exempt_verdict)
 $(_extract _consumer_android_verdict)
@@ -339,7 +344,7 @@ t_assert_contains "${_CC_PASS}" "FAILURES=0" "and nothing else may go red"
 
 t_case "the appimagetool row: executable is not the same as usable"
 _toolv() { bash -c '
-    '"$(_extract _consumer_contract_fact)"'
+    '"${_CC_FACT_PARTS}"'
     '"$(_extract _consumer_tool_verdict)"'
     _consumer_tool_verdict appimagetool "$1"' _ "$1" 2>&1; }
 t_assert_contains "$(_toolv "ENV appimagetool /usr/local/bin/appimagetool
@@ -353,7 +358,7 @@ t_assert_contains "$(_toolv "ENV appimagetool /x")" "NOFACT appimagetool" "a pro
 
 t_case "the JDK row: Gradle reads JAVA_HOME, so java on PATH alone is not enough"
 _jdkv() { bash -c '
-    '"$(_extract _consumer_contract_fact)"'
+    '"${_CC_FACT_PARTS}"'
     '"$(_extract _consumer_jdk_verdict)"'
     _consumer_jdk_verdict jdk "$1"' _ "$1" 2>&1; }
 t_assert_contains "$(_jdkv "FACT java-on-path no
@@ -378,6 +383,7 @@ $(_extract _consumer_version_matches)
 $(_extract _consumer_chrome_verdict)
 $(_extract _consumer_emulator_verdict)
 $(_extract _consumer_cargo_qa_verdict)
+$(_extract _consumer_versioned_contract_verdict)
 $(_extract _consumer_free_threaded_verdict)"
 # _cc_tr <probe> <arch> <row>
 _cc_tr() {

@@ -8,11 +8,15 @@ VALIDATOR="${2:-${TESTS_DIR}/../03-media/runtime/validate-media-runtime.sh}"
 TORCH="${3:-${TESTS_DIR}/../06-packaging/setup-torch-venv.sh}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
-mkdir -p "${WORK}/core" "${WORK}/linux/scripts/01-core" "${WORK}/linux/scripts/03-media/runtime" "${WORK}/linux/scripts/06-packaging" "${WORK}/poison/01-core"
+mkdir -p "${WORK}/packaging" "${WORK}/core" "${WORK}/linux/scripts/01-core" "${WORK}/linux/scripts/03-media/runtime" "${WORK}/linux/scripts/06-packaging" "${WORK}/poison/01-core"
 if [ -f "${BOOTSTRAP}" ]; then
   cp "${BOOTSTRAP}" "${WORK}/core/module-bootstrap.sh"
   cp "${BOOTSTRAP}" "${WORK}/linux/scripts/01-core/module-bootstrap.sh"
 fi
+cp "${TESTS_DIR}/../06-packaging/package-image-wiring.sh" "${WORK}/packaging/package-image-wiring.sh"
+cp "${TESTS_DIR}/../06-packaging/package-image-wiring.sh" "${WORK}/linux/scripts/06-packaging/package-image-wiring.sh"
+cp "${TESTS_DIR}/../01-core/wheelhouse-manifest.sh" "${WORK}/core/wheelhouse-manifest.sh"
+cp "${TESTS_DIR}/../01-core/wheelhouse-manifest.sh" "${WORK}/linux/scripts/01-core/wheelhouse-manifest.sh"
 printf 'echo POISON\nelf_unresolved_needed() { :; }\n' > "${WORK}/poison/01-core/platform.sh"
 write_platform() {
   printf 'echo "%s"\nelf_unresolved_needed() { :; }\n' "$2" > "$1"
@@ -31,7 +35,7 @@ run_bootstrap() {
     failed) printf 'echo failed\nreturn 7\n' > "${WORK}/core/platform.sh" ;;
   esac
   sed -n '/^# Hard-require platform.sh/,/^ARTIFACTS=\|^cross_skip()/p' "${source}" | sed '$d' \
-    | sed "s|/opt/scripts/core/|${WORK}/core/|g" > "${destination}"
+    | sed -e "s|/opt/scripts/core/|${WORK}/core/|g" -e "s|/opt/scripts/packaging/|${WORK}/packaging/|g" > "${destination}"
   if [ "${scenario}" = preloaded ]; then
     printf '\necho completed\n' >> "${destination}"
     SCRIPTS_ROOT="${WORK}/poison" SCRIPT_DIR="${WORK}/poison" bash -euo pipefail -c 'elf_unresolved_needed() { :; }; source "$1"' _ "${destination}" > "${output}" 2>&1 || status=$?

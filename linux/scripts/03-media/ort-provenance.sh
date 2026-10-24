@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # G2: a consumer's tree, records, logs and fetch caches hold no ORT but the chain's. See docs/onnxruntime-single-source.md § The guards
 
+# shellcheck source=../01-core/path-helpers.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../01-core/path-helpers.sh" || return $?
+
 # ORT headers and binaries, compared byte for byte by name (.pc/.cmake metadata is not ORT code). Matched lower-cased.
 _ORTG_CODE_RE='^(lib)?onnxruntime[^/]*\.(h|hpp|inc|lib|dll|pyd|a|so(\.[0-9]+)*)$|_provider_factory\.h$|^onnxruntime_pybind11_state'
 # Any ORT library: the core, a provider, a static component (libonnxruntime_session.a), the pybind module; see _ortg_is_bin.
@@ -21,20 +24,24 @@ _ortg_chain_bytes_finding() {
   case "${hashes}" in *" $(_ortg_sha "${path}") "*) ;; *) echo "${path} is not the chain's ${name} (foreign ONNX Runtime bytes)${sfx}" ;; esac
 }
 
-_ortg_under() {  # <path> <root>...: 0 when path is a root or sits below one
-  local p="$1" r
-  shift
-  for r in "$@"; do
-    r="${r%/}"
-    [ -n "${r}" ] || continue
-    case "${p}" in "${r}" | "${r}"/*) return 0 ;; esac
-  done
+_ortg_under() {
+  path_under_roots trim-one "$@"
+}
+
+_ortg_component_name() {
+  case "${1,,}" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 0 ;; esac
   return 1
+}
+
+_ortg_file_candidates() {
+  local -n _ofc_predicate="$1"
+  _ofc_predicate=(-iname '*onnxruntime*' -o -name '*_provider_factory.h')
+  if [ "${2:-}" = archives ]; then _ofc_predicate+=(-o -name '*.tar.lzma2'); fi
 }
 
 _ortg_is_bin() {  # <name>: 0 for an ORT library name; GenAI's and extensions' own libraries are not ORT
   local lc="${1,,}"
-  case "${lc}" in *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions*) return 1 ;; esac
+  if _ortg_component_name "${lc}"; then return 1; fi
   if [[ "${lc}" =~ ${_ORTG_BIN_RE} ]]; then return 0; fi
   return 1
 }
@@ -69,13 +76,15 @@ _ortg_index() {  # <chain-root>...: fills _ORTG_SHA (name -> " sha ..."), _ORTG_
 _ortg_name_finding() {  # <path> [suffix]: an ORT archive, a chain name with other bytes, or an ORT binary the chain lacks
   local path="$1" sfx="${2:-}" name="${1##*/}" lc
   lc="${name,,}"
-  case "${lc}" in
-    *onnxruntime[-_.]genai* | *onnxruntime[-_.]extensions* | *onnxruntimegenai*) ;;
-    *onnxruntime*.zip | *onnxruntime*.nupkg | *onnxruntime*.tgz | *onnxruntime*.txz | *onnxruntime*.tar | *onnxruntime*.tar.* | \
-    *onnxruntime*.whl | *onnxruntime*.aar | *onnxruntime*.7z | *.tar.lzma2)
-      echo "an ONNX Runtime archive: ${path}${sfx}"
-      return 0 ;;
-  esac
+  if ! _ortg_component_name "${lc}"; then
+    case "${lc}" in
+      *onnxruntimegenai*) ;;
+      *onnxruntime*.zip | *onnxruntime*.nupkg | *onnxruntime*.tgz | *onnxruntime*.txz | *onnxruntime*.tar | *onnxruntime*.tar.* | \
+      *onnxruntime*.whl | *onnxruntime*.aar | *onnxruntime*.7z | *.tar.lzma2)
+        echo "an ONNX Runtime archive: ${path}${sfx}"
+        return 0 ;;
+    esac
+  fi
   if [ -n "${_ORTG_SHA[${name}]:-}" ]; then
     _ORTG_COMPARED=$((_ORTG_COMPARED + 1))
     _ortg_chain_bytes_finding "${path}" "${_ORTG_SHA[${name}]}" "${sfx}"
@@ -98,7 +107,8 @@ _ortg_fetchcontent_directory_names() {
 
 _ortg_scan_root() {  # <root> <via-link>: one root's fetched ORT dirs and ORT-named files; its dir links land in _ORTG_FOUND_LINKS
   local r="$1" sfx="" kind path err n
-  local -a fetched_directory_names
+  local -a fetched_directory_names file_candidates
+  _ortg_file_candidates file_candidates archives
   _ortg_fetchcontent_directory_names fetched_directory_names ortlib-src ortlib-subbuild ortlib-build
   if [ -n "$2" ]; then sfx=" (through the link $2)"; fi
   err="$(mktemp)" || { echo "cannot make a temp file to scan ${r}"; return 0; }
@@ -113,7 +123,7 @@ _ortg_scan_root() {  # <root> <via-link>: one root's fetched ORT dirs and ORT-na
   done < <(find -H "${r}" \( -type l -xtype d -printf 'L\t%p\n' \) -o \( -type d \( "${fetched_directory_names[@]}" -o -name 'ort.pyke.io' \
         -o -iname 'onnxruntime-linux-*' -o -iname 'onnxruntime-win-*' -o -iname 'onnxruntime-osx-*' -o -iname 'onnxruntime-android-*' \
         -o \( -iname 'microsoft.ml.onnxruntime*' ! -iname 'microsoft.ml.onnxruntimegenai*' \) \) -printf 'D\t%p\n' \) \
-        -o \( \( -type f -o -type l \) \( -iname '*onnxruntime*' -o -name '*_provider_factory.h' -o -name '*.tar.lzma2' \) \
+        -o \( \( -type f -o -type l \) \( "${file_candidates[@]}" \) \
         -printf 'F\t%p\n' \) 2>"${err}" || true)
   if [ -s "${err}" ]; then echo "cannot read all of ${r}: $(head -n 1 "${err}")"; fi
   rm -f "${err}"
@@ -372,6 +382,8 @@ _ortg_token_finding() {  # <record> <path> <real path>: one path outside the cha
 
 _ortg_record_findings() {  # <record>...: ORT only under the chain, a shim or a tree; a foreign search dir holding ORT fails
   local rec i f d
+  local -a file_candidates
+  _ortg_file_candidates file_candidates
   for rec in "$@"; do
     if [ ! -f "${rec}" ]; then echo "the build record ${rec} is missing"; continue; fi
     _ORTG_DIRS=()
@@ -383,7 +395,7 @@ _ortg_record_findings() {  # <record>...: ORT only under the chain, a shim or a 
     [ "${#_ORTG_DIRS[@]}" -gt 0 ] || continue
     while IFS= read -r -d '' d; do
       _ortg_name_finding "${d}" | sed -e "s#^#${rec} searches ${d%/*}: #"
-    done < <(find -H "${_ORTG_DIRS[@]}" -maxdepth 1 -mindepth 1 \( -type f -o -type l \) \( -iname '*onnxruntime*' -o -name '*_provider_factory.h' \) \
+    done < <(find -H "${_ORTG_DIRS[@]}" -maxdepth 1 -mindepth 1 \( -type f -o -type l \) \( "${file_candidates[@]}" \) \
         -print0 2>/dev/null || true)
   done
   return 0

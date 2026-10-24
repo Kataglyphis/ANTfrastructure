@@ -158,17 +158,17 @@ smoke_cross_presence_gate() {
   pass "${label} ${noun} present at ${path} (cross build — ${action} skipped)"
 }
 
-# The readelf "Machine:" value of a file, executing nothing; platform.sh's elf_machine_name when sourced.
+# Load the canonical parser in isolation so legacy smoke architecture fallbacks retain their caller state.
 smoke_elf_machine_of() {
   if command -v elf_machine_name >/dev/null 2>&1; then
     elf_machine_name "$1"
     return
   fi
-  command -v readelf >/dev/null 2>&1 || return 1
-  [ -r "$1" ] || return 1
-  LC_ALL=C readelf -h "$1" 2>/dev/null \
-    | sed -n 's/^[[:space:]]*Machine:[[:space:]]*//p' \
-    | head -n1
+  (
+    smoke_load_platform
+    command -v elf_machine_name >/dev/null 2>&1 || exit 1
+    elf_machine_name "$1"
+  )
 }
 
 # Usage: check_version "gcc --version" "16.1.0" "host gcc"
@@ -438,6 +438,10 @@ ELF_MACHINE = {"amd64": (62, "X86-64"), "arm64": (183, "AArch64"),
 proven, unproven, fails = [], [], []
 
 
+def record_exception(operation, exc):
+    fails.append("%s raised %s: %s" % (operation, type(exc).__name__, exc))
+
+
 def genai_dist_version():
     # Any GenAI flavour is the GenAI: an nvidia image ships onnxruntime-genai-cuda / -trt-rtx.
     import importlib.metadata as M
@@ -589,7 +593,7 @@ if np is not None and hasattr(og, "Tensor"):
         else:
             proven.append("og.Tensor round-tripped a float32 buffer through the native library")
     except Exception as exc:
-        fails.append("og.Tensor round-trip raised %s: %s" % (type(exc).__name__, exc))
+        record_exception("og.Tensor round-trip", exc)
 
 # A non-model path must be rejected BY THE LIBRARY: TypeError/AttributeError
 # means the binding refused it (ABI mismatch), anything else means native code.
@@ -638,7 +642,7 @@ else:
             proven.append("generate() produced %d new tokens from %s: %r ... decoded %r"
                           % (len(new), MODEL_DIR, new[:8], tok.decode(new)[:80]))
     except Exception as exc:
-        fails.append("generate() raised %s: %s" % (type(exc).__name__, exc))
+        record_exception("generate()", exc)
 
 GENAI_PY_T4
 }
@@ -672,4 +676,21 @@ smoke_genai_py() {
   _smoke_genai_py_tier3_native
   _smoke_genai_py_tier4_generate
   _smoke_genai_py_verdict
+}
+
+smoke_native_dispatch() {
+  if smoke_cross_presence_gate "$1" "$2"; then return 0; fi
+  shift 2
+  "$@"
+}
+
+smoke_ffmpeg_test_encode() {
+  local _sfte_binary="$1" _sfte_rate="$2" _sfte_output="$3"
+  shift 3
+  "${_sfte_binary}" -y -f lavfi -i "testsrc=duration=1:size=32x32:rate=${_sfte_rate}" \
+    -c:v "$@" "${_sfte_output}" 2>/dev/null
+}
+
+smoke_ffmpeg_decode_to_null() {
+  "$1" -y -i "$2" -f null /dev/null 2>/dev/null
 }

@@ -353,6 +353,16 @@ drives `run-tests.sh` (`RUN_TESTS_JOBS`, suites in name order, same totals), and
 runs one shellcheck per file `LINT_SHELL_JOBS` at a time and refuses a run that did not report on
 every file. Each knob set to `1` restores the serial path.
 
+The scheduler tracks supervising workers before releasing their commands. Its
+cancellation marker also covers launches in progress; cleanup joins only recorded
+workers and stops their watchdogs and command groups. Nested runners receive a
+chance to run their own exit cleanup before forced termination. A lost supervisor
+or failed cleanup must reach the job report as an error. Caller-owned background
+jobs and returning or ignored signal handlers retain their existing policies.
+The lifecycle fixtures use bounded local processes; deliberately detached sessions
+and kernel signal-delivery failures are outside their coverage.
+
+
 A background job ignores SIGINT, so the runner hands each command its SIGINT back:
 `test-renovate-fleet.sh` tests its own Ctrl-C handling and failed only side by side until it did.
 
@@ -674,7 +684,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **2557 entries** over **291 distinct test commands**; both digits are
+manifest holds **3392 entries** over **367 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1953,7 +1963,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 862 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 933 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by
@@ -1964,7 +1974,7 @@ false-positive machine; a gate on the filtered set would be inert.
 is keyed on `(file, name)` rather than on the file's reachability: a candidate
 whose name a **second file also defines**. That is exactly the surface where the
 gate's live/dead verdict comes from a name it does not own — the same-name masking
-under "The limitation: same-name masking" — and it reports **355** rows today where the reachability
+under "The limitation: same-name masking" — and it reports **370** rows today where the reachability
 tier reports 0. The header also carries the slice of that list the unlinked-definer
 arm can decide: the arm reaches **1** of them today, and the arm, not the census, is
 what fails it. `--census` prints all four counts, lists both sets, and always exits 0.
@@ -2291,6 +2301,11 @@ while finding the function end, so a regex quantifier or generated source block
 cannot absorb later functions. `linux/scripts/tests/test-code-dupes.sh` covers
 unbalanced regex and comment braces plus a here-string terminator followed by code.
 
+Shell function boundaries use `verify_code_size.code_lines`, so braces inside
+quoted strings, comments and here-doc bodies cannot absorb later functions.
+The shingle stream still uses the original source text. The regression suite
+covers a quoted `${` opener that previously merged every later function into one unit.
+
 ### `env-knobs` — a stale allow row always fails
 
 `linux/scripts/lint-env-knobs.sh` against `linux/scripts/lint-env-knobs.allow`,
@@ -2514,7 +2529,7 @@ and the gate is the authority for it, not this page.
 `linux/scripts/tests/test-env-knobs.sh` each copy their gate into
 a throwaway tree — the gates derive their root from their own path — and parse
 the measured overlap rather than hardcoding it, so the fixtures cannot rot.
-21 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
+22 entries (`code-dupes.*`) and 30 (`env-knobs.*`) in
 `docs/scripts/mutations.json` neuter one guarantee each and are proven to make
 those suites fail: the shrink and stale detections and their
 exit codes, the pre-threshold count, the stale wording, the duplicate-row exit,

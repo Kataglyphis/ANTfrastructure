@@ -89,6 +89,14 @@ fetch_ffmpeg() {
 
 # Configure
 
+_ffmpeg_pin_available() {
+    command -v pin_target_libstdcxx
+}
+
+_ffmpeg_pin_target_libstdcxx() {
+    pin_target_libstdcxx "$(cross_target_arch)"
+}
+
 # Appends the cross-compilation configure options to the named array.
 _ffmpeg_cross_args() {
     local -n _ffca_out="$1"
@@ -97,9 +105,8 @@ _ffmpeg_cross_args() {
 
         setup_linux_cross_env
         # The multiarch -L below exposes apt's libstdc++, often the wrong arch or too old for C++ probes, so pin GCC's first.
-        if command -v pin_target_libstdcxx >/dev/null 2>&1; then
-            pin_target_libstdcxx "$(cross_target_arch)" || true
-        fi
+        declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\n' >&2; return 1; }
+        media_pin_target_libstdcxx_if_available _ffmpeg_pin_available _ffmpeg_pin_target_libstdcxx "$@"
         host_cc="$(resolve_ffmpeg_host_compiler)"
         if [ -n "${host_cc}" ]; then
             host_cc="$(prepare_ffmpeg_host_compiler_wrapper "${host_cc}")"
@@ -282,7 +289,7 @@ _ffmpeg_linker_ccache_args() {
     local -n _fflc_out="$1"
 
     # Use lld linker for faster linking if available
-    if command -v ld.lld >/dev/null 2>&1 && [ "${USE_LLD:-true}" != "false" ]; then
+    if compiler_tool_enabled ld.lld "${USE_LLD:-true}" literal-false; then
         _fflc_out+=("--extra-ldflags=-fuse-ld=lld")
         echo "Using lld linker for faster linking"
     fi
@@ -381,6 +388,11 @@ _ffmpeg_enqueue_unresolved() {
     done < <(elf_unresolved_needed "${binary}" "${FFMPEG_PREFIX}/lib" "${FFMPEG_PREFIX}/lib64")
 }
 
+_ffmpeg_runtime_artifacts() {
+    find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
+    find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
+}
+
 bundle_sdk_runtime_libs() {
     # The SDK cache mount is gone at runtime and no apt package owns its libs, so every NEEDED only it resolves (and that lib's closure) ships in the prefix.
     local sdk_cache="${FFMPEG_SDK_CACHE:-/var/cache/ffmpeg-sdks}"
@@ -395,10 +407,7 @@ bundle_sdk_runtime_libs() {
         local _f _so _src
         while IFS= read -r _f; do
             _ffmpeg_enqueue_unresolved queue "${_f}"
-        done < <(
-            find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
-            find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
-        )
+        done < <(_ffmpeg_runtime_artifacts)
 
         local bundled=0 i=0
         while [ "${i}" -lt "${#queue[@]}" ]; do
@@ -436,10 +445,7 @@ emit_runtime_apt_manifest() {
 
     local manifest="${FFMPEG_PREFIX}/runtime-apt-packages.txt" tmp
     tmp="$(mktemp)"
-    {
-        find "${FFMPEG_PREFIX}/bin" -maxdepth 1 -type f 2>/dev/null
-        find "${FFMPEG_PREFIX}/lib" -maxdepth 2 -name '*.so*' -type f 2>/dev/null
-    } | while IFS= read -r _f; do
+    _ffmpeg_runtime_artifacts | while IFS= read -r _f; do
         elf_needed_sonames "${_f}"   # canonical NEEDED walk (01-core/platform.sh, backlog D4)
     done | sort -u | while IFS= read -r _soname; do
         local _path _pkg

@@ -3,12 +3,14 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+# shellcheck source=linux/scripts/tests/python-ci-fixture.sh
+source "${TESTS_DIR}/python-ci-fixture.sh"
 SCRIPTS="$(cd "${TESTS_DIR}/.." && pwd)"
 
 t_skip_unless "a POSIX python3 (the helper reads the fixture's pyproject.toml)" t_posix_python
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
-t_python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
+python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
   02-toolchain/python/test-free-threaded-wheel.sh 02-toolchain/python/free-threaded-wheel.py \
   02-toolchain/python/free-threaded-wheel-tests.py || exit 1
 mkdir -p "${WS}/tests/unit" "${WS}/fixture_app"

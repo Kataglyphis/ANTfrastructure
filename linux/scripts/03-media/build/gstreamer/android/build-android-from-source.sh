@@ -35,33 +35,21 @@ fi
 
 android_build_preamble_init "GStreamer Android build" "${ANDROID_API_LEVEL:-34}"
 
+if [ -f /opt/scripts/core/platform.sh ]; then
+    source /opt/scripts/core/platform.sh || exit $?
+else
+    source "${SCRIPT_DIR}/../../../../01-core/platform.sh" || exit $?
+fi
+
+declare -F host_python_path >/dev/null || { echo "Error: platform.sh lacks host_python_path" >&2; exit 1; }
+
 resolve_host_python() {
     if command -v host_python_bin >/dev/null 2>&1; then
         host_python_bin
         return
     fi
 
-    if [ -n "${MEDIA_HOST_PYTHON:-}" ] && [ -x "${MEDIA_HOST_PYTHON}" ]; then
-        printf '%s' "${MEDIA_HOST_PYTHON}"
-        return
-    fi
-
-    if [ -n "${UV_PYTHON:-}" ] && [ -x "${UV_PYTHON}" ]; then
-        printf '%s' "${UV_PYTHON}"
-        return
-    fi
-
-    if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "${VIRTUAL_ENV}/bin/python" ]; then
-        printf '%s' "${VIRTUAL_ENV}/bin/python"
-        return
-    fi
-
-    if [ -n "${PYTHON_MAJOR_MINOR:-}" ] && [ -x "/usr/local/bin/python${PYTHON_MAJOR_MINOR}" ]; then
-        printf '%s' "/usr/local/bin/python${PYTHON_MAJOR_MINOR}"
-        return
-    fi
-
-    command -v python3 2>/dev/null || command -v python 2>/dev/null || return 1
+    host_python_path explicit
 }
 
 patch_cerbero_system_m4_usage() {
@@ -347,11 +335,16 @@ cerbero_state_is_mounted() {
     return 1
 }
 
+cerbero_state_empty() {
+    local state_dir="$1"
+    find "${state_dir}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+}
+
 # Contents only: rm -rf on the mountpoint itself fails EBUSY after emptying it and kills the run.
 CERBERO_CACHE_RESET="${CERBERO_CACHE_RESET:-0}"
 if [ "${CERBERO_CACHE_RESET}" = "1" ]; then
     echo "==> CERBERO_CACHE_RESET=1 — clearing ${CERBERO_HOME} for a cold cerbero build"
-    find "${CERBERO_HOME}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    cerbero_state_empty "${CERBERO_HOME}"
 fi
 
 if cerbero_state_is_mounted; then
@@ -550,6 +543,6 @@ if cerbero_state_is_mounted; then
     echo "==> Kept cerbero state on the cachemount ${CERBERO_HOME} ($(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo unknown)) for the next attempt."
 else
     CERBERO_STATE_SIZE=$(du -sh "${CERBERO_HOME}" 2>/dev/null | cut -f1 || echo "unknown")
-    find "${CERBERO_HOME}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+    cerbero_state_empty "${CERBERO_HOME}"
     echo "==> No cerbero cachemount: emptied ${CERBERO_HOME} (freed ${CERBERO_STATE_SIZE}) to keep it out of the image."
 fi

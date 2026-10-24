@@ -230,6 +230,7 @@ done
 t_assert_eq 87 "$(t_rc _parse_ort --unknown)"
 t_assert_eq 87 "$(t_rc _parse_ort --wasm-config invalid)"
 
+t_source_functions "${TESTS_DIR}/../03-media/core/common.sh" media_missing_dev_symlink || exit 1
 eval "$(t_fn_src "${TESTS_DIR}/../03-media/build/armnn/build-armnn.sh" _armnn_link_openmp)"
 mkdir -p "${WORK}/openmp links" "${WORK}/openmp-source"
 touch "${WORK}/openmp links/libgomp.so.1" "${WORK}/openmp-source/libgomp.so.1"
@@ -280,7 +281,16 @@ t_assert_eq 1 "$(t_rc _cerbero_soundtouch_archive_url fixture soundtouch https:/
 t_assert_eq 1 "$(t_rc _cerbero_soundtouch_archive_url fixture soundtouch 'https://codeberg.org/{unknown}/archive/fixture.tar.gz')"
 t_assert_eq 1 "$(t_rc _cerbero_soundtouch_archive_url 'bad/value' soundtouch 'https://codeberg.org/soundtouch/archive/{version}.tar.gz')"
 
-eval "$(t_fn_src "${TESTS_DIR}/../06-packaging/validate-compilers.sh" _artifact_source_check_swapped_gcc)"
+eval "$(t_fn_src "${TESTS_DIR}/../03-media/build/gstreamer/android/build-android-from-source.sh" cerbero_state_empty)"
+_cerbero_state="${WORK}/cerbero cache"
+mkdir -p "${_cerbero_state}/sources/local" "${_cerbero_state}/build"
+touch "${_cerbero_state}/state.cache"
+t_case "cerbero cache clearing keeps the mountpoint and removes only its contents"
+cerbero_state_empty "${_cerbero_state}"
+t_assert_ok test -d "${_cerbero_state}"
+t_assert_eq "" "$(find "${_cerbero_state}" -mindepth 1 -maxdepth 1 -print -quit)"
+
+t_source_functions "${TESTS_DIR}/../06-packaging/validate-compilers.sh" _artifact_source_check_swapped_gcc _vc_elf_machine_header _vc_elf_header_matches || exit 1
 mkdir -p "${WORK}/swapped-gcc/bin"
 printf '#!/bin/sh\nprintf "%%s\\n" "$DUMP_TRIPLE"\n' > "${WORK}/swapped-gcc/bin/gcc"
 chmod +x "${WORK}/swapped-gcc/bin/gcc"

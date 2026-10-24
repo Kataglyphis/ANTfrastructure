@@ -3,17 +3,14 @@
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
+source "${TESTS_DIR}/runtime-flow-fixtures.sh"
 source "${TESTS_DIR}/meet.sh"
-RBF="${TESTS_DIR}/../01-core/runtime-build-fns.sh"
 
 _work="$(mktemp -d)"
 trap 'rm -rf "${_work}"' EXIT
 
-_FNS=""
-for _fn in runtime_build_chain _runtime_smoke_start _runtime_smoke_wait _runtime_timed \
-           runtime_build_wrapper_image runtime_build_wrapper_rootfs _runtime_wrapper_then_ship _runtime_ship_image _runtime_ship_rootfs _runtime_push_wrapper_tag; do
-  _FNS+="$(t_fn_src "${RBF}" "${_fn}")"$'\n' || exit 1
-done
+_FNS="$(runtime_test_timer_sources "${TESTS_DIR}/.." runtime_build_chain _runtime_smoke_start _runtime_smoke_wait _runtime_timed \
+           runtime_build_wrapper_image runtime_build_wrapper_rootfs _runtime_wrapper_then_ship _runtime_ship_image _runtime_ship_rootfs _runtime_push_wrapper_tag)" || exit 1
 
 # Each step appends "<what> <epoch>" to ${E}; SMOKE_RC/WRAP_RC fail a step, SMOKE_SECS/WRAP_SECS make it last, MEET makes both meet there.
 _mark_step() { echo "$1 $(date +%s)" >> "${E}"; }

@@ -88,20 +88,15 @@ echo "Installing Flutter ${FLUTTER_VERSION} for ${ARCH_LABEL}..."
 echo "  Archive: ${ARCHIVE}"
 echo "  Target:  ${FLUTTER_PATH}"
 
-# download_and_extract (retry-capable, temp-file hygiene) lives in
-# 01-core/downloads.sh; load it directly since this installer runs standalone.
-if ! command -v download_and_extract >/dev/null 2>&1; then
-  for _flutter_dl in \
-    "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/downloads.sh" \
-    "/opt/scripts/core/downloads.sh"; do
-    if [ -f "${_flutter_dl}" ]; then
-      # shellcheck disable=SC1090
-      source "${_flutter_dl}"
-      break
-    fi
-  done
-  unset _flutter_dl
+# One helper owns the repo and image lookup while preserving a caller's downloader.
+_flutter_download_loader="/opt/scripts/core/download-loader.sh"
+if [ ! -f "${_flutter_download_loader}" ]; then
+  _flutter_download_loader="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../01-core/download-loader.sh"
 fi
+# shellcheck source=../../01-core/download-loader.sh
+source "${_flutter_download_loader}"
+unset _flutter_download_loader
+download_module_load
 
 # VERIFIED fetch (supply-chain audit #9): this is the Dart/Flutter COMPILER
 # toolchain, executed at build time — Google publishes the official sha256 in
@@ -141,10 +136,7 @@ if [ -z "${FLUTTER_SDK_SHA256:-}" ]; then
 fi
 if [ -n "${FLUTTER_SDK_SHA256:-}" ]; then
   _flutter_tmp="$(mktemp "${TMPDIR:-/tmp}/flutter-sdk-XXXXXX.tar.xz")"
-  download_verified_file "${URL}" "${FLUTTER_SDK_SHA256}" "${_flutter_tmp}"
-  mkdir -p "${INSTALL_DIR}"
-  tar -xJf "${_flutter_tmp}" -C "${INSTALL_DIR}"
-  rm -f "${_flutter_tmp}"
+  download_verified_extract_xz "${URL}" "${FLUTTER_SDK_SHA256}" "${_flutter_tmp}" "${INSTALL_DIR}"
 else
   echo "WARNING: FLUTTER_SDK_SHA256 unset — fetching the Flutter toolchain UNVERIFIED (official sha lives in releases_linux.json; pin it in versions.env)" >&2
   download_and_extract "${URL}" "${INSTALL_DIR}"

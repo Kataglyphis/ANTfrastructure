@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # gst-onnx-ort.sh - proves from meson's build.ninja that the gst onnx plugin compiles and links the chain ORT only.
 
+# shellcheck source=../../../../01-core/path-helpers.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../../../01-core/path-helpers.sh" || return $?
+
 # _gst_onnx_ninja_tokens <build.ninja> <output-regex>: one token per line of each statement whose first output matches.
 _gst_onnx_ninja_tokens() {
     GST_ONNX_RE="$2" awk '
@@ -20,13 +23,7 @@ _gst_onnx_abs() {
 
 # _gst_onnx_under <real> <root>...: 0 when <real> is one of the resolved roots or sits inside one.
 _gst_onnx_under() {
-    local real="$1" r
-    shift
-    for r in "$@"; do
-        [ -n "${r}" ] || continue
-        case "${real}" in "${r}"|"${r}"/*) return 0 ;; esac
-    done
-    return 1
+  path_under_roots verbatim "$@"
 }
 
 # _gst_onnx_search <name> <builddir> <dir>...: the first dir that holds <name>, like ld's -L walk.

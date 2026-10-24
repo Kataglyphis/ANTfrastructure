@@ -532,6 +532,15 @@ else
   t_assert_eq "" "$(_sc "smoke_elf_machine_of '${_RT_SANDBOX}/fake.elf' || true")"
 fi
 
+t_case "a copied smoke-common refuses an absent canonical ELF parser"
+_empty_elf_owner="${_RT_SANDBOX}/empty-elf-owner"
+mkdir -p "${_empty_elf_owner}"
+sed "s|/opt/scripts/core|${_empty_elf_owner}/installed|g" "${SMOKE_COMMON}" > "${_empty_elf_owner}/smoke-common.sh"
+_elf_output=''; _elf_status=0
+t_capture_command _elf_output _elf_status bash -c 'source "$1"; readelf() { printf "Machine: fake\n"; }; smoke_elf_machine_of "$1"' _ "${_empty_elf_owner}/smoke-common.sh"
+t_assert_eq 1 "${_elf_status}"
+t_assert_eq '' "${_elf_output}"
+
 # B. Drift guard; smoke-runtime-image.sh is excluded because its payloads run where smoke-common.sh is not sourced
 _EXCLUDED_FROM_DEDUP="smoke-common.sh smoke-runtime-image.sh"
 
@@ -559,6 +568,7 @@ t_case "the drift scan actually reaches the smoke scripts (positive control)"
 t_assert_ok test "$(_dedup_targets | wc -l)" -ge 4
 t_assert_contains "$(_dedup_targets)" "smoke-media.sh"
 t_assert_contains "$(_dedup_scan 'smoke_cross_presence_gate')" "smoke-media.sh:"
+t_assert_contains "$(_dedup_scan 'smoke_native_dispatch')" "smoke-media.sh:"
 
 t_case "no re-inlined smoke_resolve_bin (command -v … || echo <fallback>)"
 t_assert_eq "" "$(_dedup_scan 'command -v [^|]*\|\|[[:space:]]*echo')" \
@@ -576,10 +586,10 @@ t_assert_eq "" "$(_dedup_scan 'present at .*\(cross build — .* skipped\)')" \
 t_case "no re-inlined readelf Machine: pipeline"
 t_assert_eq "" "$(_dedup_scan 'readelf -h')" \
   "use smoke_elf_machine_of from smoke-common.sh"
-# smoke-common.sh is excluded from the scan above, so check it holds exactly one copy.
-t_assert_eq "1" "$(sed 's/^[[:space:]]*#.*$//' "${SMOKE_COMMON}" | grep -c 'readelf -h')" \
-  "smoke-common.sh must define the readelf pipeline once, in smoke_elf_machine_of"
-
+# The canonical parser stays in platform.sh while smoke-common delegates without a private copy.
+_smoke_code="$(sed 's/^[[:space:]]*#.*$//' "${SMOKE_COMMON}")"
+t_assert_eq 1 "$(t_rc grep -q 'readelf -h' <<< "${_smoke_code}")" "smoke-common must delegate ELF parsing"
+t_assert_eq 1 "$(sed 's/^[[:space:]]*#.*$//' "${CORE}/platform.sh" | grep -c 'readelf -h')" "platform owns the readelf parser"
 t_case "no private copy of the arch -> ELF-machine map"
 t_assert_eq "" "$(_dedup_scan '\*(AArch64|X86-64|RISC-V)\*')" \
   "use smoke_elf_machine_grep from smoke-common.sh"

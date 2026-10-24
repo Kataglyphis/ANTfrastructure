@@ -1,0 +1,20 @@
+Types: deb
+URIs: https://stable.repo.amd.com/rocm/core/packages/ubuntu2604/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/rocm.gpg
+
+Types: deb
+URIs: https://stable.repo.amd.com/rocm/migraphx/packages/ubuntu2604/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/rocm.gpg
+
+Types: deb
+URIs: https://stable.repo.amd.com/rocm/core/packages-asan/ubuntu2604/
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/rocm.gpg

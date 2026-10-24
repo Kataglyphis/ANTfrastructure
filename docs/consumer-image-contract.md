@@ -8,8 +8,8 @@ SPDX-License-Identifier: MIT
 This page is the **contract** side of the runtime image: the properties another
 repository's CI lane may build on, written down so they are a promise rather
 than an accident of the last build. Everything here is asserted per arch by
-`check_consumer_contract` in `linux/scripts/06-packaging/smoke-runtime-image.sh`,
-against the shipped bytes, as the user the image ships.
+`check_consumer_contract` in `linux/scripts/06-packaging/runtime-consumer-contract.sh`,
+loaded by `smoke-runtime-image.sh`, against the shipped bytes as the image's user.
 
 It exists because on 2026-09-04 four properties a consuming lane depended on were
 all broken at once in `:latest-cross`, every runtime gate stayed green, and the

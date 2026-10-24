@@ -1,0 +1,5498 @@
+{
+  "('stage', 'missing', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'missing', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/lib\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/lib/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/lib/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'regular', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "bytes"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'directory', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'symlink', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "link:WORK/target/lib/libonnxruntime.so"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('stage', 'nested', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "INFO:QNN: staged 1 backend .so + hexagon skel dirs into WORK/target/deep\n",
+    "find": "WORK/target/lib\u0000-maxdepth\u00001\u0000-name\u0000*.so*\u0000-type\u0000f\u0000WORK/target\u0000-type\u0000f\u0000-name\u0000*.so*\u0000WORK/sdk/lib/aarch64-oe-linux-gcc11.2\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000WORK/sdk/lib\u0000-maxdepth\u00001\u0000-type\u0000d\u0000-name\u0000hexagon-v*\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": [
+      [
+        "target/deep",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73",
+        "dir"
+      ],
+      [
+        "target/deep/hexagon-v73/payload",
+        "skel"
+      ],
+      [
+        "target/deep/libQnnCpu.so",
+        "backend"
+      ],
+      [
+        "target/deep/libnested.so",
+        "nested"
+      ],
+      [
+        "target/lib",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child",
+        "dir"
+      ],
+      [
+        "target/lib/libtarget.so/child/libQnnCpu.so",
+        "nested"
+      ]
+    ]
+  },
+  "('verify', 'missing', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'direct', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'direct', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'missing', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "PASS [onnxruntime-cpu]: QNN EP present, backend libs staged\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "PASS [onnxruntime-cpu]: QNN EP present, backend libs staged\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "PASS [onnxruntime-cpu]: QNN EP present, backend libs staged\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "PASS [onnxruntime-cpu]: QNN EP present, backend libs staged\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'regular', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'direct', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'direct', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'directory', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'direct', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'direct', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'symlink', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'direct', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'direct', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'conditional', False, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'conditional', True, 0, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', None, 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'direct', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'direct', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'direct', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'direct', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'direct', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'direct', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'conditional', False, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'conditional', False, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'conditional', False, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'conditional', True, 0, 0)": {
+    "rc": 1,
+    "out": "FAIL [onnxruntime-cpu]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged \u2014 QNN runtime missing\n",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libQnn*.so\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'conditional', True, 37, 0)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  },
+  "('verify', 'nested', 'regular', 'conditional', True, 0, 41)": {
+    "rc": 0,
+    "out": "",
+    "err": "OK   [onnxruntime-cpu]: libonnxruntime.so: WORK/prefix [*]/lib/libonnxruntime.so\nOK   [onnxruntime-cpu]: All artifact checks passed\n",
+    "find": "WORK/prefix [*]/lib\u0000-maxdepth\u00002\u0000-name\u0000libonnxruntime.so*\u0000-type\u0000f\u0000WORK/prefix [*]/lib\u0000-maxdepth\u00001\u0000-name\u0000libonnxruntime_providers_qnn.so*\u0000-type\u0000f\u0000",
+    "grep": "-q\u0000.\u0000",
+    "tree": []
+  }
+}

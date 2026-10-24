@@ -224,13 +224,46 @@ cross_build_lower_rust() {
   cross_build_rust_triple | tr '[:upper:]-' '[:lower:]_'
 }
 
+# The capture binds runtime aliases without leaking a callback or shadowing provider variables.
+cross_collect_target_rust_env() {
+  local _cctre_output="$1" _cctre_field
+  for _cctre_field in upper lower; do
+    if command -v "cross_target_${_cctre_field}_rust" >/dev/null 2>&1; then
+      printf -v "${_cctre_output}[${_cctre_field}]" '%s' "$(
+        case "${_cctre_field}" in
+          upper) _cctre_provider() { cross_target_upper_rust; } ;;
+          lower) _cctre_provider() { cross_target_lower_rust; } ;;
+        esac
+        _cctre_provider 2>/dev/null || true
+      )"
+    fi
+  done
+}
+
+export_cargo_compiler_binding() {
+  local rust_env="$1" rust_lower="$2" language="$3" compiler="$4" scope="${5:-target}"
+  case "${language}" in
+    c)
+      export "CARGO_TARGET_${rust_env}_LINKER=${compiler}"
+      [ -z "${rust_lower}" ] || export "CC_${rust_lower}=${compiler}"
+      [ "${scope}" != host ] || export HOST_CC="${compiler}"
+      ;;
+    cxx)
+      [ -z "${rust_lower}" ] || export "CXX_${rust_lower}=${compiler}"
+      [ "${scope}" != host ] || export HOST_CXX="${compiler}"
+      ;;
+  esac
+  return 0
+}
+
 # export_cargo_target_linker <RUST_ENV> [rust_lower] [cc] [cxx]: target linker only, host proc-macros stay native; 1 without a usable cc.
 export_cargo_target_linker() {
   local rust_env="$1" rust_lower="${2:-}" cc="${3:-}" cxx="${4:-}"
   [ -n "${rust_env}" ] && [ -n "${cc}" ] && [ -x "${cc}" ] || return 1
-  export "CARGO_TARGET_${rust_env}_LINKER=${cc}"
-  [ -n "${rust_lower}" ] && export "CC_${rust_lower}=${cc}"
-  [ -n "${rust_lower}" ] && [ -n "${cxx}" ] && [ -x "${cxx}" ] && export "CXX_${rust_lower}=${cxx}"
+  export_cargo_compiler_binding "${rust_env}" "${rust_lower}" c "${cc}"
+  if [ -n "${rust_lower}" ] && [ -n "${cxx}" ] && [ -x "${cxx}" ]; then
+    export_cargo_compiler_binding "${rust_env}" "${rust_lower}" cxx "${cxx}"
+  fi
   return 0
 }
 
@@ -446,18 +479,21 @@ _export_pkg_config() {
   export PKG_CONFIG_LIBDIR
 }
 
+_cross_append_library_path() {
+  local -n _calp_state="$1"
+  _calp_state="${_calp_state:+${_calp_state}:}$2"
+}
+
 _export_library_path() {
   local -n _elp=$1
   local target_link_path="" dir
-  for dir in \
+  path_require_directory_visitor _cross_append_library_path || return $?
+  path_visit_existing_directories _cross_append_library_path target_link_path \
     "${_elp[runtime_libdir]}" \
     "${_elp[gcc_prefix]}/${_elp[triplet]}/lib" \
     "/usr/lib/${_elp[triplet]}" \
     "/lib/${_elp[triplet]}" \
-    "/usr/${_elp[triplet]}/lib"; do
-    [ -d "${dir}" ] || continue
-    target_link_path="${target_link_path:+${target_link_path}:}${dir}"
-  done
+    "/usr/${_elp[triplet]}/lib"
   if [ -n "${target_link_path}" ]; then
     export LIBRARY_PATH="${target_link_path}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   fi

@@ -83,15 +83,18 @@ fix6_native_gcc_system_paths() {
   # See docs/cross-build-verification.md § Swapping the native GCC in the shipped image
   local stv="${REPO_ROOT}/linux/scripts/06-packaging/setup-torch-venv.sh"
   local swp="${REPO_ROOT}/linux/scripts/06-packaging/swap-native-gcc.sh"
+  local paths="${REPO_ROOT}/linux/scripts/01-core/native-gcc-system-paths.sh"
   local dep="${REPO_ROOT}/linux/scripts/03-media/runtime/install-deps.sh"
 
   # -idirafter must reach C AND C++ in both the in-script env and profile.d (CPATH alone doesn't fix C++ #include_next).
   _critical_source_verdict "setup-torch-venv.sh injects -idirafter into CXXFLAGS (C++ #include_next)" \
     "setup-torch-venv.sh lost the -idirafter CXXFLAGS injection (bug D regression)" quiet _critical_source_all_grep \
-    -q 'idirafter /usr/include' "${stv}" -qE 'export CXXFLAGS=.*idaf|CXXFLAGS.*idirafter' "${stv}"
-  _critical_source_pattern "swap-native-gcc.sh profile.d writes -idirafter system paths" \
-    "swap-native-gcc.sh lost the -idirafter profile.d injection (bug D regression)" \
-    -q 'idirafter /usr/include' "${swp}"
+    -q 'idirafter /usr/include' "${paths}" -qE 'export CXXFLAGS=.*idaf|CXXFLAGS.*idirafter' "${paths}" \
+    -q '^native_gcc_system_paths ' "${stv}" -q 'source /opt/scripts/core/native-gcc-system-paths.sh' "${stv}"
+  _critical_source_verdict "swap-native-gcc.sh profile.d writes -idirafter system paths" \
+    "swap-native-gcc.sh lost the -idirafter profile.d injection (bug D regression)" quiet _critical_source_all_grep \
+    -q 'idirafter /usr/include' "${paths}" -q 'native_gcc_system_paths /usr/include/' "${swp}" \
+    -q '^\. /opt/scripts/core/native-gcc-system-paths.sh' "${swp}"
   # D: Pillow needs jpeglib.h -> libjpeg-dev in the final-stage target packages.
   _critical_source_pattern "install-deps.sh installs libjpeg-dev (Pillow jpeglib.h)" \
     "install-deps.sh no longer installs libjpeg-dev (bug D regression)" \
