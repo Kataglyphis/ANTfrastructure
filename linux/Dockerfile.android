@@ -68,12 +68,12 @@ ENV ANDROID_HOME=/opt/android-sdk \
 ENV PATH="${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/${ANDROID_BUILD_TOOLS}:${ANDROID_NDK_HOME}:${PATH}"
 
 COPY --chmod=755 linux/scripts/02-toolchain/android-sdk.sh linux/scripts/02-toolchain/bootstrap.sh linux/scripts/02-toolchain/bootstrap-import.sh /opt/scripts/
-COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/load-versions-env.sh /opt/scripts/core/
+COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/load-versions-env.sh linux/scripts/01-core/modules.sh /opt/scripts/core/
 # The base's 01-core is older; cross-apt.sh needs this ubuntu-mirror.sh too: docs/failure-modes.md#apt-libc6i386-install-is-unsatisfiable-after-an-archiveports-drift
 COPY --chmod=755 linux/scripts/01-core/cross-apt.sh /opt/scripts/core/cross-apt.sh
 COPY --chmod=755 linux/scripts/01-core/ubuntu-mirror.sh /opt/scripts/core/ubuntu-mirror.sh
 # Every android-* stage derives from this one, so one COPY covers them all.
-COPY --chmod=755 linux/scripts/01-core/downloads.sh /opt/scripts/core/downloads.sh
+COPY --chmod=755 linux/scripts/01-core/downloads.sh linux/scripts/01-core/download-loader.sh /opt/scripts/core/
 # Without the canonical resolver, IREE took the custom cross GCC on PATH as its host compiler.
 COPY --chmod=755 linux/scripts/01-core/compiler-resolution.sh /opt/scripts/core/compiler-resolution.sh
 
