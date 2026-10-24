@@ -66,22 +66,20 @@ case "${annotation_rc}" in
   *) cat "${annotations_report}" >&2; exit "${annotation_rc}" ;;
 esac
 
-# Other ANN rules have existing findings, so only clean ANN205 can fail CI today.
-if uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN205 --output-format concise \
-  "${py_files[@]}" > "${annotations_gate_report}" 2>&1; then
-  printf 'Ruff staticmethod annotation gate: clean (%s files); %s\n' "${#py_files[@]}" "${annotations_gate_report}"
-else
-  rc=$?
-  cat "${annotations_gate_report}" >&2
-  printf 'Ruff staticmethod annotation gate failed (exit %s)\n' "${rc}" >&2
-  exit "${rc}"
-fi
+strict_scan() {
+  local label="$1" report="$2" count="$3" rc=0
+  shift 3
+  "$@" > "${report}" 2>&1 || rc=$?
+  if [ "${rc}" -ne 0 ]; then
+    if [ -f "${report}" ]; then cat "${report}" >&2; fi
+    printf '%s failed (exit %s)\n' "${label}" "${rc}" >&2
+    exit "${rc}"
+  fi
+  printf '%s: clean (%s files); %s\n' "${label}" "${count}" "${report}"
+}
 
-if "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}" > "${strict_report}" 2>&1; then
-  printf 'ty quality gate: clean (%s files); %s\n' "${#quality_files[@]}" "${strict_report}"
-else
-  rc=$?
-  cat "${strict_report}" >&2
-  printf 'ty quality gate failed (exit %s)\n' "${rc}" >&2
-  exit "${rc}"
-fi
+# Other ANN rules have existing findings, so only clean ANN205 can fail CI today.
+strict_scan "Ruff staticmethod annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
+  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN205 --output-format concise "${py_files[@]}"
+strict_scan "ty quality gate" "${strict_report}" "${#quality_files[@]}" \
+  "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}"

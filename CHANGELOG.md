@@ -16,7 +16,7 @@
 ## 2026-10-24 — Wider quality coverage
 
 - Make pinned ty checks fatal for tracked Linux Python test helpers as well as verifiers, growing the clean strict scope from 40 to 93 files; test a bad type and mutation-test the new selection.
-- Annotate the four remaining static methods and make Ruff ANN205 fatal across all tracked Python; keep the other annotation findings visible in ignored reports.
+- Annotate the four remaining static methods and make Ruff ANN205 fatal across all tracked Python; share its fatal report handling with ty so the duplication gate stays green, and keep the other annotation findings visible in ignored reports.
 - Extend enforced Windows Pester coverage from three to eight modules without lowering the existing floors; pin the target inventory and mutation-test removal and floor relaxation.
 
 ## 2026-10-24 — Stronger executable quality gates

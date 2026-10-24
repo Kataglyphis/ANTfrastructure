@@ -554,7 +554,8 @@ annotations across every tracked Python file; the four existing findings were fi
 `ANN001`–`ANN003`, `ANN201`, `ANN202`, `ANN204` and `ANN206` remain reports until
 their existing findings are fixed. The focused suite injects an unannotated static
 method, and `python-types.staticmethod-annotation-gate` removes the selector to prove
-the gate can fail.
+the gate can fail. The ANN205 and ty checks share one fatal report/exit path so
+their diagnostics and exit status cannot drift apart.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
