@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # uvx runs lint-python.sh's pinned ruff (RUFF_PIN); this runner has neither ruff nor uv.
+      # The Python lint and type gates resolve their pinned Ruff and ty through uvx.
       - name: Install uv (provides uvx for the python-lint gate)
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
       # The runner image ships no pytest, and without it every mutation baseline fails unmutated.
@@ -36,6 +36,15 @@ jobs:
       # Every slug but the mutation gate, which the mutations job runs in shards.
       - name: Run preflight checks
         run: PREFLIGHT_SKIP=mutations bash linux/scripts/preflight.sh
+      - name: Upload Python type and annotation reports
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: python-type-reports
+          path: |
+            logs/code-quality/ty-*.txt
+            logs/code-quality/ruff-annotations.txt
+          if-no-files-found: error
 
   # The mutations slug (docs/scripts/verify_mutations.py) in eight shards. See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded
   mutations:

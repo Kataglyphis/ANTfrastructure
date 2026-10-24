@@ -11,11 +11,14 @@ import tempfile
 import types
 import unittest
 import urllib.error
+from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / "image-acceptance.py"
 SPEC = importlib.util.spec_from_file_location("image_acceptance", SOURCE)
+if SPEC is None or SPEC.loader is None:
+    raise RuntimeError("Cannot load the image acceptance fixture")
 module = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(module)
 INDEX_MEDIA = "application/vnd.oci.image.index.v1+json"
@@ -100,9 +103,10 @@ class ReceiptTests(unittest.TestCase):
         if isinstance(error, urllib.error.HTTPError):
             self.addCleanup(error.close)
         path = Path(self.directory.name) / "receipt.json"
-        receipt = dict(self.receipt, image="ghcr.io/kataglyphis/test@sha256:" + hashlib.sha256(candidate).hexdigest())
+        image = "ghcr.io/kataglyphis/test@sha256:" + hashlib.sha256(candidate).hexdigest()
+        receipt = dict(self.receipt, image=image)
         path.write_text(json.dumps(receipt), encoding="utf-8")
-        tested = (candidate, INDEX_MEDIA, receipt["image"].split("@", 1)[1])
+        tested = (candidate, INDEX_MEDIA, image.split("@", 1)[1])
         target = error or (current, INDEX_MEDIA, "sha256:" + hashlib.sha256(current).hexdigest())
         with patch.object(module, "Registry") as registry:
             registry.return_value.manifest.side_effect = [tested, target, tested]
@@ -125,10 +129,10 @@ class ReceiptTests(unittest.TestCase):
                 self.promote_index(candidate)
 
     def test_promote_allows_only_clear_404_when_creating_a_tag(self):
-        self.promote_index(error=urllib.error.HTTPError("https://ghcr.io/tag", 404, "missing", None, None))
+        self.promote_index(error=urllib.error.HTTPError("https://ghcr.io/tag", 404, "missing", Message(), None))
         for code in (401, 403, 429, 500):
             with self.subTest(code=code), self.assertRaises(urllib.error.HTTPError):
-                self.promote_index(error=urllib.error.HTTPError("https://ghcr.io/tag", code, "failed", None, None))
+                self.promote_index(error=urllib.error.HTTPError("https://ghcr.io/tag", code, "failed", Message(), None))
         with self.assertRaises(urllib.error.URLError):
             self.promote_index(error=urllib.error.URLError("network unavailable"))
 

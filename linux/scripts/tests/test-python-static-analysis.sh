@@ -88,6 +88,16 @@ t_assert_contains "$(cat "${LOG}")" "uv_run ty check" \
   "stopping at the first failure costs one push per finding, which is why run_gate records instead of raising"
 t_assert_contains "$(cat "${LOG}")" "uv_run ruff format"
 
+t_case "a ty finding fails the batch after Ruff has run"
+_run "ty check"
+t_assert_eq "1" "${rc}" "a type error must reach the static-analysis exit code"
+t_assert_contains "${OUT}" "== ty: FAILED (exit 1) ==" "the failing type gate must be named"
+t_assert_contains "${OUT}" "FAILED (1 of 6): ty" "the type finding must count in the aggregate verdict"
+t_assert_contains "$(cat "${LOG}")" "uv_run ruff check --no-fix" \
+  "Ruff must still check the same run before ty's verdict"
+t_assert_contains "$(cat "${LOG}")" "uv_run ruff format --check --diff" \
+  "Ruff formatting must still check the same run before ty's verdict"
+
 t_case "the venv teardown still happens when a gate failed"
 t_assert_contains "$(cat "${LOG}")" "venv_remove" \
   "assert_gates sits after the teardown so a red run does not leak the fixture venv"

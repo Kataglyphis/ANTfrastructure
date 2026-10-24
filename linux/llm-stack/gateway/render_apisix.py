@@ -91,8 +91,8 @@ def _keys(obj, allowed, where, required=()):
 
 def _loopback(addr, where):
     m = LOOPBACK_RE.match(str(addr))
-    need(m is not None and 0 < int(m.group(1)) < 65536,
-         f"{where} must be 127.0.0.1:<port> (the gateway is localhost-only), got {addr!r}")
+    if m is None or not 0 < int(m.group(1)) < 65536:
+        raise RenderError(f"{where} must be 127.0.0.1:<port> (the gateway is localhost-only), got {addr!r}")
     return {"ip": "127.0.0.1", "port": int(m.group(1))}
 
 
@@ -148,7 +148,8 @@ def parse_gateway(gw):
 
 def _endpoint(url, where):
     m = ENDPOINT_RE.match(url if isinstance(url, str) else "")
-    need(m is not None, f"{where}: base_url must be http://<host>:<port> with no path, got {url!r}")
+    if m is None:
+        raise RenderError(f"{where}: base_url must be http://<host>:<port> with no path, got {url!r}")
     return f"http://{m.group(1)}:{m.group(2)}"
 
 

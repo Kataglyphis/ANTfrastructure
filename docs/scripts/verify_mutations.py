@@ -130,7 +130,8 @@ def _kill_group(pid, grace=5.0):
             while time.monotonic() < deadline:
                 time.sleep(0.1)
                 os.killpg(pid, 0)
-            os.killpg(pid, signal.SIGKILL)
+            # Windows has no SIGKILL; this branch runs only where killpg exists.
+            os.killpg(pid, getattr(signal, "SIGKILL"))
         except (ProcessLookupError, PermissionError):
             pass
     else:

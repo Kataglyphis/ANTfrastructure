@@ -1495,6 +1495,26 @@
               "spdx": "BSD-3-Clause"
             }
           ]
+        },
+        {
+          "title": "Host Quality Tools",
+          "dockerfile": null,
+          "entries": [
+            {
+              "name": "Ruff",
+              "var": "RUFF_VERSION",
+              "url": "https://github.com/astral-sh/ruff",
+              "license": "MIT",
+              "spdx": "MIT"
+            },
+            {
+              "name": "ty",
+              "var": "TY_VERSION",
+              "url": "https://github.com/astral-sh/ty",
+              "license": "MIT",
+              "spdx": "MIT"
+            }
+          ]
         }
       ]
     }

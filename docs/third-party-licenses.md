@@ -413,6 +413,13 @@ halves fit together and why neither is sufficient alone.
 | Stevedore (Windows builds — bundled docker.exe) | host install | [github.com/slonopotamus/stevedore](https://github.com/slonopotamus/stevedore) | Apache 2.0 |
 | GenieX (on-device LLM/VLM runtime for Snapdragon; WSL2 client + Windows host server) | host install (GenieX CLI v0.6.1) | [github.com/qualcomm/GenieX](https://github.com/qualcomm/GenieX) | BSD 3-Clause |
 
+### Host Quality Tools
+
+| Software | Version | Repository | License |
+| --- | --- | --- | --- |
+| Ruff | 0.17.0 | [github.com/astral-sh/ruff](https://github.com/astral-sh/ruff) | MIT |
+| ty | 0.0.91 | [github.com/astral-sh/ty](https://github.com/astral-sh/ty) | MIT |
+
 
 ---
 

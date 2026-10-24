@@ -157,7 +157,7 @@ def make_handler(jpegs):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
-        def log_message(self, *_):
+        def log_message(self, format: str, *args: object) -> None:
             pass
 
     return Handler

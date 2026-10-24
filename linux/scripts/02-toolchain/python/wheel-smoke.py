@@ -20,6 +20,8 @@ def load_sibling(stem: str):
     """The free-threaded helper beside this file, by path: -I keeps the script's directory off sys.path."""
     path = Path(__file__).with_name(f"{stem}.py")
     spec = importlib.util.spec_from_file_location(stem.replace("-", "_"), path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"no module loader for {path}")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

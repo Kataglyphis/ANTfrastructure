@@ -162,6 +162,8 @@ def settle(client: Client, repo: str, runs: list[dict], issue: dict | None, now:
             client.call("POST", issues, {"title": title, "body": text, "labels": [LABEL]})
             print("opened: %s" % title)
         return
+    if issue is None:
+        raise RuntimeError("an open issue has no issue record")
     path = "%s/%d" % (issues, issue["number"])
     if not new["red"]:
         client.call("POST", path + "/comments", {"body": "Green again: every job passed on develop, "

@@ -21,9 +21,18 @@ import os
 import stat
 import sys
 import tempfile
+from typing import TypedDict
 
 import renovate_audit
 import renovate_locator
+
+
+class PendingTarget(TypedDict):
+    path: str
+    lines: list[str]
+    stat: os.stat_result
+    steps: list[dict]
+
 
 # Other match keys are named in the output, never silently ignored (rule_hit).
 FIELDS = {"matchManagers": "manager", "matchDatasources": "datasource",
@@ -360,9 +369,10 @@ def _writable(path, rel):
 
 def _verify(steps, root):
     """Re-read, contain and prove writable every target before the first byte: the run writes all or nothing."""
-    files, seen = {}, set()
+    files: dict[str, PendingTarget] = {}
+    seen = set()
     for e in steps:
-        target = files.get(e["file"])
+        target: PendingTarget | None = files.get(e["file"])
         if target is None:
             path = contained(root, e["file"], "the plan")
             try:
@@ -448,10 +458,10 @@ def _replace(path, text):
             fh.write(text)
         os.chmod(temp, stat.S_IMODE(os.stat(path).st_mode))
         os.replace(temp, path)
-        temp = ""
-    finally:
-        if temp and os.path.exists(temp):
+    except BaseException:
+        if os.path.exists(temp):
             os.unlink(temp)
+        raise
 
 
 def _audited(files):

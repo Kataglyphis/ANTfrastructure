@@ -37,7 +37,7 @@ export PYTHONUTF8=1
 
 KNOWN_SLUGS=(crlf-guard shellcheck stdout-returns copy-coverage context-paths critical-fixes patch-integrity code-dupes artifact-parity \
              arg-consistency version-snapshot mirror-consistency runtime-paths env-knobs \
-             dockerfile-lint workflow-lint python-lint secret-scan android-parity script-tests stage-graph \
+             dockerfile-lint workflow-lint python-lint python-types secret-scan android-parity script-tests stage-graph \
              pkg-names \
              advert-keys \
              masked-decls \
@@ -289,6 +289,7 @@ run_check workflow-lint "workflow lint (actionlint)" env WORKFLOW_CONVENTIONS_GA
 
 # Python gate: hard-fails only on real-error classes; full ruleset is advisory.
 run_check python-lint "python lint (ruff)" bash linux/scripts/lint-python.sh
+run_check python-types "python types (ty)" bash linux/scripts/lint-python-types.sh
 
 # Secret scan (enforcing); a false positive goes in .gitleaksignore with a justification.
 run_check secret-scan "secret scan (gitleaks)" bash linux/scripts/lint-secrets.sh

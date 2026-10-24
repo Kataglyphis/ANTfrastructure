@@ -16,6 +16,8 @@ import yaml
 HERE = pathlib.Path(__file__).resolve().parent
 STACK = HERE.parent
 _SPEC = importlib.util.spec_from_file_location("render_apisix", STACK / "gateway" / "render_apisix.py")
+if _SPEC is None or _SPEC.loader is None:
+    raise RuntimeError("Cannot load the gateway renderer fixture")
 ra = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(ra)
 

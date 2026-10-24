@@ -1,6 +1,22 @@
 """Exercise physical copied owners, side-effect-free imports and standalone installer paths with command stubs."""
 import itertools
 import subprocess
+from collections.abc import Callable
+from pathlib import Path
+from typing import TypedDict
+
+
+class OracleRow(TypedDict):
+    scenario: str
+    receipt: dict[str, int | str]
+
+
+BASE: Path
+OWNER: Path
+MANIFEST: Path
+ORACLE: list[OracleRow]
+function: Callable[[str, str], str]
+receipt: Callable[[subprocess.CompletedProcess[bytes], bytes, Path], dict[str, int | str]]
 
 
 def configure(base, owner, manifest, oracle, extractor, recorder):

@@ -5,16 +5,34 @@
 
 See docs/dependency-updates.md#how-one-value-gets-rewritten
 """
-import collections
 import fnmatch
 import json
 import os
 import re
+from typing import NamedTuple, TypedDict
 
 # start/end: the value's half-open span, so a rewrite touches nothing else on the line.
-Site = collections.namedtuple("Site", "line start end value")
+class Site(NamedTuple):
+    line: int
+    start: int
+    end: int
+    value: str
+
+
 # col: where the key starts, which decides nesting.
-Key = collections.namedtuple("Key", "name col start value")
+class Key(NamedTuple):
+    name: str
+    col: int
+    start: int
+    value: str
+
+
+class YamlNode(TypedDict):
+    name: str
+    col: int
+    parent: "YamlNode | None"
+    at: dict[str, Site]
+
 
 _DASH = re.compile(r"^(\s*)-\s+(?=\S)")
 _YAML_KEY = re.compile(r"^\s*(?:-\s+)?([A-Za-z0-9_./\-]+)\s*:(?=\s|$)")
@@ -108,7 +126,7 @@ def _open_node(nodes, stack, name, col):
 
 def yaml_nodes(lines):
     """Every mapping the document opens, with its own keys as Sites; block scalars are skipped as text."""
-    root = {"name": "", "col": -1, "parent": None, "at": {}}
+    root: YamlNode = {"name": "", "col": -1, "parent": None, "at": {}}
     nodes = [root]
     stack = [root]
     block = None

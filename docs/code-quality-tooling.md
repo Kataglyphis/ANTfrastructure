@@ -498,6 +498,38 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `python-lint`'s own files because `own_files` includes the helpers a `.sh` gate
 shells out to).
 
+## Python type analysis
+
+The Python consumer static-analysis drivers on Linux and Windows already gate `ty check`
+beside Ruff. Each consumer resolves ty from its own lockfile. This repo's Python scripts
+previously had Ruff linting but no type gate. `linux/scripts/lint-python-types.sh` now uses
+the exact `TY_VERSION` and `RUFF_VERSION` in `01-core/tool-pins.env`:
+
+```bash
+PREFLIGHT_ONLY=python-types bash linux/scripts/preflight.sh
+```
+
+The script passes tracked Python paths to ty rather than scanning a directory of generated
+files. It uses the Linux target for Linux and shared scripts and the Windows target for
+`windows/`. The three ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
+missing-return-annotation findings go to `logs/code-quality/ruff-annotations.txt`. The
+Linux x64 workflow uploads these files after preflight. Reports with findings state that
+they have findings; a failed download, invalid configuration or checker crash fails CI.
+
+**Every tracked `docs/scripts/*.py` and `linux/scripts/verify_*.py`, plus the shared
+quality helpers, is a strict type gate.** This checks the tools that grade the rest of
+the repo. The wider first-party scan and return-annotation
+audit remain reports while type errors and optional package resolution are corrected.
+There is no allowlist or raised diagnostic threshold. The full report retains paths and
+rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
+return and an error in a verifier, requiring the gate to fail for both.
+`python-types.strict-verdict` and `python-types.verifier-scope` mutate the verdict and
+the verifier path selection; the suite must catch both.
+
+Ty uses declared and inferred types. It does **not** add annotations or require every
+function to have one. Ruff's `ANN201`, `ANN202` and `ANN204`–`ANN206` report missing
+return annotations; they will become a gate after the existing findings are fixed.
+
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
 Windows Dockerfiles are PowerShell (`# escape=`` + SHELL ["pwsh",...]), but

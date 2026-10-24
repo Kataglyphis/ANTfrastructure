@@ -135,11 +135,12 @@ def _parse_env(body):
             key_line += 1
         if key_line < len(lines) and lines[key_line].strip() == "# noforward":
             key_line += 1
-        if key_line >= len(lines) or kv.match(lines[key_line]) is None:
+        found = kv.match(lines[key_line]) if key_line < len(lines) else None
+        if found is None:
             raise Unreadable(
                 "line %d: the # renovate hint for '%s' is not followed by a "
                 "KEY=value line" % (num + 1, match.group(1)))
-        key, value = kv.match(lines[key_line]).groups()
+        key, value = found.groups()
         values = out.setdefault(match.group(1), {})
         if key in values:
             raise Unreadable(
@@ -235,7 +236,7 @@ def parse(manager, text):
 def flatten(struct):
     """Every path with its typed scalar or container shape; iterative, so deep nesting cannot overflow."""
     out = {}
-    stack = [(struct, (), ())]
+    stack: list[tuple[object, tuple[object, ...], tuple[int, ...]]] = [(struct, (), ())]
     while stack:
         node, path, seen = stack.pop()
         if not isinstance(node, (dict, list)):

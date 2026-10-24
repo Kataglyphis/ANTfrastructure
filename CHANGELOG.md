@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — Python type analysis
+
+- Pin ty 0.0.91 beside Ruff and run it in the Linux x64 preflight: tracked documentation and Linux verifier quality scripts are a strict type gate, while full Linux and Windows scans save findings under ignored `logs/code-quality/`.
+- Report missing Python return annotations with Ruff ANN rules in the same folder and upload the reports from CI. Ty checks types but does not itself require annotations.
+- Correct type errors in quality scripts, build helpers and tests; prove that a planted type error fails the new gate and that a failed consumer ty check fails the existing static-analysis driver.
+- Keep curated SBOM `--stdout` byte-identical to the generated file on Windows as well as Linux.
+
 ## 2026-10-24 — CI quality evidence
 
 - Lint Python embedded in tracked consumer shell scripts, including shell-only consumers; fail on extraction errors and batch the hub sweep for Windows Git Bash.

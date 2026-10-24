@@ -27247,5 +27247,21 @@
   "replace": "    if _inactive(job) or _nonfatal(job):",
   "test": "bash linux/scripts/tests/test-consumer-quality-wiring.sh",
   "why": "A declared consumer quality call with the measurement ratchets disabled must fail the weekly inventory."
+ },
+ {
+  "id": "python-types.strict-verdict",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  exit \"${rc}\"",
+  "replace": "  :",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A typed return mismatch in a quality script must fail the CI type gate, even when the full-tree report is advisory."
+ },
+ {
+  "id": "python-types.verifier-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/verify_*.py'",
+  "replace": "'linux/scripts/verify_none_*.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Every tracked Python verifier must remain in the strict type scope."
  }
 ]

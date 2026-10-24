@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import TypedDict
 
 from verify_consumer_quality_wiring import inspect as inspect_quality_wiring
 
@@ -62,6 +63,14 @@ class Failure(Exception):
     """An integrity failure: the inventory cannot answer the question asked."""
 
 
+class EntryPoint(TypedDict):
+    kind: str
+    needle: str
+    alias_stem: str | None
+    alias_re: re.Pattern[str] | None
+    alias_name: str | None
+
+
 def run_git(args):
     proc = subprocess.run(args, capture_output=True, check=False)
     if proc.returncode != 0:
@@ -93,11 +102,11 @@ def load_inventory(path):
     return data
 
 
-def entry_forms(spec, path, rel):
+def entry_forms(spec, path, rel) -> EntryPoint:
     """One entry point: its path needle plus any by-name form its class declares."""
     needle = rel.rsplit("/", 1)[0] if spec.get("needle") == "dir" else rel
-    entry = {"kind": spec["kind"], "needle": needle, "alias_stem": None,
-             "alias_re": None, "alias_name": None}
+    entry: EntryPoint = {"kind": spec["kind"], "needle": needle, "alias_stem": None,
+                         "alias_re": None, "alias_name": None}
     alias = spec.get("alias")
     if not alias:
         return entry
@@ -112,7 +121,7 @@ def entry_forms(spec, path, rel):
 
 def discover_entry_points(hub_root, classes):
     """Expand each declared class into the concrete entry points of the hub."""
-    found = {}
+    found: dict[str, EntryPoint] = {}
     for spec in classes:
         kind, glob = spec["kind"], spec["glob"]
         hits = sorted(p for p in hub_root.glob(glob) if p.is_file())

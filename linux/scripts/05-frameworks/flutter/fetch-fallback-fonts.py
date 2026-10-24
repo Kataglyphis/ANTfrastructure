@@ -24,6 +24,8 @@ STORE_ENV = "KATAGLYPHIS_FONT_STORE"
 def _fetcher():
     """The hub's lock fetcher, whose file name is no module name."""
     spec = importlib.util.spec_from_file_location("fetch_data_lock", HERE.parents[1] / "lib" / "fetch-data-lock.py")
+    if spec is None or spec.loader is None:
+        raise ImportError("no module loader for fetch-data-lock.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module

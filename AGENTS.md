@@ -171,6 +171,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
+   The hub's pinned ty gate checks tracked `docs/scripts/*.py`, `linux/scripts/verify_*.py` and their shared quality helpers strictly; the full Linux and Windows Python scans and Ruff annotation audit stay visible in ignored `logs/code-quality/`. A checker setup failure is fatal. Ty checks types but does not require annotations.
    Consumer Python lint includes tracked shell heredocs; extraction failure is fatal and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
    Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
@@ -291,7 +292,8 @@ Five of them are RULES and stay here:
 
 - **Generated run artifacts belong under `logs/`.** Use `logs/build-logs/` for Linux stage logs
   and resource metrics, `logs/windows-build-logs/` for Windows BuildKit runs, and
-  `logs/test-results/` for Python test reports. The directory is ignored by Git.
+  `logs/test-results/` for Python test reports and `logs/code-quality/` for ty and annotation
+  reports. The directory is ignored by Git.
   Live `chain-status*.json` stays at the repo root; requested complexity JSON stays in
   the separate ignored `out/complexity/` directory.
 

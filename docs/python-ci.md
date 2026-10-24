@@ -179,6 +179,13 @@ idea: [Protect source code](https://art-vasilyev.github.io/posts/protecting-sour
 [line_profiler](https://github.com/pyutils/line_profiler) and
 [pytest-benchmark](https://github.com/ionelmc/pytest-benchmark).
 
+Both Python consumer drivers already run `ty check` as a required gate beside Ruff. The
+consumer's `uv.lock` selects ty's exact version; the hub's separate preflight uses
+`TY_VERSION` from `tool-pins.env`. Ty uses type annotations where present and infers
+other types, but does not require annotations. The hub audits missing return annotations
+with Ruff's `ANN201`, `ANN202` and `ANN204`–`ANN206` rules; see
+[Python type analysis](code-quality-tooling.md#python-type-analysis).
+
 ## The static-analysis knobs, and the bandit trap between them
 
 Two knobs decide what the six analysers grade; each has a Windows twin with the same default:

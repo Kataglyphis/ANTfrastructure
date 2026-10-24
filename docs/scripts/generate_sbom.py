@@ -163,7 +163,8 @@ def main() -> int:
     content = render(build_document(parse_versions_env()))
 
     if args.stdout:
-        sys.stdout.write(content)
+        # Windows text streams would turn LF into CRLF and break byte-for-byte comparisons.
+        sys.stdout.buffer.write(content.encode("utf-8"))
         return 0
     if args.write:
         OUT_DIR.mkdir(parents=True, exist_ok=True)

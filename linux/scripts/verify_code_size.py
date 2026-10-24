@@ -113,11 +113,12 @@ def _code_char(line, i, stack, out, docs):
         if j:
             out.append(c)
             return j
-    elif c == "<" and "arith" not in stack and HEREDOC.match(line, i):
+    elif c == "<" and "arith" not in stack:
         m = HEREDOC.match(line, i)
-        docs.append(m.group(2))
-        out.append(" ")
-        return m.end()
+        if m is not None:
+            docs.append(m.group(2))
+            out.append(" ")
+            return m.end()
     out.append(c)
     return i + 1
 

@@ -10,6 +10,7 @@ import fnmatch
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 # HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
@@ -183,7 +184,7 @@ def load_link_roots(findings: list[str]) -> list[tuple[str, Path, str]]:
     return rows
 
 
-def _from_roots(doc: Doc, target: str, roots: list, used: set) -> Path | None:
+def _from_roots(doc: Doc, target: str, roots: Sequence[tuple[str, Path, str]], used: set[str]) -> Path | None:
     """The target from the first declared directory that has it for this page, noting the row that served it."""
     for glob, base, label in roots:
         if fnmatch.fnmatchcase(doc.rel, glob) and (base / target).exists():
@@ -193,7 +194,8 @@ def _from_roots(doc: Doc, target: str, roots: list, used: set) -> Path | None:
 
 
 def check_links_and_anchors(docs: dict[str, Doc], findings: list[str],
-                            roots: list = (), used: set | None = None) -> tuple[int, int]:
+                            roots: Sequence[tuple[str, Path, str]] = (),
+                            used: set[str] | None = None) -> tuple[int, int]:
     links = anchors = 0
     used = set() if used is None else used
     for doc in docs.values():

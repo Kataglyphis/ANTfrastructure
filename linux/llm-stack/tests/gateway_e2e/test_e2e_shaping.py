@@ -156,8 +156,9 @@ def test_a_shaped_body_keeps_every_number_exact(gateway):
     assert req.body["top_p"] == 0.1234567890123457, req.raw
 
 
+TOOL_DESCRIPTION = "Stellt einen Timer \u2013 \u00abminutes\u00bb \u2265 1"
 RICH_TOOL = {"type": "function", "function": {
-    "name": "set_timer", "description": "Stellt einen Timer \u2013 \u00abminutes\u00bb \u2265 1",
+    "name": "set_timer", "description": TOOL_DESCRIPTION,
     "parameters": {"type": "object",
                    "properties": {"zeta": {"type": "number", "minimum": 1.0, "default": 2.5},
                                   "alpha": {"type": "string", "enum": ["b", "a"]},
@@ -177,4 +178,4 @@ def test_tool_definitions_keep_their_meaning_not_their_bytes(gateway, model):
     assert '"enum":["b","a"]' in text, "array order is kept"
     assert '"properties":{}' in text and '"required":[]' in text, "empty object and array survive"
     assert '"minimum":1,' in text, "a whole-number float loses its .0"
-    assert RICH_TOOL["function"]["description"] in text, "non-ASCII goes out as UTF-8"
+    assert TOOL_DESCRIPTION in text, "non-ASCII goes out as UTF-8"

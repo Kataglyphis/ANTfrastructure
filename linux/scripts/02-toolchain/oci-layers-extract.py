@@ -115,6 +115,8 @@ def make_parents(root: str, name: str) -> str:
 
 def write_file(tar: tarfile.TarFile, member: tarfile.TarInfo, path: str, umask: int) -> None:
     src = tar.extractfile(member)
+    if src is None:
+        raise ExtractError(f"{member.name} has no readable file payload")
     with src, open(path, "wb") as dst:
         shutil.copyfileobj(src, dst, CHUNK)
     # A non-root GNU tar applies the umask and drops setuid, setgid and sticky; export mode extracts that way.
@@ -145,7 +147,7 @@ def place(tar: tarfile.TarFile, member: tarfile.TarInfo, name: str, staging: str
 def scan(tar: tarfile.TarFile, staging: str, allow: Allow, rec: dict, umask: int) -> None:
     for member in tar:
         # A stream keeps every header it read; a layer of 100k files would hold them all.
-        del tar.members[:]
+        getattr(tar, "members").clear()
         name = norm(member.name)
         parent, base = posixpath.split(name)
         if not name or AUFS_META in parent:
@@ -179,7 +181,7 @@ def copy_link_targets(blob: str, staging: str, links: list, umask: int) -> None:
                 path = make_parents(staging, name)
                 remove(path)
                 write_file(tar, member, path, umask)
-            del tar.members[:]
+            getattr(tar, "members").clear()
     if want:
         raise ExtractError("hard link target(s) not in the same layer: %s" % ", ".join(sorted(want)))
 
@@ -237,8 +239,9 @@ def apply_layer(dest: str, staging: str, rec: dict, dirs: dict) -> None:
         forget(dirs, rel, keep_self=False)
     for rel in rec["opaque"]:
         d = real_dir(dest, rel)
-        for entry in os.listdir(d) if d is not None else ():
-            remove(os.path.join(d, entry))
+        if d is not None:
+            for entry in os.listdir(d):
+                remove(os.path.join(d, entry))
         forget(dirs, rel, keep_self=True)
     merge_tree(staging, dest)
     dirs.update(rec["dirs"])

@@ -165,7 +165,9 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
     return _brace_units(lines, SHELL_FUNC, code_lines(lines))
 
 
-def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str):
+def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str | None):
+    if marker is None:
+        raise ValueError("PowerShell here-string state has no delimiter")
     if i == 0 or text[i - 1] == "\n":
         end = text.find("\n", i)
         end = len(text) if end < 0 else end
@@ -185,7 +187,9 @@ def _mask_ps_comment_char(char: str, chars: list[str], i: int):
     return i + 1, "comment"
 
 
-def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str):
+def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str | None):
+    if marker is None:
+        raise ValueError("PowerShell quote state has no delimiter")
     char = text[i]
     if char in "{}":
         chars[i] = " "

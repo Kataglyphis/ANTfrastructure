@@ -107,10 +107,13 @@ def print_table(pyproject: str, fmt: str) -> int:
     code, table = read_table(pyproject)
     if code:
         print(table)
-    elif fmt == "argv":
-        print("\n".join(as_argv(table)))
     else:
-        print(json.dumps(table))
+        if not isinstance(table, dict):
+            raise RuntimeError("validated wheel test table has no fields")
+        if fmt == "argv":
+            print("\n".join(as_argv(table)))
+        else:
+            print(json.dumps(table))
     return code
 
 

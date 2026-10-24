@@ -110,6 +110,9 @@ bash linux/scripts/scan-image-sbom.sh linux/amd64
 python3 docs/scripts/compare_sbom.py out/sbom/scanned-linux-amd64.spdx.json
 ```
 
+`generate_sbom.py --stdout` emits the same UTF-8, LF-only bytes as `--write`, including
+on Windows, so a byte comparison can verify the generated document.
+
 `:latest` is a **manifest list** — a scan without `--platform` silently
 picks one architecture. Scan each one you publish.
 

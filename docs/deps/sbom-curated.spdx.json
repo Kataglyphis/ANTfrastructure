@@ -1974,6 +1974,32 @@
       "copyrightText": "NOASSERTION",
       "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Container Engines & Builders",
       "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--cfea6bb1",
+      "name": "Ruff",
+      "versionInfo": "0.17.0",
+      "downloadLocation": "https://github.com/astral-sh/ruff",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--ed347a45",
+      "name": "ty",
+      "versionInfo": "0.0.91",
+      "downloadLocation": "https://github.com/astral-sh/ty",
+      "filesAnalyzed": false,
+      "supplier": "NOASSERTION",
+      "licenseDeclared": "MIT",
+      "licenseConcluded": "MIT",
+      "copyrightText": "NOASSERTION",
+      "comment": "Image section: Host Build Infrastructure (runs on the build host, not inside any image) / Host Quality Tools",
+      "licenseComments": "Obligations: keep-notice, include-text"
     }
   ],
   "relationships": [
@@ -2726,6 +2752,16 @@
       "spdxElementId": "SPDXRef-DOCUMENT",
       "relationshipType": "DESCRIBES",
       "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--d56fdd5c"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--cfea6bb1"
+    },
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-Host-Build-Infrastructure-runs-on-the-build-host-not-inside--ed347a45"
     }
   ]
 }

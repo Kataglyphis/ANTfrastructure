@@ -11,7 +11,6 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-
 SCRIPT = Path(__file__).resolve().parents[1] / "01-core/download-webdav-files.py"
 
 
@@ -27,17 +26,24 @@ class Client:
         return 2
 
 
+class StubWebDavApi(types.ModuleType):
+    def __init__(self, client: Client):
+        super().__init__("kataglyphis_webdavclient.webdavclient")
+        self.WebDavClient = lambda *args: client
+
+
 class WebDavCliTests(unittest.TestCase):
     def setUp(self):
         self.client = Client()
         package = types.ModuleType("kataglyphis_webdavclient")
-        api = types.ModuleType("kataglyphis_webdavclient.webdavclient")
-        api.WebDavClient = lambda *args: self.client
+        api = StubWebDavApi(self.client)
         with patch.dict(sys.modules, {
             "kataglyphis_webdavclient": package,
             "kataglyphis_webdavclient.webdavclient": api,
         }):
             spec = importlib.util.spec_from_file_location("webdav_download_cli", SCRIPT)
+            if spec is None or spec.loader is None:
+                raise RuntimeError("Cannot load the WebDAV CLI fixture")
             self.module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(self.module)
 
