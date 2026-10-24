@@ -91,11 +91,17 @@ _stop_resolve_target() {
   return 0
 }
 
+# Bind usage aliases at the original parser declaration phase.
+_stop_usage() {
+  usage
+}
+
 main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --timeout) GRACE_SECS="${2:-15}"; shift 2 ;;
-      -h|--help) usage; exit 0 ;;
+      # A stale logging owner must not let conditional help repeat the argument loop.
+      -h|--help) show_usage_and_exit _stop_usage "$@"; exit $? ;;
       *) reject_unknown_option "$1" ;;
     esac
   done

@@ -106,6 +106,114 @@ def check_case(work, case):
         assert "GREP:early:<-q .>:" in trace, (case, trace)
 
 
+def check_dynamic_scope(work):
+    code = r'''
+set -euo pipefail
+source "$1/python.sh"
+producer=outer-producer consumer=outer-consumer
+cross_build_is_active() { return 0; }
+find() { printf '%s/%s\n' "$producer" "$consumer"; }
+grep() { printf 'QUERY:%s:' "$*"; cat; }
+presence() { printf 'PRESENCE:%s\n' "$2"; }
+_smoke_media_python_library fixture pattern ignored presence /fixture
+caller() {
+ local producer=caller-producer consumer=caller-consumer
+ _smoke_media_python_library fixture pattern ignored presence /fixture
+}
+caller
+printf 'GLOBALS:%s/%s\n' "$producer" "$consumer"
+'''
+    result = subprocess.run(["bash", "-c", code, "_", str(work)], capture_output=True,
+                            text=True, timeout=10, check=False)
+    expected = ("QUERY:-q .:outer-producer/outer-consumer\nPRESENCE:present\n"
+                "QUERY:-q .:caller-producer/caller-consumer\nPRESENCE:present\n"
+                "GLOBALS:outer-producer/outer-consumer\n")
+    assert (result.returncode, result.stdout, result.stderr) == (0, expected, ""), result
+
+
+PREFIX_WORKER = r'''
+set -uo pipefail
+[ "$STRICT" = 0 ] || set -e
+shopt -s expand_aliases
+provided_find() {
+ printf 'FIND:' >> "$WORK/find-prefix"
+ printf '<%s>' "$@" >> "$WORK/find-prefix"
+ printf '\n' >> "$WORK/find-prefix"
+ printf '%s/fixture.wasm\n' "$WORK"
+}
+provided_grep() {
+ local bytes
+ bytes="$(cat)"
+ printf 'GREP:' >> "$WORK/grep-prefix"
+ printf '<%s>' "$@" >> "$WORK/grep-prefix"
+ printf 'STDIN:<%s>\n' "$bytes" >> "$WORK/grep-prefix"
+ [ "$#" = "${#expected[@]}" ] || return 23
+ local index
+ local -a actual=("$@")
+ for index in "${!expected[@]}"; do
+  [ "${expected[index]}" = "${actual[index]}" ] || return 23
+ done
+ [ "$bytes" = "$WORK/fixture.wasm" ]
+}
+alias find='provided_find "$@"'
+alias grep='provided_grep "$@"'
+source "$WORK/python.sh"
+if [ "$ALIASES" = late ]; then
+ alias find='provided_find late "$@"'
+ alias grep='provided_grep late "$@"'
+fi
+source "$WORK/web.sh"
+cross_build_is_active() { return 0; }
+presence() { printf 'VERDICT:%s\n' "$2"; }
+pass() { printf 'VALID\n'; }
+run_prefix() {
+ if [ "$SUBJECT" = python ]; then
+  expected=('/original path' '' -q .)
+  _smoke_media_python_library fixture '*.so' ignored presence '/original path' ''
+ else
+  expected=(Fixture "$WORK" 1 -q .)
+  [ "$ALIASES" = early ] || expected=(late "${expected[@]}")
+  _check_web_runtime Fixture "$WORK" 1
+ fi
+}
+if [ "$CONTEXT" = conditional ]; then
+ if run_prefix; then printf 'STATUS:0\n'; else printf 'STATUS:%s\n' "$?"; fi
+else
+ run_prefix
+ printf 'STATUS:%s\n' "$?"
+fi
+'''
+
+
+def check_prefix_case(work, case):
+    strict, context, aliases, subject = case
+    for leaf in ("find-prefix", "grep-prefix"):
+        (work / leaf).write_text("")
+    env = dict(os.environ, WORK=str(work), STRICT=str(strict), CONTEXT=context,
+               ALIASES=aliases, SUBJECT=subject)
+    result = subprocess.run(["bash", "-c", PREFIX_WORKER], env=env,
+                            capture_output=True, text=True, timeout=10, check=False)
+    verdict = "VERDICT:present\n" if subject == "python" else "VALID\n"
+    assert (result.returncode, result.stdout, result.stderr) == (0, verdict + "STATUS:0\n", ""), (case, result)
+    prefix = "</original path><>" if subject == "python" else f"<Fixture><{work}><1>"
+    if subject == "web" and aliases == "late":
+        prefix = "<late>" + prefix
+    expected_grep = f"GREP:{prefix}<-q><.>STDIN:<{work}/fixture.wasm>\n"
+    assert (work / "grep-prefix").read_text() == expected_grep, case
+    find = (work / "find-prefix").read_text()
+    expected_find = (f"FIND:{prefix}</original path><><-name><*.so><-type><f>\n"
+                     if subject == "python" else
+                     f"FIND:{prefix}<{work}><(><-name><*.js><-o><-name><*.mjs><)><-print><-quit>\n")
+    assert expected_find in find, (case, find)
+
+
+def check_prefix_aliases(work):
+    cases = itertools.product((0, 1), ("direct", "conditional"),
+                              ("early", "late"), ("python", "web"))
+    for case in cases:
+        check_prefix_case(work, case)
+
+
 def main():
     text = Path(sys.argv[1]).read_text()
     with tempfile.TemporaryDirectory(prefix="smoke-query-") as directory:
@@ -122,7 +230,9 @@ def main():
         for case in cases:
             check_case(work, case)
             count += 1
-        print(f"{count} smoke query cases passed")
+        check_dynamic_scope(work)
+        check_prefix_aliases(work)
+        print(f"{count} smoke query cases,16 prefix-alias controls and dynamic-scope contract passed")
 
 
 if __name__ == "__main__":

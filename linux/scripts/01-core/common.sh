@@ -275,9 +275,9 @@ llvm_prepare_source_checkout() {
 
 # Wheel payload edits must repack through wheel so RECORD is regenerated.
 wheel_archive_run() {
-  local action="$1" source="$2" destination="$3"
+  local _war_action="$1" _war_source="$2" _war_destination="$3"
   shift 3
-  "$@" -m wheel "${action}" "${source}" -d "${destination}" >/dev/null 2>&1
+  "$@" -m wheel "${_war_action}" "${_war_source}" -d "${_war_destination}" >/dev/null 2>&1
 }
 
 # Older callers retain their distinct required-target and best-effort architecture lookup policies.
@@ -298,16 +298,33 @@ wheel_platform_tag_with_fallback() {
 }
 
 # Project cross-file adjustments run between optional cross and native flag providers.
-append_available_meson_toolchain_flags() {
-  local _amtf_array="$1" _amtf_after_cross="${2:-}"
-  if command -v append_meson_cross_flags >/dev/null 2>&1; then
-    append_meson_cross_flags "${_amtf_array}"
-    if [ -n "${_amtf_after_cross}" ]; then "${_amtf_after_cross}"; fi
-  fi
-  if command -v append_meson_native_flags >/dev/null 2>&1; then
-    append_meson_native_flags "${_amtf_array}"
+_common_meson_cross() {
+  local -a _cmc_exec_argv=("$@")
+  set -- "${_amtf_caller_argv[@]}"
+  append_meson_cross_flags "${_cmc_exec_argv[@]}"
+}
+
+_common_meson_native() {
+  local -a _cmn_exec_argv=("$@")
+  set -- "${_amtf_caller_argv[@]}"
+  append_meson_native_flags "${_cmn_exec_argv[@]}"
+}
+
+append_available_meson_provider() {
+  local _amp_name="$1" _amp_invoke="$2" _amp_array="$3" _amp_after="${4:-}" _amp_status
+  if command -v "${_amp_name}" >/dev/null 2>&1; then
+    "${_amp_invoke}" "${_amp_array}"
+    _amp_status=$?
+    if [ -n "${_amp_after}" ]; then "${_amp_after}"; else return "${_amp_status}"; fi
   fi
   return $?
+}
+
+append_available_meson_toolchain_flags() {
+  local -a _amtf_caller_argv=("$@")
+  local _amtf_array="$1" _amtf_after_cross="${2:-}"
+  append_available_meson_provider append_meson_cross_flags "${3:-_common_meson_cross}" "${_amtf_array}" "${_amtf_after_cross}"
+  append_available_meson_provider append_meson_native_flags "${4:-_common_meson_native}" "${_amtf_array}"
 }
 
 cross_wheel_platform_tag() {

@@ -93,7 +93,7 @@ def prepare(work, subject, early):
     return selected / ("flatbuffers.h" if subject == "litert" else "NvInfer.h")
 
 
-def driver(subject, context, strict, phase, order):
+def driver(subject, context, strict, phase, order, prefix=False):
     code = WORKER
     if order is None:
         if phase in ("before", "after"):
@@ -110,6 +110,9 @@ def driver(subject, context, strict, phase, order):
     invocation = SUBJECTS[subject][1]
     if subject == "litert":
         invocation += ' "$WORK/build" "$WORK/include"'
+    if prefix:
+        invocation += " 'tail [*]' ''"
+        code = re.sub(r"alias find=(find_\w+)", lambda match: "alias find='" + match[1] + ' "$@"' + "'", code)
     return code + (
         "if " + invocation + "; then echo STATUS:0; else echo STATUS:$?; fi"
         if context == "conditional"
@@ -127,6 +130,7 @@ def receipt(
     early=False,
     availability="valid",
     order=None,
+    prefix=False,
 ):
     with tempfile.TemporaryDirectory(prefix="ant-header-discovery-") as directory:
         work = Path(directory)
@@ -144,7 +148,7 @@ def receipt(
             FIND_STATUS=str(status),
         )
         result = subprocess.run(
-            ["bash", "-c", driver(subject, context, strict, phase, order)],
+            ["bash", "-c", driver(subject, context, strict, phase, order, prefix)],
             env=env,
             capture_output=True,
             text=True,
@@ -259,6 +263,29 @@ class HeaderDiscovery(unittest.TestCase):
             self.assertEqual(0, result["rc"])
             self.assertEqual("latest", result["trace"].splitlines()[0])
             self.assertNotIn("_header_find", result["state"])
+
+    def test_prefix_alias_keeps_enclosing_arguments(self):
+        for subject, context, strict, phase, status, order in product(
+            SUBJECTS, ["direct", "conditional"], [False, True],
+            ["before", "after"], [0, 23],
+            [None, ("litert", "ort"), ("ort", "litert")],
+        ):
+            with self.subTest(subject=subject, context=context, strict=strict,
+                              phase=phase, status=status, order=order):
+                result = receipt(subject, True, status, context, strict,
+                                 phase=phase, prefix=True, order=order)
+                self.assertEqual(0, result["rc"])
+                enclosing = (["WORK/build", "WORK/include"]
+                             if subject == "litert" else []) + ["tail [*]", ""]
+                tool = (["WORK/source/litert", "-type", "f", "-path",
+                         "*/flatbuffers/flatbuffers.h", "-print", "-quit"]
+                        if subject == "litert" else
+                        ["WORK/system/usr/include", "WORK/system/usr/local",
+                         "-name", "NvInfer.h", "-print", "-quit"])
+                expected_phase = "late" if phase == "before" and order is None else "latest"
+                expected = [expected_phase] + enclosing + tool
+                self.assertEqual(expected, result["trace"].splitlines()[:len(expected)])
+                self.assertNotIn("_header_find", result["state"])
 
     def test_missing_api_is_selected_only(self):
         for subject, early, availability, context in product(

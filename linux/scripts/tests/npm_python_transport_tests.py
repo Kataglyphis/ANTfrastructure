@@ -69,6 +69,11 @@ _python_impl() {
 }
 python3() { printf 'plain\0' >> "$WORK/binding.calls"; _python_impl "$@"; }
 early_python() { printf 'early\0' >> "$WORK/binding.calls"; _python_impl "$@"; }
+prefix_python() {
+ [ "$#" -ge 5 ] && [ "$1" = '@scope/pkg [*]' ] && [ "$2" = '1 [*]' ] && [ "$3" = "$WORK/dest [*]" ] || return 79
+ shift 3
+ _python_impl "$@"
+}
 late_python() { printf 'late\0' >> "$WORK/binding.calls"; _python_impl "$@"; }
 """
 
@@ -98,7 +103,9 @@ def run(file, case):
         )
         code = ("set -euo pipefail\n" if strict else "set -uo pipefail\n") + TOOLS
         code += "shopt -s expand_aliases\n"
-        if phase != "plain":
+        if phase == "prefix":
+            code += "alias python3='prefix_python \"$@\"'\n"
+        elif phase != "plain":
             code += "alias python3=early_python\n"
         code += extract(file, "_npm_python_quiet")
         code += extract(file, "_fetch_npm_package")
@@ -157,6 +164,14 @@ class NpmPythonTransportTests(unittest.TestCase):
         for row in rows:
             with self.subTest(case=row["case"]):
                 self.assertEqual(row["receipt"], run(SCRIPT, row["case"]))
+
+    def test_prefix_alias_preserves_enclosing_arguments(self):
+        result = run(SCRIPT, ["success", True, False, "prefix"])
+        self.assertEqual(0, result[0])
+        self.assertEqual("", result[2])
+        self.assertIn("integrity verified", result[1])
+        self.assertEqual({"dest [*]/result": "unpacked"}, result[4])
+        self.assertEqual(2, result[3]["python.calls"].count("python\0-c\0"))
 
     def test_raw_status_quiet_stderr_and_arguments(self):
         code = (

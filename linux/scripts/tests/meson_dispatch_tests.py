@@ -33,11 +33,25 @@ def definitions(paths):
     common = paths["common.sh"]
     gst = paths["build-gstreamer-monorepo.sh"]
     camera = paths["build-libcamera.sh"].read_text()
-    chunks = []
+    chunks = [
+        function(common, name)
+        for name in (
+            "_common_meson_cross",
+            "_common_meson_native",
+            "append_available_meson_provider",
+        )
+    ]
     if "append_available_meson_toolchain_flags() {" in common.read_text():
         chunks.append(function(common, "append_available_meson_toolchain_flags"))
     if "_gst_monorepo_cross_pkgconfig() {" in gst.read_text():
         chunks.append(function(gst, "_gst_monorepo_cross_pkgconfig"))
+    chunks.extend(
+        function(gst, name)
+        for name in (
+            "_gst_monorepo_meson_cross",
+            "_gst_monorepo_meson_native",
+        )
+    )
     chunks.append(
         function(gst, "_gst_monorepo_cross_flags").replace(
             "/tmp/gstreamer-debug-info.log", '"${WORK}/debug-output"'
@@ -52,7 +66,9 @@ WORKER = r"""
 set -u
 WORK="$1" caller="$2" cross="$3" native="$4" file="$5" context="$6" strict="$7" inherit="$8" initial="$9" python="${10}"
 source "$WORK/functions"
-if [ "${11:-healthy}" = missing ]; then unset -f append_available_meson_toolchain_flags; fi
+if [ "${11:-healthy}" = missing ]; then
+ if [ "$caller" = camera ]; then unset -f append_available_meson_provider; else unset -f append_available_meson_toolchain_flags; fi
+fi
 trace() { printf '%s\0' "$@" >> "$WORK/trace"; }
 command() { trace command "$@"; builtin command "$@"; }
 provider() {
@@ -223,7 +239,7 @@ def required_api_contract(parts, expected):
             actual["rc"] == (1 if stopped else 0),
             actual["out"] == ("" if stopped else "TAIL:1\n"),
             actual["err"]
-            == "ERROR: common.sh does not provide append_available_meson_toolchain_flags\n",
+            == f"ERROR: common.sh does not provide {'append_available_meson_provider' if caller == 'camera' else 'append_available_meson_toolchain_flags'}\n",
             actual["state"] == oracle["state"],
             actual["trace"] == prefix,
             actual["files"]

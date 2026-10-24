@@ -10,4 +10,4 @@ gst_test_load_functions() {
 }
 
 t_source_functions "${_T_SCRIPTS}/01-core/cross-env.sh" export_cargo_compiler_binding cross_collect_target_rust_env
-t_source_functions "${_T_SCRIPTS}/01-core/cross-python.sh" cross_collect_python_dev_paths
+t_source_functions "${_T_SCRIPTS}/01-core/cross-python.sh" cross_collect_python_dev_paths cross_capture_python_dev_path cross_python_provider_api_ready

@@ -4,6 +4,9 @@ set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 LIB="${TESTS_DIR}/../01-core/compiler-resolution.sh"
+if grep -q '^_resolve_build_gcc_candidates()' "${LIB}"; then
+  eval "$(t_fn_src "${LIB}" _resolve_build_gcc_candidates)"
+fi
 eval "$(t_fn_src "${LIB}" resolve_host_compiler_for_lang)"
 
 resolve_build_gcc_tool() {

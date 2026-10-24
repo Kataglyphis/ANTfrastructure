@@ -1,0 +1,4610 @@
+[
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   0,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   17,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "-h",
+   27,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   0,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   17,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "stop",
+   "--help",
+   27,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<7 [*]> N:<oldN> C:<oldC> V:<0>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   0,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   17,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "-h",
+   27,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   0,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   17,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   17,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   17,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   false,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   false,
+   "plain",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   false,
+   "plain",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   false,
+   "before",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   false,
+   "before",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   false,
+   "after",
+   1
+  ],
+  "receipt": [
+   27,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   false,
+   "after",
+   2
+  ],
+  "receipt": [
+   27,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   true,
+   "plain",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   true,
+   "plain",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:plain GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   true,
+   "before",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   true,
+   "before",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   true,
+   "after",
+   1
+  ],
+  "receipt": [
+   0,
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n",
+   ""
+  ]
+ },
+ {
+  "case": [
+   "parity",
+   "--help",
+   27,
+   true,
+   true,
+   "after",
+   2
+  ],
+  "receipt": [
+   0,
+   "",
+   "USAGE:early GRACE:<15> N:<native [*]> C:<cross [*]> V:<1>\n"
+  ]
+ }
+]

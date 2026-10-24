@@ -187,13 +187,28 @@ cross_target_python_dev_ready() {
 }
 
 cross_collect_python_dev_paths() {
-  local -n python_paths="$1"
+  local -n _ccpdp_paths="$1"
   shift
-  local field probe
-  for field in "$@"; do
-    probe="cross_target_python_${field}"
-    if command -v "${probe}" >/dev/null 2>&1; then
-      python_paths["${field}"]="$("${probe}" 2>/dev/null || true)"
+  while [ "$#" -gt 0 ]; do
+    if command -v "cross_target_python_$1" >/dev/null 2>&1; then
+      _ccpdp_paths["$1"]="$("cross_target_python_$1" 2>/dev/null || true)"
     fi
+    shift
   done
+}
+
+# Literal caller-bound providers retain alias argv while absent probes keep the prior value.
+cross_capture_python_dev_path() {
+  if command -v "cross_target_python_$1" >/dev/null 2>&1; then
+    "$3" "${@:4}" 2>/dev/null || true
+  else
+    printf '%s' "$2"
+  fi
+}
+
+cross_python_provider_api_ready() {
+  if ! declare -F cross_capture_python_dev_path >/dev/null; then
+    printf '%s\n' 'ERROR: target Python probes require cross_capture_python_dev_path' >&2
+    return 1
+  fi
 }

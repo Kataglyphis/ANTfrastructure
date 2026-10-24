@@ -156,6 +156,51 @@ strict-shell behavior. Download retries, integrity comparisons, tar fallback and
 cleanup remain caller policy. Offline receipts use fake HTTP and tar commands;
 they do not establish registry trust or archive validity.
 
+## Probe publication, reporting and callback context
+
+Compiler resolution shares ordered primary and alternate GCC probes in a private
+helper. It publishes through the caller's existing `resolved` local so provider
+hooks retain that binding. Keep probe order, nonempty-test order and direct printf
+failure behavior; filesystem and PATH fallbacks remain outside the collector.
+
+The chain shares its nonempty, non-self, live sibling-PID predicate. Both callers
+keep their original pidfile reads, output, refusal and write policies. The helper
+retains raw `kill -0` status and does not signal a process.
+
+Libcamera's optional component report shares availability, quiet presence probing
+and found/missing reporting after the original path initialization. Bound pkg-config
+and GStreamer callbacks keep their original aliases, version fallback and messages.
+Its standalone file still needs no extra companion.
+
+Callback dispatch must retain the bindings visible to supplied Bash wrappers.
+Wheel transport and packaging failure dispatch use private names; media queries
+and component reports use positional arguments. Generic helper locals such as
+`tool`, `producer` or `source` must not replace caller configuration. Literal global
+and caller-local controls complement the frozen behavior receipts. Bound literal
+commands also retain the original positional context when an alias expands
+`"$@"`; command arguments and enclosing caller arguments are separate contracts.
+Meson providers keep each original binding phase: libcamera binds its native
+provider after the cross provider has run, while GStreamer binds both with its
+function declaration. GStreamer's cross-flag setup and wheel stripping keep
+those internal callers' existing argument-free contracts; their adapters restore
+an empty enclosing context before executing the tool arguments. Finder callbacks
+retain their enclosing argument context
+separately from the shared first-match helper's generated finder arguments.
+Target Python path probes share quiet best-effort capture in the existing
+cross-Python owner. Each caller binds its literal provider inside the original
+capture; the readiness API rejects older or incomplete owners. OpenCV retains
+its output argument context. GStreamer's internal resolver keeps its existing
+argument-free call from the preparation function, whose extra arguments remain
+ignored.
+
+Help rendering and termination share `show_usage_and_exit` in the existing logging
+owner. Each CLI binds usage at its original parser declaration and forwards the remaining
+parser arguments to preserve alias positional expansion. Keep the selected
+call unconditional so strict callback failures retain their status. The following
+raw-status exit refuses a missing helper even when the parser runs conditionally;
+otherwise help could repeat the argument loop or reach later work. Copied fixtures
+first prove complete help output, then exercise an older logging owner.
+
 ## The tree, as AGENTS.md drew it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since

@@ -203,8 +203,22 @@ if cross_build_is_active; then
   fi
 fi
 
-declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\n' >&2; exit 1; }
-append_available_meson_toolchain_flags MESON_SETUP_ARGS
+declare -F append_available_meson_provider >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_provider\n' >&2; exit 1; }
+_libcamera_meson_cross_argv=("$@")
+_libcamera_meson_cross() {
+  local -a _lcmc_exec_argv=("$@")
+  set -- "${_libcamera_meson_cross_argv[@]}"
+  append_meson_cross_flags "${_lcmc_exec_argv[@]}"
+}
+append_available_meson_provider append_meson_cross_flags _libcamera_meson_cross MESON_SETUP_ARGS
+
+_libcamera_meson_native_argv=("$@")
+_libcamera_meson_native() {
+  local -a _lcmn_exec_argv=("$@")
+  set -- "${_libcamera_meson_native_argv[@]}"
+  append_meson_native_flags "${_lcmn_exec_argv[@]}"
+}
+append_available_meson_provider append_meson_native_flags _libcamera_meson_native MESON_SETUP_ARGS
 
 if ! "${UV_RUN_PREFIX[@]}" meson setup "${LIBCAMERA_BUILD_DIR}" "${MESON_SETUP_ARGS[@]}"; then
     echo "meson setup failed — see ${LIBCAMERA_BUILD_DIR}/meson-logs/meson-log.txt"

@@ -304,6 +304,18 @@ _gst_monorepo_cross_pkgconfig() {
   fi
 }
 
+_gst_monorepo_meson_cross() {
+  local -a _gmmc_exec_argv=("$@")
+  set --
+  append_meson_cross_flags "${_gmmc_exec_argv[@]}"
+}
+
+_gst_monorepo_meson_native() {
+  local -a _gmmn_exec_argv=("$@")
+  set --
+  append_meson_native_flags "${_gmmn_exec_argv[@]}"
+}
+
 _gst_monorepo_cross_flags() {
   if [ -n "${CROSS_PYTHON_BUILD_CONFIG:-}" ]; then
     append_meson_arg "-Dpython.build_config=${CROSS_PYTHON_BUILD_CONFIG}"
@@ -314,8 +326,8 @@ _gst_monorepo_cross_flags() {
 
   media_prepare_cross_compilers
 
-  declare -F append_available_meson_toolchain_flags >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\n' >&2; return 1; }
-  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig
+  declare -F append_available_meson_toolchain_flags append_available_meson_provider >/dev/null || { printf 'ERROR: common.sh does not provide append_available_meson_toolchain_flags\n' >&2; return 1; }
+  append_available_meson_toolchain_flags MESON_FLAGS _gst_monorepo_cross_pkgconfig _gst_monorepo_meson_cross _gst_monorepo_meson_native
 
   _gst_monorepo_wrap_flags
 

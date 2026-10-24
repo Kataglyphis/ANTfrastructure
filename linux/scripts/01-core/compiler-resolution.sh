@@ -13,10 +13,27 @@ _COMPILER_RESOLUTION_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -n "${_CROSS_GCC_LOADED:-}" ] || \
   { [ -f "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh" ] && source "${_COMPILER_RESOLUTION_SH_DIR}/cross-gcc.sh"; }
 
+# Producer hooks need the caller's resolved local, without another capture changing publication failures.
+_resolve_build_gcc_candidates() {
+  local -n _rbg_found="$1"
+  local _rbg_tool _rbg_first=1
+  shift
+  _rbg_found=0
+  for _rbg_tool in "$@"; do
+    case "${_rbg_first}" in
+      1) _rbg_first=0 ;;
+      *) [ -n "${resolved}" ] && break ;;
+    esac
+    resolved="$(resolve_build_gcc_tool "${_rbg_tool}" 2>/dev/null || true)"
+  done
+  [ -n "${resolved}" ] && { printf '%s' "${resolved}"; _rbg_found=1; }
+  return 0
+}
+
 # resolve_host_compiler_for_lang <c|cxx>: prints the path.
 resolve_host_compiler_for_lang() {
   local lang="$1" compiler alternate clang_compiler candidate
-  local triplet="" resolved=""
+  local triplet="" resolved="" _rhcf_found=0
   case "${lang}" in
     c) compiler=gcc; alternate=cc; clang_compiler=clang ;;
     cxx) compiler=g++; alternate=c++; clang_compiler=clang++ ;;
@@ -24,9 +41,8 @@ resolve_host_compiler_for_lang() {
   esac
 
   if command -v resolve_build_gcc_tool >/dev/null 2>&1; then
-    resolved="$(resolve_build_gcc_tool "${compiler}" 2>/dev/null || true)"
-    [ -n "${resolved}" ] || resolved="$(resolve_build_gcc_tool "${alternate}" 2>/dev/null || true)"
-    [ -n "${resolved}" ] && { printf '%s' "${resolved}"; return 0; }
+    _resolve_build_gcc_candidates _rhcf_found "${compiler}" "${alternate}"
+    case "${_rhcf_found}" in 1) return 0 ;; esac
   fi
 
   if command -v build_deb_multiarch_triplet >/dev/null 2>&1; then
