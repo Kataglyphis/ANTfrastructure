@@ -178,3 +178,13 @@ pin_target_libstdcxx() {
   fi
   return 0
 }
+
+prepare_and_publish_host_cargo_compiler() {
+  local -n _pphc_wrapper="$1"
+  local _pphc_compiler="$2" _pphc_prepare="$3" _pphc_publish="$4"
+  if [ -n "${_pphc_compiler}" ]; then
+    _pphc_wrapper="$("${_pphc_prepare}")"
+    "${_pphc_publish}"
+  fi
+  return $?
+}

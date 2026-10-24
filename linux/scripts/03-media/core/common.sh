@@ -13,6 +13,14 @@ media_regular_files_present() {
   return 0
 }
 
+# Caller-bound commands retain parse-time aliases and positional arguments without helper locals.
+media_pin_target_libstdcxx_if_available() {
+  if "$1" "${@:3}" >/dev/null 2>&1; then
+    "$2" "${@:3}" || true
+  fi
+  return 0
+}
+
 media_missing_dev_symlink() {
   local destination="$1" source_file="$2"
   case "${source_file}" in

@@ -18278,8 +18278,8 @@
  {
   "id": "gst.cross-prepare-runtime-pin",
   "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
-  "find": "    pin_target_libstdcxx \"${TARGET_ARCH:-${TARGETARCH:-}}\" || true",
-  "replace": "    :",
+  "find": "_gst_pin_target_libstdcxx() {\n  pin_target_libstdcxx \"${TARGET_ARCH:-${TARGETARCH:-}}\"\n}",
+  "replace": "_gst_pin_target_libstdcxx() {\n  :\n}",
   "test": "bash linux/scripts/tests/test-gstreamer-cross-prepare.sh",
   "why": "The existing stage-only runtime pin remains after compiler and link repair."
  },
@@ -25887,5 +25887,333 @@
   "replace": "show_usage_and_exit _parity_usage; exit $?",
   "test": "bash linux/scripts/tests/test-cli-help-exit.sh",
   "why": "Command-prefix usage aliases retain the original parser argument context after preceding options were shifted."
+ },
+ {
+  "id": "lib.lifecycle-fixture-retention-budget",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "  CROSS_LOG_ARCHIVE_KEEP=\"$1\"",
+  "replace": "  CROSS_LOG_ARCHIVE_KEEP=99",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "Every shared fixture applies its requested retention budget rather than a stale or fixed keep count."
+ },
+ {
+  "id": "lib.lifecycle-fixture-retention-order",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "_prune_archive_with_keep() {\n  CROSS_LOG_ARCHIVE_KEEP=\"$1\"\n  _chain_prune_archived_logs\n}",
+  "replace": "_prune_archive_with_keep() {\n  _chain_prune_archived_logs\n  CROSS_LOG_ARCHIVE_KEEP=\"$1\"\n}",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "The requested fixture budget is visible before the real prune runs, and its failure status remains observable."
+ },
+ {
+  "id": "lib.lifecycle-fixture-retention-execution",
+  "target": "linux/scripts/tests/test-chain-lifecycle.sh",
+  "find": "_prune_archive_with_keep() {\n  CROSS_LOG_ARCHIVE_KEEP=\"$1\"\n  _chain_prune_archived_logs\n}",
+  "replace": "_prune_archive_with_keep() {\n  CROSS_LOG_ARCHIVE_KEEP=\"$1\"\n  :\n}",
+  "test": "bash linux/scripts/tests/test-chain-lifecycle.sh",
+  "why": "Shared fixture setup executes the production prune; configuring a budget alone cannot satisfy archive assertions."
+ },
+ {
+  "id": "lib.host-cargo-preparation-compiler-required",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "prepare_and_publish_host_cargo_compiler() {\n  local -n _pphc_wrapper=\"$1\"\n  local _pphc_compiler=\"$2\" _pphc_prepare=\"$3\" _pphc_publish=\"$4\"\n  if [ -n \"${_pphc_compiler}\" ]; then\n    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"\n    \"${_pphc_publish}\"\n  fi\n  return $?\n}",
+  "replace": "prepare_and_publish_host_cargo_compiler() {\n  local -n _pphc_wrapper=\"$1\"\n  local _pphc_compiler=\"$2\" _pphc_prepare=\"$3\" _pphc_publish=\"$4\"\n  if true; then\n    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"\n    \"${_pphc_publish}\"\n  fi\n  return $?\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Empty compiler resolution skips wrapper creation and publication without touching the caller slots."
+ },
+ {
+  "id": "lib.host-cargo-preparation-wrapper-required",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"",
+  "replace": "    _pphc_wrapper=\"\"",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Selected compiler wrappers must be prepared before the caller publishes their paths."
+ },
+ {
+  "id": "lib.host-cargo-preparation-publication-required",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    \"${_pphc_publish}\"",
+  "replace": "    :",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Host compiler bindings are published in the parent after wrapper creation."
+ },
+ {
+  "id": "lib.host-cargo-preparation-wrapper-raw-failure",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"",
+  "replace": "    _pphc_wrapper=\"$(\"${_pphc_prepare}\" || true)\"",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "A failed captured wrapper retains direct strict failure and conditional partial-publication behavior."
+ },
+ {
+  "id": "lib.host-cargo-preparation-publication-unconditional",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    \"${_pphc_publish}\"",
+  "replace": "    \"${_pphc_publish}\" || true",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "A failed publication remains strict when the original caller was strict."
+ },
+ {
+  "id": "lib.host-cargo-preparation-wrapper-isolated",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"",
+  "replace": "    \"${_pphc_prepare}\"",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Wrapper stdout is captured and wrapper mutations stay in the original subshell rather than leaking to the parent."
+ },
+ {
+  "id": "lib.host-cargo-preparation-output-slot",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "  local -n _pphc_wrapper=\"$1\"",
+  "replace": "  local -n _pphc_wrapper=cargo_host_cc",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "The prepared wrapper updates the original selected wrapper slot rather than the resolved compiler slot."
+ },
+ {
+  "id": "lib.host-cargo-preparation-publication-order",
+  "target": "linux/scripts/01-core/compiler-resolution.sh",
+  "find": "    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"\n    \"${_pphc_publish}\"",
+  "replace": "    \"${_pphc_publish}\"\n    _pphc_wrapper=\"$(\"${_pphc_prepare}\")\"",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Publication observes the completed wrapper assignment and retains compiler and language order."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-c-prepare-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "_gsh_prepare_c() {\n  prepare_cargo_host_linker_wrapper \"${cargo_host_cc}\"\n}",
+  "replace": "_gsh_prepare_c() {\n  \"prepare_cargo_host_linker_wrapper\" \"${cargo_host_cc}\"\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal wrapper prefixes bind at the original caller declaration with empty positional context and the original compiler argument."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-c-publish-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "_gsh_publish_c() {\n  export_cargo_compiler_binding \"${build_rust_env}\" \"${build_rust_lower}\" c \"${cargo_host_linker}\" host\n}",
+  "replace": "_gsh_publish_c() {\n  \"export_cargo_compiler_binding\" \"${build_rust_env}\" \"${build_rust_lower}\" c \"${cargo_host_linker}\" host\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal publication prefixes keep the original source binding, argument count and parent scope."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-cxx-prepare-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "_gsh_prepare_cxx() {\n  prepare_cargo_host_cxx_wrapper \"${cargo_host_cxx}\"\n}",
+  "replace": "_gsh_prepare_cxx() {\n  \"prepare_cargo_host_cxx_wrapper\" \"${cargo_host_cxx}\"\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal wrapper prefixes bind at the original caller declaration with empty positional context and the original compiler argument."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-cxx-publish-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "_gsh_publish_cxx() {\n  export_cargo_compiler_binding \"${build_rust_env}\" \"${build_rust_lower}\" cxx \"${cargo_host_cxx_wrapper}\" host\n}",
+  "replace": "_gsh_publish_cxx() {\n  \"export_cargo_compiler_binding\" \"${build_rust_env}\" \"${build_rust_lower}\" cxx \"${cargo_host_cxx_wrapper}\" host\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal publication prefixes keep the original source binding, argument count and parent scope."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-required-api",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\\n' >&2; return 1; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "A selected host binding path must report a missing shared export before resolving any compiler."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-selected-api",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "prepare_host_cargo_toolchain_env() {\n  local build_rust_env=\"X86_64_UNKNOWN_LINUX_GNU\"\n  local build_rust_lower=\"x86_64_unknown_linux_gnu\"\n  local cargo_host_cc=\"\"\n  local cargo_host_linker=\"\"\n  local cargo_host_cxx=\"\"\n  local cargo_host_cxx_wrapper=\"\"\n\n  if ! cross_build_is_active; then\n    return 0\n  fi\n\n  declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\\n' >&2; return 1; }\n  if command -v cross_build_upper_rust >/dev/null 2>&1; then\n    build_rust_env=\"$(cross_build_upper_rust 2>/dev/null || true)\"\n  fi\n  if command -v cross_build_lower_rust >/dev/null 2>&1; then\n    build_rust_lower=\"$(cross_build_lower_rust 2>/dev/null || true)\"\n  fi\n  [ -n \"${build_rust_env}\" ] || build_rust_env=\"X86_64_UNKNOWN_LINUX_GNU\"\n  [ -n \"${build_rust_lower}\" ] || build_rust_lower=\"x86_64_unknown_linux_gnu\"\n\n  # No PATH scrub: /opt/cross-bin holds only triplet-prefixed names, so host build scripts already find the native cc.\n\n  cargo_host_cc=\"$(resolve_host_gcc_for_cargo)\"\n  prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsh_prepare_c _gsh_publish_c\n\n  cargo_host_cxx=\"$(resolve_host_gxx_for_cargo)\"\n  prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsh_prepare_cxx _gsh_publish_cxx\n\n  _gst_prepare_target_cargo_env\n}",
+  "replace": "prepare_host_cargo_toolchain_env() {\n  declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\\n' >&2; return 1; }\n  local build_rust_env=\"X86_64_UNKNOWN_LINUX_GNU\"\n  local build_rust_lower=\"x86_64_unknown_linux_gnu\"\n  local cargo_host_cc=\"\"\n  local cargo_host_linker=\"\"\n  local cargo_host_cxx=\"\"\n  local cargo_host_cxx_wrapper=\"\"\n\n  if ! cross_build_is_active; then\n    return 0\n  fi\n\n  if command -v cross_build_upper_rust >/dev/null 2>&1; then\n    build_rust_env=\"$(cross_build_upper_rust 2>/dev/null || true)\"\n  fi\n  if command -v cross_build_lower_rust >/dev/null 2>&1; then\n    build_rust_lower=\"$(cross_build_lower_rust 2>/dev/null || true)\"\n  fi\n  [ -n \"${build_rust_env}\" ] || build_rust_env=\"X86_64_UNKNOWN_LINUX_GNU\"\n  [ -n \"${build_rust_lower}\" ] || build_rust_lower=\"x86_64_unknown_linux_gnu\"\n\n  # No PATH scrub: /opt/cross-bin holds only triplet-prefixed names, so host build scripts already find the native cc.\n\n  cargo_host_cc=\"$(resolve_host_gcc_for_cargo)\"\n  prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsh_prepare_c _gsh_publish_c\n\n  cargo_host_cxx=\"$(resolve_host_gxx_for_cargo)\"\n  prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsh_prepare_cxx _gsh_publish_cxx\n\n  _gst_prepare_target_cargo_env\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Native operation and supplied standalone host setup do not require the unused fallback helper."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-c-selection",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsh_prepare_c _gsh_publish_c",
+  "replace": "  prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsh_prepare_cxx _gsh_publish_c",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Each compiler language selects its original wrapper callback and output slot."
+ },
+ {
+  "id": "lib.host-cargo-preparation-setup-cxx-selection",
+  "target": "linux/scripts/03-media/build/gstreamer/common/setup-gstreamer.sh",
+  "find": "  prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsh_prepare_cxx _gsh_publish_cxx",
+  "replace": "  prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsh_prepare_c _gsh_publish_cxx",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Each compiler language selects its original wrapper callback and output slot."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-c-prepare-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "_gsrh_prepare_c() {\n  prepare_cargo_host_linker_wrapper \"${cargo_host_cc}\"\n}",
+  "replace": "_gsrh_prepare_c() {\n  \"prepare_cargo_host_linker_wrapper\" \"${cargo_host_cc}\"\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal wrapper prefixes bind at the original caller declaration with empty positional context and the original compiler argument."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-c-publish-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "_gsrh_publish_c() {\n  export_cargo_compiler_binding \"X86_64_UNKNOWN_LINUX_GNU\" \"x86_64_unknown_linux_gnu\" c \"${cargo_host_linker}\"\n}",
+  "replace": "_gsrh_publish_c() {\n  \"export_cargo_compiler_binding\" \"X86_64_UNKNOWN_LINUX_GNU\" \"x86_64_unknown_linux_gnu\" c \"${cargo_host_linker}\"\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal publication prefixes keep the original source binding, argument count and parent scope."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-cxx-prepare-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "_gsrh_prepare_cxx() {\n  prepare_cargo_host_cxx_wrapper \"${cargo_host_cxx}\"\n}",
+  "replace": "_gsrh_prepare_cxx() {\n  \"prepare_cargo_host_cxx_wrapper\" \"${cargo_host_cxx}\"\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal wrapper prefixes bind at the original caller declaration with empty positional context and the original compiler argument."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-cxx-publish-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "_gsrh_publish_cxx() {\n  export_cargo_compiler_binding \"X86_64_UNKNOWN_LINUX_GNU\" \"x86_64_unknown_linux_gnu\" cxx \"${cargo_host_cxx_wrapper}\"\n}",
+  "replace": "_gsrh_publish_cxx() {\n  \"export_cargo_compiler_binding\" \"X86_64_UNKNOWN_LINUX_GNU\" \"x86_64_unknown_linux_gnu\" cxx \"${cargo_host_cxx_wrapper}\"\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Literal publication prefixes keep the original source binding, argument count and parent scope."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-required-api",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "    declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\\n' >&2; return 1; }\n",
+  "replace": "",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "A selected host binding path must report a missing shared export before resolving any compiler."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-selected-api",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "_gst_rs_host_cargo_config() {\n  if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then\n    prepare_host_cargo_toolchain_env\n  elif cross_build_is_active; then\n    declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\\n' >&2; return 1; }\n    cargo_host_cc=\"$(resolve_host_gcc_for_cargo)\"\n    prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsrh_prepare_c _gsrh_publish_c\n\n    cargo_host_cxx=\"$(resolve_host_gxx_for_cargo)\"\n    prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsrh_prepare_cxx _gsrh_publish_cxx\n  fi\n\n}",
+  "replace": "_gst_rs_host_cargo_config() {\n    declare -F prepare_and_publish_host_cargo_compiler >/dev/null || { printf 'ERROR: compiler-resolution.sh lacks prepare_and_publish_host_cargo_compiler\\n' >&2; return 1; }\n  if command -v prepare_host_cargo_toolchain_env >/dev/null 2>&1; then\n    prepare_host_cargo_toolchain_env\n  elif cross_build_is_active; then\n    cargo_host_cc=\"$(resolve_host_gcc_for_cargo)\"\n    prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsrh_prepare_c _gsrh_publish_c\n\n    cargo_host_cxx=\"$(resolve_host_gxx_for_cargo)\"\n    prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsrh_prepare_cxx _gsrh_publish_cxx\n  fi\n\n}",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Native operation and supplied standalone host setup do not require the unused fallback helper."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-c-selection",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "    prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsrh_prepare_c _gsrh_publish_c",
+  "replace": "    prepare_and_publish_host_cargo_compiler cargo_host_linker \"${cargo_host_cc}\" _gsrh_prepare_cxx _gsrh_publish_c",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Each compiler language selects its original wrapper callback and output slot."
+ },
+ {
+  "id": "lib.host-cargo-preparation-standalone-cxx-selection",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gst-plugins-rs.sh",
+  "find": "    prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsrh_prepare_cxx _gsrh_publish_cxx",
+  "replace": "    prepare_and_publish_host_cargo_compiler cargo_host_cxx_wrapper \"${cargo_host_cxx}\" _gsrh_prepare_c _gsrh_publish_cxx",
+  "test": "bash linux/scripts/tests/test-host-cargo-preparation.sh",
+  "why": "Each compiler language selects its original wrapper callback and output slot."
+ },
+ {
+  "id": "lib.media-pin-advisory",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "\"$2\" \"${@:3}\" || true",
+  "replace": "\"$2\" \"${@:3}\"",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "An optional pin failure remains advisory under both strict and conditional callers."
+ },
+ {
+  "id": "lib.media-pin-quiet-lookup",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if \"$1\" \"${@:3}\" >/dev/null 2>&1; then",
+  "replace": "if \"$1\" \"${@:3}\"; then",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Availability output stays quiet without suppressing the actual pin output."
+ },
+ {
+  "id": "lib.media-pin-availability",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if \"$1\" \"${@:3}\" >/dev/null 2>&1; then",
+  "replace": "if true; then",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "A missing optional provider skips invocation and the FFmpeg target query."
+ },
+ {
+  "id": "lib.media-pin-lookup-argv",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "if \"$1\" \"${@:3}\" >/dev/null 2>&1; then",
+  "replace": "if \"$1\" \"$@\" >/dev/null 2>&1; then",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Lookup prefix aliases see the original enclosing arguments rather than adapter metadata."
+ },
+ {
+  "id": "lib.media-pin-invoke-argv",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "\"$2\" \"${@:3}\" || true",
+  "replace": "\"$2\" \"${@:4}\" || true",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Pin prefix aliases retain every caller argument, including an empty tail."
+ },
+ {
+  "id": "lib.media-pin-caller-scope",
+  "target": "linux/scripts/03-media/core/common.sh",
+  "find": "media_pin_target_libstdcxx_if_available() {\n",
+  "replace": "media_pin_target_libstdcxx_if_available() {\n  local host_cc=helper\n",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Provided pin functions observe the original FFmpeg caller scope without generic helper locals."
+ },
+ {
+  "id": "lib.media-pin-ff-query-lazy",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "_ffmpeg_pin_available() {\n",
+  "replace": "_ffmpeg_pin_available() {\n    cross_target_arch >/dev/null\n",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "FFmpeg resolves the pin target only after provider availability succeeds."
+ },
+ {
+  "id": "lib.media-pin-ff-pin-binding",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "pin_target_libstdcxx \"$(cross_target_arch)\"",
+  "replace": "\"pin_target_libstdcxx\" \"$(cross_target_arch)\"",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Invocation aliases stay bound at the original caller parse point."
+ },
+ {
+  "id": "lib.media-pin-ff-lookup-binding",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "_ffmpeg_pin_available() {\n    command -v pin_target_libstdcxx\n}",
+  "replace": "_ffmpeg_pin_available() {\n    builtin command -v pin_target_libstdcxx\n}",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Lookup aliases retain their caller parse-time binding and positional context."
+ },
+ {
+  "id": "lib.media-pin-ff-required-api-status",
+  "target": "linux/scripts/03-media/build/ffmpeg/build-ffmpeg.sh",
+  "find": "declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\\n' >&2; return 1; }",
+  "replace": "declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\\n' >&2; return 0; }",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "An old required owner cannot report an error and still turn the selected caller green."
+ },
+ {
+  "id": "lib.media-pin-gst-pin-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "pin_target_libstdcxx \"${TARGET_ARCH:-${TARGETARCH:-}}\"",
+  "replace": "\"pin_target_libstdcxx\" \"${TARGET_ARCH:-${TARGETARCH:-}}\"",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Invocation aliases stay bound at the original caller parse point."
+ },
+ {
+  "id": "lib.media-pin-gst-lookup-binding",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "_gst_pin_available() {\n  command -v pin_target_libstdcxx\n}",
+  "replace": "_gst_pin_available() {\n  builtin command -v pin_target_libstdcxx\n}",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "Lookup aliases retain their caller parse-time binding and positional context."
+ },
+ {
+  "id": "lib.media-pin-gst-required-api-status",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\\n' >&2; exit 1; }",
+  "replace": "declare -F media_pin_target_libstdcxx_if_available >/dev/null || { printf 'ERROR: runtime pinning requires media_pin_target_libstdcxx_if_available from media common.sh\\n' >&2; exit 0; }",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "An old required owner cannot report an error and still turn the selected caller green."
+ },
+ {
+  "id": "lib.media-pin-gst-target-fallback",
+  "target": "linux/scripts/03-media/build/gstreamer/common/build-gstreamer-stage.sh",
+  "find": "pin_target_libstdcxx \"${TARGET_ARCH:-${TARGETARCH:-}}\"",
+  "replace": "pin_target_libstdcxx \"${TARGET_ARCH:-}\"",
+  "test": "bash linux/scripts/tests/test-media-pin-advisory.sh",
+  "why": "The GStreamer pin keeps TARGET_ARCH precedence and TARGETARCH fallback independently of its gate."
  }
 ]
