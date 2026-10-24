@@ -112,6 +112,57 @@ function Resolve-GnuPatchExe {
     }
     throw "no GNU patch.exe found (tried: $($candidates -join ', ')): Invoke-SourcePatch applies tarball patches with it, so this gate must too."
 }
+
+function Get-PatchClone {
+    param([string]$RepoKey, [hashtable]$Spec, [hashtable]$Clones, [string]$WorkDir)
+    $cacheKey = "$RepoKey|$($Spec.Ref)"
+    if ($Clones[$cacheKey]) { return [pscustomobject]@{ Path = $Clones[$cacheKey]; Error = '' } }
+    $clone = Join-Path $WorkDir $cacheKey.Replace('|', '_').Replace('/', '_')
+    Write-Host "  clone $RepoKey @ $($Spec.Ref) (sparse)..." -ForegroundColor DarkGray
+    $refArgs = @(if ($Spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($Spec.Ref)" } else { '--branch', $Spec.Ref })
+    & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $Spec.Url $clone 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { return [pscustomobject]@{ Path = ''; Error = 'FAIL (clone)' } }
+    $Clones[$cacheKey] = $clone
+    return [pscustomobject]@{ Path = $clone; Error = '' }
+}
+
+function Get-PatchApplyStatus {
+    param([string]$Clone, [string[]]$Targets, [string]$PatchFile, [string]$PatchExe)
+    $sparseOutput = & git -C $Clone sparse-checkout set --no-cone -- @Targets 2>&1
+    if ($LASTEXITCODE -ne 0) { return "FAIL (sparse-checkout: $($sparseOutput | Select-Object -First 1))" }
+    $missing = @($Targets | Where-Object { -not (Test-Path (Join-Path $Clone $_)) })
+    if ($missing.Count -gt 0) { return "FAIL (target not checked out: $($missing[0]))" }
+    $applyOutput = & git -C $Clone apply --check -p1 --ignore-whitespace $PatchFile 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $reason = ($applyOutput | Where-Object { $_ -match 'error:' } | Select-Object -First 1)
+        if (-not $reason) { $reason = ($applyOutput | Select-Object -First 1) }
+        return "FAIL ($reason)"
+    }
+    $gnuOutput = & $PatchExe -p1 --dry-run --force -d $Clone -i $PatchFile 2>&1
+    if ($LASTEXITCODE -eq 0) { return 'OK' }
+    $reason = ($gnuOutput | Where-Object { $_ -match 'FAILED|exists|malformed|reversed|can.t find' } | Select-Object -First 1)
+    if (-not $reason) { $reason = ($gnuOutput | Select-Object -First 1) }
+    return "FAIL (GNU patch: $reason)"
+}
+
+function Get-StaticPatchResult {
+    param([IO.FileInfo]$Patch, [hashtable]$RepoMap, [hashtable]$Clones, [string]$WorkDir, [string]$PatchExe)
+    $repoKey = Split-Path (Split-Path $Patch.FullName -Parent) -Leaf
+    $spec = $RepoMap[$repoKey]
+    if (-not $spec) {
+        return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = '?'; Status = 'FAIL (no repo mapping - add it to $repoMap)' }
+    }
+    $targets = @(Get-PatchTargetPaths -PatchFile $Patch.FullName)
+    if (-not $targets) {
+        return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'SKIP (no +++ b/ headers)' }
+    }
+    $checkout = Get-PatchClone -RepoKey $repoKey -Spec $spec -Clones $Clones -WorkDir $WorkDir
+    $status = if ($checkout.Error) { $checkout.Error } else {
+        Get-PatchApplyStatus -Clone $checkout.Path -Targets $targets -PatchFile $Patch.FullName -PatchExe $PatchExe
+    }
+    return [pscustomobject]@{ Patch = $Patch.Name; Repo = $repoKey; Ref = $spec.Ref; Status = $status }
+}
+
 $patchExe = Resolve-GnuPatchExe
 
 # @(): a -PatchRoot holding one patch yields a scalar, and StrictMode refuses .Count on it.
@@ -123,64 +174,8 @@ $results = [System.Collections.Generic.List[object]]::new()
 $clones = @{}   # repoKey|ref -> clone dir (reused across patches for the same repo)
 
 try {
-    foreach ($p in $patches) {
-        $repoKey = Split-Path (Split-Path $p.FullName -Parent) -Leaf
-        $spec = $repoMap[$repoKey]
-        if (-not $spec) {
-            # FAIL, not SKIP: an unmapped patch directory would otherwise escape this gate silently.
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = '?'; Status = 'FAIL (no repo mapping - add it to $repoMap)' })
-            continue
-        }
-        $targets = Get-PatchTargetPaths -PatchFile $p.FullName
-        if (-not $targets) {
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'SKIP (no +++ b/ headers)' })
-            continue
-        }
-        $cacheKey = "$repoKey|$($spec.Ref)"
-        $clone = $clones[$cacheKey]
-        if (-not $clone) {
-            $clone = Join-Path $WorkDir $cacheKey.Replace('|', '_').Replace('/', '_')
-            Write-Host "  clone $repoKey @ $($spec.Ref) (sparse)..." -ForegroundColor DarkGray
-            # --branch takes names only; a 40-hex commit pin (MIGraphX) needs --revision (git >= 2.49).
-            $refArgs = @(if ($spec.Ref -match '^[0-9a-f]{40}$') { "--revision=$($spec.Ref)" } else { '--branch', $spec.Ref })
-            # LF like the build's tarball and container checkouts; a host's autocrlf=true would red every GNU patch check.
-            & git clone --config core.autocrlf=false --depth 1 @refArgs --filter=blob:none --sparse $spec.Url $clone 2>&1 | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'FAIL (clone)' })
-                continue
-            }
-            $clones[$cacheKey] = $clone
-        }
-        # Non-cone `set` with literal paths: cone mode rejects some valid dirs and can silently skip a later file.
-        $targetArgs = @($targets)
-        $scOut = & git -C $clone sparse-checkout set --no-cone -- @targetArgs 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL (sparse-checkout: $($scOut | Select-Object -First 1))" })
-            continue
-        }
-        # Report a missing target apart from a hunk mismatch, or a checkout gap looks like patch rot.
-        $missing = @($targets | Where-Object { -not (Test-Path (Join-Path $clone $_)) })
-        if ($missing.Count -gt 0) {
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL (target not checked out: $($missing[0]))" })
-            continue
-        }
-        # The exact flags Invoke-SourcePatch uses. Capture stderr so a real mismatch is explained.
-        $applyOut = & git -C $clone apply --check -p1 --ignore-whitespace $p.FullName 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            $reason = ($applyOut | Where-Object { $_ -match 'error:' } | Select-Object -First 1)
-            if (-not $reason) { $reason = ($applyOut | Select-Object -First 1) }
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL ($reason)" })
-            continue
-        }
-        # --force never prompts; GNU patch reads `index 0000000..` as a new file and anchors short trailing context at EOF.
-        $gnuOut = & $patchExe -p1 --dry-run --force -d $clone -i $p.FullName 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = 'OK' })
-        } else {
-            $reason = ($gnuOut | Where-Object { $_ -match 'FAILED|exists|malformed|reversed|can.t find' } | Select-Object -First 1)
-            if (-not $reason) { $reason = ($gnuOut | Select-Object -First 1) }
-            $results.Add([pscustomobject]@{ Patch = $p.Name; Repo = $repoKey; Ref = $spec.Ref; Status = "FAIL (GNU patch: $reason)" })
-        }
+    foreach ($patch in $patches) {
+        $results.Add((Get-StaticPatchResult -Patch $patch -RepoMap $repoMap -Clones $clones -WorkDir $WorkDir -PatchExe $patchExe))
     }
 }
 finally {

@@ -53,6 +53,22 @@ Describe 'Copy-TensorrtRuntime.ps1' {
     }
 }
 
+Describe 'Set-TensorrtTree.ps1' {
+    It 'normalizes a versioned tree and refuses a tree without runtime DLLs' {
+        Invoke-InTestDir { param($dir)
+            $normalize = Join-Path (Get-RepoRoot) 'windows\scripts\build\Set-TensorrtTree.ps1'
+            $sourceBin = Join-Path $dir 'TensorRT-11.4.0.106\bin'
+            $null = New-Item -ItemType Directory -Path $sourceBin -Force
+            $null = New-Item -ItemType File -Path (Join-Path $sourceBin 'nvinfer_11.dll')
+            & $normalize -TensorRtRoot $dir -ExpectedVersion '11.4.0.106' | Out-Null
+            Assert-True (Test-Path -LiteralPath (Join-Path $dir 'current\bin\nvinfer_11.dll')) 'the versioned runtime moved to current'
+            Remove-Item -LiteralPath (Join-Path $dir 'current\bin\nvinfer_11.dll')
+            Assert-Throws { & $normalize -TensorRtRoot $dir -ExpectedVersion '11.4.0.106' | Out-Null } `
+                'a rerun must still enforce the DLL gate' -MessagePattern 'carries no runtime DLLs'
+        }
+    }
+}
+
 Describe 'Get-TensorRtShipViolation' {
 
     It 'names every SDK file under the shipped root: header, import lib, trtexec, wheel, sample' {

@@ -15,7 +15,9 @@
 
 ## 2026-10-24 — Windows PowerShell quality and harness controls
 
-- Add an AST-based Windows PowerShell complexity report to Windows x64 CI, with strict 15/5/80 checks for the scanner, AST reader, Slang, CodeQL, image config, LLVM diagnostic and agentic loop files, a parser shared with the test harness and mutation-tested metric fixtures.
+- Move generated complexity JSON results into the Git-ignored `out/complexity/` folder; keep `-JsonPath` optional for local snapshots.
+- Add an AST-based Windows PowerShell complexity gate to Windows x64 CI, enforcing 15/5/80 across the full tracked tree; share its parser with the test harness and mutation-test its metrics.
+- Refactor Windows build, host, diagnostic and test code until the strict PowerShell scan is clear; lower 25 measured duplication budgets and remove 30 stale entries. The owner-approved budget-12 syntax exception closes the last PowerShell duplication finding without raising the threshold or narrowing coverage.
 - Import the exact pinned PSScriptAnalyzer version in parent and batch lint processes; both Windows CI installers read the pin, and action changes trigger the x64 workflow.
 - Split Slang shader compilation and CodeQL analysis into smaller phases, with regression tests for cache, failure, fallback and result policies.
 - Separate image config token checks from finding assembly while keeping order and deduplication; the history gate tests both.
@@ -23,11 +25,27 @@
 - Separate CMake configure's base, CUDA and cross/ROCm argument phases without changing caller override order; focused tests cover both CUDA cache opt-in and ROCm opt-out.
 - Split free-threaded wheel setup from the cross-stage plan; tests preserve stale GIL wheel cleanup, one target tag and native no-op behavior.
 - Split BuildKit stage argument, cache, metadata and retry preparation into private helpers; stage execution now meets the strict function limits, and tests preserve three or five attempts and gate order.
+- Split the BuildKit driver into stage, preseed, cleanup and child argument phases; shared optional stage and child option policies keep cross-lane checks intact.
+- Split the ONNX, OpenCV and sccache diagnostics into focused probes, and separated VS bootstrap, MSIX signing and lint reporting phases; the changed scripts now meet the strict PowerShell limits.
+- Share ROCm pin forwarding, silo stack capture, host dufs change handling and diagnostic report helpers; focused fixtures keep argument, output and failure behavior covered.
 - Share the agent process output reader and separate loop input validation and Claude arguments; real child-process tests cover stderr, timeout and role policy.
 - Separate warning-baseline rendering from log streaming so the diagnostic meets strict complexity limits; tests preserve the narrower clang group in the flood count.
 - Separate warning-stream parsing from reporting while retaining bounded input batches and compact signal evidence; a new fixture checks counts and CLI output.
 - Split RDNA4 per-device changes from host discovery; tests preserve already-correct skips and failure aggregation without touching real hardware.
 - Separate host disk-reclaim reporting and daemon work from the guarded file deletion loop; tests retain report-only, apply, build-prune and junction protections.
+- Split host dufs setup into executable, server, task and endpoint phases; tests preserve report-only behavior and hidden process launch.
+- Separate VHDX guest reporting from compaction; host-free tests cover ReFS warnings and unattached disks.
+- Separate cuDNN verification from CUDA installation; tests fail each missing header, library and DLL class.
+- Separate TensorRT archive search from bounded NVIDIA download fallbacks; tests preserve staged-archive precedence and failure reporting.
+- Separate the module-free Windows build-copy probe's base pin reader; tests reject incomplete version fields.
+- Separate active CDSP driver discovery from the GenieX NPU symbol report; tests preserve stale-copy rejection and advisory discovery failures.
+- Split the publish-gate AST fixture into solve, export, toolchain and parent checks; its 36 behavior and mutation tests still pass.
+- Split Python app bundle launcher and data staging into separate steps; tests preserve declared console scripts and copied data paths.
+- Split BuildKit variant behavior from tag and chain wiring tests with one shared fixture; all 30 focused assertions still pass.
+- Separate Python CI leg selection and failure policy from the driver; existing settings and child-process tests cover the handoff.
+- Split GenieX lane launch from listener checks, serve arguments and endpoint reporting; tests preserve hidden startup and model mismatch warnings.
+- Separate LSM wait-handle discovery from system-wide holder reporting; a fake debugger fixture verifies thread binding and the R10 handle.
+- Split arm64 Python test staging into interpreter, site-install and per-leg steps; fixtures check cleanup and free-threaded inputs.
 - Remove one obsolete duplication exception and lower a measured budget after the refactors.
 
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.

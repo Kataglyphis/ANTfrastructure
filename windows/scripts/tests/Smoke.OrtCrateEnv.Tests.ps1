@@ -91,7 +91,6 @@ Describe 'Smoke §19: ort crate env findings' {
 
 Describe 'Smoke §19: ort crate env wiring' {
     $ast = Get-TestScriptAst -ScriptPath $script:CrateSmoke
-    $src = $ast.Extent.Text
     $check = @(Get-TestAstCommands -Ast $ast -Name 'Assert-Test' | Where-Object { $_.Extent.Text -like 'Assert-Test*$ortCrateFindings*' })
     $sourceCall = @(Get-TestAstCommands -Ast $ast -Name 'Get-OrtCrateEnvFinding')
     $source = @($sourceCall | ForEach-Object { Get-TestAstAncestor -Node $_ -Type ([AssignmentStatementAst]) -First })
@@ -105,8 +104,12 @@ Describe 'Smoke §19: ort crate env wiring' {
             Get-TestAstAncestor -Node $source[0] -Type ([IfStatementAst])
         )
         Assert-Equal 0 $guards.Count 'every lane: no enclosing if'
-        $at = $check[0].Extent.StartOffset
-        Assert-True ($src.IndexOf("Write-TestHeader '19.") -lt $at -and $at -lt $src.IndexOf("Write-TestHeader '20.")) 'counted in section 19, whose floors it raised'
+        $section = Get-TestAstAncestor -Node $check[0] -Type ([FunctionDefinitionAst]) -First
+        Assert-Equal 'Invoke-SmokeSection19' $section.Name 'counted in section 19, whose floors it raised'
+        $sectionCall = @(Get-TestAstCommands -Ast $ast -Name 'Invoke-SmokeSection19' | Where-Object { -not (Get-TestAstAncestor -Node $_ -Type ([FunctionDefinitionAst]) -First) })
+        $nextCall = @(Get-TestAstCommands -Ast $ast -Name 'Invoke-SmokeSection20' | Where-Object { -not (Get-TestAstAncestor -Node $_ -Type ([FunctionDefinitionAst]) -First) })
+        Assert-Equal '1/1' "$($sectionCall.Count)/$($nextCall.Count)" 'both sections run once'
+        Assert-True ($sectionCall[0].Extent.StartOffset -lt $nextCall[0].Extent.StartOffset) 'section 19 runs before section 20'
     }
 
     It 'rejects a malformed source mutation before inspecting declarations' {

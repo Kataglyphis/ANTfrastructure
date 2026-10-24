@@ -141,59 +141,70 @@ function Write-CmakeSccacheStats {
   }
 }
 
-function Invoke-CmakeConfigureAndBuild {
-  param(
-    [Parameter(Mandatory)]
-    [pscustomobject]$Context,
-    [Parameter(Mandatory)]
-    [string]$BuildPath,
-    [Parameter(Mandatory)]
-    [string]$Preset,
-    [Parameter(Mandatory)]
-    [string]$Configuration,
-    [string[]]$ConfigureExtraArgs = @(),
-    [switch]$CleanBuildRoot,
-    [string]$CleanLabel = '',
-    [int]$ParallelJobs = 0,
-    [switch]$VerboseOutput,
-    [switch]$DisableSccache
-  )
+function Invoke-CmakeSccacheServer {
+  param($Context, [ValidateSet('Start', 'Stop')][string]$Action)
+  if ($Action -eq 'Stop') {
+    try {
+      & sccache --stop-server 2>&1 | Out-Null
+      Write-BuildLog -Context $Context -Message "DEBUG: Stopped sccache server"
+    } catch {
+      Write-BuildLog -Context $Context -Message "DEBUG: Could not stop sccache server (may not be running)"
+    }
+    return
+  }
+  try {
+    $result = & sccache --start-server 2>&1
+    Write-BuildLog -Context $Context -Message "DEBUG: sccache --start-server: $result"
+  } catch {
+    Write-BuildLog -Context $Context -Message "DEBUG: sccache server already running or failed to start"
+  }
+}
 
+function Write-CmakeHostFacts {
+  param($Context, [string]$BuildPath, [string]$Preset, [string]$Configuration, [int]$ParallelJobs, [switch]$VerboseOutput, [switch]$DisableSccache)
   $cpuCount = [Environment]::ProcessorCount
   $logicalProcessors = (Get-CimInstance -ClassName Win32_ComputerSystem).NumberOfLogicalProcessors
-  Write-BuildLog -Context $Context -Message "DEBUG: ========== SYSTEM INFO =========="
-  Write-BuildLog -Context $Context -Message "DEBUG: System CPU count (Environment): $cpuCount"
-  Write-BuildLog -Context $Context -Message "DEBUG: System logical processors (WMI): $logicalProcessors"
-  Write-BuildLog -Context $Context -Message "DEBUG: ParallelJobs parameter: $ParallelJobs"
-  Write-BuildLog -Context $Context -Message "DEBUG: VerboseOutput mode: $VerboseOutput"
-  Write-BuildLog -Context $Context -Message "DEBUG: DisableSccache: $DisableSccache"
-  Write-BuildLog -Context $Context -Message "DEBUG: BuildPath: $BuildPath"
-  Write-BuildLog -Context $Context -Message "DEBUG: Preset: $Preset"
-  Write-BuildLog -Context $Context -Message "DEBUG: Configuration: $Configuration"
+  Write-BuildLogMessages -Context $Context -Messages @(
+    "DEBUG: ========== SYSTEM INFO =========="
+    "DEBUG: System CPU count (Environment): $cpuCount"
+    "DEBUG: System logical processors (WMI): $logicalProcessors"
+    "DEBUG: ParallelJobs parameter: $ParallelJobs"
+    "DEBUG: VerboseOutput mode: $VerboseOutput"
+    "DEBUG: DisableSccache: $DisableSccache"
+    "DEBUG: BuildPath: $BuildPath"
+    "DEBUG: Preset: $Preset"
+    "DEBUG: Configuration: $Configuration"
+  )
+  return $cpuCount
+}
 
-  if (Set-SccacheMaxJobsDefault -Default $cpuCount) {
-    Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$cpuCount (was not set, defaulting to CPU count)"
+function Write-CmakeBuildSystemInfo {
+  param($Context, [int]$CpuCount, [switch]$DisableSccache)
+
+  if (Set-SccacheMaxJobsDefault -Default $CpuCount) {
+    Write-BuildLog -Context $Context -Message "DEBUG: AUTO-SET SCCACHE_MAX_JOBS=$CpuCount (was not set, defaulting to CPU count)"
   } else {
     Write-BuildLog -Context $Context -Message "DEBUG: SCCACHE_MAX_JOBS already set to: $env:SCCACHE_MAX_JOBS"
   }
 
-  if ($DisableSccache) {
-    Write-BuildLog -Context $Context -Message "DEBUG: ========== DISABLING SCCACHE =========="
-    # A CUDA launcher can arrive from the environment, and a wrapped nvcc breaks multi-arch builds.
-    Set-CompilerWrapperEnvironment -Value '' -IncludeCuda
-    Write-BuildLog -Context $Context -Message "DEBUG: Cleared all compiler wrapper environment variables"
+  if ($DisableSccache) { Disable-CmakeSccache -Context $Context }
+}
 
-    $sccachePath = Get-Command 'sccache' -ErrorAction SilentlyContinue
-    if ($sccachePath) {
-      try {
-        & sccache --stop-server 2>&1 | Out-Null
-        Write-BuildLog -Context $Context -Message "DEBUG: Stopped sccache server"
-      } catch {
-        Write-BuildLog -Context $Context -Message "DEBUG: Could not stop sccache server (may not be running)"
-      }
-    }
+function Disable-CmakeSccache {
+  param($Context)
+  Write-BuildLog -Context $Context -Message "DEBUG: ========== DISABLING SCCACHE =========="
+  # A CUDA launcher can arrive from the environment, and a wrapped nvcc breaks multi-arch builds.
+  Set-CompilerWrapperEnvironment -Value '' -IncludeCuda
+  Write-BuildLog -Context $Context -Message "DEBUG: Cleared all compiler wrapper environment variables"
+
+  $sccachePath = Get-Command 'sccache' -ErrorAction SilentlyContinue
+  if ($sccachePath) {
+    Invoke-CmakeSccacheServer -Context $Context -Action Stop
   }
+}
 
+function Reset-CmakeBuildRoot {
+  param($Context, [string]$BuildPath, [string]$Preset, [switch]$CleanBuildRoot, [string]$CleanLabel)
   # Consumer contract, name must stay stable: set for a mounted build dir, whose wipe breaks CMake configure.
   $keepBuildRoot = -not [string]::IsNullOrWhiteSpace($env:KATAGLYPHIS_KEEP_BUILD_ROOT)
   if ($CleanBuildRoot -and -not $keepBuildRoot) {
@@ -202,35 +213,37 @@ function Invoke-CmakeConfigureAndBuild {
   } elseif ($CleanBuildRoot) {
     Write-BuildLog -Context $Context -Message "Keeping build root (persistent volume): $BuildPath"
   }
+}
 
-  $configureArgs = Get-CmakeConfigureArgs -BuildPath $BuildPath -Preset $Preset -ConfigureExtraArgs $ConfigureExtraArgs -DisableSccache:$DisableSccache
-
+function Get-CmakeBuildArgs {
+  param($Context, [string]$BuildPath, [string]$Configuration, [int]$ParallelJobs, [int]$CpuCount, [switch]$VerboseOutput)
   $buildArgs = @('--build', $BuildPath, '--config', $Configuration)
   if ($ParallelJobs -gt 0) {
     $buildArgs += @('--parallel', $ParallelJobs.ToString())
     Write-BuildLog -Context $Context -Message "DEBUG: Using --parallel $ParallelJobs (limited)"
   } else {
     $buildArgs += @('--parallel')
-    Write-BuildLog -Context $Context -Message "DEBUG: Using --parallel (unlimited, will use all $cpuCount cores)"
+    Write-BuildLog -Context $Context -Message "DEBUG: Using --parallel (unlimited, will use all $CpuCount cores)"
   }
 
   if ($VerboseOutput) {
     $buildArgs += @('--verbose')
     Write-BuildLog -Context $Context -Message "DEBUG: VerboseOutput mode enabled (--verbose)"
   }
+  return $buildArgs
+}
 
-  $configureCmd = "cmake $($configureArgs -join ' ')"
-  $buildCmd = "cmake $($buildArgs -join ' ')"
-  Write-BuildLog -Context $Context -Message "DEBUG: Configure command: $configureCmd"
-  Write-BuildLog -Context $Context -Message "DEBUG: Build command: $buildCmd"
-
+function Write-CmakeBuildDiagnostics {
+  param($Context, [int]$CpuCount, [switch]$DisableSccache)
   Write-BuildLog -Context $Context -Message "DEBUG: ========== NINJA INFO =========="
   $ninjaPath = Get-Command 'ninja' -ErrorAction SilentlyContinue
   if ($ninjaPath) {
     $ninjaVersion = & ninja --version 2>&1
-    Write-BuildLog -Context $Context -Message "DEBUG: Ninja version: $ninjaVersion"
-    Write-BuildLog -Context $Context -Message "DEBUG: Ninja path: $($ninjaPath.Source)"
-    Write-BuildLog -Context $Context -Message "DEBUG: Ninja will use $cpuCount jobs by default (based on CPU count)"
+    Write-BuildLogMessages -Context $Context -Messages @(
+      "DEBUG: Ninja version: $ninjaVersion"
+      "DEBUG: Ninja path: $($ninjaPath.Source)"
+      "DEBUG: Ninja will use $CpuCount jobs by default (based on CPU count)"
+    )
   } else {
     Write-BuildLog -Context $Context -Message "DEBUG: Ninja not found on PATH"
   }
@@ -262,12 +275,7 @@ function Invoke-CmakeConfigureAndBuild {
     Write-CmakeEnvironmentDiagnostics -Context $Context -Name $sccacheEnvVars -ShowUnset
 
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache server status ---"
-    try {
-      $sccacheStartResult = & sccache --start-server 2>&1
-      Write-BuildLog -Context $Context -Message "DEBUG: sccache --start-server: $sccacheStartResult"
-    } catch {
-      Write-BuildLog -Context $Context -Message "DEBUG: sccache server already running or failed to start"
-    }
+    Invoke-CmakeSccacheServer -Context $Context -Action Start
 
     # No -RequireRemote: these diagnostics are wanted for a container-local cache too.
     Write-BuildLog -Context $Context -Message "DEBUG: --- sccache stats (full) ---"
@@ -286,34 +294,20 @@ function Invoke-CmakeConfigureAndBuild {
     'MAKEFLAGS', 'NUMBER_OF_PROCESSORS'
   )
   Write-CmakeEnvironmentDiagnostics -Context $Context -Name $otherEnvVars
+  return [bool]$sccachePath
+}
 
-  Write-BuildLog -Context $Context -Message "DEBUG: ========== STARTING BUILD =========="
-  Write-BuildLog -Context $Context -Message "DEBUG: Starting configure step..."
-  Invoke-BuildExternal -Context $Context -File 'cmake' -Parameters $configureArgs | Out-Null
-  Write-BuildLog -Context $Context -Message "DEBUG: Configure completed. Starting build step..."
-
-  $sanitizerRuntimeDlls = @()
-  $sanitizerRuntimeDirs = @()
-  if ($Configuration -eq 'Debug') {
-    $sanitizerRuntimeDlls = @(Get-SanitizerRuntimeDlls)
-    if ($sanitizerRuntimeDlls.Count -gt 0) {
-      Copy-SanitizerRuntimeDlls -Context $Context -SanitizerDlls $sanitizerRuntimeDlls -DestinationDirectories @($BuildPath)
-      $sanitizerRuntimeDirs = @($sanitizerRuntimeDlls | ForEach-Object { $_.DirectoryName } | Select-Object -Unique)
-      Write-BuildLog -Context $Context -Message "DEBUG: Using sanitizer runtime PATH entries: $($sanitizerRuntimeDirs -join ';')"
-    } else {
-      Write-BuildLogWarning -Context $Context -Message 'Could not find Sanitizer dynamic DLLs before build. Build-time helper executables may fail to start.'
-    }
-  }
-
+function Invoke-CmakeBuildCommand {
+  param($Context, [string[]]$BuildArgs, [string[]]$SanitizerRuntimeDirs)
   $buildStartTime = Get-Date
   Write-BuildLog -Context $Context -Message "DEBUG: Build started at $($buildStartTime.ToString('HH:mm:ss'))"
 
   # Streamed directly: Invoke-BuildExternal can lose output in Docker containers.
-  $buildCmdLine = "cmake $($buildArgs -join ' ')"
+  $buildCmdLine = "cmake $($BuildArgs -join ' ')"
   Write-BuildLog -Context $Context -Message "CMD: $buildCmdLine"
 
   $global:LASTEXITCODE = 0
-  $runtimePath = if ($sanitizerRuntimeDirs.Count -gt 0) { (($sanitizerRuntimeDirs -join ';') + ';' + $env:PATH) } else { $env:PATH }
+  $runtimePath = if ($SanitizerRuntimeDirs.Count -gt 0) { (($SanitizerRuntimeDirs -join ';') + ';' + $env:PATH) } else { $env:PATH }
   $buildResult = @{ ExitCode = 1 }
   Invoke-WithProcessEnvironment -Environment @{ PATH = $runtimePath } -ScriptBlock {
     try {
@@ -335,7 +329,10 @@ function Invoke-CmakeConfigureAndBuild {
   if ($buildExitCode -ne 0) {
     throw "CMake build failed with exit code $buildExitCode"
   }
+}
 
+function Copy-CmakePostBuildSanitizers {
+  param($Context, [string]$BuildPath, [string]$Configuration, [object[]]$SanitizerRuntimeDlls)
   if ($Configuration -eq 'Debug') {
     Write-BuildLog -Context $Context -Message "DEBUG: Post-build step: Copying Sanitizer DLLs for debug build..."
     $binDir = Join-Path $BuildPath "bin\Debug"
@@ -346,15 +343,81 @@ function Invoke-CmakeConfigureAndBuild {
         $binDir = $BuildPath
     }
 
+    Copy-CmakeSanitizerRuntime -Context $Context -SanitizerRuntimeDlls $SanitizerRuntimeDlls -DestinationDirectories @($BuildPath, $binDir) -MissingMessage 'Could not find Sanitizer dynamic DLLs to copy.'
+  }
+}
+
+function Copy-CmakeSanitizerRuntime {
+  param($Context, [object[]]$SanitizerRuntimeDlls, [string[]]$DestinationDirectories, [string]$MissingMessage)
+  if ($SanitizerRuntimeDlls.Count -eq 0) {
+    Write-BuildLogWarning -Context $Context -Message $MissingMessage
+    return
+  }
+  Copy-SanitizerRuntimeDlls -Context $Context -SanitizerDlls $SanitizerRuntimeDlls -DestinationDirectories $DestinationDirectories
+}
+
+function Initialize-CmakeSanitizers {
+  param($Context, [string]$BuildPath, [string]$Configuration)
+  $sanitizerRuntimeDlls = @()
+  $sanitizerRuntimeDirs = @()
+  if ($Configuration -eq 'Debug') {
+    $sanitizerRuntimeDlls = @(Get-SanitizerRuntimeDlls)
+    Copy-CmakeSanitizerRuntime -Context $Context -SanitizerRuntimeDlls $sanitizerRuntimeDlls -DestinationDirectories @($BuildPath) -MissingMessage 'Could not find Sanitizer dynamic DLLs before build. Build-time helper executables may fail to start.'
     if ($sanitizerRuntimeDlls.Count -gt 0) {
-        Copy-SanitizerRuntimeDlls -Context $Context -SanitizerDlls $sanitizerRuntimeDlls -DestinationDirectories @($BuildPath, $binDir)
-    } else {
-        Write-BuildLogWarning -Context $Context -Message "Could not find Sanitizer dynamic DLLs to copy."
+      $sanitizerRuntimeDirs = @($sanitizerRuntimeDlls | ForEach-Object { $_.DirectoryName } | Select-Object -Unique)
+      Write-BuildLog -Context $Context -Message "DEBUG: Using sanitizer runtime PATH entries: $($sanitizerRuntimeDirs -join ';')"
     }
   }
+  return [pscustomobject]@{ Dlls = $sanitizerRuntimeDlls; Dirs = $sanitizerRuntimeDirs }
+}
+
+function Invoke-CmakeConfigureAndBuild {
+  param(
+    [Parameter(Mandatory)]
+    [pscustomobject]$Context,
+    [Parameter(Mandatory)]
+    [string]$BuildPath,
+    [Parameter(Mandatory)]
+    [string]$Preset,
+    [Parameter(Mandatory)]
+    [string]$Configuration,
+    [string[]]$ConfigureExtraArgs = @(),
+    [switch]$CleanBuildRoot,
+    [string]$CleanLabel = '',
+    [int]$ParallelJobs = 0,
+    [switch]$VerboseOutput,
+    [switch]$DisableSccache
+  )
+
+  $cpuCount = Write-CmakeHostFacts -Context $Context -BuildPath $BuildPath -Preset $Preset -Configuration $Configuration -ParallelJobs $ParallelJobs -VerboseOutput:$VerboseOutput -DisableSccache:$DisableSccache
+  Write-CmakeBuildSystemInfo -Context $Context -CpuCount $cpuCount -DisableSccache:$DisableSccache
+
+  Reset-CmakeBuildRoot -Context $Context -BuildPath $BuildPath -Preset $Preset -CleanBuildRoot:$CleanBuildRoot -CleanLabel $CleanLabel
+
+  $configureArgs = Get-CmakeConfigureArgs -BuildPath $BuildPath -Preset $Preset -ConfigureExtraArgs $ConfigureExtraArgs -DisableSccache:$DisableSccache
+
+  $buildArgs = @(Get-CmakeBuildArgs -Context $Context -BuildPath $BuildPath -Configuration $Configuration -ParallelJobs $ParallelJobs -CpuCount $cpuCount -VerboseOutput:$VerboseOutput)
+
+  $configureCmd = "cmake $($configureArgs -join ' ')"
+  $buildCmd = "cmake $($buildArgs -join ' ')"
+  Write-BuildLog -Context $Context -Message "DEBUG: Configure command: $configureCmd"
+  Write-BuildLog -Context $Context -Message "DEBUG: Build command: $buildCmd"
+
+  $hasSccache = Write-CmakeBuildDiagnostics -Context $Context -CpuCount $cpuCount -DisableSccache:$DisableSccache
+
+  Write-BuildLog -Context $Context -Message "DEBUG: ========== STARTING BUILD =========="
+  Write-BuildLog -Context $Context -Message "DEBUG: Starting configure step..."
+  Invoke-BuildExternal -Context $Context -File 'cmake' -Parameters $configureArgs | Out-Null
+  Write-BuildLog -Context $Context -Message "DEBUG: Configure completed. Starting build step..."
+
+  $sanitizer = Initialize-CmakeSanitizers -Context $Context -BuildPath $BuildPath -Configuration $Configuration
+
+  Invoke-CmakeBuildCommand -Context $Context -BuildArgs $buildArgs -SanitizerRuntimeDirs $sanitizer.Dirs
+
+  Copy-CmakePostBuildSanitizers -Context $Context -BuildPath $BuildPath -Configuration $Configuration -SanitizerRuntimeDlls $sanitizer.Dlls
 
   Write-BuildLog -Context $Context -Message "DEBUG: ========== SCCACHE DIAGNOSTICS (AFTER BUILD) =========="
-  if ($sccachePath) {
+  if ($hasSccache) {
     Write-CmakeSccacheStats -Context $Context
   }
 }

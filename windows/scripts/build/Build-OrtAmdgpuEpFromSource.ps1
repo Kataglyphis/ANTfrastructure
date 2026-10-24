@@ -84,10 +84,10 @@ Write-Host "=== onnxruntime-ep-amdgpu source build (migraphx-ep.dll, clang-cl, O
 
 $python = Start-MigraphxBuildSession -WorkDir $WorkDir
 
-try {
-    Switch-BuildPhase '1. EP source + FetchContent seeds'
-    $epRoot = Save-MigraphxPrimarySource -Component OrtAmdgpuEp -WorkDir $WorkDir
+function Initialize-OrtAmdgpuEpSeeds {
+    param([string]$WorkDir)
 
+    $epRoot = Save-MigraphxPrimarySource -Component OrtAmdgpuEp -WorkDir $WorkDir
     $specs = @(Get-MigraphxPinnedSourceSpec -Set OrtAmdgpuEp)
     $resolved = @{}
     foreach ($spec in $specs) { $resolved[$spec.Name] = Resolve-PinnedSource @spec }
@@ -110,6 +110,32 @@ try {
             }
         }
     }
+    return [pscustomobject]@{ EpRoot = $epRoot; SeedArgs = $seedArgs; SeedRoots = $seedRoots }
+}
+
+function Install-OrtAmdgpuEpArtifacts {
+    param([string]$BuildDir, [string]$EpRoot, [string]$InstallDir, [string]$RocmRoot, [hashtable]$SeedRoots)
+
+    $epDll = Get-UniqueBuildArtifact -Root $BuildDir -Filter 'migraphx-ep.dll' -Context 'onnxruntime-ep-amdgpu stage'
+    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
+    Get-ChildItem -LiteralPath $epDll.DirectoryName -File | Where-Object { $_.Extension -in '.dll', '.exe' -or $_.Name -eq 'problem_cache.json' } |
+        Copy-Item -Destination $InstallDir -Force
+    $hipRuntime = @(Get-MigraphxHipRuntimeFile -RocmBin (Join-Path $RocmRoot 'bin'))
+    if ($hipRuntime.Count -eq 0) { throw "no amdhip64/amd_comgr/hiprtc DLLs under $RocmRoot\bin" }
+    $hipRuntime | Copy-Item -Destination $InstallDir -Force
+    Copy-Item -LiteralPath (Join-Path $EpRoot 'LICENSE') -Destination (Join-Path $InstallDir 'LICENSE') -Force
+    $licenses = Join-Path $EpRoot 'LICENSES'
+    if (Test-Path -LiteralPath $licenses) { Copy-Item -LiteralPath $licenses -Destination $InstallDir -Recurse -Force }
+    # The texts of the seeds linked in statically (/MT) must travel with the EP.
+    Save-MigraphxLicense -Set OrtAmdgpuEp -SourceRoot $SeedRoots -InstallDir $InstallDir
+    return $hipRuntime
+}
+
+try {
+    Switch-BuildPhase '1. EP source + FetchContent seeds'
+    $seeds = Initialize-OrtAmdgpuEpSeeds -WorkDir $WorkDir
+    $epRoot = $seeds.EpRoot
+    $seedArgs = $seeds.SeedArgs
 
     Switch-BuildPhase '2. EP configure (clang-cl, /MT)'
     $buildDir = Join-Path $WorkDir 'ep-build'
@@ -123,21 +149,9 @@ try {
     Switch-BuildPhase '3. EP build'
     # No `cmake --install`: upstream packages from the build tree, where POST_BUILD copies the MIGraphX closure.
     Invoke-NinjaBuildWithRetry -BuildDir $buildDir -Targets @('migraphx-ep') -RetryJobs 2
-    $epDll = Get-ChildItem -LiteralPath $buildDir -Recurse -File -Filter 'migraphx-ep.dll' | Select-Object -First 1
-    if (-not $epDll) { throw "migraphx-ep.dll not found under $buildDir after the build" }
 
     Switch-BuildPhase '4. stage'
-    New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-    Get-ChildItem -LiteralPath $epDll.DirectoryName -File | Where-Object { $_.Extension -in '.dll', '.exe' -or $_.Name -eq 'problem_cache.json' } |
-        Copy-Item -Destination $InstallDir -Force
-    $hipRuntime = @(Get-MigraphxHipRuntimeFile -RocmBin (Join-Path $rocmRoot 'bin'))
-    if ($hipRuntime.Count -eq 0) { throw "no amdhip64/amd_comgr/hiprtc DLLs under $rocmRoot\bin" }
-    $hipRuntime | Copy-Item -Destination $InstallDir -Force
-    Copy-Item -LiteralPath (Join-Path $epRoot 'LICENSE') -Destination (Join-Path $InstallDir 'LICENSE') -Force
-    $licenses = Join-Path $epRoot 'LICENSES'
-    if (Test-Path -LiteralPath $licenses) { Copy-Item -LiteralPath $licenses -Destination $InstallDir -Recurse -Force }
-    # The texts of the seeds linked in statically (/MT); docs/deps/deps.json registers the same set.
-    Save-MigraphxLicense -Set OrtAmdgpuEp -SourceRoot $seedRoots -InstallDir $InstallDir
+    $hipRuntime = @(Install-OrtAmdgpuEpArtifacts -BuildDir $buildDir -EpRoot $epRoot -InstallDir $InstallDir -RocmRoot $rocmRoot -SeedRoots $seeds.SeedRoots)
 
     Switch-BuildPhase '5. verify'
     $gap = @(Get-OrtAmdgpuEpStageGap -EpDir $InstallDir -HipRuntimeName @($hipRuntime | ForEach-Object Name)) +

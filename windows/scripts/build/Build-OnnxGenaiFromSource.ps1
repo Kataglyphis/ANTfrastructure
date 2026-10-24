@@ -19,6 +19,158 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 # G2's gate: modules\ in the repo, a per-file mount under ortmods\ in the container (never the shared closure).
 Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $scriptAssetRoot -Name 'WindowsOrtProvenance.Build.psm1') -DisableNameChecking
 
+function Install-GenaiSourcePatches {
+    param([string]$SourceDir, [string]$AssetRoot)
+
+    # ORT v1.31.0 moved the model-package entries into a stable table; one patch serves both lanes (docs/upstreamable-patches.md entry 23).
+    $genaiOrtPatchName = '002-ort-1.31-model-package-api.patch'
+    $genaiOrtPatch = @((Join-Path $AssetRoot "patches\onnxruntime-genai\$genaiOrtPatchName"),
+        [IO.Path]::GetFullPath((Join-Path $AssetRoot "..\..\linux\scripts\patches\onnxruntime-genai\$genaiOrtPatchName"))) |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
+    if (-not $genaiOrtPatch) { throw "onnxruntime-genai: $genaiOrtPatchName is neither mounted under patches\onnxruntime-genai nor in the repo's linux\scripts\patches" }
+    Invoke-SourcePatch -PatchFile $genaiOrtPatch -SourceDir $SourceDir -IgnoreWhitespace -Description "onnxruntime-genai: model-package entries from ORT v1.31.0's stable table"
+
+    # RESTORE_PACKAGES nuget-restores DXC only to regenerate shaders that ship as checked-in DXIL.
+    $genaiCml = Join-Path $SourceDir 'CMakeLists.txt'
+    Invoke-InlineRegexPatch -Path $genaiCml -Guard 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' `
+        -Pattern 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' -Replacement '# [genai DML] RESTORE_PACKAGES dep dropped: shaders are pre-generated, dxc.exe unused' `
+        -Description 'genai CMakeLists: drop RESTORE_PACKAGES dependency (pre-generated shaders)' `
+        -WarnMessage "genai CMakeLists: add_dependencies(onnxruntime-genai RESTORE_PACKAGES) not found -- genai layout may have changed; a USE_DML build may stall on the DXC nuget restore. Verify $genaiCml." | Out-Null
+    Invoke-InlineRegexPatch -Path $genaiCml -Guard 'RESTORE_PACKAGES ALL' `
+        -Pattern 'RESTORE_PACKAGES ALL' -Replacement 'RESTORE_PACKAGES' `
+        -Description 'genai CMakeLists: de-ALL RESTORE_PACKAGES so it is not in the default build' `
+        -WarnMessage "genai CMakeLists: 'RESTORE_PACKAGES ALL' not found -- verify the DXC restore target is not force-built. $genaiCml." | Out-Null
+
+}
+
+function Get-GenaiCudaArgs {
+    param([bool]$Cross, [string]$TargetArch, [string]$PythonLibDir)
+
+    # A CPU build drops GenAI's .cu kernels with no fallback to ORT's CUDA EP; GENAI_FORCE_CPU=1 is dev-only.
+    $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
+    $genaiCudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $Cross
+    if ($genaiCudaUsable) {
+        $cudaRoot  = $gpuEnv.CudaRoot
+        $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
+        # C++20 for std::span in cuda_topk.cu; /wd4996 for CUDA 13's curand deprecation-as-error (genai #1877).
+        $cudaArgs = @('-DUSE_CUDA=ON') +
+            (Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '20' -ExtraCudaFlags '-Xcompiler=/wd4996' -IncludeToolkitRoot)
+        # The .pyd MODULE target misses the /LIBPATH below, so the CPython lib dir goes on LIB.
+        $env:LIB = "$($PythonLibDir);$env:LIB"
+        Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
+    } else {
+        $cudaArgs = @('-DUSE_CUDA=OFF')
+        # A cross build reaching here means the image has no arm64 CUDA payload.
+        $genaiCudaWhy = if ($Cross) { "cross-compiling for $TargetArch -- no arm64 CUDA payload staged in this image (Install-Cuda.ps1 -TargetArch arm64, #176)" }
+                        else { 'CPU-only lane -- no nvidia GPU detected' }
+        Write-Host "CUDA disabled for ONNX GenAI build ($genaiCudaWhy)"
+    }
+    return $cudaArgs
+}
+
+function Install-GenaiClangStlPatch {
+    # Resolve MSVC tools path dynamically (avoid hardcoded version)
+    $msvcVersionDir = Get-MsvcToolsRoot
+    Write-Host "Using MSVC tools: $msvcVersionDir"
+
+    # Inline, not a .patch: the installed STL's toolset floats; see docs/windows-builds.md § Source Patch Policy.
+
+    # Wrapping the _EMIT_STL_ERROR define no-ops every STL error code under clang-cl.
+    $yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
+    $yvalsOld = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
+    $yvalsNew = '#ifdef __clang__
+    #define _EMIT_STL_ERROR(NUMBER, MESSAGE)
+    #else
+    #define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
+    #endif'
+    [void](Invoke-InlineRegexPatch -Path $yvalsCore -Guard '#define _EMIT_STL_ERROR' `
+            -Pattern ([regex]::Escape($yvalsOld)) -Replacement $yvalsNew `
+            -Description 'MSVC yvals_core.h for clang compat')
+    # The define without the exact target line means MSVC changed the macro format: fail here, not mid-compile.
+    if (Test-Path $yvalsCore) {
+        $yvalsText = [System.IO.File]::ReadAllText($yvalsCore)
+        if (($yvalsText -match '#define _EMIT_STL_ERROR') -and
+            ($yvalsText -notmatch '#ifdef __clang__\r?\n#define _EMIT_STL_ERROR\(NUMBER, MESSAGE\)')) {
+            $msvcVer = Split-Path $msvcVersionDir -Leaf
+            throw "yvals_core.h: _EMIT_STL_ERROR is present but the exact patch target did not match (MSVC $msvcVer likely changed the macro format). Update `$yvalsOld in Build-OnnxGenaiFromSource.ps1 -- clang static_asserts will otherwise resurface mid-build."
+        }
+    }
+
+}
+
+function Install-GenaiBuiltArtifacts {
+    param([string]$SourceDir, [string]$BuildDir, [string]$InstallDir)
+
+    Write-Host "Installing to $InstallDir..."
+    if (Test-Path $BuildDir) {
+        Copy-BuildArtifact -BuildDir $BuildDir -InstallDir $InstallDir -Map @(
+            @{ Filter = '*.h'; Dest = 'include' }
+            @{ Filter = @('*.lib', '*.dll', '*.pyd'); Dest = 'lib' }
+        )
+    } else {
+        # Unreachable in principle; a silent skip would ship an empty install dir as green.
+        Write-Warning "genai build dir missing at $BuildDir -- NO artifacts staged to $InstallDir"
+    }
+    # Optional layout variant: absence is normal, but a FAILED copy must not be silent.
+    $altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'
+    if (Test-Path $altOutDir) {
+        try {
+            Copy-Item -Path (Join-Path $altOutDir '*') -Destination "$InstallDir\lib" -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Warning "copy from alternate output dir $altOutDir failed: $_"
+        }
+    }
+
+    # Copy-BuildArtifact never throws, so without this floor an empty or partial install ships green.
+    $genaiHdrs = @(Get-ChildItem -Path $InstallDir -Filter '*.h' -File -Recurse -ErrorAction SilentlyContinue)
+    $genaiDlls = @(Get-ChildItem -Path $InstallDir -Filter 'onnxruntime-genai*.dll' -File -Recurse -ErrorAction SilentlyContinue)
+    $genaiLibs = @(Get-ChildItem -Path $InstallDir -Filter 'onnxruntime-genai*.lib' -File -Recurse -ErrorAction SilentlyContinue)
+    if ($genaiHdrs.Count -eq 0 -or $genaiDlls.Count -eq 0 -or $genaiLibs.Count -eq 0) {
+        throw ("genai install floor: expected headers plus onnxruntime-genai*.dll/.lib under $InstallDir " +
+            "(headers=$($genaiHdrs.Count), dll=$($genaiDlls.Count), lib=$($genaiLibs.Count)) -- the copy staged an incomplete payload.")
+    }
+
+}
+
+function Invoke-GenaiWheelStage {
+    param([string]$BuildDir, [object]$Python, [bool]$PythonOn, [bool]$Cross, [string]$TargetArch)
+
+    # Python wheel from what BUILD_WHEEL=ON assembled, before Remove-SourceBuildTree
+    $genaiWheelDir = Join-Path $BuildDir 'wheel'
+    # setup.py.in derives the ORT requirement from the package name, but our combined ORT wheel is plain `onnxruntime`.
+    if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
+        # Invoke-InlineRegexPatch only warns on a miss, so its return value is the gate.
+        if (-not (Invoke-InlineRegexPatch -Path (Join-Path $genaiWheelDir 'setup.py') `
+                -Pattern 'dependency = "onnxruntime-(directml|gpu|trt-rtx)"' `
+                -Replacement 'dependency = "onnxruntime"' -Require `
+                -Description 'genai setup.py: ORT dependency -> the bundle''s combined `onnxruntime` wheel (#126)')) {
+            throw "genai setup.py: the _onnxruntime_dependency() mapping was not found -- upstream layout changed; the wheel would declare a PyPI onnxruntime-<suffix> the bundle never stages (#126)"
+        }
+        if (Select-String -Path (Join-Path $genaiWheelDir 'setup.py') -Pattern 'dependency = "onnxruntime-' -Quiet) {
+            throw "genai setup.py still names a suffixed onnxruntime package after the #126 fix-up -- upstream changed _onnxruntime_dependency(); update the pattern"
+        }
+    }
+    if (-not $PythonOn) {
+        # BUILD_WHEEL=OFF configures no setup.py, so the final else's hard gate must not fire.
+        Write-Host "genai python wheel skipped (BUILD_WHEEL=OFF -- no target CPython import lib on this $TargetArch cross lane)"
+    } elseif ($Cross -and (Test-Path (Join-Path $genaiWheelDir 'setup.py'))) {
+        # bdist_wheel, as only it takes the --plat-name that -CrossStage appends; staged, never imported.
+        Invoke-PythonWheelBuild -Python $Python -WorkingDir $genaiWheelDir `
+            -Arguments 'setup.py bdist_wheel -d dist' `
+            -ModuleName 'onnxruntime_genai' -CrossStage | Out-Null
+    } elseif (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
+        Write-Host 'Building onnxruntime-genai python wheel...'
+        # -NoDeps matters: resolving genai-cuda's onnxruntime-gpu pulls PyPI's wheel over ours and loses the DML EP.
+        Invoke-PythonWheelBuild -Python $Python -WorkingDir $genaiWheelDir `
+            -Arguments '-m pip wheel . --no-deps --no-build-isolation -w dist' `
+            -ModuleName 'onnxruntime_genai' -NoDeps | Out-Null
+    } else {
+        # BUILD_WHEEL=ON is set above, so a missing setup.py would silently drop the wheel.
+        throw "genai wheel dir has no setup.py under $genaiWheelDir although BUILD_WHEEL=ON -- BUILD_WHEEL layout changed? Wheel would NOT be staged."
+    }
+
+}
+
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 # GenAI runs last in media-core (the Dockerfile's order), so ORT already exists with USE_DML=ON on both lanes.
@@ -50,46 +202,11 @@ Invoke-GitClone -RepoUrl 'https://github.com/microsoft/onnxruntime-genai.git' -T
 
 Set-Location $SourceDir
 
-# ORT v1.31.0 moved the model-package entries into a stable table; one patch serves both lanes (docs/upstreamable-patches.md entry 23).
-$genaiOrtPatchName = '002-ort-1.31-model-package-api.patch'
-$genaiOrtPatch = @((Join-Path $scriptAssetRoot "patches\onnxruntime-genai\$genaiOrtPatchName"),
-    [IO.Path]::GetFullPath((Join-Path $scriptAssetRoot "..\..\linux\scripts\patches\onnxruntime-genai\$genaiOrtPatchName"))) |
-    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
-if (-not $genaiOrtPatch) { throw "onnxruntime-genai: $genaiOrtPatchName is neither mounted under patches\onnxruntime-genai nor in the repo's linux\scripts\patches" }
-Invoke-SourcePatch -PatchFile $genaiOrtPatch -SourceDir $SourceDir -IgnoreWhitespace -Description "onnxruntime-genai: model-package entries from ORT v1.31.0's stable table"
-
-# RESTORE_PACKAGES nuget-restores DXC only to regenerate shaders that ship as checked-in DXIL.
-$genaiCml = Join-Path $SourceDir 'CMakeLists.txt'
-Invoke-InlineRegexPatch -Path $genaiCml -Guard 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' `
-    -Pattern 'add_dependencies\(onnxruntime-genai RESTORE_PACKAGES\)' -Replacement '# [genai DML] RESTORE_PACKAGES dep dropped: shaders are pre-generated, dxc.exe unused' `
-    -Description 'genai CMakeLists: drop RESTORE_PACKAGES dependency (pre-generated shaders)' `
-    -WarnMessage "genai CMakeLists: add_dependencies(onnxruntime-genai RESTORE_PACKAGES) not found -- genai layout may have changed; a USE_DML build may stall on the DXC nuget restore. Verify $genaiCml." | Out-Null
-Invoke-InlineRegexPatch -Path $genaiCml -Guard 'RESTORE_PACKAGES ALL' `
-    -Pattern 'RESTORE_PACKAGES ALL' -Replacement 'RESTORE_PACKAGES' `
-    -Description 'genai CMakeLists: de-ALL RESTORE_PACKAGES so it is not in the default build' `
-    -WarnMessage "genai CMakeLists: 'RESTORE_PACKAGES ALL' not found -- verify the DXC restore target is not force-built. $genaiCml." | Out-Null
+Install-GenaiSourcePatches -SourceDir $SourceDir -AssetRoot $scriptAssetRoot
 
 # Build ONNX GenAI directly with cmake (bypass build.py which always builds examples)
 $genaiBuildDir = Join-Path $SourceDir 'build\Windows-ClangCL\Release'
-# A CPU build drops GenAI's .cu kernels with no fallback to ORT's CUDA EP; GENAI_FORCE_CPU=1 is dev-only.
-$gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'GENAI_FORCE_CPU'
-$genaiCudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $genaiCross
-if ($genaiCudaUsable) {
-    $cudaRoot  = $gpuEnv.CudaRoot
-    $cudaArch  = Get-CudaArchitectureList -Decoration '-real'
-    # C++20 for std::span in cuda_topk.cu; /wd4996 for CUDA 13's curand deprecation-as-error (genai #1877).
-    $genaiCudaArgs = @('-DUSE_CUDA=ON') +
-        (Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '20' -ExtraCudaFlags '-Xcompiler=/wd4996' -IncludeToolkitRoot)
-    # The .pyd MODULE target misses the /LIBPATH below, so the CPython lib dir goes on LIB.
-    $env:LIB = "$($py.LibDir);$env:LIB"
-    Write-Host "CUDA ENABLED for ONNX GenAI (arch $cudaArch; nvcc host = cl.exe; C++ = clang-cl)"
-} else {
-    $genaiCudaArgs = @('-DUSE_CUDA=OFF')
-    # A cross build reaching here means the image has no arm64 CUDA payload.
-    $genaiCudaWhy = if ($genaiCross) { "cross-compiling for $genaiTargetArch -- no arm64 CUDA payload staged in this image (Install-Cuda.ps1 -TargetArch arm64, #176)" }
-                    else { 'CPU-only lane -- no nvidia GPU detected' }
-    Write-Host "CUDA disabled for ONNX GenAI build ($genaiCudaWhy)"
-}
+$genaiCudaArgs = @(Get-GenaiCudaArgs -Cross $genaiCross -TargetArch $genaiTargetArch -PythonLibDir $py.LibDir)
 
 # Cross-lane switches by target arch: DML on both, as ORT's arm64 DML EP is built and the nugets ship arm64.
 $genaiDmlArg = '-DUSE_DML=ON'
@@ -273,32 +390,7 @@ $genaiOrtCfg = @(Get-GenaiOrtConfigureFinding -ConfigureLog $genaiRecord['onnx-g
 if ($genaiOrtCfg.Count -gt 0) { throw "GenAI ONNX Runtime configure gate ($genaiCfgLog): $($genaiOrtCfg -join '; ')" }
 Write-Host "GenAI ONNX Runtime gate OK ($genaiCfgLog): ORT_HOME is the chain shim, no ORT fetched, every ORT file in the tree is the chain's"
 
-# Resolve MSVC tools path dynamically (avoid hardcoded version)
-$msvcVersionDir = Get-MsvcToolsRoot
-Write-Host "Using MSVC tools: $msvcVersionDir"
-
-# Inline, not a .patch: the installed STL's toolset floats; see docs/windows-builds.md § Source Patch Policy.
-
-# Wrapping the _EMIT_STL_ERROR define no-ops every STL error code under clang-cl.
-$yvalsCore = Join-Path $msvcVersionDir 'include\yvals_core.h'
-$yvalsOld = '#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)'
-$yvalsNew = '#ifdef __clang__
-#define _EMIT_STL_ERROR(NUMBER, MESSAGE)
-#else
-#define _EMIT_STL_ERROR(NUMBER, MESSAGE)   static_assert(false, "error " #NUMBER ": " MESSAGE)
-#endif'
-[void](Invoke-InlineRegexPatch -Path $yvalsCore -Guard '#define _EMIT_STL_ERROR' `
-        -Pattern ([regex]::Escape($yvalsOld)) -Replacement $yvalsNew `
-        -Description 'MSVC yvals_core.h for clang compat')
-# The define without the exact target line means MSVC changed the macro format: fail here, not mid-compile.
-if (Test-Path $yvalsCore) {
-    $yvalsText = [System.IO.File]::ReadAllText($yvalsCore)
-    if (($yvalsText -match '#define _EMIT_STL_ERROR') -and
-        ($yvalsText -notmatch '#ifdef __clang__\r?\n#define _EMIT_STL_ERROR\(NUMBER, MESSAGE\)')) {
-        $msvcVer = Split-Path $msvcVersionDir -Leaf
-        throw "yvals_core.h: _EMIT_STL_ERROR is present but the exact patch target did not match (MSVC $msvcVer likely changed the macro format). Update `$yvalsOld in Build-OnnxGenaiFromSource.ps1 -- clang static_asserts will otherwise resurface mid-build."
-    }
-}
+Install-GenaiClangStlPatch
 
 # Patch build.ninja to strip MSVC-only flags clang-cl errors on
 Update-NinjaFile -NinjaFile (Join-Path $genaiBuildDir 'build.ninja') -StripPatterns @(
@@ -313,34 +405,7 @@ Invoke-NinjaBuildWithRetry -BuildDir $genaiBuildDir -RetryJobs 1 -MemGBPerJob 2 
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-Write-Host "Installing to $genaiInstallDir..."
-if (Test-Path $genaiBuildDir) {
-    Copy-BuildArtifact -BuildDir $genaiBuildDir -InstallDir $genaiInstallDir -Map @(
-        @{ Filter = '*.h'; Dest = 'include' }
-        @{ Filter = @('*.lib', '*.dll', '*.pyd'); Dest = 'lib' }
-    )
-} else {
-    # Unreachable in principle; a silent skip would ship an empty install dir as green.
-    Write-Warning "genai build dir missing at $genaiBuildDir -- NO artifacts staged to $genaiInstallDir"
-}
-# Optional layout variant: absence is normal, but a FAILED copy must not be silent.
-$altOutDir = Join-Path $SourceDir 'build\Windows-ClangCL\Windows\Release'
-if (Test-Path $altOutDir) {
-    try {
-        Copy-Item -Path (Join-Path $altOutDir '*') -Destination "$genaiInstallDir\lib" -Recurse -Force -ErrorAction Stop
-    } catch {
-        Write-Warning "copy from alternate output dir $altOutDir failed: $_"
-    }
-}
-
-# Copy-BuildArtifact never throws, so without this floor an empty or partial install ships green.
-$genaiHdrs = @(Get-ChildItem -Path $genaiInstallDir -Filter '*.h' -File -Recurse -ErrorAction SilentlyContinue)
-$genaiDlls = @(Get-ChildItem -Path $genaiInstallDir -Filter 'onnxruntime-genai*.dll' -File -Recurse -ErrorAction SilentlyContinue)
-$genaiLibs = @(Get-ChildItem -Path $genaiInstallDir -Filter 'onnxruntime-genai*.lib' -File -Recurse -ErrorAction SilentlyContinue)
-if ($genaiHdrs.Count -eq 0 -or $genaiDlls.Count -eq 0 -or $genaiLibs.Count -eq 0) {
-    throw ("genai install floor: expected headers plus onnxruntime-genai*.dll/.lib under $genaiInstallDir " +
-        "(headers=$($genaiHdrs.Count), dll=$($genaiDlls.Count), lib=$($genaiLibs.Count)) -- the copy staged an incomplete payload.")
-}
+Install-GenaiBuiltArtifacts -SourceDir $SourceDir -BuildDir $genaiBuildDir -InstallDir $genaiInstallDir
 
 # genai loads D3D12Core.dll from its own dir; an unpinned -Recurse finds arm64's first and breaks DML on x64.
 $d3d12ArchDir = (Get-WindowsRuntimeIdentifier) -replace '^win-', ''
@@ -349,39 +414,7 @@ Copy-SidecarDll -SidecarName 'D3D12Core.dll' -SearchDir $genaiBuildDir `
     -Destination (Join-Path $genaiInstallDir 'lib') `
     -Reason 'the DML runtime will fail to init the Agility SDK device. Verify the Microsoft.Direct3D.D3D12 NuGet restore'
 
-# Python wheel from what BUILD_WHEEL=ON assembled, before Remove-SourceBuildTree
-$genaiWheelDir = Join-Path $genaiBuildDir 'wheel'
-# setup.py.in derives the ORT requirement from the package name, but our combined ORT wheel is plain `onnxruntime`.
-if (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
-    # Invoke-InlineRegexPatch only warns on a miss, so its return value is the gate.
-    if (-not (Invoke-InlineRegexPatch -Path (Join-Path $genaiWheelDir 'setup.py') `
-            -Pattern 'dependency = "onnxruntime-(directml|gpu|trt-rtx)"' `
-            -Replacement 'dependency = "onnxruntime"' -Require `
-            -Description 'genai setup.py: ORT dependency -> the bundle''s combined `onnxruntime` wheel (#126)')) {
-        throw "genai setup.py: the _onnxruntime_dependency() mapping was not found -- upstream layout changed; the wheel would declare a PyPI onnxruntime-<suffix> the bundle never stages (#126)"
-    }
-    if (Select-String -Path (Join-Path $genaiWheelDir 'setup.py') -Pattern 'dependency = "onnxruntime-' -Quiet) {
-        throw "genai setup.py still names a suffixed onnxruntime package after the #126 fix-up -- upstream changed _onnxruntime_dependency(); update the pattern"
-    }
-}
-if (-not $genaiPythonOn) {
-    # BUILD_WHEEL=OFF configures no setup.py, so the final else's hard gate must not fire.
-    Write-Host "genai python wheel skipped (BUILD_WHEEL=OFF -- no target CPython import lib on this $genaiTargetArch cross lane)"
-} elseif ($genaiCross -and (Test-Path (Join-Path $genaiWheelDir 'setup.py'))) {
-    # bdist_wheel, as only it takes the --plat-name that -CrossStage appends; staged, never imported.
-    Invoke-PythonWheelBuild -Python $py -WorkingDir $genaiWheelDir `
-        -Arguments 'setup.py bdist_wheel -d dist' `
-        -ModuleName 'onnxruntime_genai' -CrossStage | Out-Null
-} elseif (Test-Path (Join-Path $genaiWheelDir 'setup.py')) {
-    Write-Host 'Building onnxruntime-genai python wheel...'
-    # -NoDeps matters: resolving genai-cuda's onnxruntime-gpu pulls PyPI's wheel over ours and loses the DML EP.
-    Invoke-PythonWheelBuild -Python $py -WorkingDir $genaiWheelDir `
-        -Arguments '-m pip wheel . --no-deps --no-build-isolation -w dist' `
-        -ModuleName 'onnxruntime_genai' -NoDeps | Out-Null
-} else {
-    # BUILD_WHEEL=ON is set above, so a missing setup.py would silently drop the wheel.
-    throw "genai wheel dir has no setup.py under $genaiWheelDir although BUILD_WHEEL=ON -- BUILD_WHEEL layout changed? Wheel would NOT be staged."
-}
+Invoke-GenaiWheelStage -BuildDir $genaiBuildDir -Python $py -PythonOn $genaiPythonOn -Cross $genaiCross -TargetArch $genaiTargetArch
 
 # Again after the build (a build-time fetch lands in the tree too), and the install must hold no ORT copy of its own.
 $genaiOrtPost = @(Get-GenaiOrtTreeFinding -TreeRoot $SourceDir -OrtRoot $genaiOrtRoot) + @(Get-GenaiOrtTreeFinding -TreeRoot $genaiInstallDir -OrtRoot $genaiOrtRoot -ForbidCopies)

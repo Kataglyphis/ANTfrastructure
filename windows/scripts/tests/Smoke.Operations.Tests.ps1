@@ -178,6 +178,7 @@ $consumer = New-Module -Name SmokeNestedConsumer -ArgumentList $module -ScriptBl
     }
     Export-ModuleMember -Function Invoke-ConsumerSmoke
 }
+
 Import-Module $consumer -DisableNameChecking
 Invoke-ConsumerSmoke $compiler
 '@
@@ -187,5 +188,17 @@ Invoke-ConsumerSmoke $compiler
             Assert-Equal 0 $LASTEXITCODE $output
             Assert-Match nested-smoke-ok $output
         }
+    }
+}
+
+Describe 'Smoke native link prerequisites' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Test-Container.ps1' -FunctionName Test-SmokeNativeLinkInputs)
+    $script:SmokeNativePrerequisiteMessage = @{ Ort = @{ Name = 'ORT inputs'; Failure = 'a link input is missing' } }
+
+    It 'binds its input list and counts a missing artifact as a failed assertion' {
+        Initialize-SmokeTestRun
+        Assert-True (Test-SmokeNativeLinkInputs -LinkInputs @('header', 'library') -Component Ort)
+        Assert-False (Test-SmokeNativeLinkInputs -LinkInputs @('header', $null) -Component Ort)
+        Assert-Equal 1 (Get-SmokeTestSummary).Failed
     }
 }

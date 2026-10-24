@@ -239,11 +239,21 @@ function Assert-CudaBuildCallerPolicy {
     $arguments = Get-TestCommandArguments -Command $decision[0]
     Assert-Equal '$gpuEnv' $arguments.GpuEnvironment
     $scope = Get-TestAstAncestor -Node $decision[0] -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
+    $crossArgument = $arguments.CrossTarget
+    $decisionCall = $decision[0]
+    if ($Name -in @('Build-OnnxGenaiFromSource', 'Build-TvmFromSource')) {
+        Assert-Equal '$Cross' $crossArgument 'the CUDA helper uses its lane argument'
+        $helperName = if ($Name -eq 'Build-OnnxGenaiFromSource') { 'Get-GenaiCudaArgs' } else { 'Get-TvmCudaMode' }
+        $helperCall = @(Get-TestAstCommands -Ast $Ast -Name $helperName)
+        Assert-Equal 1 $helperCall.Count 'the script calls its CUDA helper once'
+        $decisionCall = $helperCall[0]
+        $crossArgument = (Get-TestCommandArguments -Command $decisionCall).Cross
+    }
     $crossAssignments = @(foreach ($probe in @(Get-TestAstCommands -Ast $Ast -Name Test-WindowsCrossTarget)) {
         $probeScope = Get-TestAstAncestor -Node $probe -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
-        if (-not [object]::ReferenceEquals($scope, $probeScope)) { continue }
+        if ($Name -notin @('Build-OnnxGenaiFromSource', 'Build-TvmFromSource') -and -not [object]::ReferenceEquals($scope, $probeScope)) { continue }
         $assignment = Get-TestAstAncestor -Node $probe -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
-        if ($assignment -and $assignment.Extent.EndOffset -lt $decision[0].Extent.StartOffset -and $assignment.Left.Extent.Text -eq $arguments.CrossTarget) { $assignment }
+        if ($assignment -and $assignment.Extent.EndOffset -lt $decisionCall.Extent.StartOffset -and $assignment.Left.Extent.Text -eq $crossArgument) { $assignment }
     })
     Assert-Equal 1 $crossAssignments.Count 'the target policy uses the result of the actual architecture probe'
     $probe = @(Get-TestAstCommands -Ast $Ast -Name Get-GpuEnvironment)
@@ -266,6 +276,12 @@ Describe 'Test-CudaTargetUsable caller policy' {
         $onnx = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OnnxFromSource.ps1'
         $mutant = ConvertTo-TestScriptAst -Text ($onnx.Extent.Text.Replace('-CrossTarget $onnxCross', '-CrossTarget $false'))
         Assert-Throws { Assert-CudaBuildCallerPolicy -Ast $mutant -Name Build-OnnxFromSource } -MessagePattern 'target policy uses the result of the actual architecture probe'
+        $genai = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-OnnxGenaiFromSource.ps1'
+        $genaiMutant = ConvertTo-TestScriptAst -Text ($genai.Extent.Text.Replace('-Cross $genaiCross -TargetArch', '-Cross $false -TargetArch'))
+        Assert-Throws { Assert-CudaBuildCallerPolicy -Ast $genaiMutant -Name Build-OnnxGenaiFromSource } -MessagePattern 'target policy uses the result of the actual architecture probe'
+        $tvm = Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-TvmFromSource.ps1'
+        $tvmMutant = ConvertTo-TestScriptAst -Text ($tvm.Extent.Text.Replace('Get-TvmCudaMode -GpuEnv $gpuEnv -Cross $tvmCross', 'Get-TvmCudaMode -GpuEnv $gpuEnv -Cross $false'))
+        Assert-Throws { Assert-CudaBuildCallerPolicy -Ast $tvmMutant -Name Build-TvmFromSource } -MessagePattern 'target policy uses the result of the actual architecture probe'
     }
 }
 
@@ -316,6 +332,23 @@ Describe 'Get-GpuEnvironment -ForceCpuEnvVar' {
             Assert-Throws { Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU' } `
                 -MessagePattern 'mis-plumbed CUDA path' `
                 'nvidia without CUDA must fail closed, not degrade to CPU'
+        }
+    }
+
+    It 'adds the valid CUDA bin once and points CUDA_PATH and CUDA_HOME at the selected root' {
+        Invoke-InTestDir { param($dir)
+            $bin = Join-Path $dir 'bin'
+            New-Item -ItemType Directory -Force -Path $bin | Out-Null
+            Invoke-WithEnv @{ GPU_TYPE = 'nvidia'; CUDA_ROOT = $dir; CUDA_PATH = $null; CUDA_HOME = $null; PATH = 'C:\base'; TENSORRT_ROOT = '' } {
+                $first = Get-GpuEnvironment
+                $second = Get-GpuEnvironment
+                Assert-True $first.HasCuda 'the selected nvidia lane has CUDA'
+                Assert-Equal $bin $first.CudaBin
+                Assert-Equal $dir $env:CUDA_PATH
+                Assert-Equal $dir $env:CUDA_HOME
+                Assert-Equal "$bin;C:\base" $env:PATH 'the second probe must not prepend the bin twice'
+                Assert-Equal $first.CudaRoot $second.CudaRoot
+            }
         }
     }
 

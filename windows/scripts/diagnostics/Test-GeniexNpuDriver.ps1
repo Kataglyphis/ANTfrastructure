@@ -38,6 +38,30 @@ $Required = @(
     'fastrpc_munmap'
 )
 
+function Get-ActiveCdspDriver {
+    $active = $null
+    try {
+        $pnp = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
+            Where-Object { $_.DeviceName -match 'Hexagon' } | Select-Object -First 1
+        if ($pnp -and $pnp.DriverVersion) {
+            # PnP says 30.0.220.3000 where FileVersion says 30.0.0220.3000, so compare as versions.
+            $want = [version]$pnp.DriverVersion
+            $active = Get-ChildItem 'C:\Windows\System32\DriverStore\FileRepository' -Recurse -Filter 'libcdsprpc.dll' -ErrorAction SilentlyContinue |
+                Where-Object {
+                    try {
+                        $v = [version]$_.VersionInfo.FileVersion
+                        $v.Major -eq $want.Major -and $v.Minor -eq $want.Minor -and
+                        $v.Build -eq $want.Build -and $v.Revision -eq $want.Revision
+                    } catch { $false }
+                } | Select-Object -First 1
+        }
+    } catch {
+        # A failed lookup narrows only the report, not the driver verdict.
+        Write-Debug ("active-driver lookup failed ({0}) -- reporting every driver-store copy instead" -f $_.Exception.Message)
+    }
+    return $active
+}
+
 Write-Host '=== GenieX NPU driver probe ==='
 Write-Host ''
 
@@ -60,26 +84,7 @@ Get-PnpDevice -ErrorAction SilentlyContinue |
     Format-Table -AutoSize
 
 # 3. The verdict follows the Hexagon device's active copy, not stale DriverStore copies or the FastRPC driver.
-$active = $null
-try {
-    $pnp = Get-CimInstance Win32_PnPSignedDriver -ErrorAction SilentlyContinue |
-        Where-Object { $_.DeviceName -match 'Hexagon' } | Select-Object -First 1
-    if ($pnp -and $pnp.DriverVersion) {
-        # PnP says 30.0.220.3000 where FileVersion says 30.0.0220.3000, so compare as versions.
-        $want = [version]$pnp.DriverVersion
-        $active = Get-ChildItem 'C:\Windows\System32\DriverStore\FileRepository' -Recurse -Filter 'libcdsprpc.dll' -ErrorAction SilentlyContinue |
-            Where-Object {
-                try {
-                    $v = [version]$_.VersionInfo.FileVersion
-                    $v.Major -eq $want.Major -and $v.Minor -eq $want.Minor -and
-                    $v.Build -eq $want.Build -and $v.Revision -eq $want.Revision
-                } catch { $false }
-            } | Select-Object -First 1
-    }
-} catch {
-    # Swallowed: this only narrows the report, and the probe must never throw on a negative result.
-    Write-Debug ("active-driver lookup failed ({0}) -- reporting every driver-store copy instead" -f $_.Exception.Message)
-}
+$active = Get-ActiveCdspDriver
 
 Write-Host '=== libcdsprpc.dll copies and dspqueue coverage ==='
 $copies = Get-ChildItem 'C:\Windows\System32\DriverStore\FileRepository' -Recurse -Filter 'libcdsprpc.dll' -ErrorAction SilentlyContinue

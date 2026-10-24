@@ -128,6 +128,23 @@ function Get-UrlFileName {
 
 Export-ModuleMember -Function Get-UrlFileName
 
+function Assert-DownloadedFile {
+    param([string]$DestinationPath, [string]$ExpectSignature, [string]$ExpectedSha256, [string]$Label)
+    if (-not (Test-Path $DestinationPath) -or (Get-Item $DestinationPath).Length -le 0) {
+        throw 'downloaded file is missing or empty'
+    }
+    if ($ExpectSignature) {
+        $fs = [System.IO.File]::OpenRead($DestinationPath)
+        try { $b0 = $fs.ReadByte(); $b1 = $fs.ReadByte() } finally { $fs.Dispose() }
+        $sigOk = switch ($ExpectSignature) {
+            'MZ' { ($b0 -eq 0x4D) -and ($b1 -eq 0x5A) }   # PE executable (.exe / .dll)
+            'PK' { ($b0 -eq 0x50) -and ($b1 -eq 0x4B) }   # ZIP container (.zip)
+        }
+        if (-not $sigOk) { throw "expected a $ExpectSignature-signature file but got first bytes ${b0},${b1} (likely an HTML error page served in place of the binary)" }
+    }
+    if ($ExpectedSha256) { Assert-FileSha256 -Path $DestinationPath -Expected $ExpectedSha256 -Label $Label }
+}
+
 function Invoke-DownloadWithRetry {
     <#
     .SYNOPSIS
@@ -174,23 +191,10 @@ function Invoke-DownloadWithRetry {
                 foreach ($k in $Headers.Keys) { $wc.Headers.Add($k, $Headers[$k]) }
                 $wc.DownloadFile($Url, $DestinationPath)
             } finally { $wc.Dispose() }
-            if ((Test-Path $DestinationPath) -and ((Get-Item $DestinationPath).Length -gt 0)) {
-                if ($ExpectSignature) {
-                    $fs = [System.IO.File]::OpenRead($DestinationPath)
-                    try { $b0 = $fs.ReadByte(); $b1 = $fs.ReadByte() } finally { $fs.Dispose() }
-                    $sigOk = switch ($ExpectSignature) {
-                        'MZ' { ($b0 -eq 0x4D) -and ($b1 -eq 0x5A) }   # PE executable (.exe / .dll)
-                        'PK' { ($b0 -eq 0x50) -and ($b1 -eq 0x4B) }   # ZIP container (.zip)
-                    }
-                    if (-not $sigOk) { throw "expected a $ExpectSignature-signature file but got first bytes ${b0},${b1} (likely an HTML error page served in place of the binary)" }
-                }
-                if ($ExpectedSha256) {
-                    Assert-FileSha256 -Path $DestinationPath -Expected $ExpectedSha256 -Label $label
-                }
-                if ($attempt -gt 1) { Write-Host "  download OK on attempt ${attempt}: $label" }
-                return
-            }
-            throw 'downloaded file is missing or empty'
+            Assert-DownloadedFile -DestinationPath $DestinationPath -ExpectSignature $ExpectSignature `
+                -ExpectedSha256 $ExpectedSha256 -Label $label
+            if ($attempt -gt 1) { Write-Host "  download OK on attempt ${attempt}: $label" }
+            return
         } catch {
             $msg = $_.Exception.Message
             if (Test-Path $DestinationPath) { Remove-Item $DestinationPath -Force -ErrorAction SilentlyContinue }
@@ -658,6 +662,35 @@ function Write-SccacheStatsToStderr {
 
 # --- Visual Studio / MSVC discovery (-AllowMissing: source builds throw, the sanitizer-DLL probe degrades quietly) ---
 
+function Get-VsFilesystemFallback {
+    # A dead vswhere should glob and warn once per process, never once per caller.
+    if (-not (Test-Path 'Variable:script:VsFilesystemFallbackCache')) {
+        $globbed = @(Get-ChildItem -Path @(
+                "$env:ProgramFiles\Microsoft Visual Studio",
+                "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
+            ) -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '^\d+$' } |
+            Get-ChildItem -Directory -ErrorAction SilentlyContinue |
+            Where-Object { Test-Path (Join-Path $_.FullName 'VC\Tools\MSVC') -PathType Container } |
+            Sort-Object FullName -Descending |
+            Select-Object -ExpandProperty FullName)
+        # The pin wins so a VS major promotion never floats in through the fallback.
+        if ($globbed.Count -gt 0 -and $env:VISUAL_STUDIO_VERSION) {
+            $pinned = @($globbed | Where-Object { $_ -match [regex]::Escape("\$($env:VISUAL_STUDIO_VERSION)\") })
+            if ($pinned.Count -gt 0) {
+                $globbed = @($pinned) + @($globbed | Where-Object { $_ -notin $pinned })
+            } else {
+                Write-Warning "VS filesystem fallback: no install matches the VISUAL_STUDIO_VERSION=$env:VISUAL_STUDIO_VERSION pin - resolving newest ($($globbed[0])). If a VS major was just promoted, expect the vcpkg/VS-toolset rejection class."
+            }
+        }
+        if ($globbed.Count -gt 0) {
+            Write-Warning "vswhere returned no installation; using filesystem fallback: $($globbed[0]) (memoized for this process)"
+        }
+        $script:VsFilesystemFallbackCache = $globbed
+    }
+    return $script:VsFilesystemFallbackCache
+}
+
 function Get-VisualStudioInstallPath {
     <#
     .SYNOPSIS
@@ -692,32 +725,7 @@ function Get-VisualStudioInstallPath {
     # A probe that found nothing is not the caller's failure: GitHub's pwsh shell exits the step with a stale $LASTEXITCODE.
     $global:LASTEXITCODE = 0
     if ($vsPaths.Count -eq 0) {
-        # Memoized per process, so a dead vswhere globs and warns once instead of per caller.
-        if (-not (Test-Path 'Variable:script:VsFilesystemFallbackCache')) {
-            $globbed = @(Get-ChildItem -Path @(
-                    "$env:ProgramFiles\Microsoft Visual Studio",
-                    "${env:ProgramFiles(x86)}\Microsoft Visual Studio"
-                ) -Directory -ErrorAction SilentlyContinue |
-                Where-Object { $_.Name -match '^\d+$' } |
-                Get-ChildItem -Directory -ErrorAction SilentlyContinue |
-                Where-Object { Test-Path (Join-Path $_.FullName 'VC\Tools\MSVC') -PathType Container } |
-                Sort-Object FullName -Descending |
-                Select-Object -ExpandProperty FullName)
-            # The VISUAL_STUDIO_VERSION pin first, so a VS major promotion never floats in through the fallback.
-            if ($globbed.Count -gt 0 -and $env:VISUAL_STUDIO_VERSION) {
-                $pinned = @($globbed | Where-Object { $_ -match [regex]::Escape("\$($env:VISUAL_STUDIO_VERSION)\") })
-                if ($pinned.Count -gt 0) {
-                    $globbed = @($pinned) + @($globbed | Where-Object { $_ -notin $pinned })
-                } else {
-                    Write-Warning "VS filesystem fallback: no install matches the VISUAL_STUDIO_VERSION=$env:VISUAL_STUDIO_VERSION pin - resolving newest ($($globbed[0])). If a VS major was just promoted, expect the vcpkg/VS-toolset rejection class."
-                }
-            }
-            if ($globbed.Count -gt 0) {
-                Write-Warning "vswhere returned no installation; using filesystem fallback: $($globbed[0]) (memoized for this process)"
-            }
-            $script:VsFilesystemFallbackCache = $globbed
-        }
-        $vsPaths = $script:VsFilesystemFallbackCache
+        $vsPaths = @(Get-VsFilesystemFallback)
     }
 
     if ($vsPaths.Count -eq 0) {
@@ -1076,3 +1084,20 @@ function Remove-CompilerWrapperEnvironment {
 }
 
 Export-ModuleMember -Function Set-CompilerWrapperEnvironment, Remove-CompilerWrapperEnvironment
+
+function Write-RedFindingList {
+    param([Parameter(Mandatory)][string]$Header, [object[]]$Item = @())
+    Write-Host $Header -ForegroundColor Red
+    foreach ($finding in $Item) { Write-Host "  $finding" -ForegroundColor Red }
+}
+
+Export-ModuleMember -Function Write-RedFindingList
+
+function New-TemporaryDirectory {
+    param([Parameter(Mandatory)][string]$Prefix)
+    $path = Join-Path ([IO.Path]::GetTempPath()) ($Prefix + [guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Force -Path $path -ErrorAction Stop
+    return $path
+}
+
+Export-ModuleMember -Function New-TemporaryDirectory

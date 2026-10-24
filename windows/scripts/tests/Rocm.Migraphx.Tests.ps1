@@ -32,7 +32,7 @@ Describe 'WindowsMigraphx.Common: lane guard' {
         Assert-Equal 'C:\TheRock\build' $root 'trailing separator trimmed'
     }
 
-    It 'refuses the cpu and nvidia lanes, so neither can ever build MIGraphX or the EP' {
+    function Assert-MgxLaneGuards {
         foreach ($type in 'cpu', 'nvidia') {
             $lane = @{ GpuType = $type; HasCuda = ($type -eq 'nvidia'); HasRocm = $false; RocmRoot = 'C:\TheRock\build' }
             Assert-Throws { Assert-MigraphxRocmLane -GpuEnvironment $lane } "lane $type (a stray HIP_PATH must not count)" -MessagePattern 'only on the rocm lane'
@@ -40,6 +40,8 @@ Describe 'WindowsMigraphx.Common: lane guard' {
         # A Get-GpuEnvironment result from before HasRocm existed must refuse too.
         Assert-Throws { Assert-MigraphxRocmLane -GpuEnvironment @{ GpuType = 'cpu'; HasCuda = $false } } -MessagePattern 'only on the rocm lane'
     }
+
+    It 'refuses the cpu and nvidia lanes, so neither can ever build MIGraphX or the EP' { Assert-MgxLaneGuards }
 
     It 'refuses a rocm environment without a root' {
         Assert-Throws { Assert-MigraphxRocmLane -GpuEnvironment @{ GpuType = 'rocm'; HasRocm = $true; RocmRoot = '' } } -MessagePattern 'without a RocmRoot'
@@ -58,11 +60,13 @@ Describe 'WindowsMigraphx.Common: gfx targets' {
         Assert-Match '^gfx\d' (Get-MigraphxGpuTargetList -GfxFamily $family) "ROCM_WINDOWS_GFX_FAMILY=$family"
     }
 
-    It 'refuses multiarch, empty and look-alikes' {
+    function Assert-MgxInvalidTargetFamilies {
         foreach ($bad in @('', 'multiarch', 'GFX120X-ALL', 'gfx120X-all;gfx942', 'gfx1154', 'gfx94X-dcgpu')) {
             Assert-Throws { Get-MigraphxGpuTargetList -GfxFamily $bad } "family '$bad'" -MessagePattern 'no gfx target list'
         }
     }
+
+    It 'refuses multiarch, empty and look-alikes' { Assert-MgxInvalidTargetFamilies }
 }
 
 Describe 'WindowsMigraphx.Common: relative file gaps' {
@@ -140,11 +144,13 @@ Describe 'WindowsMigraphx.Common: pinned sources' {
         Assert-PinRefused @{ MGX_T_VERSION = '../evil'; MGX_T_SHA256 = $sha; MGX_T_YEAR = '2025' } 'plain version'
     }
 
-    It 'refuses an empty or malformed SHA256 (an empty pin means "no check" downstream)' {
+    function Assert-MgxMalformedSourceHashes {
         foreach ($bad in @($null, '', 'abc', ('g' * 64), ('a' * 63))) {
             Assert-PinRefused @{ MGX_T_VERSION = '1'; MGX_T_SHA256 = $bad; MGX_T_YEAR = '2025' } 'unverified'
         }
     }
+
+    It 'refuses an empty or malformed SHA256 (an empty pin means "no check" downstream)' { Assert-MgxMalformedSourceHashes }
 }
 
 Describe 'WindowsMigraphx.Common: 7-Zip''s refused links' {
@@ -310,7 +316,7 @@ Describe 'WindowsMigraphx.Common: licence texts' {
         return $roots
     }
 
-    It 'maps exactly the measured licence files, and only for pinned sources that get linked' {
+    function Assert-MgxPinnedLicenseMap {
         foreach ($set in 'MigraphxDeps', 'OrtAmdgpuEp') {
             $map = Get-MigraphxLicenseFile -Set $set
             $flat = @(foreach ($n in $map.Keys) { foreach ($r in $map[$n]) { "${n}:$r" } }) | Sort-Object
@@ -320,6 +326,8 @@ Describe 'WindowsMigraphx.Common: licence texts' {
             Assert-Equal $unlinked[$set] (@($specNames | Where-Object { -not $map.Contains($_) } | Sort-Object) -join ',') "$set sources without a text"
         }
     }
+
+    It 'maps exactly the measured licence files, and only for pinned sources that get linked' { Assert-MgxPinnedLicenseMap }
 
     It 'lists the own LICENSE, the nlohmann notice (MIGraphX only) and every file under licenses\<name>\<path>' {
         $mgx = @(Get-MigraphxStagedLicensePath -Set MigraphxDeps)
@@ -375,7 +383,7 @@ Describe 'the licence texts reach the image and the licence list' {
         }
     }
 
-    It 'docs/deps/deps.json has a rocm-only Windows row with an spdx id for everything the spike ships' {
+    function Assert-MgxDependencyLicenseRows {
         $deps = Get-Content -LiteralPath (Join-Path $script:MgxRepo 'docs\deps\deps.json') -Raw | ConvertFrom-Json
         $windows = @($deps.sections | Where-Object { $_.title -eq 'Windows Image' })[0]
         $subs = @($windows.subsections | Where-Object { $_.title -match '^MIGraphX.*\(rocm variant only\)$' })
@@ -391,13 +399,15 @@ Describe 'the licence texts reach the image and the licence list' {
         Assert-Equal (@($want | Sort-Object) -join ',') (@($vars | Sort-Object) -join ',') 'row pins = the linked set, nothing more'
         Assert-Equal 1 @($rows | Where-Object { $_.name -match '^nlohmann/json' -and -not $_.var }).Count 'TheRock''s nlohmann/json has a row'
     }
+
+    It 'docs/deps/deps.json has a rocm-only Windows row with an spdx id for everything the spike ships' { Assert-MgxDependencyLicenseRows }
 }
 
 Describe 'Build-MigraphxFromSource.ps1' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:MgxScript -FunctionName @(
             'Get-MigraphxDepCmakeArgs', 'Get-MigraphxCmakeArgs', 'Get-MigraphxInstallGap'))
 
-    It 'every dep pin exists in versions.env and resolves to the upstream archive measured for it' {
+    function Assert-MgxDependencyPinUrls {
         $table = Get-MgxVersionTable
         $expected = @{
             abseil   = 'https://github.com/abseil/abseil-cpp/archive/refs/tags/20250512.0.tar.gz'
@@ -418,7 +428,9 @@ Describe 'Build-MigraphxFromSource.ps1' {
         }
     }
 
-    It 'dep builds are static, /MD and offline' {
+    It 'every dep pin exists in versions.env and resolves to the upstream archive measured for it' { Assert-MgxDependencyPinUrls }
+
+    function Assert-MgxDependencyCmakePolicy {
         foreach ($name in 'abseil', 'protobuf', 'msgpack', 'sqlite') {
             $a = @(Get-MigraphxDepCmakeArgs -Name $name -DepsPrefix 'C:\w\deps') -join ' '
             Assert-Match 'BUILD_SHARED_LIBS:BOOL=OFF' $a "$name static"
@@ -430,7 +442,9 @@ Describe 'Build-MigraphxFromSource.ps1' {
         Assert-Throws { Get-MigraphxDepCmakeArgs -Name 'eigen' -DepsPrefix 'C:\d' } -MessagePattern 'no configure args'
     }
 
-    It 'configures GPU on, MLIR/CK/Python/TF off, explicit targets, AMD tools by absolute path' {
+    It 'dep builds are static, /MD and offline' { Assert-MgxDependencyCmakePolicy }
+
+    function Assert-MgxGpuCmakeArgs {
         Invoke-InTestDir { param($dir)
             $bin = Join-Path $dir 'lib\llvm\bin'
             New-Item -ItemType Directory -Force -Path $bin | Out-Null
@@ -452,6 +466,8 @@ Describe 'Build-MigraphxFromSource.ps1' {
         }
     }
 
+    It 'configures GPU on, MLIR/CK/Python/TF off, explicit targets, AMD tools by absolute path' { Assert-MgxGpuCmakeArgs }
+
     It 'names every missing install piece' {
         Invoke-InTestDir { param($dir)
             Assert-Equal 10 @(Get-MigraphxInstallGap -InstallDir $dir).Count 'empty prefix'
@@ -463,10 +479,11 @@ Describe 'Build-MigraphxFromSource.ps1' {
 }
 
 Describe 'Build-OrtAmdgpuEpFromSource.ps1' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsSourceBuild.Common.psm1' -FunctionName 'Get-RequiredBuildArtifact', 'Get-UniqueBuildArtifact')
     . (Get-ScriptFunctionDefinition -ScriptPath $script:EpScript -FunctionName @(
-            'Get-OrtAmdgpuEpCmakeArgs', 'Get-OrtAmdgpuEpStageGap'))
+            'Get-OrtAmdgpuEpCmakeArgs', 'Get-OrtAmdgpuEpStageGap', 'Install-OrtAmdgpuEpArtifacts'))
 
-    It 'the versions.env pins rebuild exactly the URLs the pinned EP commit declares' {
+    function Assert-MgxEpPinUrls {
         # src/CMakeLists.txt at ORT_AMDGPU_EP_COMMIT (99ab5cb), non-DML declarations, verbatim.
         $declared = [ordered]@{
             fmt           = 'https://github.com/fmtlib/fmt/releases/download/12.1.0/fmt-12.1.0.zip'
@@ -492,6 +509,8 @@ Describe 'Build-OrtAmdgpuEpFromSource.ps1' {
         Assert-Equal 8 $seeded.Count 'no extra seeds'
     }
 
+    It 'the versions.env pins rebuild exactly the URLs the pinned EP commit declares' { Assert-MgxEpPinUrls }
+
     It 'configures MIGraphX only, offline, with explicit targets and the seeds appended' {
         $a = @(Get-OrtAmdgpuEpCmakeArgs -MigraphxDir 'C:\runtime\lib\migraphx' -RocmRoot 'C:\TheRock\build' `
                 -OrtCmakeDir 'C:\ort\lib\cmake\onnxruntime' -GpuTargets 'gfx1200;gfx1201' -Python 'C:\py\python.exe' -SeedArgs @('-DSEED=1'))
@@ -509,6 +528,18 @@ Describe 'Build-OrtAmdgpuEpFromSource.ps1' {
                 'rocm_kpack.dll', 'MIOpen.dll', 'rocblas.dll', 'hiprtc0715.pdb', 'amdhip64.lib') { Set-Content -LiteralPath (Join-Path $dir $n) -Value 'x' }
             $names = @(Get-MigraphxHipRuntimeFile -RocmBin $dir | ForEach-Object Name) -join ','
             Assert-Equal 'amd_comgr.dll,amd_comgr0715.dll,amdhip64_7.dll,hiprtc-builtins0715.dll,hiprtc0715.dll' $names 'HIP runtime set'
+        }
+    }
+
+    It 'refuses an ambiguous or missing EP build artifact before staging' {
+        Invoke-InTestDir { param($dir)
+            $stage = { Install-OrtAmdgpuEpArtifacts -BuildDir $dir -EpRoot $dir -InstallDir (Join-Path $dir 'install') -RocmRoot $dir -SeedRoots @{} }
+            Assert-Throws $stage 'missing EP' -MessagePattern 'expected exactly one migraphx-ep.dll.*found 0'
+            $first = Join-Path $dir 'first'
+            Write-TestFileTree -Root $dir -Files @{ 'first/migraphx-ep.dll' = "one`n" }
+            Assert-Equal (Join-Path $first 'migraphx-ep.dll') (Get-UniqueBuildArtifact -Root $dir -Filter 'migraphx-ep.dll').FullName 'unique EP'
+            Write-TestFileTree -Root $dir -Files @{ 'second/migraphx-ep.dll' = "two`n" }
+            Assert-Throws $stage 'ambiguous EP' -MessagePattern 'expected exactly one migraphx-ep.dll.*found 2'
         }
     }
 
@@ -540,7 +571,7 @@ Describe 'both scripts refuse off the rocm lane before fetching anything' {
 }
 
 Describe 'Dockerfile.rocm-migraphx' {
-    It 'declares an ARG for every forwarded pin, with the versions.env value as default' {
+    function Assert-MgxDockerfilePinDefaults {
         $table = Get-MgxVersionTable
         $forwarded = Get-MediaBranchVersionArg -Branch 'rocm-migraphx' -VersionTable $table
         $declared = Get-MgxDockerfileArg
@@ -550,7 +581,9 @@ Describe 'Dockerfile.rocm-migraphx' {
         Assert-True ($pins.Count -ge 20) "only $($pins.Count) pin ARGs parsed - the scan broke"
     }
 
-    It 'declares the EP pins after the MIGraphX RUN, so an EP bump never re-runs that compile' {
+    It 'declares an ARG for every forwarded pin, with the versions.env value as default' { Assert-MgxDockerfilePinDefaults }
+
+    function Assert-MgxEpPinLayerOrder {
         $text = [System.IO.File]::ReadAllText($script:MgxDockerfile)
         $mgxRun = $text.IndexOf('Build-MigraphxFromSource.ps1')
         Assert-True ($mgxRun -gt 0) 'MIGraphX RUN found'
@@ -561,6 +594,8 @@ Describe 'Dockerfile.rocm-migraphx' {
             Assert-True ($m.Index -lt $mgxRun) "$($m.Groups[1].Value) is declared after the RUN that reads it"
         }
     }
+
+    It 'declares the EP pins after the MIGraphX RUN, so an EP bump never re-runs that compile' { Assert-MgxEpPinLayerOrder }
 
     It 'mounts both scripts with the media lane''s buildmods closure plus the leaf, and sets the rocm-check markers' {
         # BuildKit.ModuleClosure.Tests.ps1 proves media-builder's buildmods is WindowsSourceBuild.Common's closure.
@@ -588,7 +623,7 @@ Describe 'Dockerfile.rocm-migraphx' {
 }
 
 Describe 'cpu and nvidia inputs are untouched by the spike' {
-    It 'no other Windows Dockerfile names the spike''s scripts, module or pins' {
+    function Assert-MgxOtherDockerfileIsolation {
         # Only rocm-only stages may borrow the module: Dockerfile.torch's torch-rocm-wheels (Torch.Rocm.Tests.ps1) and the llama stage's ggml-hip build.
         $hits = @(Get-ChildItem -Path (Join-Path $script:MgxRepo 'windows') -Filter 'Dockerfile*' -File |
             Where-Object { $_.Name -ne 'Dockerfile.rocm-migraphx' } |
@@ -602,7 +637,9 @@ Describe 'cpu and nvidia inputs are untouched by the spike' {
         Assert-Equal '' ($hits -join ',') 'a media/torch/final Dockerfile would re-key cpu and nvidia'
     }
 
-    It 'the three media branches forward none of the spike''s pins' {
+    It 'no other Windows Dockerfile names the spike''s scripts, module or pins' { Assert-MgxOtherDockerfileIsolation }
+
+    function Assert-MgxMediaBranchIsolation {
         $table = Get-MgxVersionTable
         foreach ($branch in 'media-core', 'media-litert', 'media-tvm') {
             $keys = @((Get-MediaBranchVersionArg -Branch $branch -VersionTable $table).Keys | Where-Object { $_ -match '^(MIGRAPHX_|ORT_AMDGPU_EP_)' })
@@ -611,6 +648,8 @@ Describe 'cpu and nvidia inputs are untouched by the spike' {
         $merge = @((Get-MediaMergeVersionArg -VersionTable $table).Keys | Where-Object { $_ -match '^(MIGRAPHX_|ORT_AMDGPU_EP_)' })
         Assert-Equal '' ($merge -join ',') 'merge build-args'
     }
+
+    It 'the three media branches forward none of the spike''s pins' { Assert-MgxMediaBranchIsolation }
 
     It 'the rocm-migraphx map throws on a table without its pins' {
         Assert-Throws { Get-MediaBranchVersionArg -Branch 'rocm-migraphx' -VersionTable @{ ROCM_WINDOWS_GFX_FAMILY = 'x' } } -MessagePattern 'MIGRAPHX_VERSION'
@@ -622,7 +661,7 @@ Describe 'rocm-checks\MIGraphX.ps1' {
             'Get-MigraphxCheckInstallFinding', 'Get-MigraphxCheckLicenseFinding', 'Get-MigraphxCheckHipSidecarFinding', 'Get-MigraphxCheckImportFinding',
             'ConvertTo-MigraphxLoadFinding'))
 
-    It 'reports every missing binary of both trees, and nothing on a complete one' {
+    function Assert-MgxCheckInstalledBinaries {
         Invoke-InTestDir { param($dir)
             $mgx = Join-Path $dir 'mgx'; $ep = Join-Path $dir 'ep'
             Assert-Equal 15 @(Get-MigraphxCheckInstallFinding -MigraphxRoot $mgx -EpRoot $ep).Count 'nothing installed'
@@ -637,7 +676,9 @@ Describe 'rocm-checks\MIGraphX.ps1' {
         }
     }
 
-    It 'reports every missing licence text of both trees, nothing once staged, and runs after the install gate' {
+    It 'reports every missing binary of both trees, and nothing on a complete one' { Assert-MgxCheckInstalledBinaries }
+
+    function Assert-MgxCheckStagedLicenses {
         Invoke-InTestDir { param($dir)
             $mgx = Join-Path $dir 'mgx'; $ep = Join-Path $dir 'ep'
             $all = @(Get-MigraphxStagedLicensePath -Set MigraphxDeps).Count + @(Get-MigraphxStagedLicensePath -Set OrtAmdgpuEp).Count
@@ -652,6 +693,8 @@ Describe 'rocm-checks\MIGraphX.ps1' {
         $text = [System.IO.File]::ReadAllText((Join-Path $script:MgxRepo $script:MgxCheck))
         Assert-Match '(?m)^Get-MigraphxCheckLicenseFinding -MigraphxRoot \$env:MIGRAPHX_ROOT -EpRoot \$epRoot' $text 'called at script level'
     }
+
+    It 'reports every missing licence text of both trees, nothing once staged, and runs after the install gate' { Assert-MgxCheckStagedLicenses }
 
     # $Files maps 'rocm'/'ep' to the names written there (content = the name, so sizes differ per file).
     function New-MgxCheckFixture([string]$Root, [hashtable]$Files) {

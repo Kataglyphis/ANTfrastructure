@@ -89,22 +89,21 @@ $variants = [ordered]@{
     'no-depflags'   = ($cmd -replace '-MD -MT \S+ -MF \S+', '')
     'no-fwd-unknown' = ($cmd -replace '-forward-unknown-to-host-compiler', '')
 }
-$i = 0
-foreach ($name in $variants.Keys) {
-    $i++
+function Invoke-CudaCommandVariant {
+    param([string]$Name, [string]$Command, [string]$Target, [int]$Index, [string]$Sccache, [string]$WorkDir)
     # An empty pattern would make -replace interleave the replacement between every character.
     if (-not $target) { throw 'target empty - refusing to build variants from garbage' }
-    $v = $variants[$name] -replace [regex]::Escape($target), "replay$i.obj"
-    $v = $v -replace '-MF \S+', "-MF replay$i.d"
-    $env:SCCACHE_DIR = Join-Path $WorkDir "rcache$i"
-    $env:SCCACHE_ERROR_LOG = Join-Path $WorkDir "rlog$i.log"
-    $env:SCCACHE_SERVER_PORT = "43$($i)0"
+    $v = $Command -replace [regex]::Escape($Target), "replay$Index.obj"
+    $v = $v -replace '-MF \S+', "-MF replay$Index.d"
+    $env:SCCACHE_DIR = Join-Path $WorkDir "rcache$Index"
+    $env:SCCACHE_ERROR_LOG = Join-Path $WorkDir "rlog$Index.log"
+    $env:SCCACHE_SERVER_PORT = "43$($Index)0"
     & $sccache --stop-server 2>&1 | Out-Null
     & $sccache --start-server 2>&1 | Out-Null
     # Direct spawn (cmd.exe dies at 8191 chars); tokens keep mixed-quote args like -Xcompiler="-O2 -Ob2" whole.
     $tokens = @([regex]::Matches($v, '(?:[^\s"]+|"[^"]*")+') | ForEach-Object { $_.Value -replace '"', '' })
     Write-Host ("  len={0} tokens={1}" -f $v.Length, $tokens.Count)
-    if ($name -eq 'full') {
+    if ($Name -eq 'full') {
         # Control: the same tokens through bare nvcc; a failure here is the harness, not sccache.
         $bareOut = & $tokens[0] @($tokens[1..($tokens.Count-1)] | ForEach-Object { $_ -replace 'replay1', 'bare0' }) 2>&1
         Write-Host ("  bare-control exit={0}" -f $LASTEXITCODE)
@@ -125,7 +124,13 @@ foreach ($name in $variants.Keys) {
         if ($cc) { for ($p = 0; $p -lt $cc.Length; $p += 220) { Write-Host ("  cc| {0}" -f $cc.Substring($p, [Math]::Min(220, $cc.Length - $p))) } }
     }
     & $sccache --stop-server 2>&1 | Out-Null
-    Write-Host ("variant {0,-15} exit={1} executed={2} why='{3}'" -f $name, $rc, $exe, $why)
+    Write-Host ("variant {0,-15} exit={1} executed={2} why='{3}'" -f $Name, $rc, $exe, $why)
+}
+
+$i = 0
+foreach ($name in $variants.Keys) {
+    $i++
+    Invoke-CudaCommandVariant -Name $name -Command $variants[$name] -Target $target -Index $i -Sccache $sccache -WorkDir $WorkDir
 }
 
 Write-Host 'probe complete'

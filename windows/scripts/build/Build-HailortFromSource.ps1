@@ -68,6 +68,39 @@ function Resolve-HailortSourceRoot {
     return $null
 }
 
+function Install-HailortExternals {
+    param([string]$SourceRoot, [string]$ProtobufVersion, [string]$ProtobufSha, [object[]]$Externals)
+
+    # HailoRT builds protobuf from this literal path; FETCHCONTENT_SOURCE_DIR_* does not reach it.
+    $protobufSrc = Join-Path $SourceRoot 'hailort\external\protobuf-src'
+    if (-not (Test-Path (Join-Path $protobufSrc 'CMakeLists.txt'))) {
+        Write-Host "Staging protobuf v$ProtobufVersion (SHA-verified)"
+        $protobufTar = Join-Path $env:TEMP "protobuf-$ProtobufVersion.tar.gz"
+        Invoke-DownloadWithRetry -Url "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v$ProtobufVersion.tar.gz" `
+            -DestinationPath $protobufTar -Description "protobuf $ProtobufVersion source" -ExpectSignature '' `
+            -ExpectedSha256 $ProtobufSha
+        # A --strip-components=1 via 7z, since git's MSYS tar mangles Windows paths.
+        $extractRoot = Join-Path $env:TEMP "protobuf-$ProtobufVersion-extract"
+        Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+        $inner = Expand-SourceTarball -Archive $protobufTar -Destination $extractRoot
+        New-Item -Path $protobufSrc -ItemType Directory -Force | Out-Null
+        Copy-Item -Path (Join-Path $inner '*') -Destination $protobufSrc -Recurse -Force
+        Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item $protobufTar -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($ext in $Externals) {
+        $dir = Join-Path $SourceRoot "hailort\external\$($ext.Name)-src"
+        if ((Test-Path $dir) -and (Get-ChildItem $dir -ErrorAction SilentlyContinue | Select-Object -First 1)) { continue }
+        Write-Host "Staging external $($ext.Name) @ $($ext.Commit.Substring(0, 10))"
+        # Invoke-GitClone fetches a 40-hex -Tag as a commit; git clone --branch <hash> would fail.
+        Invoke-GitClone -RepoUrl $ext.Url -Tag $ext.Commit -SourceDir $dir | Out-Null
+        $head = (& git -C $dir rev-parse HEAD).Trim()
+        if ($head -ne $ext.Commit) { throw "external $($ext.Name) is $head, expected $($ext.Commit)" }
+        & git -C $dir submodule update --init --recursive --quiet
+        if ($LASTEXITCODE -ne 0) { throw "external $($ext.Name): submodule update failed" }
+    }
+}
+
 $sourceRoot = Resolve-HailortSourceRoot -Root $SourceDir
 if (-not $sourceRoot) {
     Write-Host "Fetching hailo-ai/hailort v$HailortVersion (SHA-verified tarball)"
@@ -139,34 +172,7 @@ Invoke-HailortSourcePatch -Name '004-cmake-target-arch-macro.patch' -FallbackNot
 }
 
 if (-not $SkipExternals) {
-    # HailoRT builds protobuf from the literal external/protobuf-src path; FETCHCONTENT_SOURCE_DIR_* does not reach it.
-    $protobufSrc = Join-Path $sourceRoot 'hailort\external\protobuf-src'
-    if (-not (Test-Path (Join-Path $protobufSrc 'CMakeLists.txt'))) {
-        Write-Host "Staging protobuf v$protobufVersion (SHA-verified)"
-        $protobufTar = Join-Path $env:TEMP "protobuf-$protobufVersion.tar.gz"
-        Invoke-DownloadWithRetry -Url "https://github.com/protocolbuffers/protobuf/archive/refs/tags/v$protobufVersion.tar.gz" `
-            -DestinationPath $protobufTar -Description "protobuf $protobufVersion source" -ExpectSignature '' `
-            -ExpectedSha256 $protobufSha
-        # A --strip-components=1 via 7z, since git's MSYS tar mangles Windows paths.
-        $extractRoot = Join-Path $env:TEMP "protobuf-$protobufVersion-extract"
-        Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-        $inner = Expand-SourceTarball -Archive $protobufTar -Destination $extractRoot
-        New-Item -Path $protobufSrc -ItemType Directory -Force | Out-Null
-        Copy-Item -Path (Join-Path $inner '*') -Destination $protobufSrc -Recurse -Force
-        Remove-Item $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item $protobufTar -Force -ErrorAction SilentlyContinue
-    }
-    foreach ($ext in $hailoExternals) {
-        $dir = Join-Path $sourceRoot "hailort\external\$($ext.Name)-src"
-        if ((Test-Path $dir) -and (Get-ChildItem $dir -ErrorAction SilentlyContinue | Select-Object -First 1)) { continue }
-        Write-Host "Staging external $($ext.Name) @ $($ext.Commit.Substring(0, 10))"
-        # Invoke-GitClone fetches a 40-hex -Tag as a commit; git clone --branch <hash> would fail.
-        Invoke-GitClone -RepoUrl $ext.Url -Tag $ext.Commit -SourceDir $dir | Out-Null
-        $head = (& git -C $dir rev-parse HEAD).Trim()
-        if ($head -ne $ext.Commit) { throw "external $($ext.Name) is $head, expected $($ext.Commit)" }
-        & git -C $dir submodule update --init --recursive --quiet
-        if ($LASTEXITCODE -ne 0) { throw "external $($ext.Name): submodule update failed" }
-    }
+    Install-HailortExternals -SourceRoot $sourceRoot -ProtobufVersion $protobufVersion -ProtobufSha $protobufSha -Externals $hailoExternals
 }
 
 # Configure and build

@@ -6,6 +6,13 @@ Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsContaine
 Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsNative.Common.psm1') -DisableNameChecking
 # The Windows ROCm sdk layer: guards, layout, ICD and loader install, env and PATH contract; no real downloads or hipcc.
 
+function Assert-RocmBadValues {
+    param([object[]]$Values, [scriptblock]$Invoke, [string]$Label, [string]$Pattern)
+    foreach ($bad in $Values) {
+        Assert-Throws { & $Invoke $bad } "$Label '$bad'" -MessagePattern $Pattern
+    }
+}
+
 Describe 'Install-Rocm: tarball URL' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\host\Install-Rocm.ps1' -FunctionName 'Get-RocmWindowsTarballUrl')
 
@@ -17,15 +24,13 @@ Describe 'Install-Rocm: tarball URL' {
     }
 
     It 'refuses a release that is not a full x.y.z (versions.env ROCM_VERSION is only x.y)' {
-        foreach ($bad in @('', '10.0', 'v10.0.0', '10.0.0-rc1')) {
-            Assert-Throws { Get-RocmWindowsTarballUrl -Release $bad -GfxFamily 'gfx120X-all' } "release '$bad'" -MessagePattern 'ROCM_WINDOWS_RELEASE'
-        }
+        Assert-RocmBadValues -Values @('', '10.0', 'v10.0.0', '10.0.0-rc1') -Label 'release' -Pattern 'ROCM_WINDOWS_RELEASE' `
+            -Invoke { param($value) Get-RocmWindowsTarballUrl -Release $value -GfxFamily 'gfx120X-all' }
     }
 
     It 'refuses anything that is not a GPU family name, including path tricks' {
-        foreach ($bad in @('', 'amd', 'rocm', 'GFX120X-ALL', 'gfx120X-all/../x', 'gfx120X-all.tar.gz?', 'gfx 120X')) {
-            Assert-Throws { Get-RocmWindowsTarballUrl -Release '10.0.0' -GfxFamily $bad } "family '$bad'" -MessagePattern 'ROCM_WINDOWS_GFX_FAMILY'
-        }
+        Assert-RocmBadValues -Values @('', 'amd', 'rocm', 'GFX120X-ALL', 'gfx120X-all/../x', 'gfx120X-all.tar.gz?', 'gfx 120X') `
+            -Label 'family' -Pattern 'ROCM_WINDOWS_GFX_FAMILY' -Invoke { param($value) Get-RocmWindowsTarballUrl -Release '10.0.0' -GfxFamily $value }
     }
 }
 
@@ -38,9 +43,8 @@ Describe 'Install-Rocm: target arch' {
     }
 
     It 'refuses arm64 and anything else: AMD ships no Windows arm64 ROCm' {
-        foreach ($bad in @('arm64', 'x64', '')) {
-            Assert-Throws { Assert-RocmTargetArch -TargetArch $bad } "arch '$bad'" -MessagePattern 'amd64-only'
-        }
+        Assert-RocmBadValues -Values @('arm64', 'x64', '') -Label 'arch' -Pattern 'amd64-only' `
+            -Invoke { param($value) Assert-RocmTargetArch -TargetArch $value }
     }
 }
 
@@ -158,7 +162,13 @@ Describe 'Test-RocmImage: rocm-checks aggregation' {
     It 'runs after the built-in checks, from the folder beside the script, and feeds the same verdict' {
         $src = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-RocmImage.ps1')
         Assert-Match "\[string\]\`$ChecksDir = \(Join-Path \`$PSScriptRoot 'rocm-checks'\)" $src 'default folder'
-        Assert-Match "(?s)Get-RocmKernelCompileFinding -Hipcc.+\`$failures \+= @\(Get-RocmCheckFinding -ChecksDir \`$ChecksDir\).+if \(\`$failures\.Count -gt 0\)" $src 'aggregated before the verdict'
+        Assert-Match "(?s)Get-RocmKernelCompileFinding -Hipcc.+\`$failures \+= @\(Get-RocmCheckFinding -ChecksDir \`$ChecksDir\).+exit \(Write-RocmImageSummary -Failures \`$failures" $src 'aggregated before the verdict'
+    }
+
+    It 'returns a failing exit code for findings and success only for an empty list' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-RocmImage.ps1' -FunctionName 'Write-RocmImageSummary')
+        Assert-Equal 1 (Write-RocmImageSummary -Failures @('bad import') -RocmRoot 'C:\rocm' -OffloadArch 'gfx1100' 6>$null)
+        Assert-Equal 0 (Write-RocmImageSummary -Failures @() -RocmRoot 'C:\rocm' -OffloadArch 'gfx1100' 6>$null)
     }
 }
 
@@ -173,7 +183,7 @@ Describe 'Test-RocmImage: the image carries the spike mode the run asked for' {
         }
     }
 
-    It 'passes a matching image either way, and fails a parent from the other mode, an unset mode or a missing marker' {
+    function Assert-RocmSpikeCases {
         $mgx = 'C:\runtime\lib\migraphx'
         $cases = @(
             @{ Label = 'spikes on'; Args = @('1', $mgx, '1'); Want = @() }
@@ -193,10 +203,14 @@ Describe 'Test-RocmImage: the image carries the spike mode the run asked for' {
         }
     }
 
+    It 'passes a matching image either way, and fails a parent from the other mode, an unset mode or a missing marker' {
+        Assert-RocmSpikeCases
+    }
+
     It 'grades the mode from the driver''s env before the verdict' {
         $src = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\scripts\build\Test-RocmImage.ps1')
         Assert-Match "\[string\]\`$ExpectSpikes = \`$env:EXPECT_ROCM_SPIKES" $src 'param default from the env'
-        Assert-Match "(?s)\`$failures \+= @\(Get-RocmSpikeFinding -Expect \`$ExpectSpikes -MigraphxRoot `"\`$env:MIGRAPHX_ROOT`".+if \(\`$failures\.Count -gt 0\)" $src 'graded before the verdict'
+        Assert-Match "(?s)\`$failures \+= @\(Get-RocmSpikeFinding -Expect \`$ExpectSpikes -MigraphxRoot `"\`$env:MIGRAPHX_ROOT`".+exit \(Write-RocmImageSummary -Failures \`$failures" $src 'graded before the verdict'
     }
 }
 
@@ -225,7 +239,7 @@ Describe 'Test-RocmImage: env contract' {
         Assert-Equal 0 @(Get-RocmImageEnvFinding -Environment (New-RocmGoodEnv)).Count 'good env'
     }
 
-    It 'reports each broken piece of the contract' {
+    function Assert-RocmEnvCases {
         $cases = @(
             @{ Key = 'HIP_PATH'; Value = $null; Pattern = 'HIP_PATH is not set' },
             @{ Key = 'ROCM_WINDOWS_RELEASE'; Value = ''; Pattern = 'ROCM_WINDOWS_RELEASE is not set' },
@@ -242,6 +256,8 @@ Describe 'Test-RocmImage: env contract' {
             Assert-Match $c.Pattern $got[0] "finding for $($c.Key)"
         }
     }
+
+    It 'reports each broken piece of the contract' { Assert-RocmEnvCases }
 }
 
 Describe 'Test-RocmImage: AMD''s LLVM must not shadow the image toolchain' {
@@ -349,7 +365,7 @@ Describe 'Install-Rocm: TheRock''s OpenCL ICD, registered the way the Khronos lo
 Describe 'rocm-checks\GpuLoaders: the ICD registry grading' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-OpenClIcdRegistryFinding')
 
-    It 'passes the registered ICD (any case, beside other vendors) and names each way the loader would skip it' {
+    function Assert-RocmIcdRegistryCases {
         Invoke-InTestDir { param($dir)
             $dll = Join-Path $dir 'amdocl64.dll'
             Set-Content -LiteralPath $dll -Value 'x'
@@ -371,11 +387,16 @@ Describe 'rocm-checks\GpuLoaders: the ICD registry grading' {
             }
         }
     }
+
+    It 'passes the registered ICD (any case, beside other vendors) and names each way the loader would skip it' {
+        Assert-RocmIcdRegistryCases
+    }
 }
 
 Describe 'rocm-checks\GpuLoaders: the loader probe grading' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-GpuLoaderProbeFinding', 'Get-VulkanSdkHeaderVersion',
-        'Get-VulkanLoaderCopyFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\rocm-checks\GpuLoaders.ps1' -FunctionName 'Get-GpuLoaderFirstRecord',
+        'Get-GpuLoaderRecordStatus', 'Get-GpuLoaderFailureFinding', 'Get-OpenClPlatformFinding', 'Get-GpuLoaderRecordFinding',
+        'Get-GpuLoaderProbeFinding', 'Get-VulkanSdkHeaderVersion', 'Get-VulkanLoaderCopyFinding')
     # What the rocm image should print: System32's loader, TheRock's OpenCL.dll, AMD's platform with no device.
     $script:VkSys = 'vulkan|C:\Windows\System32\vulkan-1.dll|'
     $script:ProbeGood = [ordered]@{
@@ -397,7 +418,7 @@ Describe 'rocm-checks\GpuLoaders: the loader probe grading' {
         Assert-Equal 0 @(Get-ProbeCaseFinding -Replace @{ vulkan = "${script:VkSys}True|True|0|1|4|300" } -Sdk 0).Count 'no SDK header: no floor'
     }
 
-    It 'names every broken piece with its own finding' {
+    function Assert-RocmLoaderProbeCases {
         $cases = @(
             @{ R = @{}; X = $null; Want = 'hung past its timeout' }
             @{ R = @{}; X = -1073741819; Want = 'exited -1073741819' }
@@ -424,6 +445,8 @@ Describe 'rocm-checks\GpuLoaders: the loader probe grading' {
             Assert-Match $c.Want $got[0] 'finding text'
         }
     }
+
+    It 'names every broken piece with its own finding' { Assert-RocmLoaderProbeCases }
 
     It 'reads VK_HEADER_VERSION from the SDK, 0 when there is none' {
         Invoke-InTestDir { param($dir)
@@ -538,7 +561,7 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
     }
     $script:VkPeHash = if (Test-Path -LiteralPath $script:VkPe) { (Get-FileHash -LiteralPath $script:VkPe).Hash } else { $null }
 
-    It 'downloads the zip through the real download and SHA256 check, installs the loader into System32 (none for an empty -SystemDir, the final stage''s CON25 mode) and the pinned copy with its licence, keeps no zip' {
+    function Assert-RocmVulkanInstallModes {
         foreach ($systemCopy in $true, $false) {
             Invoke-InTestDir { param($dir)
                 $r = Invoke-VulkanInstallFixture -Root $dir -Override $(if ($systemCopy) { @{} } else { @{ SystemDir = '' } })
@@ -549,6 +572,10 @@ Describe 'Install-VulkanLoader: LunarG''s pinned loader zip' {
                 Assert-Equal 0 @(Get-ChildItem -LiteralPath $r.Pins.TempDir -File).Count 'the zip is gone'
             }
         }
+    }
+
+    It 'downloads the zip through the real download and SHA256 check, installs the loader into System32 (none for an empty -SystemDir, the final stage''s CON25 mode) and the pinned copy with its licence, keeps no zip' {
+        Assert-RocmVulkanInstallModes
     }
 
     It 'keeps an identical System32 loader and refuses a foreign one without overwriting it' {

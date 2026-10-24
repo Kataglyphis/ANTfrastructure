@@ -46,6 +46,13 @@ function Write-ReplayDifference {
     }
 }
 
+function Write-ReplayTokenDifference {
+    param([string]$HeaderFormat, [object[]]$Plan, [object[]]$Executed,
+        [string]$OnlyPlanLabel, [string]$OnlyExecutedLabel)
+    Write-Host ($HeaderFormat -f $Plan.Count, $Executed.Count)
+    Write-ReplayDifference -Reference $Plan -Difference $Executed -OnlyReferenceLabel $OnlyPlanLabel -OnlyDifferenceLabel $OnlyExecutedLabel
+}
+
 function Get-ReplayStepFacts {
     param([Parameter(Mandatory)][string]$Line, [Parameter(Mandatory)][Collections.IDictionary]$Rules,
         [Parameter(Mandatory)][string]$DefaultKind, [Parameter(Mandatory)][string]$DefinePattern)
@@ -62,6 +69,20 @@ function Get-ReplayStepRecord {
         $facts = Get-ReplayStepFacts -Line $_.Line -Rules $Rules -DefaultKind $DefaultKind -DefinePattern $DefinePattern
         [pscustomobject]@{ Line = $_.Line; Kind = $facts.Kind; Defines = $facts.Defines }
     }
+}
+
+function Write-ReplayStepRows {
+    param([object[]]$Lines, [string]$Pattern, [Collections.IDictionary]$Rules, [string]$DefaultKind,
+        [string]$DefinePattern, [ValidateSet('plan', 'exec', 'xform')][string]$Style)
+    Get-ReplayStepRecord -Lines $Lines -Pattern $Pattern -Rules $Rules -DefaultKind $DefaultKind -DefinePattern $DefinePattern |
+        ForEach-Object {
+            $row = $_
+            switch ($Style) {
+                plan { Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $row.Kind, $row.Defines, ($row.Line -match 'DUSE_CUDA')) }
+                exec { Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $row.Kind, $row.Defines, ($row.Line -match 'USE_CUDA')) }
+                xform { Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $row.Kind, $row.Defines, ($row.Line -match 'CUDA_DOUBLE_MATH'), ($row.Line -match '__CUDACC__'), $row.Line.Length) }
+            }
+        }
 }
 
 function Format-ReplayTrace {
@@ -90,6 +111,14 @@ function Measure-ReplayIntermediate {
 function Get-ReplaySymbols {
     param([Parameter(Mandatory)][string]$Path)
     (& llvm-nm --defined-only $Path 2>$null) -replace '^\S+\s+\S+\s+', '' | Sort-Object -Unique
+}
+
+function Write-Chunked([string]$Prefix, [string]$Line, [int]$Limit = 0) {
+    if (-not $Line) { Write-Host "$Prefix <absent>"; return }
+    $length = if ($Limit -gt 0) { [Math]::Min($Line.Length, $Limit) } else { $Line.Length }
+    for ($i = 0; $i -lt $length; $i += 230) {
+        Write-Host ("{0} {1}" -f $Prefix, $Line.Substring($i, [Math]::Min(230, $length - $i)))
+    }
 }
 
 $null = New-Item -ItemType Directory -Force -Path $WorkDir
@@ -174,16 +203,21 @@ if ($missing.Count -gt 0) {
 # 6b. Host-step define diff, plan vs sccache: arch defines there guard the dropped double code paths.
 Set-Location $build
 $planLines = & cmd.exe /S /C "$cmd --dryrun" 2>&1
+function Write-ReplayHostDifference {
+    param([object[]]$PlanLines)
 $planHost = ($planLines | Select-String 'cl\.exe' | Select-Object -Last 1).Line
 $planTokens = @([regex]::Matches($planHost, '"[^"]*"|\S+') | ForEach-Object { $_.Value.Trim('"') })
 $execLine = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'bias_softmax_impl\.cu\.obj\]: get_cached_or_compile' | Select-Object -Last 1).Line
 $execTokens = @([regex]::Matches($execLine, '"((?:[^"\\]|\\.)*)"') | ForEach-Object { $_.Groups[1].Value -replace '\\\\', '\' })
 $planD = @($planTokens | Where-Object { $_ -match '^[-/](D|FI|I)' } | Sort-Object -Unique)
 $execD = @($execTokens | Where-Object { $_ -match '^[-/](D|FI|I)' } | Sort-Object -Unique)
-Write-Host ("plan host-step -D/-FI/-I tokens: {0}; sccache host-step: {1}" -f $planD.Count, $execD.Count)
-Write-ReplayDifference -Reference $planD -Difference $execD -OnlyReferenceLabel 'ONLY-IN-PLAN' -OnlyDifferenceLabel 'ONLY-IN-EXEC'
+Write-ReplayTokenDifference -HeaderFormat 'plan host-step -D/-FI/-I tokens: {0}; sccache host-step: {1}' `
+    -Plan $planD -Executed $execD -OnlyPlanLabel 'ONLY-IN-PLAN' -OnlyExecutedLabel 'ONLY-IN-EXEC'
+}
 
 # 6e. Preprocess define delta: sccache preprocesses cudafe++'s input itself, so its define set picks the #ifdef branches.
+function Write-ReplayPreprocessorDifference {
+    param([object[]]$PlanLines)
 $planPPLine = ($planLines | Select-String ' -E |\-EP |/EP ' | Select-Object -Last 1).Line
 $execPPLine = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'preprocess' | Select-Object -First 1).Line
 if ($planPPLine -and $execPPLine) {
@@ -193,19 +227,16 @@ if ($planPPLine -and $execPPLine) {
         # Rust Debug vector form: "...", "-DFOO", ... - fall back to plain -D capture
         $execDefs = @([regex]::Matches($execPPLine, '-D([^"\\]+)') | ForEach-Object { $_.Groups[1].Value }) | Sort-Object -Unique
     }
-    Write-Host ("define delta: plan={0} exec={1}" -f $planDefs.Count, $execDefs.Count)
-    Write-ReplayDifference -Reference $planDefs -Difference $execDefs -OnlyReferenceLabel 'LOST-BY-SCCACHE' -OnlyDifferenceLabel 'ADDED-BY-SCCACHE'
+    Write-ReplayTokenDifference -HeaderFormat 'define delta: plan={0} exec={1}' -Plan $planDefs -Executed $execDefs `
+        -OnlyPlanLabel 'LOST-BY-SCCACHE' -OnlyExecutedLabel 'ADDED-BY-SCCACHE'
 } else {
     Write-Host ("define delta: line capture failed (plan={0} exec={1})" -f [bool]$planPPLine, [bool]$execPPLine)
 }
+}
 
 # 6d. Full raw lines, chunked: the per-side regex counts below can look contradictory.
-function Write-Chunked([string]$Prefix, [string]$Line) {
-    if (-not $Line) { Write-Host "$Prefix <absent>"; return }
-    for ($i = 0; $i -lt $Line.Length; $i += 230) {
-        Write-Host ("{0} {1}" -f $Prefix, $Line.Substring($i, [Math]::Min(230, $Line.Length - $i)))
-    }
-}
+function Write-ReplayRawStepLines {
+    param([string]$Cmd, [object[]]$PlanLines)
 Write-Host ("truth: original command carries -DUSE_CUDA: " + [bool]($cmd -match '[-/]DUSE_CUDA'))
 $planPP = ($planLines | Select-String ' -E |\-EP |/EP ' | Select-Object -First 1).Line
 Write-Chunked 'planPP|' $planPP
@@ -215,25 +246,33 @@ $execPP = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'msvc\] preprocess
 Write-Chunked 'execPP|' $execPP
 $execFE = (Get-Content $env:SCCACHE_ERROR_LOG | Select-String 'module_id\]: get_cached_or_compile' | Select-Object -First 1).Line
 Write-Chunked 'execFE|' $execFE
+}
 
 # 6c. Per-step USE_CUDA: the dropped instantiation sits behind #ifdef USE_CUDA, so find the first step that loses it.
+function Write-ReplayStepAccounting {
+    param([object[]]$PlanLines)
 Write-Host '--- per-step USE_CUDA accounting (plan) ---'
-Get-ReplayStepRecord -Lines $planLines -Pattern 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' `
-    -Rules ([ordered]@{ 'cudafe\+\+' = 'cudafe++'; 'cicc' = 'cicc'; '-EP|/EP|-E |/E ' = 'preprocess' }) -DefaultKind host-cl -DefinePattern '[-/]D' | ForEach-Object {
-    Write-Host ("plan  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $_.Kind, $_.Defines, ($_.Line -match 'DUSE_CUDA'))
-}
+Write-ReplayStepRows -Lines $planLines -Pattern 'cudafe|cicc|cl\.exe.*-E|cl\.exe.*/E|cl\.exe' `
+    -Rules ([ordered]@{ 'cudafe\+\+' = 'cudafe++'; 'cicc' = 'cicc'; '-EP|/EP|-E |/E ' = 'preprocess' }) -DefaultKind host-cl -DefinePattern '[-/]D' -Style plan
 Write-Host '--- per-step USE_CUDA accounting (sccache executed) ---'
-Get-ReplayStepRecord -Lines (Get-Content $env:SCCACHE_ERROR_LOG) -Pattern 'get_cached_or_compile|msvc\] preprocess|creating.*command' `
-    -Rules ([ordered]@{ 'module_id' = 'cudafe++'; 'compute_\d+\.ptx' = 'cicc'; 'preprocess' = 'preprocess'; '\.cu\.obj' = 'host-cl' }) -DefaultKind other -DefinePattern '"-D|\\"-D|[-/]D' | ForEach-Object {
-    Write-Host ("exec  {0,-11} -D count={1,3}  USE_CUDA={2}" -f $_.Kind, $_.Defines, ($_.Line -match 'USE_CUDA'))
+Write-ReplayStepRows -Lines (Get-Content $env:SCCACHE_ERROR_LOG) -Pattern 'get_cached_or_compile|msvc\] preprocess|creating.*command' `
+    -Rules ([ordered]@{ 'module_id' = 'cudafe++'; 'compute_\d+\.ptx' = 'cicc'; 'preprocess' = 'preprocess'; '\.cu\.obj' = 'host-cl' }) -DefaultKind other -DefinePattern '"-D|\\"-D|[-/]D' -Style exec
 }
 
 # 6. nvcc's plan vs sccache's executed steps, on stdout since the container fs dies with the RUN.
+function Write-ReplayStepAnalysis {
+    param([string]$Build, [string]$Cmd, [object[]]$PlanLines)
+Write-ReplayHostDifference -PlanLines $PlanLines
+Write-ReplayPreprocessorDifference -PlanLines $PlanLines
+Write-ReplayRawStepLines -Cmd $Cmd -PlanLines $PlanLines
+Write-ReplayStepAccounting -PlanLines $PlanLines
 Set-Location $build
 Format-ReplayTrace -Lines @(& cmd.exe /S /C "$cmd --dryrun" 2>&1) -Prefix plan -Limit 40
 if (Test-Path $env:SCCACHE_ERROR_LOG) {
     Format-ReplayTrace -Lines (Get-Content $env:SCCACHE_ERROR_LOG) -Prefix exec -Limit 120
 }
+}
+Write-ReplayStepAnalysis -Build $build -Cmd $cmd -PlanLines $planLines
 
 # 7. Both flows keep their intermediates; the first wrapped file with fewer Iddd markers than bare is the broken step.
 $keepBare = Join-Path $WorkDir 'keep-bare'
@@ -255,6 +294,8 @@ $keepExit = $LASTEXITCODE
 & $sccache --stop-server 2>&1 | Out-Null
 if ($keepExit -ne 0) { throw "wrapped --keep compile failed ($keepExit)" }
 
+function Write-ReplayIntermediateCounts {
+    param([string]$KeepBare, [string]$KeepWrap)
 Measure-ReplayIntermediate -BareDirectory $keepBare -WrappedDirectory $keepWrap -Patterns @('BiasSoftmaxWarpForwardIddd', 'BiasSoftmaxWarpForwardIfff') | ForEach-Object {
     if ($_.Counts[0] -or $_.Counts[1]) {
         Write-Host ("stub-count {0,-4} {1,-40} ddd={2,-5} fff={3}" -f $_.Side, $_.File.Name, $_.Counts[0], $_.Counts[1])
@@ -264,25 +305,32 @@ Measure-ReplayIntermediate -BareDirectory $keepBare -WrappedDirectory $keepWrap 
 Measure-ReplayIntermediate -BareDirectory $keepBare -WrappedDirectory $keepWrap -Patterns @('BiasSoftmaxImpl<double', 'BiasSoftmaxImpl<float') -SimpleMatch -Sort | ForEach-Object {
     Write-Host ("ii-scan {0,-4} {1,-44} {2,10:N0} B  dbl={3,-4} flt={4}" -f $_.Side, $_.File.Name, $_.File.Length, $_.Counts[0], $_.Counts[1])
 }
-$keepLog = Join-Path $WorkDir 'sccache-keep.log'
+}
+
+function Write-ReplayKeepDefinePresence {
+    param([string]$KeepLog)
 if (Test-Path $keepLog) {
     foreach ($needle in @('CUDA_DOUBLE_MATH_FUNCTIONS', '__CUDACC__', '__CUDACC_VER_MAJOR__')) {
         $n = Get-ReplayFileMatchCount -Path $keepLog -Pattern $needle -SimpleMatch -ReadErrorAction Stop
         Write-Host ("define-presence in sccache debug log: {0} = {1}" -f $needle, [int]$n)
     }
 }
+}
 
 # 9. The transformed commands sccache executed (trace level)
+function Write-ReplayTransformedCommands {
+    param([string]$KeepLog)
 if (Test-Path $keepLog) {
-    Get-ReplayStepRecord -Lines (Get-Content $keepLog) -Pattern 'transformed nvcc command' `
-        -Rules ([ordered]@{ 'cudafe' = 'cudafe++'; 'cicc' = 'cicc'; 'ptxas' = 'ptxas'; 'fatbinary' = 'fatbin'; 'cl\.exe|cl ' = 'cl' }) -DefaultKind '?' -DefinePattern '-D' | ForEach-Object {
-        Write-Host ("xform {0,-9} -D={1,-3} DOUBLE_MATH={2} CUDACC={3} len={4}" -f $_.Kind, $_.Defines, ($_.Line -match 'CUDA_DOUBLE_MATH'), ($_.Line -match '__CUDACC__'), $_.Line.Length)
-    }
+    Write-ReplayStepRows -Lines (Get-Content $keepLog) -Pattern 'transformed nvcc command' `
+        -Rules ([ordered]@{ 'cudafe' = 'cudafe++'; 'cicc' = 'cicc'; 'ptxas' = 'ptxas'; 'fatbinary' = 'fatbin'; 'cl\.exe|cl ' = 'cl' }) -DefaultKind '?' -DefinePattern '-D' -Style xform
     $clLine = (Get-Content $keepLog | Select-String 'transformed nvcc command' | Where-Object { $_.Line -match 'cpp1\.ii|cpp4\.ii' } | Select-Object -First 1).Line
-    if ($clLine) { for ($i = 0; $i -lt [Math]::Min($clLine.Length, 4600); $i += 230) { Write-Host ("xformPP| " + $clLine.Substring($i, [Math]::Min(230, $clLine.Length - $i))) } }
+    if ($clLine) { Write-Chunked -Prefix 'xformPP|' -Line $clLine -Limit 4600 }
+}
 }
 
 # 10. cpp4.ii scan with loose regexes, since preprocessed spacing defeats a literal match.
+function Write-ReplayCpp4Scan {
+    param([string]$KeepBare, [string]$KeepWrap)
 foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
     $side = $pair[0]
     $f = Join-Path $pair[1] 'bias_softmax_impl.cpp4.ii'
@@ -292,8 +340,11 @@ foreach ($pair in @(@('bare', $keepBare), @('wrap', $keepWrap))) {
         Write-Host ("cpp4-scan {0,-4} {1,-38} = {2}" -f $side, $pat, [regex]::Matches($txt, $pat).Count)
     }
 }
+}
 
 # 11. Replays nvcc.rs's backslash-to-slash rewrite before shlex, which collapses the quotes at the first string define.
+function Write-ReplayShlexProbe {
+    param([object[]]$PlanLines)
 $cpp4Plan = ($planLines | Select-String 'cpp4\.ii' | Select-Object -First 1).Line
 if ($cpp4Plan) {
     $mangled = $cpp4Plan.Replace('""', '"')
@@ -317,6 +368,18 @@ big = max(toks, key=len, default='')
 print('longest token len:', len(big)); print('longest token head:', big[:220])
 "@
 }
+}
+
+function Write-ReplayKeepAnalysis {
+    param([string]$WorkDir, [string]$KeepBare, [string]$KeepWrap, [object[]]$PlanLines)
+    $keepLog = Join-Path $WorkDir 'sccache-keep.log'
+    Write-ReplayIntermediateCounts -KeepBare $KeepBare -KeepWrap $KeepWrap
+    Write-ReplayKeepDefinePresence -KeepLog $keepLog
+    Write-ReplayTransformedCommands -KeepLog $keepLog
+    Write-ReplayCpp4Scan -KeepBare $KeepBare -KeepWrap $KeepWrap
+    Write-ReplayShlexProbe -PlanLines $PlanLines
+}
+Write-ReplayKeepAnalysis -WorkDir $WorkDir -KeepBare $keepBare -KeepWrap $keepWrap -PlanLines $planLines
 
 Write-Host 'probe complete'
 exit 0

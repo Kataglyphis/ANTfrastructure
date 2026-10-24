@@ -16,7 +16,8 @@ function Assert-CmakeRuntimeEnvironment {
                 $expected = if ($debug) { $State.Runtime.DirectoryName + ';' + $parent } else { $parent }
                 foreach ($mode in @('success', 'nonzero', 'throw')) {
                     $State.Throw = $mode -eq 'throw'; $State.Code = if ($mode -eq 'nonzero') { 9 } else { 0 }
-                    $invoke = { Invoke-MutCmakeConfigureAndBuild -Context ([pscustomobject]@{}) -BuildPath 'fixture build' -Preset fixture -Configuration $configuration -ParallelJobs 2 -VerboseOutput }.GetNewClosure()
+                    $runtimeDirs = if ($debug) { @($State.Runtime.DirectoryName) } else { @() }
+                    $invoke = { Invoke-MutCmakeBuildCommand -Context ([pscustomobject]@{}) -BuildArgs @('--build', 'fixture build', '--config', $configuration, '--parallel', '2', '--verbose') -SanitizerRuntimeDirs $runtimeDirs }.GetNewClosure()
                     if ($mode -eq 'success') { Assert-Equal 0 @(& $invoke).Count 'the build adds no result objects to its output' }
                     else { Assert-Throws $invoke -MessagePattern ('CMake build failed with exit code ' + $(if ($mode -eq 'throw') { 1 } else { 9 })) }
                     Assert-Equal $expected $State.Paths[-1] 'CMake runtime PATH preserves directory precedence'

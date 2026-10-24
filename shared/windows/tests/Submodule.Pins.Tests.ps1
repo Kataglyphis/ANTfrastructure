@@ -48,6 +48,37 @@ Describe 'Submodule pins' {
             }
             $resolvedRoot = (Resolve-Path -LiteralPath $topLevel.Trim()).Path
         }
+
+        function ConvertFrom-PinsStatusLine {
+            param([string[]]$Line)
+            foreach ($entry in $Line) {
+                if ($entry -notmatch '^(?<flag>[ +\-U])(?<sha>[0-9a-fA-F]+)\s+(?<path>.+?)(?:\s+\(.*\))?$') {
+                    throw "Submodule pin check: unparseable git submodule status line: '$entry'"
+                }
+                [pscustomobject]@{
+                    Flag = $Matches['flag']
+                    Sha  = $Matches['sha']
+                    Path = $Matches['path']
+                    Line = $entry
+                }
+            }
+        }
+
+        function Get-UnreachableSubmodulePin {
+            param([string]$Root, [object[]]$Status)
+            foreach ($submodule in $Status) {
+                if ($submodule.Flag -eq '-') { continue }
+                $result = Test-SubmoduleCommitReachable -SubmodulePath (Join-Path $Root $submodule.Path)
+                if ($result.Reachable) {
+                    Write-Host ("{0} pin {1} reachable via {2}: {3}" -f
+                        $submodule.Path, $result.Head, $result.Method, ($result.ContainingRef -join ', '))
+                } else {
+                    Write-Host "$($submodule.Path) HEAD $($result.Head) is on no remote branch."
+                    "$($submodule.Path) @ $($result.Head)"
+                }
+            }
+        }
+
         $script:PinsRepoRoot = $resolvedRoot
 
         # Relative to this file, never a stale vendored copy; -Global so the exports reach every It body.
@@ -58,20 +89,7 @@ Describe 'Submodule pins' {
         Import-Module $modulePath -Force -Global -DisableNameChecking
 
         # Status flags: ' ' clean, '+' away from the recorded commit, '-' not initialised, 'U' conflicted.
-        $script:PinsStatus = @(
-            foreach ($line in @(Get-SubmoduleStatusLine -RepoRoot $script:PinsRepoRoot)) {
-                if ($line -match '^(?<flag>[ +\-U])(?<sha>[0-9a-fA-F]+)\s+(?<path>.+?)(?:\s+\(.*\))?$') {
-                    [pscustomobject]@{
-                        Flag = $Matches['flag']
-                        Sha  = $Matches['sha']
-                        Path = $Matches['path']
-                        Line = $line
-                    }
-                } else {
-                    throw "Submodule pin check: unparseable git submodule status line: '$line'"
-                }
-            }
-        )
+        $script:PinsStatus = @(ConvertFrom-PinsStatusLine -Line @(Get-SubmoduleStatusLine -RepoRoot $script:PinsRepoRoot))
 
         $gitmodules = Join-Path $script:PinsRepoRoot '.gitmodules'
         $script:PinsConfiguredCount = 0
@@ -91,19 +109,7 @@ Describe 'Submodule pins' {
         $script:PinsDrifted = @($drifted)
 
         # A network round trip per submodule, done once here; hence CI, not an offline pre-commit hook.
-        $unreachable = New-Object System.Collections.Generic.List[string]
-        foreach ($submodule in $script:PinsStatus) {
-            if ($submodule.Flag -eq '-') { continue }
-            $result = Test-SubmoduleCommitReachable -SubmodulePath (Join-Path $script:PinsRepoRoot $submodule.Path)
-            if ($result.Reachable) {
-                Write-Host ("{0} pin {1} reachable via {2}: {3}" -f
-                    $submodule.Path, $result.Head, $result.Method, ($result.ContainingRef -join ', '))
-            } else {
-                Write-Host "$($submodule.Path) HEAD $($result.Head) is on no remote branch."
-                $unreachable.Add("$($submodule.Path) @ $($result.Head)")
-            }
-        }
-        $script:PinsUnreachable = @($unreachable)
+        $script:PinsUnreachable = @(Get-UnreachableSubmodulePin -Root $script:PinsRepoRoot -Status $script:PinsStatus)
 
         Write-Host "Repo root: $script:PinsRepoRoot"
         Write-Host ("Configured submodules: {0}; status lines: {1}" -f
@@ -117,6 +123,11 @@ Describe 'Submodule pins' {
                 "submodule(s) but git submodule status reported $($script:PinsStatus.Count) " +
                 "line(s) in $script:PinsRepoRoot.")
         }
+    }
+
+    It 'rejects malformed git submodule status before grading pins' {
+        $failure = try { $null = @(ConvertFrom-PinsStatusLine -Line @('malformed status')); '' } catch { $_.Exception.Message }
+        if ($failure -notmatch 'unparseable git submodule status line') { throw "Submodule pin check: malformed status verdict was '$failure'." }
     }
 
     It 'has every configured submodule initialised' {

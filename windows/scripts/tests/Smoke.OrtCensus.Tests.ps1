@@ -88,6 +88,17 @@ function Invoke-OrtLoaderTree {
     return Test-OrtProvenanceTree -Root $Root -ReferenceDir @("$Chain\bin") -PassThru
 }
 
+function Assert-OrtLoaderCases {
+    param([string]$Root, [string]$Chain, [object[]]$Cases)
+    foreach ($case in $Cases) {
+        $census = Invoke-OrtLoaderTree -Root "$Root\$($case.N)" -Chain $Chain -Layout $case.L
+        $fatal = @(Get-OrtTestFatal $census)
+        Assert-Equal $case.Want (@($fatal | ForEach-Object Verdict) -join ',') "$($case.N): $($case.Why)"
+        if ($case['Detail']) { Assert-Match $case['Detail'] (@($fatal | ForEach-Object Detail) -join ';') "$($case.N): names the host dir it checked, or why it is ORT" }
+        if ($case.Contains('Inst')) { Assert-Equal $case.Inst (@($census.Candidate | Where-Object Name -EQ 'x.dll')[0].IsInstance) "$($case.N): instance or importer" }
+    }
+}
+
 Describe 'ORT census: source fingerprints' {
     It 'reads the build root off Windows, POSIX and forward-slash paths, and skips URLs' {
         $t = "x`0ZvC:\__w\1\s\onnxruntime\core\a.cc`0/opt/onnxruntime/onnxruntime/contrib_ops/b.cc`0C:/temp/onnx-src/include/onnxruntime/core/c.h`0"
@@ -432,13 +443,7 @@ Describe 'ORT census: Test-OrtProvenanceTree (G6, consumer bundles)' {
                 @{ N = 'fwd'; Want = ''; Inst = $false; Why = 'a forwarder runs onnxruntime.dll''s code: an importer'
                     L = [ordered]@{ 'app.exe' = 'host'; 'x.dll' = 'forwards'; 'onnxruntime.dll' = 'chain' } }
             )
-            foreach ($k in $cases) {
-                $c = Invoke-OrtLoaderTree -Root "$dir\$($k.N)" -Chain $chain -Layout $k.L
-                $f = @(Get-OrtTestFatal $c)
-                Assert-Equal $k.Want (@($f | ForEach-Object Verdict) -join ',') "$($k.N): $($k.Why)"
-                if ($k['Detail']) { Assert-Match $k['Detail'] (@($f | ForEach-Object Detail) -join ';') "$($k.N): names the host dir it checked, or why it is ORT" }
-                if ($k.Contains('Inst')) { Assert-Equal $k.Inst (@($c.Candidate | Where-Object Name -EQ 'x.dll')[0].IsInstance) "$($k.N): instance or importer" }
-            }
+            Assert-OrtLoaderCases -Root $dir -Chain $chain -Cases $cases
         }
     }
 }

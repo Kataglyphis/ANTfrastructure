@@ -56,6 +56,18 @@ int main() { std::printf("%d\n", probe_value_$token()); return 0; }
 "@ | Set-Content -Path $Path -Encoding ascii
 }
 
+function New-SccacheProbeWorkspace {
+    param([string]$Prefix)
+    $path = Join-Path $env:TEMP ($Prefix + [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Force -Path $path
+    return $path
+}
+
+function Remove-SccacheProbeWorkspace {
+    param([string]$Path)
+    Remove-Item $Path -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 function Invoke-SccacheProbeCompile {
     param(
         [Parameter(Mandatory)][string]$SccachePath,
@@ -140,8 +152,21 @@ if ($ChildWrite) {
     return
 }
 
+function New-SccacheProbeProcessInfo {
+    param([Parameter(Mandatory)][string]$FilePath, [string[]]$ArgumentList = @(), [string]$WorkingDirectory = '')
+    $info = [Diagnostics.ProcessStartInfo]::new($FilePath)
+    foreach ($argument in $ArgumentList) { $null = $info.ArgumentList.Add($argument) }
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    if ($WorkingDirectory) { $info.WorkingDirectory = $WorkingDirectory }
+    return $info
+}
+
 Write-Section "probe run (nonce=$Nonce)"
 
+function Write-SccacheProbeEnvironment {
 Write-Section 'environment'
 foreach ($n in 'SCCACHE_DIR', 'SCCACHE_CACHE_SIZE', 'SCCACHE_MULTILEVEL_CHAIN',
     'SCCACHE_WEBDAV_ENDPOINT', 'SCCACHE_ERROR_LOG', 'SCCACHE_LOG',
@@ -150,7 +175,10 @@ foreach ($n in 'SCCACHE_DIR', 'SCCACHE_CACHE_SIZE', 'SCCACHE_MULTILEVEL_CHAIN',
 }
 Write-Host ("  {0,-26} = {1}" -f 'CWD', (Get-Location).Path)
 Write-Host ("  {0,-26} = {1}" -f 'whoami', (whoami))
+}
+Write-SccacheProbeEnvironment
 
+function Write-SccacheTargetDirectory {
 Write-Section "target directory: $CacheDir"
 if (Test-Path $CacheDir) {
     $di = Get-Item $CacheDir -Force
@@ -166,8 +194,11 @@ if (Test-Path $CacheDir) {
 } else {
     Write-DiagnosticResult "$CacheDir exists" $false 'MISSING - the cache mount is not present in this RUN'
 }
+}
+Write-SccacheTargetDirectory
 
 # Hypothesis A: each step of sccache's nested-dir, temp-then-rename write is tested alone, so the failing one is named.
+function Write-SccacheNewPathProbe {
 Write-Section 'raw filesystem tests (hypothesis A)'
 
 $probeRoot = Join-Path $CacheDir 'probe-tmp'
@@ -200,8 +231,11 @@ $renamed2 = Join-Path $nested 'from-systemp.bin'
 Write-SccacheRenameProbe -Source $tmpFile2 -Destination $renamed2 -Name 'rename %TEMP% -> cache path' -CleanupSourceOnFailure
 
 Remove-Item $probeRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+Write-SccacheNewPathProbe
 
 # New vs inherited paths: a failed raw write into the mount's existing bucket tree is a filesystem defect, not sccache's.
+function Write-SccacheInheritedPathProbe {
 Write-Section 'raw write into a PRE-EXISTING deep path from the mount'
 
 $deep = Get-ChildItem $CacheDir -Force -Directory -ErrorAction SilentlyContinue |
@@ -223,7 +257,11 @@ if (-not $deep) {
     }
 }
 
+}
+Write-SccacheInheritedPathProbe
+
 # The server is detached: do spawned children lose the mount? A plain dir is the control for each spawn shape.
+function Write-SccacheSpawnProbe {
 Write-Section 'spawn matrix: can a CHILD process write to the cache mount?'
 
 $self = $PSCommandPath
@@ -235,18 +273,6 @@ Set-Content -Path $resFile -Value $null -Force
 $pwsh = (Get-Command pwsh.exe -ErrorAction SilentlyContinue)
 $shell = if ($pwsh) { $pwsh.Source } else { (Get-Command powershell.exe).Source }
 Write-Host "  child shell: $shell"
-
-function New-SccacheProbeProcessInfo {
-    param([Parameter(Mandatory)][string]$FilePath, [string[]]$ArgumentList = @(), [string]$WorkingDirectory = '')
-    $info = [Diagnostics.ProcessStartInfo]::new($FilePath)
-    foreach ($argument in $ArgumentList) { $null = $info.ArgumentList.Add($argument) }
-    $info.UseShellExecute = $false
-    $info.CreateNoWindow = $true
-    $info.RedirectStandardOutput = $true
-    $info.RedirectStandardError = $true
-    if ($WorkingDirectory) { $info.WorkingDirectory = $WorkingDirectory }
-    return $info
-}
 
 function Invoke-SpawnMode {
     param([string]$Mode, [string]$Dir)
@@ -278,6 +304,8 @@ foreach ($mode in 'attached', 'hidden-async', 'detached') {
 
 Get-Content $resFile -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $_" }
 Remove-Item $resFile -Force -ErrorAction SilentlyContinue
+}
+Write-SccacheSpawnProbe
 
 # Hypothesis B: vary one sccache factor per unique compile; only the multilevel rows failing is an upstream bug.
 $sccache = (Get-Command sccache.exe -ErrorAction SilentlyContinue)
@@ -329,15 +357,13 @@ function Invoke-SccacheVariant {
         Set-Content -Path $env:SCCACHE_ERROR_LOG -Value $null -Force -ErrorAction SilentlyContinue
     }
 
-    $tag = [Guid]::NewGuid().ToString('N')
-    $work = Join-Path $env:TEMP ('sccache-probe-' + $tag)
-    $null = New-Item -ItemType Directory -Force -Path $work
+    $work = New-SccacheProbeWorkspace -Prefix 'sccache-probe-'
     $src = Join-Path $work 'probe.cpp'
     Write-SccacheProbeSource -Path $src -Value 42
     $compileOk = Invoke-SccacheProbeCompile -SccachePath $sccache.Source -Source $src -Object (Join-Path $work 'probe.obj')
 
     $writeErr = (Get-SccacheProbeStats -SccachePath $sccache.Source).WriteErrors
-    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-SccacheProbeWorkspace -Path $work
     Write-DiagnosticResult "$Name wrote to cache" ($writeErr -eq 0) "compile exit ok=$compileOk, write errors=$writeErr"
 
     # Stopping flushes the log (the server never idles out), where a failing variant names the path it could not write.
@@ -356,6 +382,8 @@ function Invoke-SccacheVariant {
 }
 
 # An empty dir on the mount vs off it isolates the mount; kept across runs to test inheriting this run's objects.
+function Write-SccacheMatrixProbe {
+    param([string]$OrigDir, [string]$AltDir, [string]$OrigEndpoint, [string]$OrigChain)
 $mountSubdir = Join-Path $origDir 'probe-persist'
 $null = New-Item -ItemType Directory -Force -Path $mountSubdir -ErrorAction SilentlyContinue
 
@@ -394,51 +422,32 @@ if ($null -ne $onMountEmpty -and $null -ne $offMountEmpty -and $null -ne $onMoun
         Write-Host '  => The BuildKit cache mount itself is the fault.'
     }
 }
+    return $byName
+}
+$byName = Write-SccacheMatrixProbe -OrigDir $origDir -AltDir $altDir -OrigEndpoint $origEndpoint -OrigChain $origChain
 
 # A valid root holds only the 16 hex buckets and `preprocessor`; anything else is moved off the mount, sizes printed first.
-Write-Section 'narrowing: quarantine foreign entries in the cache root'
-
-$quarantine = 'C:\sccache-quarantine'
-$null = New-Item -ItemType Directory -Force -Path $quarantine -ErrorAction SilentlyContinue
-
-# The probe's own inherited state must never be swept as debris, or it destroys its own experiment.
-$probeOwned = @('preprocessor', 'bulk-inherit', 'probe-persist')
-$foreign = @(Get-ChildItem $origDir -Force -ErrorAction SilentlyContinue | Where-Object {
-        -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') -and $probeOwned -notcontains $_.Name
-    })
-# The bisect runs whenever disk-only failed, even with no foreign entries left to move.
-$after = $null
-if (-not $foreign) {
-    Write-Host '  no foreign entries left in the root (an earlier run removed them).'
-} else {
-    foreach ($f in $foreign) {
-        $bytes = if ($f.PSIsContainer) {
-            (Get-ChildItem $f.FullName -Recurse -Force -File -ErrorAction SilentlyContinue |
-                Measure-Object -Property Length -Sum).Sum
-        } else { $f.Length }
-        Write-Host ("  foreign: {0,-14} {1,12:N0} bytes  ({2})" -f $f.Name, [long]$bytes, $(if ($f.PSIsContainer) { 'dir' } else { 'file' }))
+function Write-SccacheBucketEvidence {
+    param([string]$OrigDir, [string]$Culprit, [int]$WriteErrors)
+    if ($WriteErrors -gt 0) {
+        Write-Host '  => CONFIRMED by reproduction, not by elimination.'
+        $cb = Join-Path $OrigDir $Culprit
+        $kids = @(Get-ChildItem $cb -Force -ErrorAction SilentlyContinue)
+        Write-Host ("  bucket '{0}' holds {1} top-level entr(y|ies):" -f $Culprit, $kids.Count)
+        Write-SccacheProbeEntries -Entry $kids
+        # A valid bucket holds only single-hex dirs; a file here or a zero-byte object deeper is an anomaly.
+        $odd = @($kids | Where-Object { -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') })
+        if ($odd) { Write-Host ("  ANOMALY: {0} entr(y|ies) are not single-hex directories: {1}" -f $odd.Count, (($odd | ForEach-Object { $_.Name }) -join ', ')) }
+        $zero = @(Get-ChildItem $cb -Recurse -Force -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -eq 0 })
+        if ($zero) { Write-Host ("  ANOMALY: {0} zero-byte object(s), e.g. {1}" -f $zero.Count, $zero[0].FullName) }
+    } else {
+        Write-Host '  => NOT REPRODUCED: restoring it alone writes fine, so the'
+        Write-Host '     failure needs a COMBINATION of buckets (or total size), not one entry.'
     }
-    foreach ($f in $foreign) {
-        try {
-            Move-Item -LiteralPath $f.FullName -Destination (Join-Path $quarantine $f.Name) -Force -ErrorAction Stop
-            Write-DiagnosticResult "moved $($f.Name) off the mount" $true
-        } catch {
-            Write-DiagnosticResult "moved $($f.Name) off the mount" $false $_.Exception.Message
-        }
-    }
-    $after = Invoke-SccacheVariant -Name 'disk-only-after-cleanup' -Chain '' -Endpoint '' -Dir $origDir
-    Write-Section 'NARROWING VERDICT'
-    Write-Host ("  before cleanup: write errors = {0}" -f $byName['disk-only'])
-    Write-Host ("  after  cleanup: write errors = {0}" -f $after.WriteErrors)
 }
 
-$stillFailing = if ($null -ne $after) { $after.WriteErrors -gt 0 } else { $byName['disk-only'] -gt 0 }
-if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq 0) {
-    Write-Host '  => CONFIRMED: the foreign entries in the cache root broke every insert.'
-    Write-Host '  => They are gone now; the L0 disk cache writes again, cache content intact.'
-} elseif ($stillFailing) {
-    if ($null -ne $after) { Write-Host '  => NOT the foreign entries: the populated root still fails without them.' }
-    if ($true) {
+function Invoke-SccacheBucketBisect {
+    param([string]$OrigDir, [string]$Quarantine)
         # One change per measurement; everything moves back at the end, or the RUN would take the real cache with it.
         Write-Section 'bisecting the cache root'
         $moved = @{}
@@ -491,30 +500,64 @@ if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq
                 Move-Back $culprit
                 $confirm = Test-Root "confirm-bucket-$culprit"
                 Write-Host ("  => CULPRIT BUCKET: {0} (restored alone -> write errors = {1})" -f $culprit, $confirm)
-                if ($confirm -gt 0) {
-                    Write-Host '  => CONFIRMED by reproduction, not by elimination.'
-                    $cb = Join-Path $origDir $culprit
-                    $kids = @(Get-ChildItem $cb -Force -ErrorAction SilentlyContinue)
-                    Write-Host ("  bucket '{0}' holds {1} top-level entr(y|ies):" -f $culprit, $kids.Count)
-                    Write-SccacheProbeEntries -Entry $kids
-                    # A valid bucket holds only single-hex dirs; a file here or a zero-byte object deeper is an anomaly.
-                    $odd = @($kids | Where-Object { -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') })
-                    if ($odd) { Write-Host ("  ANOMALY: {0} entr(y|ies) are not single-hex directories: {1}" -f $odd.Count, (($odd | ForEach-Object { $_.Name }) -join ', ')) }
-                    $zero = @(Get-ChildItem $cb -Recurse -Force -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -eq 0 })
-                    if ($zero) { Write-Host ("  ANOMALY: {0} zero-byte object(s), e.g. {1}" -f $zero.Count, $zero[0].FullName) }
-                } else {
-                    Write-Host '  => NOT REPRODUCED: restoring it alone writes fine, so the'
-                    Write-Host '     failure needs a COMBINATION of buckets (or total size), not one entry.'
-                }
+                Write-SccacheBucketEvidence -OrigDir $origDir -Culprit $culprit -WriteErrors $confirm
             }
         }
         # Restore everything so the mount keeps its cache.
         foreach ($k in @($moved.Keys)) { Move-Back $k }
         Write-Host '  restored all buckets to the mount.'
-    }
 }
 
+function Write-SccacheRootBisect {
+Write-Section 'narrowing: quarantine foreign entries in the cache root'
+
+$quarantine = 'C:\sccache-quarantine'
+$null = New-Item -ItemType Directory -Force -Path $quarantine -ErrorAction SilentlyContinue
+
+# The probe's own inherited state must never be swept as debris, or it destroys its own experiment.
+$probeOwned = @('preprocessor', 'bulk-inherit', 'probe-persist')
+$foreign = @(Get-ChildItem $origDir -Force -ErrorAction SilentlyContinue | Where-Object {
+        -not ($_.PSIsContainer -and $_.Name -match '^[0-9a-f]$') -and $probeOwned -notcontains $_.Name
+    })
+# The bisect runs whenever disk-only failed, even with no foreign entries left to move.
+$after = $null
+if (-not $foreign) {
+    Write-Host '  no foreign entries left in the root (an earlier run removed them).'
+} else {
+    foreach ($f in $foreign) {
+        $bytes = if ($f.PSIsContainer) {
+            (Get-ChildItem $f.FullName -Recurse -Force -File -ErrorAction SilentlyContinue |
+                Measure-Object -Property Length -Sum).Sum
+        } else { $f.Length }
+        Write-Host ("  foreign: {0,-14} {1,12:N0} bytes  ({2})" -f $f.Name, [long]$bytes, $(if ($f.PSIsContainer) { 'dir' } else { 'file' }))
+    }
+    foreach ($f in $foreign) {
+        try {
+            Move-Item -LiteralPath $f.FullName -Destination (Join-Path $quarantine $f.Name) -Force -ErrorAction Stop
+            Write-DiagnosticResult "moved $($f.Name) off the mount" $true
+        } catch {
+            Write-DiagnosticResult "moved $($f.Name) off the mount" $false $_.Exception.Message
+        }
+    }
+    $after = Invoke-SccacheVariant -Name 'disk-only-after-cleanup' -Chain '' -Endpoint '' -Dir $origDir
+    Write-Section 'NARROWING VERDICT'
+    Write-Host ("  before cleanup: write errors = {0}" -f $byName['disk-only'])
+    Write-Host ("  after  cleanup: write errors = {0}" -f $after.WriteErrors)
+}
+
+$stillFailing = if ($null -ne $after) { $after.WriteErrors -gt 0 } else { $byName['disk-only'] -gt 0 }
+if ($null -ne $after -and $byName['disk-only'] -gt 0 -and $after.WriteErrors -eq 0) {
+    Write-Host '  => CONFIRMED: the foreign entries in the cache root broke every insert.'
+    Write-Host '  => They are gone now; the L0 disk cache writes again, cache content intact.'
+} elseif ($stillFailing) {
+    if ($null -ne $after) { Write-Host '  => NOT the foreign entries: the populated root still fails without them.' }
+    Invoke-SccacheBucketBisect -OrigDir $origDir -Quarantine $quarantine
+}
+}
+Write-SccacheRootBisect
+
 # N unique compiles: a repaired root fails 0/N, a path-dependent defect a steady fraction; one compile cannot tell.
+function Write-SccacheDeterminismProbe {
 Write-Section 'determinism: N unique compiles against the populated root'
 
 $env:SCCACHE_MULTILEVEL_CHAIN = $origChain
@@ -550,8 +593,15 @@ if ($d -eq 0 -and $m -eq $repeat) {
 } else {
     Write-Host ('  => Mixed result (disk {0}/{1}, chain {2}/{1}): path-dependent damage.' -f $d, $repeat, $m)
 }
+    return [pscustomobject]@{ DiskFailures = $d; ChainFailures = $m }
+}
+$serial = Write-SccacheDeterminismProbe
+$d = $serial.DiskFailures
+$m = $serial.ChainFailures
 
 # Concurrency: the build writes in parallel (ninja -j), which the serial runs above never reproduce.
+function Write-SccacheConcurrencyProbe {
+    param([int]$DiskFailures, [int]$ChainFailures)
 Write-Section 'concurrency: N unique compiles AT ONCE'
 
 $parallel = 16
@@ -561,8 +611,7 @@ $env:SCCACHE_WEBDAV_ENDPOINT = $origEndpoint
 $env:SCCACHE_DIR = $origDir
 Start-SccacheProbeServer -SccachePath $sccache.Source
 
-$pwork = Join-Path $env:TEMP ('sccache-par-' + [Guid]::NewGuid().ToString('N'))
-$null = New-Item -ItemType Directory -Force -Path $pwork
+$pwork = New-SccacheProbeWorkspace -Prefix 'sccache-par-'
 $procs = @()
 for ($i = 1; $i -le $parallel; $i++) {
     $s = Join-Path $pwork "p$i.cpp"
@@ -576,20 +625,23 @@ $okCount = @($procs | Where-Object { $_.HasExited -and $_.ExitCode -eq 0 }).Coun
 Write-Host "  $okCount of $parallel concurrent compiles exited 0"
 
 $pWriteErr = (Get-SccacheProbeStats -SccachePath $sccache.Source -Pattern 'Compile requests\s+\d|Cache misses\s+\d|Cache write errors|write failures').WriteErrors
-Remove-Item $pwork -Recurse -Force -ErrorAction SilentlyContinue
+Remove-SccacheProbeWorkspace -Path $pwork
 
 Write-Section 'CONCURRENCY VERDICT'
-Write-Host ("  serial (6+6 runs): {0} + {1} write failures" -f $d, $m)
+Write-Host ("  serial (6+6 runs): {0} + {1} write failures" -f $DiskFailures, $ChainFailures)
 Write-Host ("  parallel ({0} at once): {1} write failures" -f $parallel, $pWriteErr)
-if ($pWriteErr -gt 0 -and $d -eq 0 -and $m -eq 0) {
+if ($pWriteErr -gt 0 -and $DiskFailures -eq 0 -and $ChainFailures -eq 0) {
     Write-Host '  => CONCURRENCY IS THE TRIGGER: the same mount, the same config, the same'
     Write-Host '     server - serial writes succeed, parallel writes fail. That is the build.'
 } elseif ($pWriteErr -eq 0) {
     Write-Host '  => Not concurrency either: 16 at once write cleanly. The probe still'
     Write-Host '     does not reproduce the build; something else about the media RUN differs.'
 }
+}
+Write-SccacheConcurrencyProbe -DiskFailures $d -ChainFailures $m
 
 # Path length: os error 3 is also what a path past MAX_PATH returns, and the build compiles from deep CMake paths.
+function Write-SccachePathLengthProbe {
 Write-Section 'path length: compile from a DEEP source path'
 
 $deepRoot = 'C:\temp'
@@ -623,10 +675,10 @@ if (-not (Test-Path $deepDir)) {
     }
     Remove-Item (Join-Path $deepRoot "$seg-1") -Recurse -Force -ErrorAction SilentlyContinue
 }
+}
+Write-SccachePathLengthProbe
 
 # Bulk: N objects on vs off the BuildKit cache mount, since losses only show once the directory holds content.
-Write-Section "bulk write test: cache MOUNT vs plain directory (N unique objects)"
-
 function Invoke-BulkWrite {
     param([string]$Label, [string]$Dir, [int]$Count)
 
@@ -634,8 +686,7 @@ function Invoke-BulkWrite {
     $null = New-Item -ItemType Directory -Force -Path $Dir -ErrorAction SilentlyContinue
     Start-SccacheProbeServer -SccachePath $sccache.Source
 
-    $work = Join-Path $env:TEMP ('bulk-' + [Guid]::NewGuid().ToString('N'))
-    $null = New-Item -ItemType Directory -Force -Path $work
+    $work = New-SccacheProbeWorkspace -Prefix 'bulk-'
     Push-Location $work
     try {
         for ($i = 1; $i -le $Count; $i++) {
@@ -651,9 +702,12 @@ function Invoke-BulkWrite {
     $stats = Get-SccacheProbeStats -SccachePath $sccache.Source -Pattern ''
     Write-Host ("  {0,-14} dir={1}" -f $Label, $Dir)
     Write-Host ("  {0,-14} misses={1} write errors={2}  {3}" -f '', $stats.Misses, $stats.WriteErrors, $stats.CacheSize)
-    Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-SccacheProbeWorkspace -Path $work
     return [pscustomobject]@{ Label = $Label; Misses = $stats.Misses; WriteErrors = $stats.WriteErrors }
 }
+
+function Write-SccacheBulkProbe {
+Write-Section "bulk write test: cache MOUNT vs plain directory (N unique objects)"
 
 # Stable names, kept: the trigger is inheriting a populated dir across RUNs, so the second probe run is the experiment.
 $bulkN = 250
@@ -682,6 +736,8 @@ if ($onMount.WriteErrors -gt 0 -and $offMount.WriteErrors -eq 0) {
 }
 # Not deleted; the plain dir dies with the container, which makes it the control.
 Write-Host ("  kept for the next run: {0}" -f $mountDir)
+}
+Write-SccacheBulkProbe
 
 Write-Section 'sccache error log'
 $errLog = Read-SccacheProbeErrorLog -SccachePath $sccache.Source -StopPattern 'Stopping|error'

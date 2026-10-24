@@ -55,7 +55,7 @@ $summary.Add('')
 
 foreach ($p in $silo) {
     $log = Join-Path $OutDir "silo-$($p.Name)-$($p.ProcessId)-$stamp.txt"
-    Invoke-SiloDebugger -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -Command '.reload /f; ~*kb; qd' -LogPath $log
+    Invoke-SiloStackCapture -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -LogPath $log
     $stacks = @(Select-String -Path $log -Pattern 'Call Site' -ErrorAction SilentlyContinue).Count
     if ($stacks -lt 1) {
         # 0n5 is a protected process refusing even a read-only attach, not a hang.

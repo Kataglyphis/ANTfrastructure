@@ -538,6 +538,305 @@ function Invoke-OrtFreeThreadedTwin {
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
+function Invoke-OrtSourcePatches {
+    param([string]$SourceDir, [string]$scriptAssetRoot)
+    # Inline patch (kept inline, NOT a .patch file): llvm-rc rejects non-ASCII bytes, and a byte filter is no diff.
+    $bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
+    [System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
+
+    # DirectML EP clang-cl fixes (llvm #57700): the .patch first, Invoke-OnnxDmlClangClPatch as the drift fallback.
+    $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir `
+        -FallbackNote 'falling back to inline regex patcher' `
+        -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
+
+    # Ninja is case-sensitive, and upstream spells the DirectML redist dir both arm64-win and ARM64-win.
+    $dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
+    if (Test-Path $dmlProviders) {
+        # Two edits, so an upstream move of either fails loudly; -SkipIfMatch keeps a re-run idempotent.
+        [void](Invoke-InlineRegexPatch -Path $dmlProviders `
+                -SkipIfMatch 'onnxruntime_dml_redist_platform' `
+                -Guard 'if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
+                -Pattern '(?m)^(\s*)if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
+                -Replacement "`${1}string(TOLOWER `"`${onnxruntime_target_platform}`" onnxruntime_dml_redist_platform)`n`${1}if (NOT onnxruntime_USE_CUSTOM_DIRECTML)" `
+                -Description 'onnxruntime DML: lower-case the redist platform dir (define)')
+        [void](Invoke-InlineRegexPatch -Path $dmlProviders `
+                -Guard 'bin/\$\{onnxruntime_target_platform\}-win' `
+                -Pattern 'bin/\$\{onnxruntime_target_platform\}-win' `
+                -Replacement 'bin/${onnxruntime_dml_redist_platform}-win' `
+                -AssertGone 'bin/\$\{onnxruntime_target_platform\}-win' `
+                -Description 'onnxruntime DML: lower-case the redist platform dir (consumers)')
+        if ((Get-Content -LiteralPath $dmlProviders -Raw) -notmatch 'string\(TOLOWER') {
+            throw "onnxruntime_providers_dml.cmake: the redist platform lower-casing define is missing after patching (upstream layout changed?). Re-check $dmlProviders."
+        }
+    }
+}
+
+function Assert-OrtConfiguredFeatures {
+    param([bool]$onnxCross, [string]$ortCfgLog, [string]$buildDir, [string[]]$ltoArgs, [string[]]$kleidiArgs, $kleidiSrc, $webgpuPlan)
+    if (-not $onnxCross) {
+        # Anything but ml64 is toolchain drift worth stopping on now.
+        $masmLines = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'ASM_MASM|Found assembler' })
+        if ($masmLines.Count -eq 0 -or -not ($masmLines -join "`n" | Select-String -Pattern 'ml64' -Quiet)) {
+            throw "ORT configure did not report ml64 as the ASM_MASM assembler (#123: MLAS needs MSVC's MASM, llvm-ml 22 cannot assemble it). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
+        }
+        Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
+    }
+    if ($ltoArgs.Count -gt 0) {
+        # CMP0069 fails configure without IPO support; this proves the property became compile flags.
+        $ltoLines = @(Select-String -LiteralPath (Join-Path $buildDir 'build.ninja') -Pattern '-flto' -SimpleMatch)
+        if ($ltoLines.Count -eq 0) { throw "onnxruntime_ENABLE_LTO=ON, yet no compile line in build.ninja carries -flto -- see $ortCfgLog" }
+        Write-Host "ORT: ThinLTO reaches $($ltoLines.Count) build.ninja line(s)"
+    }
+    if ($kleidiArgs.Count -gt 0) {
+        # ORT only warns when KleidiAI is unsupported and builds plain MLAS, so fail here and prove the target exists.
+        $kaiDropped = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'KleidiAI (is not supported|requires MSVC)|onnxruntime_USE_KLEIDIAI was set but it is not supported' })
+        if ($kaiDropped.Count -gt 0) { throw "ORT configure dropped KleidiAI: $($kaiDropped -join ' | ') -- see $ortCfgLog" }
+        $ninjaFile = Join-Path $buildDir 'build.ninja'
+        if (-not (Select-String -LiteralPath $ninjaFile -Pattern 'kleidiai' -SimpleMatch -Quiet)) { throw "onnxruntime_USE_KLEIDIAI=ON, yet $ninjaFile has no kleidiai target -- see $ortCfgLog" }
+        # The patched tree was used (not a fresh FetchContent download) and its .S rule is the wrapper.
+        $rulesFile = Join-Path $buildDir 'CMakeFiles\rules.ninja'
+        if (-not (Select-String -LiteralPath $rulesFile -Pattern 'kai-armasm.cmd' -SimpleMatch -Quiet)) { throw "KleidiAI's ASM_MARMASM rule in $rulesFile is not $($kleidiSrc.Wrapper): FETCHCONTENT_SOURCE_DIR_KLEIDIAI or the rule patch did not take -- see $ortCfgLog" }
+        Write-Host 'ORT: KleidiAI in MLAS ON for the arm64 bundle (configure kept it; build.ninja carries the kleidiai target)'
+    }
+    if ($webgpuPlan.WebGpu) {
+        $webgpuCfg = @(Get-OrtWebGpuConfigureFinding -CacheText ([System.IO.File]::ReadAllText((Join-Path $buildDir 'CMakeCache.txt'))) -LogText ([System.IO.File]::ReadAllText($ortCfgLog)))
+        if ($webgpuCfg.Count -gt 0) { throw "WebGPU EP configure check:`n  $($webgpuCfg -join "`n  ")" }
+    }
+}
+
+function Invoke-OrtDependencyPatches {
+    param([string]$buildDir, [bool]$cudaUsable)
+    # INVALID_HANDLE_VALUE is no valid template argument under clang, so an interface-identical RAII class replaces the alias.
+$scopedHandleFix = @'
+// [clang-cl compat, ANTfrastructure] INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
+// is not a valid non-type template argument under clang (reinterpret_cast in a
+// constant expression; MSVC permits it as an extension). Interface-identical
+// RAII type with the sentinel held at runtime instead.
+class ScopedHandle {
+  HANDLE val_;
+
+ public:
+  explicit ScopedHandle(HANDLE v) : val_(v) {}
+  ~ScopedHandle() {
+    if (val_ != INVALID_HANDLE_VALUE) {
+      close_handle(val_);
+    }
+  }
+  HANDLE get() const {
+    return val_;
+  }
+  HANDLE release() {
+    HANDLE tmp = val_;
+    val_ = INVALID_HANDLE_VALUE;
+    return tmp;
+  }
+  ScopedHandle(const ScopedHandle&) = delete;
+  ScopedHandle& operator=(const ScopedHandle&) = delete;
+};
+'@
+    $onnxScoped = "$buildDir\_deps\onnx-src\onnx\common\scoped_resource.h"
+    if (Test-Path $onnxScoped) {
+        Invoke-InlineRegexPatch -Path $onnxScoped `
+            -Pattern 'using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;' `
+            -Replacement $scopedHandleFix `
+            -WarnMessage "onnx scoped_resource.h: ScopedHandle alias not found — upstream may have fixed or reshaped it; verify clang-cl still compiles checker.cc." | Out-Null
+    }
+
+    # CUTLASS's SHA follows ORT's pointer, so no static .patch; guarded like the CUDA branch above.
+    if ($cudaUsable) {
+        # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
+        $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
+        if (Test-Path $cutlassInclude) {
+            Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Edit-CppKeywordAlternatives -Path $_.FullName }
+        }
+        # Disable the MSVC-only _udiv128 guard for clang-cl, never rename the call: udiv128 would then call itself.
+        $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
+        # The pattern prefixes its own replacement, so a resumed tree would re-append it.
+        if ((Test-Path $cut) -and ((Get-Content -Raw $cut) -match '!defined\(__clang__\)')) {
+            Write-Host 'cutlass/uint128.h: __clang__ guard already applied (resumed tree) - skipping'
+        } else {
+            Invoke-InlineRegexPatch -Path $cut `
+                -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
+                -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
+                -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
+        }
+        # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
+    }
+}
+
+function Get-OrtCudaArgs {
+    param($gpuEnv, [bool]$onnxCross, [bool]$cudaUsable, [string]$SourceDir, [string]$scriptAssetRoot)
+    $gpuArgs = @()
+    if ($cudaUsable) {
+        Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
+        $gpuArgs += Get-OrtPtxLauncherExemptArg -PatchDir (Join-Path $scriptAssetRoot 'patches\onnxruntime')
+        $cudaRoot = $gpuEnv.CudaRoot
+        $cudnnRoot = $gpuEnv.CudnnRoot
+        # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.
+        $cudnnLib = Get-CudnnLibrary -CudnnRoot $cudnnRoot
+
+        # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
+        $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir `
+            -RelativePath 'cmake\onnxruntime_providers_cuda.cmake' -Pattern 'target_precompile_headers\([^)]+\)' `
+            -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $SourceDir\cmake\onnxruntime_providers_cuda.cmake."
+        # The CUDA includes define ERROR/VERBOSE despite -DNOGDI, which paste into a nonexistent Severity::k0.
+        $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
+            -RelativePath 'onnxruntime\core\framework\tunable.h' -Pattern '(#include "core/framework/tuning_context\.h")' `
+            -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
+            -FallbackNote 'falling back to inline #undef insertion' `
+            -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $(Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h')."
+
+        # sccache's nvcc decomposition can drop HAS_SM80_OR_LATER in the host pass, and we always target sm80+.
+        $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir `
+            -RelativePath 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh' -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
+            -Replacement '#else' -FallbackNote 'falling back to inline guard rewrite' `
+            -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $(Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh')."
+
+        # Undefined fused_moe/QkvToContext symbols point at the mozilla/sccache#2811 series, not at a bare-nvcc exception.
+
+            # clang-cl rejects the `and`/`or`/`not` keyword alternatives; .patch first, Edit-CppKeywordAlternatives on drift.
+            $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir `
+                -FallbackNote 'falling back to keyword-alternatives in softmax sources' `
+                -Fallback {
+                    foreach ($sf in @('softmax.cc', 'softmax.h')) {
+                        $sfp = Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math' $sf
+                        if (Test-Path $sfp) { Edit-CppKeywordAlternatives -Path $sfp }
+                    }
+                    $true
+                }
+
+        # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
+        $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
+        # Classic TensorRT is x64-only; see docs/windows-cross-builds.md § CUDA / cuDNN / TensorRT.
+        $trtRoot = if ($onnxCross) { $null } else { $gpuEnv.TensorRtRoot }
+        if ($trtRoot) {
+            Write-Host "TensorRT detected at $trtRoot - enabling TensorRT EP"
+            $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
+            $gpuArgs += '-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=ON'
+            $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
+        } else {
+            $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
+        }
+        # nvcc's host is MSVC cl.exe, as nvcc rejects clang-cl; /wd4067 is ORT-specific.
+        $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
+        $cudnnLibDir = Get-CudnnLibraryDir -CudnnRoot $cudnnRoot
+        if (-not $cudnnLibDir) {
+            throw "ONNX: cuDNN import lib dir not found under $cudnnRoot (lib\x64 natively, lib\arm64 on the cross lane) -- refusing to configure a CUDA build with no cuDNN."
+        }
+        $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
+        $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnLibDir", "-DCUDNN_LIBRARY=$cudnnLib"
+        $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
+    } elseif ($gpuEnv.HasRocm) {
+        # ORT >= 1.23 has no ROCm EP (onnxruntime_USE_ROCM is gone): cpu flags, plus the WebGPU spike below.
+        Write-Host 'ROCm layer present: CPU+DML ORT'
+    } else {
+        Write-Host 'No GPU layer detected: CPU-only build'
+    }
+    return $gpuArgs
+}
+
+function Get-OrtPythonArgs {
+    param([bool]$onnxCross, $tpy)
+    $pythonArgs = if ($onnxCross -and -not $tpy.Available) {
+        Write-Warning "ONNX: python bindings OFF -- no target CPython import lib at $($tpy.Lib) (Build-TargetCpython.ps1 did not run?)"
+        @('-Donnxruntime_ENABLE_PYTHON=OFF')
+    } else {
+        # `Python_*`: ORT's unversioned find_package ignores `Python3_*`; numpy's arch-neutral headers come from the host.
+        $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($tpy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
+        if (-not $numpyInc -or -not (Test-Path (Join-Path $numpyInc 'numpy\arrayobject.h'))) {
+            throw "ONNX: numpy include dir not usable ('$numpyInc') -- numpy must be importable by the build interpreter $($tpy.Exe) before configure"
+        }
+        @('-Donnxruntime_ENABLE_PYTHON=ON') + @(Get-PythonCMakeHintArgs -Python $tpy -Prefix 'Python' -NumPyIncludeDir $numpyInc)
+    }
+    if ($onnxCross -and $tpy.Available) { Write-Host "ONNX: python bindings ON for the cross lane (#120 step 2) -- host interpreter $($tpy.Exe), TARGET import lib $($tpy.Lib)" }
+    return $pythonArgs
+}
+
+function Get-OrtAdditionalBuildPlan {
+    param([bool]$onnxCross, [string]$SourceDir, [string]$onnxTargetArch, [bool]$cudaUsable)
+    # QNN EP: opt-in by staging the login-gated QAIRT zip in windows\qnn-sdk\; no zip, no EP.
+    $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
+    $qnnArgs = @()
+    if ($qnnSdk) { $qnnArgs = $qnnSdk.CmakeArgs }
+    if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
+    else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
+    # KleidiAI in MLAS, arm64 only: only build.py enables it upstream; see the KleidiAI note in docs/windows-cross-builds.md.
+    $kleidiArgs = @()
+    $kleidiSrc = $null
+    if ($onnxCross) {
+        $kleidiSrc = Initialize-OrtKleidiaiSource -OrtSourceDir $SourceDir -WorkDir 'C:\temp\kleidiai' -Triple (Get-ClangTargetTriple -Arch $onnxTargetArch)
+        $kleidiArgs = @('-Donnxruntime_USE_KLEIDIAI=ON', "-DFETCHCONTENT_SOURCE_DIR_KLEIDIAI=$($kleidiSrc.SourceDir -replace '\\', '/')")
+    }
+    # ThinLTO via ORT's own IPO (versions.env ORT_ENABLE_LTO is Linux's knob); never with CUDA, whose nvcc host is cl.
+    $ltoArgs = @()
+    if (-not $cudaUsable) { $ltoArgs = @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
+    Write-Host "ONNX: ThinLTO $(if ($cudaUsable) { 'OFF (CUDA lane)' } else { 'ON' })"
+    return @{ QnnSdk = $qnnSdk; QnnArgs = $qnnArgs; KleidiSrc = $kleidiSrc; KleidiArgs = $kleidiArgs; LtoArgs = $ltoArgs }
+}
+
+function Initialize-OrtWebGpuSetup {
+    param($gpuEnv, [bool]$onnxCross, [string]$SourceDir, [string]$WebGpuWorkDir, $py, [string[]]$cmakeArgs)
+    # rocm lane: ORT_WEBGPU=1 adds the WebGPU EP (the driver sends it; cpu/nvidia never see it).
+    $webgpuPlan = Get-OrtWebGpuPlan -GpuEnv $gpuEnv -Cross $onnxCross -SpikeFlag "$env:ORT_WEBGPU"
+    $webgpu = $null
+    if ($webgpuPlan.WebGpu) {
+        Switch-BuildPhase '2b. WebGPU EP inputs: Dawn + DXC (rocm spike)'
+        $webgpu = Initialize-OrtWebGpuInput -OrtSourceDir $SourceDir -WorkDir $WebGpuWorkDir -Python $py.Exe
+        $cmakeArgs += Get-OrtWebGpuCmakeArgs -Plan $webgpuPlan -DawnSrc $webgpu.DawnSrc -DxcDir $webgpu.DxcDir
+    } elseif ($webgpuPlan.OnLane) {
+        Write-Host 'ROCm lane: WebGPU EP spike off (ORT_WEBGPU is not 1)'
+    }
+    return @{ Plan = $webgpuPlan; Input = $webgpu; CmakeArgs = $cmakeArgs }
+}
+
+function Install-OrtRuntimeSidecars {
+    param([string]$SourceDir, [string]$ortInstallDir, $qnnSdk, $webgpuPlan, $webgpu, [string]$buildDir)
+    # cmake --install skips DirectML.dll (0xC0000135); the filter picks the target's redist dir of the per-platform nuget.
+    $ortDmlArchDir = "$(Get-WindowsTargetArch)" -replace '^amd64$', 'x64'
+    Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
+        -SidecarFilter { $_.Directory.Name -eq "$ortDmlArchDir-win" } `
+        -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
+        -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
+
+    # cmake installs the QNN provider DLL but not the SDK's backend DLLs.
+    if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }
+    $webgpuDllSha = if ($webgpuPlan.WebGpu) { Install-OrtWebGpuRuntime -DxcDir $webgpu.DxcDir -OrtInstallDir $ortInstallDir } else { @{} }
+    if ($webgpuPlan.WebGpu) { Add-OrtWebGpuWheelNotice -BuildDir $buildDir -DxcDir $webgpu.DxcDir -DxcVersion $webgpu.Pin.DXC_VERSION }
+    return $webgpuDllSha
+}
+
+function Invoke-OrtPythonWheelsAndMarker {
+    param([bool]$onnxCross, $tpy, $py, [string]$buildDir, [string]$SourceDir, $webgpuPlan, $webgpu, $webgpuDllSha, $ftPlan, [string[]]$cmakeArgs, [string[]]$pythonArgs, [string]$cmakeSrc, [string]$ortInstallDir, [string]$WebGpuWorkDir)
+    # Plain `onnxruntime` wheel: our CUDA+TensorRT+DML combo matches no upstream name suffix
+    Switch-BuildPhase '6. python wheel'
+    # A variable: a condition starting with a command name parses in command mode, turning `-and -not` into arguments.
+    if ($onnxCross -and -not $tpy.Available) {
+        Write-Host 'Skipping the onnxruntime python wheel: cross build without a target CPython (bindings were OFF above)'
+    } else {
+        # -CrossStage stages the target wheel unimported; the native lane installs and import-asserts it.
+        Write-Host 'Building onnxruntime python wheel...'
+        # The staged path comes last, after setup.py's and pip's output.
+        $gilWheel = @(Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
+                -Arguments """$SourceDir\setup.py"" bdist_wheel" `
+                -ModuleName 'onnxruntime' -CrossStage)[-1]
+    }
+    if ($webgpuPlan.WebGpu) {
+        $wheelFindings = @(Get-OrtWebGpuWheelFinding -Report (Get-OrtWebGpuWheelReport -Python $py.Exe) -DllSha256 $webgpuDllSha)
+        if ($wheelFindings.Count -gt 0) { throw "WebGPU EP wheel check:`n  $($wheelFindings -join "`n  ")" }
+    }
+    # After the WebGPU check, which reads the GIL wheel's capi\ the twin's rebuild would overwrite.
+    if ($ftPlan.Build) {
+        Switch-BuildPhase '7. free-threaded twin (cp3XYt wheel)'
+        [void](Invoke-OrtFreeThreadedTwin -GilPython $py -GilWheel $gilWheel -CmakeArgs @($cmakeArgs | Where-Object { $_ -notin $pythonArgs }) `
+                -CmakeSrc $cmakeSrc -BuildDir $buildDir -SourceDir $SourceDir -InstallPrefix $ortInstallDir -Cross $onnxCross)
+    }
+    if ($webgpuPlan.OnLane) {
+        $marker = Get-OrtWebGpuFeatureMarker -Plan $webgpuPlan -Pin $(if ($webgpu) { $webgpu.Pin }) -DllSha256 $webgpuDllSha
+        [System.IO.File]::WriteAllLines((Join-Path $ortInstallDir 'ROCM-FEATURES.txt'), [string[]]$marker)
+    }
+    if ($webgpu) { Remove-SourceBuildTree -Path $WebGpuWorkDir }
+}
+
 $OnnxVersion = Get-SourceBuildVersion -Value $OnnxVersion -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
 
 Write-Host "=== ONNX Runtime source build (Ninja + clang-cl + GPU: $(if ($env:GPU_TYPE) { $env:GPU_TYPE } else { 'none' })) ==="
@@ -553,35 +852,7 @@ $ortInstallDir = "$InstallDir\lib\onnxruntime-source"
 # A variable: a condition starting with a command name is parsed in command mode.
 $onnxCross = Test-WindowsCrossTarget
 
-# Inline patch (kept inline, NOT a .patch file): llvm-rc rejects non-ASCII bytes, and a byte filter is no diff.
-$bytes = [System.IO.File]::ReadAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc")
-[System.IO.File]::WriteAllBytes("$SourceDir\onnxruntime\core\dll\onnxruntime.rc", [byte[]]@($bytes | Where-Object { $_ -le 127 }))
-
-# DirectML EP clang-cl fixes (llvm #57700): the .patch first, Invoke-OnnxDmlClangClPatch as the drift fallback.
-$null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\003-dml-clangcl-compat.patch') -SourceDir $SourceDir `
-    -FallbackNote 'falling back to inline regex patcher' `
-    -Fallback { Invoke-OnnxDmlClangClPatch -SourceDir $SourceDir; $true }
-
-# Ninja is case-sensitive, and upstream spells the DirectML redist dir both arm64-win and ARM64-win.
-$dmlProviders = Join-Path $SourceDir 'cmake\onnxruntime_providers_dml.cmake'
-if (Test-Path $dmlProviders) {
-    # Two edits, so an upstream move of either fails loudly; -SkipIfMatch keeps a re-run idempotent.
-    [void](Invoke-InlineRegexPatch -Path $dmlProviders `
-            -SkipIfMatch 'onnxruntime_dml_redist_platform' `
-            -Guard 'if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
-            -Pattern '(?m)^(\s*)if \(NOT onnxruntime_USE_CUSTOM_DIRECTML\)' `
-            -Replacement "`${1}string(TOLOWER `"`${onnxruntime_target_platform}`" onnxruntime_dml_redist_platform)`n`${1}if (NOT onnxruntime_USE_CUSTOM_DIRECTML)" `
-            -Description 'onnxruntime DML: lower-case the redist platform dir (define)')
-    [void](Invoke-InlineRegexPatch -Path $dmlProviders `
-            -Guard 'bin/\$\{onnxruntime_target_platform\}-win' `
-            -Pattern 'bin/\$\{onnxruntime_target_platform\}-win' `
-            -Replacement 'bin/${onnxruntime_dml_redist_platform}-win' `
-            -AssertGone 'bin/\$\{onnxruntime_target_platform\}-win' `
-            -Description 'onnxruntime DML: lower-case the redist platform dir (consumers)')
-    if ((Get-Content -LiteralPath $dmlProviders -Raw) -notmatch 'string\(TOLOWER') {
-        throw "onnxruntime_providers_dml.cmake: the redist platform lower-casing define is missing after patching (upstream layout changed?). Re-check $dmlProviders."
-    }
-}
+Invoke-OrtSourcePatches -SourceDir $SourceDir -scriptAssetRoot $scriptAssetRoot
 
 $py = Initialize-ToolchainPythonEnvironment
 
@@ -612,124 +883,33 @@ function Invoke-OrtRegexPatchWithFallback {
 
 # GPU detection; ONNX_FORCE_CPU=1 is a dev knob that skips the hour of CUDA and TensorRT kernels.
 $gpuEnv = Get-GpuEnvironment -ForceCpuEnvVar 'ONNX_FORCE_CPU'
-$gpuArgs = @()
 $cudaUsable = Test-CudaTargetUsable -GpuEnvironment $gpuEnv -CrossTarget $onnxCross
-if ($cudaUsable) {
-    Write-Host 'NVIDIA GPU detected: enabling CUDA + cuDNN'
-    $gpuArgs += Get-OrtPtxLauncherExemptArg -PatchDir (Join-Path $scriptAssetRoot 'patches\onnxruntime')
-    $cudaRoot = $gpuEnv.CudaRoot
-    $cudnnRoot = $gpuEnv.CudnnRoot
-    # Shared cuDNN import-lib finder (prefers cudnn.lib over the 9.x split sub-libs); $null when absent.
-    $cudnnLib = Get-CudnnLibrary -CudnnRoot $cudnnRoot
-
-    # CUDA 13.x CCCL breaks clang-cl PCH -- disable via a reviewable .patch (inline regex fallback for context drift).
-    $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\002-disable-cuda-pch.patch') -SourceDir $SourceDir `
-        -RelativePath 'cmake\onnxruntime_providers_cuda.cmake' -Pattern 'target_precompile_headers\([^)]+\)' `
-        -WarnMessage "onnxruntime_providers_cuda.cmake: no target_precompile_headers(...) call found to strip; the CUDA PCH may break the clang-cl build. Verify $SourceDir\cmake\onnxruntime_providers_cuda.cmake."
-    # The CUDA includes define ERROR/VERBOSE despite -DNOGDI, which paste into a nonexistent Severity::k0.
-    $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\004-tunable-severity-macro-collision.patch') -SourceDir $SourceDir `
-        -RelativePath 'onnxruntime\core\framework\tunable.h' -Pattern '(#include "core/framework/tuning_context\.h")' `
-        -Replacement ('$1' + "`n`n#ifdef ERROR`n#undef ERROR`n#endif`n#ifdef VERBOSE`n#undef VERBOSE`n#endif") `
-        -FallbackNote 'falling back to inline #undef insertion' `
-        -WarnMessage "tunable.h: tuning_context include anchor not found; LOGS_DEFAULT(ERROR) will fail as Severity::k0. Verify $(Join-Path $SourceDir 'onnxruntime\core\framework\tunable.h')."
-
-    # sccache's nvcc decomposition can drop HAS_SM80_OR_LATER in the host pass, and we always target sm80+.
-    $null = Invoke-OrtRegexPatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\005-xqa-host-stub-sccache.patch') -SourceDir $SourceDir `
-        -RelativePath 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh' -Pattern '#elif defined\(HAS_SM80_OR_LATER\) \|\| !defined\(__CUDACC__\)' `
-        -Replacement '#else' -FallbackNote 'falling back to inline guard rewrite' `
-        -WarnMessage "xqa_impl_gen.cuh: host-stub guard anchor not found; XQA host stubs may fail as C2039 smemSize/kernelType. Verify $(Join-Path $SourceDir 'onnxruntime\contrib_ops\cuda\bert\xqa\xqa_impl_gen.cuh')."
-
-    # Undefined fused_moe/QkvToContext symbols point at the mozilla/sccache#2811 series, not at a bare-nvcc exception.
-
-        # clang-cl rejects the `and`/`or`/`not` keyword alternatives; .patch first, Edit-CppKeywordAlternatives on drift.
-        $null = Invoke-SourcePatchWithFallback -PatchFile (Join-Path $scriptAssetRoot 'patches\onnxruntime\001-softmax-clangcl-keywords.patch') -SourceDir $SourceDir `
-            -FallbackNote 'falling back to keyword-alternatives in softmax sources' `
-            -Fallback {
-                foreach ($sf in @('softmax.cc', 'softmax.h')) {
-                    $sfp = Join-Path $SourceDir 'onnxruntime\core\providers\cuda\math' $sf
-                    if (Test-Path $sfp) { Edit-CppKeywordAlternatives -Path $sfp }
-                }
-                $true
-            }
-
-    # ONNX-specific CMake flags (names like `onnxruntime_USE_CUDA` are ORT-only -- kept local, not in the generic helper).
-    $gpuArgs += '-Donnxruntime_USE_CUDA=ON'
-    # Classic TensorRT is x64-only; see docs/windows-cross-builds.md § CUDA / cuDNN / TensorRT.
-    $trtRoot = if ($onnxCross) { $null } else { $gpuEnv.TensorRtRoot }
-    if ($trtRoot) {
-        Write-Host "TensorRT detected at $trtRoot - enabling TensorRT EP"
-        $gpuArgs += '-Donnxruntime_USE_TENSORRT=ON'
-        $gpuArgs += '-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER=ON'
-        $gpuArgs += "-DTENSORRT_ROOT=$trtRoot"
-    } else {
-        $gpuArgs += '-Donnxruntime_USE_TENSORRT=OFF'
-    }
-    # nvcc's host is MSVC cl.exe, as nvcc rejects clang-cl; /wd4067 is ORT-specific.
-    $gpuArgs += Get-NvccCudaCmakeArgs -CudaRoot $cudaRoot -CudaStandard '17' -ExtraCudaFlags '-Xcompiler=/wd4067'
-    $cudnnLibDir = Get-CudnnLibraryDir -CudnnRoot $cudnnRoot
-    if (-not $cudnnLibDir) {
-        throw "ONNX: cuDNN import lib dir not found under $cudnnRoot (lib\x64 natively, lib\arm64 on the cross lane) -- refusing to configure a CUDA build with no cuDNN."
-    }
-    $gpuArgs += "-DCUDNN_ROOT=$cudnnRoot", "-DCUDNN_INCLUDE_DIR=$cudnnRoot\include"
-    $gpuArgs += "-DCMAKE_LIBRARY_PATH=$cudnnLibDir", "-DCUDNN_LIBRARY=$cudnnLib"
-    $gpuArgs += "-Donnxruntime_CUDNN_HOME=$cudnnRoot", "-Donnxruntime_CUDA_HOME=$cudaRoot"
-} elseif ($gpuEnv.HasRocm) {
-    # ORT >= 1.23 has no ROCm EP (onnxruntime_USE_ROCM is gone): cpu flags, plus the WebGPU spike below.
-    Write-Host 'ROCm layer present: CPU+DML ORT'
-} else {
-    Write-Host 'No GPU layer detected: CPU-only build'
-}
+$gpuArgs = @(Get-OrtCudaArgs -gpuEnv $gpuEnv -onnxCross $onnxCross -cudaUsable $cudaUsable -SourceDir $SourceDir -scriptAssetRoot $scriptAssetRoot)
 
 # The host interpreter runs the build and the .pyd links the target python314.lib; Get-TargetBuildPython holds that split.
 $tpy = Get-TargetBuildPython
-$pythonArgs = if ($onnxCross -and -not $tpy.Available) {
-    Write-Warning "ONNX: python bindings OFF -- no target CPython import lib at $($tpy.Lib) (Build-TargetCpython.ps1 did not run?)"
-    @('-Donnxruntime_ENABLE_PYTHON=OFF')
-} else {
-    # `Python_*`: ORT's unversioned find_package ignores `Python3_*`; numpy's arch-neutral headers come from the host.
-    $numpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($tpy.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
-    if (-not $numpyInc -or -not (Test-Path (Join-Path $numpyInc 'numpy\arrayobject.h'))) {
-        throw "ONNX: numpy include dir not usable ('$numpyInc') -- numpy must be importable by the build interpreter $($tpy.Exe) before configure"
-    }
-    @('-Donnxruntime_ENABLE_PYTHON=ON') + @(Get-PythonCMakeHintArgs -Python $tpy -Prefix 'Python' -NumPyIncludeDir $numpyInc)
-}
-if ($onnxCross -and $tpy.Available) { Write-Host "ONNX: python bindings ON for the cross lane (#120 step 2) -- host interpreter $($tpy.Exe), TARGET import lib $($tpy.Lib)" }
+$pythonArgs = @(Get-OrtPythonArgs -onnxCross $onnxCross -tpy $tpy)
 # DirectML on both lanes; the one cross obstacle was the redist path case patched above.
 $dmlArg = '-Donnxruntime_USE_DML=ON'
 if ($onnxCross) { Write-Host 'ONNX: DirectML EP ON for the cross lane too (backlog #113 - the redist DOES ship bin/arm64-win/DirectML.lib; the old failure was an upper-case path, not a missing package)' }
-# QNN EP: opt-in by staging the login-gated QAIRT zip in windows\qnn-sdk\; no zip, no EP.
-$qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
-$qnnArgs = @()
-if ($qnnSdk) { $qnnArgs = $qnnSdk.CmakeArgs }
-if ($qnnSdk) { Write-Host "ONNX: QNN EP ON (SDK root $($qnnSdk.Home), backends from $($qnnSdk.LibDir)) -- backlog #121" }
-else { Write-Host 'ONNX: QNN EP off -- no SDK zip staged in windows\qnn-sdk (opt-in; see windows\qnn-sdk\README.md, backlog #121)' }
-# KleidiAI in MLAS, arm64 only: only build.py enables it upstream; see the KleidiAI note in docs/windows-cross-builds.md.
-$kleidiArgs = @()
-$kleidiSrc = $null
-if ($onnxCross) {
-    $kleidiSrc = Initialize-OrtKleidiaiSource -OrtSourceDir $SourceDir -WorkDir 'C:\temp\kleidiai' -Triple (Get-ClangTargetTriple -Arch $onnxTargetArch)
-    $kleidiArgs = @('-Donnxruntime_USE_KLEIDIAI=ON', "-DFETCHCONTENT_SOURCE_DIR_KLEIDIAI=$($kleidiSrc.SourceDir -replace '\\', '/')")
-}
-# ThinLTO via ORT's own IPO (versions.env ORT_ENABLE_LTO is Linux's knob); never with CUDA, whose nvcc host is cl.
-$ltoArgs = @()
-if (-not $cudaUsable) { $ltoArgs = @('-Donnxruntime_ENABLE_LTO=ON') + @(Get-LlvmArchiverCmakeArg) }
-Write-Host "ONNX: ThinLTO $(if ($cudaUsable) { 'OFF (CUDA lane)' } else { 'ON' })"
+$ortExtras = Get-OrtAdditionalBuildPlan -onnxCross $onnxCross -SourceDir $SourceDir -onnxTargetArch $onnxTargetArch -cudaUsable $cudaUsable
+$qnnSdk = $ortExtras.QnnSdk
+$qnnArgs = $ortExtras.QnnArgs
+$kleidiSrc = $ortExtras.KleidiSrc
+$kleidiArgs = $ortExtras.KleidiArgs
+$ltoArgs = $ortExtras.LtoArgs
+
 $cmakeArgs = @(
     '-Donnxruntime_BUILD_SHARED_LIB=ON', '-Donnxruntime_BUILD_UNIT_TESTS=OFF', '-Donnxruntime_BUILD_BENCHMARKS=OFF'
     $dmlArg, '-Dprotobuf_MSVC_STATIC_RUNTIME=OFF'
 ) + $pythonArgs + @(
     "-DCMAKE_CXX_FLAGS:STRING=$cxxFlags"
 ) + $gpuArgs + $qnnArgs + $kleidiArgs + $ltoArgs
-# rocm lane: ORT_WEBGPU=1 adds the WebGPU EP (the driver sends it; cpu/nvidia never see it).
-$webgpuPlan = Get-OrtWebGpuPlan -GpuEnv $gpuEnv -Cross $onnxCross -SpikeFlag "$env:ORT_WEBGPU"
-$webgpu = $null
-if ($webgpuPlan.WebGpu) {
-    Switch-BuildPhase '2b. WebGPU EP inputs: Dawn + DXC (rocm spike)'
-    $webgpu = Initialize-OrtWebGpuInput -OrtSourceDir $SourceDir -WorkDir $WebGpuWorkDir -Python $py.Exe
-    $cmakeArgs += Get-OrtWebGpuCmakeArgs -Plan $webgpuPlan -DawnSrc $webgpu.DawnSrc -DxcDir $webgpu.DxcDir
-} elseif ($webgpuPlan.OnLane) {
-    Write-Host 'ROCm lane: WebGPU EP spike off (ORT_WEBGPU is not 1)'
-}
+$webgpuSetup = Initialize-OrtWebGpuSetup -gpuEnv $gpuEnv -onnxCross $onnxCross -SourceDir $SourceDir -WebGpuWorkDir $WebGpuWorkDir -py $py -cmakeArgs $cmakeArgs
+$webgpuPlan = $webgpuSetup.Plan
+$webgpu = $webgpuSetup.Input
+$cmakeArgs = $webgpuSetup.CmakeArgs
+
 # MLAS's amd64 MASM kernels stay on MSVC's ml64: llvm-ml 22 cannot assemble them.
 Switch-BuildPhase '3. cmake configure'
 # Tee'd, so the log shows which assembler configure found.
@@ -739,95 +919,13 @@ Write-Host $ftPlan.Reason
 # -Settle when the twin will re-configure this tree, so both passes compile with the same command lines.
 Invoke-CmakeConfigure -SourceDir $cmakeSrc -BuildDir $buildDir -InstallPrefix $ortInstallDir -ExtraArgs $cmakeArgs -Settle:$ftPlan.Build 2>&1 |
     Tee-Object -FilePath $ortCfgLog
-if (-not $onnxCross) {
-    # Anything but ml64 is toolchain drift worth stopping on now.
-    $masmLines = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'ASM_MASM|Found assembler' })
-    if ($masmLines.Count -eq 0 -or -not ($masmLines -join "`n" | Select-String -Pattern 'ml64' -Quiet)) {
-        throw "ORT configure did not report ml64 as the ASM_MASM assembler (#123: MLAS needs MSVC's MASM, llvm-ml 22 cannot assemble it). ASM_MASM lines: $(if ($masmLines.Count) { $masmLines -join ' | ' } else { '<none>' }) -- see $ortCfgLog"
-    }
-    Write-Host "ASM_MASM assembler (#123, MSVC ml64 by design): $($masmLines -join ' | ')"
-}
-if ($ltoArgs.Count -gt 0) {
-    # CMP0069 fails configure without IPO support; this proves the property became compile flags.
-    $ltoLines = @(Select-String -LiteralPath (Join-Path $buildDir 'build.ninja') -Pattern '-flto' -SimpleMatch)
-    if ($ltoLines.Count -eq 0) { throw "onnxruntime_ENABLE_LTO=ON, yet no compile line in build.ninja carries -flto -- see $ortCfgLog" }
-    Write-Host "ORT: ThinLTO reaches $($ltoLines.Count) build.ninja line(s)"
-}
-if ($kleidiArgs.Count -gt 0) {
-    # ORT only warns when KleidiAI is unsupported and builds plain MLAS, so fail here and prove the target exists.
-    $kaiDropped = @(Get-Content $ortCfgLog | Where-Object { $_ -match 'KleidiAI (is not supported|requires MSVC)|onnxruntime_USE_KLEIDIAI was set but it is not supported' })
-    if ($kaiDropped.Count -gt 0) { throw "ORT configure dropped KleidiAI: $($kaiDropped -join ' | ') -- see $ortCfgLog" }
-    $ninjaFile = Join-Path $buildDir 'build.ninja'
-    if (-not (Select-String -LiteralPath $ninjaFile -Pattern 'kleidiai' -SimpleMatch -Quiet)) { throw "onnxruntime_USE_KLEIDIAI=ON, yet $ninjaFile has no kleidiai target -- see $ortCfgLog" }
-    # The patched tree was used (not a fresh FetchContent download) and its .S rule is the wrapper.
-    $rulesFile = Join-Path $buildDir 'CMakeFiles\rules.ninja'
-    if (-not (Select-String -LiteralPath $rulesFile -Pattern 'kai-armasm.cmd' -SimpleMatch -Quiet)) { throw "KleidiAI's ASM_MARMASM rule in $rulesFile is not $($kleidiSrc.Wrapper): FETCHCONTENT_SOURCE_DIR_KLEIDIAI or the rule patch did not take -- see $ortCfgLog" }
-    Write-Host 'ORT: KleidiAI in MLAS ON for the arm64 bundle (configure kept it; build.ninja carries the kleidiai target)'
-}
-if ($webgpuPlan.WebGpu) {
-    $webgpuCfg = @(Get-OrtWebGpuConfigureFinding -CacheText ([System.IO.File]::ReadAllText((Join-Path $buildDir 'CMakeCache.txt'))) -LogText ([System.IO.File]::ReadAllText($ortCfgLog)))
-    if ($webgpuCfg.Count -gt 0) { throw "WebGPU EP configure check:`n  $($webgpuCfg -join "`n  ")" }
-}
+Assert-OrtConfiguredFeatures -onnxCross $onnxCross -ortCfgLog $ortCfgLog -buildDir $buildDir -ltoArgs $ltoArgs -kleidiArgs $kleidiArgs -kleidiSrc $kleidiSrc -webgpuPlan $webgpuPlan
+
 Switch-BuildPhase '4. post-configure _deps patches + ninja-file tags'
 
 # Post-configure patches on the fetched _deps, inline: static patches rot when ORT's dep pointer moves
 
-# INVALID_HANDLE_VALUE is no valid template argument under clang, so an interface-identical RAII class replaces the alias.
-$scopedHandleFix = @'
-// [clang-cl compat, ANTfrastructure] INVALID_HANDLE_VALUE ((HANDLE)(LONG_PTR)-1)
-// is not a valid non-type template argument under clang (reinterpret_cast in a
-// constant expression; MSVC permits it as an extension). Interface-identical
-// RAII type with the sentinel held at runtime instead.
-class ScopedHandle {
-  HANDLE val_;
-
- public:
-  explicit ScopedHandle(HANDLE v) : val_(v) {}
-  ~ScopedHandle() {
-    if (val_ != INVALID_HANDLE_VALUE) {
-      close_handle(val_);
-    }
-  }
-  HANDLE get() const {
-    return val_;
-  }
-  HANDLE release() {
-    HANDLE tmp = val_;
-    val_ = INVALID_HANDLE_VALUE;
-    return tmp;
-  }
-  ScopedHandle(const ScopedHandle&) = delete;
-  ScopedHandle& operator=(const ScopedHandle&) = delete;
-};
-'@
-$onnxScoped = "$buildDir\_deps\onnx-src\onnx\common\scoped_resource.h"
-if (Test-Path $onnxScoped) {
-    Invoke-InlineRegexPatch -Path $onnxScoped `
-        -Pattern 'using ScopedHandle = ScopedResource<INVALID_HANDLE_VALUE, close_handle>;' `
-        -Replacement $scopedHandleFix `
-        -WarnMessage "onnx scoped_resource.h: ScopedHandle alias not found — upstream may have fixed or reshaped it; verify clang-cl still compiles checker.cc." | Out-Null
-}
-
-# CUTLASS's SHA follows ORT's pointer, so no static .patch; guarded like the CUDA branch above.
-if ($cudaUsable) {
-    # CUTLASS headers: clang-cl can't handle `not`/`and`/`or` keyword alternatives.
-    $cutlassInclude = "$buildDir\_deps\cutlass-src\include"
-    if (Test-Path $cutlassInclude) {
-        Get-ChildItem $cutlassInclude -Recurse -Filter '*.hpp' | ForEach-Object { Edit-CppKeywordAlternatives -Path $_.FullName }
-    }
-    # Disable the MSVC-only _udiv128 guard for clang-cl, never rename the call: udiv128 would then call itself.
-    $cut = "$buildDir\_deps\cutlass-src\include\cutlass\uint128.h"
-    # The pattern prefixes its own replacement, so a resumed tree would re-append it.
-    if ((Test-Path $cut) -and ((Get-Content -Raw $cut) -match '!defined\(__clang__\)')) {
-        Write-Host 'cutlass/uint128.h: __clang__ guard already applied (resumed tree) - skipping'
-    } else {
-        Invoke-InlineRegexPatch -Path $cut `
-            -Pattern '#if _MSC_VER >= 1920 && !defined\(__CUDA_ARCH__\)' `
-            -Replacement '#if _MSC_VER >= 1920 && !defined(__CUDA_ARCH__) && !defined(__clang__)' `
-            -WarnMessage "cutlass/uint128.h: the _MSC_VER>=1920 intrinsic guard was not found; if CUTLASS reshaped it, clang-cl will fail on _udiv128 (or worse, self-recurse). Verify $cut." | Out-Null
-    }
-    # CUTLASS cute/array_subbyte: suppressed via -Wno-invalid-specialization above
-}
+Invoke-OrtDependencyPatches -buildDir $buildDir -cudaUsable $cudaUsable
 
 Update-OrtNinjaFile -BuildDir $buildDir -SourceDir $SourceDir -Cross $onnxCross
 
@@ -840,46 +938,9 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 2 -MemGBPerJob 2 -Inst
 # Hit-rate evidence on stderr, which the 2 MiB step-log clip never truncates.
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-# cmake --install skips DirectML.dll (0xC0000135); the filter picks the target's redist dir of the per-platform nuget.
-$ortDmlArchDir = "$(Get-WindowsTargetArch)" -replace '^amd64$', 'x64'
-Copy-SidecarDll -SidecarName 'DirectML.dll' -SearchDir $SourceDir `
-    -SidecarFilter { $_.Directory.Name -eq "$ortDmlArchDir-win" } `
-    -BesidePrimary 'onnxruntime.dll' -InstallDir $ortInstallDir `
-    -Reason 'the DirectML EP may fail to load at runtime (0xC0000135)'
+$webgpuDllSha = Install-OrtRuntimeSidecars -SourceDir $SourceDir -ortInstallDir $ortInstallDir -qnnSdk $qnnSdk -webgpuPlan $webgpuPlan -webgpu $webgpu -buildDir $buildDir
 
-# cmake installs the QNN provider DLL but not the SDK's backend DLLs.
-if ($qnnSdk) { [void](Copy-QnnRuntime -Sdk $qnnSdk -OrtInstallDir $ortInstallDir) }
-$webgpuDllSha = if ($webgpuPlan.WebGpu) { Install-OrtWebGpuRuntime -DxcDir $webgpu.DxcDir -OrtInstallDir $ortInstallDir } else { @{} }
-if ($webgpuPlan.WebGpu) { Add-OrtWebGpuWheelNotice -BuildDir $buildDir -DxcDir $webgpu.DxcDir -DxcVersion $webgpu.Pin.DXC_VERSION }
-
-# Plain `onnxruntime` wheel: our CUDA+TensorRT+DML combo matches no upstream name suffix
-Switch-BuildPhase '6. python wheel'
-# A variable: a condition starting with a command name parses in command mode, turning `-and -not` into arguments.
-if ($onnxCross -and -not $tpy.Available) {
-    Write-Host 'Skipping the onnxruntime python wheel: cross build without a target CPython (bindings were OFF above)'
-} else {
-    # -CrossStage stages the target wheel unimported; the native lane installs and import-asserts it.
-    Write-Host 'Building onnxruntime python wheel...'
-    # The staged path comes last, after setup.py's and pip's output.
-    $gilWheel = @(Invoke-PythonWheelBuild -Python $py -WorkingDir $buildDir `
-            -Arguments """$SourceDir\setup.py"" bdist_wheel" `
-            -ModuleName 'onnxruntime' -CrossStage)[-1]
-}
-if ($webgpuPlan.WebGpu) {
-    $wheelFindings = @(Get-OrtWebGpuWheelFinding -Report (Get-OrtWebGpuWheelReport -Python $py.Exe) -DllSha256 $webgpuDllSha)
-    if ($wheelFindings.Count -gt 0) { throw "WebGPU EP wheel check:`n  $($wheelFindings -join "`n  ")" }
-}
-# After the WebGPU check, which reads the GIL wheel's capi\ the twin's rebuild would overwrite.
-if ($ftPlan.Build) {
-    Switch-BuildPhase '7. free-threaded twin (cp3XYt wheel)'
-    [void](Invoke-OrtFreeThreadedTwin -GilPython $py -GilWheel $gilWheel -CmakeArgs @($cmakeArgs | Where-Object { $_ -notin $pythonArgs }) `
-            -CmakeSrc $cmakeSrc -BuildDir $buildDir -SourceDir $SourceDir -InstallPrefix $ortInstallDir -Cross $onnxCross)
-}
-if ($webgpuPlan.OnLane) {
-    $marker = Get-OrtWebGpuFeatureMarker -Plan $webgpuPlan -Pin $(if ($webgpu) { $webgpu.Pin }) -DllSha256 $webgpuDllSha
-    [System.IO.File]::WriteAllLines((Join-Path $ortInstallDir 'ROCM-FEATURES.txt'), [string[]]$marker)
-}
-if ($webgpu) { Remove-SourceBuildTree -Path $WebGpuWorkDir }
+Invoke-OrtPythonWheelsAndMarker -onnxCross $onnxCross -tpy $tpy -py $py -buildDir $buildDir -SourceDir $SourceDir -webgpuPlan $webgpuPlan -webgpu $webgpu -webgpuDllSha $webgpuDllSha -ftPlan $ftPlan -cmakeArgs $cmakeArgs -pythonArgs $pythonArgs -cmakeSrc $cmakeSrc -ortInstallDir $ortInstallDir -WebGpuWorkDir $WebGpuWorkDir
 
 Complete-CurrentBuildPhase
 Write-BuildPhaseSummary -Label 'onnx'

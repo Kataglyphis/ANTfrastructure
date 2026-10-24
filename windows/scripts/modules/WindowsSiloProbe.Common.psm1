@@ -27,6 +27,12 @@ function Invoke-SiloDebugger {
     & $CdbPath @attach $ProcessId -y $symbols -c $Command > $LogPath 2>&1
 }
 
+function Invoke-SiloStackCapture {
+    param([Parameter(Mandatory)][string]$CdbPath, [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][string]$OutDir, [Parameter(Mandatory)][string]$LogPath)
+    Invoke-SiloDebugger -CdbPath $CdbPath -ProcessId $ProcessId -OutDir $OutDir -Command '.reload /f; ~*kb; qd' -LogPath $LogPath
+}
+
 <#
 .SYNOPSIS
     Full path to the WinDbg package's x64 cdb.exe.
@@ -183,6 +189,7 @@ Export-ModuleMember -Function @(
     'Get-CdbPath',
     'Get-SiloWininitId',
     'Invoke-SiloDebugger',
+    'Invoke-SiloStackCapture',
     'Grant-SiloProbeReadAccess',
     'Initialize-LsmProbeOutDir',
     'Start-SiloBaitContainer',

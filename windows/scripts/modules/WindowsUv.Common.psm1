@@ -318,6 +318,29 @@ function Get-UvLockOrtName {
     return Get-OrtLockPackageName -LockPath $LockPath -DiagnosticPrefix 'chain ORT: '
 }
 
+function Get-UvSyncExtraArgs {
+    param([string]$PyprojectPath, [scriptblock]$LogInfo)
+    # UV_SYNC_EXTRAS wins over the Linux twin's keep-first conflict choice.
+    $wanted = [Environment]::GetEnvironmentVariable('UV_SYNC_EXTRAS')
+    if (-not [string]::IsNullOrWhiteSpace($wanted)) {
+        $extraArgs = @()
+        foreach ($extra in ($wanted -split '[,\s]+')) {
+            if ($extra) { $extraArgs += @('--extra', $extra) }
+        }
+        if ($LogInfo) { & $LogInfo "UV_SYNC_EXTRAS set - syncing extras: $wanted" }
+        return $extraArgs
+    }
+    $extraArgs = @('--all-extras')
+    $excluded = @(Get-UvExtrasToExclude -PyprojectPath $PyprojectPath)
+    if ($excluded.Count -gt 0) {
+        if ($LogInfo) {
+            & $LogInfo ('Project declares conflicting extras; --all-extras alone would fail. Excluding (keeping the first-declared of each family): {0}. Set UV_SYNC_EXTRAS to choose a different combination.' -f ($excluded -join ' '))
+        }
+        foreach ($extra in $excluded) { $extraArgs += @('--no-extra', $extra) }
+    }
+    return $extraArgs
+}
+
 function Sync-UvProjectDependencies {
     <#
     .SYNOPSIS
@@ -339,24 +362,7 @@ function Sync-UvProjectDependencies {
         [scriptblock]$LogWarning
     )
 
-    # UV_SYNC_EXTRAS wins; otherwise the same set the Linux twin (python_uv.sh uv_sync_project) syncs.
-    $extraArgs = @()
-    $wanted = [Environment]::GetEnvironmentVariable('UV_SYNC_EXTRAS')
-    if (-not [string]::IsNullOrWhiteSpace($wanted)) {
-        foreach ($extra in ($wanted -split '[,\s]+')) {
-            if ($extra) { $extraArgs += @('--extra', $extra) }
-        }
-        if ($LogInfo) { & $LogInfo "UV_SYNC_EXTRAS set - syncing extras: $wanted" }
-    } else {
-        $extraArgs = @('--all-extras')
-        $excluded = @(Get-UvExtrasToExclude -PyprojectPath $PyprojectPath)
-        if ($excluded.Count -gt 0) {
-            if ($LogInfo) {
-                & $LogInfo ('Project declares conflicting extras; --all-extras alone would fail. Excluding (keeping the first-declared of each family): {0}. Set UV_SYNC_EXTRAS to choose a different combination.' -f ($excluded -join ' '))
-            }
-            foreach ($extra in $excluded) { $extraArgs += @('--no-extra', $extra) }
-        }
-    }
+    $extraArgs = @(Get-UvSyncExtraArgs -PyprojectPath $PyprojectPath -LogInfo $LogInfo)
 
     # PyPI's ORT lags a new Python by months; the reconcile below installs the chain's for what the sync leaves out.
     $wheelStore = Get-ChainOrtWheelStore
@@ -512,6 +518,72 @@ function Assert-UvChainOrtNoUnownedImport {
     throw "chain ORT: $VenvPath imports ONNX Runtime with no distribution to purge ($(@($found.Output) -join ' ')):`n$(@($census.Output) -join "`n")"
 }
 
+function Get-UvChainOrtRunner {
+    param([scriptblock]$PythonRunner)
+    if ($PythonRunner) { return $PythonRunner }
+    return {
+        param($exe, $arguments)
+        $PSNativeCommandUseErrorActionPreference = $false
+        try { $out = @(& $exe @arguments 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
+        catch { $out = @("$($_.Exception.Message)"); $code = 127 }
+        [pscustomobject]@{ ExitCode = $code; Output = $out }
+    }
+}
+
+function Test-UvChainOrtInputs {
+    param([string]$VenvPath, [string]$WheelStore, [string]$Python, [string]$CensusPath,
+        [bool]$InImage, [scriptblock]$LogInfo)
+    $missing = @(@($WheelStore, $Python, $CensusPath) | Where-Object { $_ -and -not (Test-Path -LiteralPath $_) })
+    if ($InImage -and ($missing.Count -gt 0 -or -not (Test-Path -LiteralPath $WheelStore -PathType Container))) {
+        throw "chain ORT: need the store $WheelStore, the interpreter $Python and the census $CensusPath (missing: $($missing -join ', '))"
+    }
+    if ($missing.Count -eq 0) { return $true }
+    $why = "chain ORT: $VenvPath not inspected (missing: $($missing -join ', ')); ONNX Runtime provenance unchecked"
+    if ($LogInfo) { & $LogInfo $why } else { Write-Verbose $why }
+    return $false
+}
+
+function Get-UvChainOrtSelection {
+    param([string]$VenvPath, [string]$Python, [string]$CensusPath, [string[]]$Skipped,
+        [bool]$InImage, [scriptblock]$Runner, [scriptblock]$Warn)
+    $listed = & $Runner $Python @('-I', $CensusPath, '--purge-list')
+    if ($listed.ExitCode -ne 0) {
+        $why = "chain ORT: cannot list ${VenvPath}: $(@($listed.Output) -join ' | ')"
+        if ($InImage) { throw $why }
+        & $Warn $why
+        return [pscustomobject]@{ Aborted = $true; Installed = @(); Names = @() }
+    }
+    $installed = @(@($listed.Output) | ForEach-Object { if ("$_" -match '^ORT-CENSUS PURGE ([a-z0-9][a-z0-9-]*)$') { $Matches[1] } })
+    $names = @($installed) + @($Skipped | Where-Object { $_ -and $_ -notin $installed })
+    return [pscustomobject]@{ Aborted = $false; Installed = $installed; Names = $names }
+}
+
+function Invoke-UvChainOrtReplacement {
+    param([string]$VenvPath, [string]$Python, [string]$WheelStore, [string]$CensusPath,
+        [string[]]$Names, [string[]]$Installed, [scriptblock]$Runner,
+        [scriptblock]$CommandRunner, [scriptblock]$LogInfo, [scriptblock]$Say)
+    $wheels = @(Get-ChildItem -LiteralPath $WheelStore -File | Where-Object { $_.Name -match '^onnxruntime[-_].*\.whl$' } | ForEach-Object { $_.FullName })
+    if ($wheels.Count -eq 0) { throw "chain ORT: the store $WheelStore holds no onnxruntime wheel for $($Names -join ' ')" }
+    Assert-UvChainOrtAbiFit -VenvPath $VenvPath -Python $Python -Wheels $wheels -Runner $Runner
+    & $Say "chain ORT: replacing $($Names -join ' ') in $VenvPath with $(($wheels | ForEach-Object { Split-Path $_ -Leaf }) -join ' ')"
+    # A skipped distribution never reached the venv, so only the installed ones are uninstalled.
+    if ($Installed.Count -gt 0) { Invoke-UvCommand -Arguments (@('pip', 'uninstall', '--python', $Python) + $Installed) -CommandRunner $CommandRunner -LogInfo $LogInfo }
+    try {
+        Invoke-UvCommand -Arguments (@('pip', 'install', '--python', $Python, '--no-index', '--no-deps', '--force-reinstall') + $wheels) `
+            -CommandRunner $CommandRunner -LogInfo $LogInfo
+    } catch {
+        throw "chain ORT: $VenvPath does not take the chain wheels: $($_.Exception.Message)"
+    }
+    $check = & $Runner $Python @('-I', $CensusPath, '--check', '--store', $WheelStore)
+    if ($check.ExitCode -ne 0) { throw "chain ORT: $VenvPath still carries a non-chain ONNX Runtime:`n$(@($check.Output) -join "`n")" }
+    & $Say (@($check.Output) -join "`n")
+    $import = & $Runner $Python @('-I', '-c', 'import sys; print(sys.version); import onnxruntime')
+    if ($import.ExitCode -ne 0) {
+        throw "chain ORT: the chain onnxruntime does not import in $VenvPath (the store is built for the image interpreter):`n$(@($import.Output) -join "`n")"
+    }
+    Set-UvChainOrtSyncHold -Hold $true
+}
+
 <#
 .SYNOPSIS
     Moves a synced venv's ONNX Runtime onto the image's chain wheels, proven by the census; outside our images warns.
@@ -538,37 +610,18 @@ function Sync-UvChainOnnxRuntime {
     if (-not $CensusPath) { $CensusPath = Get-UvOrtCensusPath }
     $say = if ($LogInfo) { $LogInfo } else { { param($m) Write-Host $m } }
     $warn = if ($LogWarning) { $LogWarning } else { { param($m) Write-Warning $m } }
-    $run = if ($PythonRunner) { $PythonRunner } else {
-        {
-            param($exe, $arguments)
-            $PSNativeCommandUseErrorActionPreference = $false
-            try { $out = @(& $exe @arguments 2>&1 | ForEach-Object { "$_" }); $code = $LASTEXITCODE }
-            catch { $out = @("$($_.Exception.Message)"); $code = 127 }
-            [pscustomobject]@{ ExitCode = $code; Output = $out }
-        }
-    }
+    $run = Get-UvChainOrtRunner -PythonRunner $PythonRunner
     $python = Join-Path $VenvPath 'Scripts\python.exe'
     $inImage = -not [string]::IsNullOrWhiteSpace($WheelStore)
-    $missing = @(@($WheelStore, $python, $CensusPath) | Where-Object { $_ -and -not (Test-Path -LiteralPath $_) })
-    if ($inImage -and ($missing.Count -gt 0 -or -not (Test-Path -LiteralPath $WheelStore -PathType Container))) {
-        throw "chain ORT: need the store $WheelStore, the interpreter $python and the census $CensusPath (missing: $($missing -join ', '))"
-    }
-    if ($missing.Count -gt 0) {
-        $why = "chain ORT: $VenvPath not inspected (missing: $($missing -join ', ')); ONNX Runtime provenance unchecked"
-        if ($LogInfo) { & $LogInfo $why } else { Write-Verbose $why }
-        return
-    }
+    if (-not (Test-UvChainOrtInputs -VenvPath $VenvPath -WheelStore $WheelStore -Python $python `
+                -CensusPath $CensusPath -InImage $inImage -LogInfo $LogInfo)) { return }
     if ($inImage) { $WheelStore = Select-UvChainOrtWheelStore -WheelStore $WheelStore -Python $python -Runner $run }
 
-    $listed = & $run $python @('-I', $CensusPath, '--purge-list')
-    if ($listed.ExitCode -ne 0) {
-        $why = "chain ORT: cannot list ${VenvPath}: $(@($listed.Output) -join ' | ')"
-        if ($inImage) { throw $why }
-        & $warn $why
-        return
-    }
-    $installed = @(@($listed.Output) | ForEach-Object { if ("$_" -match '^ORT-CENSUS PURGE ([a-z0-9][a-z0-9-]*)$') { $Matches[1] } })
-    $names = @($installed) + @($Skipped | Where-Object { $_ -and $_ -notin $installed })
+    $selection = Get-UvChainOrtSelection -VenvPath $VenvPath -Python $python -CensusPath $CensusPath `
+        -Skipped $Skipped -InImage $inImage -Runner $run -Warn $warn
+    if ($selection.Aborted) { return }
+    $installed = @($selection.Installed)
+    $names = @($selection.Names)
     if ($names.Count -eq 0) {
         if ($inImage) { Assert-UvChainOrtNoUnownedImport -VenvPath $VenvPath -Python $python -WheelStore $WheelStore -CensusPath $CensusPath -Runner $run }
         Set-UvChainOrtSyncHold -Hold $false
@@ -580,27 +633,10 @@ function Sync-UvChainOnnxRuntime {
         & $warn '  inside our images it is reconciled onto the chain wheels or the sync fails.'
         return
     }
+    Invoke-UvChainOrtReplacement -VenvPath $VenvPath -Python $python -WheelStore $WheelStore `
+        -CensusPath $CensusPath -Names $names -Installed $installed -Runner $run `
+        -CommandRunner $CommandRunner -LogInfo $LogInfo -Say $say
 
-    $wheels = @(Get-ChildItem -LiteralPath $WheelStore -File | Where-Object { $_.Name -match '^onnxruntime[-_].*\.whl$' } | ForEach-Object { $_.FullName })
-    if ($wheels.Count -eq 0) { throw "chain ORT: the store $WheelStore holds no onnxruntime wheel for $($names -join ' ')" }
-    Assert-UvChainOrtAbiFit -VenvPath $VenvPath -Python $python -Wheels $wheels -Runner $run
-    & $say "chain ORT: replacing $($names -join ' ') in $VenvPath with $(($wheels | ForEach-Object { Split-Path $_ -Leaf }) -join ' ')"
-    # A skipped distribution never reached the venv, so only the installed ones are uninstalled.
-    if ($installed.Count -gt 0) { Invoke-UvCommand -Arguments (@('pip', 'uninstall', '--python', $python) + $installed) -CommandRunner $CommandRunner -LogInfo $LogInfo }
-    try {
-        Invoke-UvCommand -Arguments (@('pip', 'install', '--python', $python, '--no-index', '--no-deps', '--force-reinstall') + $wheels) `
-            -CommandRunner $CommandRunner -LogInfo $LogInfo
-    } catch {
-        throw "chain ORT: $VenvPath does not take the chain wheels: $($_.Exception.Message)"
-    }
-    $check = & $run $python @('-I', $CensusPath, '--check', '--store', $WheelStore)
-    if ($check.ExitCode -ne 0) { throw "chain ORT: $VenvPath still carries a non-chain ONNX Runtime:`n$(@($check.Output) -join "`n")" }
-    & $say (@($check.Output) -join "`n")
-    $import = & $run $python @('-I', '-c', 'import sys; print(sys.version); import onnxruntime')
-    if ($import.ExitCode -ne 0) {
-        throw "chain ORT: the chain onnxruntime does not import in $VenvPath (the store is built for the image interpreter):`n$(@($import.Output) -join "`n")"
-    }
-    Set-UvChainOrtSyncHold -Hold $true
 }
 
 <#

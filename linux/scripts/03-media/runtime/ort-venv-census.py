@@ -4,7 +4,7 @@
 """ONNX Runtime census of one Python environment: every ORT distribution is a chain wheel.
 
 Run by the interpreter under test: `python -I ort-venv-census.py --check|--purge-list --store DIR`.
-assemble-torch-app.sh runs this file; Build-TorchApp.ps1 embeds it verbatim.
+assemble-torch-app.sh runs this file; Build-TorchApp.ps1 runs a staged copy of the same file.
 Verdicts and fixes: docs/failure-modes.md#the-torch-stage-fails-with-ort-census-fail
 
 NOT covered: whether the store wheel was compiled by the chain (the image census, G1); files

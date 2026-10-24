@@ -140,11 +140,11 @@ Start-Service buildkitd
 }
 
 function Invoke-ReclaimFixture {
-    param([string]$ScriptPath, [switch]$ApplyChanges, [switch]$PlanUnsafe, [switch]$FreshUnsafe)
+    param([string]$ScriptPath, [switch]$ApplyChanges, [switch]$PlanUnsafe, [switch]$FreshUnsafe, [switch]$DaemonPrune)
 
     . $ScriptPath
     $fixture = @{ Deleted = @(); Daemons = @(); Scans = 0; Rules = @(); Messages = @() }
-    $settings = @{ Apply = $ApplyChanges; StoreHusksOnly = $true; NoDaemonPrune = $false; AllowDuringBuild = $false; TempOlderThanDays = 7; KeepGB = 100 }
+    $settings = @{ Apply = $ApplyChanges; StoreHusksOnly = -not $DaemonPrune; NoDaemonPrune = $false; AllowDuringBuild = $false; TempOlderThanDays = 7; KeepGB = 100 }
     foreach ($setting in $settings.GetEnumerator()) { Set-Variable -Name $setting.Key -Value $setting.Value -Scope Local }
     function Say { param($m, $c); $fixture.Messages += $m }
     function Get-ReclaimPlan {
@@ -161,8 +161,8 @@ function Invoke-ReclaimFixture {
         'Write-Host' = { param([Parameter(ValueFromPipeline)]$Object); process { } }
     }
     foreach ($command in $commands.GetEnumerator()) { Set-Item -LiteralPath ('Function:local:' + $command.Key) -Value $command.Value }
-    function docker { $fixture.Daemons += 'docker'; $LASTEXITCODE = 0 }
-    function buildctl { $fixture.Daemons += 'buildctl'; $LASTEXITCODE = 0 }
+    function docker { $fixture.Daemons += "docker:$($args -join ' ')"; $LASTEXITCODE = 0 }
+    function buildctl { $fixture.Daemons += "buildctl:$($args -join ' ')"; $LASTEXITCODE = 0 }
 
     $result = Invoke-FreeDiskSpace
     [pscustomobject]@{ ExitCode = $result; Deleted = @($fixture.Deleted); Daemons = @($fixture.Daemons); Scans = $fixture.Scans; Rules = $fixture.Rules; Messages = $fixture.Messages }
@@ -229,6 +229,16 @@ Describe 'Clear-DiskSpace.ps1: what it cleans, and what it refuses to' {
         Assert-Equal 0 $result.Daemons.Count
         Assert-Equal 1 $result.Scans
         Assert-Equal 3 $result.Rules.Count
+    }
+
+    It 'keeps the daemon report read-only until Apply, then prunes before deleting' {
+        $report = Invoke-ReclaimFixture -ScriptPath $reclaim -DaemonPrune
+        Assert-Equal 'docker:system df' ($report.Daemons -join ',')
+        Assert-Equal 0 $report.Deleted.Count
+
+        $apply = Invoke-ReclaimFixture -ScriptPath $reclaim -DaemonPrune -ApplyChanges
+        Assert-Equal 'docker:system df,buildctl:prune --free-storage 102400,docker:image prune -f' ($apply.Daemons -join ',')
+        Assert-Equal 'C:\ProgramData\Docker.bak-fixture' ($apply.Deleted -join ',')
     }
 
     It 'refuses an unreadable descendant rather than treating it as link-free' {

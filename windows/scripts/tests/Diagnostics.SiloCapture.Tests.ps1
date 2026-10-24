@@ -34,7 +34,8 @@ function Assert-SiloManualHandlePlan {
         $_ -is [Management.Automation.Language.AssignmentStatementAst] -and $_.Left.Extent.Text -eq '$cdb'
     })
     Assert-Equal 1 $initializers.Count 'manual discovery must initialize debugger state before the optional branch'
-    $discover = Get-TestAstAncestor -Node (Get-TestAstCommands -Ast $ast -Name Get-CdbPath) -Type ([Management.Automation.Language.IfStatementAst]) -First
+    Assert-Equal 1 @(Get-TestAstCommands -Ast $ast -Name Get-CdbPath).Count 'automatic discovery uses the debugger resolver once'
+    $discover = Get-TestAstAncestor -Node (Get-TestAstCommands -Ast $ast -Name Find-LsmWaitHandle) -Type ([Management.Automation.Language.IfStatementAst]) -First
     $detail = Get-TestAstAncestor -Node (Get-TestAstCommands -Ast $ast -Name Get-Process) -Type ([Management.Automation.Language.IfStatementAst]) -First
     Assert-NotNull $discover
     Assert-NotNull $detail
@@ -135,8 +136,10 @@ Describe 'Shared silo debugger transport' {
             $ast = Get-TestScriptAst -ScriptPath "windows/scripts/diagnostics/$name.ps1"
             Assert-Equal 1 @(Get-TestAstCommands -Ast $ast -Name Get-SiloWininitId).Count
             $calls = @(Get-TestAstCommands -Ast $ast -Name Invoke-SiloDebugger)
-            $count = if ($name -eq 'Find-LsmEventHolder') { 3 } elseif ($name -eq 'Get-LsmWaitstack') { 0 } else { 1 }
+            $count = if ($name -eq 'Find-LsmEventHolder') { 2 } elseif ($name -in @('Get-LsmWaitstack', 'Get-SiloProcesses')) { 0 } else { 1 }
             Assert-Equal $count $calls.Count
+            Assert-Equal ($name -in @('Find-LsmEventHolder', 'Get-SiloProcesses')) `
+                (@(Get-TestAstCommands -Ast $ast -Name Invoke-SiloStackCapture).Count -eq 1) 'the stack capture has one shared owner'
             foreach ($call in $calls) {
                 $bound = Get-TestCommandArguments $call
                 Assert-Equal '$OutDir' $bound.OutDir
@@ -144,8 +147,20 @@ Describe 'Shared silo debugger transport' {
             }
         }
         $module = Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSiloProbe.Common.psm1'
-        $probe = Test-ColdModuleCommands -ModulePath $module -CommandName Get-SiloWininitId, Invoke-SiloDebugger
+        $probe = Test-ColdModuleCommands -ModulePath $module -CommandName Get-SiloWininitId, Invoke-SiloDebugger, Invoke-SiloStackCapture
         Assert-Equal 0 $probe.ExitCode $probe.Output
+    }
+
+    It 'passes one complete stack command through the shared debugger transport' {
+        $state = New-TestCallState
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsSiloProbe.Common.psm1' `
+            -FunctionName Invoke-SiloStackCapture -FixtureState $state `
+            -Prelude 'function Invoke-SiloDebugger { param($CdbPath, $ProcessId, $OutDir, $Command, $LogPath) $State.Calls.Add(@($CdbPath, $ProcessId, $OutDir, $Command, $LogPath)) }' `
+            -Body { param($state)
+                Invoke-MutSiloStackCapture -CdbPath cdb.exe -ProcessId 314 -OutDir 'C:\logs' -LogPath 'C:\logs\stack.txt'
+                Assert-Equal 1 $state.Calls.Count 'one debugger call'
+                Assert-Equal 'cdb.exe|314|C:\logs|.reload /f; ~*kb; qd|C:\logs\stack.txt' ($state.Calls[0] -join '|') 'stack command and paths'
+            }
     }
 
     It 'keeps the documented manual handle mode independent of debugger discovery and rejects lost initialization' {

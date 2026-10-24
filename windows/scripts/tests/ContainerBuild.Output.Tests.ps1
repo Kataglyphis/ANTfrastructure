@@ -66,7 +66,7 @@ Describe 'WindowsContainerBuild.Reuse: no docker call leaks into a function resu
     }
 
     It 'the guard sees the tar-pipe build exec, which no fake can reach (mutation)' {
-        $find = '& $DockerExe exec @s3Args -w $WorkspacePath $container cmd /S /C $EntrypointPath @buildArgs | Out-Host'
+        $find = '& $DockerExe exec @s3Args -w $WorkspacePath $Container cmd /S /C $EntrypointPath @BuildArgs | Out-Host'
         Assert-True $src.Contains($find) 'the build exec line moved; update the mutation'
         $leaks = @(Get-LeakingDockerCall -Text $src.Replace($find, $find.Replace(' | Out-Host', '')))
         Assert-Equal 1 $leaks.Count
@@ -74,8 +74,8 @@ Describe 'WindowsContainerBuild.Reuse: no docker call leaks into a function resu
     }
 
     It 'the guard sees the bind-mount run too (mutation)' {
-        $find = '-w $WorkspacePath $Image @buildArgs | Out-Host'
+        $find = '-w $WorkspacePath $Image @BuildArgs | Out-Host'
         Assert-True $src.Contains($find) 'the bind-mount run moved; update the mutation'
-        Assert-Equal 1 @(Get-LeakingDockerCall -Text $src.Replace($find, '-w $WorkspacePath $Image @buildArgs')).Count
+        Assert-Equal 1 @(Get-LeakingDockerCall -Text $src.Replace($find, '-w $WorkspacePath $Image @BuildArgs')).Count
     }
 }

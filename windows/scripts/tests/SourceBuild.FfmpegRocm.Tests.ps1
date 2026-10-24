@@ -127,12 +127,21 @@ Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg 
 
 }
 
-Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the one plan' {
-    # Structural, because the script is monolithic: a site guarded by anything but $ffAmfPlan breaks some lane.
+Describe 'Build-FfmpegFromSource.ps1: every AMF step keys on the one plan' {
     $script:ffAst = (Get-TestScriptAst -ScriptPath $script:ffScript)
 
     # Script-level AST nodes only: calls inside the extracted functions are their own tests' business.
     function Find-FfScriptLevelNode([scriptblock]$Predicate) { Get-MediaTestAstNode -Ast $script:ffAst -Predicate $Predicate -ScriptLevel }
+    function Find-FfOwnedNode([string]$Owner, [scriptblock]$Predicate) {
+        @(Get-MediaTestAstNode -Ast $script:ffAst -Predicate $Predicate | Where-Object {
+                $functionAst = Get-TestAstAncestor -Node $_ -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
+                $functionAst -and $functionAst.Name -eq $Owner
+            })
+    }
+
+    function Find-FfOwnedCommand([string]$Owner, [string]$Name) {
+        Find-FfOwnedNode $Owner { param($n) $n -is [Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $Name }.GetNewClosure()
+    }
 
     # Condition of the innermost if/elseif clause whose BODY encloses $Node (an else body has none); '' when unguarded.
     function Get-FfEnclosingGuard([System.Management.Automation.Language.Ast]$Node) {
@@ -146,11 +155,14 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
     }
 
     It 'the plan is computed once from the real GPU environment; no other script-level code reads HasRocm' {
-        $assignment = Get-MediaTestAssignment -Ast $script:ffAst -Variable '$ffAmfPlan' -ScriptLevel -Single
-        Assert-Equal 'Get-FfmpegAmfPlan -GpuEnvironment $ffGpu -IsCross $ffCross -SourceDir $srcDir' $assignment.Right.Extent.Text 'from Get-GpuEnvironment'
+        Assert-TestAstCommand -Command @(Find-FfOwnedCommand Get-FfmpegVideoAccelPlan Get-GpuEnvironment) `
+            -Text 'Get-GpuEnvironment' -Assignment '$ffGpu'
+        Assert-TestAstCommand -Command @(Find-FfOwnedCommand Get-FfmpegVideoAccelPlan Get-FfmpegAmfPlan) `
+            -Text 'Get-FfmpegAmfPlan -GpuEnvironment $ffGpu -IsCross $ffCross -SourceDir $srcDir' -Assignment '$ffAmfPlan'
+        Assert-Match '\$ffVideo = Get-FfmpegVideoAccelPlan -ffCross \$ffCross -srcDir \$srcDir' $script:ffAst.Extent.Text 'the script consumes the plan'
         $hasRocm = Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.MemberExpressionAst] -and $n.Member.Extent.Text -eq 'HasRocm' }
         Assert-Equal '' (($hasRocm | ForEach-Object { "line $($_.Extent.StartLineNumber)" }) -join ', ') 'a second lane decision'
-        $vk = @(Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$ffVulkanPlan' })
+        $vk = @(Find-FfOwnedNode 'Get-FfmpegVideoAccelPlan' { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq '$ffVulkanPlan' })
         Assert-Equal 'Get-FfmpegVulkanPlan -AmfPlan $ffAmfPlan -VulkanSdk ([string]$env:VULKAN_SDK)' (($vk | ForEach-Object { $_.Right.Extent.Text }) -join ' | ') 'Vulkan follows the AMF plan: assigned once, no lane decision of its own'
     }
 
@@ -158,11 +170,12 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
         $src = Join-Path (Get-RepoRoot) $script:ffScript
         $calls = @(Select-String -LiteralPath $src -SimpleMatch -Pattern 'Get-FfmpegRocmConfigureArg -')
         Assert-Equal '$ffRocmFlags = @(Get-FfmpegRocmConfigureArg -AmfPlan $ffAmfPlan -VulkanPlan $ffVulkanPlan)' (($calls | ForEach-Object { $_.Line.Trim() }) -join ' | ') 'one call, fed both plans'
-        $appends = @(Select-String -LiteralPath $src -Pattern '^\$confFlags \+= \$(nvencFlags|ffRocmFlags)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
+        $appends = @(Select-String -LiteralPath $src -Pattern '^\s*\$confFlags \+= \$(nvencFlags|ffRocmFlags)$' | ForEach-Object { $_.Matches[0].Groups[1].Value })
         Assert-Equal 'nvencFlags,ffRocmFlags' ($appends -join ',') 'appended once, right after the nvenc args'
+        Assert-Match '\$ffConfigure = Get-FfmpegConfigurePlan -cygPrefix \$cygPrefix' $script:ffAst.Extent.Text 'the script consumes those configure args'
     }
 
-    It 'header fetch, config.mak gates and header install each run only under their plan guard (mutation)' {
+    function Assert-FfPlanGuards {
         $expected = [ordered]@{
             'Install-FfmpegAmfHeader'   = '$ffAmfPlan'
             'Get-FfmpegAmfConfigGap'    = '$ffAmfPlan'
@@ -170,7 +183,12 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
             'Get-FfmpegVulkanConfigGap' = '$ffVulkanPlan'
             'Copy-FfmpegAmfHeaderTree'  = '$ffAmfPlan -and $env:FFMPEG_SOURCE_BUILD -eq ''1'''
         }
-        $calls = Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -in $expected.Keys }
+        $owners = @{ 'Install-FfmpegAmfHeader' = 'Initialize-FfmpegCompatHeaders'; 'Get-FfmpegAmfConfigGap' = 'Assert-FfmpegAccelerationConfigured';
+            'Get-FfmpegRocmLeak' = 'Assert-FfmpegAccelerationConfigured'; 'Get-FfmpegVulkanConfigGap' = 'Assert-FfmpegAccelerationConfigured';
+            'Copy-FfmpegAmfHeaderTree' = 'Set-FfmpegPackageConfigPaths' }
+        $calls = @(foreach ($name in $expected.Keys) {
+                Find-FfOwnedNode $owners[$name] { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $name }
+            })
         $got = ($calls | ForEach-Object { "$($_.GetCommandName()) <- if ($(Get-FfEnclosingGuard $_))" }) -join "`n"
         $want = ($expected.Keys | ForEach-Object { "$_ <- if ($($expected[$_]))" }) -join "`n"
         Assert-Equal $want $got 'each step called once, in order, under exactly its guard'
@@ -182,15 +200,19 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
         Assert-Equal '$ffVulkanPlan.Glslc' $(if ($at) { $gap[$at[0] + 1].Extent.Text }) 'the Vulkan gate checks the plan''s glslc'
     }
 
-    It 'each config.mak gate''s whole result is kept and the next statement throws on any of it (mutation)' {
+    It 'header fetch, config.mak gates and header install each run only under their plan guard (mutation)' {
+        Assert-FfPlanGuards
+    }
+
+    function Assert-FfWholeConfigGates {
         $gates = [ordered]@{ 'Get-FfmpegAmfConfigGap' = '$amfGap'; 'Get-FfmpegRocmLeak' = '$rocmLeak'; 'Get-FfmpegVulkanConfigGap' = '$vulkanGap' }
         foreach ($name in $gates.Keys) {
             $var = $gates[$name]
-            $cmd = @(Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $name })
+            $cmd = @(Find-FfOwnedNode 'Assert-FfmpegAccelerationConfigured' { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -eq $name })
             Assert-Equal 1 $cmd.Count "$name called once"
             # '| Select-Object -First 0', '| Where-Object ...' or a second assignment would empty the gate silently.
             Assert-Equal 1 $cmd[0].Parent.PipelineElements.Count "$name is not piped into a filter"
-            $assign = @(Find-FfScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $var })
+            $assign = @(Find-FfOwnedNode 'Assert-FfmpegAccelerationConfigured' { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $var })
             Assert-Equal "$var = @($($cmd[0].Parent.Extent.Text))" (($assign | ForEach-Object { $_.Extent.Text }) -join ' | ') "$var is the gate's whole result, assigned once"
             if ($assign.Count -ne 1) { continue }
             $block = $assign[0].Parent.Statements
@@ -202,6 +224,10 @@ Describe 'Build-FfmpegFromSource.ps1: every AMF step at script level keys on the
             } elseif ($next) { $next.Extent.Text } else { '<end of block>' }
             Assert-Equal "if ($var.Count -gt 0) { ThrowStatementAst }" $shape "$var non-empty is fatal, straight after the gate"
         }
+    }
+
+    It 'each config.mak gate''s whole result is kept and the next statement throws on any of it (mutation)' {
+        Assert-FfWholeConfigGates
     }
 }
 
@@ -455,14 +481,18 @@ Describe 'rocm-checks/FFmpeg.ps1 (smoke findings)' {
         Assert-Equal '' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing)) -join ';') 'clean listing'
     }
 
-    It 'Vulkan: names each missing entry, per listing kind and per decoder (mutation)' {
-        Assert-Equal 'FFmpeg: ffmpeg -encoders does not list av1_vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -Drop 'av1_vulkan')) -join ';') 'encoder'
-        Assert-Equal 'FFmpeg: ffmpeg -filters does not list color_vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -Drop 'color_vulkan')) -join ';') 'the vsrc'
-        Assert-Equal 'FFmpeg: ffmpeg -hwaccels does not list vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -NoVulkanHwaccel)) -join ';') 'hwdevice'
+    function Assert-FfMissingVulkanDecoderDevices {
         foreach ($d in 'vp9', 'prores_raw') {
             Assert-Equal "FFmpeg: ffmpeg -h decoder=$d does not list the vulkan device (no ${d}_vulkan hwaccel)" `
                 (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -NoDevice $d)) -join ';') "$d hwaccel"
         }
+    }
+
+    It 'Vulkan: names each missing entry, per listing kind and per decoder (mutation)' {
+        Assert-Equal 'FFmpeg: ffmpeg -encoders does not list av1_vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -Drop 'av1_vulkan')) -join ';') 'encoder'
+        Assert-Equal 'FFmpeg: ffmpeg -filters does not list color_vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -Drop 'color_vulkan')) -join ';') 'the vsrc'
+        Assert-Equal 'FFmpeg: ffmpeg -hwaccels does not list vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -NoVulkanHwaccel)) -join ';') 'hwdevice'
+        Assert-FfMissingVulkanDecoderDevices
         Assert-Match 'lacks --enable-vulkan' (@(Get-FfmpegVulkanListingFinding -Listing (New-VkListing -NoEnableVulkan)) -join ';') 'configuration line'
     }
 
@@ -522,7 +552,7 @@ Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input 
 
     function Find-CkScriptLevelNode([scriptblock]$Predicate) { Get-MediaTestAstNode -Ast $script:ckAst -Predicate $Predicate -ScriptLevel }
 
-    It 'each finder is called once, in order, as a bare top-level statement whose findings reach the pipeline (mutation)' {
+    function Assert-FfSmokeFinderCalls {
         $finders = 'Get-FfmpegAmfListingFinding', 'Get-FfmpegVulkanListingFinding', 'Get-FfmpegAmfInstallFinding', 'Get-FfmpegVulkanImportFinding'
         $calls = Find-CkScriptLevelNode { param($n) $n -is [System.Management.Automation.Language.CommandAst] -and $n.GetCommandName() -in $finders }
         # Parent pipeline directly in the script's end block: not assigned, piped to Out-Null, [void]-cast or under an if.
@@ -534,7 +564,11 @@ Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input 
         Assert-Equal $want $got 'every finder runs on the collected input'
     }
 
-    It 'the -h decoder= pages and the delay-load-aware PE imports are collected for every expected name (mutation)' {
+    It 'each finder is called once, in order, as a bare top-level statement whose findings reach the pipeline (mutation)' {
+        Assert-FfSmokeFinderCalls
+    }
+
+    function Assert-FfSmokeInputCollection {
         $loops = [ordered]@{
             decoder = @('(Get-FfmpegVulkanExpectation).hwdecoders', '$listing["decoder=$decoder"] = (& $ffExe -hide_banner -h "decoder=$decoder" 2>$null | Out-String)')
             pe      = @('@(Get-ChildItem -LiteralPath $ffBin -File | Where-Object { $_.Extension -in ''.dll'', ''.exe'' })',
@@ -548,6 +582,10 @@ Describe 'rocm-checks/FFmpeg.ps1: the script body feeds every finder real input 
             $fill = @($loop[0].Body.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true) | ForEach-Object { $_.Extent.Text })
             Assert-True ($loops[$v][1] -in $fill) "`$$v body fills its map: got '$($fill -join ' | ')'"
         }
+    }
+
+    It 'the -h decoder= pages and the delay-load-aware PE imports are collected for every expected name (mutation)' {
+        Assert-FfSmokeInputCollection
     }
 }
 

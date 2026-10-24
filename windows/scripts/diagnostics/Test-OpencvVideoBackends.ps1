@@ -31,6 +31,8 @@ foreach ($line in ($info -split "`r?`n")) {
 }
 
 Write-Host "`n--- the three #95 assertions, run here ---"
+function Write-OpenCvBackendChecks {
+    param([string]$Info)
 # GStreamer is a runtime plugin, so build info says NO even on a correct image; hasBackend() attempts the load.
 $gstInfo = $info -match '(?m)^\s*GStreamer:\s+YES'
 $gstReg = (& python -c "import cv2; print(cv2.videoio_registry.hasBackend(cv2.CAP_GSTREAMER))" 2>&1 | Out-String) -match 'True'
@@ -51,6 +53,9 @@ if (Test-Path $ffExe) {
 if ($info -match '(?m)^\s*avcodec:\s+(?:YES\s*\()?(\d+)\.') { $cvMajor = $Matches[1] }
 Write-DiagnosticResult 'OpenCV avcodec major == chain avcodec major (#94)' ($chainMajor -and $cvMajor -and $chainMajor -eq $cvMajor) `
     "chain=$(if ($chainMajor) { $chainMajor } else { '?' }) opencv=$(if ($cvMajor) { $cvMajor } else { '?' })"
+    return $gst
+}
+$gst = Write-OpenCvBackendChecks -Info $info
 
 # The misleading check, shown side by side on purpose.
 Write-Host "`n--- why getBackends() must NOT be used for this ---"
@@ -67,6 +72,8 @@ foreach ($r in $ffRoots) {
 }
 
 $pcDirs = @('C:\runtime\ffmpeg\lib\pkgconfig', 'C:\runtime\lib\pkgconfig')
+function Write-FfmpegPkgConfigProbe {
+    param([string[]]$PcDirs)
 foreach ($d in $pcDirs) {
     $n = @(Get-ChildItem $d -Filter '*.pc' -File -ErrorAction SilentlyContinue).Count
     Write-Host ("  {0,-34} {1} .pc file(s)" -f $d, $n)
@@ -89,10 +96,13 @@ if (-not $pkgConfig) {
         Write-DiagnosticResult "pkg-config resolves $mod" $ok $v.Trim()
     }
 }
+}
+Write-FfmpegPkgConfigProbe -PcDirs $pcDirs
 
 # Ask CMake, not shell pkg-config, which can say yes while OpenCV configures without FFmpeg; see docs/windows-builds.md § OpenCV 5.x.
 Write-Host "`n--- does CMake's pkg_check_modules resolve FFmpeg here? (#94 route test) ---"
 
+function Write-FfmpegCmakeProbe {
 $cmake = Get-Command cmake -ErrorAction SilentlyContinue
 if (-not $cmake) {
     Write-DiagnosticResult 'cmake on PATH' $false 'cannot test the CMake detection route'
@@ -128,9 +138,12 @@ endif()
         'if true, a CMAKE_PROJECT_INCLUDE shim that calls find_package(PkgConfig) unblocks OpenCV''s existing route'
     Remove-Item $cmWork -Recurse -Force -ErrorAction SilentlyContinue
 }
+}
+Write-FfmpegCmakeProbe
 
 # The persistent configure log outlives the solve; the shim's STATUS line repeats per project() call, so it is filtered.
 Write-Host "`n--- last OpenCV configure: FFmpeg decision ---"
+function Write-OpenCvConfigureLogSummary {
 $cfgLog = 'C:\sccache-logs\opencv-configure.log'
 if (Test-Path $cfgLog) {
     $lines = @(Get-Content $cfgLog -ErrorAction SilentlyContinue)
@@ -146,5 +159,7 @@ if (Test-Path $cfgLog) {
 } else {
     Write-Host "  no configure log at $cfgLog (run a media build first)"
 }
+}
+Write-OpenCvConfigureLogSummary
 
 Write-Host "`n=== probe complete ==="

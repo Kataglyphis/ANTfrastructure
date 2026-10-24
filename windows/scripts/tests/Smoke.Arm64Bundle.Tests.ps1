@@ -6,7 +6,8 @@
 Describe 'Test-Arm64Bundle: the floor decides the verdict' {
 
     BeforeAll {
-        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep')
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Test-Arm64Bundle.ps1' -FunctionName 'Get-BundleVerdict', 'Invoke-BundleStep',
+            'Assert-BundleTorchWheelStack', 'Assert-BundleVsRuntime')
         Import-Module (Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1') -Force -DisableNameChecking
         $script:wheelModuleText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\modules\WindowsPythonWheel.Common.psm1'))
         $script:ok = [pscustomobject]@{ Name = 'a'; Ok = $true; Detail = '' }
@@ -40,6 +41,33 @@ Describe 'Test-Arm64Bundle: the floor decides the verdict' {
     It 'permits an empty run only explicitly' {
         $v = Get-BundleVerdict -Results @() -MinPassed 0 -AllowEmptyRun
         Assert-True $v.Ok 'an explicitly allowed empty run passes'
+    }
+
+    It 'checks the ARM64 runtime machine and fails a wrong architecture' {
+        Invoke-InTestDir { param($d)
+            $bin = Join-Path $d 'bin'
+            New-TestPeFile -Path (Join-Path $bin 'clang_rt.asan_dynamic-aarch64.dll') -Machine 0xAA64
+            New-TestPeFile -Path (Join-Path $bin 'vcomp140.dll') -Machine 0xAA64
+            Assert-BundleVsRuntime -BundleRoot $d
+            New-TestPeFile -Path (Join-Path $bin 'vcomp140.dll') -Machine 0x8664
+            Assert-Throws { Assert-BundleVsRuntime -BundleRoot $d } 'an x64 OpenMP DLL cannot pass on device' -MessagePattern 'machine 0x8664'
+        }
+    }
+
+    It 'requires every wheel of the device torch stack' {
+        Invoke-InTestDir { param($d)
+            $wheelDir = Join-Path $d 'wheels'
+            $null = New-Item -ItemType Directory -Path $wheelDir
+            foreach ($name in @('torch', 'torchvision', 'markupsafe', 'pillow')) {
+                $null = New-Item -ItemType File -Path (Join-Path $wheelDir "$name-1-cp313-cp313-win_arm64.whl")
+            }
+            foreach ($name in @('filelock', 'setuptools', 'sympy', 'mpmath', 'networkx', 'jinja2', 'fsspec')) {
+                $null = New-Item -ItemType File -Path (Join-Path $wheelDir "$name-1-py3-none-any.whl")
+            }
+            Assert-BundleTorchWheelStack -BundleRoot $d
+            Remove-Item -LiteralPath (Join-Path $wheelDir 'torch-1-cp313-cp313-win_arm64.whl')
+            Assert-Throws { Assert-BundleTorchWheelStack -BundleRoot $d } 'torch itself is mandatory' -MessagePattern 'torch-\*-cp313-cp313-win_arm64.whl'
+        }
     }
 
     It 'records a step into an EMPTY result list — the first call binds, not throws' {

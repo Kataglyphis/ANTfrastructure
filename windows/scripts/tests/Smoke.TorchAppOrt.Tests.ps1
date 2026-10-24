@@ -15,6 +15,17 @@ $script:ChainWheel = [pscustomobject]@{
 }
 
 # The probe's JSON for a healthy venv, round-tripped like Invoke-TorchAppOrtProbe does. -Set/-Remove edit it first.
+function Get-TorchAppAspectMap {
+    param([Parameter(Mandatory)]$Branch)
+    $aspects = @{}
+    foreach ($assignment in @($Branch.FindAll({ param($node) $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] }, $true))) {
+        $match = [regex]::Match($assignment.Right.Extent.Text, '-Aspect\s+(\w+)')
+        if ($match.Success) { $aspects[$assignment.Left.VariablePath.UserPath] = "$($aspects[$assignment.Left.VariablePath.UserPath])$($match.Groups[1].Value)" }
+    }
+    return $aspects
+}
+
 function New-VenvOrtReport {
     param([hashtable]$Set = @{}, [string[]]$Remove = @())
     $bin = { param($name, $wheel, $installed) [ordered]@{ name = "onnxruntime/capi/$name"; wheel = $wheel; installed = $installed } }
@@ -67,7 +78,7 @@ Describe 'Smoke §21: the chain wheel the venv is compared against' {
 }
 
 Describe 'Smoke §21: venv DirectML findings' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtDmlFinding', 'Get-TorchAppOrtProvenanceFinding', 'Get-TorchAppOrtFinding')
 
     It 'passes a healthy venv' {
         Assert-Equal 0 @(Get-TorchAppOrtFinding -Report (New-VenvOrtReport) -Aspect Dml).Count 'healthy'
@@ -114,7 +125,7 @@ Describe 'Smoke §21: venv DirectML findings' {
 }
 
 Describe 'Smoke §21: venv chain-wheel provenance findings' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:SmokeScript -FunctionName 'Get-TorchAppOrtDmlFinding', 'Get-TorchAppOrtProvenanceFinding', 'Get-TorchAppOrtFinding')
     $prov = { param($Report, $Wheel = $script:ChainWheel, $Site = $script:VenvSite)
         @(Get-TorchAppOrtFinding -Report $Report -Aspect Provenance -Wheel $Wheel -VenvSitePackages $Site) }
 
@@ -241,12 +252,7 @@ Describe 'Smoke §21: wiring in Test-Container.ps1' {
 
     It 'binds each assertion''s condition and message to the findings of its own aspect' {
         $branch = $venvBranch[0].Clauses[0].Item2
-        $aspectOf = @{}
-        foreach ($as in @($branch.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-                        $n.Left -is [System.Management.Automation.Language.VariableExpressionAst] }, $true))) {
-            $m = [regex]::Match($as.Right.Extent.Text, '-Aspect\s+(\w+)')
-            if ($m.Success) { $aspectOf[$as.Left.VariablePath.UserPath] = "$($aspectOf[$as.Left.VariablePath.UserPath])$($m.Groups[1].Value)" }
-        }
+        $aspectOf = Get-TorchAppAspectMap -Branch $branch
         Assert-Equal 'Dml' $aspectOf['ortDmlFindings'] 'the DML findings come from -Aspect Dml, once'
         Assert-Equal 'Provenance' $aspectOf['ortWheelFindings'] 'the provenance findings come from -Aspect Provenance, once'
         Assert-Equal 2 $aspectOf.Count 'no third findings variable'

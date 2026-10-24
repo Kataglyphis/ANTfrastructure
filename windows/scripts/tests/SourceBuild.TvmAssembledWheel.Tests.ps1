@@ -29,9 +29,25 @@ Describe 'TVM assembled-wheel helpers' {
 
     It 'Build-TvmFromSource tags the GIL wheel with the pin and the twin cpXY-cpXYt (CON91)' {
         $tvm = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-TvmFromSource.ps1'))
-        Assert-Match '(?s)New-TvmFfiCrossWheel -Python \$tvmTargetPy .*?-AbiTag \(Get-PinnedPythonVersion\)\.AbiTag' $tvm 'the GIL wheel carries the pin''s cpXY, not a default'
+        Assert-Match '-CrossPython \$tvmCrossPython -TargetPython \$tvmTargetPy -HostPython \$py -TvmVersion \$TvmVersion' $tvm 'the cross path passes the selected target interpreter into runtime staging'
+        Assert-Match '-TargetPython \$TargetPython -HostPython \$HostPython -BuildType \$BuildType' $tvm 'runtime staging forwards the interpreter to the wheel stage'
+        Assert-Match '(?s)function Invoke-TvmCrossPythonWheels.*?New-TvmFfiCrossWheel -Python \$TargetPython .*?-AbiTag \(Get-PinnedPythonVersion\)\.AbiTag' $tvm 'the GIL wheel carries the pin''s cpXY, not a default'
         Assert-Match "PythonTag = \(\`$AbiTag -replace 't\$', ''\); AbiTag = \`$AbiTag" $tvm 'the python tag drops the free-threaded t'
         Assert-False ($tvm -match "AbiTag = 'cp3") 'no literal tag default'
+    }
+
+    It 'shares the target extension-tag verdict across TVM staging and wheel validation' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsSourceBuild.Common.psm1' -FunctionName 'Test-PythonExtensionHostTag')
+        Assert-False (Test-PythonExtensionHostTag -Name 'core.pyd' -TargetTag 'win_arm64') 'a bare extension is valid'
+        Assert-False (Test-PythonExtensionHostTag -Name 'core.cp315t-win_arm64.pyd' -TargetTag 'win_arm64') 'a target-tagged twin is valid'
+        Assert-True (Test-PythonExtensionHostTag -Name 'core.cp315-win_amd64.pyd' -TargetTag 'win_arm64') 'a host-tagged extension fails'
+        Assert-True (Test-PythonExtensionHostTag -Name 'core.cp315t-win_amd64.pyd' -TargetTag 'win_arm64') 'a host-tagged twin fails'
+        $tvm = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/build/Build-TvmFromSource.ps1'))
+        $common = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows/scripts/modules/WindowsSourceBuild.Common.psm1'))
+        Assert-Match 'Test-PythonExtensionHostTag -Name \$corePyd\.Name -TargetTag \$wantExt' $tvm 'TVM checks its built core'
+        Assert-Match 'Test-PythonExtensionHostTag -Name \$f\.Name -TargetTag \$wantTag' $common 'the wheel gate checks every member'
+        Assert-Match 'Copy-SelectedBuildArtifacts -Artifact \$runtimeBins -Destination \$tvmLibOut' $tvm 'TVM stages selected runtime binaries'
+        Assert-Match 'Copy-SelectedBuildArtifacts -Artifact \$wheels -Destination \$WheelDir -LogPrefix ''Staged wheel:''' $common 'wheel staging keeps its diagnostics'
     }
 
     It 'normalises the submodule tag and falls back to the pyproject bound' {

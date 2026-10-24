@@ -130,18 +130,23 @@ function Invoke-ChildDriver([string]$Path, [System.Collections.IDictionary]$Argu
     Invoke-BuildExternal -Context $context -File 'pwsh' -Parameters @('-NoProfile', '-Command', $text) | Out-Null
 }
 
+function Invoke-PythonCiLegs {
+    param($Context, [string]$RepoRoot, [string]$PythonVersions, [string]$TestExtras, [string]$FreeThreadedExtras)
+    foreach ($leg in @(Resolve-PythonLegList -PythonVersions $PythonVersions -PyprojectPath (Join-Path $RepoRoot 'pyproject.toml'))) {
+        $extras = if ($TestExtras) { $TestExtras } elseif ($leg -match 't$' -and $FreeThreadedExtras) { $FreeThreadedExtras } else { '' }
+        # Only a leg with no extras of its own may be experimental.
+        $experimental = (-not $extras) -and (Test-ExperimentalPython -Version $leg)
+        Invoke-BuildStep -Context $Context -StepName "Python $leg - Tests" -AllowFailure:$experimental -Critical -Script {
+            Invoke-TestLeg -Version $leg -Extras $extras
+        } | Out-Null
+    }
+}
+
 try {
     try {
         Write-BuildLog -Context $context -Message "=== Windows build/test pipeline: $PackageName in $repoRoot ==="
         New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot 'docs\test_results') | Out-Null
-        foreach ($leg in @(Resolve-PythonLegList -PythonVersions $PythonVersions -PyprojectPath (Join-Path $repoRoot 'pyproject.toml'))) {
-            $extras = if ($TestExtras) { $TestExtras } elseif ($leg -match 't$' -and $FreeThreadedExtras) { $FreeThreadedExtras } else { '' }
-            # As in ci_tests.sh: only a leg with no extras of its own may be experimental.
-            $experimental = (-not $extras) -and (Test-ExperimentalPython -Version $leg)
-            Invoke-BuildStep -Context $context -StepName "Python $leg - Tests" -AllowFailure:$experimental -Critical -Script {
-                Invoke-TestLeg -Version $leg -Extras $extras
-            } | Out-Null
-        }
+        Invoke-PythonCiLegs -Context $context -RepoRoot $repoRoot -PythonVersions $PythonVersions -TestExtras $TestExtras -FreeThreadedExtras $FreeThreadedExtras
 
         Invoke-BuildStep -Context $context -StepName 'Static Analysis' -Critical -Script {
             Invoke-ChildDriver $StaticAnalysisScript ([ordered]@{

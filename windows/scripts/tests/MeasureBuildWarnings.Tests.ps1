@@ -40,3 +40,22 @@ Describe 'Get-WarningFamily' {
         Assert-Equal 'STL4037' (Get-WarningFamily -Line "C:/warning:odd/dir/x.h(2): warning STL4037: deprecated") 'code branch wins'
     }
 }
+
+Describe 'Write-BaselineWarningSummary' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\diagnostics\Measure-BuildWarnings.ps1' -FunctionName 'Write-BaselineWarningSummary')
+
+    It 'counts the narrower deprecated-copy group toward the old flood' {
+        $lines = @(Write-BaselineWarningSummary -Families @{ '-Wdeprecated-copy-with-user-provided-copy' = 770 } 6>&1 | ForEach-Object { "$_" })
+        Assert-Match '(?s)-Wdeprecated-copy\s+[^\n]*STILL FLOODING' ($lines -join "`n")
+    }
+
+    It 'prints the baseline after streaming a build log' {
+        Invoke-InTestDir -Files @{ 'build.log' = 'src.cpp(1): warning: copy [-Wdeprecated-copy-with-user-provided-copy]' } -Body {
+            param($dir)
+            $scriptPath = Join-Path (Get-RepoRoot) 'windows/scripts/diagnostics/Measure-BuildWarnings.ps1'
+            $lines = @(& $scriptPath -LogPath (Join-Path $dir 'build.log') -Baseline 6>&1 | ForEach-Object { "$_" })
+            Assert-Match '1 warning lines' ($lines -join "`n")
+            Assert-Match '(?s)-Wdeprecated-copy\s+[^\n]*mostly silenced' ($lines -join "`n")
+        }
+    }
+}

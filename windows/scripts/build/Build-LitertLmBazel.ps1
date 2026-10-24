@@ -22,9 +22,7 @@ $sourceModule = Join-Path $assetRoot 'modules\WindowsSourceBuild.Common.psm1'
 if (-not (Get-Module -Name 'WindowsSourceBuild.Common')) { Import-Module $sourceModule }
 Import-Module (Resolve-SourceBuildLeafModule -AssetRoot $PSScriptRoot -Name 'WindowsBazel.Common.psm1' -Directory @('bazelmods', 'modules', '..\modules')) -DisableNameChecking
 
-if ([string]::IsNullOrWhiteSpace($LitertLmVersion)) {
-    $LitertLmVersion = if ($env:LITERT_LM_VERSION) { $env:LITERT_LM_VERSION } else { '0.18.0' }
-}
+$LitertLmVersion = Get-SourceBuildVersion -Value $LitertLmVersion -EnvironmentVariables @('LITERT_LM_VERSION') -DefaultValue '0.18.0'
 $tag = if ($LitertLmVersion -match '^v') { $LitertLmVersion } else { "v$LitertLmVersion" }
 
 # bazel itself (LiteRT-LM's .bazelversion), the JDK and git-lfs as release URLs from their versions.env pins, in install order.
@@ -102,24 +100,96 @@ function Install-LitertLmGpuPayload {
     }
 }
 
+function Install-LitertLmBazelTools {
+    param([string]$Tag, [string]$RepositoryCache)
+
+    Write-Host "=== [1/6] prerequisites: long paths + bazel + JDK (LiteRT-LM $Tag) ==="
+    reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
+    New-Item -ItemType Directory -Force -Path C:\bzl-tools | Out-Null
+
+    # bazel, the JDK and git-lfs are cached on the mount: a live JDK download per build is unreliable.
+    $toolCache = if ($RepositoryCache) { Join-Path $RepositoryCache 'toolcache' } else { 'C:\bzl-tools' }
+    New-Item -ItemType Directory -Force -Path $toolCache | Out-Null
+    $tools = Get-LitertLmToolPin
+    foreach ($tool in $tools) { Get-PinnedTool -Uri $tool.Uri -Path (Join-Path $toolCache $tool.File) -PinKey $tool.PinKey }
+    Copy-Item (Join-Path $toolCache $tools[0].File) C:\bzl-tools\bazel.exe -Force
+    & 7z x (Join-Path $toolCache $tools[1].File) -oC:\bzl-tools\jdk -y -bd | Out-Null
+    $env:JAVA_HOME = (Get-ChildItem C:\bzl-tools\jdk -Directory | Select-Object -First 1).FullName
+    & 7z x (Join-Path $toolCache $tools[2].File) -oC:\bzl-tools\git-lfs -y -bd | Out-Null
+    $gitLfs = @(Get-ChildItem -LiteralPath C:\bzl-tools\git-lfs -Recurse -Filter git-lfs.exe -File)
+    if ($gitLfs.Count -ne 1) { throw "the git-lfs zip holds $($gitLfs.Count) git-lfs.exe, not one" }
+    $env:PATH = "$($gitLfs[0].DirectoryName);$env:PATH"
+
+}
+
+function Copy-LitertLmBazelRuntimeDll {
+    param([string]$BinOut)
+
+    # Every .dll from bazel-bin and the runfiles, since the smoke runs the exe with only this bin\ on PATH.
+    $dllSources = @('C:\llm\bazel-bin\runtime\engine', 'C:\llm\bazel-bin\runtime\engine\litert_lm_main.exe.runfiles')
+    foreach ($s in $dllSources) {
+        if (Test-Path $s) {
+            Get-ChildItem -Path $s -Filter '*.dll' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+                Copy-Item $_.FullName $BinOut -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
+}
+
+function Copy-LitertLmBazelHeaders {
+    param([string]$IncludeDir)
+
+    # Best-effort public headers for downstream apps; the contract guard below catches an empty include\.
+    New-Item -ItemType Directory -Force -Path $IncludeDir | Out-Null
+    if (Test-Path 'C:\llm\runtime\engine') {
+        Get-ChildItem 'C:\llm\runtime\engine' -Filter '*.h' -ErrorAction SilentlyContinue |
+            ForEach-Object { Copy-Item $_.FullName $IncludeDir -Force -ErrorAction SilentlyContinue }
+    }
+
+}
+
+function Test-LitertLmBazelExecutable {
+    param([string]$BinOut, [int]$DllCount)
+
+    $installedExe = Join-Path $BinOut 'litert_lm_main.exe'
+    $sz = (Get-Item $installedExe).Length
+    $prevPath = $env:PATH; $env:PATH = "$BinOut;$env:PATH"
+    try { $help = (& cmd /c "`"$installedExe`" --help 2>&1" | Out-String) } finally { $env:PATH = $prevPath }
+    # Success is reaching the flag parser: abseil's --help exits 1, so reset LASTEXITCODE for the calling chain.
+    if ($help -notmatch 'model_path|input_prompt|Flags from') {
+        throw "installed litert_lm_main.exe did not reach its flag parser (missing DLL?). Output: $($help.Substring(0,[Math]::Min(300,$help.Length)))"
+    }
+    $global:LASTEXITCODE = 0
+    Write-Host ("LiteRT-LM (bazel) INSTALLED: {0} ({1:N0} bytes, {2} DLL(s) co-located, --help OK)" -f $installedExe, $sz, $DllCount)
+
+}
+
+function Assert-LitertLmBazelLayout {
+    param([string]$BinOut, [string]$IncOut)
+
+    # The merge image promises this layout (LITERT_LM_*); check it here, not hours later at the smoke gate.
+    $contract = @(
+        @{ Path = $BinOut; Filter = '*.exe'; What = 'LITERT_LM_BIN executable' }
+        @{ Path = $BinOut; Filter = '*.dll'; What = 'LITERT_LM_BIN runtime DLLs' }
+        @{ Path = $IncOut; Filter = '*.h'; What = 'LITERT_LM_INCLUDE headers' }
+    )
+    $shortfall = @()
+    foreach ($c in $contract) {
+        $n = @(Get-ChildItem -LiteralPath $c.Path -Filter $c.Filter -File -Recurse -ErrorAction SilentlyContinue).Count
+        Write-Host ("  contract: {0,-28} {1,4} file(s) in {2}" -f $c.What, $n, $c.Path)
+        if ($n -lt 1) { $shortfall += ('{0} — nothing matching {1} in {2}' -f $c.What, $c.Filter, $c.Path) }
+    }
+    if ($shortfall.Count -gt 0) {
+        throw ("LiteRT-LM install does not satisfy the layout the merge image declares:`n  " +
+            ($shortfall -join "`n  ") +
+            "`nFix the install here, or correct the ENV in windows\Dockerfile.media-merge-builder — " +
+            'but never leave the image promising a path it does not ship.')
+    }
+}
+
 $gpuType = [string]$env:GPU_TYPE
 
-Write-Host "=== [1/6] prerequisites: long paths + bazel + JDK (LiteRT-LM $tag) ==="
-reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
-New-Item -ItemType Directory -Force -Path C:\bzl-tools | Out-Null
-
-# bazel, the JDK and git-lfs are cached on the mount: a live JDK download per build is unreliable.
-$toolCache = if ($RepositoryCache) { Join-Path $RepositoryCache 'toolcache' } else { 'C:\bzl-tools' }
-New-Item -ItemType Directory -Force -Path $toolCache | Out-Null
-$tools = Get-LitertLmToolPin
-foreach ($tool in $tools) { Get-PinnedTool -Uri $tool.Uri -Path (Join-Path $toolCache $tool.File) -PinKey $tool.PinKey }
-Copy-Item (Join-Path $toolCache $tools[0].File) C:\bzl-tools\bazel.exe -Force
-& 7z x (Join-Path $toolCache $tools[1].File) -oC:\bzl-tools\jdk -y -bd | Out-Null
-$env:JAVA_HOME = (Get-ChildItem C:\bzl-tools\jdk -Directory | Select-Object -First 1).FullName
-& 7z x (Join-Path $toolCache $tools[2].File) -oC:\bzl-tools\git-lfs -y -bd | Out-Null
-$gitLfs = @(Get-ChildItem -LiteralPath C:\bzl-tools\git-lfs -Recurse -Filter git-lfs.exe -File)
-if ($gitLfs.Count -ne 1) { throw "the git-lfs zip holds $($gitLfs.Count) git-lfs.exe, not one" }
-$env:PATH = "$($gitLfs[0].DirectoryName);$env:PATH"
+Install-LitertLmBazelTools -Tag $tag -RepositoryCache $RepositoryCache
 
 Write-Host "=== [2/6] clone $tag + git lfs (prebuilt libs) ==="
 & git lfs install --skip-repo 2>&1 | Out-Null
@@ -190,15 +260,7 @@ try {
     $binOut = Join-Path $InstallDir 'lib\litert-lm\bin'
     New-Item -ItemType Directory -Force -Path $binOut | Out-Null
     Copy-Item $exe $binOut -Force
-    # Every .dll from bazel-bin and the runfiles, since the smoke runs the exe with only this bin\ on PATH.
-    $dllSources = @('C:\llm\bazel-bin\runtime\engine', 'C:\llm\bazel-bin\runtime\engine\litert_lm_main.exe.runfiles')
-    foreach ($s in $dllSources) {
-        if (Test-Path $s) {
-            Get-ChildItem -Path $s -Filter '*.dll' -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
-                Copy-Item $_.FullName $binOut -Force -ErrorAction SilentlyContinue
-            }
-        }
-    }
+    Copy-LitertLmBazelRuntimeDll -BinOut $binOut
     $gpuPayload = @(Get-LitertLmGpuPayload -GpuType $gpuType -PrebuiltDir 'C:\llm\prebuilt\windows_x86_64' `
             -DxcDir (Join-Path $outputBase 'external\directx_shader_compiler'))
     if ($gpuPayload.Count -gt 0) {
@@ -207,43 +269,12 @@ try {
     }
     # Count what landed: the runfiles repeat DLL names and the copies are SilentlyContinue.
     $dllCount = @(Get-ChildItem -LiteralPath $binOut -Filter '*.dll' -File -ErrorAction SilentlyContinue).Count
-    # Best-effort public headers for downstream apps; the contract guard below catches an empty include\.
     $incOut = Join-Path $InstallDir 'lib\litert-lm\include'
-    New-Item -ItemType Directory -Force -Path $incOut | Out-Null
-    if (Test-Path 'C:\llm\runtime\engine') {
-        Get-ChildItem 'C:\llm\runtime\engine' -Filter '*.h' -ErrorAction SilentlyContinue |
-            ForEach-Object { Copy-Item $_.FullName $incOut -Force -ErrorAction SilentlyContinue }
-    }
+    Copy-LitertLmBazelHeaders -IncludeDir $incOut
 
-    $installedExe = Join-Path $binOut 'litert_lm_main.exe'
-    $sz = (Get-Item $installedExe).Length
-    $prevPath = $env:PATH; $env:PATH = "$binOut;$env:PATH"
-    try { $help = (& cmd /c "`"$installedExe`" --help 2>&1" | Out-String) } finally { $env:PATH = $prevPath }
-    # Success is reaching the flag parser: abseil's --help exits 1, so reset LASTEXITCODE for the calling chain.
-    if ($help -notmatch 'model_path|input_prompt|Flags from') {
-        throw "installed litert_lm_main.exe did not reach its flag parser (missing DLL?). Output: $($help.Substring(0,[Math]::Min(300,$help.Length)))"
-    }
-    $global:LASTEXITCODE = 0
-    Write-Host ("LiteRT-LM (bazel) INSTALLED: {0} ({1:N0} bytes, {2} DLL(s) co-located, --help OK)" -f $installedExe, $sz, $dllCount)
+    Test-LitertLmBazelExecutable -BinOut $binOut -DllCount $dllCount
 
-    # The merge image promises this layout (LITERT_LM_*); check it here, not hours later at the smoke gate.
-    $contract = @(
-        @{ Path = $binOut; Filter = '*.exe'; What = 'LITERT_LM_BIN executable' }
-        @{ Path = $binOut; Filter = '*.dll'; What = 'LITERT_LM_BIN runtime DLLs' }
-        @{ Path = $incOut; Filter = '*.h'; What = 'LITERT_LM_INCLUDE headers' }
-    )
-    $shortfall = @()
-    foreach ($c in $contract) {
-        $n = @(Get-ChildItem -LiteralPath $c.Path -Filter $c.Filter -File -Recurse -ErrorAction SilentlyContinue).Count
-        Write-Host ("  contract: {0,-28} {1,4} file(s) in {2}" -f $c.What, $n, $c.Path)
-        if ($n -lt 1) { $shortfall += ('{0} — nothing matching {1} in {2}' -f $c.What, $c.Filter, $c.Path) }
-    }
-    if ($shortfall.Count -gt 0) {
-        throw ("LiteRT-LM install does not satisfy the layout the merge image declares:`n  " +
-            ($shortfall -join "`n  ") +
-            "`nFix the install here, or correct the ENV in windows\Dockerfile.media-merge-builder — " +
-            'but never leave the image promising a path it does not ship.')
-    }
+    Assert-LitertLmBazelLayout -BinOut $binOut -IncOut $incOut
 } finally {
     # The caller's later steps (Get-GpuEnvironment) need the rocm env back.
     if ($restoreEnv) { $null = Set-BazelProcessEnv -Values $restoreEnv }

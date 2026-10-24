@@ -43,6 +43,38 @@ function Resolve-TensorRtSdkRoot {
     return $null
 }
 
+function Assert-NvidiaCudaRoot {
+    param([string]$GpuType, [string]$CudaRoot)
+    # GPU_TYPE is baked into the image; a missing toolkit must fail before flags are selected.
+    if ($GpuType -eq 'nvidia' -and (-not $CudaRoot -or -not (Test-Path $CudaRoot))) {
+        throw ("GPU_TYPE=nvidia but no CUDA toolkit found (CudaRoot='$CudaRoot') - " +
+            'a mis-plumbed CUDA path would silently produce a CPU-only image (backlog #45). ' +
+            'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
+    }
+}
+
+function Get-RocmBuildRoot {
+    param([string]$GpuType)
+    if ($GpuType -ne 'rocm') { return $null }
+    $rocmRoot = @($env:HIP_PATH, $env:ROCM_PATH) | Where-Object { $_ } | Select-Object -First 1
+    if (-not $rocmRoot -or -not (Test-Path -LiteralPath "$rocmRoot\lib\cmake\hip")) {
+        throw ("GPU_TYPE=rocm but no ROCm tree with lib\cmake\hip (HIP_PATH='$env:HIP_PATH', ROCM_PATH='$env:ROCM_PATH') - " +
+            'a mis-plumbed rocm layer would silently build the CPU flags. ' +
+            'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
+    }
+    return $rocmRoot
+}
+
+function Set-CudaBuildEnvironment {
+    param([string]$GpuType, [string]$CudaRoot, [string]$CudaBin)
+    if ($GpuType -ne 'nvidia' -or -not $CudaRoot -or -not (Test-Path $CudaRoot)) { return }
+    if ($CudaBin -and (Test-Path $CudaBin) -and ($env:PATH -notlike "*$CudaBin*")) {
+        $env:PATH = "$CudaBin;$env:PATH"
+    }
+    if ($env:CUDA_PATH -ne $CudaRoot) { $env:CUDA_PATH = $CudaRoot }
+    if ($env:CUDA_HOME -ne $CudaRoot) { $env:CUDA_HOME = $CudaRoot }
+}
+
 function Get-GpuEnvironment {
     param([string]$ForceCpuEnvVar)
     if ($ForceCpuEnvVar -and ([Environment]::GetEnvironmentVariable($ForceCpuEnvVar) -eq '1')) {
@@ -56,31 +88,10 @@ function Get-GpuEnvironment {
     $trtRoot = Resolve-TensorRtSdkRoot
     $cudaBin = if ($cudaRoot) { Join-Path $cudaRoot 'bin' } else { $null }
 
-    # Fail closed: GPU_TYPE=nvidia is baked into the image, so a missing CUDA root is mis-plumbing, not a CPU build.
-    if ($gpuType -eq 'nvidia' -and (-not $cudaRoot -or -not (Test-Path $cudaRoot))) {
-        throw ("GPU_TYPE=nvidia but no CUDA toolkit found (CudaRoot='$cudaRoot') - " +
-            'a mis-plumbed CUDA path would silently produce a CPU-only image (backlog #45). ' +
-            'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
-    }
-
-    # Same fail-closed rule for the rocm lane: Dockerfile.rocm bakes GPU_TYPE=rocm and HIP_PATH.
-    $rocmRoot = $null
-    if ($gpuType -eq 'rocm') {
-        $rocmRoot = @($env:HIP_PATH, $env:ROCM_PATH) | Where-Object { $_ } | Select-Object -First 1
-        if (-not $rocmRoot -or -not (Test-Path -LiteralPath "$rocmRoot\lib\cmake\hip")) {
-            throw ("GPU_TYPE=rocm but no ROCm tree with lib\cmake\hip (HIP_PATH='$env:HIP_PATH', ROCM_PATH='$env:ROCM_PATH') - " +
-                'a mis-plumbed rocm layer would silently build the CPU flags. ' +
-                'For a deliberate CPU build use the per-component FORCE_CPU env instead.')
-        }
-    }
-
-    if ($gpuType -eq 'nvidia' -and $cudaRoot -and (Test-Path $cudaRoot)) {
-        if ($cudaBin -and (Test-Path $cudaBin) -and ($env:PATH -notlike "*$cudaBin*")) {
-            $env:PATH = "$cudaBin;$env:PATH"
-        }
-        if ($env:CUDA_PATH -ne $cudaRoot) { $env:CUDA_PATH = $cudaRoot }
-        if ($env:CUDA_HOME -ne $cudaRoot) { $env:CUDA_HOME = $cudaRoot }
-    }
+    Assert-NvidiaCudaRoot -GpuType $gpuType -CudaRoot $cudaRoot
+    # Dockerfile.rocm bakes GPU_TYPE=rocm and HIP_PATH, so a missing tree is fatal too.
+    $rocmRoot = Get-RocmBuildRoot -GpuType $gpuType
+    Set-CudaBuildEnvironment -GpuType $gpuType -CudaRoot $cudaRoot -CudaBin $cudaBin
 
     return @{
         GpuType       = $gpuType

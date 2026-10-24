@@ -37,6 +37,42 @@ function Find-TensorRtZipIn {
     return $null
 }
 
+function Find-TensorRtStagedZip {
+    param([Parameter(Mandatory)][string]$RepoDir, [string]$PublicDir = 'C:\Users\Public\Downloads')
+    foreach ($dir in @($RepoDir, $PublicDir)) {
+        $zip = Find-TensorRtZipIn -Dir $dir
+        if ($zip) {
+            Write-Host "Found TensorRT zip at: $zip"
+            return $zip
+        }
+    }
+    return $null
+}
+
+function Invoke-TensorRtZipDownload {
+    param([Parameter(Mandatory)][string]$Version, [Parameter(Mandatory)][string]$Destination)
+    $parts = $Version.Split('.')
+    $dirVersion = if ($parts.Length -ge 3) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { $Version }
+    # The first URL follows the CUDA pin; all are auth-gated guesses that may 404.
+    $cudaSuffix = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR' -DefaultValue '13.4'
+    $urls = @(
+        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$Version.Windows10.x86_64.cuda-$cudaSuffix.zip",
+        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$Version.Windows10.x86_64.cuda-13.0.zip",
+        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$Version.Windows10.x86_64.cuda-12.8.zip"
+    ) | Select-Object -Unique
+    foreach ($url in $urls) {
+        Write-Host "Trying download: $url"
+        # PK rejects NVIDIA's login HTML page, so a guess falls through instead of extracting garbage.
+        try {
+            Invoke-DownloadWithRetry -Url $url -DestinationPath $Destination -MaxAttempts 1 -InitialDelaySeconds 0 -ExpectSignature PK -Description "TensorRT $Version"
+            return $true
+        } catch {
+            Write-Host "  Failed: $($_.Exception.Message)"
+        }
+    }
+    return $false
+}
+
 # Find a TensorRT zip: local path arg > repo downloads dir > download from NVIDIA
 $trtZip = $null
 
@@ -46,38 +82,12 @@ if ($LocalZipPath -and (Test-Path $LocalZipPath)) {
     Write-Host "Using TensorRT zip from: $LocalZipPath"
 }
 
-# 2. Check repo downloads dir (mounted in container at C:\temp\downloads)
-if (-not $trtZip) {
-    $trtZip = Find-TensorRtZipIn -Dir (Join-Path $env:TEMP_DIR 'downloads')
-    if ($trtZip) { Write-Host "Found TensorRT zip at: $trtZip" }
-}
-
-# 3. Try C:\Users\Public\Downloads (mapped from host)
-if (-not $trtZip) {
-    $trtZip = Find-TensorRtZipIn -Dir 'C:\Users\Public\Downloads'
-    if ($trtZip) { Write-Host "Found TensorRT zip at: $trtZip" }
-}
+if (-not $trtZip) { $trtZip = Find-TensorRtStagedZip -RepoDir (Join-Path $env:TEMP_DIR 'downloads') }
 
 # 4. Download from NVIDIA (fallback, may fail without auth)
 if (-not $trtZip -and $TensorRtVersion) {
-    $parts = $TensorRtVersion.Split('.')
-    $dirVersion = if ($parts.Length -ge 3) { "$($parts[0]).$($parts[1]).$($parts[2])" } else { $TensorRtVersion }
     $trtZip = Join-Path $env:TEMP 'tensorrt.zip'
-    # The first URL follows the CUDA pin; all are auth-gated guesses that may 404.
-    $cudaSuffix = Resolve-ContainerImageValue -EnvironmentVariable 'CUDA_VERSION_MAJOR_MINOR' -DefaultValue '13.4'
-    $urls = @(
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-$cudaSuffix.zip",
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-13.0.zip",
-        "https://developer.download.nvidia.com/compute/tensorrt/$dirVersion/tensorrt-$TensorRtVersion.Windows10.x86_64.cuda-12.8.zip"
-    ) | Select-Object -Unique
-    $downloaded = $false
-    foreach ($url in $urls) {
-        Write-Host "Trying download: $url"
-        # PK rejects NVIDIA's login HTML page, so a guess falls through instead of extracting garbage.
-        try { Invoke-DownloadWithRetry -Url $url -DestinationPath $trtZip -MaxAttempts 1 -InitialDelaySeconds 0 -ExpectSignature PK -Description "TensorRT $TensorRtVersion"; $downloaded = $true; break }
-        catch { Write-Host "  Failed: $($_.Exception.Message)" }
-    }
-    if (-not $downloaded) {
+    if (-not (Invoke-TensorRtZipDownload -Version $TensorRtVersion -Destination $trtZip)) {
         # Graceful skip: no zip is a supported configuration, and ORT skips the TensorRT EP on an empty root.
         Write-Warning ('TensorRT {0} not available (EULA-gated download; no zip staged in windows\downloads). Continuing WITHOUT TensorRT — CUDA + cuDNN still work, the ORT TensorRT EP stays disabled. To include it: place tensorrt-*.zip in windows\downloads\ or pass -LocalZipPath / set TENSORRT_ZIP_PATH.' -f $TensorRtVersion)
         return

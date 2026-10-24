@@ -32,19 +32,29 @@ $probeLogDir = Join-Path $repoRoot 'out\build-logs'
 New-Item -ItemType Directory -Force -Path $probeLogDir | Out-Null
 $probeStamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
-# The chain's base digest, parsed without modules since this is the first script a new host runs.
-$probeBase = ''
-$versionsEnv = Join-Path $repoRoot 'linux\scripts\01-core\versions.env'
-if (Test-Path $versionsEnv) {
+function Get-ProbeBaseReference {
+    param([Parameter(Mandatory)][string]$VersionsEnv)
+    if (-not (Test-Path $VersionsEnv)) { return '' }
     $ltsc = ''
     $digest = ''
-    foreach ($line in Get-Content $versionsEnv) {
+    foreach ($line in Get-Content $VersionsEnv) {
         if ($line -match '^WINDOWS_LTSC=(.+)$') { $ltsc = $Matches[1].Trim() }
         elseif ($line -match '^WINDOWS_BASE_DIGEST=(.+)$') { $digest = $Matches[1].Trim() }
     }
-    if ($ltsc -and $digest) { $probeBase = "mcr.microsoft.com/windows/servercore:ltsc$ltsc@$digest" }
+    if ($ltsc -and $digest) { return "mcr.microsoft.com/windows/servercore:ltsc$ltsc@$digest" }
+    return ''
 }
-$baseArgs = if ($probeBase) { @('--opt', "build-arg:BASE=$probeBase") } else { @() }
+
+function Get-ProbeBaseArguments {
+    param([string]$Base, [switch]$Docker)
+    if (-not $Base) { return @() }
+    if ($Docker) { return @('--build-arg', "BASE=$Base") }
+    return @('--opt', "build-arg:BASE=$Base")
+}
+
+# The first script a new host runs must read the chain's base digest without modules.
+$probeBase = Get-ProbeBaseReference -VersionsEnv (Join-Path $repoRoot 'linux\scripts\01-core\versions.env')
+$baseArgs = @(Get-ProbeBaseArguments -Base $probeBase)
 if ($probeBase) { Write-Host "probe base pinned: $probeBase" -ForegroundColor DarkGray }
 
 function Invoke-ProbeLane {
@@ -79,14 +89,15 @@ if ($Heavy) {
         '--output', "type=image,name=$probeRef-heavy,unpack=true"))
 }
 
-if ($Docker) {
+function Invoke-ClassicProbeLane {
     Write-Host '== docker-classic (legacy builder) lane ==' -ForegroundColor Cyan
     # Not $docker, which is the [switch]$Docker parameter (names are case-insensitive); the module loads only in this lane.
     Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -Force -DisableNameChecking
     $dockerExe = Get-PreferredToolPath -CommandName 'docker' -CandidatePaths @($env:DOCKER_EXE, 'D:\Stevedore\bin\docker.exe', "$env:ProgramFiles\Stevedore\bin\docker.exe")
-    $dockerBaseArgs = if ($probeBase) { @('--build-arg', "BASE=$probeBase") } else { @() }
+    $dockerBaseArgs = @(Get-ProbeBaseArguments -Base $probeBase -Docker)
     Invoke-ProbeLane -Name 'docker-classic' -Exe $dockerExe -Arguments (@('build') + $dockerBaseArgs + @('-t', 'local/test:diag-probe-build-copy', $probeDir))
 }
+if ($Docker) { Invoke-ClassicProbeLane }
 
 Write-Host ''
 if ($attemptedLanes.Count -eq 0) {

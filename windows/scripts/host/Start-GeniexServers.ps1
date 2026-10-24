@@ -208,37 +208,28 @@ function Invoke-Warmup {
     }
 }
 
-function Start-Lane {
+function Test-GeniexLaneAlreadyListening {
+    param([string]$Compute, [int]$Port, [string]$Model, $Busy)
+    if (-not $Busy) { return $false }
+    Write-Host ("  {0,-6} :{1}  already listening (pid {2}) -- skipped" -f $Compute, $Port, @($Busy)[0].OwningProcess) -ForegroundColor DarkGray
+    # A lane started earlier on 0.0.0.0 stays on the LAN whatever -BindAddress says now.
+    $bound = @($Busy | ForEach-Object { $_.LocalAddress } | Sort-Object -Unique)
+    if ($bound -notcontains $BindAddress) {
+        Write-Warning ("  {0,-6} :{1}  listens on {2}, not the requested {3} -- re-run with -Restart to rebind it." -f $Compute, $Port, ($bound -join ', '), $BindAddress)
+    }
+    $served = @(Get-ServedModels -Port $Port)
+    if ($served.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($Model)) {
+        $wantKind = Get-BundleKind -Model $Model
+        $haveKind = Get-BundleKind -Model $served[0]
+        if ($wantKind -ne 'unknown' -and $haveKind -ne 'unknown' -and $wantKind -ne $haveKind) {
+            Write-Warning ("  {0,-6} :{1}  serves a {2} bundle ({3}) but {4} is {5}. Re-run with -Restart; loading a GGUF into a lane holding a QAIRT bundle crashes the server." -f $Compute, $Port, $haveKind, $served[0], $Model, $wantKind)
+        }
+    }
+    return $true
+}
+
+function Get-GeniexServeArguments {
     param([string]$Compute, [int]$Port)
-
-    $model = Get-LaneModel -Compute $Compute
-    if ([string]::IsNullOrWhiteSpace($model)) {
-        Write-Warning ("  {0,-6} :{1}  no model id in backends.json or -Models; the lane starts but cannot be warmed or pulled" -f $Compute, $Port)
-    }
-
-    $busy = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
-    if ($busy) {
-        Write-Host ("  {0,-6} :{1}  already listening (pid {2}) -- skipped" -f $Compute, $Port, @($busy)[0].OwningProcess) -ForegroundColor DarkGray
-        # A lane started earlier on 0.0.0.0 stays on the LAN whatever -BindAddress says now.
-        $bound = @($busy | ForEach-Object { $_.LocalAddress } | Sort-Object -Unique)
-        if ($bound -notcontains $BindAddress) {
-            Write-Warning ("  {0,-6} :{1}  listens on {2}, not the requested {3} -- re-run with -Restart to rebind it." -f $Compute, $Port, ($bound -join ', '), $BindAddress)
-        }
-        # @(): an empty array return unrolls to $null, whose .Count throws under StrictMode.
-        $served = @(Get-ServedModels -Port $Port)
-        if ($served.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($model)) {
-            $wantKind = Get-BundleKind -Model $model
-            $haveKind = Get-BundleKind -Model $served[0]
-            if ($wantKind -ne 'unknown' -and $haveKind -ne 'unknown' -and $wantKind -ne $haveKind) {
-                Write-Warning ("  {0,-6} :{1}  serves a {2} bundle ({3}) but {4} is {5}. Re-run with -Restart; loading a GGUF into a lane holding a QAIRT bundle crashes the server." -f $Compute, $Port, $haveKind, $served[0], $model, $wantKind)
-            }
-        }
-        return
-    }
-
-    Invoke-PullIfMissing -Model $model
-
-    # --nctx explicit so a report shows it; --max-tokens only where serve still has it, else clients send max_tokens.
     $argList = @('serve', '--compute', $Compute, '--host', "${BindAddress}:$Port",
                  '--nctx', $Nctx, '--keepalive', $Keepalive)
     if (Test-ServeFlag '--max-tokens') {
@@ -249,6 +240,24 @@ function Start-Lane {
     }
     if ($LogLevel -and (Test-ServeFlag '--log')) { $argList += @('--log', $LogLevel) }
     if ($null -ne $Ngl -and (Test-ServeFlag '--ngl')) { $argList += @('--ngl', $Ngl) }
+    return $argList
+}
+
+function Start-Lane {
+    param([string]$Compute, [int]$Port)
+
+    $model = Get-LaneModel -Compute $Compute
+    if ([string]::IsNullOrWhiteSpace($model)) {
+        Write-Warning ("  {0,-6} :{1}  no model id in backends.json or -Models; the lane starts but cannot be warmed or pulled" -f $Compute, $Port)
+    }
+
+    $busy = Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue
+    if (Test-GeniexLaneAlreadyListening -Compute $Compute -Port $Port -Model $model -Busy $busy) { return }
+
+    Invoke-PullIfMissing -Model $model
+
+    # --nctx explicit so a report shows it; --max-tokens only where serve still has it, else clients send max_tokens.
+    $argList = @(Get-GeniexServeArguments -Compute $Compute -Port $Port)
 
     $laneEnvironment = @{}
     foreach ($key in $ServerEnv.Keys) { $laneEnvironment[$key] = [string]$ServerEnv[$key] }
@@ -292,6 +301,28 @@ function Start-Lane {
     }
 }
 
+function Write-GeniexFleetEndpoints {
+    param([string]$ProbeHost, [int]$NpuPort, [int]$GpuPort, [int]$HybridPort, [int]$CpuPort,
+        [bool]$UseHybrid, [bool]$UseCpu)
+    Write-Host ''
+    Write-Host 'Point the agent at:' -ForegroundColor Cyan
+    $lanes = @(
+        @{ Compute = 'npu'; Port = $NpuPort; Note = 'primary, 19.5 tok/s' },
+        @{ Compute = 'gpu'; Port = $GpuPort; Note = 'second lane, 12.5 tok/s' }
+    )
+    if ($UseHybrid) { $lanes += @{ Compute = 'hybrid'; Port = $HybridPort; Note = 'third lane, contends with NPU -- avoid' } }
+    if ($UseCpu)    { $lanes += @{ Compute = 'cpu'; Port = $CpuPort; Note = 'fastest GGUF lane (23.2 tok/s) BUT pegs 7.5 of 8 cores' } }
+    foreach ($lane in $lanes) {
+        $served = @(Get-ServedModels -Port $lane.Port)
+        $shown = if ($served.Count -gt 0) { $served -join ', ' } else { '(not answering /v1/models)' }
+        Write-Host ("  http://{0}:{1}/v1  {2}   <- {3}" -f $ProbeHost, $lane.Port, $shown, $lane.Note)
+        $want = Get-LaneModel -Compute $lane.Compute
+        if ($served.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($want) -and $served -notcontains $want) {
+            Write-Warning ("  {0,-6} serves {1}, not the configured {2} -- re-run with -Restart to load it." -f $lane.Compute, $served[0], $want)
+        }
+    }
+}
+
 Write-Host "GenieX fleet  (nctx=$Nctx, max-tokens=$MaxTokens, keepalive=${Keepalive}s)" -ForegroundColor Cyan
 Write-Host "  models from $backendsFile" -ForegroundColor DarkGray
 Start-Lane -Compute 'npu' -Port $NpuPort
@@ -300,21 +331,4 @@ if ($WithHybrid) { Start-Lane -Compute 'hybrid' -Port $HybridPort }
 if ($WithCpu)    { Start-Lane -Compute 'cpu'    -Port $CpuPort }
 
 # What each lane reports serving, which differs from the request when an earlier run started it.
-Write-Host ''
-Write-Host 'Point the agent at:' -ForegroundColor Cyan
-$lanes = @(
-    @{ Compute = 'npu'; Port = $NpuPort; Note = 'primary, 19.5 tok/s' },
-    @{ Compute = 'gpu'; Port = $GpuPort; Note = 'second lane, 12.5 tok/s' }
-)
-if ($WithHybrid) { $lanes += @{ Compute = 'hybrid'; Port = $HybridPort; Note = 'third lane, contends with NPU -- avoid' } }
-if ($WithCpu)    { $lanes += @{ Compute = 'cpu';    Port = $CpuPort;    Note = 'fastest GGUF lane (23.2 tok/s) BUT pegs 7.5 of 8 cores' } }
-
-foreach ($lane in $lanes) {
-    $served = @(Get-ServedModels -Port $lane.Port)
-    $shown = if ($served.Count -gt 0) { $served -join ', ' } else { '(not answering /v1/models)' }
-    Write-Host ("  http://{0}:{1}/v1  {2}   <- {3}" -f $ProbeHost, $lane.Port, $shown, $lane.Note)
-    $want = Get-LaneModel -Compute $lane.Compute
-    if ($served.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($want) -and $served -notcontains $want) {
-        Write-Warning ("  {0,-6} serves {1}, not the configured {2} -- re-run with -Restart to load it." -f $lane.Compute, $served[0], $want)
-    }
-}
+Write-GeniexFleetEndpoints -ProbeHost $ProbeHost -NpuPort $NpuPort -GpuPort $GpuPort -HybridPort $HybridPort -CpuPort $CpuPort -UseHybrid:$WithHybrid -UseCpu:$WithCpu

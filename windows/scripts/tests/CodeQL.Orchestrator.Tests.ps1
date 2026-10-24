@@ -4,7 +4,7 @@
 $script:codeQLFunctions = @(
     'Get-ForwardSwitchValue', 'Get-CodeQLDatabaseCreateArgs', 'Get-CodeQLTimeoutMinutes',
     'Resolve-CodeQLExecutable', 'Invoke-CodeQLPackDownloads', 'Get-CodeQLInnerCommand',
-    'Invoke-CodeQLRunPhase', 'Write-CodeQLMessages', 'Initialize-CodeQLDatabaseCluster', 'Get-CodeQLAnalyzeArgs', 'Invoke-CodeQLLanguageAnalysis',
+    'Invoke-CodeQLRunPhase', 'Initialize-CodeQLDatabaseCluster', 'Get-CodeQLAnalyzeArgs', 'Invoke-CodeQLLanguageAnalysis',
     'Invoke-CodeQLAnalyses', 'Invoke-BuildCodeQL'
 )
 $script:codeQLPrelude = @'
@@ -48,6 +48,7 @@ function Remove-SarifIgnoredResult {
     return 2
 }
 '@
+$script:codeQLPrelude += "`n" + (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName @('Write-BuildLogMessages')).ToString()
 
 function New-CodeQLState {
     param([string]$Workspace, [bool]$Installed = $true)

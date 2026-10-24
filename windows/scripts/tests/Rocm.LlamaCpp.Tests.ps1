@@ -14,7 +14,7 @@ $script:LlamaPinKeys = 'LLAMA_CPP_HIP_BUILD', 'LLAMA_CPP_HIP_COMMIT', 'LLAMA_CPP
 Describe 'Install-LlamaCpp: lane gate (rocm only; cpu and nvidia refused for both backends)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:LlamaInstall -FunctionName 'Get-LlamaCppBackendSpec', 'Assert-LlamaCppLane')
 
-    It 'refuses cpu and nvidia for either backend; only HIP needs hipBLAS/rocBLAS in the ROCm tree' {
+    function Assert-LlamaLaneCases {
         Invoke-InTestDir { param($dir)
             Write-TestFileTree -Root $dir -Files @{ 'bin\amdhip64_7.dll' = 'x' }
             $rocm = @{ GpuType = 'rocm'; HasRocm = $true; RocmRoot = $dir }
@@ -33,6 +33,8 @@ Describe 'Install-LlamaCpp: lane gate (rocm only; cpu and nvidia refused for bot
             Assert-Throws { Assert-LlamaCppLane -GpuEnvironment $noBin -Spec $vk } 'no bin' -MessagePattern 'has no bin directory'
         }
     }
+
+    It 'refuses cpu and nvidia for either backend; only HIP needs hipBLAS/rocBLAS in the ROCm tree' { Assert-LlamaLaneCases }
 }
 
 Describe 'Install-LlamaCpp: pin parity (one build pin; HIP from source, CPU and Vulkan zips by digest)' {
@@ -41,7 +43,7 @@ Describe 'Install-LlamaCpp: pin parity (one build pin; HIP from source, CPU and 
     $hip = Get-LlamaCppBackendSpec -Backend hip
     $vk = Get-LlamaCppBackendSpec -Backend vulkan
 
-    It 'accepts the versions.env pins as they stand (a one-key bump fails HERE, not in the build)' {
+    function Assert-LlamaPinParity {
         $build = $pins['LLAMA_CPP_HIP_BUILD']
         $a = Get-LlamaCppAsset -Spec $hip -Build $build
         Assert-Equal ('https://github.com/ggml-org/llama.cpp/releases/download/b{0}/llama-b{0}-bin-win-cpu-x64.zip' -f $build) $a.Url 'HIP: the tag''s CPU zip'
@@ -57,7 +59,9 @@ Describe 'Install-LlamaCpp: pin parity (one build pin; HIP from source, CPU and 
         }
     }
 
-    It 'refuses a malformed build, and derives every asset name from the build alone' {
+    It 'accepts the versions.env pins as they stand (a one-key bump fails HERE, not in the build)' { Assert-LlamaPinParity }
+
+    function Assert-LlamaAssetNameFailures {
         foreach ($s in $hip, $vk) {
             foreach ($b in 'b11472', '', '11472a') {
                 Assert-Throws { Get-LlamaCppAsset -Spec $s -Build $b } "$($s.Label) '$b'" -MessagePattern 'LLAMA_CPP_HIP_BUILD must be a build number'
@@ -66,6 +70,8 @@ Describe 'Install-LlamaCpp: pin parity (one build pin; HIP from source, CPU and 
         }
         Assert-Equal 'llama-b11115-bin-win-cpu-x64.zip' (Get-LlamaCppAsset -Spec $hip -Build '11115').Name 'HIP takes no ROCm zip at all'
     }
+
+    It 'refuses a malformed build, and derives every asset name from the build alone' { Assert-LlamaAssetNameFailures }
 
     It 'keeps Dockerfile.rocm-llama''s ARG defaults equal to versions.env' {
         $df = Get-Content -Raw (Join-Path (Get-RepoRoot) 'windows\Dockerfile.rocm-llama')
@@ -106,7 +112,7 @@ Describe 'Install-LlamaCpp: zip layout' {
         Assert-True $true 'accepted'
     }
 
-    It 'refuses a zip that lacks any load-bearing file, naming it' {
+    function Assert-LlamaZipMissingEntries {
         foreach ($c in @(@{ S = $hip; Zip = $script:CpuZipB11472; Need = 'llama-server.exe', 'llama-cli.exe', 'ggml-base.dll', 'llama.dll' },
                 @{ S = $vk; Zip = $script:VulkanZipB11472; Need = 'ggml-vulkan.dll', 'llama-server.exe', 'ggml-base.dll', 'llama.dll' })) {
             foreach ($r in $c.Need) {
@@ -115,6 +121,8 @@ Describe 'Install-LlamaCpp: zip layout' {
             }
         }
     }
+
+    It 'refuses a zip that lacks any load-bearing file, naming it' { Assert-LlamaZipMissingEntries }
 
     It 'refuses a zip that would shadow ROCm (the HIP runtime too), is no longer flat, brings a prebuilt ggml-hip or its own loader' {
         Assert-Throws { Assert-LlamaCppZipEntry -Spec $hip -EntryName ($script:CpuZipB11472 + 'amdhip64_7.dll' + 'rocm_kpack.dll') -RocmBinDllName $script:RocmBin1010 } 'runtime' -MessagePattern "shadow ROCm's own amdhip64_7\.dll, rocm_kpack\.dll"
@@ -173,7 +181,7 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
         return [pscustomobject]@{ Error = $outcome.Error; Downloads = $fixtureDownloads.ToArray(); Pins = $pins; EnvAsked = $fixtureEnvAsked.ToArray() }
     }
 
-    It 'downloads each zip and the tag''s LICENSE against their pins, ships them (HIP: with the built ggml-hip), and grades clean' {
+    function Assert-LlamaInstalledPayload {
         foreach ($c in @(@{ B = 'hip'; Asset = 'llama-b11115-bin-win-cpu-x64.zip' }, @{ B = 'vulkan'; Asset = 'llama-b11115-bin-win-vulkan-x64.zip' })) {
             Invoke-InTestDir { param($dir)
                 $r = Invoke-LlamaInstallFixture -Root $dir -Backend $c.B
@@ -200,6 +208,8 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
         }
     }
 
+    It 'downloads each zip and the tag''s LICENSE against their pins, ships them (HIP: with the built ggml-hip), and grades clean' { Assert-LlamaInstalledPayload }
+
     It 'reads the build and LICENSE pins from the HIP keys for both backends (one build pin), each zip from its own key' {
         foreach ($c in @(@{ B = 'hip'; Keys = 'LLAMA_CPP_HIP_BUILD,LLAMA_CPP_CPU_SHA256,LLAMA_CPP_HIP_LICENSE_SHA256' },
                 @{ B = 'vulkan'; Keys = 'LLAMA_CPP_HIP_BUILD,LLAMA_CPP_VULKAN_SHA256,LLAMA_CPP_HIP_LICENSE_SHA256' })) {
@@ -209,7 +219,7 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
         }
     }
 
-    It 'refuses before any download: cpu and nvidia lanes (both backends), a malformed pin, a missing or foreign source build' {
+    function Assert-LlamaPreDownloadFailures {
         foreach ($c in @(
                 @{ B = 'hip'; Gpu = 'cpu'; P = "rocm lane only.*'cpu'" },
                 @{ B = 'hip'; Gpu = 'nvidia'; P = "rocm lane only.*'nvidia'" },
@@ -232,6 +242,8 @@ Describe 'Install-LlamaCpp: the script body, with the module functions stood in 
             }
         }
     }
+
+    It 'refuses before any download: cpu and nvidia lanes (both backends), a malformed pin, a missing or foreign source build' { Assert-LlamaPreDownloadFailures }
 
     It 'refuses a used install dir before downloading, and a zip that shadows ROCm or brings a loader before extracting' {
         Invoke-InTestDir { param($dir)
@@ -444,7 +456,7 @@ Describe 'LlamaCpp check: the import walk into ROCm (real PEs as stand-ins)' {
         return $f
     }
 
-    It 'grades each import: resolved, exported, and loaded from ROCm''s bin or a byte-identical copy' {
+    function Assert-LlamaImportOutcomes {
         $cases = @(
             @{ Name = 'clean'; Rocm = 'ntdll.dll'; Search = 'Llama', 'Rocm', 'Sys'; P = '' },
             @{ Name = 'ABI mismatch'; Rocm = 'version.dll'; Search = 'Llama', 'Rocm', 'Sys'; P = 'ggml-hip\.dll needs \d+ name\(s\) \S+\\rocm\\ntdll\.dll does not export: \w+' },
@@ -466,6 +478,8 @@ Describe 'LlamaCpp check: the import walk into ROCm (real PEs as stand-ins)' {
             }
         }
     }
+
+    It 'grades each import: resolved, exported, and loaded from ROCm''s bin or a byte-identical copy' { Assert-LlamaImportOutcomes }
 }
 
 Describe 'LlamaCpp check: nothing of ROCm''s beside llama-server, and the PATH rule' {
@@ -498,7 +512,7 @@ Describe 'LlamaCpp check: nothing of ROCm''s beside llama-server, and the PATH r
         }
     }
 
-    It 'flags a llama directory on PATH in any spelling, with its reason, and nothing else' {
+    function Assert-LlamaPathShadowing {
         foreach ($dir in 'C:\runtime\opt\llama.cpp-hip', 'C:\runtime\opt\llama.cpp-vulkan') {
             foreach ($p in "C:\a;$dir", "$($dir.ToUpperInvariant())\;C:\a", "C:\a;`"$dir`"") {
                 Assert-Match 'is on PATH: why' (Get-LlamaCppPathFinding -Dir $dir -PathValue $p -Reason 'why') $p
@@ -506,6 +520,8 @@ Describe 'LlamaCpp check: nothing of ROCm''s beside llama-server, and the PATH r
             Assert-Null (Get-LlamaCppPathFinding -Dir $dir -PathValue "C:\runtime\bin;${dir}2;C:\TheRock\build\bin" -Reason 'why') 'siblings are fine'
         }
     }
+
+    It 'flags a llama directory on PATH in any spelling, with its reason, and nothing else' { Assert-LlamaPathShadowing }
 }
 
 Describe 'LlamaCpp check: llama-server --version and llama-cli --list-devices' {
@@ -536,7 +552,7 @@ Describe 'LlamaCpp check: llama-server --version and llama-cli --list-devices' {
         }
     }
 
-    It '--list-devices passes only when ggml-hip got an answer from the HIP runtime, and reports every other outcome' {
+    function Assert-LlamaDeviceProbeOutcomes {
         # P '' = no finding. The first answer is b11472's in the rocm container on 2026-10-07, verbatim; the second a GPU host's.
         $cases = @(
             @{ P = ''; Body = "echo 0.00.142.520 E ggml_cuda_init: failed to initialize ROCm: no ROCm-capable device is detected 1>&2`r`necho Available devices:`r`necho   (none)" }
@@ -554,6 +570,8 @@ Describe 'LlamaCpp check: llama-server --version and llama-cli --list-devices' {
             Assert-Match 'is missing' (Get-LlamaCppRunFinding -Run devices -Exe (Join-Path $dir 'nope.exe')) 'a missing llama-cli'
         }
     }
+
+    It '--list-devices passes only when ggml-hip got an answer from the HIP runtime, and reports every other outcome' { Assert-LlamaDeviceProbeOutcomes }
 }
 
 Describe 'LlamaCpp check: the Vulkan loader resolves from System32 or PATH, never from the llama dir' {
@@ -734,7 +752,7 @@ Describe 'Installer, check, Dockerfile and deps.json agree per backend' {
         }
     }
 
-    It 'gives each home a deps.json llama.cpp row on the one build pin, and names it in the libomp row (both zips ship libomp)' {
+    function Assert-LlamaDependencyRows {
         $deps = Get-TestJsonFile -Path (Join-Path (Get-RepoRoot) 'docs\deps\deps.json')
         $subs = @(@($deps.sections | Where-Object { $_.title -eq 'Windows Image' }).subsections | Where-Object { $_.title -match '^llama\.cpp .*\(rocm variant only\)$' })
         Assert-Equal 1 $subs.Count 'one rocm-only llama.cpp subsection'
@@ -749,6 +767,8 @@ Describe 'Installer, check, Dockerfile and deps.json agree per backend' {
         }
         Assert-Equal 0 @($rows | Where-Object { $_.name -match 'amdhip64|rocm_kpack|amd_comgr' }).Count 'no bundled HIP runtime row: ggml-hip loads the image''s'
     }
+
+    It 'gives each home a deps.json llama.cpp row on the one build pin, and names it in the libomp row (both zips ship libomp)' { Assert-LlamaDependencyRows }
 }
 
 Describe 'Dockerfile.rocm-llama: rocm-only stage, two layers off PATH, closure mounted, checks armed' {
@@ -766,7 +786,7 @@ Describe 'Dockerfile.rocm-llama: rocm-only stage, two layers off PATH, closure m
         Assert-Match 'LLAMA_CPP_VULKAN_HOME="C:\\runtime\\opt\\llama\.cpp-vulkan"' $code 'Vulkan home is exposed by ENV'
     }
 
-    It 'mounts a closed module set: what every script imports, and what every mounted module imports' {
+    function Assert-LlamaModuleClosure {
         # Closed under imports, so it holds the transitive closure without walking it.
         $copy = [regex]::Match($code, '(?s)FROM \$\{BASE_IMAGE\} AS llamamods\nCOPY (.+?) C:\\bkmods\\').Groups[1].Value
         $mounted = @([regex]::Matches($copy, 'windows\\scripts\\modules\\([\w.]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
@@ -781,6 +801,8 @@ Describe 'Dockerfile.rocm-llama: rocm-only stage, two layers off PATH, closure m
         foreach ($m in $needed.Keys) { Assert-True ($mounted -contains $m) "$m (imported by $($needed[$m])) is not in the llamamods closure" }
         Assert-Equal 2 @([regex]::Matches($code, 'from=llamamods,source=/bkmods,target=C:\\bkmnt\\modules')).Count 'both RUNs mount the closure'
     }
+
+    It 'mounts a closed module set: what every script imports, and what every mounted module imports' { Assert-LlamaModuleClosure }
 
     It 'builds, installs and checks HIP in one RUN and Vulkan in another, failing the stage on any finding' {
         $runs = @([regex]::Matches($code, '(?s)RUN --mount.*?throw \(.*?\)\s*\}') | ForEach-Object { $_.Value })

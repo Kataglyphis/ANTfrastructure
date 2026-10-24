@@ -75,6 +75,7 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 | Look up an error message | [docs/failure-modes.md](docs/failure-modes.md) |
 | Know which workflow runs when | [docs/ci-build-triggers.md](docs/ci-build-triggers.md) |
 | Know every quality gate, the exception policy and shared build behavior | [Quality tooling, including duplication scan boundaries](docs/code-quality-tooling.md#the-allowlist-contract) · [Gate registry](docs/code-quality-gates.md) · [Test worker cleanup](docs/code-quality-tooling.md#the-gates-run-side-by-side) · [Linux compiler, APT and privilege policies](docs/shared-script-libraries.md) · [Windows dependency graphs, bounded TCP probes and fixtures](docs/windows-builds.md#shared-windows-behavior) |
+| Check Windows PowerShell complexity | [Scanner, limits and ignored report folder](docs/code-quality-tooling.md#windows-powershell-complexity) |
 | Know what is inside an image, and under which licence | [docs/third-party-licenses.md](docs/third-party-licenses.md) · [docs/sbom.md](docs/sbom.md) · [docs/vulnerability-scanning.md](docs/vulnerability-scanning.md) |
 | Serve LLMs on the family's reference server | [linux/llm-stack/README.md](linux/llm-stack/README.md) |
 | Run a coding agent on-device on a Snapdragon (GenieX) | [docs/geniex-local-ai-setup.md](docs/geniex-local-ai-setup.md) |

@@ -4,6 +4,24 @@
 $modulePath = Join-Path (Split-Path (Split-Path $PSCommandPath -Parent) -Parent) 'modules\WindowsSmokeTest.Common.psm1'
 Import-Module $modulePath -Force
 
+function Assert-SmokeCounters {
+    param($Summary, [int]$Passed, [int]$Failed, [int]$Skipped, [int]$Total, [bool]$Aborted)
+    Assert-Equal $Passed $Summary.Passed 'passed count'
+    Assert-Equal $Failed $Summary.Failed 'failed count'
+    Assert-Equal $Skipped $Summary.Skipped 'skipped count'
+    Assert-Equal $Total $Summary.Total 'total count'
+    Assert-Equal $Aborted $Summary.Aborted 'abort state'
+}
+
+function Get-SmokeCounterScenario {
+    param([bool]$ExitOnFirstFailure, [scriptblock]$AfterFailure)
+    Initialize-SmokeTestRun -ExitOnFirstFailure:$ExitOnFirstFailure
+    Assert-Test -Name 'true' -Condition { $true }
+    Assert-Test -Name 'false' -Condition { $false } -FailMessage 'deliberate'
+    & $AfterFailure
+    return Get-SmokeTestSummary
+}
+
 Describe 'Smoke harness counters' {
 
     It 'Initialize-SmokeTestRun zeroes every counter' {
@@ -19,15 +37,8 @@ Describe 'Smoke harness counters' {
     }
 
     It 'counts a passing, a failing and a skipped assertion into the summary' {
-        Initialize-SmokeTestRun
-        Assert-Test -Name 'true'  -Condition { $true }
-        Assert-Test -Name 'false' -Condition { $false } -FailMessage 'deliberate'
-        Skip-Test 'deliberate skip'
-        $s = Get-SmokeTestSummary
-        Assert-Equal 1 $s.Passed  'one pass'
-        Assert-Equal 1 $s.Failed  'one fail'
-        Assert-Equal 1 $s.Skipped 'one skip'
-        Assert-Equal 3 $s.Total   'total is the sum'
+        $summary = Get-SmokeCounterScenario -ExitOnFirstFailure $false -AfterFailure { Skip-Test 'deliberate skip' }
+        Assert-SmokeCounters -Summary $summary -Passed 1 -Failed 1 -Skipped 1 -Total 3 -Aborted $false
     }
 
     It 'records the failure message in FailureDetails' {
@@ -51,16 +62,11 @@ Describe '-ExitOnFirstFailure across the module boundary' {
     # Inside a module the dynamic-scope lookup finds nothing, so the abort would silently never fire.
 
     It 'aborts at the first failure and short-circuits later assertions' {
-        Initialize-SmokeTestRun -ExitOnFirstFailure
-        Assert-Test -Name 'ok'    -Condition { $true }
-        Assert-Test -Name 'boom'  -Condition { $false } -FailMessage 'first failure'
-        Assert-Test -Name 'later' -Condition { $true }
-        Skip-Test 'later skip'
-        $s = Get-SmokeTestSummary
-        Assert-True  $s.Aborted 'abort flag set'
-        Assert-Equal 1 $s.Passed  'the assertion AFTER the failure did not run'
-        Assert-Equal 1 $s.Failed  'exactly the one failure'
-        Assert-Equal 0 $s.Skipped 'the skip after the failure did not count either'
+        $summary = Get-SmokeCounterScenario -ExitOnFirstFailure $true -AfterFailure {
+            Assert-Test -Name 'later' -Condition { $true }
+            Skip-Test 'later skip'
+        }
+        Assert-SmokeCounters -Summary $summary -Passed 1 -Failed 1 -Skipped 0 -Total 2 -Aborted $true
     }
 
     It 'keeps running after a failure when the switch is absent (default)' {

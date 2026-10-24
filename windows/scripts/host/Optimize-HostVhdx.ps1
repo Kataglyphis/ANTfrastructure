@@ -63,6 +63,24 @@ function Get-GuestVolumeInfo {
     }
 }
 
+function Write-GuestVolumeReport {
+    param($Volume, [long]$PhysicalBytes, $Log)
+    if ($Volume) {
+        $used = $Volume.Size - $Volume.SizeRemaining
+        Write-HostStep -Log $Log ('guest fs  : {0} ({1}), {2:N1} GB used of {3:N1} GB' -f
+            $Volume.FileSystem, $Volume.FileSystemLabel, ($used / 1GB), ($Volume.Size / 1GB))
+        Write-HostStep -Log $Log ('potential : ~{0:N1} GB of dead blocks' -f (($PhysicalBytes - $used) / 1GB))
+        if ($Volume.FileSystem -eq 'ReFS') {
+            Write-HostStep -Log $Log 'WARNING: ReFS guest — Optimize-VHD usually reclaims ~nothing here.' 'Yellow'
+            Write-HostStep -Log $Log '         ReFS does not report free blocks via UNMAP the way NTFS does;' 'Yellow'
+            Write-HostStep -Log $Log '         expect "Optimize-VHD OK" with a near-zero delta. The reliable' 'Yellow'
+            Write-HostStep -Log $Log '         reclaim on ReFS is rebuilding the VHDX around its live data.' 'Yellow'
+        }
+    } else {
+        Write-HostStep -Log $Log 'guest fs  : not attached (or unreadable) — skipping the potential estimate.'
+    }
+}
+
 $snapshotArgs = @{ Path = $VhdxPath; Drive = (Split-Path $VhdxPath -Qualifier).TrimEnd(':') }
 $before = Get-HostMaintenanceVhdxSnapshot @snapshotArgs
 $physicalBefore = $before.PhysicalBytes
@@ -73,21 +91,7 @@ Write-HostStep -Log $hostLog ('physical  : {0:N1} GB' -f ($physicalBefore / 1GB)
 Write-HostStep -Log $hostLog ('host free : {0:N1} GB' -f ($freeBefore / 1GB))
 
 $volume = Get-GuestVolumeInfo -Path $VhdxPath
-if ($volume) {
-    $used = $volume.Size - $volume.SizeRemaining
-    Write-HostStep -Log $hostLog ('guest fs  : {0} ({1}), {2:N1} GB used of {3:N1} GB' -f
-        $volume.FileSystem, $volume.FileSystemLabel, ($used / 1GB), ($volume.Size / 1GB))
-    Write-HostStep -Log $hostLog ('potential : ~{0:N1} GB of dead blocks' -f (($physicalBefore - $used) / 1GB))
-
-    if ($volume.FileSystem -eq 'ReFS') {
-        Write-HostStep -Log $hostLog 'WARNING: ReFS guest — Optimize-VHD usually reclaims ~nothing here.' 'Yellow'
-        Write-HostStep -Log $hostLog '         ReFS does not report free blocks via UNMAP the way NTFS does;' 'Yellow'
-        Write-HostStep -Log $hostLog '         expect "Optimize-VHD OK" with a near-zero delta. The reliable' 'Yellow'
-        Write-HostStep -Log $hostLog '         reclaim on ReFS is rebuilding the VHDX around its live data.' 'Yellow'
-    }
-} else {
-    Write-HostStep -Log $hostLog 'guest fs  : not attached (or unreadable) — skipping the potential estimate.'
-}
+Write-GuestVolumeReport -Volume $volume -PhysicalBytes $physicalBefore -Log $hostLog
 
 if ($ReportOnly) {
     Write-HostStep -Log $hostLog 'ReportOnly: nothing changed.' 'Cyan'

@@ -15,14 +15,8 @@ if (Test-Path $gstTargetArchPath) {
            'without it. Add WindowsTargetArch.Common.psm1 to the COPY list that carries this module.')
 }
 
-function Get-RequiredGstPlugin {
-    # The one plugin contract build, smoke test and healthcheck share; Detection says how upstream finds each dependency.
-    [CmdletBinding()]
-    param([string]$Arch = '')
-
-    $gstArch = Get-WindowsTargetArch -Arch $Arch
-
-    $contract = @(
+# Keep one private template so callers cannot alter the next build or smoke gate's contract.
+$script:RequiredGstPluginContract = @(
         [pscustomobject]@{
             Name      = 'libav'
             Provides  = 'avdec_* / avenc_* / avmux_* — the FFmpeg codec bridge'
@@ -148,8 +142,32 @@ function Get-RequiredGstPlugin {
         }
     )
 
+function Copy-GstPluginContractEntry {
+    param([pscustomobject]$Entry)
+    $properties = [ordered]@{}
+    foreach ($property in $Entry.PSObject.Properties) {
+        $value = $property.Value
+        if ($value -is [System.Collections.IDictionary]) {
+            $copy = @{}
+            foreach ($key in $value.Keys) { $copy[$key] = $value[$key] }
+            $value = $copy
+        } elseif ($value -is [array]) { $value = @($value) }
+        $properties[$property.Name] = $value
+    }
+    return [pscustomobject]$properties
+}
+
+function Get-RequiredGstPlugin {
+    # Each caller gets independent entries because build, smoke and healthcheck share this contract.
+    [CmdletBinding()]
+    param([string]$Arch = '')
+
+    $gstArch = Get-WindowsTargetArch -Arch $Arch
+
+    $contract = $script:RequiredGstPluginContract
+
     # A dropped entry is logged: a silent removal is how an image once shipped without plugins.
-    $available = @($contract | Where-Object { -not $_.UnavailableOn.ContainsKey($gstArch) })
+    $available = @($contract | Where-Object { -not $_.UnavailableOn.ContainsKey($gstArch) } | ForEach-Object { Copy-GstPluginContractEntry -Entry $_ })
     foreach ($dropped in @($contract | Where-Object { $_.UnavailableOn.ContainsKey($gstArch) })) {
         Write-Verbose "Get-RequiredGstPlugin: '$($dropped.Name)' is not required on $gstArch - $($dropped.UnavailableOn[$gstArch])"
     }
@@ -335,6 +353,52 @@ function Get-GstLoopbackTeardownError {
     return @($elementErrors + @($ConsumerErr -split "`r?`n" | Where-Object { $_ -match 'receiver is gone' }))
 }
 
+function Wait-GstLoopbackReady {
+    param($Producer, [datetime]$Deadline, [scriptblock]$Probe)
+    $ready = $false
+    while (-not $ready -and -not $Producer.HasExited -and [DateTime]::UtcNow -lt $Deadline) {
+        $ready = [bool](& $Probe)
+        if (-not $ready) { Start-Sleep -Milliseconds 250 }
+    }
+    return $ready
+}
+
+function Test-GstLoopbackReadiness {
+    param($Producer, [ValidateSet('Port', 'Registration')][string]$Condition, [int]$Port, [string]$ProducerLogPath, [datetime]$Deadline)
+    if ($Condition -eq 'Port') {
+        $probe = {
+            $client = [System.Net.Sockets.TcpClient]::new()
+            try { return ($client.ConnectAsync('127.0.0.1', $Port).Wait(500) -and $client.Connected) }
+            catch { return $false }
+            finally { $client.Dispose() }
+        }.GetNewClosure()
+    } else {
+        # The signalling port can listen before webrtcsink registers its producer.
+        $readShared = { param([string]$Path) $fs = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite'); try { [IO.StreamReader]::new($fs).ReadToEnd() } finally { $fs.Dispose() } }
+        $probe = { (Test-Path -LiteralPath $ProducerLogPath) -and ((& $readShared $ProducerLogPath) -match 'registered as \[Producer\]') }.GetNewClosure()
+    }
+    return Wait-GstLoopbackReady -Producer $Producer -Deadline $Deadline -Probe $probe
+}
+
+function Add-GstLoopbackLogDetail {
+    param($Result, [hashtable]$Logs, [string]$LogDir, [int]$Port)
+    foreach ($name in 'consumer-err', 'consumer-out', 'producer-err', 'producer-out') {
+        if (Test-Path $Logs[$name]) { $Result.Detail += @(Get-Content $Logs[$name] -Tail 12 | ForEach-Object { "${name}: $_" }) }
+    }
+    $Result.Detail += "full logs: $LogDir\webrtc-loopback-$Port-*.log"
+}
+
+function Set-GstLoopbackTeardownResult {
+    param($Result, [hashtable]$Logs, [int]$Frames)
+    if ($Result.ExitCode -eq 0 -or $Result.TimedOut -or -not (Test-Path $Logs['consumer-out']) -or -not (Test-Path $Logs['consumer-err'])) { return }
+    $teardown = @(Get-GstLoopbackTeardownError -ConsumerOut (Get-Content -Raw $Logs['consumer-out']) `
+            -ConsumerErr (Get-Content -Raw $Logs['consumer-err']) -Frames $Frames)
+    if ($teardown.Count -gt 0) {
+        $Result.TeardownError = $teardown
+        $Result.ExitCode = 0
+    }
+}
+
 function Invoke-GstWebRtcLoopback {
     # webrtcsink to webrtcsrc over the built-in signalling server on loopback; passes only when the consumer decodes -Frames frames and exits 0.
     [CmdletBinding()]
@@ -367,26 +431,11 @@ function Invoke-GstWebRtcLoopback {
             -RedirectStandardOutput $logs['producer-out'] -RedirectStandardError $logs['producer-err']
         # Read once now: a Process started this way reports no ExitCode unless its handle was taken before it exited.
         $null = $producer.Handle
-        $deadline = [DateTime]::UtcNow.AddSeconds(20)
-        $listening = $false
-        while (-not $listening -and -not $producer.HasExited -and [DateTime]::UtcNow -lt $deadline) {
-            $client = [System.Net.Sockets.TcpClient]::new()
-            try { $listening = $client.ConnectAsync('127.0.0.1', $port).Wait(500) -and $client.Connected } catch { $listening = $false } finally { $client.Dispose() }
-            if (-not $listening) { Start-Sleep -Milliseconds 250 }
-        }
-        if (-not $listening) {
+        if (-not (Test-GstLoopbackReadiness -Producer $producer -Condition Port -Port $port -Deadline ([DateTime]::UtcNow.AddSeconds(20)))) {
             $result.Detail = @("the producer's signalling server never listened on 127.0.0.1:$port (producer exited: $($producer.HasExited))")
             return $result
         }
-        # The port listens before webrtcsink registers; a consumer that lists first finds no producer and waits for good (arm64, CON63).
-        $readShared = { param([string]$Path) $fs = [IO.File]::Open($Path, 'Open', 'Read', 'ReadWrite'); try { [IO.StreamReader]::new($fs).ReadToEnd() } finally { $fs.Dispose() } }
-        $deadline = [DateTime]::UtcNow.AddSeconds(30)
-        $registered = $false
-        while (-not $registered -and -not $producer.HasExited -and [DateTime]::UtcNow -lt $deadline) {
-            $registered = (Test-Path -LiteralPath $logs['producer-out']) -and ((& $readShared $logs['producer-out']) -match 'registered as \[Producer\]')
-            if (-not $registered) { Start-Sleep -Milliseconds 250 }
-        }
-        if (-not $registered) {
+        if (-not (Test-GstLoopbackReadiness -Producer $producer -Condition Registration -ProducerLogPath $logs['producer-out'] -Deadline ([DateTime]::UtcNow.AddSeconds(30)))) {
             $result.Detail = @("webrtcsink never registered as a producer with the signalling server on 127.0.0.1:$port (producer exited: $($producer.HasExited))")
             return $result
         }
@@ -404,19 +453,9 @@ function Invoke-GstWebRtcLoopback {
         foreach ($p in @($consumer, $producer)) {
             if ($p -and -not $p.HasExited) { try { $p.Kill($true) } catch { Write-Verbose "loopback: kill failed: $($_.Exception.Message)" } }
         }
-        foreach ($n in 'consumer-err', 'consumer-out', 'producer-err', 'producer-out') {
-            if (Test-Path $logs[$n]) { $result.Detail += @(Get-Content $logs[$n] -Tail 12 | ForEach-Object { "${n}: $_" }) }
-        }
-        $result.Detail += "full logs: $LogDir\webrtc-loopback-$port-*.log"
+        Add-GstLoopbackLogDetail -Result $result -Logs $logs -LogDir $LogDir -Port $port
     }
-    if ($result.ExitCode -ne 0 -and -not $result.TimedOut -and (Test-Path $logs['consumer-out']) -and (Test-Path $logs['consumer-err'])) {
-        $teardown = @(Get-GstLoopbackTeardownError -ConsumerOut (Get-Content -Raw $logs['consumer-out']) `
-                -ConsumerErr (Get-Content -Raw $logs['consumer-err']) -Frames $Frames)
-        if ($teardown.Count -gt 0) {
-            $result.TeardownError = $teardown
-            $result.ExitCode = 0
-        }
-    }
+    Set-GstLoopbackTeardownResult -Result $result -Logs $logs -Frames $Frames
     return $result
 }
 

@@ -192,6 +192,13 @@ function Write-BuildLog {
     Write-ContextLog -Context $Context -Message $Message -Level Info
 }
 
+function Write-BuildLogMessages {
+    param([pscustomobject]$Context, [string[]]$Messages)
+    foreach ($message in $Messages) {
+        Write-BuildLog -Context $Context -Message $message
+    }
+}
+
 function Write-BuildLogWarning {
     param(
         [Parameter(Mandatory)]
@@ -529,18 +536,8 @@ function Invoke-BuildStep {
     return ($null -eq $operation.ErrorRecord)
 }
 
-function Write-BuildSummary {
-    param(
-        [Parameter(Mandatory)]
-        [pscustomobject]$Context
-    )
-
-    Write-BuildLog -Context $Context -Message ""
-    Write-BuildLog -Context $Context -Message ("=" * 60)
-    Write-BuildLog -Context $Context -Message "=== BUILD PIPELINE SUMMARY ==="
-    Write-BuildLog -Context $Context -Message ("=" * 60)
-    Write-BuildLog -Context $Context -Message ""
-
+function Write-BuildSummarySteps {
+    param([pscustomobject]$Context)
     if ($Context.Results.Succeeded.Count -gt 0) {
         Write-BuildLogSuccess -Context $Context -Message "SUCCEEDED ($($Context.Results.Succeeded.Count)):"
         foreach ($step in $Context.Results.Succeeded) {
@@ -568,6 +565,69 @@ function Write-BuildSummary {
     }
 
     Write-BuildLog -Context $Context -Message ""
+}
+
+function Write-BuildSummaryErrorDetails {
+    param([pscustomobject]$Context)
+    if ($Context.Results.Failed.Count -gt 0) {
+        Write-BuildLog -Context $Context -Message ""
+        Write-BuildLog -Context $Context -Message ("=" * 60)
+        Write-BuildLogError -Context $Context -Message "=== ERROR DETAILS ==="
+        Write-BuildLog -Context $Context -Message ("=" * 60)
+        $errorIndex = 1
+        foreach ($step in $Context.Results.Failed) {
+            Write-BuildLogError -Context $Context -Message ""
+            Write-BuildLogError -Context $Context -Message "[$errorIndex/$($Context.Results.Failed.Count)] $step"
+            Write-BuildLogError -Context $Context -Message "    $($Context.Results.Errors[$step])"
+            $errorIndex++
+        }
+        Write-BuildLog -Context $Context -Message ""
+    }
+}
+
+function Write-BuildSummaryJson {
+    param([pscustomobject]$Context, [int]$Total, [double]$SuccessRate)
+    try {
+        $summary = [ordered]@{
+            startedAt = $Context.StartedAt
+            finishedAt = (Get-Date).ToString('o')
+            workspace = $Context.Workspace
+            logPath = $Context.LogPath
+            summaryPath = $Context.SummaryPath
+            totals = [ordered]@{
+                total = $Total
+                succeeded = $Context.Results.Succeeded.Count
+                failed = $Context.Results.Failed.Count
+                successRate = $SuccessRate
+            }
+            succeededSteps = @($Context.Results.Succeeded)
+            failedSteps = @($Context.Results.Failed)
+            errors = $Context.Results.Errors
+            durations = $Context.Results.Durations
+        }
+
+        $summaryJson = $summary | ConvertTo-Json -Depth 8
+        Set-Content -Path $Context.SummaryPath -Value $summaryJson -Encoding UTF8
+        Write-BuildLog -Context $Context -Message "Machine-readable summary available at: $($Context.SummaryPath)"
+    } catch {
+        Write-BuildLogWarning -Context $Context -Message "Failed to write JSON summary: $($_.Exception.Message)"
+    }
+}
+
+function Write-BuildSummary {
+    param(
+        [Parameter(Mandatory)]
+        [pscustomobject]$Context
+    )
+
+    Write-BuildLog -Context $Context -Message ""
+    Write-BuildLog -Context $Context -Message ("=" * 60)
+    Write-BuildLog -Context $Context -Message "=== BUILD PIPELINE SUMMARY ==="
+    Write-BuildLog -Context $Context -Message ("=" * 60)
+    Write-BuildLog -Context $Context -Message ""
+
+    Write-BuildSummarySteps -Context $Context
+
     # Allowed failures count toward the total, or the headline reads 100% over failed steps.
     $allowedCount = if ($null -ne $Context.Results.AllowedFailures) { $Context.Results.AllowedFailures.Count } else { 0 }
     $total = $Context.Results.Succeeded.Count + $Context.Results.Failed.Count + $allowedCount
@@ -587,20 +647,8 @@ function Write-BuildSummary {
         }
     }
 
-    if ($Context.Results.Failed.Count -gt 0) {
-        Write-BuildLog -Context $Context -Message ""
-        Write-BuildLog -Context $Context -Message ("=" * 60)
-        Write-BuildLogError -Context $Context -Message "=== ERROR DETAILS ==="
-        Write-BuildLog -Context $Context -Message ("=" * 60)
-        $errorIndex = 1
-        foreach ($step in $Context.Results.Failed) {
-            Write-BuildLogError -Context $Context -Message ""
-            Write-BuildLogError -Context $Context -Message "[$errorIndex/$($Context.Results.Failed.Count)] $step"
-            Write-BuildLogError -Context $Context -Message "    $($Context.Results.Errors[$step])"
-            $errorIndex++
-        }
-        Write-BuildLog -Context $Context -Message ""
-    }
+    Write-BuildSummaryErrorDetails -Context $Context
+
 
     if ($Context.LogPath) {
         Write-BuildLog -Context $Context -Message "Full log available at: $($Context.LogPath)"
@@ -612,31 +660,7 @@ function Write-BuildSummary {
         Write-BuildLogSuccess -Context $Context -Message "Pipeline completed successfully!"
     }
 
-    try {
-        $summary = [ordered]@{
-            startedAt = $Context.StartedAt
-            finishedAt = (Get-Date).ToString('o')
-            workspace = $Context.Workspace
-            logPath = $Context.LogPath
-            summaryPath = $Context.SummaryPath
-            totals = [ordered]@{
-                total = $total
-                succeeded = $Context.Results.Succeeded.Count
-                failed = $Context.Results.Failed.Count
-                successRate = $successRate
-            }
-            succeededSteps = @($Context.Results.Succeeded)
-            failedSteps = @($Context.Results.Failed)
-            errors = $Context.Results.Errors
-            durations = $Context.Results.Durations
-        }
-
-        $summaryJson = $summary | ConvertTo-Json -Depth 8
-        Set-Content -Path $Context.SummaryPath -Value $summaryJson -Encoding UTF8
-        Write-BuildLog -Context $Context -Message "Machine-readable summary available at: $($Context.SummaryPath)"
-    } catch {
-        Write-BuildLogWarning -Context $Context -Message "Failed to write JSON summary: $($_.Exception.Message)"
-    }
+    Write-BuildSummaryJson -Context $Context -Total $total -SuccessRate $successRate
 }
 
 function Get-PyprojectPackageName {
@@ -680,6 +704,7 @@ Export-ModuleMember -Function @(
     'Open-BuildLog',
     'Close-BuildLog',
     'Write-BuildLog',
+    'Write-BuildLogMessages',
     'Write-BuildLogWarning',
     'Write-BuildLogError',
     'Write-BuildLogSuccess',
@@ -1074,6 +1099,25 @@ function Stop-SccacheServerQuietly {
 .PARAMETER VersionText
     Test seam: sccache --version's output.
 #>
+function Get-CiCacheRestoreVersion {
+    if (Get-Command sccache -ErrorAction SilentlyContinue) {
+        return "$(& sccache --version 2>$null)"
+    }
+    return ''
+}
+
+function Get-CiCacheRestoreLocalRoot {
+    if ($env:GLOBAL_CACHE_DIR) { return $env:GLOBAL_CACHE_DIR }
+    $fast = if ($env:KATAGLYPHIS_FAST_BUILD_DIR) { $env:KATAGLYPHIS_FAST_BUILD_DIR } else { 'C:\kataglyphis_fast_build' }
+    return Join-Path $fast '.cache'
+}
+
+function Set-CiCacheRestoreEnvironment {
+    param([string[]]$Cache, [string]$LocalRoot)
+    if ($Cache -contains 'sccache') { $env:SCCACHE_DIR = Join-Path $LocalRoot 'sccache' }
+    if ($Cache -contains 'cargo') { $env:CARGO_HOME = Join-Path $LocalRoot 'cargo' }
+}
+
 function Restore-CiCompilerCache {
     [CmdletBinding()]
     param(
@@ -1089,21 +1133,17 @@ function Restore-CiCompilerCache {
         elseif ($Context) { Write-BuildLog -Context $Context -Message $Message }
         elseif ($Warn) { Write-Warning $Message } else { Write-Host $Message } }
     if (-not $CacheRoot) { return $null }
-    if (-not $PSBoundParameters.ContainsKey('VersionText') -and (Get-Command sccache -ErrorAction SilentlyContinue)) {
-        $VersionText = "$(& sccache --version 2>$null)"
+    if (-not $PSBoundParameters.ContainsKey('VersionText')) {
+        $VersionText = Get-CiCacheRestoreVersion
     }
     if ($RequireModuleSafeSccache -and -not (Test-SccacheModuleSafe $VersionText)) {
         & $say -Warn "sccache: '$VersionText' serves stale clang-cl module importers (mozilla/sccache#2876); this run neither uses nor fills the CI cache"
         return $null
     }
-    if (-not $LocalRoot) {
-        $fast = if ($env:KATAGLYPHIS_FAST_BUILD_DIR) { $env:KATAGLYPHIS_FAST_BUILD_DIR } else { 'C:\kataglyphis_fast_build' }
-        $LocalRoot = if ($env:GLOBAL_CACHE_DIR) { $env:GLOBAL_CACHE_DIR } else { Join-Path $fast '.cache' }
-    }
+    if (-not $LocalRoot) { $LocalRoot = Get-CiCacheRestoreLocalRoot }
     Stop-SccacheServerQuietly
     foreach ($name in $Cache) { Move-CiCacheTree -From (Join-Path $CacheRoot $name) -To (Join-Path $LocalRoot $name) }
-    if ($Cache -contains 'sccache') { $env:SCCACHE_DIR = Join-Path $LocalRoot 'sccache' }
-    if ($Cache -contains 'cargo') { $env:CARGO_HOME = Join-Path $LocalRoot 'cargo' }
+    Set-CiCacheRestoreEnvironment -Cache $Cache -LocalRoot $LocalRoot
     & $say "CI compiler cache: $($Cache -join ', ') restored from $CacheRoot into $LocalRoot$(if ($VersionText) { " ($VersionText)" })"
     return [pscustomobject]@{ CacheRoot = $CacheRoot; LocalRoot = $LocalRoot; Cache = @($Cache); Context = $Context }
 }

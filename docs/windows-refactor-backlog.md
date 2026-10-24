@@ -8,7 +8,7 @@ SPDX-License-Identifier: MIT
 Open work, standing directives and pending host/upstream actions for the
 Windows container chain. Settled items are archived under
 `docs/windows-backlog-archive-*.md`; the latest grooming is
-[`2026-10-23`](windows-backlog-archive-2026-10-23.md).
+[`2026-10-24`](windows-backlog-archive-2026-10-24.md).
 
 The Linux-side equivalent is [`refactoring-backlog.md`](refactoring-backlog.md).
 
@@ -18,26 +18,6 @@ The Linux-side equivalent is [`refactoring-backlog.md`](refactoring-backlog.md).
 > resolves there. Lean-OPEN-only is the owner's standing policy.
 
 ## OPEN
-
-### PowerShell complexity (opened 2026-10-24)
-
-The Windows x64 workflow now runs `Invoke-CodeComplexity.ps1` over tracked
-PowerShell and prints the functions and scripts above the 15/5/80 limits.
-The whole-tree run remains a report while older findings are refactored; the
-scanner, AST reader, Slang, CodeQL, image config, LLVM diagnostic and agentic loop slices already run with `-Strict` in CI.
-Use `-Path <file-or-dir> -Strict` for each new completed slice. A full
-PowerShell 7.6.8 measured 462 tracked files and 2,426 script/function units
-after this refactor: 123 findings (109 cyclomatic, 6 nesting, 8 function size),
-down from 140. Eighty are script-body findings and 43 name a function or method.
-The five new untracked PowerShell files were checked separately
-and had no findings; CI will include them once committed. CPython staging,
-BuildKit stage execution, agent process and loop, the LLVM diagnostic and the
-image config gate now meet the function limits. The largest remaining named
-complexity findings are `Invoke-ContainerBuild` (33),
-`Invoke-TestFunctionMutations` (29), `Invoke-GstWebRtcLoopback` (28) and
-`Resolve-BkVariant` (27). Script-body scores also include test and setup code.
-Re-run the report before quoting counts after later edits. Keep exception
-lists empty and do not raise the limits to clear this queue.
 
 ### ARM64 parity (opened 2026-08-23)
 

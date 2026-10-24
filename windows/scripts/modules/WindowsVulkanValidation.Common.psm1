@@ -6,6 +6,7 @@
 # Sync validation turns on only through a vk_layer_settings.txt beside the executable, hence the staging.
 
 Set-StrictMode -Version Latest
+Import-Module (Join-Path $PSScriptRoot 'WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 # Staged without -SettingsPath, so a project with no settings file still gets a sync-validation run.
 function Get-VulkanLayerSettingsDefaultPath {
@@ -89,10 +90,7 @@ function Write-VulkanValidationReport {
     )
 
     Write-Host ''
-    Write-Host "=== $Label DETECTED ($($Hazard.Count)) ===" -ForegroundColor Red
-    foreach ($line in $Hazard) {
-        Write-Host "  $($line.Line.Trim())" -ForegroundColor Red
-    }
+    Write-RedFindingList -Header "=== $Label DETECTED ($($Hazard.Count)) ===" -Item @($Hazard | ForEach-Object { $_.Line.Trim() })
     Write-Host "Full log: $LogPath" -ForegroundColor Red
 }
 
@@ -119,24 +117,9 @@ function Test-VulkanValidationLog {
     return $true
 }
 
-# Sets $LASTEXITCODE instead of returning it, since a return would collect the executable's stdout.
-function Invoke-VulkanValidationRun {
-    param(
-        [Parameter(Mandatory)]
-        [string]$ExecutablePath,
-        [string[]]$Arguments = @(),
-        # Apps resolve shaders and models relative to the CWD, rarely the binary's directory.
-        [string]$WorkingDirectory = (Get-Location).Path,
-        [Parameter(Mandatory)]
-        [string]$LogPath,
-        # The Vulkan SDK's Bin; empty leaves VK_LAYER_PATH alone, so a system layer is used.
-        [string]$LayerPath,
-        # Defaults to the module's packaged minimal settings file.
-        [string]$SettingsPath,
-        # 0 streams live and waits forever; a positive value redirects to files and kills on overrun.
-        [int]$TimeoutSeconds = 0
-    )
-
+function Initialize-VulkanValidationRun {
+    param([string]$ExecutablePath, [string]$WorkingDirectory, [string]$LogPath,
+        [string]$LayerPath, [string]$SettingsPath)
     if (-not (Test-Path $ExecutablePath)) {
         throw "Executable not found at '$ExecutablePath'."
     }
@@ -160,6 +143,31 @@ function Invoke-VulkanValidationRun {
 
     # Next to the executable, not the CWD: the caller may run it from anywhere.
     $staging = Copy-VulkanLayerSettings -SettingsPath $SettingsPath -TargetDirectory (Split-Path $ExecutablePath -Parent)
+    return [pscustomobject]@{ ExecutablePath = $ExecutablePath; Staging = $staging }
+}
+
+# Sets $LASTEXITCODE instead of returning it, since a return would collect the executable's stdout.
+function Invoke-VulkanValidationRun {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ExecutablePath,
+        [string[]]$Arguments = @(),
+        # Apps resolve shaders and models relative to the CWD, rarely the binary's directory.
+        [string]$WorkingDirectory = (Get-Location).Path,
+        [Parameter(Mandatory)]
+        [string]$LogPath,
+        # The Vulkan SDK's Bin; empty leaves VK_LAYER_PATH alone, so a system layer is used.
+        [string]$LayerPath,
+        # Defaults to the module's packaged minimal settings file.
+        [string]$SettingsPath,
+        # 0 streams live and waits forever; a positive value redirects to files and kills on overrun.
+        [int]$TimeoutSeconds = 0
+    )
+
+    $prepared = Initialize-VulkanValidationRun -ExecutablePath $ExecutablePath -WorkingDirectory $WorkingDirectory `
+        -LogPath $LogPath -LayerPath $LayerPath -SettingsPath $SettingsPath
+    $ExecutablePath = $prepared.ExecutablePath
+    $staging = $prepared.Staging
 
     $layerPathWasSet = Test-Path Env:\VK_LAYER_PATH
     $originalLayerPath = if ($layerPathWasSet) { $env:VK_LAYER_PATH } else { $null }

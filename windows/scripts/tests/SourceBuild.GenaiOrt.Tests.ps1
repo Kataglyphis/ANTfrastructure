@@ -9,6 +9,11 @@ $script:GenaiOrtFns = @('New-GenaiOrtHome', 'Get-GenaiOrtCmakeArgs', 'Get-GenaiO
 $script:GenaiShim = 'C:/temp/onnx-genai-src/ort-home'
 $script:GenaiBlock = 'C:/temp/onnx-genai-src/ort-fetch-blocked'
 
+function Assert-GenaiPatternSet {
+    param([string]$Text, [string[]]$Pattern)
+    foreach ($item in $Pattern) { Assert-Match $item $Text }
+}
+
 # ortlib.cmake's own STATUS lines (v0.15.2 :61-65, :227-228) in the teed onnx-genai-configure.log shape.
 $script:GenaiLog = @'
 CMake configure: -S C:\temp\onnx-genai-src -B C:\temp\onnx-genai-src\build\Windows-ClangCL\Release -DORT_HOME:PATH=C:/temp/onnx-genai-src/ort-home -DFETCHCONTENT_SOURCE_DIR_ORTLIB:PATH=C:/temp/onnx-genai-src/ort-fetch-blocked
@@ -80,6 +85,21 @@ build onnxruntime-genai: phony onnxruntime-genai.dll
 "@
 }
 
+Describe 'GenAI artifact staging' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:GenaiOrtScript -FunctionName 'Install-GenaiBuiltArtifacts')
+
+    It 'fails after an empty build tree instead of shipping an empty install' {
+        Invoke-InTestDir { param($dir)
+            $build = Join-Path $dir 'build'
+            $install = Join-Path $dir 'install'
+            New-Item -ItemType Directory -Path $build, $install | Out-Null
+            Assert-Throws {
+                Install-GenaiBuiltArtifacts -SourceDir $dir -BuildDir $build -InstallDir $install
+            } 'empty GenAI output' -MessagePattern 'genai install floor: expected headers plus onnxruntime-genai.*headers=0, dll=0, lib=0'
+        }
+    }
+}
+
 Describe 'GenAI ORT: CMake args (every lane)' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:GenaiOrtScript -FunctionName $script:GenaiOrtFns)
     $joined = { (Get-GenaiOrtCmakeArgs -OrtHome 'C:\temp\onnx-genai-src\ort-home\' -FetchBlockDir 'C:\temp\onnx-genai-src\ort-fetch-blocked') -join '|' }
@@ -110,8 +130,6 @@ Describe 'GenAI: its own tests are not built' {
     }
 }
 
-# One writer for every fixture tree here: relative path -> text, parent dirs created by New-Item -Force.
-$script:GenaiWrite = { param([string]$Root, [System.Collections.IDictionary]$Files) foreach ($rel in $Files.Keys) { $null = New-Item -ItemType File -Force -Path (Join-Path $Root $rel) -Value $Files[$rel] } }
 # A chain ORT as cmake --install lays it out on Windows: flat headers (+ nested provider dirs), lib\*.lib, bin\*.dll.
 $script:GenaiChainFiles = [ordered]@{
     'include\onnxruntime\onnxruntime_c_api.h' = '// chain c api'; 'include\onnxruntime\dml_provider_factory.h' = '// chain dml'
@@ -125,7 +143,7 @@ Describe 'GenAI ORT: the ORT_HOME shim' {
         param([string]$Root, [string]$Without = '')
         $kept = [ordered]@{}
         $script:GenaiChainFiles.Keys | Where-Object { (Split-Path $_ -Leaf) -ne $Without } | ForEach-Object { $kept[$_] = $script:GenaiChainFiles[$_] }
-        & $script:GenaiWrite $Root $kept
+        Write-TestFileTree -Root $Root -Files $kept
         $Root
     }
 
@@ -159,7 +177,7 @@ Describe 'GenAI ORT: the ORT_HOME shim' {
             $chain = & $chainAt (Join-Path $dir 'chain')
             $shimDir = Join-Path $dir 'src\ort-home'
             $null = New-GenaiOrtHome -OrtRoot $chain -ShimRoot $shimDir
-            & $script:GenaiWrite $shimDir @{ 'include\onnxruntime_c_api.h' = '// stale'; 'include\onnxruntime_training_c_api.h' = '// an older chain' }
+            Write-TestFileTree -Root $shimDir -Files @{ 'include\onnxruntime_c_api.h' = '// stale'; 'include\onnxruntime_training_c_api.h' = '// an older chain' }
             $null = New-GenaiOrtHome -OrtRoot $chain -ShimRoot $shimDir
             Assert-False (Test-Path -LiteralPath (Join-Path $shimDir 'include\onnxruntime_training_c_api.h')) 'a header the chain no longer ships is gone'
             $left = @(Get-GenaiOrtTreeFinding -TreeRoot (Join-Path $dir 'src') -OrtRoot $chain)
@@ -171,7 +189,7 @@ Describe 'GenAI ORT: the ORT_HOME shim' {
 Describe 'GenAI ORT: configure gate' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:GenaiOrtScript -FunctionName $script:GenaiOrtFns)
     # The healthy record, with any of its five inputs swapped out by name.
-    $gate = {
+    function Get-GenaiConfigureCaseFinding {
         param([hashtable]$Swap = @{})
         $in = @{ ConfigureLog = $script:GenaiLog; CMakeCache = $script:GenaiCache; BuildNinja = (& $script:GenaiNinjaOf); OrtHome = $script:GenaiShim; FetchBlockDir = $script:GenaiBlock }
         foreach ($name in $Swap.Keys) { $in[$name] = $Swap[$name] }
@@ -179,42 +197,41 @@ Describe 'GenAI ORT: configure gate' {
     }
     $only = {
         param([hashtable]$Swap, [string]$Pattern)
-        $got = @(& $gate $Swap)
+        $got = @(Get-GenaiConfigureCaseFinding -Swap $Swap)
         Assert-Equal 1 $got.Count "$Pattern <- $($got -join ' / ')"
         Assert-Match $Pattern $got[0]
     }
 
     It 'passes the healthy record, extensions'' own _deps included' {
-        $clean = @(& $gate)
+        $clean = @(Get-GenaiConfigureCaseFinding)
         Assert-Equal 0 $clean.Count ($clean -join ' / ')
     }
 
     It 'takes the roots in either slash form, any case, with a trailing separator' {
-        Assert-Equal 0 @(& $gate @{ OrtHome = 'c:\TEMP\onnx-genai-src\ort-home\'; FetchBlockDir = 'C:\temp\onnx-genai-src\ort-fetch-blocked\' }).Count
+        Assert-Equal 0 @(Get-GenaiConfigureCaseFinding -Swap @{ OrtHome = 'c:\TEMP\onnx-genai-src\ort-home\'; FetchBlockDir = 'C:\temp\onnx-genai-src\ort-fetch-blocked\' }).Count
     }
 
     It 'fails the upstream fallback: the NuGet line, its dirs, no ORT_HOME, the compiles and links reading _deps\ortlib-src' {
         $nuget = 'C:\temp\onnx-genai-src\build\Windows-ClangCL\Release\_deps\ortlib-src'
         $fetchedNinja = & $script:GenaiNinjaOf -Includes "-I$nuget\build\native\include" -DllLibPath "-LIBPATH:$nuget\runtimes\win-x64\native" -PydLibPath "-LIBPATH:$nuget\runtimes\win-x64\native"
         $bareCache = ($script:GenaiCache -split '\r?\n' | Where-Object { $_ -notmatch '^(ORT_HOME|FETCHCONTENT_SOURCE_DIR_)' }) -join "`n"
-        $text = (& $gate @{ ConfigureLog = $script:GenaiLogFetched; CMakeCache = $bareCache; BuildNinja = $fetchedNinja }) -join ' / '
-        foreach ($p in 'downloaded ONNX Runtime: -- Using ONNX Runtime package Microsoft\.ML\.OnnxRuntime\.DirectML', "no 'Using ONNX Runtime from",
+        $text = (Get-GenaiConfigureCaseFinding -Swap @{ ConfigureLog = $script:GenaiLogFetched; CMakeCache = $bareCache; BuildNinja = $fetchedNinja }) -join ' / '
+        Assert-GenaiPatternSet -Text $text -Pattern @('downloaded ONNX Runtime: -- Using ONNX Runtime package Microsoft\.ML\.OnnxRuntime\.DirectML', "no 'Using ONNX Runtime from",
             "set ORT_HEADER_DIR to '.*/_deps/ortlib-src/build/native/include'", "set ORT_LIB_DIR to '.*/_deps/ortlib-src/runtimes/win-x64/native'",
             'CMakeCache\.txt has no ORT_HOME', 'CMakeCache\.txt has no FETCHCONTENT_SOURCE_DIR_ORTLIB', 'onnxruntime-genai\.dll .*links onnxruntime\.lib without',
-            'onnxruntime_genai\.cp314-win_amd64\.pyd links onnxruntime\.lib without', '1 of 2 GenAI compiles lack', 'build\.ninja names a downloaded ONNX Runtime') {
-            Assert-Match $p $text
-        }
+            'onnxruntime_genai\.cp314-win_amd64\.pyd links onnxruntime\.lib without', '1 of 2 GenAI compiles lack', 'build\.ninja names a downloaded ONNX Runtime')
     }
 
     It 'fails each ortlib.cmake line that is missing or names another dir, one finding apiece (mutation)' {
-        $cases = [ordered]@{
-            "no 'Using ONNX Runtime from"                               = @('(?m)^.*\[absolute\]\r?$', '')
-            "took ORT_HOME 'C:/temp/onnx-genai-src/nuget'"              = @('ort-home \[absolute\]', 'nuget [absolute]')
-            'no ORT_HEADER_DIR line'                                    = @('(?m)^-- ORT_HEADER_DIR:.*$', '')
-            "set ORT_LIB_DIR to 'C:/temp/onnx-genai-src/other/lib'"    = @('ort-home/lib', 'other/lib')
-            'downloaded ONNX Runtime: -- ONNX Runtime URL'              = @('(?m)^True$', '-- ONNX Runtime URL: https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-win-x64-1.19.2.zip')
+        Assert-TestSingleFindingCases -Message 'ortlib.cmake' -Cases @(
+            @{ P = "no 'Using ONNX Runtime from"; Find = '(?m)^.*\[absolute\]\r?$'; With = '' }
+            @{ P = "took ORT_HOME 'C:/temp/onnx-genai-src/nuget'"; Find = 'ort-home \[absolute\]'; With = 'nuget [absolute]' }
+            @{ P = 'no ORT_HEADER_DIR line'; Find = '(?m)^-- ORT_HEADER_DIR:.*$'; With = '' }
+            @{ P = "set ORT_LIB_DIR to 'C:/temp/onnx-genai-src/other/lib'"; Find = 'ort-home/lib'; With = 'other/lib' }
+            @{ P = 'downloaded ONNX Runtime: -- ONNX Runtime URL'; Find = '(?m)^True$'; With = '-- ONNX Runtime URL: https://github.com/microsoft/onnxruntime/releases/download/v1.19.2/onnxruntime-win-x64-1.19.2.zip' }
+        ) -Exercise { param($case)
+            Get-GenaiConfigureCaseFinding -Swap @{ ConfigureLog = ($script:GenaiLog -replace $case.Find, $case.With) }
         }
-        foreach ($want in $cases.Keys) { & $only @{ ConfigureLog = ($script:GenaiLog -replace $cases[$want][0], $cases[$want][1]) } $want }
     }
 
     It 'fails a cache that is missing, lacks ORT_HOME or a fetch block, aims the block elsewhere, or names ortlib-src (mutation)' {
@@ -235,7 +252,7 @@ Describe 'GenAI ORT: configure gate' {
 
     It 'fails an import library linked by full path from anywhere but the shim' {
         & $only @{ BuildNinja = (& $script:GenaiNinjaOf -DllLibs 'C:\nuget\native\onnxruntime.lib  kernel32.lib') } 'links C:/nuget/native/onnxruntime\.lib, not the chain shim'
-        Assert-Equal 0 @(& $gate @{ BuildNinja = (& $script:GenaiNinjaOf -DllLibs 'C:\temp\onnx-genai-src\ort-home\lib\onnxruntime.lib') }).Count 'the shim''s own full path is fine'
+        Assert-Equal 0 @(Get-GenaiConfigureCaseFinding -Swap @{ BuildNinja = (& $script:GenaiNinjaOf -DllLibs 'C:\temp\onnx-genai-src\ort-home\lib\onnxruntime.lib') }).Count 'the shim''s own full path is fine'
     }
 
     It 'fails a GenAI DLL that links no onnxruntime.lib, or a build.ninja with no GenAI compile' {
@@ -249,8 +266,8 @@ Describe 'GenAI ORT: tree gate' {
     # The chain, and a GenAI tree after configure: shim copies, GenAI's own onnxruntime_* names, extensions, a wheel.
     $healthy = {
         param([string]$Dir)
-        & $script:GenaiWrite (Join-Path $Dir 'chain') $script:GenaiChainFiles
-        & $script:GenaiWrite (Join-Path $Dir 'src') ([ordered]@{
+        Write-TestFileTree -Root (Join-Path $Dir 'chain') -Files $script:GenaiChainFiles
+        Write-TestFileTree -Root (Join-Path $Dir 'src') -Files ([ordered]@{
                 'ort-home\include\onnxruntime_c_api.h' = '// chain c api'; 'ort-home\lib\onnxruntime.dll' = 'chain dll'; 'ort-home\lib\onnxruntime.lib' = 'chain implib'
                 'src\models\onnxruntime_api.h' = 'genai'; 'src\models\onnxruntime_inline.h' = 'genai'; 'src\dll\resource.h' = 'rc'
                 'build\_deps\onnxruntime_extensions-src\include\onnxruntime_extensions.h' = 'ext'; 'build\_deps\onnxruntime_extensions-build\ocos.lib' = 'ext'
@@ -259,7 +276,11 @@ Describe 'GenAI ORT: tree gate' {
     }
     $treeOf = { param([string]$Dir, [string]$Sub = 'src', [switch]$Install) @(Get-GenaiOrtTreeFinding -TreeRoot (Join-Path $Dir $Sub) -OrtRoot (Join-Path $Dir 'chain') -ForbidCopies:$Install) }
     $lone = { param([object[]]$Seen, [string]$Pattern, [string]$Label = $Pattern) Assert-Equal 1 $Seen.Count "$Label <- $($Seen -join ' / ')"; Assert-Match $Pattern $Seen[0] }
-
+    function Assert-GenaiTreeFinding {
+        param([string]$Dir, [string]$Sub, [System.Collections.IDictionary]$Files, [string]$Pattern, [string]$Label = $Pattern, [switch]$Install)
+        Write-TestFileTree -Root (Join-Path $Dir $Sub) -Files $Files
+        & $lone @(& $treeOf $Dir $Sub -Install:$Install) $Pattern $Label
+    }
     It 'passes chain-identical copies and ignores names the chain does not ship' {
         Invoke-InTestDir { param($dir)
             & $healthy $dir
@@ -272,8 +293,7 @@ Describe 'GenAI ORT: tree gate' {
         foreach ($rel in 'build\_deps\ortpkg\include\onnxruntime_c_api.h', 'build\x\onnxruntime.lib', 'build\bin\onnxruntime.dll', 'build\y\onnxruntime_providers_cuda.dll') {
             Invoke-InTestDir { param($dir)
                 & $healthy $dir
-                & $script:GenaiWrite (Join-Path $dir 'src') @{ $rel = 'nuget bytes' }
-                & $lone @(& $treeOf $dir) "$([regex]::Escape($rel)) is not the chain's" $rel
+                Assert-GenaiTreeFinding -Dir $dir -Sub 'src' -Files @{ $rel = 'nuget bytes' } -Pattern "$([regex]::Escape($rel)) is not the chain's" -Label $rel
             }
         }
     }
@@ -290,29 +310,28 @@ Describe 'GenAI ORT: tree gate' {
         Invoke-InTestDir { param($dir)
             & $healthy $dir
             $null = New-Item -ItemType Directory -Force -Path (Join-Path $dir 'src\build\_deps\ortlib-subbuild'), (Join-Path $dir 'src\build\_deps\onnxruntime-src')
-            & $script:GenaiWrite (Join-Path $dir 'src') @{ 'build\_deps\Microsoft.ML.OnnxRuntime.DirectML.1.24.4.nupkg' = 'pk'; 'dl\onnxruntime-win-x64-1.19.2.zip' = 'pk' }
+            Write-TestFileTree -Root (Join-Path $dir 'src') -Files @{ 'build\_deps\Microsoft.ML.OnnxRuntime.DirectML.1.24.4.nupkg' = 'pk'; 'dl\onnxruntime-win-x64-1.19.2.zip' = 'pk' }
             $all = (& $treeOf $dir) -join ' / '
             Assert-Equal 4 @(& $treeOf $dir).Count $all
-            foreach ($want in 'populated ONNX Runtime content at .*ortlib-subbuild', 'populated ONNX Runtime content at .*onnxruntime-src',
-                'archive sits in the tree: .*DirectML\.1\.24\.4\.nupkg', 'archive sits in the tree: .*onnxruntime-win-x64-1\.19\.2\.zip') { Assert-Match $want $all }
+            Assert-GenaiPatternSet -Text $all -Pattern @('populated ONNX Runtime content at .*ortlib-subbuild', 'populated ONNX Runtime content at .*onnxruntime-src',
+                'archive sits in the tree: .*DirectML\.1\.24\.4\.nupkg', 'archive sits in the tree: .*onnxruntime-win-x64-1\.19\.2\.zip')
         }
     }
 
     It '-ForbidCopies fails even a chain-identical ORT file in an install dir (mutation)' {
         Invoke-InTestDir { param($dir)
             & $healthy $dir
-            & $script:GenaiWrite (Join-Path $dir 'install') @{ 'lib\onnxruntime-genai.dll' = 'genai'; 'lib\D3D12Core.dll' = 'd3d'; 'include\ort_genai.h' = 'h' }
+            Write-TestFileTree -Root (Join-Path $dir 'install') -Files @{ 'lib\onnxruntime-genai.dll' = 'genai'; 'lib\D3D12Core.dll' = 'd3d'; 'include\ort_genai.h' = 'h' }
             Assert-Equal 0 @(& $treeOf $dir 'install' -Install).Count 'GenAI''s own install'
-            & $script:GenaiWrite (Join-Path $dir 'install') @{ 'lib\onnxruntime.dll' = 'chain dll' }
-            & $lone @(& $treeOf $dir 'install' -Install) 'ships inside the GenAI install: .*onnxruntime\.dll'
+            Assert-GenaiTreeFinding -Dir $dir -Sub 'install' -Files @{ 'lib\onnxruntime.dll' = 'chain dll' } `
+                -Pattern 'ships inside the GenAI install: .*onnxruntime\.dll' -Install
         }
     }
 
     It 'fails when the chain has nothing to compare against, or the tree is missing' {
         Invoke-InTestDir { param($dir)
-            & $script:GenaiWrite (Join-Path $dir 'chain') @{ 'include\onnxruntime\onnxruntime_c_api.h' = 'c api'; 'lib\onnxruntime.lib' = 'implib' }
-            & $script:GenaiWrite (Join-Path $dir 'src') @{ 'a.txt' = 'x' }
-            & $lone @(& $treeOf $dir) 'has no onnxruntime\.dll to compare against'
+            Write-TestFileTree -Root (Join-Path $dir 'chain') -Files @{ 'include\onnxruntime\onnxruntime_c_api.h' = 'c api'; 'lib\onnxruntime.lib' = 'implib' }
+            Assert-GenaiTreeFinding -Dir $dir -Sub 'src' -Files @{ 'a.txt' = 'x' } -Pattern 'has no onnxruntime\.dll to compare against'
             Assert-Match 'no tree at' ((& $treeOf $dir 'absent') -join ' / ')
         }
     }
@@ -323,7 +342,7 @@ $script:GenaiScriptAst = Get-TestScriptAst -ScriptPath $script:GenaiOrtScript
 Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
     $find = { param([scriptblock]$Predicate) @($script:GenaiScriptAst.FindAll($Predicate, $true)) }
     # Unconditional wiring = a statement no function body, if or loop encloses.
-    $always = {
+    function Test-GenaiScriptUnconditional {
         param($Node)
         $guard = Get-TestAstAncestor -Node $Node -First -Predicate {
             param($ancestor)
@@ -333,9 +352,12 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         }
         $null -eq $guard
     }
-    $callsOf = { param([string]$Name) @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name $Name | Where-Object { & $always $_ }) }
-    $assignsTo = { param([string]$Var) @(& $find { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $Var }) }
-    $argOf = {
+    $callsOf = { param([string]$Name) @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name $Name | Where-Object { Test-GenaiScriptUnconditional -Node $_ }) }
+    function Get-GenaiScriptAssignment {
+        param([string]$Var)
+        @(& $find { param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and $n.Left.Extent.Text -eq $Var })
+    }
+    function Get-GenaiScriptArgument {
         param($Call, [string]$Param)
         $arguments = Get-TestCommandArguments -Command $Call -AsAst
         if ($arguments.ContainsKey($Param)) { return $arguments[$Param].Extent.Text }
@@ -349,10 +371,10 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
     }
 
     It 'appends the args before configure and names ORT_HOME nowhere else' {
-        $append = @(& $assignsTo '$cmakeExtraGenAi' | Where-Object { $_.Right.Extent.Text -eq '$genaiOrtArgs' })
+        $append = @(Get-GenaiScriptAssignment -Var '$cmakeExtraGenAi' | Where-Object { $_.Right.Extent.Text -eq '$genaiOrtArgs' })
         Assert-Equal 1 $append.Count '$cmakeExtraGenAi += $genaiOrtArgs'
         Assert-Equal 'PlusEquals' "$($append[0].Operator)"
-        Assert-True ((& $always $append[0]) -and $append[0].Extent.EndOffset -lt $configure[0].Extent.StartOffset) 'unconditional, before Invoke-CmakeConfigure'
+        Assert-True ((Test-GenaiScriptUnconditional -Node $append[0]) -and $append[0].Extent.EndOffset -lt $configure[0].Extent.StartOffset) 'unconditional, before Invoke-CmakeConfigure'
         $body = $script:GenaiScriptAst.Extent.Text
         Assert-Equal 1 ([regex]::Matches($body, 'ORT_HOME:PATH=')).Count 'one ORT_HOME, in Get-GenaiOrtCmakeArgs'
         Assert-True ($body -notmatch 'USE_WINML|-DORT_VERSION') 'no WinML ORT, no package version'
@@ -363,7 +385,7 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         Assert-True ($pipe -is [System.Management.Automation.Language.PipelineAst]) 'configure sits in a pipeline'
         Assert-Equal 'Tee-Object -FilePath $genaiCfgLog' $pipe.PipelineElements[$pipe.PipelineElements.Count - 1].Extent.Text
         Assert-True ($pipe.Extent.Text -notmatch 'Out-Null') 'no Out-Null'
-        Assert-Equal "'onnx-genai-configure.log'" (& $argOf @(& $callsOf 'Get-PersistentBuildLogPath')[0] 'Name')
+        Assert-Equal "'onnx-genai-configure.log'" (Get-GenaiScriptArgument -Call @(& $callsOf 'Get-PersistentBuildLogPath')[0] -Param 'Name')
     }
 
     It 'gates after configure on the log, the cache and build.ninja it just wrote, with the shim and block the args got' {
@@ -371,12 +393,12 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         $argsCall = @(& $callsOf 'Get-GenaiOrtCmakeArgs')[0]
         $reads = @(& $find { param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] -and $n.Variable.Extent.Text -eq '$recordFile' })
         Assert-Equal 1 $reads.Count 'one record-reading loop'
-        Assert-True ((& $always $reads[0]) -and $reads[0].Extent.StartOffset -gt $configure[0].Extent.EndOffset) 'read unconditionally, after configure'
+        Assert-True ((Test-GenaiScriptUnconditional -Node $reads[0]) -and $reads[0].Extent.StartOffset -gt $configure[0].Extent.EndOffset) 'read unconditionally, after configure'
         Assert-Equal "@(`$genaiCfgLog, (Join-Path `$genaiBuildDir 'CMakeCache.txt'), (Join-Path `$genaiBuildDir 'build.ninja'))" $reads[0].Condition.Extent.Text
         foreach ($p in @(@('ConfigureLog', 'onnx-genai-configure.log'), @('CMakeCache', 'CMakeCache.txt'), @('BuildNinja', 'build.ninja'))) {
-            Assert-Equal "`$genaiRecord['$($p[1])']" (& $argOf $gateCall $p[0]) "-$($p[0])"
+            Assert-Equal "`$genaiRecord['$($p[1])']" (Get-GenaiScriptArgument -Call $gateCall -Param $p[0]) "-$($p[0])"
         }
-        foreach ($p in 'OrtHome', 'FetchBlockDir') { Assert-Equal (& $argOf $argsCall $p) (& $argOf $gateCall $p) "-$p shared by args and gate" }
+        foreach ($p in 'OrtHome', 'FetchBlockDir') { Assert-Equal (Get-GenaiScriptArgument -Call $argsCall -Param $p) (Get-GenaiScriptArgument -Call $gateCall -Param $p) "-$p shared by args and gate" }
     }
 
     It 'throws on any finding, directly: after configure and after the build, before the tree is removed (mutation)' {
@@ -384,17 +406,17 @@ Describe 'GenAI ORT: wiring in Build-OnnxGenaiFromSource.ps1' {
         # The post-build findings throw through G2 (Assert-ChainOrtOnly -Finding), which stamps only a clean pass.
         $g2 = @(& $callsOf 'Assert-ChainOrtOnly')
         Assert-Equal 1 $g2.Count 'one unconditional G2 call'
-        Assert-Equal '$genaiOrtPost' (& $argOf $g2[0] 'Finding') 'G2 folds the post-build tree gate in'
+        Assert-Equal '$genaiOrtPost' (Get-GenaiScriptArgument -Call $g2[0] -Param 'Finding') 'G2 folds the post-build tree gate in'
         Assert-True ($g2[0].Extent.EndOffset -lt $cleanup[0].Extent.StartOffset) 'G2 before Remove-SourceBuildTree'
         foreach ($var in '$genaiOrtCfg') {
             $checks = @(& $find { param($n) $n -is [System.Management.Automation.Language.IfStatementAst] -and $n.Clauses[0].Item1.Extent.Text -eq "$var.Count -gt 0" })
             Assert-Equal 1 $checks.Count "one if ($var.Count -gt 0)"
             Assert-Null $checks[0].ElseClause "$var : no else arm"
             Assert-True ($checks[0].Clauses[0].Item2.Statements[0] -is [System.Management.Automation.Language.ThrowStatementAst]) "$var : a direct throw"
-            Assert-True (& $always $checks[0]) "$var : unconditional"
+            Assert-True (Test-GenaiScriptUnconditional -Node $checks[0]) "$var : unconditional"
             Assert-True ($checks[0].Extent.EndOffset -lt $cleanup[0].Extent.StartOffset) "$var : before Remove-SourceBuildTree"
         }
-        $post = @(& $assignsTo '$genaiOrtPost')
+        $post = @(Get-GenaiScriptAssignment -Var '$genaiOrtPost')
         Assert-Match '-TreeRoot \$SourceDir -OrtRoot \$genaiOrtRoot\)' $post[0].Right.Extent.Text
         Assert-Match '-TreeRoot \$genaiInstallDir -OrtRoot \$genaiOrtRoot -ForbidCopies' $post[0].Right.Extent.Text
         $wheels = @(Get-TestAstCommands -Ast $script:GenaiScriptAst -Name 'Invoke-PythonWheelBuild')

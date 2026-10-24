@@ -19,6 +19,7 @@ SHELL ["pwsh", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "$ErrorAc
 COPY windows\scripts\modules\WindowsNative.Common.psm1 `
      windows\scripts\modules\WindowsTargetArch.Common.psm1 `
      windows\scripts\modules\WindowsUvLock.Common.psm1 C:\temp\scripts\modules\
+COPY linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\
 COPY windows\scripts\build\Build-TorchApp.ps1 C:\temp\scripts\
 # Wheel cache set inside the RUN, not ENV, which would point the shipped uv at a build-only path; it shares buildkitd.toml's cache-mount GC cap.
 RUN --mount=type=cache,target=C:\uvcache,id=uv-wheels-winamd64,sharing=locked `

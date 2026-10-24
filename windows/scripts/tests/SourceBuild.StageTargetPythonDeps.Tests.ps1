@@ -7,7 +7,7 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
 
     BeforeAll {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' `
-                -FunctionName 'Get-WheelDistName', 'Get-RequirementName', 'Get-WheelRequirements', 'ConvertTo-CmdSafeRequirement')
+                -FunctionName 'Get-WheelDistName', 'Get-RequirementName', 'Get-WheelRequirements', 'ConvertTo-CmdSafeRequirement', 'Get-TargetPipDownloadArgs')
 
         $script:tmp = New-TestDir -Prefix 'stagedeps-'
 
@@ -89,6 +89,13 @@ Describe 'stage-target-python-deps: wheel requirement parsing' {
         Assert-Equal 'numpy>=1.21' (ConvertTo-CmdSafeRequirement 'numpy>=1.21') 'a plain requirement is untouched'
     }
 
+    It 'passes only the target ABI and keeps each requirement at the end of the pip command' {
+        $downloadArgs = @(Get-TargetPipDownloadArgs -TargetTag 'win_arm64' -PythonVersion '3.14' -Abi @('cp314t') `
+            -Dir 'C:\wheel-store' -Requirement @('numpy>=2', 'pytest; sys_platform != "cygwin"'))
+        Assert-Equal '-m|pip|download|--only-binary=:all:|--platform|win_arm64|--python-version|3.14|--implementation|cp|--abi|cp314t|-d|C:\wheel-store|--disable-pip-version-check|numpy>=2|pytest; sys_platform != ''cygwin''' ($downloadArgs -join '|')
+        Assert-False ($downloadArgs -contains 'abi3') 'a free-threaded interpreter never downloads abi3 wheels'
+    }
+
     It 'Get-WheelRequirements stops at the first blank line (description is not parsed)' {
         $reqs = @(& $script:WheelRequirements -Name 'blank' -RequiresDist @('numpy>=1.21'))
         Assert-Equal 1 $reqs.Count 'only the header requirement, not the description'
@@ -147,7 +154,8 @@ Describe 'stage-target-python-deps: the cp3XYt twins'' dependencies (CON79)' {
 
     BeforeAll {
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Copy-TargetPythonDeps.ps1' -FunctionName 'Get-WheelDistName', 'Get-RequirementName',
-            'Get-WheelRequirements', 'Select-ActiveRequirement', 'Get-TargetRequirement', 'Get-UnresolvedTargetRequirement', 'Get-ForeignAbiWheel')
+            'Get-WheelRequirements', 'Select-ActiveRequirement', 'Get-TargetRequirement', 'Get-UnresolvedTargetRequirement',
+            'Get-ForeignAbiWheel', 'Get-BundleFirstTouchRequirement')
         $script:depsScript = Get-Content -Raw -LiteralPath (Join-Path (Get-RepoRoot) 'windows\scripts\build\Copy-TargetPythonDeps.ps1')
         # A wheel of METADATA alone, which is all the requirement walk reads.
         function script:New-MetadataWheel([string]$Dir, [string]$FileName, [string[]]$RequiresDist) {
@@ -166,6 +174,16 @@ Describe 'stage-target-python-deps: the cp3XYt twins'' dependencies (CON79)' {
             New-MetadataWheel $d 'bar-1.0-py3-none-any.whl' @()
             $edges = @(Get-UnresolvedTargetRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl') -TargetTag 'win_arm64' -PythonExe 'C:\no-such\python.exe' -PythonVersion '3.14' -Machine 'ARM64')
             Assert-Equal 'foo-1.0-py3-none-any.whl -> baz>=1' ($edges -join '|') 'bar is in the store, baz is not'
+        }
+    }
+
+    It 'counts distinct first-touch requirements and keeps the cv2 numpy floor' {
+        Invoke-InTestDir { param($d)
+            New-MetadataWheel $d 'foo-1.0-py3-none-any.whl' @('bar>=1', 'bar>=1')
+            New-MetadataWheel $d 'baz-1.0-py3-none-any.whl' @('bar>=1')
+            $requirements = Get-BundleFirstTouchRequirement -Wheel @(Get-ChildItem -LiteralPath $d -Filter '*.whl')
+            Assert-Equal 'bar>=1|numpy' ($requirements -join '|') 'a duplicate edge is counted once and cv2 still needs numpy'
+            Assert-Equal 2 $requirements.Count 'the floor sees both requirements'
         }
     }
 

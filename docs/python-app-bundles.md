@@ -94,6 +94,8 @@ Both run in the family image, from a built app wheel (`--wheel-dir`, default `di
      with the launcher.
    - Linux: a shell script in `bin/`.
 5. **Data**, copied as `app.json` lists it.
+   - The Windows builder keeps launcher selection and data copying in separate steps; a
+     fixture checks requested console scripts, missing names and the copied payload path.
 6. **Native closure.**
    - Windows: the VC++ runtime goes beside `python.exe`.
    - Linux: `python-app-closure.sh` copies every missing shared library into `runtime/lib` and

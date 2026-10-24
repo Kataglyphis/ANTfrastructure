@@ -34,6 +34,38 @@ function Test-IsCxxModuleTranslationUnit {
   return [bool]($Content -match $Pattern)
 }
 
+function Get-ClangTidyNonModuleFiles {
+  param($Context, [string[]]$TidyFiles, [string]$ModuleImportPattern)
+  foreach ($file in $TidyFiles) {
+    $content = Get-Content $file -Raw -ErrorAction SilentlyContinue
+    if (Test-IsCxxModuleTranslationUnit -Content $content -Pattern $ModuleImportPattern) {
+      Write-BuildLog -Context $Context -Message "Skipping clang-tidy for $file (uses C++20 module syntax)"
+      continue
+    }
+    $file
+  }
+}
+
+function Invoke-ClangTidyParallelFiles {
+  param($Context, [string[]]$TidyFiles, [string]$TidyExe, [string[]]$BaseParams, [int]$ThrottleLimit)
+  # Each file's output is logged whole and in file order; every failure is named, not just the first.
+  $results = @($TidyFiles | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
+      $tidyParams = @($using:BaseParams) + $_
+      $output = @(& $using:TidyExe @tidyParams 2>&1 | ForEach-Object { "$_" })
+      [pscustomobject]@{ File = $_; ExitCode = $LASTEXITCODE; Output = $output }
+    })
+  $failed = [System.Collections.Generic.List[string]]::new()
+  foreach ($tidyFile in $TidyFiles) {
+    $result = @($results | Where-Object File -EQ $tidyFile)[0]
+    Write-BuildLog -Context $Context -Message "CMD: $TidyExe $($BaseParams -join ' ') $tidyFile"
+    foreach ($line in $result.Output) {
+      if (-not [string]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
+    }
+    if ($result.ExitCode -ne 0) { $failed.Add("$tidyFile (exit $($result.ExitCode))") }
+  }
+  if ($failed.Count -gt 0) { throw "clang-tidy failed on $($failed.Count) file(s): $($failed -join '; ')" }
+}
+
 function Invoke-ClangTidyFixStep {
   <#
   .SYNOPSIS
@@ -83,16 +115,7 @@ function Invoke-ClangTidyFixStep {
   $tidyFiles = @(Get-ProjectCppFiles -WorkspacePath $WorkspacePath |
     Where-Object { $_ -like "$srcDir*" -and [System.IO.Path]::GetExtension($_) -in $Extension })
 
-  $filteredFiles = @()
-  foreach ($f in $tidyFiles) {
-    $content = Get-Content $f -Raw -ErrorAction SilentlyContinue
-    if (Test-IsCxxModuleTranslationUnit -Content $content -Pattern $ModuleImportPattern) {
-      Write-BuildLog -Context $Context -Message "Skipping clang-tidy for $f (uses C++20 module syntax)"
-      continue
-    }
-    $filteredFiles += $f
-  }
-  $tidyFiles = $filteredFiles
+  $tidyFiles = @(Get-ClangTidyNonModuleFiles -Context $Context -TidyFiles $tidyFiles -ModuleImportPattern $ModuleImportPattern)
 
   # A file the build never compiled has no compile command; tidy would fail it as an unparsable TU.
   $compiledPaths = [string[]]@(foreach ($entry in @(Get-Content -LiteralPath $compileDb -Raw | ConvertFrom-Json)) {
@@ -122,23 +145,7 @@ function Invoke-ClangTidyFixStep {
     return
   }
 
-  # Each file's output is logged whole and in file order; every failure is named, not just the first.
-  $tidyExe = $clangTidyCommand.Source
-  $results = @($tidyFiles | ForEach-Object -ThrottleLimit $ThrottleLimit -Parallel {
-      $tidyParams = @($using:baseParams) + $_
-      $output = @(& $using:tidyExe @tidyParams 2>&1 | ForEach-Object { "$_" })
-      [pscustomobject]@{ File = $_; ExitCode = $LASTEXITCODE; Output = $output }
-    })
-  $failed = [System.Collections.Generic.List[string]]::new()
-  foreach ($tidyFile in $tidyFiles) {
-    $result = @($results | Where-Object File -EQ $tidyFile)[0]
-    Write-BuildLog -Context $Context -Message "CMD: $tidyExe $($baseParams -join ' ') $tidyFile"
-    foreach ($line in $result.Output) {
-      if (-not [string]::IsNullOrWhiteSpace($line)) { Write-BuildLog -Context $Context -Message $line }
-    }
-    if ($result.ExitCode -ne 0) { $failed.Add("$tidyFile (exit $($result.ExitCode))") }
-  }
-  if ($failed.Count -gt 0) { throw "clang-tidy failed on $($failed.Count) file(s): $($failed -join '; ')" }
+  Invoke-ClangTidyParallelFiles -Context $Context -TidyFiles $tidyFiles -TidyExe $clangTidyCommand.Source -BaseParams $baseParams -ThrottleLimit $ThrottleLimit
 }
 
 Export-ModuleMember -Function @(

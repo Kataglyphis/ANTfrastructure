@@ -1,6 +1,26 @@
 #requires -Version 7.0
 # Meson `auto` skips a plugin silently when its .pc is missing, so the plugin contract and the .pc emitter must agree.
 
+function Get-GstPluginByName {
+    $byName = @{}
+    foreach ($plugin in @(Get-RequiredGstPlugin)) { $byName[$plugin.Name] = $plugin }
+    return $byName
+}
+
+function Assert-GstPluginEntryContract {
+    param([object[]]$Plugin)
+    foreach ($entry in $Plugin) {
+        Assert-True ([bool]$entry.Why) "$($entry.Name) must say WHY it is mandatory"
+        Assert-True ([bool]$entry.Provides) "$($entry.Name) must say what it provides"
+        # Entry shapes differ per Detection kind and StrictMode throws on a missing member, hence the presence guards.
+        $hasHeaderProbe = [bool]$entry.PSObject.Properties['NeedsHeader'] -and [bool]$entry.NeedsHeader -and [bool]$entry.PSObject.Properties['NeedsLib'] -and $entry.NeedsLib.Count -gt 0
+        $hasMesonOption = ($entry.Detection -eq 'meson') -and [bool]$entry.PSObject.Properties['MesonOption'] -and [bool]$entry.MesonOption
+        $hasCargoPackage = ($entry.Detection -eq 'cargo') -and [bool]$entry.PSObject.Properties['CargoPackage'] -and [bool]$entry.CargoPackage
+        $checkable = ($entry.NeedsPc.Count -gt 0) -or $hasHeaderProbe -or $hasMesonOption -or $hasCargoPackage
+        Assert-True $checkable "$($entry.Name) must declare pkg-config modules, a header+library probe, a meson option or a cargo package"
+    }
+}
+
 Describe 'Get-RequiredGstPlugin (the contract)' {
 
     It 'names the integrations the media stack is built around, WebRTC''s run-time set included' {
@@ -11,10 +31,18 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
         }
     }
 
+    It 'returns fresh contract entries so a caller cannot change a later gate' {
+        $first = @(Get-RequiredGstPlugin)
+        $first[0].Name = 'modified'
+        $first[0].NeedsPc[0] = 'modified'
+        $later = @(Get-RequiredGstPlugin)
+        Assert-Equal 'libav' $later[0].Name
+        Assert-Equal 'libavcodec' $later[0].NeedsPc[0]
+    }
+
     It 'records HOW each dependency is detected, because it is not uniform' {
         # Checking the wrong way would pass vacuously or demand a file nothing reads.
-        $byName = @{}
-        foreach ($p in @(Get-RequiredGstPlugin)) { $byName[$p.Name] = $p }
+        $byName = Get-GstPluginByName
         foreach ($n in 'libav', 'opencv', 'onnx') {
             Assert-Equal 'pkg-config' $byName[$n].Detection "$n is resolved via pkg-config"
         }
@@ -51,16 +79,16 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
     }
 
     It 'carries a resolvable dependency spec and a rationale for every entry' {
-        foreach ($p in @(Get-RequiredGstPlugin)) {
-            Assert-True ([bool]$p.Why) "$($p.Name) must say WHY it is mandatory"
-            Assert-True ([bool]$p.Provides) "$($p.Name) must say what it provides"
-            # Entry shapes differ per Detection kind and StrictMode throws on a missing member, hence the presence guards.
-            $hasHeaderProbe = [bool]$p.PSObject.Properties['NeedsHeader'] -and [bool]$p.NeedsHeader -and [bool]$p.PSObject.Properties['NeedsLib'] -and $p.NeedsLib.Count -gt 0
-            $hasMesonOption = ($p.Detection -eq 'meson') -and [bool]$p.PSObject.Properties['MesonOption'] -and [bool]$p.MesonOption
-            $hasCargoPackage = ($p.Detection -eq 'cargo') -and [bool]$p.PSObject.Properties['CargoPackage'] -and [bool]$p.CargoPackage
-            $checkable = ($p.NeedsPc.Count -gt 0) -or $hasHeaderProbe -or $hasMesonOption -or $hasCargoPackage
-            Assert-True $checkable "$($p.Name) must declare pkg-config modules, a header+library probe, a meson option or a cargo package"
-        }
+        Assert-GstPluginEntryContract -Plugin @(Get-RequiredGstPlugin)
+    }
+
+    It 'rejects a missing rationale or dependency probe instead of passing an empty entry' {
+        $entry = @(Get-RequiredGstPlugin)[0]
+        $entry.Why = ''
+        Assert-Throws { Assert-GstPluginEntryContract -Plugin @($entry) } -MessagePattern 'must say WHY'
+        $entry = @(Get-RequiredGstPlugin)[0]
+        $entry.NeedsPc = @()
+        Assert-Throws { Assert-GstPluginEntryContract -Plugin @($entry) } -MessagePattern 'must declare pkg-config modules'
     }
 
     It 'is arch-aware and, since #115/#128, demands the SAME entries on both lanes' {
@@ -91,8 +119,7 @@ Describe 'Get-RequiredGstPlugin (the contract)' {
 
     It 'maps each plugin to the pkg-config name its upstream meson actually looks up' {
         # The names gstreamer's meson.build looks up; a typo makes the pre-flight check something nothing needs.
-        $byName = @{}
-        foreach ($p in @(Get-RequiredGstPlugin)) { $byName[$p.Name] = $p }
+        $byName = Get-GstPluginByName
         Assert-True ($byName['opencv'].NeedsPc -contains 'opencv4') 'gst-plugins-bad looks up opencv4, not opencv5'
         Assert-True ($byName['onnx'].NeedsPc -contains 'libonnxruntime') 'gst-plugins-bad looks up libonnxruntime'
         foreach ($m in 'libavcodec', 'libavformat', 'libavutil', 'libavfilter') {

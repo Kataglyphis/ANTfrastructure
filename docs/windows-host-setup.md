@@ -494,12 +494,12 @@ and SHA256-verified (`lint-shell.sh`, `lint-dockerfiles.sh`,
 `lint-workflows.sh`). First run needs network; a failed bootstrap fails the
 gate loudly (no silent skip).
 
-### B6. Run lint, tests and the complexity report
+### B6. Run lint, tests and the complexity gate
 
 ```pwsh
 pwsh -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer # parse gate + PSScriptAnalyzer, findings fatal as in CI
 pwsh -File windows/scripts/tests/Invoke-Tests.ps1          # harness + Pester suites
-pwsh -File windows/scripts/Invoke-CodeComplexity.ps1      # tracked PowerShell metric report; -Path <file> -Strict enforces a refactor
+pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict # full tracked PowerShell gate; use -Path <file> -Strict for an untracked edit
 ```
 
 `Invoke-Lint.ps1` requires the exact `PSSCRIPTANALYZER_VERSION` in

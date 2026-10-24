@@ -19,6 +19,30 @@ if (-not (Get-Module -Name ([IO.Path]::GetFileNameWithoutExtension($modulePath))
 
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
+function Add-LitertArmAsmFeatures {
+    param([string]$BuildDir, [string]$SourceDir)
+
+    # The full feature union is safe for assembler files because they emit only written mnemonics.
+    $xnnAsmPatched = 0
+    $xnnAsmDirs = [System.Collections.Generic.HashSet[string]]::new()
+    foreach ($asm in (Get-ChildItem -Path @($BuildDir, $SourceDir) -Recurse -Filter '*.S' -File -ErrorAction SilentlyContinue |
+                      Where-Object { $_.Name -match 'asm-aarch64' })) {
+        $asmText = Get-Content -LiteralPath $asm.FullName -Raw
+        if ($asmText -match '(?m)^\s*\.arch\b') { continue }
+        Set-Content -LiteralPath $asm.FullName -Encoding ASCII -Value (".arch armv8.2-a+fp16+dotprod+i8mm+bf16`n" + $asmText)
+        [void]$xnnAsmDirs.Add($asm.Directory.Parent.FullName)
+        $xnnAsmPatched++
+    }
+    if ($xnnAsmDirs.Count -gt 0) { Write-Host "XNNPACK asm: kernel roots: $(@($xnnAsmDirs) -join '; ')" }
+    if ($xnnAsmPatched -lt 10) {
+        throw ("XNNPACK asm: prepended .arch to only $xnnAsmPatched aarch64 .S kernel(s), expected >= 10. " +
+               "Either the FetchContent layout moved (searched $BuildDir and $SourceDir) or the " +
+               'filename convention changed; without the directive every asm-aarch64-neonfp16arith ' +
+               'kernel fails in the integrated assembler.')
+    }
+    Write-Host "XNNPACK asm: prepended full-union .arch directives to $xnnAsmPatched aarch64 .S kernel(s)"
+}
+
 # Export-LitertLmBridge.ps1 carries the same default: a LiteRT bump updates both.
 $LiteRtVersion = Get-SourceBuildVersion -Value $LiteRtVersion -EnvironmentVariables @('LITERT_VERSION') -DefaultValue 'v2.3.0'
 $litertInstallDir = Join-Path $InstallDir 'lib\litert'
@@ -171,26 +195,7 @@ if (Test-WindowsCrossTarget) {
         param($line) $line -match 'xnnpack-' -and $line -notmatch '\.S\.obj'
     })
 
-    # Found by the *-asm-aarch64-*.S name, not the FetchContent layout, which LiteRT's FindXNNPACK wrapper moves.
-    $xnnAsmPatched = 0
-    $xnnAsmDirs = [System.Collections.Generic.HashSet[string]]::new()
-    # The full feature union, unlike C: an assembler emits only the written mnemonics, and mixed kernels need several.
-    foreach ($asm in (Get-ChildItem -Path @($buildDir, $SourceDir) -Recurse -Filter '*.S' -File -ErrorAction SilentlyContinue |
-                      Where-Object { $_.Name -match 'asm-aarch64' })) {
-        $asmText = Get-Content -LiteralPath $asm.FullName -Raw
-        if ($asmText -match '(?m)^\s*\.arch\b') { continue }
-        Set-Content -LiteralPath $asm.FullName -Encoding ASCII -Value (".arch armv8.2-a+fp16+dotprod+i8mm+bf16`n" + $asmText)
-        [void]$xnnAsmDirs.Add($asm.Directory.Parent.FullName)
-        $xnnAsmPatched++
-    }
-    if ($xnnAsmDirs.Count -gt 0) { Write-Host "XNNPACK asm: kernel roots: $(@($xnnAsmDirs) -join '; ')" }
-    if ($xnnAsmPatched -lt 10) {
-        throw ("XNNPACK asm: prepended .arch to only $xnnAsmPatched aarch64 .S kernel(s), expected >= 10. " +
-               "Either the FetchContent layout moved (searched $buildDir and $SourceDir) or the " +
-               'filename convention changed; without the directive every asm-aarch64-neonfp16arith ' +
-               'kernel fails in the integrated assembler.')
-    }
-    Write-Host "XNNPACK asm: prepended full-union .arch directives to $xnnAsmPatched aarch64 .S kernel(s)"
+    Add-LitertArmAsmFeatures -BuildDir $buildDir -SourceDir $SourceDir
 }
 
 # A persistent log: inside $buildDir it dies with the failed solve.

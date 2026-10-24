@@ -23,6 +23,16 @@ function script:New-ChainOrtFixture {
     return [pscustomobject]@{ Venv = $venv; Store = $store }
 }
 
+function script:Get-ChainOrtPythonReply {
+    param([object[]]$Arguments, [string[]]$Listed, [int]$UnownedExit, [string]$Abi, [int]$ImportExit, [int]$CheckExit)
+    if ($Arguments -contains '--purge-list') { return [pscustomobject]@{ ExitCode = 0; Output = $Listed } }
+    if ($Arguments[-1] -match 'find_spec') { return [pscustomobject]@{ ExitCode = $UnownedExit; Output = @($(if ($UnownedExit) { 'onnxruntime' } else { '' })) } }
+    if ($Arguments[-1] -match 'Py_GIL_DISABLED') { return [pscustomobject]@{ ExitCode = 0; Output = @($Abi) } }
+    if ($Arguments -contains '-c') { return [pscustomobject]@{ ExitCode = $ImportExit; Output = @('3.13.15', 'ImportError: DLL load failed while importing onnxruntime_pybind11_state') } }
+    $verdict = if ($CheckExit -eq 0) { 'ORT-CENSUS PASS: 2 chain distribution(s)' } else { 'ORT-CENSUS FAIL onnxruntime-directml 1.24.4 is not a chain wheel' }
+    return [pscustomobject]@{ ExitCode = $CheckExit; Output = @($verdict) }
+}
+
 # -ViaSync goes through Sync-UvProjectDependencies instead, with the real interpreter runner unless -StubPython; -Lock is its uv.lock.
 function script:Invoke-ChainOrtCase {
     param(
@@ -52,12 +62,7 @@ function script:Invoke-ChainOrtCase {
     $state = $observer.State
     $python = {
         param($exe, $arguments)
-        if ($arguments -contains '--purge-list') { return [pscustomobject]@{ ExitCode = 0; Output = $Listed } }
-        if ($arguments[-1] -match 'find_spec') { return [pscustomobject]@{ ExitCode = $UnownedExit; Output = @($(if ($UnownedExit) { 'onnxruntime' } else { '' })) } }
-        if ($arguments[-1] -match 'Py_GIL_DISABLED') { return [pscustomobject]@{ ExitCode = 0; Output = @($Abi) } }
-        if ($arguments -contains '-c') { return [pscustomobject]@{ ExitCode = $ImportExit; Output = @('3.13.15', 'ImportError: DLL load failed while importing onnxruntime_pybind11_state') } }
-        $verdict = if ($CheckExit -eq 0) { 'ORT-CENSUS PASS: 2 chain distribution(s)' } else { 'ORT-CENSUS FAIL onnxruntime-directml 1.24.4 is not a chain wheel' }
-        return [pscustomobject]@{ ExitCode = $CheckExit; Output = @($verdict) }
+        Get-ChainOrtPythonReply -Arguments $arguments -Listed $Listed -UnownedExit $UnownedExit -Abi $Abi -ImportExit $ImportExit -CheckExit $CheckExit
     }.GetNewClosure()
     $syncEnv = @{ ORT_CHAIN_WHEEL_DIR = $null; PYTHON_WHEELS = $null; UV_PROJECT_ENVIRONMENT = $Fixture.Venv; UV_SYNC_EXTRAS = $null }
     if ($Store) { $syncEnv[$StoreVar] = $Store }

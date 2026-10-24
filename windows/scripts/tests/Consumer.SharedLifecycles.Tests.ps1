@@ -184,9 +184,9 @@ Describe 'Shared compiler wrapper environment policy' {
             }
             Assert-Equal fixture-cache $env:RUSTC_WRAPPER
             Assert-Equal 'cuda override' $env:CMAKE_CUDA_COMPILER_LAUNCHER
-            $fixture = New-TestCmakeExecutionModuleArguments
-            Invoke-WithFunctionModule @fixture -Body {
-                Invoke-MutCmakeConfigureAndBuild -Context ([pscustomobject]@{}) -BuildPath fixture-root -Preset fixture -Configuration Release -DisableSccache
+            Invoke-WithFunctionModule -ScriptPath 'windows\scripts\modules\WindowsCMake.Common.psm1' -FunctionName Disable-CmakeSccache `
+                -Prelude 'function Get-Command { return $null }; function Write-BuildLog {}' -Body {
+                Disable-MutCmakeSccache -Context ([pscustomobject]@{})
             }
             foreach ($name in $script:ConsumerNativeWrappers + 'CMAKE_CUDA_COMPILER_LAUNCHER') {
                 Assert-True (Test-Path -LiteralPath "Env:$name")

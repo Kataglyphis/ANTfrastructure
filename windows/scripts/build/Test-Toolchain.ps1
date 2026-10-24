@@ -23,6 +23,43 @@ function Test-PinnedBanner([string]$Banner, [string]$Expected) {
     return [bool]@($spellings | Where-Object { $Banner -match [regex]::Escape($_) }).Count
 }
 
+function Assert-LlvmToolVersions {
+    param([string]$ExpectedLlvm)
+
+    if (-not $ExpectedLlvm) { return }
+    # Every LLVM tool a build reaches must be from the same release as clang-cl.
+    foreach ($tool in 'clang', 'clang-tidy', 'clang-format', 'clangd', 'clang-scan-deps', 'lld-link', 'llvm-ar',
+        'llvm-nm', 'llvm-objdump', 'llvm-profdata', 'llvm-cov', 'llvm-symbolizer') {
+        $toolCmd = Get-Command $tool -ErrorAction SilentlyContinue
+        if (-not $toolCmd) { throw "$tool is not on PATH; every LLVM tool must be LLVM_WINDOWS_VERSION $ExpectedLlvm" }
+        $toolBanner = ((& $toolCmd.Source --version 2>&1 | Out-String) -replace '\s+', ' ').Trim()
+        if ($toolBanner -notmatch "(?<![\d.])$([regex]::Escape($ExpectedLlvm))(?![\d.])") {
+            throw "$tool version mismatch: expected $ExpectedLlvm (versions.env LLVM_WINDOWS_VERSION), got '$toolBanner' from $($toolCmd.Source)"
+        }
+        Write-Host "$tool OK: $ExpectedLlvm ($($toolCmd.Source))"
+    }
+}
+
+function Assert-PinnedBuildToolVersions {
+    # These tools shape shipped bytes or build caching, so drift must fail before media builds.
+    foreach ($pinned in @(
+            @{ Tool = 'cmake';   Args = @('--version'); EnvVar = 'CMAKE_VERSION' },
+            @{ Tool = 'ninja';   Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
+            @{ Tool = 'nasm';    Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' },
+            @{ Tool = 'sccache'; Args = @('--version'); EnvVar = 'SCCACHE_WINDOWS_VERSION' })) {
+        $expected = Resolve-ContainerImageValue -EnvironmentVariable $pinned.EnvVar -DefaultValue ''
+        if (-not $expected) { continue }
+        # Real splatting avoids accidental argument flattening.
+        $toolArgs = $pinned.Args
+        $banner = (& $pinned.Tool @toolArgs 2>&1 | Select-Object -First 1)
+        if ($LASTEXITCODE -ne 0) { throw "$($pinned.Tool) $($toolArgs -join ' ') failed (exit code $LASTEXITCODE)" }
+        if (-not (Test-PinnedBanner -Banner $banner -Expected $expected)) {
+            throw "$($pinned.Tool) version mismatch: expected $expected (versions.env $($pinned.EnvVar)), got '$banner'"
+        }
+        Write-Host "$($pinned.Tool) OK: $banner"
+    }
+}
+
 Assert-ContainerCommandAvailable -Name 'flutter' | Out-Null
 Assert-ContainerCommandAvailable -Name 'wix' | Out-Null
 Assert-ContainerCommandAvailable -Name 'clang-cl' | Out-Null
@@ -42,37 +79,9 @@ if ($expectedLlvm -and -not (Test-PinnedBanner -Banner $clangBanner -Expected $e
         're-run windows/scripts/tests/Test-PatchesApplyClean.ps1 after a deliberate bump.')
 }
 
-# Every LLVM tool a build reaches is that same release, not only clang-cl (owner 2026-10-06, BACKLOG CON71).
-if ($expectedLlvm) {
-    foreach ($tool in 'clang', 'clang-tidy', 'clang-format', 'clangd', 'clang-scan-deps', 'lld-link', 'llvm-ar',
-        'llvm-nm', 'llvm-objdump', 'llvm-profdata', 'llvm-cov', 'llvm-symbolizer') {
-        $toolCmd = Get-Command $tool -ErrorAction SilentlyContinue
-        if (-not $toolCmd) { throw "$tool is not on PATH; every LLVM tool must be LLVM_WINDOWS_VERSION $expectedLlvm" }
-        $toolBanner = ((& $toolCmd.Source --version 2>&1 | Out-String) -replace '\s+', ' ').Trim()
-        if ($toolBanner -notmatch "(?<![\d.])$([regex]::Escape($expectedLlvm))(?![\d.])") {
-            throw "$tool version mismatch: expected $expectedLlvm (versions.env LLVM_WINDOWS_VERSION), got '$toolBanner' from $($toolCmd.Source)"
-        }
-        Write-Host "$tool OK: $expectedLlvm ($($toolCmd.Source))"
-    }
-}
+Assert-LlvmToolVersions -ExpectedLlvm $expectedLlvm
 
-# ninja and nasm shape what ships, an sccache older than v0.16.0 ignores SCCACHE_MULTILEVEL_CHAIN, and a CMake mismatch fails here, not in a media build.
-foreach ($pinned in @(
-        @{ Tool = 'cmake';   Args = @('--version'); EnvVar = 'CMAKE_VERSION' },
-        @{ Tool = 'ninja';   Args = @('--version'); EnvVar = 'NINJA_WINDOWS_VERSION' },
-        @{ Tool = 'nasm';    Args = @('-v');        EnvVar = 'NASM_WINDOWS_VERSION' },
-        @{ Tool = 'sccache'; Args = @('--version'); EnvVar = 'SCCACHE_WINDOWS_VERSION' })) {
-    $expected = Resolve-ContainerImageValue -EnvironmentVariable $pinned.EnvVar -DefaultValue ''
-    if (-not $expected) { continue }
-    # Real splatting: an array subexpression works for native commands only by accident of argument flattening.
-    $toolArgs = $pinned.Args
-    $banner = (& $pinned.Tool @toolArgs 2>&1 | Select-Object -First 1)
-    if ($LASTEXITCODE -ne 0) { throw "$($pinned.Tool) $($toolArgs -join ' ') failed (exit code $LASTEXITCODE)" }
-    if (-not (Test-PinnedBanner -Banner $banner -Expected $expected)) {
-        throw "$($pinned.Tool) version mismatch: expected $expected (versions.env $($pinned.EnvVar)), got '$banner'"
-    }
-    Write-Host "$($pinned.Tool) OK: $banner"
-}
+Assert-PinnedBuildToolVersions
 
 # Captured first: .Source on a miss would throw under StrictMode.
 $wixCommandInfo = Get-Command wix -ErrorAction SilentlyContinue
@@ -124,36 +133,41 @@ function Assert-Arm64ComponentLib {
     Invoke-Arm64StrictPolicy -Shortfall "$Label missing under $Root (expected <ver>\$RelativePath). $Remedy"
 }
 
-$probeDir = Join-Path ([System.IO.Path]::GetTempPath()) ('archprobe-' + [guid]::NewGuid().ToString('N'))
-$null = New-Item -ItemType Directory -Force -Path $probeDir
-try {
-    $probeSrc = Join-Path $probeDir 'probe.c'
-    Set-Content -LiteralPath $probeSrc -Value 'int probe(int x) { return x + 1; }' -Encoding ASCII
-    $probeObj = Join-Path $probeDir 'probe.obj'
+function Assert-Arm64CrossCompiler {
+    param([string]$ArmTriple, [uint16]$ArmMachine)
 
-    & clang-cl "--target=$armTriple" /c $probeSrc "/Fo$probeObj" 2>&1 | ForEach-Object { Write-Host "  $_" }
-    $probeFailure = ''
-    if ($LASTEXITCODE -ne 0) {
-        $probeFailure = "clang-cl failed to compile for $armTriple (exit $LASTEXITCODE)"
-    } elseif (-not (Test-Path $probeObj)) {
-        $probeFailure = "clang-cl produced no object file for $armTriple"
-    } else {
-        $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
-        if ($objBytes.Length -lt 2) {
-            $probeFailure = "clang-cl produced a truncated object file for $armTriple"
+    $probeDir = New-TemporaryDirectory -Prefix 'archprobe-'
+    try {
+        $probeSrc = Join-Path $probeDir 'probe.c'
+        Set-Content -LiteralPath $probeSrc -Value 'int probe(int x) { return x + 1; }' -Encoding ASCII
+        $probeObj = Join-Path $probeDir 'probe.obj'
+
+        & clang-cl "--target=$ArmTriple" /c $probeSrc "/Fo$probeObj" 2>&1 | ForEach-Object { Write-Host "  $_" }
+        $probeFailure = ''
+        if ($LASTEXITCODE -ne 0) {
+            $probeFailure = "clang-cl failed to compile for $ArmTriple (exit $LASTEXITCODE)"
+        } elseif (-not (Test-Path $probeObj)) {
+            $probeFailure = "clang-cl produced no object file for $ArmTriple"
         } else {
-            $objMachine = Get-CoffObjectMachineFromBytes -Bytes $objBytes -AllowUnknownMachine
-            if ($objMachine -ne $armMachine) {
-                $probeFailure = ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}).' -f $objMachine, $armMachine, $armTriple)
+            $objBytes = [System.IO.File]::ReadAllBytes($probeObj)
+            if ($objBytes.Length -lt 2) {
+                $probeFailure = "clang-cl produced a truncated object file for $ArmTriple"
             } else {
-                Write-Host ('clang-cl cross-compiles to {0} (object machine 0x{1:X4}) OK' -f $armTriple, $objMachine)
+                $objMachine = Get-CoffObjectMachineFromBytes -Bytes $objBytes -AllowUnknownMachine
+                if ($objMachine -ne $ArmMachine) {
+                    $probeFailure = ('clang-cl targeted the wrong architecture: object machine 0x{0:X4}, expected 0x{1:X4} ({2}).' -f $objMachine, $ArmMachine, $ArmTriple)
+                } else {
+                    Write-Host ('clang-cl cross-compiles to {0} (object machine 0x{1:X4}) OK' -f $ArmTriple, $objMachine)
+                }
             }
         }
+        if ($probeFailure) { Invoke-Arm64StrictPolicy -Shortfall $probeFailure }
+    } finally {
+        Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction SilentlyContinue
     }
-    if ($probeFailure) { Invoke-Arm64StrictPolicy -Shortfall $probeFailure }
-} finally {
-    Remove-Item -LiteralPath $probeDir -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+Assert-Arm64CrossCompiler -ArmTriple $armTriple -ArmMachine $armMachine
 
 # MSVC ARM64 CRT + import libraries (installed by VC.Tools.ARM64).
 $msvcRoot = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\$(Resolve-ContainerImageValue -EnvironmentVariable 'VISUAL_STUDIO_VERSION' -DefaultValue '18')\BuildTools\VC\Tools\MSVC"

@@ -118,27 +118,45 @@ $distribution = (Get-PyprojectBuildInfo -Python $gil.Exe -PyprojectPath $pyproje
 $suite = Get-FreeThreadedWheelSuite -Python $gil.Exe -PyprojectPath $pyproject
 $platform = Get-ClangTargetTriple -Arch (Get-WindowsTargetArch)
 $manifest = [Collections.Generic.List[object]]::new()
-foreach ($leg in $legs) {
-    $ft = $leg.EndsWith('t')
-    $abi = Get-StageAbiTag $leg
+
+function Initialize-Arm64StageLegPython {
+    param([string]$leg, [bool]$ft)
     $pyDir = Join-Path $out "python-$leg"
     Copy-Item -LiteralPath $(if ($ft) { $TargetFreeThreadedPython } else { $TargetPython }) -Destination $pyDir -Recurse
     $site = Join-Path $pyDir 'Lib\site-packages'
-    # The image's own packages and DLL shim; a leg starts from its lock alone.
+    # A leg starts from its lock alone, not from the image's own packages.
     Get-ChildItem -LiteralPath $site -Force | Where-Object Name -ne 'README.txt' | Remove-Item -Recurse -Force
     $exe = @(Get-ChildItem -LiteralPath $pyDir -File -Filter $(if ($ft) { 'python3.*t.exe' } else { 'python.exe' }))
     if ($exe.Count -ne 1) { throw "the target interpreter for $leg holds $($exe.Count) matching executables, not one" }
-    $wheel = @(Get-PythonAppWheelFile -Directory $wheels | Where-Object { $_.Name -match "-($abi|none)-[^-]+\.whl$" })[0]
-    if (-not $wheel) { throw "no $abi or pure wheel for Python $leg in $wheels" }
-    $hostPython = if ($ft) { (Get-SourceBuildPython -FreeThreaded).Exe } else { $gil.Exe }
+    return [pscustomobject]@{ Site = $site; Exe = $exe }
+}
+
+function Install-Arm64StageLegSite {
+    param([string]$leg, [bool]$ft, [string]$abi, [string]$site, $wheel)
+    $hostPython = Get-SourceBuildHostPythonExe -GilPython $gil -FreeThreaded:$ft
     $legExtras = @(Split-PythonCiList -Value $(if ($ft -and $FreeThreadedExtras) { $FreeThreadedExtras } else { $Extras }))
     $legWork = Join-Path $work "site-$leg"
     Initialize-PythonAppDirectory -Path $legWork
     $stores = @(if ($ft) { Join-Path (Get-FreeThreadedWheelStore) 'deps' }) + $Store
     Install-PythonCrossSite -HostPython $hostPython -SitePackages $site -RepoRoot $repo -Wheel $wheel.FullName -Extras $legExtras -AllExtras:($legExtras.Count -eq 0) `
         -WorkDir $legWork -Platform $platform -PythonVersion ($leg -replace 't$', '') -Store $stores -StoreTag "$abi-$(Get-PythonWheelTag)"
-    # setuptools ships x86 and x64 launcher stubs as package data; no test runs them, and the arch gate refuses them.
+    # setuptools package data contains x86 launchers that the arch gate correctly rejects.
     Get-ChildItem -LiteralPath (Join-Path $site 'setuptools') -Filter '*.exe' -Recurse -File -ErrorAction SilentlyContinue | Remove-Item -Force
+    return [pscustomobject]@{ HostPython = $hostPython; Extras = $legExtras }
+}
+
+function Add-Arm64PythonStageLegs {
+foreach ($leg in $legs) {
+    $ft = $leg.EndsWith('t')
+    $abi = Get-StageAbiTag $leg
+    $pythonLeg = Initialize-Arm64StageLegPython -leg $leg -ft $ft
+    $site = $pythonLeg.Site
+    $exe = $pythonLeg.Exe
+    $wheel = @(Get-PythonAppWheelFile -Directory $wheels | Where-Object { $_.Name -match "-($abi|none)-[^-]+\.whl$" })[0]
+    if (-not $wheel) { throw "no $abi or pure wheel for Python $leg in $wheels" }
+    $installed = Install-Arm64StageLegSite -leg $leg -ft $ft -abi $abi -site $site -wheel $wheel
+    $hostPython = $installed.HostPython
+    $legExtras = $installed.Extras
     $binary = $wheel.Name -notmatch '-none-any\.whl$'
     # The proof's check, load or prove, and a refusal of any wheel but this leg's cpXY[t] one for the target.
     $check = if ($binary) { Get-NativeWheelCheck -Name $wheel.Name -Leg $leg -Platform (Get-PythonWheelTag) } else { 'load' }
@@ -163,6 +181,9 @@ foreach ($leg in $legs) {
         Write-Host "Python ${leg}: free-threaded wheel tests skipped: pyproject.toml has no [tool.antfrastructure.free-threaded-wheel-tests]"
     }
 }
+}
+
+Add-Arm64PythonStageLegs
 
 foreach ($rel in Get-StageTestFile -RepoRoot $repo -TestFiles $TestFiles) {
     $staged = Join-Path $out "run\$rel"

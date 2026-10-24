@@ -245,7 +245,7 @@ try {
         Invoke-BuildExternal -Context $Context -File $makeappxExe -Parameters @("pack", "/d", $stagingRoot, "/p", $packageFile, "/o")
     }
 
-    Invoke-BuildStep -Context $Context -StepName "Sign MSIX" -Critical -Script {
+    function Invoke-MsixSigning {
         if ($CreateTestCertificate) {
             if ([string]::IsNullOrWhiteSpace($CertificatePath)) {
                 $CertificatePath = Join-Path $outDir "$PackageName.testcert.pfx"
@@ -272,6 +272,7 @@ try {
             Write-BuildLogWarning -Context $Context -Message "MSIX created but not signed. Installation will typically fail until it is signed."
         }
     }
+    Invoke-BuildStep -Context $Context -StepName "Sign MSIX" -Critical -Script { Invoke-MsixSigning }
 
     Write-BuildLogSuccess -Context $Context -Message "MSIX package ready: $packageFile"
     Write-BuildSummary -Context $Context

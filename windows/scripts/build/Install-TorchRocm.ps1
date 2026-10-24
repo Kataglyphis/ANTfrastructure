@@ -175,6 +175,16 @@ function Get-TorchRocmWheelSet {
     Exactly one torch and one torchvision wheel, win_amd64, each a '+rocm<ROCM_WINDOWS_RELEASE>' build;
     anything else in the directory is refused, so a stale second wheel cannot win the install.
 #>
+function Add-TorchRocmWheelFileFacts {
+    param($Wheel, [string]$LocalPath, [string]$Sha256)
+    $Wheel | Add-Member -NotePropertyMembers @{
+        Name = $Wheel.Distribution.ToUpperInvariant()
+        Url = ([uri]$LocalPath).AbsoluteUri
+        Sha256 = $Sha256
+        LocalPath = $LocalPath
+    } -PassThru
+}
+
 function Get-TorchRocmBuiltWheel {
     param([Parameter(Mandatory)][string]$WheelDir, [Parameter(Mandatory)][string]$Release)
     if (-not (Test-Path -LiteralPath $WheelDir -PathType Container)) { throw "no source-built wheels at $WheelDir - the torch-rocm-wheels stage must be mounted there" }
@@ -187,7 +197,7 @@ function Get-TorchRocmBuiltWheel {
         if ($w.Platform -ne 'win_amd64') { throw "$($f.Name) is a $($w.Platform) wheel, the image is win_amd64" }
         if (-not $w.Version.EndsWith("+rocm$Release")) { throw "$($f.Name) is not a '+rocm$Release' build (ROCM_WINDOWS_RELEASE)" }
         $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $f.FullName).Hash.ToLowerInvariant()
-        $byDist[$w.Distribution] = $w | Add-Member -NotePropertyMembers @{ Name = $w.Distribution.ToUpperInvariant(); Url = ([uri]$f.FullName).AbsoluteUri; Sha256 = $sha; LocalPath = $f.FullName } -PassThru
+        $byDist[$w.Distribution] = Add-TorchRocmWheelFileFacts -Wheel $w -LocalPath $f.FullName -Sha256 $sha
     }
     foreach ($dist in 'torch', 'torchvision') { if (-not $byDist.ContainsKey($dist)) { throw "$WheelDir has no $dist wheel" } }
     return @($byDist['torch'], $byDist['torchvision'])

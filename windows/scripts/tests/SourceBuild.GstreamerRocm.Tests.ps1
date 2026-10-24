@@ -191,10 +191,20 @@ Describe 'Get-GstRocmLeakFinding (the proof for the scrub)' {
     }
 
     It 'the script runs it after meson setup on HasRocm, over build.ninja and intro-dependencies.json, and throws' {
-        $text = Get-GstScriptText
-        Assert-Match "(?s)log 'meson setup completed\.'\s*if \(\`$gpuEnv\.HasRocm\) \{\s*\`$rocmLeaks = @\(Get-GstRocmLeakFinding" $text 'gate right after setup, rocm only'
-        Assert-Match "build\.ninja'\), \(Join-Path \`$resolvedBuildDir 'meson-info\\intro-dependencies\.json'\)" $text 'both files'
-        Assert-Match 'if \(\$rocmLeaks\.Count -gt 0\) \{ throw ' $text 'a leak fails the build'
+        $gate = ConvertTo-TestScriptAst -Text (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Assert-GstConfiguredSources').ToString()
+        $finder = @(Get-TestAstCommands -Ast $gate -Name Get-GstRocmLeakFinding)
+        Assert-Equal 1 $finder.Count 'one leak finder'
+        $guard = Get-TestAstAncestor -Node $finder[0] -Type ([Management.Automation.Language.IfStatementAst]) -First
+        Assert-Equal '$gpuEnv.HasRocm' $guard.Clauses[0].Item1.Extent.Text 'gate on rocm only'
+        $paths = @(Get-TestAstCommands -Ast $finder[0] -Name Join-Path | ForEach-Object { $_.Extent.Text })
+        Assert-Equal "Join-Path `$resolvedBuildDir 'build.ninja'|Join-Path `$resolvedBuildDir 'meson-info\intro-dependencies.json'" ($paths -join '|') 'both files'
+        Assert-Match 'if \(\$rocmLeaks\.Count -gt 0\) \{ throw ' $gate.Extent.Text 'a leak fails the build'
+        $driver = ConvertTo-TestScriptAst -Text (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Invoke-GstSourceBuild').ToString()
+        $setup = @(Get-TestAstCommands -Ast $driver -Name Invoke-GstMesonSetupWithRetry)
+        $check = @(Get-TestAstCommands -Ast $driver -Name Assert-GstConfiguredSources)
+        Assert-Equal 1 $setup.Count 'one meson setup'
+        Assert-TestAstCommand -Command $check -Text 'Assert-GstConfiguredSources -gpuEnv $gpuEnv -resolvedBuildDir $resolvedBuildDir -gstSrcDir $gstSrcDir'
+        Assert-True ($setup[0].Extent.EndOffset -lt $check[0].Extent.StartOffset) 'gate right after setup'
     }
 }
 

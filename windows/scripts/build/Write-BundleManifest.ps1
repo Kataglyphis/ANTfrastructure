@@ -68,54 +68,150 @@ function ConvertTo-BundleEnvironmentScript {
     }
 }
 
+function Get-BundleManifestFacts {
+    param([string]$InstallDir, [string]$Arch, [object]$Info, [bool]$Cross)
+
+    $envNames = @('FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'LITERT_BIN', 'LITERT_LM_ROOT', 'GSTREAMER_BIN',
+                  'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'PYTHON_WHEELS_FREE_THREADED',
+                  'VULKAN_SDK', 'LP_NATIVE_VECTOR_WIDTH')
+    $envRows = @()
+    foreach ($n in $envNames) {
+        $v = [Environment]::GetEnvironmentVariable($n, 'Process')
+        if ([string]::IsNullOrWhiteSpace($v)) { continue }
+        $exists = Test-Path $v
+        $envRows += [pscustomobject]@{ Name = $n; Value = $v; Exists = $exists }
+    }
+    $bundleBin = Join-Path $InstallDir 'bin'
+    $dllHomes = @($bundleBin) + @($envRows | Where-Object { $_.Exists -and $_.Name -match '_BIN$' } | ForEach-Object { $_.Value })
+    foreach ($extra in @((Join-Path $InstallDir "lib\opencv5\$($Info.OpenCvArchDir)\vc18\bin"), (Join-Path $InstallDir 'lib\onnxruntime-source\bin'), (Join-Path $InstallDir 'lib\onnxruntime-genai-source\bin'), (Join-Path $InstallDir 'lavapipe'))) {
+        if ((Test-Path $extra) -and ($dllHomes -notcontains $extra)) { $dllHomes += $extra }
+    }
+    $dllHomes = @($dllHomes | Select-Object -Unique)
+
+    $targetPython = Join-Path $InstallDir 'python'
+    $pythonRoot = if (Test-Path (Join-Path $targetPython 'python.exe')) { $targetPython } else { '' }
+    $ftPythonRoot = Join-Path $InstallDir 'python-freethreaded'
+    $ftExeName = Get-CpythonFreeThreadedExeName
+    $ftPythonExe = if (Test-Path (Join-Path $ftPythonRoot $ftExeName)) { Join-Path $ftPythonRoot $ftExeName } else { '' }
+    $wheelDir = Join-Path $InstallDir 'wheels'
+    $wheels = @(if (Test-Path $wheelDir) { Get-ChildItem -Path $wheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
+    $ftWheelDir = Join-Path $InstallDir (Split-Path -Leaf (Get-FreeThreadedWheelStore))
+    $ftWheels = @(if (Test-Path $ftWheelDir) { Get-ChildItem -Path $ftWheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
+    if ($Cross) {
+        # The cross bundle cannot run smoke section 20, so its twin store must be checked here.
+        $ftFindings = @(Get-FreeThreadedStoreFinding -Store $ftWheelDir -GilStore $wheelDir -PlatformTag $Info.PythonWheelTag)
+        if ($ftFindings.Count -gt 0) { throw "write-bundle-manifest: the cp3XYt store does not mirror the GIL store:`n  $($ftFindings -join "`n  ")" }
+    }
+    $absent = @(Get-ChildItem -Path $InstallDir -Recurse -File -Include 'ABSENT-ON-*.txt', 'COMPILER-ABSENT-*.txt' -ErrorAction SilentlyContinue |
+            ForEach-Object { [pscustomobject]@{ Path = $_.FullName.Substring($InstallDir.Length).TrimStart('\'); First = (Get-Content $_.FullName -TotalCount 1) } })
+    $plugins = @(if (Get-Command Get-RequiredGstPlugin -ErrorAction SilentlyContinue) { Get-RequiredGstPlugin -Arch $Arch | ForEach-Object { $_.Name } })
+    return [pscustomobject]@{ EnvRows = $envRows; DllHomes = $dllHomes; BundleBin = $bundleBin; PythonRoot = $pythonRoot
+        FtPythonRoot = $ftPythonRoot; FtExeName = $ftExeName; FtPythonExe = $ftPythonExe; WheelDir = $wheelDir
+        Wheels = $wheels; FtWheelDir = $ftWheelDir; FtWheels = $ftWheels; Absent = $absent; Plugins = $plugins }
+}
+
+function Get-BundleReadmePythonLines {
+    param([string]$PythonRoot, [string]$BundleBin,
+        [string]$FtPythonExe, [string]$FtExeName, [string]$WheelDir, [string[]]$Wheels,
+        [string]$FtWheelDir, [string[]]$FtWheels)
+
+    '## Python'
+    ''
+    if ($PythonRoot) {
+        "- Interpreter: ``$PythonRoot\python.exe`` (source-built for this target; CRT DLLs beside it and in ``$BundleBin``)."
+        "- Site-packages: ``$PythonRoot\Lib\site-packages`` (cv2 installed there, plus its DLL-directory shim)."
+        '- pip is not installed but its wheel ships with the stdlib: `python -m ensurepip` (offline).'
+    } else {
+        '- Interpreter: the image''s CPython (`python` on PATH); the bundle wheels are already installed into it.'
+    }
+    if ($FtPythonExe) {
+        $ftRequest = $FtExeName -replace '^python' -replace '\.exe$'
+        "- Free-threaded interpreter: ``$FtPythonExe`` (``--disable-gil``, source-built for this target). It is last on ``PATH`` and has no ``python.exe``, so only a ``$ftRequest`` request finds it (``uv venv --python $ftRequest`` with ``UV_PYTHON_DOWNLOADS=never``). Its site-packages starts empty; its wheels are the store below, never the GIL one."
+    }
+    "- Wheel store: ``$WheelDir`` -- $($Wheels.Count) wheel(s):"
+    foreach ($w in $Wheels) { "  - ``$w``" }
+    if ($FtWheels.Count -gt 0) {
+        "- Free-threaded wheel store: ``$FtWheelDir`` -- the ``cp3XYt`` twins of the wheels whose code declares free-threading, $($FtWheels.Count) wheel(s). Install one into a venv of the free-threaded interpreter with ``pip install --no-index --no-deps``; their dependencies have no ``cp3XYt`` wheels in this bundle:"
+        foreach ($w in $FtWheels) { "  - ``$w``" }
+    }
+    ''
+    'Install from the store only, never from PyPI on top of it -- the store carries the bundle''s own `onnxruntime` (CPU+DirectML), which a PyPI resolve would shadow:'
+    ''
+    '```'
+    "python -m ensurepip"
+    "python -m pip install --no-index --find-links $WheelDir onnxruntime onnxruntime-genai-directml av"
+    '```'
+    ''
+}
+
+function Get-BundleReadmeIntegrationLines {
+    param([string[]]$Plugins, [bool]$Cross,
+        [string]$BundleBin, [string]$InstallDir)
+
+    '## GStreamer'
+    ''
+    "Mandatory plugin contract on this lane: $(if ($Plugins.Count) { ($Plugins | ForEach-Object { '`' + $_ + '`' }) -join ', ' } else { '(module not present at manifest time)' })."
+    if ($Cross) {
+        ''
+        '**One-time step on the device:** the GIO module cache (`giomodule.cache`) is not shipped -- `gio-querymodules` cannot run during a cross build. Run once after copying the bundle, from a shell where BUNDLE-ENV has been called:'
+        ''
+        '```'
+        "$BundleBin\gio-querymodules.exe $InstallDir\lib\gio\modules"
+        '```'
+        ''
+        'Without it GIO loads no TLS/proxy modules (gioopenssl); plain pipelines are unaffected.'
+    }
+    ''
+    '## Vulkan on lavapipe'
+    ''
+    "The CPU Vulkan device (Mesa's lavapipe) sits in ``$InstallDir\lavapipe`` with its own loader and ``vulkaninfo.exe``; ``LP_NATIVE_VECTOR_WIDTH=256`` is set because Mesa 26.2's BVH sort needs 8-lane subgroups."
+    ''
+    '```'
+    "$InstallDir\lavapipe\vulkaninfo.exe --summary"
+    '```'
+    if ($Cross) {
+        ''
+        '**One-time step on the device:** copying the tree does not register the ICD, and the loader ignores `VK_DRIVER_FILES` in an elevated process. From an elevated shell, where BUNDLE-ENV has been called:'
+        ''
+        '```'
+        "New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null"
+        "New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name `"$InstallDir\lavapipe\lvp_icd.aarch64.json`" -Value 0 -PropertyType DWord -Force"
+        '```'
+    }
+    $validationJson = Join-Path $InstallDir 'vulkan-layers\VkLayer_khronos_validation.json'
+    if (Test-Path -LiteralPath $validationJson) {
+        ''
+        '## The Vulkan validation layer'
+        ''
+        "``VkLayer_khronos_validation`` for this arch sits in ``$InstallDir\vulkan-layers``, at the image's Vulkan SDK version. The loader ignores ``VK_ADD_LAYER_PATH`` in an elevated process, so register it there instead:"
+        ''
+        '```'
+        "New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\ExplicitLayers' -Force | Out-Null"
+        "New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\ExplicitLayers' -Name `"$validationJson`" -Value 0 -PropertyType DWord -Force"
+        '```'
+    }
+}
+
 if (-not (Test-Path $InstallDir)) { throw "write-bundle-manifest: $InstallDir does not exist -- nothing to describe" }
 
 $arch  = Get-WindowsTargetArch
 $info  = Get-WindowsTargetArchInfo -Arch $arch
 $cross = Test-WindowsCrossTarget -Arch $arch
 
-# 1. DLL homes: the merge RUN's ENV that exists, named as the GStreamer probe and the final PATH name them
-$envNames = @('FFMPEG_BIN', 'OPENCV_BIN', 'ONNX_ROOT', 'ONNX_GENAI_ROOT', 'LITERT_BIN', 'LITERT_LM_ROOT', 'GSTREAMER_BIN',
-              'GST_PLUGIN_PATH', 'GST_PLUGIN_SYSTEM_PATH', 'TVM_ROOT', 'IREE_ROOT', 'IREE_BIN', 'PYTHON_WHEELS', 'PYTHON_WHEELS_FREE_THREADED',
-              'VULKAN_SDK', 'LP_NATIVE_VECTOR_WIDTH')
-$envRows = @()
-foreach ($n in $envNames) {
-    $v = [Environment]::GetEnvironmentVariable($n, 'Process')
-    if ([string]::IsNullOrWhiteSpace($v)) { continue }
-    $exists = Test-Path $v
-    $envRows += [pscustomobject]@{ Name = $n; Value = $v; Exists = $exists }
-}
-$bundleBin = Join-Path $InstallDir 'bin'
-$dllHomes = @($bundleBin) + @($envRows | Where-Object { $_.Exists -and $_.Name -match '_BIN$' } | ForEach-Object { $_.Value })
-foreach ($extra in @((Join-Path $InstallDir "lib\opencv5\$($info.OpenCvArchDir)\vc18\bin"), (Join-Path $InstallDir 'lib\onnxruntime-source\bin'), (Join-Path $InstallDir 'lib\onnxruntime-genai-source\bin'), (Join-Path $InstallDir 'lavapipe'))) {
-    if ((Test-Path $extra) -and ($dllHomes -notcontains $extra)) { $dllHomes += $extra }
-}
-$dllHomes = @($dllHomes | Select-Object -Unique)
-
-# 2. Python: the target interpreter on a cross lane, the image's host CPython on the native lane
-$targetPython = Join-Path $InstallDir 'python'
-$pythonRoot = if (Test-Path (Join-Path $targetPython 'python.exe')) { $targetPython } else { '' }
-# Build-TargetCpython.ps1's free-threaded twin: last on PATH and without a python.exe, so only an X.Yt request finds it.
-$ftPythonRoot = Join-Path $InstallDir 'python-freethreaded'
-$ftExeName = Get-CpythonFreeThreadedExeName
-$ftPythonExe = if (Test-Path (Join-Path $ftPythonRoot $ftExeName)) { Join-Path $ftPythonRoot $ftExeName } else { '' }
-$wheelDir = Join-Path $InstallDir 'wheels'
-$wheels = @(if (Test-Path $wheelDir) { Get-ChildItem -Path $wheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
-# The cp3XYt twins' own store; see docs/windows-builds.md#the-free-threaded-wheels.
-$ftWheelDir = Join-Path $InstallDir (Split-Path -Leaf (Get-FreeThreadedWheelStore))
-$ftWheels = @(if (Test-Path $ftWheelDir) { Get-ChildItem -Path $ftWheelDir -Filter '*.whl' -File | ForEach-Object { $_.Name } })
-if ($cross) {
-    # Smoke section 20 cannot run a cross bundle, so the store is checked here: every twin-verdict GIL wheel has its twin.
-    $ftFindings = @(Get-FreeThreadedStoreFinding -Store $ftWheelDir -GilStore $wheelDir -PlatformTag $info.PythonWheelTag)
-    if ($ftFindings.Count -gt 0) { throw "write-bundle-manifest: the cp3XYt store does not mirror the GIL store:`n  $($ftFindings -join "`n  ")" }
-}
-
-# 3. What is absent by construction on this lane, in the branches' own words
-$absent = @(Get-ChildItem -Path $InstallDir -Recurse -File -Include 'ABSENT-ON-*.txt', 'COMPILER-ABSENT-*.txt' -ErrorAction SilentlyContinue |
-        ForEach-Object { [pscustomobject]@{ Path = $_.FullName.Substring($InstallDir.Length).TrimStart('\'); First = (Get-Content $_.FullName -TotalCount 1) } })
-
-# 4. The GStreamer plugin contract this lane was gated on
-$plugins = @(if (Get-Command Get-RequiredGstPlugin -ErrorAction SilentlyContinue) { Get-RequiredGstPlugin -Arch $arch | ForEach-Object { $_.Name } })
+$facts = Get-BundleManifestFacts -InstallDir $InstallDir -Arch $arch -Info $info -Cross $cross
+$envRows = $facts.EnvRows
+$dllHomes = $facts.DllHomes
+$bundleBin = $facts.BundleBin
+$pythonRoot = $facts.PythonRoot
+$ftPythonRoot = $facts.FtPythonRoot
+$ftExeName = $facts.FtExeName
+$ftPythonExe = $facts.FtPythonExe
+$wheelDir = $facts.WheelDir
+$wheels = $facts.Wheels
+$ftWheelDir = $facts.FtWheelDir
+$ftWheels = $facts.FtWheels
+$absent = $facts.Absent
+$plugins = $facts.Plugins
 
 $stamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss') + 'Z'
 
@@ -145,75 +241,9 @@ foreach ($d in $dllHomes) { $md.Add("- ``$d``") }
 $md.Add('')
 $md.Add('Python extension modules do not consult `PATH` (Python >= 3.8): the shipped `sitecustomize.py` in the site-packages below registers the same directories with `os.add_dll_directory` at interpreter start.')
 $md.Add('')
-$md.Add('## Python')
-$md.Add('')
-if ($pythonRoot) {
-    $md.Add("- Interpreter: ``$pythonRoot\python.exe`` (source-built for this target; CRT DLLs beside it and in ``$bundleBin``).")
-    $md.Add("- Site-packages: ``$pythonRoot\Lib\site-packages`` (cv2 installed there, plus its DLL-directory shim).")
-    $md.Add('- pip is not installed but its wheel ships with the stdlib: `python -m ensurepip` (offline).')
-} else {
-    $md.Add('- Interpreter: the image''s CPython (`python` on PATH); the bundle wheels are already installed into it.')
-}
-if ($ftPythonExe) {
-    $ftRequest = $ftExeName -replace '^python' -replace '\.exe$'
-    $md.Add("- Free-threaded interpreter: ``$ftPythonExe`` (``--disable-gil``, source-built for this target). It is last on ``PATH`` and has no ``python.exe``, so only a ``$ftRequest`` request finds it (``uv venv --python $ftRequest`` with ``UV_PYTHON_DOWNLOADS=never``). Its site-packages starts empty; its wheels are the store below, never the GIL one.")
-}
-$md.Add("- Wheel store: ``$wheelDir`` -- $($wheels.Count) wheel(s):")
-foreach ($w in $wheels) { $md.Add("  - ``$w``") }
-if ($ftWheels.Count -gt 0) {
-    $md.Add("- Free-threaded wheel store: ``$ftWheelDir`` -- the ``cp3XYt`` twins of the wheels whose code declares free-threading, $($ftWheels.Count) wheel(s). Install one into a venv of the free-threaded interpreter with ``pip install --no-index --no-deps``; their dependencies have no ``cp3XYt`` wheels in this bundle:")
-    foreach ($w in $ftWheels) { $md.Add("  - ``$w``") }
-}
-$md.Add('')
-$md.Add('Install from the store only, never from PyPI on top of it -- the store carries the bundle''s own `onnxruntime` (CPU+DirectML), which a PyPI resolve would shadow:')
-$md.Add('')
-$md.Add('```')
-$md.Add("python -m ensurepip")
-$md.Add("python -m pip install --no-index --find-links $wheelDir onnxruntime onnxruntime-genai-directml av")
-$md.Add('```')
-$md.Add('')
-$md.Add('## GStreamer')
-$md.Add('')
-$md.Add("Mandatory plugin contract on this lane: $(if ($plugins.Count) { ($plugins | ForEach-Object { '`' + $_ + '`' }) -join ', ' } else { '(module not present at manifest time)' }).")
-if ($cross) {
-    $md.Add('')
-    $md.Add('**One-time step on the device:** the GIO module cache (`giomodule.cache`) is not shipped -- `gio-querymodules` cannot run during a cross build. Run once after copying the bundle, from a shell where BUNDLE-ENV has been called:')
-    $md.Add('')
-    $md.Add('```')
-    $md.Add("$bundleBin\gio-querymodules.exe $InstallDir\lib\gio\modules")
-    $md.Add('```')
-    $md.Add('')
-    $md.Add('Without it GIO loads no TLS/proxy modules (gioopenssl); plain pipelines are unaffected.')
-}
-$md.Add('')
-$md.Add('## Vulkan on lavapipe')
-$md.Add('')
-$md.Add("The CPU Vulkan device (Mesa's lavapipe) sits in ``$InstallDir\lavapipe`` with its own loader and ``vulkaninfo.exe``; ``LP_NATIVE_VECTOR_WIDTH=256`` is set because Mesa 26.2's BVH sort needs 8-lane subgroups.")
-$md.Add('')
-$md.Add('```')
-$md.Add("$InstallDir\lavapipe\vulkaninfo.exe --summary")
-$md.Add('```')
-if ($cross) {
-    $md.Add('')
-    $md.Add('**One-time step on the device:** copying the tree does not register the ICD, and the loader ignores `VK_DRIVER_FILES` in an elevated process. From an elevated shell, where BUNDLE-ENV has been called:')
-    $md.Add('')
-    $md.Add('```')
-    $md.Add("New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Force | Out-Null")
-    $md.Add("New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\Drivers' -Name `"$InstallDir\lavapipe\lvp_icd.aarch64.json`" -Value 0 -PropertyType DWord -Force")
-    $md.Add('```')
-}
-$validationJson = Join-Path $InstallDir 'vulkan-layers\VkLayer_khronos_validation.json'
-if (Test-Path -LiteralPath $validationJson) {
-    $md.Add('')
-    $md.Add('## The Vulkan validation layer')
-    $md.Add('')
-    $md.Add("``VkLayer_khronos_validation`` for this arch sits in ``$InstallDir\vulkan-layers``, at the image's Vulkan SDK version. The loader ignores ``VK_ADD_LAYER_PATH`` in an elevated process, so register it there instead:")
-    $md.Add('')
-    $md.Add('```')
-    $md.Add("New-Item -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\ExplicitLayers' -Force | Out-Null")
-    $md.Add("New-ItemProperty -Path 'HKLM:\SOFTWARE\Khronos\Vulkan\ExplicitLayers' -Name `"$validationJson`" -Value 0 -PropertyType DWord -Force")
-    $md.Add('```')
-}
+$md.AddRange([string[]]@(Get-BundleReadmePythonLines -PythonRoot $pythonRoot -BundleBin $bundleBin -FtPythonExe $ftPythonExe `
+    -FtExeName $ftExeName -WheelDir $wheelDir -Wheels $wheels -FtWheelDir $ftWheelDir -FtWheels $ftWheels))
+$md.AddRange([string[]]@(Get-BundleReadmeIntegrationLines -Plugins $plugins -Cross $cross -BundleBin $bundleBin -InstallDir $InstallDir))
 $md.Add('')
 $md.Add('## Absent on this lane, by construction')
 $md.Add('')

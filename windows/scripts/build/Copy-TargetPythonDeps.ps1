@@ -99,10 +99,17 @@ function Get-WheelRequirements([string]$WheelPath) {
     return $reqs
 }
 # pip download of -Requirement for the target; a free-threaded target passes no abi3, which its ABI cannot load.
+function Get-TargetPipDownloadArgs([string]$TargetTag, [string]$PythonVersion, [string[]]$Abi,
+        [string]$Dir, [string[]]$Requirement) {
+    @('-m', 'pip', 'download', '--only-binary=:all:', '--platform', $TargetTag,
+        '--python-version', $PythonVersion, '--implementation', 'cp') +
+        @($Abi | ForEach-Object { '--abi'; $_ }) + @('-d', $Dir, '--disable-pip-version-check') +
+        @($Requirement | ForEach-Object { ConvertTo-CmdSafeRequirement $_ })
+}
+
 function Save-TargetRequirement([string[]]$Requirement, [string]$Dir, [string[]]$Abi, [string]$Label) {
     if (-not $Requirement) { Write-Host "Target python deps: no requirement to download for the $Label"; return }
-    $pipArgs = @('-m', 'pip', 'download', '--only-binary=:all:', '--platform', $targetTag, '--python-version', $pyVer, '--implementation', 'cp') +
-        @($Abi | ForEach-Object { '--abi'; $_ }) + @('-d', $Dir, '--disable-pip-version-check') + @($Requirement | ForEach-Object { ConvertTo-CmdSafeRequirement $_ })
+    $pipArgs = @(Get-TargetPipDownloadArgs -TargetTag $targetTag -PythonVersion $pyVer -Abi $Abi -Dir $Dir -Requirement $Requirement)
     Write-Host "Target python deps: pip download for $targetTag / $($Abi -join ', ') into $Dir : $($Requirement -join ' | ')"
     [void](Invoke-ShieldedNative -Label "pip download ($Label)" -CommandLine ("""$($py.Exe)"" " + (($pipArgs | ForEach-Object { if ($_ -match '[\s<>=!~;]') { '"' + $_ + '"' } else { $_ } }) -join ' ')))
 }
@@ -140,14 +147,72 @@ function Get-ForeignAbiWheel([System.IO.FileInfo[]]$Wheel, [string]$Abi) {
     @($Wheel | Where-Object { $_.BaseName.Split('-')[-2] -notin @($Abi, 'none') } | ForEach-Object Name)
 }
 
+function Get-BundleFirstTouchRequirement {
+    param([System.IO.FileInfo[]]$Wheel)
+    $requirements = [System.Collections.Generic.List[string]]::new()
+    foreach ($w in $Wheel) {
+        foreach ($r in (Get-WheelRequirements $w.FullName)) { if (-not $requirements.Contains($r)) { $requirements.Add($r) } }
+    }
+    # cv2 imports numpy, but the installed module carries no dependency metadata.
+    if (-not ($requirements | Where-Object { (Get-RequirementName $_) -eq 'numpy' })) { $requirements.Add('numpy') }
+    return , $requirements
+}
+
+function Save-BundleTargetRequirement {
+    param([System.IO.FileInfo[]]$Wheel, [System.Collections.Generic.List[string]]$Requirement, [string]$WheelDir, [string]$AbiTag)
+
+    # PyPI has no win_arm64 build of our own ORT wheel, so download only edges the bundle does not satisfy.
+    $bundled = @{}
+    foreach ($w in $Wheel) { $bundled[(Get-WheelDistName $w.Name)] = $w.Name }
+    $external = @($Requirement | Where-Object { $n = Get-RequirementName $_; -not ($n -and $bundled.ContainsKey($n)) })
+    $inBundle = @($Requirement | Where-Object { $n = Get-RequirementName $_; $n -and $bundled.ContainsKey($n) })
+    if ($inBundle.Count -gt 0) { Write-Host "Target python deps: $($inBundle.Count) requirement(s) satisfied by the bundle's own wheels, not downloaded: $($inBundle -join ' | ')" }
+    if ($external.Count -gt 0) {
+        Save-TargetRequirement -Requirement $external -Dir $WheelDir -Abi @($AbiTag, 'none', 'abi3') -Label 'target platform'
+    } else {
+        Write-Host "Target python deps: nothing external to download -- every first-touch requirement is a bundle wheel"
+    }
+}
+
+function Assert-BundleTargetRequirement {
+    param([string]$WheelDir, [string]$TargetTag, [hashtable]$OnTarget, [string]$KnownUnavailable)
+
+    # Every wheel is pure or target-tagged, and every active Requires-Dist resolves inside the store.
+    $store = Get-StoreWheel $WheelDir
+    $missing = @(Get-UnresolvedTargetRequirement -Wheel $store -TargetTag $TargetTag @OnTarget)
+    if (-not @($store | Where-Object { (Get-WheelDistName $_.Name) -eq 'numpy' }).Count) { $missing += "cv2 -> numpy" }
+    $unexplained = @($missing | Where-Object { -not ($KnownUnavailable -and ($_ -match $KnownUnavailable)) })
+    Write-Host ("Target python deps: store holds {0} wheel(s); {1} requirement edge(s) unresolved ({2} known-unavailable)" -f $store.Count, $missing.Count, ($missing.Count - $unexplained.Count))
+    Assert-TargetEdgeResolved -Edge $unexplained -Why "have no wheel in $WheelDir for $TargetTag -- the device could not import the bundle's Python surface (#126). Stage them, or record a measured reason in -KnownUnavailable."
+    Write-Host "Target python deps OK: every Requires-Dist of the $($store.Count) staged wheels resolves inside $WheelDir for $TargetTag"
+}
+
+function Save-FreeThreadedTargetRequirement {
+    param([string]$FreeThreadedWheelDir, [string]$TargetTag, [string]$AbiTag, [hashtable]$OnTarget)
+
+    $twins = Get-StoreWheel $FreeThreadedWheelDir
+    if ($twins.Count -eq 0) {
+        Write-Host "Target python deps: no cp3XYt twin in $FreeThreadedWheelDir, so no free-threaded dependency to stage"
+        return
+    }
+    $ftAbi = "${AbiTag}t"
+    $ftDepsDir = Join-Path $FreeThreadedWheelDir 'deps'
+    New-Item -Path $ftDepsDir -ItemType Directory -Force | Out-Null
+    $twinNames = @($twins | ForEach-Object { Get-WheelDistName $_.Name })
+    $ftRequirements = @(Get-TargetRequirement -Wheel $twins @OnTarget | Where-Object Name -NotIn $twinNames | ForEach-Object Requirement | Select-Object -Unique)
+    Save-TargetRequirement -Requirement $ftRequirements -Dir $ftDepsDir -Abi @($ftAbi, 'none') -Label 'free-threaded target'
+    $ftDeps = Get-StoreWheel $ftDepsDir
+    $foreign = @(Get-ForeignAbiWheel -Wheel $ftDeps -Abi $ftAbi)
+    if ($foreign.Count -gt 0) { throw "Target python deps: $($foreign -join ', ') in $ftDepsDir is neither $ftAbi nor ABI-free, so a free-threaded venv could not load it" }
+    Assert-TargetEdgeResolved -Edge @(Get-UnresolvedTargetRequirement -Wheel (@($twins) + @($ftDeps)) -TargetTag $TargetTag @OnTarget) `
+        -Why "of the $ftAbi twins have no wheel in $FreeThreadedWheelDir or its deps\ -- a free-threaded venv on the device could not install them offline"
+    Write-Host "Target python deps OK ($ftAbi): the $($twins.Count) twin(s) and $($ftDeps.Count) dependency wheel(s) in deps\ resolve every Requires-Dist for $TargetTag"
+}
+
 # 1. What our wheels need.
 $ourWheels = Get-StoreWheel $WheelDir
 if ($ourWheels.Count -eq 0) { throw "Target python deps: no wheels in $WheelDir -- the media branches did not stage their wheels (ORT/GenAI/PyAV)" }
-$requirements = [System.Collections.Generic.List[string]]::new()
-foreach ($w in $ourWheels) {
-    foreach ($r in (Get-WheelRequirements $w.FullName)) { if (-not $requirements.Contains($r)) { $requirements.Add($r) } }
-}
-if (-not ($requirements | Where-Object { (Get-RequirementName $_) -eq 'numpy' })) { $requirements.Add('numpy') }   # cv2 imports numpy; the installed module carries no metadata
+$requirements = Get-BundleFirstTouchRequirement -Wheel $ourWheels
 Write-Host "Target python deps: $($ourWheels.Count) bundle wheel(s) declare $($requirements.Count) first-touch requirement(s): $($requirements -join ' | ')"
 
 # A gate that gets greener as requirements vanish hides defects, such as an empty Requires-Dist parse.
@@ -158,46 +223,13 @@ if ($MinFirstTouchRequirements -gt 0 -and $requirements.Count -lt $MinFirstTouch
     throw "Target python deps: $($requirements.Count) first-touch requirement(s) is below the floor of $MinFirstTouchRequirements — requirements disappeared (empty Requires-Dist = greener gate hiding a defect, run-34/35 class)."
 }
 
-# 2. Download for the target only what the bundle lacks: PyPI has no win_arm64 build of our own ORT wheel; gate (b) still checks it.
-$bundled = @{}
-foreach ($w in $ourWheels) { $bundled[(Get-WheelDistName $w.Name)] = $w.Name }
-$external = @($requirements | Where-Object { $n = Get-RequirementName $_; -not ($n -and $bundled.ContainsKey($n)) })
-$inBundle = @($requirements | Where-Object { $n = Get-RequirementName $_; $n -and $bundled.ContainsKey($n) })
-if ($inBundle.Count -gt 0) { Write-Host "Target python deps: $($inBundle.Count) requirement(s) satisfied by the bundle's own wheels, not downloaded: $($inBundle -join ' | ')" }
-if ($external.Count -gt 0) {
-    Save-TargetRequirement -Requirement $external -Dir $WheelDir -Abi @($abiTag, 'none', 'abi3') -Label 'target platform'
-} else {
-    Write-Host "Target python deps: nothing external to download -- every first-touch requirement is a bundle wheel"
-}
+Save-BundleTargetRequirement -Wheel $ourWheels -Requirement $requirements -WheelDir $WheelDir -AbiTag $abiTag
 
-# 3. Gate: (a) every wheel is pure or target-tagged, (b) every Requires-Dist resolves inside the store.
-$store = Get-StoreWheel $WheelDir
 $machine = switch ($targetTag) { 'win_arm64' { 'ARM64' } 'win_amd64' { 'AMD64' } default { throw "Target python deps: no platform_machine for $targetTag" } }
 $onTarget = @{ PythonExe = $py.Exe; PythonVersion = $pyVer; Machine = $machine }
-$missing = @(Get-UnresolvedTargetRequirement -Wheel $store -TargetTag $targetTag @onTarget)
-if (-not @($store | Where-Object { (Get-WheelDistName $_.Name) -eq 'numpy' }).Count) { $missing += "cv2 -> numpy" }
-$unexplained = @($missing | Where-Object { -not ($KnownUnavailable -and ($_ -match $KnownUnavailable)) })
-Write-Host ("Target python deps: store holds {0} wheel(s); {1} requirement edge(s) unresolved ({2} known-unavailable)" -f $store.Count, $missing.Count, ($missing.Count - $unexplained.Count))
-Assert-TargetEdgeResolved -Edge $unexplained -Why "have no wheel in $WheelDir for $targetTag -- the device could not import the bundle's Python surface (#126). Stage them, or record a measured reason in -KnownUnavailable."
-Write-Host "Target python deps OK: every Requires-Dist of the $($store.Count) staged wheels resolves inside $WheelDir for $targetTag"
+Assert-BundleTargetRequirement -WheelDir $WheelDir -TargetTag $targetTag -OnTarget $onTarget -KnownUnavailable $KnownUnavailable
 
 # 4. The cp3XYt twins' dependencies, for the free-threaded target, into the twins' store's deps\ (BACKLOG CON79).
 if (-not $FreeThreadedWheelDir) { $FreeThreadedWheelDir = Get-FreeThreadedWheelStore }
-$twins = Get-StoreWheel $FreeThreadedWheelDir
-if ($twins.Count -eq 0) {
-    Write-Host "Target python deps: no cp3XYt twin in $FreeThreadedWheelDir, so no free-threaded dependency to stage"
-    exit 0
-}
-$ftAbi = "${abiTag}t"
-$ftDepsDir = Join-Path $FreeThreadedWheelDir 'deps'
-New-Item -Path $ftDepsDir -ItemType Directory -Force | Out-Null
-$twinNames = @($twins | ForEach-Object { Get-WheelDistName $_.Name })
-$ftRequirements = @(Get-TargetRequirement -Wheel $twins @onTarget | Where-Object Name -NotIn $twinNames | ForEach-Object Requirement | Select-Object -Unique)
-Save-TargetRequirement -Requirement $ftRequirements -Dir $ftDepsDir -Abi @($ftAbi, 'none') -Label 'free-threaded target'
-$ftDeps = Get-StoreWheel $ftDepsDir
-$foreign = @(Get-ForeignAbiWheel -Wheel $ftDeps -Abi $ftAbi)
-if ($foreign.Count -gt 0) { throw "Target python deps: $($foreign -join ', ') in $ftDepsDir is neither $ftAbi nor ABI-free, so a free-threaded venv could not load it" }
-Assert-TargetEdgeResolved -Edge @(Get-UnresolvedTargetRequirement -Wheel (@($twins) + @($ftDeps)) -TargetTag $targetTag @onTarget) `
-    -Why "of the $ftAbi twins have no wheel in $FreeThreadedWheelDir or its deps\ -- a free-threaded venv on the device could not install them offline"
-Write-Host "Target python deps OK ($ftAbi): the $($twins.Count) twin(s) and $($ftDeps.Count) dependency wheel(s) in deps\ resolve every Requires-Dist for $targetTag"
+Save-FreeThreadedTargetRequirement -FreeThreadedWheelDir $FreeThreadedWheelDir -TargetTag $targetTag -AbiTag $abiTag -OnTarget $onTarget
 exit 0

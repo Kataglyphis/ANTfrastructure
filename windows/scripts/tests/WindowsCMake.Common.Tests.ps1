@@ -4,6 +4,16 @@
 
 Describe 'WindowsCMake.Common' {
   BeforeAll {
+    function Assert-CmakeBuildArgs {
+      param([hashtable]$Options, [string]$Expected)
+      InModuleScope WindowsCMake.Common -Parameters @{ Options = $Options; Expected = $Expected } {
+        param($Options, $Expected)
+        Mock Write-BuildLog {}
+        $buildArgs = @(Get-CmakeBuildArgs @Options)
+        ($buildArgs -join ' ') | Should -Be $Expected
+      }
+    }
+
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsCMake.Common.psm1'
     Import-Module $modulePath -Force
 
@@ -48,6 +58,15 @@ Describe 'WindowsCMake.Common' {
     It 'returns an array even without extra arguments' {
       $a = Get-CmakeConfigureArgs -BuildPath 'C:\b' -Preset 'p'
       $a.Count | Should -Be 4
+    }
+  }
+
+  Context 'Get-CmakeBuildArgs' {
+    It 'keeps explicit and unlimited parallelism with their matching verbosity' {
+      Assert-CmakeBuildArgs -Options @{ Context = [pscustomobject]@{}; BuildPath = 'C:\b'; Configuration = 'Debug'; ParallelJobs = 3; CpuCount = 8; VerboseOutput = $true } `
+        -Expected '--build C:\b --config Debug --parallel 3 --verbose'
+      Assert-CmakeBuildArgs -Options @{ Context = [pscustomobject]@{}; BuildPath = 'C:\b'; Configuration = 'Release'; CpuCount = 8 } `
+        -Expected '--build C:\b --config Release --parallel'
     }
   }
 

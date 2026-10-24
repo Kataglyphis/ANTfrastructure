@@ -46,6 +46,8 @@ Write-Host ''
 
 # --- Phase A: services + clients ---------------------------------------------
 
+function Test-HostClientServices {
+param([string]$StevedoreBin)
 foreach ($svc in 'containerd', 'buildkitd') {
     $s = Get-Service $svc -ErrorAction SilentlyContinue
     if ($s -and $s.Status -eq 'Running') { Write-Check PASS "service $svc running" }
@@ -72,9 +74,48 @@ if (Test-Path $buildctl) {
 $nerdctl = Join-Path $StevedoreBin 'nerdctl.exe'
 if (Test-Path $nerdctl) { Write-Check PASS 'nerdctl present (admin-only by design - containerd pipe)' }
 else { Write-Check WARN "nerdctl missing at $nerdctl - run/inspect lane unavailable" }
+return $buildctl
+}
+
+$buildctl = Test-HostClientServices -StevedoreBin $StevedoreBin
 
 # --- Phase A5: CNI ------------------------------------------------------------
 
+function Get-HostCniSubnet {
+param([string]$Text)
+return ([regex]::Match($Text, '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
+}
+
+function Test-HostCniSubnet {
+param([string]$Conflist, [string]$BareConf, [bool]$HaveList, [bool]$HaveConf, [string]$ConfText)
+if ($HaveConf -and $HaveList) {
+    # Nothing else checks content drift between the two, so compare the load-bearing field.
+    $subnetConf = Get-HostCniSubnet -Text (Get-Content $BareConf -Raw)
+    $subnetList = Get-HostCniSubnet -Text (Get-Content $Conflist -Raw)
+    if ($subnetConf -and $subnetList -and $subnetConf -ne $subnetList) {
+        Write-Check FAIL "CNI .conf and .conflist disagree on the subnet ($subnetConf vs $subnetList)" `
+            'the two clients would attach containers to different networks' `
+            'make both files carry the same ipam.subnet/GW, then Restart-Service buildkitd -Force  (admin)'
+    } else {
+        Write-Check PASS 'CNI .conf and .conflist agree on the subnet'
+    }
+}
+
+if ($ConfText) {
+    $subnet = Get-HostCniSubnet -Text $ConfText
+    $adapter = Get-CniNatAdapterIp
+    if (-not $adapter) { Write-Check WARN 'no vEthernet (nat) adapter - cannot judge subnet drift' }
+    elseif ($subnet -and (Test-IpInSubnet -Ip $adapter -Cidr $subnet -InvalidReturnsFalse)) { Write-Check PASS "CNI subnet matches the live nat adapter ($subnet <- $adapter)" }
+    else {
+        Write-Check FAIL "CNI subnet drift: conf pins $subnet, adapter is $adapter" `
+            'containers get unroutable IPs - the first downloading RUN dies with "remote name could not be resolved"' `
+            'update ipam.subnet/GW to the adapter, then Restart-Service buildkitd -Force (admin)'
+    }
+}
+}
+
+function Test-HostCniConfiguration {
+param([string]$CniConfDir)
 # Both forms are required, buildkitd reads the .conf and nerdctl the .conflist: see docs/windows-host-setup.md § A5
 $conflist = Join-Path $CniConfDir '0-containerd-nat.conflist'
 $bareConf = Join-Path $CniConfDir '0-containerd-nat.conf'
@@ -101,33 +142,15 @@ if ($haveList) {
         'add the plugins[] conflist form alongside the .conf - template in host-setup A5'
 }
 
-if ($haveConf -and $haveList) {
-    # Nothing else checks content drift between the two, so compare the load-bearing field.
-    $subnetConf = ([regex]::Match((Get-Content $bareConf -Raw), '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
-    $subnetList = ([regex]::Match((Get-Content $conflist -Raw), '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
-    if ($subnetConf -and $subnetList -and $subnetConf -ne $subnetList) {
-        Write-Check FAIL "CNI .conf and .conflist disagree on the subnet ($subnetConf vs $subnetList)" `
-            'the two clients would attach containers to different networks' `
-            'make both files carry the same ipam.subnet/GW, then Restart-Service buildkitd -Force  (admin)'
-    } else {
-        Write-Check PASS 'CNI .conf and .conflist agree on the subnet'
-    }
+Test-HostCniSubnet -Conflist $conflist -BareConf $bareConf -HaveList:$haveList -HaveConf:$haveConf -ConfText $confText
 }
 
-if ($confText) {
-    $subnet = ([regex]::Match($confText, '"subnet"\s*:\s*"([^"]+)"')).Groups[1].Value
-    $adapter = Get-CniNatAdapterIp
-    if (-not $adapter) { Write-Check WARN 'no vEthernet (nat) adapter - cannot judge subnet drift' }
-    elseif ($subnet -and (Test-IpInSubnet -Ip $adapter -Cidr $subnet -InvalidReturnsFalse)) { Write-Check PASS "CNI subnet matches the live nat adapter ($subnet <- $adapter)" }
-    else {
-        Write-Check FAIL "CNI subnet drift: conf pins $subnet, adapter is $adapter" `
-            'containers get unroutable IPs - the first downloading RUN dies with "remote name could not be resolved"' `
-            'update ipam.subnet/GW to the adapter, then Restart-Service buildkitd -Force (admin)'
-    }
-}
+Test-HostCniConfiguration -CniConfDir $CniConfDir
 
 # --- Phase C: shim, gcpolicy, service config ---------------------------------
 
+function Test-HostShimPatch {
+param([string]$StevedoreBin, [string]$ModuleRoot, [long[]]$PatchedShimSize, [long[]]$StockShimSize)
 # SHA256 against Publish-ShimPatch.ps1's record, like Assert-ShimPatch; size is only a loudly-flagged fallback.
 $shim = Join-Path $StevedoreBin 'containerd-shim-runhcs-v1.exe'
 $shimFix = 'pwsh -File windows\scripts\host\Publish-ShimPatch.ps1 -ShimPath <build>  (admin)'
@@ -137,7 +160,7 @@ if (-not (Test-Path $shim)) {
     $size = (Get-Item $shim).Length
     $shimState = $null
     try {
-        Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
+        Import-Module (Join-Path $ModuleRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
         $shimStatePath = Get-ShimPatchStatePath
         if (Test-Path $shimStatePath) { $shimState = Get-Content $shimStatePath -Raw | ConvertFrom-Json }
     } catch {
@@ -166,8 +189,12 @@ if (-not (Test-Path $shim)) {
             'probably a newer patched build; re-run Publish-ShimPatch.ps1 to record its hash' $shimFix
     }
 }
+}
+
+Test-HostShimPatch -StevedoreBin $StevedoreBin -ModuleRoot $scriptAssetRoot -PatchedShimSize $PatchedShimSize -StockShimSize $StockShimSize
 
 # Under StrictMode an absent registry value throws on member access, so probe Properties.Name first.
+function Test-HostServiceConfiguration {
 $cProps = Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\containerd' -ErrorAction SilentlyContinue
 $cEnv = if ($cProps -and $cProps.PSObject.Properties.Name -contains 'Environment') { @($cProps.Environment) } else { @() }
 if ($cEnv -and ($cEnv -join ';') -match 'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT=') {
@@ -212,7 +239,12 @@ if ($s3Missing.Count -eq $s3Names.Count) {
 $cImage = if ($cProps) { [string]$cProps.ImagePath } else { '' }
 if ($cImage -match '--log-level\s+debug') { Write-Check PASS 'containerd debug logging on (owner policy)' }
 else { Write-Check WARN 'containerd debug logging OFF' 'the next snapshotter incident will carry no evidence' 'pwsh -File windows\scripts\host\Set-ContainerdConfig.ps1  (admin)' }
+}
 
+Test-HostServiceConfiguration
+
+function Test-HostBuildkitWorker {
+param([string]$Buildctl)
 if (Test-Path $buildctl) {
     $workers = & $buildctl debug workers -v 2>&1 | Out-String
     if ($workers -match 'snapshotter:\s*windows') { Write-Check PASS 'buildkit worker uses the windows snapshotter' }
@@ -220,11 +252,16 @@ if (Test-Path $buildctl) {
     if ($workers -match 'Minimum free space') { Write-Check PASS 'gcpolicy active on the worker' }
     else { Write-Check FAIL 'no gcpolicy on the worker - the store will grow until the disk dies' '' 'pwsh -File windows\scripts\host\Set-BuildkitdGcpolicy.ps1 -Force  (admin)' }
 }
+}
+
+Test-HostBuildkitWorker -Buildctl $buildctl
 
 # --- Phase D: runtime preconditions -------------------------------------------
 
+function Test-HostRuntimePreconditions {
+param([string]$ModuleRoot, [int]$MinFreeGb, [string]$SccacheEndpoint)
 # The repo drive too, like Assert-DiskHeadroom: a VHDX-backed checkout runs out on its own.
-$repoDrive = (Get-Item (Split-Path $scriptAssetRoot -Parent)).PSDrive.Name
+$repoDrive = (Get-Item (Split-Path $ModuleRoot -Parent)).PSDrive.Name
 foreach ($driveLetter in (@('C', $repoDrive) | Select-Object -Unique)) {
     $freeGb = Get-DriveFreeSpaceGb -Drive $driveLetter
     if ($null -eq $freeGb) { continue }
@@ -256,6 +293,9 @@ if ($isAdmin) {
 } else {
     Write-Check INFO 'Defender exclusions UNKNOWN (needs admin to read)' 're-run elevated to verify - they are load-bearing'
 }
+}
+
+Test-HostRuntimePreconditions -ModuleRoot $scriptAssetRoot -MinFreeGb $MinFreeGb -SccacheEndpoint $SccacheEndpoint
 
 Write-Host ''
 if ($script:Fail -gt 0) {

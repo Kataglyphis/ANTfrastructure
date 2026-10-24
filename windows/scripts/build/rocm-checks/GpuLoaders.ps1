@@ -56,6 +56,74 @@ function Get-VulkanLoaderCopyFinding {
     }
 }
 
+function Get-GpuLoaderFirstRecord {
+    param([hashtable]$Records, [string]$Kind)
+    if ($Records.ContainsKey($Kind)) { return , $Records[$Kind][0] }
+}
+
+function Get-GpuLoaderRecordStatus {
+    param([hashtable]$Records, [string]$Kind)
+    if ($Records.ContainsKey("$Kind-load")) {
+        return [pscustomobject]@{ State = 'LoadFailure'; Record = (Get-GpuLoaderFirstRecord -Records $Records -Kind "$Kind-load") }
+    }
+    $record = Get-GpuLoaderFirstRecord -Records $Records -Kind $Kind
+    if (-not $record) { return [pscustomobject]@{ State = 'Missing'; Record = $null } }
+    return [pscustomobject]@{ State = 'Loaded'; Record = $record }
+}
+
+function Get-GpuLoaderFailureFinding {
+    param([object]$Status, [string]$Kind, [string]$IcdPath)
+    if ($Status.State -eq 'Loaded') { return }
+    if ($Kind -eq 'vulkan') {
+        if ($Status.State -eq 'Missing') { return 'Vulkan: the probe reported nothing about vulkan-1.dll' }
+        return "Vulkan: vulkan-1.dll does not load through the standard DLL search (Win32 $($Status.Record[1]); 126 = found nowhere)"
+    }
+    if ($Kind -eq 'opencl') {
+        if ($Status.State -eq 'Missing') { return 'OpenCL: the probe reported nothing about OpenCL.dll' }
+        return "OpenCL: no OpenCL.dll loads through the standard DLL search (Win32 $($Status.Record[1])): TheRock's bin is not on PATH"
+    }
+    if ($Status.State -eq 'Missing') { return "OpenCL: the probe reported nothing about $IcdPath" }
+    return "OpenCL: $IcdPath does not load (Win32 $($Status.Record[1]))"
+}
+
+function Get-OpenClPlatformFinding {
+    param([hashtable]$Records, [object[]]$LoaderRecord, [string]$IcdPath, [string]$PlatformPattern)
+    $names = @(if ($Records.ContainsKey('platform')) { $Records['platform'] | ForEach-Object { $_[1] } })
+    if (-not @($names | Where-Object { $_ -match $PlatformPattern })) {
+        "OpenCL: clGetPlatformIDs through $($LoaderRecord[1]) lists no AMD platform ($(if ($names) { $names -join ', ' } else { 'none' })), so the loader did not load $IcdPath"
+    }
+}
+
+function Get-GpuLoaderRecordFinding {
+    param([hashtable]$Records, [string]$Kind, [string]$LoaderPath, [string]$IcdPath,
+        [int]$SdkHeaderVersion, [string]$PlatformPattern)
+    $status = Get-GpuLoaderRecordStatus -Records $Records -Kind $Kind
+    if ($status.State -ne 'Loaded') { return Get-GpuLoaderFailureFinding -Status $status -Kind $Kind -IcdPath $IcdPath }
+    $record = $status.Record
+    switch ($Kind) {
+        'vulkan' {
+            if (-not [string]::Equals($record[1], $LoaderPath, [StringComparison]::OrdinalIgnoreCase)) {
+                "Vulkan: vulkan-1.dll resolves to $($record[1]), not $LoaderPath (a copy shadows it, or System32 has none)"
+            }
+            if ($record[2] -ne 'True' -or $record[3] -ne 'True') { "Vulkan: $($record[1]) does not export vkGetInstanceProcAddr and vkEnumerateInstanceVersion" }
+            elseif ($record[4] -ne '0') { "Vulkan: vkEnumerateInstanceVersion returned $($record[4])" }
+            elseif ($SdkHeaderVersion -gt 0 -and [int]$record[7] -lt $SdkHeaderVersion) {
+                "Vulkan: the loader is $($record[5]).$($record[6]).$($record[7]), older than the SDK headers ($SdkHeaderVersion) the image links against"
+            }
+        }
+        'opencl' {
+            if ($record[2] -eq 'nosym') { "OpenCL: $($record[1]) exports no clGetPlatformIDs" }
+            elseif ($record[2] -notin @('0', '-1001')) { "OpenCL: clGetPlatformIDs through $($record[1]) returned $($record[2])" }
+            else { Get-OpenClPlatformFinding -Records $Records -LoaderRecord $record -IcdPath $IcdPath -PlatformPattern $PlatformPattern }
+        }
+        'icd' {
+            if ($record[2] -ne 'True' -or $record[3] -ne 'True') {
+                "OpenCL: $IcdPath does not export clIcdGetPlatformIDsKHR and clGetExtensionFunctionAddress, which the Khronos loader requires"
+            }
+        }
+    }
+}
+
 # $Line holds the child probe's 'kind|field|...' records; GpuLoaderProbe.Run below defines each kind's fields.
 function Get-GpuLoaderProbeFinding {
     param(
@@ -74,42 +142,9 @@ function Get-GpuLoaderProbeFinding {
         if (-not $rec.ContainsKey($f[0])) { $rec[$f[0]] = [System.Collections.Generic.List[object]]::new() }
         $rec[$f[0]].Add($f)
     }
-    $one = { param($k) if ($rec.ContainsKey($k)) { return , $rec[$k][0] } }
-
-    $vk = & $one 'vulkan'
-    if ($rec.ContainsKey('vulkan-load')) {
-        "Vulkan: vulkan-1.dll does not load through the standard DLL search (Win32 $((& $one 'vulkan-load')[1]); 126 = found nowhere)"
-    } elseif (-not $vk) { 'Vulkan: the probe reported nothing about vulkan-1.dll' }
-    else {
-        if (-not [string]::Equals($vk[1], $LoaderPath, [StringComparison]::OrdinalIgnoreCase)) {
-            "Vulkan: vulkan-1.dll resolves to $($vk[1]), not $LoaderPath (a copy shadows it, or System32 has none)"
-        }
-        if ($vk[2] -ne 'True' -or $vk[3] -ne 'True') { "Vulkan: $($vk[1]) does not export vkGetInstanceProcAddr and vkEnumerateInstanceVersion" }
-        elseif ($vk[4] -ne '0') { "Vulkan: vkEnumerateInstanceVersion returned $($vk[4])" }
-        elseif ($SdkHeaderVersion -gt 0 -and [int]$vk[7] -lt $SdkHeaderVersion) {
-            "Vulkan: the loader is $($vk[5]).$($vk[6]).$($vk[7]), older than the SDK headers ($SdkHeaderVersion) the image links against"
-        }
-    }
-
-    $cl = & $one 'opencl'
-    if ($rec.ContainsKey('opencl-load')) {
-        "OpenCL: no OpenCL.dll loads through the standard DLL search (Win32 $((& $one 'opencl-load')[1])): TheRock's bin is not on PATH"
-    } elseif (-not $cl) { 'OpenCL: the probe reported nothing about OpenCL.dll' }
-    elseif ($cl[2] -eq 'nosym') { "OpenCL: $($cl[1]) exports no clGetPlatformIDs" }
-    elseif ($cl[2] -notin @('0', '-1001')) { "OpenCL: clGetPlatformIDs through $($cl[1]) returned $($cl[2])" }
-    else {
-        $names = @(if ($rec.ContainsKey('platform')) { $rec['platform'] | ForEach-Object { $_[1] } })
-        if (-not @($names | Where-Object { $_ -match $PlatformPattern })) {
-            "OpenCL: clGetPlatformIDs through $($cl[1]) lists no AMD platform ($(if ($names) { $names -join ', ' } else { 'none' })), so the loader did not load $IcdPath"
-        }
-    }
-
-    $icd = & $one 'icd'
-    if ($rec.ContainsKey('icd-load')) { "OpenCL: $IcdPath does not load (Win32 $((& $one 'icd-load')[1]))" }
-    elseif (-not $icd) { "OpenCL: the probe reported nothing about $IcdPath" }
-    elseif ($icd[2] -ne 'True' -or $icd[3] -ne 'True') {
-        "OpenCL: $IcdPath does not export clIcdGetPlatformIDsKHR and clGetExtensionFunctionAddress, which the Khronos loader requires"
-    }
+    Get-GpuLoaderRecordFinding -Records $rec -Kind 'vulkan' -LoaderPath $LoaderPath -IcdPath $IcdPath -SdkHeaderVersion $SdkHeaderVersion
+    Get-GpuLoaderRecordFinding -Records $rec -Kind 'opencl' -IcdPath $IcdPath -PlatformPattern $PlatformPattern
+    Get-GpuLoaderRecordFinding -Records $rec -Kind 'icd' -IcdPath $IcdPath
 }
 
 $script:GpuLoaderProbeSource = @'

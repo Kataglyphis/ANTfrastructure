@@ -25,18 +25,10 @@ function Invoke-TestEnvironmentCases {
 
 function New-TestCmakeExecutionModuleArguments {
     $state = New-TestCallState @{ Runtime = $null; Paths = [Collections.Generic.List[object]]::new(); Logs = [Collections.Generic.List[string]]::new(); Code = 0; Throw = $false }
-    $text = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Write-BuildCommandOutput, Set-SccacheMaxJobsDefault).ToString() + "`n" +
-        (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsCMake.Common.psm1' -FunctionName Invoke-CmakeConfigureAndBuild).ToString()
+    $text = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' -FunctionName Write-BuildCommandOutput).ToString() + "`n" +
+        (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsCMake.Common.psm1' -FunctionName Invoke-CmakeBuildCommand).ToString()
     return @{ Text = $text; FixtureState = $state; Prelude = @'
-function Get-CimInstance { [pscustomobject]@{ NumberOfLogicalProcessors = 1 } }
-function Get-Command { return $null }
 function Write-BuildLog { param($Context, $Message) $State.Logs.Add("$Message|PATH=$env:PATH") }
-function Write-BuildLogWarning {}
-function Write-CmakeEnvironmentDiagnostics {}
-function Get-CmakeConfigureArgs { return @('-B', 'fixture build') }
-function Invoke-BuildExternal {}
-function Get-SanitizerRuntimeDlls { if ($State.Runtime) { $State.Runtime } }
-function Copy-SanitizerRuntimeDlls {}
 function cmake {
     $State.Calls.Add(@($args))
     $State.Paths.Add([Environment]::GetEnvironmentVariable('PATH'))

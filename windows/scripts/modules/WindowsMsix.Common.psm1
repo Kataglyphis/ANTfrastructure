@@ -212,6 +212,76 @@ function Invoke-PackagerTool {
   }
 }
 
+function Assert-MsixSigningReady {
+  param([switch]$Sign, [switch]$RequireSignature, [string]$SigningRoot)
+  $signing = $Sign -or $RequireSignature
+  # Before any work, so a missing parameter cannot leave a packed package silently unsigned.
+  if ($signing) {
+    if ([string]::IsNullOrWhiteSpace($SigningRoot)) {
+      throw '-Sign needs -SigningRoot: the directory holding the signing .pfx, normally the repository root.'
+    }
+    if (-not (Get-Command -Name 'Invoke-MsixSign' -ErrorAction SilentlyContinue)) {
+      throw '-Sign needs WindowsMsix.Signing; import it before calling this.'
+    }
+  }
+  return $signing
+}
+
+function Resolve-MsixPackager {
+  param([string]$MakeAppxPath, [string]$ManifestTemplatePath)
+  $makeappx = Resolve-WindowsSdkToolPath -ToolName 'makeappx.exe' -OverridePath $MakeAppxPath
+  if ([string]::IsNullOrWhiteSpace($makeappx)) {
+    throw 'makeappx.exe not found. Install the Windows SDK, or pass -MakeAppxPath.'
+  }
+  if (-not (Test-Path -LiteralPath $ManifestTemplatePath -PathType Leaf)) {
+    throw "Manifest template not found: $ManifestTemplatePath"
+  }
+  return $makeappx
+}
+
+function Copy-MsixStageFiles {
+  param([string]$StagingDir, [string]$ExePath, [string[]]$ExtraFiles, [string]$ResourcesDir)
+  New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
+  if ($ExePath) { Copy-Item -LiteralPath $ExePath -Destination $StagingDir -Force }
+  foreach ($file in $ExtraFiles) {
+    if ($file -and (Test-Path -LiteralPath $file)) {
+      Copy-Item -LiteralPath $file -Destination $StagingDir -Force -Recurse
+    }
+  }
+  if ($ResourcesDir -and (Test-Path -LiteralPath $ResourcesDir)) {
+    Copy-Item -Path (Join-Path $ResourcesDir '*') -Destination $StagingDir -Force -Recurse
+  }
+}
+
+function Write-MsixStageAssets {
+  param([string]$StagingDir, [string]$LogoPath, [switch]$GenerateTransparentLogos)
+  # All four conventional logo names, always: a missing one fails the install without naming it.
+  $assetsDir = Join-Path $StagingDir 'Assets'
+  New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
+  $logos = @{ 'StoreLogo.png' = @(50, 50); 'Square44x44Logo.png' = @(44, 44)
+              'Square150x150Logo.png' = @(150, 150); 'Wide310x150Logo.png' = @(310, 150) }
+  foreach ($name in $logos.Keys) {
+    $target = Join-Path $assetsDir $name
+    if ($LogoPath -and -not $GenerateTransparentLogos -and (Test-Path -LiteralPath $LogoPath)) {
+      Copy-Item -LiteralPath $LogoPath -Destination $target -Force
+    } else {
+      New-TransparentPng -Path $target -Width $logos[$name][0] -Height $logos[$name][1]
+    }
+  }
+}
+
+function Assert-MsixPackageSignature {
+  param($Context, [bool]$Signing, [string]$SigningRoot, [string]$OutputPath, [switch]$RequireSignature, [string]$SignerSubject)
+  if ($signing) {
+    Invoke-MsixSign -Context $Context -WorkspacePath $SigningRoot -MsixOutPath $OutputPath
+  }
+  if ($RequireSignature) {
+    $signer = (Get-AuthenticodeSignature -LiteralPath $OutputPath).SignerCertificate
+    if (-not $signer) { throw "$OutputPath is not signed: Invoke-MsixSign found no usable .pfx in $SigningRoot or signtool failed (see the log)" }
+    if ($SignerSubject -and $signer.Subject -ne $SignerSubject) { throw "$OutputPath is signed by $($signer.Subject), not $SignerSubject" }
+  }
+}
+
 function Invoke-MsixPackage {
   <#
     .SYNOPSIS
@@ -248,49 +318,13 @@ function Invoke-MsixPackage {
     [scriptblock]$InvokerScriptBlock
   )
 
-  $signing = $Sign -or $RequireSignature
-  # Before any work, so a missing parameter cannot leave a packed package silently unsigned.
-  if ($signing) {
-    if ([string]::IsNullOrWhiteSpace($SigningRoot)) {
-      throw '-Sign needs -SigningRoot: the directory holding the signing .pfx, normally the repository root.'
-    }
-    if (-not (Get-Command -Name 'Invoke-MsixSign' -ErrorAction SilentlyContinue)) {
-      throw '-Sign needs WindowsMsix.Signing; import it before calling this.'
-    }
-  }
+  $signing = Assert-MsixSigningReady -Sign:$Sign -RequireSignature:$RequireSignature -SigningRoot $SigningRoot
 
-  $makeappx = Resolve-WindowsSdkToolPath -ToolName 'makeappx.exe' -OverridePath $MakeAppxPath
-  if ([string]::IsNullOrWhiteSpace($makeappx)) {
-    throw 'makeappx.exe not found. Install the Windows SDK, or pass -MakeAppxPath.'
-  }
-  if (-not (Test-Path -LiteralPath $ManifestTemplatePath -PathType Leaf)) {
-    throw "Manifest template not found: $ManifestTemplatePath"
-  }
+  $makeappx = Resolve-MsixPackager -MakeAppxPath $MakeAppxPath -ManifestTemplatePath $ManifestTemplatePath
 
-  New-Item -ItemType Directory -Path $StagingDir -Force | Out-Null
-  if ($ExePath) { Copy-Item -LiteralPath $ExePath -Destination $StagingDir -Force }
-  foreach ($file in $ExtraFiles) {
-    if ($file -and (Test-Path -LiteralPath $file)) {
-      Copy-Item -LiteralPath $file -Destination $StagingDir -Force -Recurse
-    }
-  }
-  if ($ResourcesDir -and (Test-Path -LiteralPath $ResourcesDir)) {
-    Copy-Item -Path (Join-Path $ResourcesDir '*') -Destination $StagingDir -Force -Recurse
-  }
+  Copy-MsixStageFiles -StagingDir $StagingDir -ExePath $ExePath -ExtraFiles $ExtraFiles -ResourcesDir $ResourcesDir
 
-  # All four conventional logo names, always: a missing one fails the install without naming it.
-  $assetsDir = Join-Path $StagingDir 'Assets'
-  New-Item -ItemType Directory -Path $assetsDir -Force | Out-Null
-  $logos = @{ 'StoreLogo.png' = @(50, 50); 'Square44x44Logo.png' = @(44, 44)
-              'Square150x150Logo.png' = @(150, 150); 'Wide310x150Logo.png' = @(310, 150) }
-  foreach ($name in $logos.Keys) {
-    $target = Join-Path $assetsDir $name
-    if ($LogoPath -and -not $GenerateTransparentLogos -and (Test-Path -LiteralPath $LogoPath)) {
-      Copy-Item -LiteralPath $LogoPath -Destination $target -Force
-    } else {
-      New-TransparentPng -Path $target -Width $logos[$name][0] -Height $logos[$name][1]
-    }
-  }
+  Write-MsixStageAssets -StagingDir $StagingDir -LogoPath $LogoPath -GenerateTransparentLogos:$GenerateTransparentLogos
 
   $manifest = Expand-XmlTemplateTokens -Template (Get-Content -LiteralPath $ManifestTemplatePath -Raw) -TokenMap $TokenMap
   Set-Content -Path (Join-Path $StagingDir 'AppxManifest.xml') -Value $manifest -Encoding utf8
@@ -298,14 +332,8 @@ function Invoke-MsixPackage {
   $packArgs = @('pack', '/d', $StagingDir, '/p', $OutputPath, '/o')
   Invoke-PackagerTool -Context $Context -File $makeappx -Parameters $packArgs -OutputPath $OutputPath -InvokerScriptBlock $InvokerScriptBlock
 
-  if ($signing) {
-    Invoke-MsixSign -Context $Context -WorkspacePath $SigningRoot -MsixOutPath $OutputPath
-  }
-  if ($RequireSignature) {
-    $signer = (Get-AuthenticodeSignature -LiteralPath $OutputPath).SignerCertificate
-    if (-not $signer) { throw "$OutputPath is not signed: Invoke-MsixSign found no usable .pfx in $SigningRoot or signtool failed (see the log)" }
-    if ($SignerSubject -and $signer.Subject -ne $SignerSubject) { throw "$OutputPath is signed by $($signer.Subject), not $SignerSubject" }
-  }
+  Assert-MsixPackageSignature -Context $Context -Signing $signing -SigningRoot $SigningRoot -OutputPath $OutputPath -RequireSignature:$RequireSignature -SignerSubject $SignerSubject
+
 
   return $OutputPath
 }

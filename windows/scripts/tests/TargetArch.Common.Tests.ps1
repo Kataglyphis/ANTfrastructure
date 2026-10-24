@@ -1,6 +1,36 @@
 #requires -Version 7.0
 # See docs/windows-cross-builds.md § Where arch facts live
 
+function Get-UnguardedMachineWordDecodes {
+    $shipped = @('build', 'host', 'modules', 'diagnostics') |
+        ForEach-Object { Join-Path (Get-RepoRoot) "windows\scripts\$_" } |
+        Where-Object { Test-Path $_ }
+    foreach ($f in (Get-ChildItem $shipped -Recurse -Include '*.ps1', '*.psm1' -File)) {
+        foreach ($line in (Get-Content -LiteralPath $f.FullName)) {
+            if ($line.TrimStart().StartsWith('#')) { continue }
+            if ($line -match '-bor' -and $line -match '-shl\s+8' -and $line -notmatch '\[int\][^-]*-shl\s+8') {
+                '{0}: {1}' -f $f.Name, $line.Trim()
+            }
+        }
+    }
+}
+
+function Get-MissingTargetArchStageArgs {
+    foreach ($rel in @('windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder')) {
+        $path = Join-Path (Get-RepoRoot) $rel
+        Assert-True (Test-Path $path) "missing Dockerfile: $rel"
+        $stages = Get-TestDockerfileStagesFromPath -Path $path -StrictFromHeader
+        foreach ($stage in $stages.Stages) {
+            if (-not $stage.Name) { continue }
+            if ($stage.From -notmatch '^\$\{') { continue }
+            if (-not ($stage.Lines | Select-String -Pattern '^RUN ')) { continue }
+            if (-not ($stage.Lines | Select-String -Pattern '^ARG\s+WINDOWS_TARGET_ARCH')) {
+                "${rel}: stage '$($stage.Name)' is FROM $($stage.From) and RUNs, but does not redeclare ARG WINDOWS_TARGET_ARCH"
+            }
+        }
+    }
+}
+
 Describe 'Get-WindowsTargetArch resolution' {
 
     It 'defaults to amd64 when nothing is set' {
@@ -299,22 +329,7 @@ Describe 'COFF machine decoding (byte-shift trap)' {
 
     It 'no shipped script decodes a machine word without an [int] cast' {
         # Shipped code only: this file contains the broken form on purpose.
-        $shipped = @('build', 'host', 'modules', 'diagnostics') |
-            ForEach-Object { Join-Path (Get-RepoRoot) "windows\scripts\$_" } |
-            Where-Object { Test-Path $_ }
-        $offenders = @()
-        foreach ($f in (Get-ChildItem $shipped -Recurse -Include '*.ps1', '*.psm1' -File)) {
-            foreach ($line in (Get-Content -LiteralPath $f.FullName)) {
-                # Comments explain the trap; only real code can fall into it.
-                if ($line.TrimStart().StartsWith('#')) { continue }
-                # The machine-word idiom (-shl 8 with -bor) needs an [int] cast on the shifted operand.
-                if ($line -match '-bor' -and $line -match '-shl\s+8') {
-                    if ($line -notmatch '\[int\][^-]*-shl\s+8') {
-                        $offenders += ('{0}: {1}' -f $f.Name, $line.Trim())
-                    }
-                }
-            }
-        }
+        $offenders = @(Get-UnguardedMachineWordDecodes)
         Assert-Equal 0 $offenders.Count ("machine-word decode without [int] cast: " + ($offenders -join ' // '))
     }
 }
@@ -332,23 +347,7 @@ Describe 'WINDOWS_TARGET_ARCH crosses stage boundaries' {
     # See docs/windows-cross-builds.md § Cache discipline: the base image is shared
     It 'every stage built FROM an external image reference redeclares the ARG' {
         # Only a `${...}` FROM starts from a separate solve; an in-file parent passes its ENV down.
-        $repo = Get-RepoRoot
-        $missing = @()
-        foreach ($rel in @('windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder')) {
-            $path = Join-Path $repo $rel
-            Assert-True (Test-Path $path) "missing Dockerfile: $rel"
-            $stages = Get-TestDockerfileStages -Text ([IO.File]::ReadAllText($path)) -StrictFromHeader
-            foreach ($stage in $stages.Stages) {
-                if (-not $stage.Name) { continue }
-                # Only stages pulled from a build-arg image reference are at risk.
-                if ($stage.From -notmatch '^\$\{') { continue }
-                # Only stages that actually RUN something can be affected.
-                if (-not ($stage.Lines | Select-String -Pattern '^RUN ')) { continue }
-                if (-not ($stage.Lines | Select-String -Pattern '^ARG\s+WINDOWS_TARGET_ARCH')) {
-                    $missing += "${rel}: stage '$($stage.Name)' is FROM $($stage.From) and RUNs, but does not redeclare ARG WINDOWS_TARGET_ARCH"
-                }
-            }
-        }
+        $missing = @(Get-MissingTargetArchStageArgs)
         Assert-Equal 0 $missing.Count ($missing -join ' // ')
     }
 }

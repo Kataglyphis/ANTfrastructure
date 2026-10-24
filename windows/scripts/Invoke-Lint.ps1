@@ -155,6 +155,19 @@ Write-Host "== Lint gate: $($targets.Count) files ==" -ForegroundColor Cyan
 Import-Module (Join-Path $scriptsDir 'modules\WindowsLint.Common.psm1')
 
 # Pass 1: parse and AST traps
+function Write-LintResult {
+    param([object[]]$Items, [string]$FailureHeader, [string]$SuccessHeader, [scriptblock]$Format, [string]$Footer)
+    if ($Items.Count -gt 0) {
+        Write-Host $FailureHeader -ForegroundColor Red
+        foreach ($item in $Items) { Write-Host (& $Format $item) -ForegroundColor Red }
+        if ($Footer) { Write-Host $Footer -ForegroundColor Red }
+    } elseif ($SuccessHeader) {
+        Write-Host $SuccessHeader -ForegroundColor Green
+    }
+}
+
+function Get-LintParseReport {
+    param([object[]]$Targets, [string]$WindowsDir)
 $parseErrors = New-Object System.Collections.ArrayList
 $astViolations = New-Object System.Collections.ArrayList
 foreach ($file in $targets) {
@@ -181,51 +194,60 @@ foreach ($file in $targets) {
     }
 }
 
-if ($parseErrors.Count -gt 0) {
-    Write-Host "PARSE: $($parseErrors.Count) error(s)" -ForegroundColor Red
-    foreach ($e in $parseErrors) {
-        Write-Host ("  {0}:{1}  {2}" -f $e.File, $e.Line, $e.Message) -ForegroundColor Red
-    }
-} else {
-    Write-Host "PARSE: all $($targets.Count) files parse clean" -ForegroundColor Green
+Write-LintResult -Items @($parseErrors) -FailureHeader "PARSE: $($parseErrors.Count) error(s)" `
+    -SuccessHeader "PARSE: all $($targets.Count) files parse clean" -Format { param($item) "  $($item.File):$($item.Line)  $($item.Message)" }
+Write-LintResult -Items @($astViolations) -FailureHeader "AST TRAPS: $($astViolations.Count) violation(s)" `
+    -SuccessHeader 'AST TRAPS: none (comma-attr quoting + switch shadowing + glued parameter tokens)' -Format { param($item) "  $item" }
+    return [pscustomobject]@{ ParseErrors = @($parseErrors); AstViolations = @($astViolations) }
 }
-
-if ($astViolations.Count -gt 0) {
-    Write-Host "AST TRAPS: $($astViolations.Count) violation(s)" -ForegroundColor Red
-    foreach ($v in $astViolations) { Write-Host "  $v" -ForegroundColor Red }
-} else {
-    Write-Host 'AST TRAPS: none (comma-attr quoting + switch shadowing + glued parameter tokens)' -ForegroundColor Green
-}
+$parseReport = Get-LintParseReport -Targets $targets -WindowsDir $windowsDir
+$parseErrors = $parseReport.ParseErrors
+$astViolations = $parseReport.AstViolations
 
 # Pass 2: PSScriptAnalyzer (mandatory)
+function Get-LintAnalyzerReport {
+    param([object[]]$Targets)
 $analyzerFindings = @()
 # Initialized here because the verdict reads them unconditionally under StrictMode.
 $analyzerCrashes = @()
-$errs = @()
-$warns = @()
-$analyzerModule = Get-AnalyzerModule
-# The discovered object, not the name, which could load another install than the version reported.
-Import-Module $analyzerModule -Force -ErrorAction Stop
 $verdicts = @(Get-AnalyzerVerdict -Target $targets)
 foreach ($v in @($verdicts)) {
     if ($v.Note) { Write-Host $v.Note -ForegroundColor DarkYellow }
     $analyzerFindings += @($v.Findings)
     if ($v.Crash) { $analyzerCrashes += $v.Crash }
 }
-$errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
-$warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })
+    return [pscustomobject]@{ Findings = $analyzerFindings; Crashes = $analyzerCrashes }
+}
+
+function Write-LintAnalyzerFinding {
+    param([object]$Finding)
+    $color = if ($Finding.Severity -eq 'Error') { 'Red' } else { 'Yellow' }
+    Write-Host ("  [{0}] {1}:{2}  {3} ({4})" -f $Finding.Severity, $Finding.ScriptName, $Finding.Line, $Finding.Message, $Finding.RuleName) -ForegroundColor $color
+}
+
+function Write-LintAnalyzerSummary {
+    param([object]$Report, [object]$AnalyzerModule)
+    $analyzerFindings = @($Report.Findings)
+    $analyzerCrashes = @($Report.Crashes)
+    $errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
+    $warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })
 $color = if ($errs.Count -gt 0) { 'Red' } elseif ($warns.Count -gt 0) { 'Yellow' } else { 'Green' }
 Write-Host "PSSA: $($errs.Count) error(s), $($warns.Count) warning(s) [PSScriptAnalyzer $($analyzerModule.Version)]" -ForegroundColor $color
 foreach ($f in ($analyzerFindings | Sort-Object Severity -Descending | Select-Object -First 40)) {
-    $c = if ($f.Severity -eq 'Error') { 'Red' } else { 'Yellow' }
-    Write-Host ("  [{0}] {1}:{2}  {3} ({4})" -f $f.Severity, $f.ScriptName, $f.Line, $f.Message, $f.RuleName) -ForegroundColor $c
+    Write-LintAnalyzerFinding -Finding $f
 }
-if ($analyzerCrashes.Count -gt 0) {
-    # Reported apart from findings: these files were not analysed at all.
-    Write-Host "PSSA INFRASTRUCTURE FAILURE: $($analyzerCrashes.Count) file(s) could not be analysed after a retry:" -ForegroundColor Red
-    foreach ($c in $analyzerCrashes) { Write-Host "  $($c.File): $($c.Message)" -ForegroundColor Red }
-    Write-Host 'These files were NOT linted - coverage is incomplete.' -ForegroundColor Red
+Write-LintResult -Items $analyzerCrashes `
+    -FailureHeader "PSSA INFRASTRUCTURE FAILURE: $($analyzerCrashes.Count) file(s) could not be analysed after a retry:" `
+    -Format { param($item) "  $($item.File): $($item.Message)" } -Footer 'These files were NOT linted - coverage is incomplete.'
+    return [pscustomobject]@{ Errors = $errs; Warnings = $warns; Crashes = $analyzerCrashes }
 }
+$analyzerModule = Get-AnalyzerModule
+# The discovered object, not the name, which could load another install than the version reported.
+Import-Module $analyzerModule -Force -ErrorAction Stop
+$analyzerReport = Write-LintAnalyzerSummary -Report (Get-LintAnalyzerReport -Targets $targets) -AnalyzerModule $analyzerModule
+$errs = $analyzerReport.Errors
+$warns = $analyzerReport.Warnings
+$analyzerCrashes = $analyzerReport.Crashes
 
 # Verdict
 $fail = ($parseErrors.Count -gt 0) -or ($astViolations.Count -gt 0)

@@ -12,6 +12,25 @@ param(
     [switch]$NoPrompt
 )
 
+function Invoke-Rdna4DeviceChanges {
+    param([object[]]$Device, [bool]$Disable)
+    $targetState = if ($Disable) { 'Disabled' } else { 'Enabled' }
+    $failed = $false
+    foreach ($d in @($Device)) {
+        Write-Host ("BEFORE: {0}  [{1}]" -f $d.FriendlyName, $d.Status) -ForegroundColor Cyan
+        if ((-not $Disable) -and $d.Status -eq 'OK') { Write-Host '  already OK.' -ForegroundColor Green; continue }
+        if ($Disable -and $d.Status -ne 'OK') { Write-Host '  already not OK.'; continue }
+        $result = Set-Rdna4DeviceState -Device $d -State $targetState
+        if ($result.Ok) {
+            Write-Host ("  {0} {1}" -f $targetState.ToLower(), $d.InstanceId) -ForegroundColor Green
+        } else {
+            Write-Host ("  FAILED to reach state '{0}' - status is '{1}' ({2})" -f $targetState, $result.Status, $d.InstanceId) -ForegroundColor Red
+            $failed = $true
+        }
+    }
+    return $failed
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -37,20 +56,7 @@ if (-not $target) {
     exit 1
 }
 
-$targetState = if ($Disable) { 'Disabled' } else { 'Enabled' }
-$failed = $false
-foreach ($d in @($target)) {
-    Write-Host ("BEFORE: {0}  [{1}]" -f $d.FriendlyName, $d.Status) -ForegroundColor Cyan
-    if ((-not $Disable) -and $d.Status -eq 'OK') { Write-Host '  already OK.' -ForegroundColor Green; continue }
-    if ($Disable -and $d.Status -ne 'OK') { Write-Host '  already not OK.'; continue }
-    $result = Set-Rdna4DeviceState -Device $d -State $targetState
-    if ($result.Ok) {
-        Write-Host ("  {0} {1}" -f $targetState.ToLower(), $d.InstanceId) -ForegroundColor Green
-    } else {
-        Write-Host ("  FAILED to reach state '{0}' - status is '{1}' ({2})" -f $targetState, $result.Status, $d.InstanceId) -ForegroundColor Red
-        $failed = $true
-    }
-}
+$failed = Invoke-Rdna4DeviceChanges -Device @($target) -Disable $Disable
 Write-Host ''
 Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match 'Radeon' } |
     Select-Object Status, FriendlyName | Format-Table -AutoSize | Out-Host

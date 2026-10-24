@@ -49,7 +49,7 @@ Describe 'Invoke-WasmOpt (orchestrator)' {
 Describe 'Get-ReusableBuildContainer (orchestrator)' {
 
     # A function fake: a .bat routes '{{.State.Running}}|{{.Image}}' through cmd.exe, which eats the `|`.
-    $dockerDefinition = {
+    function Get-ReusableDockerFixtureReply {
         $joined = $args -join ' '
         Add-Content -LiteralPath $env:WBT_DOCKER_LOG -Value ("DOCKER " + $joined)
         if ($joined -match '\{\{\.Id\}\}') {
@@ -69,7 +69,7 @@ Describe 'Get-ReusableBuildContainer (orchestrator)' {
     function Invoke-ReusableContainerCase {
         param([scriptblock]$Body, [string]$ImageId = '', [string]$State = '', [string]$InspectExit = '1', [switch]$Fresh)
         $caseAction = $Body
-        $definition = $dockerDefinition
+        $definition = ${function:Get-ReusableDockerFixtureReply}
         Invoke-InTestDir { param($dir)
             Invoke-WithTestFunction -Name WbtDockerFake -Definition $definition -Body {
                 $log = Join-Path $dir 'docker.log'

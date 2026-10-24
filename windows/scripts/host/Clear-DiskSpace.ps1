@@ -145,21 +145,8 @@ function Get-ReclaimPlan {
     return @($plan)
 }
 
-# Main
-function Invoke-FreeDiskSpace {
-    Write-HostMaintenanceMessage '== resolving the allowlist ==' 'Cyan'
-    $daemonPrune = -not ($NoDaemonPrune -or $StoreHusksOnly)
-    $plan = @(Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays -StoreHusksOnly:$StoreHusksOnly))
-
-    # Fail closed: one target on a protected root means the resolution is wrong, so nothing runs.
-    foreach ($t in $plan) {
-        if (Test-Protected $t.Path) {
-            Write-HostMaintenanceMessage ('REFUSING THE WHOLE RUN: a resolved target lands on a protected root -> ' + $t.Path) 'Red'
-            Write-HostMaintenanceMessage 'The allowlist resolution is wrong. Fix the rule; do not bypass this.' 'Red'
-            return 2
-        }
-    }
-
+function Write-ReclaimPlanSummary {
+    param([AllowEmptyCollection()][object[]]$Plan)
     if ($plan.Count -eq 0) {
         Write-HostMaintenanceMessage 'no allow-listed candidates on this host - nothing for the file half to do.' 'Green'
     } else {
@@ -181,7 +168,10 @@ function Invoke-FreeDiskSpace {
             ($plan.Count - $deletable.Count)) 'Yellow'
     }
 
-    # ----------------------------------------------------- daemon levers ----
+}
+
+function Write-DaemonPruneAdvice {
+    param([bool]$DaemonPrune, [int]$KeepGB)
     if ($daemonPrune) {
         Write-HostMaintenanceMessage '== unused container layers (the big lever) ==' 'Cyan'
         try {
@@ -193,6 +183,45 @@ function Invoke-FreeDiskSpace {
         Write-HostMaintenanceMessage 'Both leave in-use and freshly-referenced records alone. See docs\windows-builds.md § Store GC.'
         Write-HostMaintenanceMessage 'The file allowlist excludes compile caches; daemon GC is separate. Use -StoreHusksOnly to disable it.' 'DarkGray'
     }
+
+}
+
+function Invoke-ReclaimDaemonPrune {
+    param([bool]$DaemonPrune, [int]$KeepGB)
+    if ($daemonPrune) {
+        Write-HostMaintenanceMessage '== pruning unused container layers ==' 'Cyan'
+        $freeTargetMB = $KeepGB * 1024
+        try {
+            & buildctl prune --free-storage $freeTargetMB
+            Write-HostMaintenanceMessage ('  buildctl exit: ' + $LASTEXITCODE)
+        } catch { Write-HostMaintenanceMessage ('  buildctl unavailable: ' + $_.Exception.Message) 'Yellow' }
+        try {
+            & docker image prune -f
+            Write-HostMaintenanceMessage ('  docker image prune exit: ' + $LASTEXITCODE)
+        } catch { Write-HostMaintenanceMessage ('  docker unavailable: ' + $_.Exception.Message) 'Yellow' }
+    }
+
+}
+
+# Main
+function Invoke-FreeDiskSpace {
+    Write-HostMaintenanceMessage '== resolving the allowlist ==' 'Cyan'
+    $daemonPrune = -not ($NoDaemonPrune -or $StoreHusksOnly)
+    $plan = @(Get-ReclaimPlan -Rules (Get-ReclaimRules -TempAgeDays $TempOlderThanDays -StoreHusksOnly:$StoreHusksOnly))
+
+    # Fail closed: one target on a protected root means the resolution is wrong, so nothing runs.
+    foreach ($t in $plan) {
+        if (Test-Protected $t.Path) {
+            Write-HostMaintenanceMessage ('REFUSING THE WHOLE RUN: a resolved target lands on a protected root -> ' + $t.Path) 'Red'
+            Write-HostMaintenanceMessage 'The allowlist resolution is wrong. Fix the rule; do not bypass this.' 'Red'
+            return 2
+        }
+    }
+
+    Write-ReclaimPlanSummary -Plan $plan
+
+    # ----------------------------------------------------- daemon levers ----
+    Write-DaemonPruneAdvice -DaemonPrune $daemonPrune -KeepGB $KeepGB
 
     # ------------------------------------------------------- the delete -----
     if (-not $Apply) {
@@ -210,18 +239,7 @@ function Invoke-FreeDiskSpace {
         return 1
     }
 
-    if ($daemonPrune) {
-        Write-HostMaintenanceMessage '== pruning unused container layers ==' 'Cyan'
-        $freeTargetMB = $KeepGB * 1024
-        try {
-            & buildctl prune --free-storage $freeTargetMB
-            Write-HostMaintenanceMessage ('  buildctl exit: ' + $LASTEXITCODE)
-        } catch { Write-HostMaintenanceMessage ('  buildctl unavailable: ' + $_.Exception.Message) 'Yellow' }
-        try {
-            & docker image prune -f
-            Write-HostMaintenanceMessage ('  docker image prune exit: ' + $LASTEXITCODE)
-        } catch { Write-HostMaintenanceMessage ('  docker unavailable: ' + $_.Exception.Message) 'Yellow' }
-    }
+    Invoke-ReclaimDaemonPrune -DaemonPrune $daemonPrune -KeepGB $KeepGB
 
     Write-HostMaintenanceMessage '== deleting allow-listed entries ==' 'Cyan'
     $freed = 0.0

@@ -6,38 +6,112 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsHarness.DockerFixtures.psm1') -Di
 
 # The media-core solve order lives in the Dockerfile and the driver; drift silently builds on a stale ancestor.
 
+function Get-MediaCoreDriverArgumentMap {
+    param([Management.Automation.Language.Ast]$DriverAst)
+    $driverArguments = @{}
+    foreach ($assignment in $driverAst.FindAll({ param($node) $node -is [Management.Automation.Language.AssignmentStatementAst] }, $true)) {
+        if ($assignment.Left -isnot [Management.Automation.Language.VariableExpressionAst] -or
+            $assignment.Right -isnot [Management.Automation.Language.CommandExpressionAst] -or
+            $assignment.Right.Expression -isnot [Management.Automation.Language.HashtableAst]) { continue }
+        foreach ($entry in $assignment.Right.Expression.KeyValuePairs) {
+            if ($entry.Item1 -is [Management.Automation.Language.StringConstantExpressionAst] -and
+                $entry.Item1.Value -match '^MEDIA_CORE_[A-Z]+_IMAGE$') {
+                $driverArguments[$assignment.Left.VariablePath.UserPath] = $entry.Item1.Value
+            }
+        }
+    }
+    return $driverArguments
+}
+
+function Get-MediaCoreDriverSolveGraph {
+    param([Management.Automation.Language.Ast]$DriverAst, [hashtable]$DriverArguments)
+    $driverParents = @{}
+    $driverOrder = [System.Collections.Generic.List[string]]::new()
+    foreach ($call in (Get-TestAstCommands -Ast $driverAst -Name 'Invoke-BkStage' | Sort-Object { $_.Extent.StartOffset })) {
+        $arguments = Get-TestCommandArguments -Command $call -AsAst
+        if (-not $arguments.ContainsKey('Target') -or
+            $arguments.Target -isnot [Management.Automation.Language.StringConstantExpressionAst]) { continue }
+        $target = $arguments.Target.Value
+        if ($target -notmatch '^media-core-built') { continue }
+        $driverOrder.Add($target)
+        $parents = @()
+        if ($arguments.ContainsKey('BuildArgs')) {
+            $parents = @($arguments.BuildArgs.FindAll({ param($node) $node -is [Management.Automation.Language.VariableExpressionAst] }, $true) |
+                    Where-Object { $_.Parent -is [Management.Automation.Language.BinaryExpressionAst] -and
+                        $_.Parent.Operator -eq [Management.Automation.Language.TokenKind]::Plus } |
+                    ForEach-Object { $_.VariablePath.UserPath } | Where-Object { $driverArguments.ContainsKey($_) } | Select-Object -Unique)
+        }
+        if ($parents.Count -gt 1) { throw "$target passes multiple media-core parent arguments: $($parents -join ', ')" }
+        if ($parents.Count -eq 1) { $driverParents[$target] = $driverArguments[$parents[0]] }
+    }
+    return [pscustomobject]@{ Parents = $driverParents; Order = $driverOrder }
+}
+
+function Get-MediaCoreSolveGraph {
+    param([string]$DockerfilePath, [string]$DriverPath)
+    $dockerfileText = [IO.File]::ReadAllText($DockerfilePath)
+    $driverAst = Get-TestScriptAst -ScriptPath $DriverPath
+    $dockerfileParents = @{}
+    foreach ($stage in (Get-TestDockerfileStages -Text $dockerfileText -StrictFromHeader).Stages) {
+        if ($stage.From -match '^\$\{(MEDIA_CORE_[A-Z]+_IMAGE)\}$') { $dockerfileParents[$stage.Name] = $Matches[1] }
+    }
+    $driverArguments = Get-MediaCoreDriverArgumentMap -DriverAst $driverAst
+    $driverSolves = Get-MediaCoreDriverSolveGraph -DriverAst $driverAst -DriverArguments $driverArguments
+    return [pscustomobject]@{
+        DockerfileText = $dockerfileText
+        DockerfileParents = $dockerfileParents
+        DriverArguments = $driverArguments
+        DriverParents = $driverSolves.Parents
+        DriverOrder = $driverSolves.Order
+    }
+}
+
 Describe 'BK media-core solve-order parity (Dockerfile FROM graph vs driver)' {
 
     $repoWin = Join-Path (Get-RepoRoot) 'windows'
-    $dfText = Get-Content -Raw (Join-Path $repoWin 'Dockerfile.media-builder')
-    $drvText = (Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1').Extent.Text
-
-    # Dockerfile side: stage -> parent ARG key, from `FROM ${MEDIA_CORE_X_IMAGE} AS stage`
-    $dfMap = @{}
-    foreach ($m in [regex]::Matches($dfText, '(?m)^FROM \$\{(MEDIA_CORE_[A-Z]+_IMAGE)\} AS ([\w-]+)')) {
-        $dfMap[$m.Groups[2].Value] = $m.Groups[1].Value
-    }
-
-    # Driver side: $xArg = @{ MEDIA_CORE_Y_IMAGE = ... } definitions ...
-    $argVarMap = @{}
-    foreach ($m in [regex]::Matches($drvText, '\$(\w+Arg)\s*=\s*@\{\s*(MEDIA_CORE_[A-Z]+_IMAGE)\s*=')) {
-        $argVarMap[$m.Groups[1].Value] = $m.Groups[2].Value
-    }
-    # ... and which Invoke-BkStage -Target gets which $xArg appended.
-    $drvMap = @{}
-    $drvOrder = [System.Collections.Generic.List[string]]::new()
-    foreach ($m in [regex]::Matches($drvText, "Invoke-BkStage[^\r\n]*-Target '([\w-]+)'[^\r\n]*")) {
-        $target = $m.Groups[1].Value
-        if ($target -notmatch '^media-core-built') { continue }
-        $drvOrder.Add($target)
-        $argRef = [regex]::Match($m.Value, '\+\s*\$(\w+Arg)')
-        if ($argRef.Success) { $drvMap[$target] = $argVarMap[$argRef.Groups[1].Value] }
-    }
+    $graph = Get-MediaCoreSolveGraph -DockerfilePath (Join-Path $repoWin 'Dockerfile.media-builder') -DriverPath 'windows/Build-Buildkit.ps1'
+    $dfText = $graph.DockerfileText
+    $dfMap = $graph.DockerfileParents
+    $argVarMap = $graph.DriverArguments
+    $drvMap = $graph.DriverParents
+    $drvOrder = $graph.DriverOrder
 
     It 'discovers the chain in both files (scanner-rot guard)' {
         Assert-True ($dfMap.Count -ge 3) "Dockerfile FROM graph: expected >=3 MEDIA_CORE_*_IMAGE stages, found $($dfMap.Count)"
         Assert-True ($drvOrder.Count -ge 4) "driver: expected >=4 media-core-built* Invoke-BkStage calls, found $($drvOrder.Count)"
         Assert-True ($argVarMap.Count -ge 3) "driver: expected >=3 `$xArg = @{ MEDIA_CORE_*_IMAGE } definitions, found $($argVarMap.Count)"
+    }
+
+    It 'reads multiline stage calls and ignores a commented decoy, then sees a wrong parent (mutation)' {
+        Invoke-InTestDir { param($dir)
+            $dockerfile = @'
+FROM scratch AS media-core-built-onnx
+FROM ${MEDIA_CORE_ONNX_IMAGE} AS media-core-built-ffmpeg
+FROM ${MEDIA_CORE_FFMPEG_IMAGE} AS media-core-built-opencv
+'@
+            $driver = @'
+$onnxArg = @{
+    MEDIA_CORE_ONNX_IMAGE = 'onnx'
+}
+$ffmpegArg = @{ MEDIA_CORE_FFMPEG_IMAGE = 'ffmpeg' }
+# Invoke-BkStage -Target 'media-core-built-decoy' -BuildArgs ($branchBuildArgs + $onnxArg)
+Invoke-BkStage -Target 'media-core-built-onnx' -BuildArgs $branchBuildArgs
+Invoke-BkStage `
+    -Target 'media-core-built-ffmpeg' `
+    -BuildArgs ($branchBuildArgs + $onnxArg + @{ HINT = $ffmpegArg })
+Invoke-BkStage -Target 'media-core-built-opencv' -BuildArgs ($branchBuildArgs + $ffmpegArg)
+'@
+            Write-TestFileTree -Root $dir -Files @{ 'Dockerfile' = $dockerfile; 'driver.ps1' = $driver }
+            $graph = Get-MediaCoreSolveGraph -DockerfilePath (Join-Path $dir 'Dockerfile') -DriverPath (Join-Path $dir 'driver.ps1')
+            Assert-Equal 'media-core-built-onnx|media-core-built-ffmpeg|media-core-built-opencv' ($graph.DriverOrder -join '|') 'source order without the decoy'
+            Assert-Equal 2 $graph.DriverArguments.Count 'only live media-core parent assignments'
+            Assert-Equal $graph.DockerfileParents['media-core-built-ffmpeg'] $graph.DriverParents['media-core-built-ffmpeg'] 'the multiline solve keeps its parent'
+            Assert-Equal $graph.DockerfileParents['media-core-built-opencv'] $graph.DriverParents['media-core-built-opencv'] 'the final solve keeps its parent'
+            $mutantPath = Join-Path $dir 'driver-mutant.ps1'
+            [IO.File]::WriteAllText($mutantPath, $driver.Replace('$branchBuildArgs + $ffmpegArg', '$branchBuildArgs + $onnxArg'))
+            $mutant = Get-MediaCoreSolveGraph -DockerfilePath (Join-Path $dir 'Dockerfile') -DriverPath $mutantPath
+            Assert-False ($mutant.DockerfileParents['media-core-built-opencv'] -eq $mutant.DriverParents['media-core-built-opencv']) 'a stale ancestor is visible to the parity gate'
+        }
     }
 
     It 'driver hands every chained stage the SAME parent the Dockerfile declares' {

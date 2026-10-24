@@ -168,7 +168,8 @@ Describe 'Get-GstRustSourceMirrorConfig (gitlab.freedesktop.org git sources go t
 
 Describe 'Build-GstreamerFromSource.ps1: the WebRTC wiring stays in place' {
 
-    $text = (Get-TestScriptAst -ScriptPath 'windows/scripts/build/Build-GstreamerFromSource.ps1').Extent.Text
+    $script:gstScript = 'windows/scripts/build/Build-GstreamerFromSource.ps1'
+    $text = (Get-TestScriptAst -ScriptPath $script:gstScript).Extent.Text
 
     It 'links without /FORCE:MULTIPLE and compiles C with -fcommon, the build machine included' {
         Assert-False ($text -match "'/FORCE:MULTIPLE'") '/FORCE:MULTIPLE turned the libffi duplicate symbols into a silently zeroed DLL'
@@ -189,14 +190,30 @@ Describe 'Build-GstreamerFromSource.ps1: the WebRTC wiring stays in place' {
     }
 
     It 'runs the libffi guard, the OpenSSL staging and the cargo step on both lanes, before the plugin gate' {
-        $install = $text.IndexOf("Switch-BuildPhase '8. install'")
-        $ssl = $text.IndexOf('$sslRuntimeRoot = if ($script:GstCross)')
-        $rs = $text.IndexOf("Switch-BuildPhase '8b. gst-plugins-rs (cargo)'")
-        $verify = $text.IndexOf("Switch-BuildPhase '9. verify (plugin + pc gates)'")
-        $ffi = $text.IndexOf('Assert-LibffiTypeExport -Path')
-        $gate = $text.IndexOf('foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch))')
-        Assert-True ($install -ge 0 -and $ssl -gt $install -and $rs -gt $ssl -and $verify -gt $rs -and $ffi -gt $verify -and $gate -gt $ffi) 'install, OpenSSL, cargo, verify, libffi guard, plugin gate: in that order'
-        Assert-False ($text -match 'if \(\$script:GstCross\) \{\s*\$sslRuntimeRoot') 'the OpenSSL staging must not be arm64-only again'
+        $driver = (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Invoke-GstSourceBuild').ToString()
+        $install = (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Invoke-GstInstall').ToString()
+        $verify = (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Assert-GstInstalledPlugins').ToString()
+        Assert-Match '(?s)Invoke-GstInstall -mesonExe .*?Install-GstRustPlugins -resolvedSrcDir .*?Assert-GstInstalledPlugins -resolvedInstallDir ' $driver 'install, cargo, verify call order'
+        Assert-Match '\$sslRuntimeRoot = if \(\$script:GstCross\)' $install 'OpenSSL runtime staged on both lanes'
+        Assert-Match '(?s)Assert-LibffiTypeExport -Path .*?foreach \(\$plugin in @\(Get-RequiredGstPlugin -Arch \$script:GstTargetArch\)\)' $verify 'libffi before plugin iteration'
+        Assert-Match 'Test-GstPlugin -plugin \$plugin .*?-Cross:\$script:GstCross' $verify 'both lanes use the plugin gate'
+        $pluginGate = (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Test-GstPlugin').ToString()
+        Assert-Match '(?s)if \(\$Cross\) \{.*?Get-UnresolvedDeps .*?\} else \{.*?& \$gstInspect' $pluginGate 'static cross and native load verdicts'
+        Assert-False ($install -match 'if \(\$script:GstCross\) \{\s*\$sslRuntimeRoot') 'the OpenSSL staging must not be arm64-only again'
+    }
+
+    It 'fails a cross plugin with no DLL or no dependency checker' {
+        . (Get-ScriptFunctionDefinition -ScriptPath $script:gstScript -FunctionName 'Test-GstPlugin')
+        function log { param($Text) }
+        Invoke-InTestDir { param($dir)
+            $plugin = [pscustomobject]@{ Name = 'webrtc'; Why = 'required for media' }
+            $missing = @(Test-GstPlugin -plugin $plugin -gstPluginDir $dir -dumpbin '' -dllSearchDirs @($dir) -Cross)
+            Assert-Equal 1 $missing.Count 'an absent DLL fails'
+            Assert-Equal 'webrtc' $missing[0].Name 'the failing plugin is returned'
+            New-Item -ItemType File -Path (Join-Path $dir 'gstwebrtc.dll') | Out-Null
+            $unchecked = @(Test-GstPlugin -plugin $plugin -gstPluginDir $dir -dumpbin '' -dllSearchDirs @($dir) -Cross)
+            Assert-Equal 1 $unchecked.Count 'a file without dumpbin proof fails'
+        }
     }
 
     It 'hands cargo the GitHub mirror config built from the checkout''s own Cargo.lock' {
@@ -229,6 +246,50 @@ Additional debug info:
 net\webrtc\src\webrtcsrc\imp.rs(1736): gstrswebrtc::webrtcsrc::imp::BaseWebRTCSrc::connect_signaller::{{closure}}::{{closure}} (): /GstPipeline:pipeline0/GstWebRTCSrc:webrtcsrc0:
 Signalling error: Error: send failed because receiver is gone
 '@
+
+function Test-GstReadinessFixture {
+    param($Module, $Producer, [string]$Condition, [int]$Port = 0, [string]$LogPath = '', [int]$Seconds = 2)
+    $options = @{ Producer = $Producer; Condition = $Condition; Deadline = [DateTime]::UtcNow.AddSeconds($Seconds) }
+    if ($Condition -eq 'Port') { $options.Port = $Port }
+    else { $options.ProducerLogPath = $LogPath }
+    return & $Module { param($arguments) Test-GstLoopbackReadiness @arguments } $options
+}
+
+Describe 'Invoke-GstWebRtcLoopback readiness and teardown' {
+    $gstModule = @(Get-Module WindowsGstPlugins.Common)[0]
+
+    It 'stops readiness checks as soon as the producer exits' {
+        $exited = [pscustomobject]@{ HasExited = $true }
+        Assert-False (Test-GstReadinessFixture -Module $gstModule -Producer $exited -Condition Port -Port 1 -Seconds 1)
+        Assert-False (Test-GstReadinessFixture -Module $gstModule -Producer $exited -Condition Registration -LogPath 'missing.log' -Seconds 1)
+    }
+
+    It 'waits for both the listening port and the producer registration line' {
+        Invoke-InTestDir { param($dir)
+            $listener = Start-LoopbackListener
+            try {
+                $producer = [pscustomobject]@{ HasExited = $false }
+                $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+                Assert-True (Test-GstReadinessFixture -Module $gstModule -Producer $producer -Condition Port -Port $port)
+            } finally { $listener.Stop() }
+            $log = Join-Path $dir 'producer.log'
+            Set-Content -LiteralPath $log -Value 'registered as [Producer]'
+            Assert-True (Test-GstReadinessFixture -Module $gstModule -Producer $producer -Condition Registration -LogPath $log)
+        }
+    }
+
+    It 'accepts only a post-EOS signaller teardown after the decoded frames arrived' {
+        Invoke-InTestDir { param($dir)
+            $logs = @{ 'consumer-out' = (Join-Path $dir 'out.log'); 'consumer-err' = (Join-Path $dir 'err.log') }
+            Set-Content -LiteralPath $logs['consumer-out'] -Value $script:teardownOut
+            Set-Content -LiteralPath $logs['consumer-err'] -Value $script:teardownErr
+            $result = [pscustomobject]@{ ExitCode = 1; TimedOut = $false; TeardownError = @() }
+            & $gstModule { param($r, $files) Set-GstLoopbackTeardownResult -Result $r -Logs $files -Frames 60 } $result $logs
+            Assert-Equal 0 $result.ExitCode
+            Assert-Match 'receiver is gone' ($result.TeardownError -join ' ')
+        }
+    }
+}
 
 Describe 'Get-GstLoopbackTeardownError (BACKLOG CON68: the frames arrived, the exit code says 1)' {
 

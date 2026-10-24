@@ -26,6 +26,25 @@ function Invoke-MsixSigningCommand {
   else { Invoke-BuildExternal -Context $Context -File $File -Parameters $Parameters | Out-Null }
 }
 
+function Import-MsixSigningCertificate {
+  param([pscustomobject]$Context, [string]$Pfx, [bool]$IsAdministrator, [securestring]$SigningPassword)
+  if (-not $IsAdministrator) {
+    Write-BuildLogWarning -Context $Context -Message 'Not running as Administrator; skipping PFX import into LocalMachine certificate store. signtool verify may fail.'
+    return
+  }
+  Write-BuildLog -Context $Context -Message 'Importing PFX into Cert:\\LocalMachine\\Root to trust the signing chain for verification.'
+  if ($SigningPassword) {
+    $imported = Import-PfxCertificate -FilePath $Pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -Password $SigningPassword -ErrorAction Stop
+  } else {
+    $imported = Import-PfxCertificate -FilePath $Pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -ErrorAction Stop
+  }
+  if ($null -ne $imported) {
+    $thumbprints = if ($imported -is [System.Array]) { @($imported | ForEach-Object { $_.Thumbprint }) }
+    else { @($imported.Thumbprint) }
+    Write-BuildLog -Context $Context -Message "Imported certificate(s) into LocalMachine\\Root: $([string]::Join(', ', $thumbprints))"
+  }
+}
+
 function Invoke-MsixSign {
   param(
     [Parameter(Mandatory)] [pscustomobject]$Context,
@@ -63,26 +82,13 @@ function Invoke-MsixSign {
       Write-BuildLog -Context $Context -Message "Signing MSIX: $MsixOutPath"
       Invoke-MsixSigningCommand -Context $Context -File $signtoolPath -Parameters $sigArgs -Invoker $InvokerScriptBlock
 
-      # Warn, not throw: the package is already signed, and unelevated consumer dev loops must still get it.
+      # The package is already signed, so trust-store import stays advisory in developer builds.
       try {
-        if (-not (Test-Administrator)) {
-          Write-BuildLogWarning -Context $Context -Message 'Not running as Administrator; skipping PFX import into LocalMachine certificate store. signtool verify may fail.'
-        } else {
-          Write-BuildLog -Context $Context -Message 'Importing PFX into Cert:\\LocalMachine\\Root to trust the signing chain for verification.'
-          if (-not [string]::IsNullOrWhiteSpace($pfxPassword)) {
-            $securePassword = ConvertTo-MsixSigningPassword -Password $pfxPassword
-            $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -Password $securePassword -ErrorAction Stop
-          } else {
-            $imported = Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:\\LocalMachine\\Root' -ErrorAction Stop
-          }
-
-          if ($null -ne $imported) {
-            $thumbprints = @()
-            if ($imported -is [System.Array]) { $thumbprints = $imported | ForEach-Object { $_.Thumbprint } }
-            else { $thumbprints = @($imported.Thumbprint) }
-            Write-BuildLog -Context $Context -Message "Imported certificate(s) into LocalMachine\\Root: $([string]::Join(', ', $thumbprints))"
-          }
-        }
+        $isAdministrator = Test-Administrator
+        $signingPassword = if ($isAdministrator -and -not [string]::IsNullOrWhiteSpace($pfxPassword)) {
+          ConvertTo-MsixSigningPassword -Password $pfxPassword
+        } else { $null }
+        Import-MsixSigningCertificate -Context $Context -Pfx $pfx -IsAdministrator $isAdministrator -SigningPassword $signingPassword
       } catch {
         Write-BuildLogWarning -Context $Context -Message ("PFX import failed: $($_.Exception.Message)")
       }

@@ -36,8 +36,8 @@ Describe 'Build-TorchRocmFromSource: the steps both RUNs share' {
         Invoke-InTestDir { param($dir)
             function git { }
             function Save-GitCommitSource { param($Name, $Repository, $Commit, $WorkDir)
-                $src = Join-Path $WorkDir $Name; [void][System.IO.Directory]::CreateDirectory($src)
-                [System.IO.File]::WriteAllText((Join-Path $src 'version.txt'), "0.29.0a0`n"); [System.IO.File]::WriteAllText((Join-Path $src 'commit'), $Commit)
+                $src = Join-Path $WorkDir $Name
+                Write-TestFileTree -Root $src -Files @{ 'version.txt' = "0.29.0a0`n"; 'commit' = $Commit }
                 return $src
             }
             $src = Invoke-WithEnv @{ T_COMMIT = ' abc123 '; T_VERSION = '0.29.0' } { Save-TorchRocmTree -Name 'vision' -Repository 'r' -CommitKey 'T_COMMIT' -VersionKey 'T_VERSION' -WorkDir $dir }
@@ -64,8 +64,7 @@ Describe 'Build-TorchRocmFromSource: the steps both RUNs share' {
             $arg = @{ Python = 'py'; SourceDir = $dir; Distribution = 'torchvision'; BuildVersion = '0.29.0+rocm10.0.0'; PythonTag = 'cp314'; WorkDir = $dir; LogPrefix = 'tv'; ImportCode = 'import torchvision' }
             Assert-Throws { Install-TorchRocmBuiltWheel @arg } 'no wheel' -MessagePattern 'torchvision build left no'
             Assert-Equal 0 $script:Logged.Count 'nothing installed without the wheel'
-            [void][System.IO.Directory]::CreateDirectory((Join-Path $dir 'dist'))
-            [System.IO.File]::WriteAllText((Join-Path $dir "dist\$name"), 'x')
+            Write-TestFileTree -Root $dir -Files @{ "dist/$name" = 'x' }
             Assert-Equal (Join-Path $dir "dist\$name") (Install-TorchRocmBuiltWheel @arg) 'returns the wheel'
             Assert-Match "^tv-install\.log :: uv pip install --python ""py"" --no-deps "".*$([regex]::Escape($name))""$" $script:Logged[0] 'install'
             Assert-Equal 'tv-import.log :: "py" -c "import torchvision"' $script:Logged[1] 'import in the build venv'

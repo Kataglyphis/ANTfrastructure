@@ -4,11 +4,32 @@
 
 # Pins Build-Buildkit.ps1's wiring of the per-run resource CSV, which the BK driver once lacked.
 
+BeforeAll {
+    function Get-BkDriverFunctionAst {
+        param([Management.Automation.Language.Ast]$Ast, [string]$Name)
+        $functions = @($Ast.FindAll({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] }, $true) |
+                Where-Object Name -EQ $Name)
+        Assert-Equal 1 $functions.Count "one $Name owner in the driver"
+        return $functions[0]
+    }
+
+    function Assert-BkDriverFinallyWiring {
+        param([Management.Automation.Language.Ast]$Ast)
+        $calls = @(Get-TestAstCommands -Ast $Ast -Name 'Close-BkDriver')
+        Assert-Equal 1 $calls.Count 'one driver teardown call'
+        $owner = Get-TestAstAncestor -Node $calls[0] -Type ([Management.Automation.Language.TryStatementAst]) -First
+        Assert-NotNull $owner 'teardown belongs to a try/finally'
+        Assert-NotNull $owner.Finally 'teardown has a finally block'
+        Assert-True ($calls[0].Extent.StartOffset -ge $owner.Finally.Extent.StartOffset -and
+            $calls[0].Extent.EndOffset -le $owner.Finally.Extent.EndOffset) 'teardown runs in finally'
+    }
+}
+
 Describe 'BK driver resource sampler wiring (#134)' {
 
     BeforeAll {
-        $repoWin = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
-        $script:drv = Get-Content -Raw (Join-Path $repoWin 'Build-Buildkit.ps1')
+        $script:drvAst = Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1'
+        $script:drv = $script:drvAst.Extent.Text
     }
 
     It 'exposes a -NoResourceLog switch' {
@@ -30,29 +51,44 @@ Describe 'BK driver resource sampler wiring (#134)' {
     }
 
     It 'stops the sampler and summarizes in the finally block' {
-        Assert-Match '(?s)finally.*Stop-Process.*SamplerProc' $script:drv
-        Assert-Match '(?s)finally.*-Summarize.*ResourceCsv' $script:drv
+        $close = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Close-BkDriver'
+        Assert-Match 'if \(\$script:SamplerProc -and -not \$script:SamplerProc\.HasExited\)' $close.Extent.Text 'only a live sampler is stopped'
+        Assert-TestAstCommand -Command @(Get-TestAstCommands -Ast $close -Name 'Stop-Process') -Text 'Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue'
+        Assert-Match 'if \(\$script:ResourceCsv -and \(Test-Path \$script:ResourceCsv\)\)' $close.Extent.Text 'only an existing CSV is summarized'
+        Assert-Match 'Build-ResourceSampler\.ps1''\) -Summarize -CsvPath \$script:ResourceCsv' $close.Extent.Text 'the same CSV reaches the sampler summary'
+        Assert-BkDriverFinallyWiring -Ast $script:drvAst
     }
 
     It 'forwards -NoResourceLog to concurrent child drivers (parent covers the machine)' {
-        Assert-Match "(?s)ConcurrentAux.*auxArgs \+= '-NoResourceLog'" $script:drv
+        $conditional = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Add-BkAuxConditionalArguments'
+        Assert-Match 'When = \$true; Options = @\(''-NoResourceLog''\)' $conditional.Extent.Text 'every child disables its own sampler'
+        $arguments = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Get-BkAuxDriverArguments'
+        Assert-TestAstCommand -Command @(Get-TestAstCommands -Ast $arguments -Name 'Add-BkAuxConditionalArguments' |
+                Where-Object { $_.Extent.Text -match '-Group Host' }) -Text 'Add-BkAuxConditionalArguments -Arguments $auxArgs -Group Host' -Assignment '$auxArgs'
+        $launcher = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Invoke-BkAuxMediaBranches'
+        Assert-TestAstCommand -Command @(Get-TestAstCommands -Ast $launcher -Name 'Get-BkAuxDriverArguments') -Text 'Get-BkAuxDriverArguments -Aux $aux -AuxMem $AuxMem -DriverPath $DriverPath' -Assignment '$auxArgs'
     }
 }
 
 Describe 'A stopped BK run keeps its record (hub #184)' {
 
     BeforeAll {
-        $script:drv = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Build-Buildkit.ps1'))
+        $script:drvAst = Get-TestScriptAst -ScriptPath 'windows/Build-Buildkit.ps1'
+        $script:drv = $script:drvAst.Extent.Text
         $script:sampler = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-ResourceSampler.ps1'))
         . (Get-ScriptFunctionDefinition -ScriptPath 'windows\Build-Buildkit.ps1' -FunctionName 'Write-RunManifest')
     }
 
     It 'writes the manifest with a status, from the success path and from the finally of a failed run' {
-        Assert-Match "Write-RunManifest -Status 'ok' -Elapsed \`$elapsed" $script:drv 'the green run'
-        Assert-Match '(?s)\} finally \{.*RunSucceeded.*-eq \$false.*Write-RunManifest -Status "failed:\$\(\$script:CurrentPhase\)"' $script:drv 'the stopped run, before the sampler teardown'
+        $complete = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Complete-BkRun'
+        Assert-Match "Write-RunManifest -Status 'ok' -Elapsed \`$elapsed" $complete.Extent.Text 'the green run'
+        Assert-Equal 1 @(Get-TestAstCommands -Ast $script:drvAst -Name 'Complete-BkRun').Count 'the driver calls its success owner'
+        $close = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Close-BkDriver'
+        Assert-Match '(?s)RunSucceeded.*-eq \$false.*Write-RunManifest -Status "failed:\$\(\$script:CurrentPhase\)"' $close.Extent.Text 'the stopped run, before the sampler teardown'
+        Assert-BkDriverFinallyWiring -Ast $script:drvAst
         Assert-Match '(?s)function Invoke-BkStage.*\$script:CurrentPhase = \$Label\s*\r?\n.*\r?\n\s*Assert-StageDiskHeadroom' $script:drv 'a refusal names the stage it refused'
         Assert-Match '(?s)OK in \$\(\$script:StageTimings\[\$Label\]\)s"\s*\r?\n.*\r?\n\s*\$script:CurrentPhase = "after \$Label"' $script:drv 'a throw between stages is not charged to the one that passed'
-        Assert-Match 'Get-Variable -Name started -Scope Script' $script:drv 'never a caller''s $started'
+        Assert-Match 'Get-Variable -Name started -Scope Script' $close.Extent.Text 'never a caller''s $started'
     }
 
     It 'gives each -ConcurrentAux child the parent''s run id with its branch, so their logs and manifests never collide' {
@@ -83,7 +119,9 @@ Describe 'A stopped BK run keeps its record (hub #184)' {
         Assert-Match 'Initialize-BuildDriverContext -DriverLog \$script:DriverLog' $script:drv 'the run''s driver log'
         Assert-False ($script:drv -match 'Write-DriverRecord \(".*\{\d:N\d\}') 'no record formats a number in the host''s culture ("2.415,0s")'
         Assert-Match '\[Console\]::OutputEncoding = \[System\.Text\.UTF8Encoding\]::new\(\$false\)' $script:drv 'UTF-8 for buildctl'
-        Assert-Match '(?s)\} finally \{.*\[Console\]::OutputEncoding = \$script:PreviousOutputEncoding' $script:drv 'restored on every exit'
+        $close = Get-BkDriverFunctionAst -Ast $script:drvAst -Name 'Close-BkDriver'
+        Assert-Match '\[Console\]::OutputEncoding = \$script:PreviousOutputEncoding' $close.Extent.Text 'restored on every exit'
+        Assert-BkDriverFinallyWiring -Ast $script:drvAst
     }
 
     It 'samples the build drive''s free space into an eighth column, in the header, the row and the error row' {

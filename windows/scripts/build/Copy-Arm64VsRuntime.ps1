@@ -19,6 +19,50 @@ $ErrorActionPreference = 'Stop'
 $scriptAssetRoot = if (Test-Path (Join-Path $PSScriptRoot 'modules')) { $PSScriptRoot } else { Split-Path $PSScriptRoot -Parent }
 Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsScripts.Shared.psm1') -ErrorAction Stop
 
+function Find-Arm64AsanDirectory {
+    param([string[]]$ToolsRoots, [string]$AsanFile)
+
+    foreach ($toolsRoot in $ToolsRoots) {
+        # HostArm64 is VS 2026's layout; Hostx64\arm64 is the cross-tools spelling.
+        foreach ($hostDir in @('bin\HostArm64\arm64', 'bin\Hostx64\arm64')) {
+            $candidate = Join-Path $toolsRoot $hostDir
+            if (Test-Path (Join-Path $candidate $AsanFile)) { return $candidate }
+        }
+    }
+    return $null
+}
+
+function Find-Arm64Vcomp {
+    param([string[]]$ToolsRoots)
+
+    $searched = @()
+    $vcomp = $null
+    foreach ($toolsRoot in $ToolsRoots) {
+        $redist = Join-Path (Split-Path (Split-Path $toolsRoot -Parent) -Parent) 'Redist\MSVC'
+        $searched += $redist
+        if (Test-Path $redist) {
+            $vcomp = Get-ChildItem $redist -Recurse -Filter 'vcomp140.dll' -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\arm64\\' } | Select-Object -First 1
+        }
+        if ($vcomp) { return [pscustomobject]@{ File = $vcomp; Searched = $searched } }
+        foreach ($hostDir in @('bin\HostArm64\arm64', 'bin\Hostx64\arm64')) {
+            $candidate = Join-Path $toolsRoot $hostDir
+            $searched += $candidate
+            if (Test-Path (Join-Path $candidate 'vcomp140.dll')) { $vcomp = Get-Item (Join-Path $candidate 'vcomp140.dll'); break }
+        }
+        if ($vcomp) { return [pscustomobject]@{ File = $vcomp; Searched = $searched } }
+        # Last resort: a moved redist layout still needs an arm64 path.
+        $vsRoot = Split-Path (Split-Path (Split-Path (Split-Path $toolsRoot -Parent) -Parent) -Parent) -Parent
+        $searched += $vsRoot
+        if (Test-Path $vsRoot) {
+            $vcomp = Get-ChildItem $vsRoot -Recurse -Filter 'vcomp140.dll' -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match 'arm64' } | Select-Object -First 1
+        }
+        if ($vcomp) { return [pscustomobject]@{ File = $vcomp; Searched = $searched } }
+    }
+    return [pscustomobject]@{ File = $null; Searched = $searched }
+}
+
 # amd64's host runs stage the x64 DLLs themselves; only the cross bundle needs the aarch64 ones shipped.
 $arch = if ([string]::IsNullOrWhiteSpace($env:WINDOWS_TARGET_ARCH)) { 'amd64' } else { $env:WINDOWS_TARGET_ARCH }
 if ($arch -eq 'amd64') {
@@ -33,15 +77,7 @@ $staged = @()
 
 # The release ASan DLL is what clang-cl links by default; the dbg twin serves /MDd-instrumented exes.
 $asanNames = @('clang_rt.asan_dynamic-aarch64.dll', 'clang_rt.asan_dbg_dynamic-aarch64.dll')
-$asanDir = $null
-foreach ($toolsRoot in $toolsRoots) {
-    # HostArm64 is where VS 2026 puts the aarch64 toolset; Hostx64\arm64 is the cross-tools spelling to keep working.
-    foreach ($hostDir in @('bin\HostArm64\arm64', 'bin\Hostx64\arm64')) {
-        $candidate = Join-Path $toolsRoot $hostDir
-        if (Test-Path (Join-Path $candidate $asanNames[0])) { $asanDir = $candidate; break }
-    }
-    if ($asanDir) { break }
-}
+$asanDir = Find-Arm64AsanDirectory -ToolsRoots $toolsRoots -AsanFile $asanNames[0]
 if (-not $asanDir) {
     throw "no aarch64 ASan runtime under any MSVC toolset (looked for $($asanNames[0]) in bin\HostArm64\arm64 and bin\Hostx64\arm64) - the VS ASAN component is missing or moved"
 }
@@ -49,35 +85,11 @@ foreach ($n in $asanNames) {
     if (Test-Path (Join-Path $asanDir $n)) { Copy-Item (Join-Path $asanDir $n) $destDir -Force; $staged += $n }
 }
 
-# torch's DLLs import the MSVC OpenMP runtime; a clean device has no redist, so it ships from wherever the VS tree keeps the aarch64 copy.
-$vcomp = $null
-$searched = @()
-foreach ($toolsRoot in $toolsRoots) {
-    $redist = Join-Path (Split-Path (Split-Path $toolsRoot -Parent) -Parent) 'Redist\MSVC'
-    $searched += $redist
-    if (Test-Path $redist) {
-        $vcomp = Get-ChildItem $redist -Recurse -Filter 'vcomp140.dll' -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '\\arm64\\' } | Select-Object -First 1
-    }
-    if ($vcomp) { break }
-    foreach ($hostDir in @('bin\HostArm64\arm64', 'bin\Hostx64\arm64')) {
-        $candidate = Join-Path $toolsRoot $hostDir
-        $searched += $candidate
-        if (Test-Path (Join-Path $candidate 'vcomp140.dll')) { $vcomp = Get-Item (Join-Path $candidate 'vcomp140.dll'); break }
-    }
-    if ($vcomp) { break }
-    # Last resort: the whole VS root, filtered to an arm64 path (the redist layout moved between VS versions).
-    $vsRoot = Split-Path (Split-Path (Split-Path (Split-Path $toolsRoot -Parent) -Parent) -Parent) -Parent
-    $searched += $vsRoot
-    if (Test-Path $vsRoot) {
-        $vcomp = Get-ChildItem $vsRoot -Recurse -Filter 'vcomp140.dll' -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match 'arm64' } | Select-Object -First 1
-    }
-    if ($vcomp) { break }
+$vcompResult = Find-Arm64Vcomp -ToolsRoots $toolsRoots
+if (-not $vcompResult.File) {
+    throw "no aarch64 vcomp140.dll under the VS trees (searched: $($vcompResult.Searched -join '; ')) - torch_cpu.dll imports it and a clean device has no redist"
 }
-if (-not $vcomp) {
-    throw "no aarch64 vcomp140.dll under the VS trees (searched: $($searched -join '; ')) - torch_cpu.dll imports it and a clean device has no redist"
-}
+$vcomp = $vcompResult.File
 Copy-Item $vcomp.FullName $destDir -Force
 $staged += $vcomp.Name
 

@@ -32,14 +32,15 @@ Describe 'WindowsMsix.Signing' {
   BeforeEach {
     # Never touch the machine store or depend on elevation: the non-Administrator branch only warns.
     Mock -ModuleName WindowsMsix.Signing -CommandName Test-Administrator { return $false }
+    Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return 'C:\signtool.exe' }
     Get-ChildItem -Path $script:workspace -Filter '*.pfx' -File -ErrorAction SilentlyContinue |
       Remove-Item -Force -ErrorAction SilentlyContinue
+    New-Item -Path (Join-Path $script:workspace 'test.pfx') -ItemType File -Force | Out-Null
   }
 
   Context 'Invoke-MsixSign' {
     It 'does not invoke signtool when it cannot be resolved' {
       Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return $null }
-      New-Item -Path (Join-Path $script:workspace 'test.pfx') -ItemType File -Force | Out-Null
 
       $calls = Invoke-MsixSigningFixture
 
@@ -47,7 +48,7 @@ Describe 'WindowsMsix.Signing' {
     }
 
     It 'does not invoke signtool when the workspace holds no .pfx' {
-      Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return 'C:\signtool.exe' }
+      Remove-Item -LiteralPath (Join-Path $script:workspace 'test.pfx')
 
       $calls = Invoke-MsixSigningFixture
 
@@ -55,8 +56,6 @@ Describe 'WindowsMsix.Signing' {
     }
 
     It 'signs and then verifies when a .pfx is present' {
-      Mock -ModuleName WindowsMsix.Signing -CommandName Resolve-WindowsSdkToolPath { return 'C:\signtool.exe' }
-      New-Item -Path (Join-Path $script:workspace 'test.pfx') -ItemType File -Force | Out-Null
 
       $calls = Invoke-MsixSigningFixture
 
@@ -65,6 +64,31 @@ Describe 'WindowsMsix.Signing' {
       $calls[0] | Should -Contain $script:msixOut
       $calls[1][0] | Should -Be 'verify'
       $calls[1] | Should -Contain $script:msixOut
+    }
+
+    Context 'Administrator certificate import' {
+      BeforeEach { Mock -ModuleName WindowsMsix.Signing -CommandName Test-Administrator { return $true } }
+
+    It 'passes a secure password to certificate import' {
+      Mock -ModuleName WindowsMsix.Signing -CommandName Import-PfxCertificate { return [pscustomobject]@{ Thumbprint = 'ABC' } }
+
+      $calls = Invoke-WithEnv @{ MSIX_PFX_PASSWORD = 'test-password'; MSIX_CERT_PASSWORD = $null } { Invoke-MsixSigningFixture }
+
+      $calls.Count | Should -Be 2
+      Should -Invoke Import-PfxCertificate -ModuleName WindowsMsix.Signing -Times 1 -Exactly -ParameterFilter {
+        $Password -is [securestring] -and $CertStoreLocation -eq 'Cert:\\LocalMachine\\Root'
+      }
+    }
+
+    It 'keeps certificate import advisory and still verifies the signed package' {
+      Mock -ModuleName WindowsMsix.Signing -CommandName Import-PfxCertificate { throw 'trust store unavailable' }
+
+      $calls = Invoke-MsixSigningFixture
+
+      $calls.Count | Should -Be 2
+      $calls[1][0] | Should -Be 'verify'
+      Should -Invoke Import-PfxCertificate -ModuleName WindowsMsix.Signing -Times 1 -Exactly
+    }
     }
   }
 }

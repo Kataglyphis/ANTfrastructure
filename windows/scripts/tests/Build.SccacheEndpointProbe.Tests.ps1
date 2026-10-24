@@ -289,6 +289,8 @@ Describe 'The launcher-wiring sites probe before they wire' {
         $build = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsBuild.Common.psm1' `
             -FunctionName Initialize-BuildCacheEnvironment).ToString()
         $cmake = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsCMake.Common.psm1' `
+            -FunctionName Write-CmakeBuildSystemInfo).ToString()
+        $cmakeEntry = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsCMake.Common.psm1' `
             -FunctionName Invoke-CmakeConfigureAndBuild).ToString()
         $buildCall = $build.IndexOf('Set-SccacheMaxJobsDefault')
         $buildEnabled = $build.IndexOf('elseif ($sccacheCmd)')
@@ -296,6 +298,7 @@ Describe 'The launcher-wiring sites probe before they wire' {
         Assert-Match 'Set-SccacheMaxJobsDefault -Default \$cpuCount' $cmake 'CMake keeps its explicit CPU count'
         Assert-True ($cmake.IndexOf('Set-SccacheMaxJobsDefault') -lt $cmake.IndexOf('if ($DisableSccache)')) `
             'CMake keeps defaulting before its opt-out branch'
+        Assert-Match 'Write-CmakeBuildSystemInfo' $cmakeEntry 'CMake entry point retains cache setup'
     }
 
     It 'Enable-SccacheCompilerWrapper drops an unreachable endpoint and still wires the launchers' {
@@ -350,8 +353,10 @@ Describe 'The launcher-wiring sites probe before they wire' {
 
     It 'Invoke-CmakeConfigureAndBuild wires through Enable-SccacheCompilerWrapper (the probe''s choke point)' {
         $src = Get-Content -Raw (Join-Path $modDir 'WindowsCMake.Common.psm1')
-        $fn = [regex]::Match($src, '(?s)function Invoke-CmakeConfigureAndBuild \{.*?\n\}').Value
+        $fn = [regex]::Match($src, '(?s)function Write-CmakeBuildDiagnostics \{.*?\n\}').Value
         Assert-Match 'Enable-SccacheCompilerWrapper -SccacheExe' $fn
         Assert-False ($fn -match '\$env:CMAKE_C_COMPILER_LAUNCHER\s*=\s*\$') 'a direct launcher assignment would bypass the probe'
+        $entry = [regex]::Match($src, '(?s)function Invoke-CmakeConfigureAndBuild \{.*?\n\}').Value
+        Assert-Match 'Write-CmakeBuildDiagnostics' $entry 'CMake entry point retains cache diagnostics and wrapper setup'
     }
 }

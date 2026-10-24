@@ -94,6 +94,40 @@ function Assert-VulkanInfoSummary {
     if (-not ($summary -match $Expect)) { throw "vulkaninfo --summary names no '$Expect' (registered $Manifest under $Kind)" }
 }
 
+function Assert-BundleTorchWheelStack {
+    param([Parameter(Mandatory)][string]$BundleRoot)
+
+    $expected = @(
+        'torch-*-cp313-cp313-win_arm64.whl'
+        'torchvision-*-cp313-cp313-win_arm64.whl'
+        'markupsafe-*-cp313-cp313-win_arm64.whl'
+        'pillow-*-cp313-cp313-win_arm64.whl'
+        'filelock-*.whl'
+        'setuptools-*.whl'
+        'sympy-*.whl'
+        'mpmath-*.whl'
+        'networkx-*.whl'
+        'jinja2-*.whl'
+        'fsspec-*.whl'
+    )
+    $missing = @($expected | Where-Object { @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter $_ -File).Count -lt 1 })
+    if ($missing.Count -gt 0) { throw "wheel store misses $($missing.Count) torch-stack wheel(s): $($missing -join ', ')" }
+}
+
+function Assert-BundleVsRuntime {
+    param([Parameter(Mandatory)][string]$BundleRoot)
+
+    foreach ($name in 'clang_rt.asan_dynamic-aarch64.dll', 'vcomp140.dll') {
+        $dll = Join-Path $BundleRoot "bin\$name"
+        if (-not (Test-Path $dll)) { throw "missing $dll" }
+        $bytes = [IO.File]::ReadAllBytes($dll)
+        $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
+        if ($bytes[$peOff] -ne 0x50 -or $bytes[$peOff + 1] -ne 0x45) { throw "$name is not a PE file" }
+        $machine = [BitConverter]::ToUInt16($bytes, $peOff + 4)
+        if ($machine -ne 0xAA64) { throw ('{0}: machine 0x{1:X4}, expected 0xAA64' -f $name, $machine) }
+    }
+}
+
 if ($MyInvocation.InvocationName -eq '.') { return }
 
 if ($ZipPath -and -not (Test-Path (Join-Path $BundleRoot 'python\python.exe'))) {
@@ -155,32 +189,10 @@ Invoke-BundleStep 'free-threaded wheels: every twin loads with the GIL off' {
         -Helper (Join-Path $PSScriptRoot 'free-threaded-wheel.py') -DllDirectory $homes
 } $results
 Invoke-BundleStep 'torch win-arm64 wheel stack present (cp313)' {
-    $expected = @(
-        'torch-*-cp313-cp313-win_arm64.whl'
-        'torchvision-*-cp313-cp313-win_arm64.whl'
-        'markupsafe-*-cp313-cp313-win_arm64.whl'
-        'pillow-*-cp313-cp313-win_arm64.whl'
-        'filelock-*.whl'
-        'setuptools-*.whl'
-        'sympy-*.whl'
-        'mpmath-*.whl'
-        'networkx-*.whl'
-        'jinja2-*.whl'
-        'fsspec-*.whl'
-    )
-    $missing = @($expected | Where-Object { @(Get-ChildItem (Join-Path $BundleRoot 'wheels') -Filter $_ -File).Count -lt 1 })
-    if ($missing.Count -gt 0) { throw "wheel store misses $($missing.Count) torch-stack wheel(s): $($missing -join ', ')" }
+    Assert-BundleTorchWheelStack -BundleRoot $BundleRoot
 } $results
 Invoke-BundleStep 'VS runtimes present (aarch64: ASan + OpenMP)' {
-    foreach ($name in 'clang_rt.asan_dynamic-aarch64.dll', 'vcomp140.dll') {
-        $dll = Join-Path $BundleRoot "bin\$name"
-        if (-not (Test-Path $dll)) { throw "missing $dll" }
-        $bytes = [IO.File]::ReadAllBytes($dll)
-        $peOff = [BitConverter]::ToInt32($bytes, 0x3C)
-        if ($bytes[$peOff] -ne 0x50 -or $bytes[$peOff + 1] -ne 0x45) { throw "$name is not a PE file" }
-        $machine = [BitConverter]::ToUInt16($bytes, $peOff + 4)
-        if ($machine -ne 0xAA64) { throw ('{0}: machine 0x{1:X4}, expected 0xAA64' -f $name, $machine) }
-    }
+    Assert-BundleVsRuntime -BundleRoot $BundleRoot
 } $results
 
 Invoke-BundleStep 'vulkaninfo lists llvmpipe (lavapipe ICD + loader run)' {

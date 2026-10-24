@@ -46,23 +46,9 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer
 
-      - name: Report PowerShell complexity
+      - name: Enforce PowerShell complexity
         shell: pwsh
-        run: pwsh -NoProfile -File windows/scripts/Invoke-CodeComplexity.ps1
-
-      - name: Enforce refactored PowerShell complexity
-        shell: pwsh
-        run: |
-          & ./windows/scripts/Invoke-CodeComplexity.ps1 -Path @(
-            'windows/scripts/Invoke-CodeComplexity.ps1',
-            'windows/scripts/modules/WindowsAst.Common.psm1',
-            'windows/scripts/modules/WindowsSlang.Common.psm1',
-            'windows/scripts/modules/WindowsCodeQL.Common.psm1',
-            'windows/scripts/modules/WindowsImageEnv.Common.psm1',
-            'windows/scripts/diagnostics/Invoke-LlvmAarch64Layout.ps1',
-            'windows/scripts/modules/WindowsAgenticLoop.Common.psm1',
-            'windows/scripts/tests/AgenticLoop.Execution.Tests.ps1'
-          ) -Strict
+        run: pwsh -NoProfile -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict
 
       # Our own floor: runner-image updates have swapped preinstalled module versions before.
       - name: Ensure Pester >= 6.2

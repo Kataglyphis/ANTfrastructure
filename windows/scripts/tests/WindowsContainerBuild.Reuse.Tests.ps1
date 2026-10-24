@@ -18,6 +18,11 @@ function Assert-ReuseCommandParameters {
     }
 }
 
+function New-TarDockerFixture {
+    param([int]$Code, [string]$Reply = '')
+    return [pscustomobject]@{ Calls = [System.Collections.Generic.List[object]]::new(); Code = $Code; Reply = $Reply }
+}
+
 Describe 'WindowsContainerBuild.Reuse: Get-ContainerEnvArgs' {
 
     It 'returns an empty array for an empty dictionary' {
@@ -176,6 +181,44 @@ Describe 'WindowsContainerBuild.Reuse: Invoke-ContainerBuild contract' {
 
     It 'requires the parameters that have no sensible default' {
         Assert-ReuseCommandParameters -CommandName Invoke-ContainerBuild -Name @('DockerExe', 'Image', 'ContainerName', 'RepoRoot', 'BuildCommand') -Mandatory
+    }
+}
+
+Describe 'WindowsContainerBuild.Reuse: tar-pipe build result' {
+    $reuse = @(Get-Module WindowsContainerBuild.Reuse)[0]
+
+    It 'returns the docker exec exit status after the temporary environment is restored' {
+        $state = New-TarDockerFixture -Code 17
+        Invoke-WithTestNativeCommand -Name WbtTarDockerFake -FixtureState $state -Implementation {
+            param($fixture, $commandArgs)
+        } -Body {
+            param($fixture)
+            $status = & $reuse {
+                Invoke-TarPipeBuildCommand -DockerExe WbtTarDockerFake -Container build-box `
+                    -WorkspacePath 'C:\ws' -EntrypointPath 'C:\entrypoint.cmd' -BuildArgs @('pwsh', '-File', 'build.ps1')
+            }
+            Assert-Equal 17 $status 'docker exec status must survive the environment callback'
+            Assert-Equal 'exec' $fixture.Calls[0][0]
+            Assert-True ($fixture.Calls[0] -contains 'build-box') 'the build runs in the reusable container'
+        }
+    }
+
+    It 'distinguishes a compile failure from a vanished or stopped container' {
+        foreach ($case in @(
+                @{ Reply = 'running'; Code = 0; Pattern = 'Container build failed \(exit 17\)' },
+                @{ Reply = 'Error: No such object: build-box'; Code = 1; Pattern = 'disappeared while the build was running' },
+                @{ Reply = 'exited'; Code = 0; Pattern = 'stopped \(state .exited.\)' }
+            )) {
+            $state = New-TarDockerFixture -Code $case.Code -Reply $case.Reply
+            Invoke-WithTestNativeCommand -Name WbtTarDockerFake -FixtureState $state -Implementation {
+                param($fixture, $commandArgs)
+                $fixture.Reply
+            } -Body {
+                param($fixture)
+                Assert-Throws { & $reuse { Assert-TarPipeBuildSucceeded -DockerExe WbtTarDockerFake -Container build-box -BuildExit 17 } } `
+                    -MessagePattern $case.Pattern
+            }
+        }
     }
 }
 

@@ -295,12 +295,7 @@ function Invoke-BuildPatchedShim {
 }
 
 # ── Step 4: dufs sccache L2 server + logon task + machine endpoint env ─────────
-function Invoke-StepDufs {
-    if ($SkipDufs) { Write-HostMaintenanceMessage 'dufs       : skipped (-SkipDufs)'; return }
-
-    $lanIp = Get-LanIpv4Address
-    $endpoint = 'http://{0}:{1}' -f $lanIp, $SccachePort
-
+function Resolve-DufsExecutable {
     $dufsCmd = Get-Command dufs -ErrorAction SilentlyContinue
     if (-not $dufsCmd) {
         Write-HostMaintenanceMessage 'dufs       : not installed - installing via scoop'
@@ -314,58 +309,85 @@ function Invoke-StepDufs {
         Write-HostMaintenanceMessage ('dufs       : present at {0}' -f $dufsCmd.Source)
     }
 
-    if (-not $ReportOnly) {
-        New-Item -ItemType Directory -Force -Path $SccacheCacheDir | Out-Null
-    }
-
     $dufsExe = $null
     if (Test-Path "$env:USERPROFILE\scoop\shims\dufs.exe") {
         $dufsExe = "$env:USERPROFILE\scoop\shims\dufs.exe"
     } elseif ($dufsCmd) { $dufsExe = $dufsCmd.Source }
+    return $dufsExe
+}
 
+function Start-DufsEndpoint {
+    param([string]$Executable)
+    if (-not $ReportOnly) {
+        New-Item -ItemType Directory -Force -Path $SccacheCacheDir | Out-Null
+    }
     $open = Test-NetConnection -ComputerName '127.0.0.1' -Port ([int]$SccachePort) -WarningAction SilentlyContinue
     if ($open.TcpTestSucceeded) {
         Write-HostMaintenanceMessage "dufs       : already serving on :$SccachePort (adopting)"
     } else {
-        Write-HostMaintenanceMessage "dufs       : nothing on :$SccachePort - would start '$dufsExe' serving '$SccacheCacheDir'"
-        if (-not $ReportOnly -and $dufsExe) {
-            Start-Process -FilePath $dufsExe -ArgumentList @($SccacheCacheDir, $DufsExtraArgs, '-p', $SccachePort) -WindowStyle Hidden
+        Write-HostMaintenanceMessage "dufs       : nothing on :$SccachePort - would start '$Executable' serving '$SccacheCacheDir'"
+        if (-not $ReportOnly -and $Executable) {
+            Start-Process -FilePath $Executable -ArgumentList @($SccacheCacheDir, $DufsExtraArgs, '-p', $SccachePort) -WindowStyle Hidden
             Start-Sleep -Seconds 3
         }
     }
+}
 
+function Invoke-DufsChange {
+    param([bool]$Needed, [string]$Would, [string]$Doing, [string]$Target, [string]$Already, [scriptblock]$Apply)
+    if ($Needed) {
+        $verb = if ($ReportOnly) { $Would } else { $Doing }
+        Write-HostMaintenanceMessage ("dufs       : {0} {1}" -f $verb, $Target) 'Yellow'
+        if (-not $ReportOnly) { & $Apply }
+    } else {
+        Write-HostMaintenanceMessage "dufs       : $Already"
+    }
+}
+
+function Register-DufsLogonTask {
+    param([string]$Executable)
     # Logon persistence so a reboot does not kill the endpoint mid-session.
     $taskName = 'dufs-sccache'
     & schtasks.exe /Query /TN $taskName *> $null
     $taskExists = ($LASTEXITCODE -eq 0)
-    if (-not $taskExists) {
-        $verb = if ($ReportOnly) { 'would register' } else { 'registering' }
-        Write-HostMaintenanceMessage ("dufs       : {0} the '{1}' ONLOGON scheduled task" -f $verb, $taskName) 'Yellow'
-        if (-not $ReportOnly -and $dufsExe) {
-            $cmd = '"{0}" "{1}" {2} -p {3}' -f $dufsExe, $SccacheCacheDir, $DufsExtraArgs, $SccachePort
+    Invoke-DufsChange -Needed (-not $taskExists) -Would 'would register' -Doing 'registering' `
+        -Target "the '$taskName' ONLOGON scheduled task" -Already "task '$taskName' already registered" -Apply {
+        if ($Executable) {
+            $cmd = '"{0}" "{1}" {2} -p {3}' -f $Executable, $SccacheCacheDir, $DufsExtraArgs, $SccachePort
             & schtasks.exe /Create /F /TN $taskName /TR $cmd /SC ONLOGON /RL LIMITED *> $null
             if ($LASTEXITCODE -ne 0) { throw "schtasks /Create $taskName failed (exit $LASTEXITCODE)" }
         }
-    } else {
-        Write-HostMaintenanceMessage "dufs       : task '$taskName' already registered"
     }
+}
 
+function Set-DufsMachineEndpoint {
+    param([string]$Endpoint)
     # Machine-level endpoint (new shells + the build inherit it). NEVER localhost.
     $machineEp = [Environment]::GetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', 'Machine')
-    if ($machineEp -ne $endpoint) {
-        $verb = if ($ReportOnly) { 'would set' } else { 'setting' }
-        Write-HostMaintenanceMessage ("dufs       : {0} SCCACHE_WEBDAV_ENDPOINT={1} (Machine)" -f $verb, $endpoint) 'Yellow'
-        if (-not $ReportOnly) { [Environment]::SetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', $endpoint, 'Machine') }
-    } else {
-        Write-HostMaintenanceMessage "dufs       : SCCACHE_WEBDAV_ENDPOINT already $endpoint"
+    Invoke-DufsChange -Needed ($machineEp -ne $endpoint) -Would 'would set' -Doing 'setting' `
+        -Target "SCCACHE_WEBDAV_ENDPOINT=$endpoint (Machine)" -Already "SCCACHE_WEBDAV_ENDPOINT already $endpoint" -Apply {
+        [Environment]::SetEnvironmentVariable('SCCACHE_WEBDAV_ENDPOINT', $endpoint, 'Machine')
     }
+}
 
+function Test-DufsEndpoint {
+    param([string]$Endpoint)
     if (-not $ReportOnly) {
         try {
             $code = (Invoke-WebRequest -Uri $endpoint -Method Head -TimeoutSec 5 -UseBasicParsing).StatusCode
             Write-HostMaintenanceMessage "dufs       : endpoint $endpoint -> HTTP $code" 'Green'
         } catch { throw "sccache endpoint $endpoint is not reachable: $($_.Exception.Message)" }
     }
+}
+
+function Invoke-StepDufs {
+    if ($SkipDufs) { Write-HostMaintenanceMessage 'dufs       : skipped (-SkipDufs)'; return }
+    $endpoint = 'http://{0}:{1}' -f (Get-LanIpv4Address), $SccachePort
+    $dufsExe = Resolve-DufsExecutable
+    Start-DufsEndpoint -Executable $dufsExe
+    Register-DufsLogonTask -Executable $dufsExe
+    Set-DufsMachineEndpoint -Endpoint $endpoint
+    Test-DufsEndpoint -Endpoint $endpoint
 }
 
 # ── Step 5: TcpTimedWaitDelay (#179) ───────────────────────────────────────────

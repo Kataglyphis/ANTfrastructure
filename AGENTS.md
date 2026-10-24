@@ -1195,12 +1195,13 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   its class. Which classes, and why the linter exits 2 for an infrastructure failure:
   [`windows-builds.md`](docs/windows-builds.md).
 
-- **PowerShell complexity:** `pwsh -File windows/scripts/Invoke-CodeComplexity.ps1` reports
-  cyclomatic complexity, nesting and function code lines across tracked Windows PowerShell.
-  Use `-Path <file-or-dir> -Strict` to enforce the 15/5/80 limits on a refactor. CI runs
-  the whole-tree report and strictly checks the scanner, AST reader, Slang, CodeQL, image config, LLVM diagnostic and agentic loop files;
-  parse and scan failures are fatal even while existing metric debt keeps the full report
-  nonblocking. Do not add exceptions to silence findings.
+- **PowerShell complexity:** `pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict`
+  enforces the 15/5/80 cyclomatic, nesting and function-line limits across every tracked
+  Windows PowerShell file in CI. Use `-Path <file-or-dir> -Strict` while working on new
+  files that Git has not tracked yet. For an untracked JSON result, create
+  `out/complexity/` with `New-Item -ItemType Directory -Force out/complexity`, then add
+  `-JsonPath out/complexity/windows-full.json` to the strict command. Parse and scan
+  failures are fatal. Do not add exceptions or raise limits to silence findings.
 
 - **Runtime verification happens inside a container, or against raw symlink targets.** Never use
   `readlink -f` against `out/linux-runtime/*/rootfs`: absolute symlinks resolve against the host

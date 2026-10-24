@@ -335,3 +335,16 @@ Describe 'rocm-checks\LiteRtLm.ps1' {
         }
     }
 }
+Describe 'Build-LitertLmBazel install layout' {
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:LlmBazel -FunctionName 'Assert-LitertLmBazelLayout')
+
+    It 'requires an exe, a runtime DLL and a public header' {
+        Invoke-InTestDir -Files @{ 'bin/litert_lm_main.exe' = "exe`n"; 'bin/runtime.dll' = "dll`n" } -Body { param($dir)
+            $bin = Join-Path $dir 'bin'; $inc = Join-Path $dir 'include'
+            New-Item -ItemType Directory -Path $inc | Out-Null
+            Assert-Throws { Assert-LitertLmBazelLayout -BinOut $bin -IncOut $inc } 'missing header' -MessagePattern 'LITERT_LM_INCLUDE headers'
+            Write-TestFileTree -Root $dir -Files @{ 'include/runtime.h' = "header`n" }
+            Assert-Null (Assert-LitertLmBazelLayout -BinOut $bin -IncOut $inc) 'complete layout'
+        }
+    }
+}

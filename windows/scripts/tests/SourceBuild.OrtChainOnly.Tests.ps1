@@ -77,6 +77,22 @@ function New-OrtGateJunction {
     return (New-Item -ItemType Junction -Path $Path -Target $Target).FullName
 }
 
+function Assert-OrtGateDockerfileMounts {
+    param([Parameter(Mandatory)][scriptblock]$Read)
+    $consumers = 0
+    foreach ($df in 'windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder', 'windows\Dockerfile.rocm-migraphx') {
+        foreach ($line in (ConvertTo-TestDockerLogicalLine -Text (& $Read $df))) {
+            $isConsumer = $line -match 'source=windows/scripts/build/Build-(Opencv|OnnxGenai|Ffmpeg|Gstreamer|OrtAmdgpuEp)FromSource\.ps1'
+            if ($line -match '^RUN\s') {
+                if ($isConsumer) { $consumers++ }
+                Assert-Equal $isConsumer $line.Contains($script:GateMount) "$df RUN: $($line.Substring(0, [Math]::Min(120, $line.Length)))"
+            }
+            Assert-False ($line -match '^COPY\s.*WindowsOrtProvenance\.Build') "$df COPYs the gate into a stage"
+        }
+    }
+    Assert-Equal 5 $consumers 'five consumer RUNs (FFmpeg, OpenCV, GenAI, GStreamer, the rocm EP)'
+}
+
 Describe 'ORT gate (G2): a clean consumer build' {
     It 'passes the chain through its shim and stamps the chain core sha, which G1 accepts (mutation)' {
         Invoke-InTestDir { param($dir)
@@ -397,6 +413,16 @@ Describe 'ORT gate (G2): the link to G1' {
 
 Describe 'ORT gate (G2): wiring' {
     $read = { param([string]$Rel) [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $Rel)) }
+    function Assert-OrtGateConsumerRecords {
+        param([string]$Consumer, [string[]]$Expected, [scriptblock]$Read)
+        $text = & $Read "windows\scripts\build\$($script:GateConsumerScript[$Consumer])"
+        $ast = ConvertTo-TestScriptAst -Text $text
+        $call = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')[0]
+        $arguments = Get-TestCommandArguments -Command $call
+        Assert-Equal $Expected[0] $arguments.Log "$Consumer -Log"
+        Assert-Equal $Expected[1] $arguments.Record "$Consumer -Record"
+        if ($Expected[2]) { Assert-Match ('Tee-Object -FilePath ' + [regex]::Escape($Expected[2]) + '\b') $text "$Consumer tees its configure into the log G2 reads" }
+    }
 
     It 'each consumer imports the module from modules\ or its per-file mount, gates before its tree is removed, unconditionally (mutation)' {
         # The first command that removes the tree (or opens the cleanup phase) must come after the gate.
@@ -415,7 +441,7 @@ Describe 'ORT gate (G2): wiring' {
             $stops = @(Get-TestAstCommands -Ast $ast -Name $end[$consumer] | Where-Object { $consumer -ne 'gstreamer' -or "$($_.CommandElements[1])" -match '10\. cleanup' })
             Assert-True ($stops.Count -gt 0) "$consumer has a '$($end[$consumer])'"
             Assert-True ($call.Extent.EndOffset -lt @($stops | Sort-Object { $_.Extent.StartOffset })[0].Extent.StartOffset) "$consumer gates before its first '$($end[$consumer])'"
-            for ($p = $call.Parent; $p; $p = $p.Parent) { Assert-False ($p -is [System.Management.Automation.Language.IfStatementAst]) "$consumer gates on every lane (no if around the call)" }
+            Assert-Equal 0 @(Get-TestAstAncestor -Node $call -Type ([System.Management.Automation.Language.IfStatementAst])).Count "$consumer gates on every lane (no if around the call)"
         }
         Assert-Match '(?s)Get-OpencvOrtConfigureFinding -ConfigureLog.*Assert-ChainOrtOnly -Consumer ''opencv''' (& $read 'windows\scripts\build\Build-OpencvFromSource.ps1') 'after the OpenCV configure gate'
         $genai = & $read 'windows\scripts\build\Build-OnnxGenaiFromSource.ps1'
@@ -434,29 +460,12 @@ Describe 'ORT gate (G2): wiring' {
             'amdgpu-ep' = @('$epCfgLog', "(Join-Path `$buildDir 'CMakeCache.txt'), (Join-Path `$buildDir 'build.ninja')", '$epCfgLog')
         }
         foreach ($consumer in $want.Keys) {
-            $text = & $read "windows\scripts\build\$($script:GateConsumerScript[$consumer])"
-            $ast = ConvertTo-TestScriptAst -Text $text
-            $call = @(Get-TestAstCommands -Ast $ast -Name 'Assert-ChainOrtOnly')[0]
-            $arguments = Get-TestCommandArguments -Command $call
-            Assert-Equal $want[$consumer][0] $arguments.Log "$consumer -Log"
-            Assert-Equal $want[$consumer][1] $arguments.Record "$consumer -Record"
-            if ($want[$consumer][2]) { Assert-Match ('Tee-Object -FilePath ' + [regex]::Escape($want[$consumer][2]) + '\b') $text "$consumer tees its configure into the log G2 reads" }
+            Assert-OrtGateConsumerRecords -Consumer $consumer -Expected $want[$consumer] -Read $read
         }
     }
 
     It 'every consumer RUN mounts the module per file, nothing else mounts it, and no stage COPYs it (mutation)' {
-        $consumers = 0
-        foreach ($df in 'windows\Dockerfile.media-builder', 'windows\Dockerfile.media-merge-builder', 'windows\Dockerfile.rocm-migraphx') {
-            foreach ($line in (ConvertTo-TestDockerLogicalLine -Text (& $read $df))) {
-                $isConsumer = $line -match 'source=windows/scripts/build/Build-(Opencv|OnnxGenai|Ffmpeg|Gstreamer|OrtAmdgpuEp)FromSource\.ps1'
-                if ($line -match '^RUN\s') {
-                    if ($isConsumer) { $consumers++ }
-                    Assert-Equal $isConsumer $line.Contains($script:GateMount) "$df RUN: $($line.Substring(0, [Math]::Min(120, $line.Length)))"
-                }
-                Assert-False ($line -match '^COPY\s.*WindowsOrtProvenance\.Build') "$df COPYs the gate into a stage"
-            }
-        }
-        Assert-Equal 5 $consumers 'five consumer RUNs (FFmpeg, OpenCV, GenAI, GStreamer, the rocm EP)'
+        Assert-OrtGateDockerfileMounts -Read $read
     }
 
     It 'imports nothing, so a per-file mount loads it alone, and no shared closure pulls it in' {

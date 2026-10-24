@@ -89,6 +89,37 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path $PSScriptRoot -Parent
+function Close-BkDriver {
+    # A stopped run keeps its stage seconds and where it stopped; guarded so it never replaces the real exception.
+    try {
+        if ((Get-Variable -Name RunSucceeded -Scope Script -ValueOnly -ErrorAction SilentlyContinue) -eq $false) {
+            $runStart = Get-Variable -Name started -Scope Script -ValueOnly -ErrorAction SilentlyContinue
+            $runElapsed = if ($runStart) { (Get-Date) - $runStart } else { [timespan]::Zero }
+            $manifest = Write-RunManifest -Status "failed:$($script:CurrentPhase)" -Elapsed $runElapsed
+            Write-DriverRecord "run $($script:RunId) stopped in $($script:CurrentPhase); manifest $manifest"
+            Write-Host "[bk] stopped in $($script:CurrentPhase); manifest: $manifest" -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Warning "failure manifest not written (build verdict above is unaffected): $($_.Exception.Message)"
+    }
+    if (Get-Variable -Name PreviousOutputEncoding -Scope Script -ErrorAction SilentlyContinue) {
+        try { [Console]::OutputEncoding = $script:PreviousOutputEncoding } catch { Write-Verbose "console encoding not restored: $_" }
+    }
+    # Sampler summary on failure too; guarded so it never replaces the real exception or skips Pop-Location.
+    try {
+        Set-BuildPhase 'done'
+        if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
+            Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
+        }
+        if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
+            & (Join-Path $repoRoot 'windows\scripts\build\Build-ResourceSampler.ps1') -Summarize -CsvPath $script:ResourceCsv
+        }
+    } catch {
+        Write-Warning "resource-sampler teardown failed (build verdict above is unaffected): $($_.Exception.Message)"
+    }
+    Pop-Location
+}
+
 Push-Location $repoRoot
 try {
 
@@ -134,13 +165,20 @@ function Resolve-BkVariant {
         $Stages = @($Stages | Where-Object { $_ -notin $rocmOnlyStages })
     } else {
         if ($NoRocmSpikes -and $Stages -contains 'migraphx') {
-            if ($StagesBound) { throw '-Stages migraphx contradicts -NoRocmSpikes, which skips it' }
-            $Stages = @($Stages | Where-Object { $_ -ne 'migraphx' })
+            $Stages = Remove-BkUnsupportedStage -StageList $Stages -Stage migraphx -ExplicitStages $StagesBound `
+                -ErrorMessage '-Stages migraphx contradicts -NoRocmSpikes, which skips it'
         }
         Assert-BkRocmStageClosure -Stages $Stages -NoRocmSpikes $NoRocmSpikes
     }
     if ($PushRef) { Assert-BkVariantPushRef -PushRef $PushRef -Variant $Variant -TargetArch $TargetArch }
     return @{ Variant = $Variant; Stages = $Stages }
+}
+
+function Remove-BkUnsupportedStage {
+    param([string[]]$StageList, [string]$Stage, [bool]$ExplicitStages, [string]$ErrorMessage)
+    if ($StageList -notcontains $Stage) { return ,$StageList }
+    if ($ExplicitStages) { throw $ErrorMessage }
+    return ,@($StageList | Where-Object { $_ -ne $Stage })
 }
 
 function Assert-BkRocmStageClosure {
@@ -189,6 +227,14 @@ function Assert-BkCacheExportRef {
 .SYNOPSIS
     The rocm-only build-args of one stage; @{} on every other lane, so cpu/nvidia solves are unchanged.
 #>
+function Add-BkVersionPins {
+    param([hashtable]$Target, [hashtable]$VersionTable, [string]$Prefix)
+    foreach ($key in $VersionTable.Keys) {
+        if ($key -like "$Prefix*") { $Target[$key] = $VersionTable[$key] }
+    }
+    return $Target
+}
+
 function Get-BkRocmStageArg {
     param(
         [AllowEmptyString()][string]$Variant,
@@ -203,14 +249,12 @@ function Get-BkRocmStageArg {
         # The onnx stage's WebGPU EP spike and its ORT_WEBGPU_WINDOWS_* pins (valueless ARGs there).
         'media-core' {
             $coreArgs = @{ ORT_WEBGPU = $(if ($NoRocmSpikes) { '0' } else { '1' }) }
-            foreach ($k in @($VersionTable.Keys | Where-Object { $_ -like 'ORT_WEBGPU_WINDOWS_*' })) { $coreArgs[$k] = $VersionTable[$k] }
-            return $coreArgs
+            return Add-BkVersionPins -Target $coreArgs -VersionTable $VersionTable -Prefix 'ORT_WEBGPU_WINDOWS_'
         }
         # Both spike modes write the same tags, so the gate must know which one this image claims.
         'smoke-gate' { return @{ EXPECT_ROCM_SPIKES = $(if ($NoRocmSpikes) { '0' } else { '1' }) } }
         'torch' {
-            $torchArgs = @{ TORCH_ROCM = '1' }
-            foreach ($k in @($VersionTable.Keys | Where-Object { $_ -like 'TORCH_ROCM_WINDOWS_*' })) { $torchArgs[$k] = $VersionTable[$k] }
+            $torchArgs = Add-BkVersionPins -Target @{ TORCH_ROCM = '1' } -VersionTable $VersionTable -Prefix 'TORCH_ROCM_WINDOWS_'
             # The torch-rocm-wheels stage's source build: its versions and GPU family (docs/windows-rocm.md).
             foreach ($k in 'PYTORCH_VERSION', 'TORCHVISION_VERSION', 'ROCM_WINDOWS_GFX_FAMILY') {
                 if ($VersionTable.ContainsKey($k)) { $torchArgs[$k] = $VersionTable[$k] }
@@ -308,7 +352,10 @@ if ($ConcurrentAux -and $NoSccache) {
            'which -NoSccache disables. Drop -NoSccache, or run the aux branches sequentially.')
 }
 
-# Cross-target gates: refuse impossible combinations now, not hours into a stage
+function Resolve-BkTargetStages {
+    param([string[]]$StageList, [string]$TargetArch, [bool]$Nvidia, [bool]$ExplicitStages)
+    $Stages = $StageList
+    $isNvidia = $Nvidia
 if ($TargetArch -ne 'amd64') {
     if ($isNvidia) {
         Write-Host ('[bk] GPU: arm64 cross CUDA/cuDNN (bundle only; the arm64 payload is statically verified)') -ForegroundColor Yellow
@@ -317,19 +364,23 @@ if ($TargetArch -ne 'amd64') {
     if ($Stages -contains 'torch') {
         $torchWhy = ('the torch stage runs ``uv sync``, which must EXECUTE the target interpreter - impossible in a ' +
                      'cross build. Independently, the pinned PyTorch publishes no win_arm64 wheel for the pinned Python.')
-        if ($PSBoundParameters.ContainsKey('Stages')) {
-            throw "-Stages torch is not available for -TargetArch $TargetArch : $torchWhy Re-run without torch, e.g. -Stages base,sdk,toolchain,media,final"
-        }
-        $Stages = @($Stages | Where-Object { $_ -ne 'torch' })
+        $Stages = Remove-BkUnsupportedStage -StageList $Stages -Stage torch -ExplicitStages $ExplicitStages `
+            -ErrorMessage "-Stages torch is not available for -TargetArch $TargetArch : $torchWhy Re-run without torch, e.g. -Stages base,sdk,toolchain,media,final"
         Write-Host "[bk] stage 'torch' dropped for $TargetArch : $torchWhy" -ForegroundColor Yellow
     }
     # What a branch cannot build for the target ships as an empty marker tree; see docs/windows-cross-builds.md.
     Write-Host ("[bk] TARGET ARCH: $TargetArch (CROSS build - host stays windows/amd64). " +
                 'Output is an artifact bundle, not a runnable image.') -ForegroundColor Yellow
 }
+return ,$Stages
+}
+
+# Cross-target gates: refuse impossible combinations now, not hours into a stage
+$Stages = Resolve-BkTargetStages -StageList $Stages -TargetArch $TargetArch -Nvidia $isNvidia -ExplicitStages $PSBoundParameters.ContainsKey('Stages')
 # The merge fan-in needs all three branches on both lanes.
 $script:MergeRequiredBranches = @('media-core', 'media-litert', 'media-tvm')
-# Only for stages after the arch fork: on base/sdk/toolchain the ARG would re-key the VS layer.
+function Get-BkArchArguments {
+    param([string]$TargetArch)
 $archArgs = @{
     WINDOWS_TARGET_ARCH = $TargetArch
     OPENCV_ARCH_DIR     = Get-OpenCvArchDir -Arch $TargetArch
@@ -343,6 +394,12 @@ if ($TargetArch -ne 'amd64') {
 # A drop in wheel or requirement count is a finding, not a greener gate.
 $archArgs['DEPS_MIN_BUNDLE_WHEELS'] = '6'
 $archArgs['DEPS_MIN_FIRST_TOUCH_REQS'] = if ($TargetArch -eq 'amd64') { '10' } else { '8' }
+
+    return $archArgs
+}
+
+# Only for stages after the arch fork: on base/sdk/toolchain the ARG would re-key the VS layer.
+$archArgs = Get-BkArchArguments -TargetArch $TargetArch
 
 # Host preflight; see docs/windows-host-setup.md § Phase D.
 Assert-DiskHeadroom -Drive @($repoRoot) -MinFreeGb $MinFreeGb -Force:$SkipHostChecks
@@ -572,6 +629,7 @@ function Invoke-BkHistoryGate {
     }
 }
 
+function Initialize-BkSccache {
 if (-not $SccacheS3Endpoint) { $SccacheS3Endpoint = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_ENDPOINT' }
 if (-not $SccacheS3Bucket) { $SccacheS3Bucket = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_BUCKET' }
 if (-not $SccacheS3Region) { $SccacheS3Region = Get-HostSettingValue 'KATAGLYPHIS_SCCACHE_S3_REGION' }
@@ -595,8 +653,11 @@ $script:BkSecretArgs = $sccacheConfig.Secrets
 # Refused in every exported image's history, also when this run leaves the S3 level out.
 $script:BkHistoryGateValue = Get-BkHistoryGateValue -Url $SccacheEndpoint, $SccacheS3Endpoint -Bucket $SccacheS3Bucket -Region $SccacheS3Region
 
+}
+Initialize-BkSccache
+
 # Preseed the Vulkan SDK on the webdav: sdk.lunarg.com stalls inside containers; fail-open to their direct download.
-if ($SccacheEndpoint) {
+function Publish-BkHostPreseed {
     $vkVer = Get-Ver 'VULKAN_VERSION'
     $vkName = "vulkansdk-windows-X64-$vkVer.exe"
     $curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
@@ -642,6 +703,11 @@ if ($SccacheEndpoint) {
     }
     $global:LASTEXITCODE = 0
 
+}
+
+if ($SccacheEndpoint) {
+    Publish-BkHostPreseed
+
     # A scheduling knob published on the webdav, never an ARG/ENV, which would make it a cache key.
     function Publish-MemoryBudget {
         param([Parameter(Mandatory)][int]$Gb, [string]$Phase = '')
@@ -674,6 +740,7 @@ if (-not $NoResourceLog) {
     Write-Host "Resource log: $script:ResourceCsv (20s samples, phase-tagged; disable with -NoResourceLog)"
 }
 
+function Invoke-BkBaseStage {
 if ($Stages -contains 'base') {
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.base' -Tag (Get-BkTag 'windows-base') -BuildArgs @{
         WINDOWS_LTSC          = Get-Ver 'WINDOWS_LTSC'
@@ -702,6 +769,10 @@ if ($Stages -contains 'base') {
     }
 }
 
+}
+Invoke-BkBaseStage
+
+function Invoke-BkSdkStage {
 if ($Stages -contains 'sdk') {
     if ($isNvidia) {
         # The arch picks Install-Cuda.ps1's arm64 redist payload on the cross lane; the arm64 SHAs are inert on amd64.
@@ -758,6 +829,10 @@ if ($Stages -contains 'sdk') {
     }
 }
 
+}
+Invoke-BkSdkStage
+
+function Invoke-BkToolchainStage {
 if ($Stages -contains 'toolchain') {
     # Without the endpoint the patched-llvm stage compiles LLVM cold.
     $toolchainArgs = @{
@@ -773,6 +848,110 @@ if ($Stages -contains 'toolchain') {
     Invoke-BkPublishGate -Image (Get-BkTag 'windows-toolchain') -Label 'publish-gate:toolchain'
 }
 
+}
+Invoke-BkToolchainStage
+
+$driverParameters = $PSBoundParameters
+function Add-BkAuxConditionalArguments {
+    param([string[]]$Arguments, [ValidateSet('Platform', 'Host')][string]$Group)
+    $choices = if ($Group -eq 'Platform') {
+        @(
+            [pscustomobject]@{ When = ($TargetArch -ne 'amd64'); Options = @('-TargetArch', $TargetArch) }
+            [pscustomobject]@{ When = $isNvidia; Options = @('-Gpu') }
+            [pscustomobject]@{ When = ($Variant -eq 'rocm'); Options = @('-Variant', 'rocm') }
+            [pscustomobject]@{ When = ($Variant -eq 'rocm' -and $NoRocmSpikes); Options = @('-NoRocmSpikes') }
+            [pscustomobject]@{ When = [bool]$SccacheEndpoint; Options = @('-SccacheEndpoint', $SccacheEndpoint) }
+        )
+    } else {
+        @(
+            [pscustomobject]@{ When = [bool]$BuildCtl; Options = @('-BuildCtl', $BuildCtl) }
+            [pscustomobject]@{ When = $SkipHostChecks; Options = @('-SkipHostChecks') }
+            [pscustomobject]@{ When = $SkipRdna4Gate; Options = @('-SkipRdna4Gate') }
+            [pscustomobject]@{ When = $SkipStepLogGate; Options = @('-SkipStepLogGate') }
+            [pscustomobject]@{ When = $NoSccache; Options = @('-NoSccache') }
+            [pscustomobject]@{ When = $true; Options = @('-NoResourceLog') }
+            [pscustomobject]@{ When = $driverParameters.ContainsKey('MinFreeGb'); Options = @('-MinFreeGb', $MinFreeGb) }
+            [pscustomobject]@{ When = $driverParameters.ContainsKey('HostReserveGb'); Options = @('-HostReserveGb', $HostReserveGb) }
+        )
+    }
+    foreach ($choice in $choices) {
+        if ($choice.When) { $Arguments += $choice.Options }
+    }
+    if ($Group -eq 'Host') {
+        # The litert/tvm solves are the children's, so a parent-only knob would miss them.
+        foreach ($ba in $BuildArg) { $Arguments += @('-BuildArg', $ba) }
+    }
+    return ,$Arguments
+}
+
+function Add-BkAuxCacheArguments {
+    param([string[]]$Arguments, [string]$Aux)
+            # Without these a -NoCache parent's aux branches would build from cache.
+            if ($NoCache) { $Arguments += '-NoCache' }
+            # Only entries this child can match, one per argument (-File cannot pass arrays).
+            $auxNoCache = @($NoCacheStage | Where-Object { $Aux -match [regex]::Escape(($_ -replace '^media-', '')) -or $_ -match ($Aux -replace '^media-', '') })
+            foreach ($ncs in $auxNoCache) {
+                $Arguments += @('-NoCacheStage', $ncs)
+                # Marked here too, or a correct parent run ends red in the matched-nothing gate.
+                $script:NoCacheStageMatched[$ncs] = $true
+            }
+            if ($ImportCacheRef) { $Arguments += @('-ImportCacheRef', $ImportCacheRef) }
+            if ($ExportCacheRef) { $Arguments += @('-ExportCacheRef', $ExportCacheRef) }
+    return ,$Arguments
+}
+
+function Get-BkAuxDriverArguments {
+    param([string]$Aux, [int]$AuxMem, [string]$DriverPath)
+            $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $DriverPath,
+                '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem, '-ParentRunId', $script:RunId)
+            $auxArgs = Add-BkAuxConditionalArguments -Arguments $auxArgs -Group Platform
+            $auxArgs = Add-BkAuxCacheArguments -Arguments $auxArgs -Aux $Aux
+            $auxArgs = Add-BkAuxConditionalArguments -Arguments $auxArgs -Group Host
+    return ,$auxArgs
+}
+
+function Invoke-BkAuxMediaBranches {
+    param([int]$AuxMem, [string]$DriverPath)
+    $auxProcs = @()
+        Write-Host "`n==> [bk:aux] concurrent litert + tvm child drivers ($auxMem GB memory budget each)" -ForegroundColor Cyan
+        # Parallel phase begins: halve the published budget for the children.
+        if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
+            Publish-MemoryBudget -Gb $auxMem -Phase 'parallel aux phase'
+        }
+        foreach ($aux in 'media-litert', 'media-tvm') {
+            $auxArgs = Get-BkAuxDriverArguments -Aux $aux -AuxMem $AuxMem -DriverPath $DriverPath
+            # Start-Process -ArgumentList joins with spaces and never quotes, so spaced paths would split.
+            $auxArgsQuoted = @($auxArgs | ForEach-Object { if ("$_" -match '\s') { '"{0}"' -f $_ } else { "$_" } })
+            $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgsQuoted -PassThru -NoNewWindow
+            Write-DriverRecord "[bk:aux] child $aux started (pid $($auxProcs[-1].Id)), run $($script:RunId)-$aux"
+        }
+        # Fail fast on the first dead child, and never orphan the other's buildctl tree.
+        try {
+            while ($true) {
+                $exited = @($auxProcs | Where-Object { $_.HasExited })
+                $failed = @($exited | Where-Object { $_.ExitCode -ne 0 })
+                if ($failed) {
+                    throw "[bk:aux] concurrent branch driver (pid $($failed[0].Id)) failed (exit $($failed[0].ExitCode)) — aborting the remaining aux branch(es)"
+                }
+                if ($exited.Count -eq $auxProcs.Count) { break }
+                Start-Sleep -Seconds 5
+            }
+        } finally {
+            foreach ($p in $auxProcs) {
+                if (-not $p.HasExited) {
+                    Write-Host "[bk:aux] stopping child driver pid $($p.Id)" -ForegroundColor Yellow
+                    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+                }
+            }
+        }
+        Write-Host '[bk:aux] litert + tvm OK' -ForegroundColor Green
+        # Parallel phase over: the merge runs alone, so restore the full budget.
+        if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
+            Publish-MemoryBudget -Gb ([int]$MediaMemoryGb) -Phase 'merge phase'
+        }
+}
+
+function Invoke-BkMediaStages {
 if ($Stages -contains 'media') {
     # Canonical per-branch version args (WindowsBuildDriver.Common).
     $branchArgs = @{}
@@ -780,7 +959,6 @@ if ($Stages -contains 'media') {
         $branchArgs[$b] = Get-MediaBranchVersionArg -Branch $b -VersionTable $versions
     }
     $loopBranches = $MediaBranches
-    $auxProcs = @()
     if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
         # media-core, the long pole, stays sequential; each child builds one aux branch.
         $loopBranches = @($MediaBranches | Where-Object { $_ -notin @('media-litert', 'media-tvm') })
@@ -816,72 +994,7 @@ if ($Stages -contains 'media') {
         }
     }
     if ($ConcurrentAux -and ($MediaBranches -contains 'media-litert') -and ($MediaBranches -contains 'media-tvm')) {
-        Write-Host "`n==> [bk:aux] concurrent litert + tvm child drivers ($auxMem GB memory budget each)" -ForegroundColor Cyan
-        # Parallel phase begins: halve the published budget for the children.
-        if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
-            Publish-MemoryBudget -Gb $auxMem -Phase 'parallel aux phase'
-        }
-        foreach ($aux in 'media-litert', 'media-tvm') {
-            $auxArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $PSCommandPath,
-                '-Stages', 'media', '-MediaBranches', $aux, '-MediaMemoryGb', $auxMem, '-ParentRunId', $script:RunId)
-            # Without it an arm64 parent's children build under amd64 tags and the merge fans in stale trees.
-            if ($TargetArch -ne 'amd64') { $auxArgs += @('-TargetArch', $TargetArch) }
-            if ($isNvidia) { $auxArgs += '-Gpu' }
-            # Without the variant the children build FROM the default toolchain under default tags.
-            if ($Variant -eq 'rocm') { $auxArgs += @('-Variant', 'rocm') + @(if ($NoRocmSpikes) { '-NoRocmSpikes' }) }
-            if ($SccacheEndpoint) { $auxArgs += @('-SccacheEndpoint', $SccacheEndpoint) }
-            # Without these a -NoCache parent's aux branches would build from cache.
-            if ($NoCache) { $auxArgs += '-NoCache' }
-            # Only entries this child can match, one per argument (-File cannot pass arrays).
-            $auxNoCache = @($NoCacheStage | Where-Object { $aux -match [regex]::Escape(($_ -replace '^media-', '')) -or $_ -match ($aux -replace '^media-', '') })
-            foreach ($ncs in $auxNoCache) {
-                $auxArgs += @('-NoCacheStage', $ncs)
-                # Marked here too, or a correct parent run ends red in the matched-nothing gate.
-                $script:NoCacheStageMatched[$ncs] = $true
-            }
-            if ($ImportCacheRef) { $auxArgs += @('-ImportCacheRef', $ImportCacheRef) }
-            if ($ExportCacheRef) { $auxArgs += @('-ExportCacheRef', $ExportCacheRef) }
-            if ($BuildCtl) { $auxArgs += @('-BuildCtl', $BuildCtl) }
-            # Each child re-runs the full preflight, so the parent's overrides must reach it.
-            if ($SkipHostChecks) { $auxArgs += '-SkipHostChecks' }
-            if ($SkipRdna4Gate) { $auxArgs += '-SkipRdna4Gate' }
-            if ($SkipStepLogGate) { $auxArgs += '-SkipStepLogGate' }
-            if ($NoSccache) { $auxArgs += '-NoSccache' }
-            # The parent's sampler already covers the whole machine.
-            $auxArgs += '-NoResourceLog'
-            if ($PSBoundParameters.ContainsKey('MinFreeGb')) { $auxArgs += @('-MinFreeGb', $MinFreeGb) }
-            if ($PSBoundParameters.ContainsKey('HostReserveGb')) { $auxArgs += @('-HostReserveGb', $HostReserveGb) }
-            # The litert/tvm solves are the children's, so a parent-only knob would miss them.
-            foreach ($ba in $BuildArg) { $auxArgs += @('-BuildArg', $ba) }
-            # Start-Process -ArgumentList joins with spaces and never quotes, so spaced paths would split.
-            $auxArgsQuoted = @($auxArgs | ForEach-Object { if ("$_" -match '\s') { '"{0}"' -f $_ } else { "$_" } })
-            $auxProcs += Start-Process -FilePath 'pwsh' -ArgumentList $auxArgsQuoted -PassThru -NoNewWindow
-            Write-DriverRecord "[bk:aux] child $aux started (pid $($auxProcs[-1].Id)), run $($script:RunId)-$aux"
-        }
-        # Fail fast on the first dead child, and never orphan the other's buildctl tree.
-        try {
-            while ($true) {
-                $exited = @($auxProcs | Where-Object { $_.HasExited })
-                $failed = @($exited | Where-Object { $_.ExitCode -ne 0 })
-                if ($failed) {
-                    throw "[bk:aux] concurrent branch driver (pid $($failed[0].Id)) failed (exit $($failed[0].ExitCode)) — aborting the remaining aux branch(es)"
-                }
-                if ($exited.Count -eq $auxProcs.Count) { break }
-                Start-Sleep -Seconds 5
-            }
-        } finally {
-            foreach ($p in $auxProcs) {
-                if (-not $p.HasExited) {
-                    Write-Host "[bk:aux] stopping child driver pid $($p.Id)" -ForegroundColor Yellow
-                    Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
-                }
-            }
-        }
-        Write-Host '[bk:aux] litert + tvm OK' -ForegroundColor Green
-        # Parallel phase over: the merge runs alone, so restore the full budget.
-        if (Get-Command Publish-MemoryBudget -ErrorAction SilentlyContinue) {
-            Publish-MemoryBudget -Gb ([int]$MediaMemoryGb) -Phase 'merge phase'
-        }
+        Invoke-BkAuxMediaBranches -AuxMem $auxMem -DriverPath $PSCommandPath
     }
     # The merge needs all three branches and runs once, which keeps the single-branch children out of it.
     $allBranches = $script:MergeRequiredBranches
@@ -912,9 +1025,13 @@ if ($Stages -contains 'media') {
     }
 }
 
+}
+Invoke-BkMediaStages
+
 # rocm-only handoff tags, each named once and read by the stage that builds FROM it.
 $migraphxTag = Get-BkTag 'windows-media-migraphx'
 $llamaTag = Get-BkTag 'windows-media-llama'
+function Invoke-BkRocmStageHandoffs {
 if ($Stages -contains 'migraphx') {
     # Its pins (MIGRAPHX_*, ORT_AMDGPU_EP_*, the gfx family) come from the shared version map.
     $migraphxArgs = @{
@@ -936,6 +1053,9 @@ if ($Stages -contains 'llama') {
     }
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.rocm-llama' -Target 'built' -Tag $llamaTag -BuildArgs $llamaArgs
 }
+}
+Invoke-BkRocmStageHandoffs
+
 # Get-BkTag carries the lane: bk-windows-torch, or bk-windows-torch-rocm on the rocm lane.
 $torchTag = Get-BkTag 'windows-torch'
 
@@ -945,6 +1065,7 @@ $stampArgs = @{
     VCS_REF    = Get-BuildVcsRef
 }
 
+function Invoke-BkTorchStage {
 if ($Stages -contains 'torch') {
     Invoke-BkStage -Dockerfile 'windows/Dockerfile.torch' -Tag $torchTag -BuildArgs ($stampArgs + @{
         BASE_IMAGE = $(if ($Variant -eq 'rocm') { $llamaTag } else { Get-BkTag 'windows-media' })
@@ -954,25 +1075,17 @@ if ($Stages -contains 'torch') {
     } + (Get-BkRocmStageArg -Variant $Variant -Stage 'torch' -VersionTable $versions))
 }
 
-if ($Stages -contains 'final') {
-    # arm64 has no torch stage, so its final image builds on the merged media.
-    $finalBase = if ($TargetArch -eq 'amd64') { $torchTag } else { Get-BkTag 'windows-media' }
-    # The Vulkan loader's pins (BACKLOG CON25) and the WiX firewall extension's: the final stage installs both.
-    $finalArgs = $stampArgs + @{
-        BASE_IMAGE                   = $finalBase
-        VULKAN_VERSION               = Get-Ver 'VULKAN_VERSION'
-        VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
-        WIX_FIREWALL_EXT_VERSION     = Get-Ver 'WIX_FIREWALL_EXT_VERSION'
-    } + $archArgs
-    # The default label 'Dockerfile' would let -NoCacheStage final match only the re-exports.
-    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag $script:FinalTagName) -BuildArgs $finalArgs
+}
+Invoke-BkTorchStage
+
+function Invoke-BkFinalSmokeGate {
     # Smoke gate: a buildctl solve, since containerd's pipe is admin-only and this driver is not.
     if ($TargetArch -ne 'amd64' -and -not $SkipSmokeGate) {
         # Just under the arm64 section-floor sum (Smoke.FloorCalibration.Tests.ps1 pins the bounds).
         $armMinPassed = 76
         $armMaxSkipped = 20
-        if ($PSBoundParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
-        if ($PSBoundParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
+        if ($driverParameters.ContainsKey('SmokeMinPassed')) { $armMinPassed = $SmokeMinPassed }
+        if ($driverParameters.ContainsKey('SmokeMaxSkipped')) { $armMaxSkipped = $SmokeMaxSkipped }
         Write-Host ("[bk:smoke-gate] cross lane: HOST-toolchain sections run (floors: MIN_PASSED=$armMinPassed, " +
                     "MAX_SKIPPED=$armMaxSkipped); payload sections are skipped in-suite — the aarch64 payload " +
                     'itself remains statically verified only (Test-TargetArch.ps1, merge stage).') -ForegroundColor Yellow
@@ -988,7 +1101,7 @@ if ($Stages -contains 'final') {
     } elseif (-not $SkipSmokeGate) {
         # The CPU floor would let the GPU lane lose 60 assertions; 198 sits just under the GPU column's sum, and an explicit value wins.
         $effectiveMinPassed = $SmokeMinPassed
-        if ($isNvidia -and -not $PSBoundParameters.ContainsKey('SmokeMinPassed')) {
+        if ($isNvidia -and -not $driverParameters.ContainsKey('SmokeMinPassed')) {
             $effectiveMinPassed = 198
             Write-Host "smoke gate: GPU lane floor $effectiveMinPassed (CPU default is $SmokeMinPassed)"
         }
@@ -1007,6 +1120,22 @@ if ($Stages -contains 'final') {
     } else {
         Write-Host '[bk:smoke-gate] SKIPPED (-SkipSmokeGate) — this image is UNVERIFIED' -ForegroundColor Yellow
     }
+}
+
+function Invoke-BkFinalStage {
+if ($Stages -contains 'final') {
+    # arm64 has no torch stage, so its final image builds on the merged media.
+    $finalBase = if ($TargetArch -eq 'amd64') { $torchTag } else { Get-BkTag 'windows-media' }
+    # The Vulkan loader's pins (BACKLOG CON25) and the WiX firewall extension's: the final stage installs both.
+    $finalArgs = $stampArgs + @{
+        BASE_IMAGE                   = $finalBase
+        VULKAN_VERSION               = Get-Ver 'VULKAN_VERSION'
+        VULKAN_RT_WINDOWS_ZIP_SHA256 = Get-Ver 'VULKAN_RT_WINDOWS_ZIP_SHA256'
+        WIX_FIREWALL_EXT_VERSION     = Get-Ver 'WIX_FIREWALL_EXT_VERSION'
+    } + $archArgs
+    # The default label 'Dockerfile' would let -NoCacheStage final match only the re-exports.
+    Invoke-BkStage -Dockerfile 'windows/Dockerfile' -Label 'final' -Tag (Get-BkTag $script:FinalTagName) -BuildArgs $finalArgs
+    Invoke-BkFinalSmokeGate
     # The publish gate is never skipped, not even by -SkipSmokeGate.
     Invoke-BkPublishGate -Image (Get-BkTag $script:FinalTagName)
     # Before export, so a -NoCacheStage typo cannot ship a fully cached image as green.
@@ -1021,6 +1150,10 @@ if ($Stages -contains 'final') {
     }
 }
 
+}
+Invoke-BkFinalStage
+
+function Complete-BkRun {
 # Covers runs without 'final', where the pre-export check never executes.
 if ($Stages -notcontains 'final') {
     & Assert-NoCacheStageMatched
@@ -1039,33 +1172,9 @@ if ($script:StageTimings.Count -gt 0) {
 }
 Write-Host ("`n[bk] Done in {0:hh\:mm\:ss}. Stages: {1}{2}" -f $elapsed, ($Stages -join ', '), $(if ($Variant) { " ($Variant)" } else { ' (CPU)' })) -ForegroundColor Green
 
+}
+Complete-BkRun
+
 } finally {
-    # A stopped run keeps its stage seconds and where it stopped; guarded so it never replaces the real exception.
-    try {
-        if ((Get-Variable -Name RunSucceeded -Scope Script -ValueOnly -ErrorAction SilentlyContinue) -eq $false) {
-            $runStart = Get-Variable -Name started -Scope Script -ValueOnly -ErrorAction SilentlyContinue
-            $runElapsed = if ($runStart) { (Get-Date) - $runStart } else { [timespan]::Zero }
-            $manifest = Write-RunManifest -Status "failed:$($script:CurrentPhase)" -Elapsed $runElapsed
-            Write-DriverRecord "run $($script:RunId) stopped in $($script:CurrentPhase); manifest $manifest"
-            Write-Host "[bk] stopped in $($script:CurrentPhase); manifest: $manifest" -ForegroundColor Yellow
-        }
-    } catch {
-        Write-Warning "failure manifest not written (build verdict above is unaffected): $($_.Exception.Message)"
-    }
-    if (Get-Variable -Name PreviousOutputEncoding -Scope Script -ErrorAction SilentlyContinue) {
-        try { [Console]::OutputEncoding = $script:PreviousOutputEncoding } catch { Write-Verbose "console encoding not restored: $_" }
-    }
-    # Sampler summary on failure too; guarded so it never replaces the real exception or skips Pop-Location.
-    try {
-        Set-BuildPhase 'done'
-        if ($script:SamplerProc -and -not $script:SamplerProc.HasExited) {
-            Stop-Process -Id $script:SamplerProc.Id -Force -ErrorAction SilentlyContinue
-        }
-        if ($script:ResourceCsv -and (Test-Path $script:ResourceCsv)) {
-            & (Join-Path $repoRoot 'windows\scripts\build\Build-ResourceSampler.ps1') -Summarize -CsvPath $script:ResourceCsv
-        }
-    } catch {
-        Write-Warning "resource-sampler teardown failed (build verdict above is unaffected): $($_.Exception.Message)"
-    }
-    Pop-Location
+    Close-BkDriver
 }

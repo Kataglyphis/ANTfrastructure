@@ -263,28 +263,21 @@ function Get-GstRocmMissingArtifact {
 }
 
 # Load canonical versions from linux/scripts/01-core/versions.env if available.
-Import-CanonicalVersions -ScriptRoot $PSScriptRoot
-
-if ([string]::IsNullOrWhiteSpace($GstVersion)) {
-    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GSTREAMER_VERSION') -DefaultValue '1.29.2'
-}
-
-try {
-    log "START - GStreamer source build"
-    log "Version:   $GstVersion"
-    log "Install:   $InstallDir"
-    log "SourceDir: $SourceDir"
-    log "BuildDir:  $BuildDir"
-    log "LogDir:    $LogDir"
-    log "GitRepo:   $GitRepo"
-
-    Switch-BuildPhase '1. resolve directories'
+function Resolve-GstBuildDirectories {
+    param([string]$InstallDir, [string]$SourceDir, [string]$BuildDir, [string]$LogDir)
+Switch-BuildPhase '1. resolve directories'
     $resolvedInstallDir = Resolve-DirectoryPath -Path $InstallDir
     $resolvedSrcDir     = Resolve-DirectoryPath -Path $SourceDir
     $resolvedBuildDir   = Resolve-DirectoryPath -Path $BuildDir
     $resolvedLogDir     = Resolve-DirectoryPath -Path $LogDir
 
-    Switch-BuildPhase '2. Meson via source CPython'
+
+    return @{ InstallDir = $resolvedInstallDir; SourceDir = $resolvedSrcDir; BuildDir = $resolvedBuildDir; LogDir = $resolvedLogDir }
+}
+
+function Initialize-GstMeson {
+    param([string]$resolvedLogDir)
+Switch-BuildPhase '2. Meson via source CPython'
     # pip is bootstrapped here: the media branches build in parallel, so no other script's order can be assumed.
     log 'Using source-built CPython from toolchain layer...'
     $py = Initialize-ToolchainPythonEnvironment
@@ -338,7 +331,13 @@ try {
     }
     [void](Invoke-MesonBuildSubprojectPatch -InterpreterPath $mesonInterp)
 
-    Switch-BuildPhase '3. clang-cl toolchain + sccache'
+
+    return $mesonExe
+}
+
+function Initialize-GstCompiler {
+    param([string]$resolvedInstallDir, [bool]$SkipPluginGate)
+Switch-BuildPhase '3. clang-cl toolchain + sccache'
     log 'Setting CC/CXX to clang-cl...'
     $env:CC  = 'clang-cl'
     $env:CXX = 'clang-cl'
@@ -387,7 +386,13 @@ try {
         log 'Early fan-in fast-fail passed (OpenCV/ONNX/LiteRT roots present).'
     }
 
-    Switch-BuildPhase '4. source tarball'
+
+
+}
+
+function Get-GstSourceTree {
+    param([string]$resolvedSrcDir, [string]$resolvedLogDir, [string]$GstVersion)
+Switch-BuildPhase '4. source tarball'
     # ---- 4. download GStreamer source tarball ----
     $gstSrcDir = Join-Path $resolvedSrcDir "gstreamer-$GstVersion"
     if (Test-Path $gstSrcDir) {
@@ -426,7 +431,13 @@ try {
     # git-init so Invoke-SourcePatch takes its git-apply fast path.
     Initialize-ExtractedGitRepo -Path $gstSrcDir
 
-    Switch-BuildPhase '5. wrap prefetch + meson fixups'
+
+    return $gstSrcDir
+}
+
+function Initialize-GstWrapSources {
+    param([string]$gstSrcDir, [string]$resolvedLogDir)
+Switch-BuildPhase '5. wrap prefetch + meson fixups'
     # $libffiVer stays in this file: SourceBuild.PinParity finds the pin site by file name.
     $libffiVer = if ($env:LIBFFI_MESON_VERSION) { $env:LIBFFI_MESON_VERSION } else { '3.2.9999.4' }
     $subprojDir = Join-Path $gstSrcDir 'subprojects'
@@ -452,7 +463,13 @@ try {
         log "Removed bundled [wrap-git]: $rel"
     }
 
-    # ---- 5b. create stub unistd.h + fixed intrin.h for platform compat ----
+
+
+}
+
+function Initialize-GstCompatibilityHeaders {
+    param([string]$gstSrcDir)
+# ---- 5b. create stub unistd.h + fixed intrin.h for platform compat ----
     $stubDir = Join-Path $env:TEMP_DIR 'includes'
     if (-not (Test-Path $stubDir)) { New-Item -Path $stubDir -ItemType Directory -Force | Out-Null }
     # unistd.h: flex/bison generated files + POSIX compat on Windows
@@ -475,77 +492,24 @@ int _isatty(int);
         log "Created io.h force-include shim at $ioShim (assembly-safe)"
     }
 
-    # Pre-place win-pkgconfig, the one subproject meson fetches with no retry; failure only warns, meson still tries.
-    $wpcDir = Join-Path $gstSrcDir 'subprojects/win-pkgconfig'
-    $wpcMeson = Join-Path $wpcDir 'meson.build'
-    if (Test-Path $wpcMeson) {
-        $wpcText = Get-Content -LiteralPath $wpcMeson -Raw
-        $wpcVer = ([regex]::Match($wpcText, "version\s*:\s*'([^']+)'")).Groups[1].Value
-        $wpcSha = ([regex]::Match($wpcText, "zip_hash\s*=\s*'([0-9a-fA-F]{64})'")).Groups[1].Value
-        if ($wpcVer -and $wpcSha) {
-            $wpcZip = Join-Path $wpcDir "pkg-config-$wpcVer.zip"
-            $wpcHave = (Test-Path $wpcZip) -and ((Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash -ieq $wpcSha)
-            if ($wpcHave) {
-                log "win-pkgconfig: pkg-config-$wpcVer.zip already present and matches $($wpcSha.Substring(0,12))..."
-            } else {
-                # LAN preseed first, since retries do not help against a sustained outage; an upstream hit seeds it back.
-                $wpcUpstream = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"
-                $wpcDav = if ($env:SCCACHE_WEBDAV_ENDPOINT) { "$($env:SCCACHE_WEBDAV_ENDPOINT.TrimEnd('/'))/preseed/pkg-config-$wpcVer.zip" } else { '' }
-                $wpcUrl = if ($wpcDav) { $wpcDav } else { $wpcUpstream }
-                try {
-                    try {
-                        Invoke-DownloadWithRetry -Url $wpcUrl -DestinationPath $wpcZip -MaxAttempts 2
-                        if ($wpcDav) { log "win-pkgconfig: fetched from the LAN preseed ($wpcDav)" }
-                    } catch {
-                        if (-not $wpcDav) { throw }
-                        log "win-pkgconfig: preseed miss ($($_.Exception.Message)) - falling back to upstream"
-                        Invoke-DownloadWithRetry -Url $wpcUpstream -DestinationPath $wpcZip
-                        # Seed it for next time; failure here is irrelevant to this build.
-                        $wpcCurl = Join-Path $env:SystemRoot 'System32\curl.exe'
-                        if (Test-Path $wpcCurl) {
-                            & $wpcCurl -sf --retry 2 --retry-delay 3 -T $wpcZip $wpcDav *> $null
-                            if ($LASTEXITCODE -eq 0) { log "win-pkgconfig: seeded $wpcDav for future runs" }
-                            $global:LASTEXITCODE = 0
-                        }
-                    }
-                    $got = (Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash
-                    if ($got -ieq $wpcSha) {
-                        log "win-pkgconfig: pre-placed pkg-config-$wpcVer.zip (sha256 verified) - meson will skip its own download"
-                    } else {
-                        Remove-Item -LiteralPath $wpcZip -Force -ErrorAction SilentlyContinue
-                        log "WARNING: win-pkgconfig prefetch sha256 mismatch (got $($got.Substring(0,12))..., want $($wpcSha.Substring(0,12))...) - removed; meson will retry the download itself"
-                    }
-                } catch {
-                    log "WARNING: win-pkgconfig prefetch failed ($($_.Exception.Message)) - meson will try its own single-shot download"
-                }
-            }
-        } else {
-            log "NOTE: could not parse version/zip_hash from $wpcMeson - skipping the win-pkgconfig prefetch"
-        }
-    }
+        Invoke-GstWinPkgConfigPrefetch -gstSrcDir $gstSrcDir
 
-    # Get-GpuEnvironment also sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH.
-    $gpuEnv = Get-GpuEnvironment
-    if ($gpuEnv.HasCuda) {
-        log "CUDA detected at: $($gpuEnv.CudaRoot)"
-    } else {
-        log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'
-    }
-    # rocm lane: TheRock stays invisible to pre-flight, setup, compile and install; phase 9 gets PATH back.
-    $rocmScrub = [ordered]@{}
-    if ($gpuEnv.HasRocm) {
-        $rocmScrub = Set-GstRocmIsolation -RocmRoot $gpuEnv.RocmRoot
-        foreach ($name in @($rocmScrub.Keys)) { log "ROCm isolation: $name no longer lists $($rocmScrub[$name].Removed -join ';')" }
-        log "ROCm lane ($($gpuEnv.RocmRoot)): meson pins $((Get-GstRocmMesonArgs -GpuEnv $gpuEnv) -join ' ')"
-    }
+}
 
+function Add-GstSearchPathDirectory {
+    param([string]$Directory, [AllowEmptyString()][string]$Current)
+    (@($Directory) + @($Current -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+}
+
+function Get-GstCompilerRtLinkPath {
+    param([string]$resolvedLogDir)
     # compiler-rt for lld-link (__udivti3 & co), found via clang-cl on PATH rather than a scoop layout.
     $clangClCmd = Get-Command 'clang-cl' -ErrorAction SilentlyContinue
     $llvmRoot = if ($clangClCmd) { Split-Path (Split-Path $clangClCmd.Source) } else { Join-Path $env:USERPROFILE 'scoop\apps\llvm\current' }
     # Target-filtered on both lanes: LLVM ships one builtins lib per target, and an arch-blind pick once linked arm64 into amd64.
     $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -ErrorAction SilentlyContinue)
     $wantRt = (Get-ClangTargetTriple -Arch $script:GstTargetArch) -replace '-.*$', ''   # x86_64/aarch64-pc-windows-msvc -> x86_64/aarch64
-    $rtCandidates = @($rtCandidates | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
+    $rtCandidates = @($rtCandidates | Where-Object { $_.Name.Contains($wantRt, [StringComparison]::OrdinalIgnoreCase) })
     if ($script:GstCross) {
         if ($rtCandidates.Count -eq 0) {
             # SELF-HEAL: the source-built toolchain ships host builtins only, when the toolchain stage has not staged them.
@@ -562,7 +526,7 @@ int _isatty(int);
                 } catch {
                     Write-Warning "aarch64 compiler-rt fetch failed: $($_.Exception.Message)"
                 }
-                $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -match [regex]::Escape($wantRt) })
+                $rtCandidates = @(Get-ChildItem -Path "$llvmRoot\lib\clang" -Recurse -Filter '*builtins*.lib' -File -ErrorAction SilentlyContinue | Where-Object { $_.Name.Contains($wantRt, [StringComparison]::OrdinalIgnoreCase) })
             }
         }
         if ($rtCandidates.Count -eq 0) {
@@ -580,6 +544,27 @@ int _isatty(int);
         $rtFullPath = $compilerRtLib.FullName -replace '\\', '/'
         log "Found compiler-rt: $rtFullPath"
     }
+    return $rtFullPath
+}
+
+function Get-GstBuildEnvironmentPlan {
+    param([string]$resolvedLogDir)
+# Get-GpuEnvironment also sets CUDA_PATH/CUDA_HOME and prepends CUDA bin to PATH.
+    $gpuEnv = Get-GpuEnvironment
+    if ($gpuEnv.HasCuda) {
+        log "CUDA detected at: $($gpuEnv.CudaRoot)"
+    } else {
+        log 'CUDA not detected -- nvcodec/cuda plugins will be auto-detected by Meson'
+    }
+    # rocm lane: TheRock stays invisible to pre-flight, setup, compile and install; phase 9 gets PATH back.
+    $rocmScrub = [ordered]@{}
+    if ($gpuEnv.HasRocm) {
+        $rocmScrub = Set-GstRocmIsolation -RocmRoot $gpuEnv.RocmRoot
+        foreach ($name in @($rocmScrub.Keys)) { log "ROCm isolation: $name no longer lists $($rocmScrub[$name].Removed -join ';')" }
+        log "ROCm lane ($($gpuEnv.RocmRoot)): meson pins $((Get-GstRocmMesonArgs -GpuEnv $gpuEnv) -join ' ')"
+    }
+
+    $rtFullPath = Get-GstCompilerRtLinkPath -resolvedLogDir $resolvedLogDir
 
     # The Vulkan import lib must match the target; LIB is searched in order, so prepending the arch dir is enough.
     if ($script:GstCross) {
@@ -593,7 +578,7 @@ int _isatty(int);
                    'Install-ScoopTools.ps1 (warn-only there, so a base built before that step will lack it). ' +
                    'Without it lld-link picks the x64 vulkan-1.lib and fails with a machine-type conflict.')
         }
-        $env:LIB = (@($vkArchLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
+        $env:LIB = Add-GstSearchPathDirectory -Directory $vkArchLib -Current $env:LIB
         log "Vulkan: prepended $vkArchLib to LIB (target-arch import library)"
     }
 
@@ -610,7 +595,13 @@ int _isatty(int);
         Where-Object { $_ } | ForEach-Object { "'$_'" }) -join ','
     log "Link args: [$linkArgElems]"
 
-    # mediafoundation lacks GstWinRt's msvc guard, so under clang-cl it demands a GstWinRt that is never built.
+
+    return @{ GpuEnv = $gpuEnv; RocmScrub = $rocmScrub; LinkArgElems = $linkArgElems; CrossArg = $gstCrossArg; TargetArch = $gstTargetArch }
+}
+
+function Invoke-GstMediaFoundationPatch {
+    param([string]$gstSrcDir)
+# mediafoundation lacks GstWinRt's msvc guard, so under clang-cl it demands a GstWinRt that is never built.
     $mfMeson = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\sys\mediafoundation\meson.build'
     [void](Edit-SourceFile -Path $mfMeson -Marker "if runtimeobject_lib\.found\(\) and cxx\.get_id\(\) == 'msvc'" `
             -Description 'mediafoundation meson.build: gate winapi_app detection on msvc (clang-cl builds desktop path only)' `
@@ -619,7 +610,10 @@ int _isatty(int);
             param($mfContent)
             [regex]::Replace($mfContent, "if runtimeobject_lib\.found\(\)(\s*\r?\n)", "if runtimeobject_lib.found() and cxx.get_id() == 'msvc'`$1", 1)
         })
+}
 
+function Invoke-GstDtlsPatch {
+    param([string]$gstSrcDir)
     # Upstream 17d22abe89, until GSTREAMER_VERSION moves past 1.29.2: see docs/windows-builds.md § DTLS with OpenSSL 4.
     $dtlsConn = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\dtls\gstdtlsconnection.c'
     $dtlsPatched = Edit-SourceFile -Path $dtlsConn -Require -Marker ([regex]::Escape('BIO: no data available, retry later')) `
@@ -630,7 +624,10 @@ int _isatty(int);
             "every DTLS handshake fails with 'unexpected eof while reading', so WebRTC carries no media. Re-check $dtlsConn.")
     }
     if (-not $dtlsPatched) { log 'gstdtlsconnection.c already carries upstream 17d22abe89; retire the DTLS patch.' }
+}
 
+function Invoke-GstCppStandardPatch {
+    param([string]$gstSrcDir)
     # c++11 pins become c++17: VS 18's MSVC STL uses C++14 constructs that clang-cl rejects in C++11 mode.
     $cppStdPatched = Invoke-SourceFilePatchSet -File @(Get-ChildItem -Path $gstSrcDir -Filter 'meson.build' -Recurse -ErrorAction SilentlyContinue) -Patch {
         param($file)
@@ -640,7 +637,10 @@ int _isatty(int);
         Write-Warning 'cpp_std patch matched 0 meson.build files — upstream likely bumped past c++11; verify and retire this patch (or the MSVC-14.51 STL build breaks return)'
     }
     log "Bumped cpp_std=c++11 -> c++17 in $cppStdPatched gst meson.build file(s) (VS 18 MSVC STL needs >= C++14 under clang-cl)"
+}
 
+function Invoke-GstOpenCvSourcePatch {
+    param([string]$gstSrcDir)
     # The opencv plugin targets OpenCV 4; OpenCV 5 moved the same APIs to new headers, so add those.
     $ocvExtDir = Join-Path $gstSrcDir 'subprojects\gst-plugins-bad\ext\opencv'
     $ocvPortPatched = Invoke-SourceFilePatchSet -File @(Get-ChildItem -Path $ocvExtDir -Include '*.cpp', '*.h', '*.hpp' -Recurse -ErrorAction SilentlyContinue) -Patch {
@@ -657,7 +657,21 @@ int _isatty(int);
         log 'Removed hardcoded -lopencv_tracking from ext/opencv/meson.build (opencv4.pc provides the versioned lib)'
     }
 
-    # Mandatory plugin pre-flight; .pc files authored here spare the costly OpenCV/ORT layers. See docs/windows-builds.md § Mandatory GStreamer plugins (the contract)
+
+}
+
+function Invoke-GstMediaSourcePatches {
+    param([string]$gstSrcDir)
+    Invoke-GstMediaFoundationPatch -gstSrcDir $gstSrcDir
+    Invoke-GstDtlsPatch -gstSrcDir $gstSrcDir
+    Invoke-GstCppStandardPatch -gstSrcDir $gstSrcDir
+    Invoke-GstOpenCvSourcePatch -gstSrcDir $gstSrcDir
+
+}
+
+function Assert-GstMandatoryPluginInputs {
+    param([string]$gstSrcDir, [string]$resolvedInstallDir, [string]$resolvedLogDir, [bool]$SkipPluginGate)
+# Mandatory plugin pre-flight; .pc files authored here spare the costly OpenCV/ORT layers. See docs/windows-builds.md § Mandatory GStreamer plugins (the contract)
     $requiredPlugins = @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)
     # Declared before the branch: the meson args interpolate it and StrictMode faults on an undefined variable.
     $script:TfliteIncludeArg = ''
@@ -667,152 +681,12 @@ int _isatty(int);
     } else {
         log '--- mandatory plugin pre-flight ---'
 
-        # opencv4.pc — describes the OpenCV 5 install under $OPENCV_ROOT.
-        $ocvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
-        # The <arch> in <root>\<arch>\vc18 moves with the target, so it comes from the arch table.
-        $ocvLib = if ($env:OPENCV_LIB) { $env:OPENCV_LIB } else { Join-Path $ocvRoot "$(Get-OpenCvArchDir)\vc18\lib" }
-        # Found, not assumed: OpenCV's Windows layout moved between majors, and a wrong guess compiles nothing.
-        $ocvHeader = Get-ChildItem -Path $ocvRoot -Recurse -Filter 'opencv.hpp' -File -ErrorAction SilentlyContinue |
-            Where-Object { $_.DirectoryName -match 'opencv2$' } | Select-Object -First 1
-        if (-not $ocvHeader) { throw "opencv2/opencv.hpp not found under $ocvRoot — cannot describe the OpenCV install to pkg-config." }
-        $ocvInclude = Split-Path (Split-Path $ocvHeader.FullName -Parent) -Parent
-        $ocvLibs = @(Get-LibraryLinkName -LibDir $ocvLib)
-        if ($ocvLibs.Count -eq 0) { throw "no import libraries found in $ocvLib — the OpenCV install is incomplete." }
-        # Version: satisfies '>= 4.0.0' while naming the real OpenCV 5 release.
-        $ocvVersion = if ($env:OPENCV_SOURCE_VERSION -match '^(\d+)') { "$($Matches[1]).0.0" } else { '5.0.0' }
-        [void](Write-PkgConfigFile -Name 'opencv4' -Version $ocvVersion `
-                -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
-                -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
-                -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
-        # gst needs share\opencv4 under the prefix, which pkgconf relocates from the .pc location: create it under each candidate.
-        $ocvPrefixCandidates = @($ocvRoot, (Split-Path $ocvLib -Parent), $ocvLib) |
-            Where-Object { $_ } | Select-Object -Unique
-        foreach ($base in $ocvPrefixCandidates) {
-            $shareDir = Join-Path $base 'share\opencv4'
-            if (Test-Path $shareDir) { continue }
-            New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
-            $filled = $false
-            foreach ($d in @('haarcascades', 'lbpcascades')) {
-                $src = Join-Path $ocvRoot "etc\$d"
-                if (Test-Path $src) { Copy-Item $src (Join-Path $shareDir $d) -Recurse -Force; $filled = $true }
-            }
-            log ("Ensured OpenCV data dir $shareDir" + $(if ($filled) { ' (populated from etc\)' } else { ' (empty; no etc\haarcascades found)' }))
-        }
-
-        # libonnxruntime.pc — ORT ships none on any platform.
-        $ortRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
-        $ortLib = Join-Path $ortRoot 'lib'
-        $ortInclude = Join-Path $ortRoot 'include'
-        if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
-        # Same env-name order as Build-OnnxFromSource.ps1, or a standalone run writes a stale version into the .pc.
-        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
-        # Some layouts put ORT's headers under include\onnxruntime\core\session too.
-        $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),
-            (Join-Path $ortInclude 'onnxruntime\core\session')) | Where-Object { Test-Path $_ }
-        [void](Write-PkgConfigFile -Name 'libonnxruntime' -Version $ortVersion `
-                -Description 'ONNX Runtime (source build; ships no pkg-config file of its own)' `
-                -IncludeDir $ortIncludes -LibDir $ortLib -Library @('onnxruntime') `
-                -PkgConfigDir (Join-Path $ortLib 'pkgconfig'))
-
-        # Target OpenSSL on cross: scoop's is host-only; its layout is searched, and upstream .pc files win if shipped.
-        $sslPcDirs = @()
-        if ($script:GstCross) {
-            $sslRoot = 'C:\opt\openssl-arm64'
-            $sslLibHit = Find-FirstTreeFile -Root $sslRoot -Filter 'libcrypto.lib'
-            if (-not $sslLibHit) {
-                throw ("OpenSSL for $($script:GstTargetArch) not found under $sslRoot (no libcrypto.lib). " +
-                       'Install-ScoopTools.ps1 installs it warn-only, so a base built before that step will lack it. ' +
-                       "Without it gst-plugins-bad's hls/dtls/aes and glib-networking's openssl backend link the x64 " +
-                       'import library and fail with a machine-type conflict.')
-            }
-            $sslLibDir = $sslLibHit.Directory.FullName
-            # Found, not composed: innounp extracts under a literal {app} directory.
-            $sslIncHit = Find-FirstTreeFile -Root $sslRoot -Filter 'opensslv.h'
-            if (-not $sslIncHit) {
-                throw "OpenSSL headers for $($script:GstTargetArch) not found under $sslRoot (no opensslv.h). The extracted package layout changed."
-            }
-            $sslInc = $sslIncHit.Directory.Parent.FullName
-            $sslOwnPc = Find-FirstTreeFile -Root $sslRoot -Filter 'openssl.pc'
-            if ($sslOwnPc) {
-                $sslPcDirs = @($sslOwnPc.Directory.FullName)
-                log "OpenSSL ($($script:GstTargetArch)): using upstream pkgconfig at $($sslPcDirs[0])"
-            } else {
-                $sslPcDir = Join-Path $resolvedLogDir 'openssl-arm64-pkgconfig'
-                New-Item -Path $sslPcDir -ItemType Directory -Force | Out-Null
-                # Plugins ask for libcrypto, libssl or the umbrella openssl.
-                [void](Write-PkgConfigFile -Name 'libcrypto' -Version '4.0.1' -Description 'OpenSSL cryptography library (aarch64)' `
-                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libcrypto') -PkgConfigDir $sslPcDir)
-                [void](Write-PkgConfigFile -Name 'libssl' -Version '4.0.1' -Description 'OpenSSL TLS library (aarch64)' `
-                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libssl', 'libcrypto') -PkgConfigDir $sslPcDir)
-                [void](Write-PkgConfigFile -Name 'openssl' -Version '4.0.1' -Description 'OpenSSL (aarch64)' `
-                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libssl', 'libcrypto') -PkgConfigDir $sslPcDir)
-                $sslPcDirs = @($sslPcDir)
-                log "OpenSSL ($($script:GstTargetArch)): authored libcrypto/libssl/openssl .pc in $sslPcDir (lib dir $sslLibDir)"
-            }
-        }
-
-        # OpenSSL's dirs first, over the image's x64 openssl.pc; @() + @() because '+' binds tighter than ','.
-        $newPcDirs = @($sslPcDirs) + @((Join-Path $ocvLib 'pkgconfig'), (Join-Path $ortLib 'pkgconfig'))
-        $env:PKG_CONFIG_PATH = (@($newPcDirs + ($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })) | Select-Object -Unique) -join ';'
-        log "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
-
-        # Disable FFmpeg.wrap so libav* resolve from our FFmpeg, not the wrap's pinned 7.1.1.
-        $ffmpegWrap = Join-Path $gstSrcDir 'subprojects\FFmpeg.wrap'
-        if (Test-Path $ffmpegWrap) {
-            Move-Item -Path $ffmpegWrap -Destination "$ffmpegWrap.disabled" -Force
-            log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
-        }
-
-        # Keyed on the fanned-in tensorflowlite_c.lib, not the lane: an older LiteRT-less cross core disables with a reason.
-        $script:GstTfliteLibDir = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $resolvedInstallDir 'lib\litert\lib' }
-        $script:GstTfliteAvailable = (-not $script:GstCross) -or (Test-Path (Join-Path $script:GstTfliteLibDir 'tensorflowlite_c.lib'))
-        if (-not $script:GstTfliteAvailable) {
-            log ("tflite integration skipped: no tensorflowlite_c.lib in $script:GstTfliteLibDir -- this cross image " +
-                 'predates the #115 LiteRT cross build (or media-litert was not fanned in). The meson feature is set ' +
-                 'to disabled EXPLICITLY below, never auto.')
-        } else {
-            # tflite skips pkg-config and probes the pre-rename tensorflow/lite path, so mirror LiteRT's tflite\ headers there.
-            $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
-            $litertInclude = if ($env:LITERT_INCLUDE) { $env:LITERT_INCLUDE } else { Join-Path $litertRoot 'include' }
-            $litertLib = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $litertRoot 'lib' }
-            $tfliteHeaderTree = Join-Path $litertInclude 'tflite'
-            $tfAliasRoot = Join-Path $litertInclude 'tensorflow\lite'
-            $tfAliasProbe = Join-Path $litertInclude 'tensorflow\lite\c\c_api.h'
-            if (-not (Test-Path $tfAliasProbe)) {
-                if (-not (Test-Path (Join-Path $tfliteHeaderTree 'c\c_api.h'))) {
-                    throw ("LiteRT headers not found: neither $tfAliasProbe nor $(Join-Path $tfliteHeaderTree 'c\c_api.h') exists. " +
-                        'The tflite plugin cannot be built without the TFLite C API headers — check that the media-litert ' +
-                        'branch image was fanned in (COPY --from=media-litert C:\runtime\lib\litert).')
-                }
-                New-Item -ItemType Directory -Force -Path (Split-Path $tfAliasRoot -Parent) | Out-Null
-                Copy-Item -Path $tfliteHeaderTree -Destination $tfAliasRoot -Recurse -Force
-                log "Staged tensorflow/lite/ header alias from $tfliteHeaderTree (LiteRT ships the post-rename tflite/ layout; gst probes the old path)."
-            }
-            if (-not (Test-Path $tfAliasProbe)) { throw "tensorflow/lite/c/c_api.h still missing at $tfAliasProbe after staging the alias tree." }
-    
-            # If neither link name exists, say what is there: this plugin never consults PKG_CONFIG_PATH.
-            $tfliteLibName = $null
-            foreach ($candidate in @($requiredPlugins | Where-Object { $_.Name -eq 'tflite' }).NeedsLib) {
-                if (Test-Path (Join-Path $litertLib "$candidate.lib")) { $tfliteLibName = $candidate; break }
-            }
-            if (-not $tfliteLibName) {
-                $present = @(Get-LibraryLinkName -LibDir $litertLib)
-                throw ("neither tensorflowlite_c.lib nor tensorflow-lite.lib is present in $litertLib, so gst's " +
-                    "cc.find_library() probe cannot succeed. Libraries actually staged there: $($present -join ', '). " +
-                    'If LiteRT now emits the C API under a different name, add it to NeedsLib in Get-RequiredGstPlugin ' +
-                    'rather than renaming the binary.')
-            }
-            log "TFLite C API library: $tfliteLibName.lib in $litertLib"
-    
-            # INCLUDE/LIB, not a /LIBPATH: c_link_arg, which clang-cl reads as an input file and fails meson's sanity check.
-            $env:INCLUDE = (@($litertInclude) + @($env:INCLUDE -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
-            $env:LIB = (@($litertLib) + @($env:LIB -split ';' | Where-Object { $_ }) | Select-Object -Unique) -join ';'
-            # Forward slashes: meson parses escape sequences in its array literals.
-            $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
-            log "INCLUDE += $litertInclude ; LIB += $litertLib"
-        }
-
-        # Everything the required set needs must resolve NOW, not after an hour.
+                $ocvLib = Add-GstOpenCvPkgConfig -resolvedInstallDir $resolvedInstallDir
+        $ortLib = Add-GstOrtPkgConfig -resolvedInstallDir $resolvedInstallDir
+        $sslPcDirs = @(Get-GstOpenSslPkgConfigDirs -resolvedLogDir $resolvedLogDir)
+        Set-GstPkgConfigInputs -sslPcDirs $sslPcDirs -ocvLib $ocvLib -ortLib $ortLib -gstSrcDir $gstSrcDir
+        Assert-GstTfliteInputs -resolvedInstallDir $resolvedInstallDir -requiredPlugins $requiredPlugins
+# Everything the required set needs must resolve NOW, not after an hour.
         $pcModules = @($requiredPlugins | Where-Object { $_.Detection -eq 'pkg-config' } |
                 ForEach-Object { $_.NeedsPc } | Select-Object -Unique)
         # Upstream's version floors: a .pc with `Version: ..` passes --exists but fails every constraint.
@@ -829,12 +703,18 @@ int _isatty(int);
         log '--- pre-flight OK: every mandatory plugin dependency resolves ---'
     }
 
+
+    return $requiredPlugins
+}
+
+function Invoke-GstCrossSourcePatches {
+    param([string]$gstSrcDir)
     # Missing upstream files stay optional; present files must satisfy their patch postcondition.
     if ($script:GstCross) {
         $gstBaseMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-base/meson.build'
         $gstVkMeson = Join-Path $gstSrcDir 'subprojects/gst-plugins-bad/gst-libs/gst/vulkan/meson.build'
         $crossPatches = @(
-        @{ Path = $gstBaseMeson; Marker = "cpu_family\(\) in \['x86'"; Patch = {
+@{ Path = $gstBaseMeson; Marker = "cpu_family\(\) in \['x86'"; Patch = {
             param($path)
             [void](Invoke-InlineRegexPatch -Path $path -Guard 'have_sse\s*=\s*cc\.has_argument' `
                     -Pattern 'have_sse2?\s*=\s*cc\.has_argument\(sse2?_args\)' `
@@ -847,7 +727,7 @@ int _isatty(int);
             Already = 'gst-plugins-base x86 SIMD guard already applied.'
             Patched = 'Patched gst-plugins-base: x86 SSE resampler variants now gated on host_machine.cpu_family().'
         } }
-        @{ Path = $gstVkMeson; Marker = 'Lib-ARM64'; Patch = {
+@{ Path = $gstVkMeson; Marker = 'Lib-ARM64'; Patch = {
             param($path)
             $vkDirName = Get-VulkanLibDirName -Arch $script:GstTargetArch
             $vkCpu = switch ($script:GstTargetArch) {
@@ -870,8 +750,11 @@ int _isatty(int);
             [void](Invoke-VerifiedSourceFilePatch @crossPatch -Log { param($message) log $message })
         }
     }
+}
 
-    Switch-BuildPhase '6. meson setup'
+function Get-GstMesonCrossArgs {
+    param([string]$gstTargetArch, [string]$resolvedLogDir)
+Switch-BuildPhase '6. meson setup'
     # Only a cross file makes host_machine differ; it lives in the log dir, which survives the retry's build-dir wipe.
     $mesonCrossArgs = @()
     if (Test-WindowsCrossTarget -Arch $gstTargetArch) {
@@ -884,31 +767,10 @@ int _isatty(int);
         # --target in the exelist: meson derives the linker's and archiver's /MACHINE from `<exelist> --version`.
         $ccList = Format-MesonExeList -Command $env:CC -Extra "--target=$gstTriple"
         $cxxList = Format-MesonExeList -Command $env:CXX -Extra "--target=$gstTriple"
-        # Target rust (for gst-ptp-helper) is proven first: a failing rust entry fails setup, an absent one skips the helper.
-        $rustTargetLine = ''
-        $rustTriple = Get-RustTargetTriple -Arch $gstTargetArch
-        $rustup = (Get-Command rustup -ErrorAction SilentlyContinue).Source
-        $rustc = (Get-Command rustc -ErrorAction SilentlyContinue).Source
-        if ($rustup -and $rustc) {
-            # The image's rustup mirror is gone, so fetch the rust-std its cached manifest names; the probe below decides.
-            $stdFetch = Install-RustTargetStdFromPinnedManifest -Triple $rustTriple
-            log "  rustup| $stdFetch"
-            & $rustup target add $rustTriple 2>&1 | ForEach-Object { log "  rustup| $_" }
-            $rustProbeDir = Join-Path $resolvedLogDir 'rust-cross-probe'
-            New-Item -Path $rustProbeDir -ItemType Directory -Force | Out-Null
-            Set-Content -Path (Join-Path $rustProbeDir 'probe.rs') -Encoding ASCII -Value '#[no_mangle] pub extern "C" fn kata_probe() -> i32 { 42 }'
-            & $rustc --target $rustTriple --crate-type staticlib -o (Join-Path $rustProbeDir 'probe.lib') (Join-Path $rustProbeDir 'probe.rs') 2>&1 | ForEach-Object { log "  rustc| $_" }
-            if ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $rustProbeDir 'probe.lib'))) {
-                $rustTargetLine = "rust = ['$($rustc -replace '\\', '/')', '--target=$rustTriple']"
-                log "Rust cross target ${rustTriple}: staticlib probe OK -- gst-ptp-helper will be built for the target"
-            } else {
-                log "Rust cross target ${rustTriple}: probe FAILED (exit $LASTEXITCODE) -- rust stays OUT of the cross file; gst-ptp-helper is skipped on this lane (a PTP clock helper, not a media feature)"
-            }
-            $global:LASTEXITCODE = 0
-        } else {
-            log 'Rust cross target: rustup/rustc not on PATH -- rust stays out of the cross file; gst-ptp-helper is skipped on this lane'
-        }
-        $crossFile = Join-Path $resolvedLogDir "meson-cross-$gstTargetArch.ini"
+                $rustPlan = Get-GstCrossRustPlan -gstTargetArch $gstTargetArch -resolvedLogDir $resolvedLogDir
+        $rustTargetLine = $rustPlan.TargetLine
+        $rustc = $rustPlan.Rustc
+$crossFile = Join-Path $resolvedLogDir "meson-cross-$gstTargetArch.ini"
         Set-Content -Path $crossFile -Encoding ASCII -Value @"
 $(Format-MesonWindowsBinaries -C $ccList -Cpp $cxxList -ExtraLine @($rustTargetLine))
 
@@ -924,45 +786,20 @@ cpu_family = '$gstCpuFamily'
 cpu = '$gstCpuFamily'
 endian = 'little'
 "@
-        # A native file gives the build machine its compilers; without one the build-machine glib fallback and webrtc/nice die.
-        $nccList = Format-MesonExeList -Command $env:CC
-        $ncxxList = Format-MesonExeList -Command $env:CXX
-        # LIB names the target's dirs; /vctoolsdir: and /winsdkdir: pick the arch from /machine:, unlike /LIBPATH under clang-cl.
-        $vcToolsDir = $null; $winSdkDir = $null; $winSdkVer = $null
-        foreach ($entry in @(($env:LIB -split ';') | Where-Object { $_ })) {
-            if (-not $vcToolsDir -and $entry -match '^(.*\\VC\\Tools\\MSVC\\[^\\]+)\\+lib\\') { $vcToolsDir = $Matches[1] }
-            if (-not $winSdkDir -and $entry -match '^(.*\\Windows Kits\\10)\\+lib\\+([^\\]+)\\+(um|ucrt)\\') { $winSdkDir = $Matches[1]; $winSdkVer = $Matches[2] }
-        }
-        if (-not $vcToolsDir) { $vcToolsDir = Get-MsvcToolsRoot }
-        # libffi finds cl/ml64 on PATH, which VsDevCmd -arch=arm64 leads with ARM64-targeting tools; [binaries] wins over PATH.
-        $buildCl   = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'cl.exe'
-        $buildMl64 = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'ml64.exe'
-        $buildLinkArgList = @()
-        if ($vcToolsDir -and (Test-Path $vcToolsDir)) { $buildLinkArgList += "/vctoolsdir:$($vcToolsDir -replace '\\', '/')" }
-        if ($winSdkDir -and (Test-Path $winSdkDir)) {
-            $buildLinkArgList += "/winsdkdir:$($winSdkDir -replace '\\', '/')"
-            if ($winSdkVer) { $buildLinkArgList += "/winsdkversion:$winSdkVer" }
-        }
-        $buildLibDirs = $buildLinkArgList
-        $buildLinkArgs = (($buildLinkArgList | ForEach-Object { "'" + $_ + "'" }) -join ', ')
-        # The build machine links its own ffi-7.dll (a default target) from the same ffi.h, so it needs -fcommon too.
-        $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
-        Set-Content -Path $nativeFile -Encoding ASCII -Value @"
-$(Format-MesonWindowsBinaries -C $nccList -Cpp $ncxxList -ExtraLine @("cl = '$buildCl'", "ml64 = '$buildMl64'", $(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })))
-
-[built-in options]
-c_args = ['-fcommon']
-c_link_args = [$buildLinkArgs]
-cpp_link_args = [$buildLinkArgs]
-"@
-        if ($buildLibDirs.Count -eq 0) { log "WARNING: neither a VC tools root nor a Windows SDK root could be derived from LIB for the build machine -- native links will rely on LIB as-is (expect the build-machine sanity check to fail if LIB is the target's)" }
-        $mesonCrossArgs = @('--cross-file', $crossFile, '--native-file', $nativeFile)
+                $nativeFile = Write-GstMesonNativeFile -resolvedLogDir $resolvedLogDir -rustc $rustc
+$mesonCrossArgs = @('--cross-file', $crossFile, '--native-file', $nativeFile)
         log "Meson cross file for $gstTargetArch ($gstTriple): $crossFile"
         Get-Content $crossFile | ForEach-Object { log "  cross| $_" }
         log "Meson native file for the amd64 build machine: $nativeFile"
         Get-Content $nativeFile | ForEach-Object { log "  native| $_" }
     }
-    # amd64 keeps the literal '-FIio.h' so its configure command line is byte-identical.
+
+    return $mesonCrossArgs
+}
+
+function Get-GstMesonSetupArgs {
+    param([string]$resolvedBuildDir, [string]$gstSrcDir, [string]$resolvedInstallDir, [string]$gstCrossArg, [string]$linkArgElems, [object[]]$requiredPlugins, $gpuEnv, [string[]]$mesonCrossArgs, [string[]]$MesonSetupArgs)
+# amd64 keeps the literal '-FIio.h' so its configure command line is byte-identical.
     $ioFI = if ($script:GstCross) { '-FIgst-io-shim.h' } else { '-FIio.h' }
     $setupArgs = @(
         'setup', '--vsenv',
@@ -1027,7 +864,13 @@ cpp_link_args = [$buildLinkArgs]
         '-Dglib:tests=false'
     ) + @(Get-GstRocmMesonArgs -GpuEnv $gpuEnv) + $mesonCrossArgs + $MesonSetupArgs
 
-    $setupArgsString = "meson $($setupArgs -join ' ')"
+
+    return $setupArgs
+}
+
+function Invoke-GstMesonSetupWithRetry {
+    param([string[]]$setupArgs, [string]$resolvedLogDir, [string]$resolvedBuildDir, [string]$gstSrcDir, [string]$mesonExe)
+$setupArgsString = "meson $($setupArgs -join ' ')"
     $mesonSucceeded = $false
     for ($attempt = 1; $attempt -le 2; $attempt++) {
         log "Running meson setup (attempt $attempt/2)..."
@@ -1079,7 +922,13 @@ cpp_link_args = [$buildLinkArgs]
     }
     if (-not $mesonSucceeded) { throw 'meson setup failed after 2 attempts' }
     log 'meson setup completed.'
-    if ($gpuEnv.HasRocm) {
+
+
+}
+
+function Assert-GstConfiguredSources {
+    param($gpuEnv, [string]$resolvedBuildDir, [string]$gstSrcDir)
+if ($gpuEnv.HasRocm) {
         $rocmLeaks = @(Get-GstRocmLeakFinding -RocmRoot $gpuEnv.RocmRoot -Path @(
                 (Join-Path $resolvedBuildDir 'build.ninja'), (Join-Path $resolvedBuildDir 'meson-info\intro-dependencies.json')))
         if ($rocmLeaks.Count -gt 0) { throw "ROCm tree leaked into the GStreamer configure: $($rocmLeaks -join ' | ')" }
@@ -1128,7 +977,13 @@ cpp_link_args = [$buildLinkArgs]
             })
     }
 
-    Switch-BuildPhase '7. compile'
+
+
+}
+
+function Invoke-GstCompile {
+    param([string]$mesonExe, [string]$resolvedBuildDir, [string]$resolvedLogDir, [string]$gstSrcDir, [string]$scriptAssetRoot)
+Switch-BuildPhase '7. compile'
     # Explicit -j, or ninja ignores MEMORY_LIMIT_GB; the stall guard stops a wedged sccache hanging the merge.
     $gstJobs = Get-BuildJobCount -MemGBPerJob 2
     log "meson compile with -j $gstJobs (MEMORY_LIMIT_GB='$env:MEMORY_LIMIT_GB', cores=$([Environment]::ProcessorCount))"
@@ -1165,7 +1020,13 @@ cpp_link_args = [$buildLinkArgs]
     if (-not $compileSucceeded) { throw 'meson compile failed after 2 attempts' }
     log 'Compilation complete.'
 
-    Switch-BuildPhase '8. install'
+
+    return $gstJobs
+}
+
+function Invoke-GstInstall {
+    param([string]$mesonExe, [string]$resolvedBuildDir, [string]$resolvedInstallDir, $gpuEnv, $rocmScrub)
+Switch-BuildPhase '8. install'
     log 'Installing GStreamer...'
     # Cross: DESTDIR C:\ skips install scripts that would run aarch64 binaries, and destdir_join keeps paths unchanged.
     $installArgs = @('install', '-C', $resolvedBuildDir)
@@ -1207,7 +1068,13 @@ cpp_link_args = [$buildLinkArgs]
     # The gate scans plugins the way the image loads them, so it gets TheRock's bin back (last, as in the image).
     Restore-GstRocmPath -Scrub $rocmScrub
 
-    Switch-BuildPhase '8b. gst-plugins-rs (cargo)'
+
+
+}
+
+function Install-GstRustPlugins {
+    param([string]$resolvedSrcDir, [string]$resolvedInstallDir, [string]$resolvedBuildDir, [object[]]$requiredPlugins, [int]$gstJobs, [string]$GstVersion, [bool]$SkipPluginGate)
+Switch-BuildPhase '8b. gst-plugins-rs (cargo)'
     # The tag and plain cargo build the Linux lane uses; see docs/windows-builds.md § gst-plugins-rs on Windows.
     $rsSrcDir = Join-Path $resolvedSrcDir 'gst-plugins-rs'
     $rsPluginDir = Join-Path $resolvedInstallDir 'lib\gstreamer-1.0'
@@ -1253,7 +1120,86 @@ cpp_link_args = [$buildLinkArgs]
         else { throw "$rsWhy. These are mandatory contract plugins; the cargo output above names the failing crate." }
     }
 
-    Switch-BuildPhase '9. verify (plugin + pc gates)'
+
+    return @{ SourceDir = $rsSrcDir; CargoScratch = $rsCargoScratch }
+}
+
+function Get-UnresolvedDeps {
+        param($DllPath, $Dumpbin, $SearchDirs, $Seen)
+        $readImports = {
+            param($path)
+            & $Dumpbin /dependents $path 2>&1 | Select-String '^\s{4,}(\S+\.dll)' | ForEach-Object { $_.Matches.Groups[1].Value }
+        }.GetNewClosure()
+        Get-DllDependencyGraph -Path $DllPath -SearchDirectory $SearchDirs -ReadImports $readImports -DepthFirst -Seen $Seen `
+            -SystemDirectoryPattern '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)' -ResolveImport {
+                param($name, $directories)
+                $hit = $directories | Where-Object { $_ -and (Test-Path (Join-Path $_ $name)) } | Select-Object -First 1
+                if ($hit) { Join-Path $hit $name }
+            } | Where-Object { -not $_.Path } | ForEach-Object Name
+    }
+
+function Test-GstPlugin {
+    param($plugin, [string]$gstPluginDir, [string]$gstInspect, [string]$dumpbin, [string[]]$dllSearchDirs, [switch]$Cross)
+    if ($Cross) {
+        # The exact file name: a gst*webrtc*.dll wildcard also matches gstrswebrtc.dll and gstwebrtcdsp.dll.
+        $pluginDll = Get-Item -LiteralPath (Join-Path $gstPluginDir "gst$($plugin.Name).dll") -ErrorAction SilentlyContinue
+        if (-not $pluginDll) {
+            log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' produced NO DLL in $gstPluginDir — $($plugin.Why)"
+            return $plugin
+        }
+        $staticProblems = @()
+        if ($dumpbin) {
+            $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
+            if ($unresolved) { $staticProblems += ($unresolved | ForEach-Object { "unresolved dependency: $_" }) }
+            # GStreamer >= 1.14 exports gst_plugin_<name>_get_desc, not the legacy gst_plugin_desc.
+            $exports = @(& $dumpbin /exports $pluginDll.FullName 2>&1)
+            $marker = "gst_plugin_$($plugin.Name)_get_desc"
+            if (-not ($exports -match [regex]::Escape($marker))) {
+                $exportNames = @($exports | Select-String '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]{8}\s+(\S+)' |
+                    ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 6)
+                $staticProblems += "$marker export missing (exports seen: $($exportNames -join ', '))"
+            }
+        } else {
+            # A gate that verified nothing must not pass: on cross, dumpbin is the whole plugin proof.
+            $staticProblems += "dumpbin.exe not found under any VC\Tools\MSVC\*\bin\Hostx64\x64 -- the dependency and export checks could not run, so nothing about this plugin was verified beyond the file existing"
+        }
+        if ($staticProblems.Count -eq 0) {
+            log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' built: $($pluginDll.Name) (cross lane - deps resolve, gst_plugin_$($plugin.Name)_get_desc exported; load probe impossible on an x64 host)"
+        } else {
+            $staticProblems | ForEach-Object { log "    $_" }
+            log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' built but statically broken — $($plugin.Why)"
+            return $plugin
+        }
+    } else {
+        $global:LASTEXITCODE = 0
+        $null = & $gstInspect $plugin.Name 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' present ($($plugin.Provides))"
+        } else {
+            log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' MISSING — $($plugin.Why)"
+            $pluginDll = Get-Item -LiteralPath (Join-Path $gstPluginDir "gst$($plugin.Name).dll") -ErrorAction SilentlyContinue
+            if ($pluginDll) {
+                log "    load-probing $($pluginDll.Name) directly:"
+                & $gstInspect $pluginDll.FullName 2>&1 |
+                    Where-Object { $_ -match 'load|dll|error|fail|blacklist|symbol|module|cannot|Failed' } |
+                    Select-Object -Last 4 | ForEach-Object { if ($_) { log "      $_" } }
+                # Name the actual unresolved DLL(s) anywhere in the dependency tree.
+                if ($dumpbin) {
+                    $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
+                    if ($unresolved) { $unresolved | ForEach-Object { log "      unresolved dependency (tree): $_" } }
+                    else { log '      (all non-API-set deps resolve; failure may be a delay-load or DllMain init error)' }
+                }
+            } else {
+                log "    (no gst$($plugin.Name).dll in $gstPluginDir)"
+            }
+            return $plugin
+        }
+    }
+}
+
+function Assert-GstInstalledPlugins {
+    param([string]$resolvedInstallDir, [string]$resolvedBuildDir, [string]$resolvedLogDir, [string]$gstSrcDir, [bool]$SkipPluginGate)
+Switch-BuildPhase '9. verify (plugin + pc gates)'
     $gstLaunch = Join-Path $resolvedInstallDir 'bin\gst-launch-1.0.exe'
     if (Test-Path $gstLaunch) {
         log "Verification OK: $gstLaunch"
@@ -1291,80 +1237,11 @@ cpp_link_args = [$buildLinkArgs]
     $dumpbin = (Get-ChildItem 'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Tools\MSVC\*\bin\Hostx64\x64\dumpbin.exe' -ErrorAction SilentlyContinue | Select-Object -First 1).FullName
     $dllSearchDirs = @($gstPluginDir) + @($env:PATH -split ';' | Where-Object { $_ }) + @("$env:SystemRoot\System32")
     # The names in a DLL's dependency tree that resolve nowhere.
-    function Get-UnresolvedDeps {
-        param($DllPath, $Dumpbin, $SearchDirs, $Seen)
-        $readImports = {
-            param($path)
-            & $Dumpbin /dependents $path 2>&1 | Select-String '^\s{4,}(\S+\.dll)' | ForEach-Object { $_.Matches.Groups[1].Value }
-        }.GetNewClosure()
-        Get-DllDependencyGraph -Path $DllPath -SearchDirectory $SearchDirs -ReadImports $readImports -DepthFirst -Seen $Seen `
-            -SystemDirectoryPattern '[\\/](System32|SysWOW64|WinSxS)([\\/]|$)' -ResolveImport {
-                param($name, $directories)
-                $hit = $directories | Where-Object { $_ -and (Test-Path (Join-Path $_ $name)) } | Select-Object -First 1
-                if ($hit) { Join-Path $hit $name }
-            } | Where-Object { -not $_.Path } | ForEach-Object Name
-    }
-    # Cross cannot run gst-inspect, so check statically: dependency tree walk and export marker (machine: Test-TargetArch.ps1).
-    if ($script:GstCross) {
+    $missingPlugins = @(
         foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
-            # The exact file name: a gst*webrtc*.dll wildcard also matches gstrswebrtc.dll and gstwebrtcdsp.dll.
-            $pluginDll = Get-Item -LiteralPath (Join-Path $gstPluginDir "gst$($plugin.Name).dll") -ErrorAction SilentlyContinue
-            if (-not $pluginDll) {
-                log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' produced NO DLL in $gstPluginDir — $($plugin.Why)"
-                $missingPlugins += $plugin
-                continue
-            }
-            $staticProblems = @()
-            if ($dumpbin) {
-                $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
-                if ($unresolved) { $staticProblems += ($unresolved | ForEach-Object { "unresolved dependency: $_" }) }
-                # GStreamer >= 1.14 exports gst_plugin_<name>_get_desc, not the legacy gst_plugin_desc.
-                $exports = @(& $dumpbin /exports $pluginDll.FullName 2>&1)
-                $marker = "gst_plugin_$($plugin.Name)_get_desc"
-                if (-not ($exports -match [regex]::Escape($marker))) {
-                    $exportNames = @($exports | Select-String '^\s+\d+\s+[0-9A-F]+\s+[0-9A-F]{8}\s+(\S+)' |
-                        ForEach-Object { $_.Matches.Groups[1].Value } | Select-Object -First 6)
-                    $staticProblems += "$marker export missing (exports seen: $($exportNames -join ', '))"
-                }
-            } else {
-                # A gate that verified nothing must not pass: on cross, dumpbin is the whole plugin proof.
-                $staticProblems += "dumpbin.exe not found under any VC\Tools\MSVC\*\bin\Hostx64\x64 -- the dependency and export checks could not run, so nothing about this plugin was verified beyond the file existing"
-            }
-            if ($staticProblems.Count -eq 0) {
-                log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' built: $($pluginDll.Name) (cross lane - deps resolve, gst_plugin_$($plugin.Name)_get_desc exported; load probe impossible on an x64 host)"
-            } else {
-                $staticProblems | ForEach-Object { log "    $_" }
-                log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' built but statically broken — $($plugin.Why)"
-                $missingPlugins += $plugin
-            }
+            Test-GstPlugin -plugin $plugin -gstPluginDir $gstPluginDir -gstInspect $gstInspect -dumpbin $dumpbin -dllSearchDirs $dllSearchDirs -Cross:$script:GstCross
         }
-    } else {
-    foreach ($plugin in @(Get-RequiredGstPlugin -Arch $script:GstTargetArch)) {
-        $global:LASTEXITCODE = 0
-        $null = & $gstInspect $plugin.Name 2>&1
-        if ($LASTEXITCODE -eq 0) {
-            log "  [PASS] mandatory GStreamer plugin '$($plugin.Name)' present ($($plugin.Provides))"
-        } else {
-            log "  [FAIL] mandatory GStreamer plugin '$($plugin.Name)' MISSING — $($plugin.Why)"
-            $pluginDll = Get-Item -LiteralPath (Join-Path $gstPluginDir "gst$($plugin.Name).dll") -ErrorAction SilentlyContinue
-            if ($pluginDll) {
-                log "    load-probing $($pluginDll.Name) directly:"
-                & $gstInspect $pluginDll.FullName 2>&1 |
-                    Where-Object { $_ -match 'load|dll|error|fail|blacklist|symbol|module|cannot|Failed' } |
-                    Select-Object -Last 4 | ForEach-Object { if ($_) { log "      $_" } }
-                # Name the actual unresolved DLL(s) anywhere in the dependency tree.
-                if ($dumpbin) {
-                    $unresolved = @(Get-UnresolvedDeps $pluginDll.FullName $dumpbin $dllSearchDirs ([System.Collections.Generic.HashSet[string]]::new())) | Select-Object -Unique
-                    if ($unresolved) { $unresolved | ForEach-Object { log "      unresolved dependency (tree): $_" } }
-                    else { log '      (all non-API-set deps resolve; failure may be a delay-load or DllMain init error)' }
-                }
-            } else {
-                log "    (no gst$($plugin.Name).dll in $gstPluginDir)"
-            }
-            $missingPlugins += $plugin
-        }
-    }
-    }
+    )
     if ($null -ne $prevGstDebug) { $env:GST_DEBUG = $prevGstDebug } else { Remove-Item Env:\GST_DEBUG -ErrorAction SilentlyContinue }
     if ($null -ne $prevGstReg) { $env:GST_REGISTRY = $prevGstReg } else { Remove-Item Env:\GST_REGISTRY -ErrorAction SilentlyContinue }
     $global:LASTEXITCODE = 0
@@ -1389,7 +1266,13 @@ cpp_link_args = [$buildLinkArgs]
         -TreeRoot $gstSrcDir, $resolvedBuildDir -Log (Join-Path $resolvedBuildDir 'meson-logs\meson-log.txt') `
         -Record (Join-Path $resolvedBuildDir 'build.ninja'), (Join-Path $resolvedBuildDir 'meson-info\intro-dependencies.json')
 
-    Switch-BuildPhase '10. cleanup'
+
+
+}
+
+function Complete-GstBuild {
+    param([string]$gstSrcDir, [string]$resolvedBuildDir, [string]$rsSrcDir, [string[]]$rsCargoScratch, [switch]$KeepBuildArtifacts)
+Switch-BuildPhase '10. cleanup'
     if (-not $KeepBuildArtifacts.IsPresent -and $env:KEEP_BUILD_ARTIFACTS -ne '1') {
         log 'Cleaning up source and build directories...'
         Remove-SourceBuildTree -Path (@($gstSrcDir, $resolvedBuildDir, $rsSrcDir) + $rsCargoScratch)
@@ -1412,6 +1295,384 @@ cpp_link_args = [$buildLinkArgs]
     Write-BuildPhaseSummary -Label 'gstreamer'
 
     log 'END - GStreamer source build completed successfully.'
+
+}
+
+function Invoke-GstWinPkgConfigPrefetch {
+    param([string]$gstSrcDir)
+# Pre-place win-pkgconfig, the one subproject meson fetches with no retry; failure only warns, meson still tries.
+    $wpcDir = Join-Path $gstSrcDir 'subprojects/win-pkgconfig'
+    $wpcMeson = Join-Path $wpcDir 'meson.build'
+    if (Test-Path $wpcMeson) {
+        $wpcText = Get-Content -LiteralPath $wpcMeson -Raw
+        $wpcVer = ([regex]::Match($wpcText, "version\s*:\s*'([^']+)'")).Groups[1].Value
+        $wpcSha = ([regex]::Match($wpcText, "zip_hash\s*=\s*'([0-9a-fA-F]{64})'")).Groups[1].Value
+        if ($wpcVer -and $wpcSha) {
+            $wpcZip = Join-Path $wpcDir "pkg-config-$wpcVer.zip"
+            $wpcHave = (Test-Path $wpcZip) -and ((Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash -ieq $wpcSha)
+            if ($wpcHave) {
+                log "win-pkgconfig: pkg-config-$wpcVer.zip already present and matches $($wpcSha.Substring(0,12))..."
+            } else {
+                                Save-GstWinPkgConfigArchive -wpcVer $wpcVer -wpcSha $wpcSha -wpcZip $wpcZip
+
+            }
+        } else {
+            log "NOTE: could not parse version/zip_hash from $wpcMeson - skipping the win-pkgconfig prefetch"
+        }
+    }
+
+
+
+}
+
+function Save-GstWinPkgConfigArchive {
+    param([string]$wpcVer, [string]$wpcSha, [string]$wpcZip)
+# LAN preseed first, since retries do not help against a sustained outage; an upstream hit seeds it back.
+                $wpcUpstream = "https://gstreamer.freedesktop.org/src/mirror/pkg-config/pkg-config-$wpcVer.zip"
+                $wpcDav = if ($env:SCCACHE_WEBDAV_ENDPOINT) { "$($env:SCCACHE_WEBDAV_ENDPOINT.TrimEnd('/'))/preseed/pkg-config-$wpcVer.zip" } else { '' }
+                $wpcUrl = if ($wpcDav) { $wpcDav } else { $wpcUpstream }
+                try {
+                    try {
+                        Invoke-DownloadWithRetry -Url $wpcUrl -DestinationPath $wpcZip -MaxAttempts 2
+                        if ($wpcDav) { log "win-pkgconfig: fetched from the LAN preseed ($wpcDav)" }
+                    } catch {
+                        if (-not $wpcDav) { throw }
+                        log "win-pkgconfig: preseed miss ($($_.Exception.Message)) - falling back to upstream"
+                        Invoke-DownloadWithRetry -Url $wpcUpstream -DestinationPath $wpcZip
+                        # Seed it for next time; failure here is irrelevant to this build.
+                        $wpcCurl = Join-Path $env:SystemRoot 'System32\curl.exe'
+                        if (Test-Path $wpcCurl) {
+                            & $wpcCurl -sf --retry 2 --retry-delay 3 -T $wpcZip $wpcDav *> $null
+                            if ($LASTEXITCODE -eq 0) { log "win-pkgconfig: seeded $wpcDav for future runs" }
+                            $global:LASTEXITCODE = 0
+                        }
+                    }
+                    $got = (Get-FileHash -LiteralPath $wpcZip -Algorithm SHA256).Hash
+                    if ($got -ieq $wpcSha) {
+                        log "win-pkgconfig: pre-placed pkg-config-$wpcVer.zip (sha256 verified) - meson will skip its own download"
+                    } else {
+                        Remove-Item -LiteralPath $wpcZip -Force -ErrorAction SilentlyContinue
+                        log "WARNING: win-pkgconfig prefetch sha256 mismatch (got $($got.Substring(0,12))..., want $($wpcSha.Substring(0,12))...) - removed; meson will retry the download itself"
+                    }
+                } catch {
+                    log "WARNING: win-pkgconfig prefetch failed ($($_.Exception.Message)) - meson will try its own single-shot download"
+                }
+
+}
+
+function Add-GstOpenCvPkgConfig {
+    param([string]$resolvedInstallDir)
+# opencv4.pc — describes the OpenCV 5 install under $OPENCV_ROOT.
+        $ocvRoot = if ($env:OPENCV_ROOT) { $env:OPENCV_ROOT } else { Join-Path $resolvedInstallDir 'lib\opencv5' }
+        # The <arch> in <root>\<arch>\vc18 moves with the target, so it comes from the arch table.
+        $ocvLib = if ($env:OPENCV_LIB) { $env:OPENCV_LIB } else { Join-Path $ocvRoot "$(Get-OpenCvArchDir)\vc18\lib" }
+        # Found, not assumed: OpenCV's Windows layout moved between majors, and a wrong guess compiles nothing.
+        $ocvHeader = Get-ChildItem -Path $ocvRoot -Recurse -Filter 'opencv.hpp' -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.DirectoryName -match 'opencv2$' } | Select-Object -First 1
+        if (-not $ocvHeader) { throw "opencv2/opencv.hpp not found under $ocvRoot — cannot describe the OpenCV install to pkg-config." }
+        $ocvInclude = Split-Path (Split-Path $ocvHeader.FullName -Parent) -Parent
+        $ocvLibs = @(Get-LibraryLinkName -LibDir $ocvLib)
+        if ($ocvLibs.Count -eq 0) { throw "no import libraries found in $ocvLib — the OpenCV install is incomplete." }
+        # Version: satisfies '>= 4.0.0' while naming the real OpenCV 5 release.
+        $ocvVersion = if ($env:OPENCV_SOURCE_VERSION -match '^(\d+)') { "$($Matches[1]).0.0" } else { '5.0.0' }
+        [void](Write-PkgConfigFile -Name 'opencv4' -Version $ocvVersion `
+                -Description 'OpenCV 5 (opencv4-named alias so gst-plugins-bad can resolve it)' `
+                -IncludeDir @($ocvInclude) -LibDir $ocvLib -Library $ocvLibs `
+                -PkgConfigDir (Join-Path $ocvLib 'pkgconfig'))
+        # gst needs share\opencv4 under the prefix, which pkgconf relocates from the .pc location: create it under each candidate.
+        $ocvPrefixCandidates = @($ocvRoot, (Split-Path $ocvLib -Parent), $ocvLib) |
+            Where-Object { $_ } | Select-Object -Unique
+        foreach ($base in $ocvPrefixCandidates) {
+            $shareDir = Join-Path $base 'share\opencv4'
+            if (Test-Path $shareDir) { continue }
+            New-Item -ItemType Directory -Force -Path $shareDir | Out-Null
+            $filled = $false
+            foreach ($d in @('haarcascades', 'lbpcascades')) {
+                $src = Join-Path $ocvRoot "etc\$d"
+                if (Test-Path $src) { Copy-Item $src (Join-Path $shareDir $d) -Recurse -Force; $filled = $true }
+            }
+            log ("Ensured OpenCV data dir $shareDir" + $(if ($filled) { ' (populated from etc\)' } else { ' (empty; no etc\haarcascades found)' }))
+        }
+
+
+return $ocvLib
+}
+
+function Add-GstOrtPkgConfig {
+    param([string]$resolvedInstallDir)
+# libonnxruntime.pc — ORT ships none on any platform.
+        $ortRoot = if ($env:ONNX_ROOT) { $env:ONNX_ROOT } else { Join-Path $resolvedInstallDir 'lib\onnxruntime-source' }
+        $ortLib = Join-Path $ortRoot 'lib'
+        $ortInclude = Join-Path $ortRoot 'include'
+        if (-not (Test-Path (Join-Path $ortLib 'onnxruntime.lib'))) { throw "onnxruntime.lib not found in $ortLib — cannot describe ONNX Runtime to pkg-config." }
+        # Same env-name order as Build-OnnxFromSource.ps1, or a standalone run writes a stale version into the .pc.
+        $ortVersion = Get-SourceBuildVersion -Value '' -EnvironmentVariables @('ONNXRUNTIME_VERSION', 'ONNX_VERSION') -DefaultValue '1.31.0' -StripVPrefix
+        # Some layouts put ORT's headers under include\onnxruntime\core\session too.
+        $ortIncludes = @($ortInclude, (Join-Path $ortInclude 'onnxruntime'),
+            (Join-Path $ortInclude 'onnxruntime\core\session')) | Where-Object { Test-Path $_ }
+        [void](Write-PkgConfigFile -Name 'libonnxruntime' -Version $ortVersion `
+                -Description 'ONNX Runtime (source build; ships no pkg-config file of its own)' `
+                -IncludeDir $ortIncludes -LibDir $ortLib -Library @('onnxruntime') `
+                -PkgConfigDir (Join-Path $ortLib 'pkgconfig'))
+
+
+return $ortLib
+}
+
+function Get-GstOpenSslPkgConfigDirs {
+    param([string]$resolvedLogDir)
+# Target OpenSSL on cross: scoop's is host-only; its layout is searched, and upstream .pc files win if shipped.
+        $sslPcDirs = @()
+        if ($script:GstCross) {
+            $sslRoot = 'C:\opt\openssl-arm64'
+            $sslLibHit = Find-FirstTreeFile -Root $sslRoot -Filter 'libcrypto.lib'
+            if (-not $sslLibHit) {
+                throw ("OpenSSL for $($script:GstTargetArch) not found under $sslRoot (no libcrypto.lib). " +
+                       'Install-ScoopTools.ps1 installs it warn-only, so a base built before that step will lack it. ' +
+                       "Without it gst-plugins-bad's hls/dtls/aes and glib-networking's openssl backend link the x64 " +
+                       'import library and fail with a machine-type conflict.')
+            }
+            $sslLibDir = $sslLibHit.Directory.FullName
+            # Found, not composed: innounp extracts under a literal {app} directory.
+            $sslIncHit = Find-FirstTreeFile -Root $sslRoot -Filter 'opensslv.h'
+            if (-not $sslIncHit) {
+                throw "OpenSSL headers for $($script:GstTargetArch) not found under $sslRoot (no opensslv.h). The extracted package layout changed."
+            }
+            $sslInc = $sslIncHit.Directory.Parent.FullName
+            $sslOwnPc = Find-FirstTreeFile -Root $sslRoot -Filter 'openssl.pc'
+            if ($sslOwnPc) {
+                $sslPcDirs = @($sslOwnPc.Directory.FullName)
+                log "OpenSSL ($($script:GstTargetArch)): using upstream pkgconfig at $($sslPcDirs[0])"
+            } else {
+                $sslPcDir = Join-Path $resolvedLogDir 'openssl-arm64-pkgconfig'
+                New-Item -Path $sslPcDir -ItemType Directory -Force | Out-Null
+                # Plugins ask for libcrypto, libssl or the umbrella openssl.
+                [void](Write-PkgConfigFile -Name 'libcrypto' -Version '4.0.1' -Description 'OpenSSL cryptography library (aarch64)' `
+                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libcrypto') -PkgConfigDir $sslPcDir)
+                [void](Write-PkgConfigFile -Name 'libssl' -Version '4.0.1' -Description 'OpenSSL TLS library (aarch64)' `
+                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libssl', 'libcrypto') -PkgConfigDir $sslPcDir)
+                [void](Write-PkgConfigFile -Name 'openssl' -Version '4.0.1' -Description 'OpenSSL (aarch64)' `
+                        -IncludeDir @($sslInc) -LibDir $sslLibDir -Library @('libssl', 'libcrypto') -PkgConfigDir $sslPcDir)
+                $sslPcDirs = @($sslPcDir)
+                log "OpenSSL ($($script:GstTargetArch)): authored libcrypto/libssl/openssl .pc in $sslPcDir (lib dir $sslLibDir)"
+            }
+        }
+
+
+return $sslPcDirs
+}
+
+function Set-GstPkgConfigInputs {
+    param([string[]]$sslPcDirs, [string]$ocvLib, [string]$ortLib, [string]$gstSrcDir)
+# OpenSSL's dirs first, over the image's x64 openssl.pc; @() + @() because '+' binds tighter than ','.
+        $newPcDirs = @($sslPcDirs) + @((Join-Path $ocvLib 'pkgconfig'), (Join-Path $ortLib 'pkgconfig'))
+        $env:PKG_CONFIG_PATH = (@($newPcDirs + ($env:PKG_CONFIG_PATH -split ';' | Where-Object { $_ })) | Select-Object -Unique) -join ';'
+        log "PKG_CONFIG_PATH = $env:PKG_CONFIG_PATH"
+
+        # Disable FFmpeg.wrap so libav* resolve from our FFmpeg, not the wrap's pinned 7.1.1.
+        $ffmpegWrap = Join-Path $gstSrcDir 'subprojects\FFmpeg.wrap'
+        if (Test-Path $ffmpegWrap) {
+            Move-Item -Path $ffmpegWrap -Destination "$ffmpegWrap.disabled" -Force
+            log 'Disabled subprojects/FFmpeg.wrap — gst-libav must link the FFmpeg this image ships, not a wrap-pinned 7.1.1.'
+        }
+
+
+
+}
+
+function Assert-GstTfliteInputs {
+    param([string]$resolvedInstallDir, [object[]]$requiredPlugins)
+# Keyed on the fanned-in tensorflowlite_c.lib, not the lane: an older LiteRT-less cross core disables with a reason.
+        $script:GstTfliteLibDir = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $resolvedInstallDir 'lib\litert\lib' }
+        $script:GstTfliteAvailable = (-not $script:GstCross) -or (Test-Path (Join-Path $script:GstTfliteLibDir 'tensorflowlite_c.lib'))
+        if (-not $script:GstTfliteAvailable) {
+            log ("tflite integration skipped: no tensorflowlite_c.lib in $script:GstTfliteLibDir -- this cross image " +
+                 'predates the #115 LiteRT cross build (or media-litert was not fanned in). The meson feature is set ' +
+                 'to disabled EXPLICITLY below, never auto.')
+        } else {
+            # tflite skips pkg-config and probes the pre-rename tensorflow/lite path, so mirror LiteRT's tflite\ headers there.
+            $litertRoot = if ($env:LITERT_ROOT) { $env:LITERT_ROOT } else { Join-Path $resolvedInstallDir 'lib\litert' }
+            $litertInclude = if ($env:LITERT_INCLUDE) { $env:LITERT_INCLUDE } else { Join-Path $litertRoot 'include' }
+            $litertLib = if ($env:LITERT_LIB) { $env:LITERT_LIB } else { Join-Path $litertRoot 'lib' }
+            $tfliteHeaderTree = Join-Path $litertInclude 'tflite'
+            $tfAliasRoot = Join-Path $litertInclude 'tensorflow\lite'
+            $tfAliasProbe = Join-Path $litertInclude 'tensorflow\lite\c\c_api.h'
+            if (-not (Test-Path $tfAliasProbe)) {
+                if (-not (Test-Path (Join-Path $tfliteHeaderTree 'c\c_api.h'))) {
+                    throw ("LiteRT headers not found: neither $tfAliasProbe nor $(Join-Path $tfliteHeaderTree 'c\c_api.h') exists. " +
+                        'The tflite plugin cannot be built without the TFLite C API headers — check that the media-litert ' +
+                        'branch image was fanned in (COPY --from=media-litert C:\runtime\lib\litert).')
+                }
+                New-Item -ItemType Directory -Force -Path (Split-Path $tfAliasRoot -Parent) | Out-Null
+                Copy-Item -Path $tfliteHeaderTree -Destination $tfAliasRoot -Recurse -Force
+                log "Staged tensorflow/lite/ header alias from $tfliteHeaderTree (LiteRT ships the post-rename tflite/ layout; gst probes the old path)."
+            }
+            if (-not (Test-Path $tfAliasProbe)) { throw "tensorflow/lite/c/c_api.h still missing at $tfAliasProbe after staging the alias tree." }
+
+            # If neither link name exists, say what is there: this plugin never consults PKG_CONFIG_PATH.
+            $tfliteLibName = $null
+            foreach ($candidate in @($requiredPlugins | Where-Object { $_.Name -eq 'tflite' }).NeedsLib) {
+                if (Test-Path (Join-Path $litertLib "$candidate.lib")) { $tfliteLibName = $candidate; break }
+            }
+            if (-not $tfliteLibName) {
+                $present = @(Get-LibraryLinkName -LibDir $litertLib)
+                throw ("neither tensorflowlite_c.lib nor tensorflow-lite.lib is present in $litertLib, so gst's " +
+                    "cc.find_library() probe cannot succeed. Libraries actually staged there: $($present -join ', '). " +
+                    'If LiteRT now emits the C API under a different name, add it to NeedsLib in Get-RequiredGstPlugin ' +
+                    'rather than renaming the binary.')
+            }
+            log "TFLite C API library: $tfliteLibName.lib in $litertLib"
+
+            # INCLUDE/LIB, not a /LIBPATH: c_link_arg, which clang-cl reads as an input file and fails meson's sanity check.
+            $env:INCLUDE = Add-GstSearchPathDirectory -Directory $litertInclude -Current $env:INCLUDE
+            $env:LIB = Add-GstSearchPathDirectory -Directory $litertLib -Current $env:LIB
+            # Forward slashes: meson parses escape sequences in its array literals.
+            $script:TfliteIncludeArg = '-I' + ($litertInclude -replace '\\', '/')
+            log "INCLUDE += $litertInclude ; LIB += $litertLib"
+        }
+
+
+
+}
+
+function Get-GstCrossRustPlan {
+    param([string]$gstTargetArch, [string]$resolvedLogDir)
+# Target rust (for gst-ptp-helper) is proven first: a failing rust entry fails setup, an absent one skips the helper.
+        $rustTargetLine = ''
+        $rustTriple = Get-RustTargetTriple -Arch $gstTargetArch
+        $rustup = (Get-Command rustup -ErrorAction SilentlyContinue).Source
+        $rustc = (Get-Command rustc -ErrorAction SilentlyContinue).Source
+        if ($rustup -and $rustc) {
+            # The image's rustup mirror is gone, so fetch the rust-std its cached manifest names; the probe below decides.
+            $stdFetch = Install-RustTargetStdFromPinnedManifest -Triple $rustTriple
+            log "  rustup| $stdFetch"
+            & $rustup target add $rustTriple 2>&1 | ForEach-Object { log "  rustup| $_" }
+            $rustProbeDir = Join-Path $resolvedLogDir 'rust-cross-probe'
+            New-Item -Path $rustProbeDir -ItemType Directory -Force | Out-Null
+            Set-Content -Path (Join-Path $rustProbeDir 'probe.rs') -Encoding ASCII -Value '#[no_mangle] pub extern "C" fn kata_probe() -> i32 { 42 }'
+            & $rustc --target $rustTriple --crate-type staticlib -o (Join-Path $rustProbeDir 'probe.lib') (Join-Path $rustProbeDir 'probe.rs') 2>&1 | ForEach-Object { log "  rustc| $_" }
+            if ($LASTEXITCODE -eq 0 -and (Test-Path (Join-Path $rustProbeDir 'probe.lib'))) {
+                $rustTargetLine = "rust = ['$($rustc -replace '\\', '/')', '--target=$rustTriple']"
+                log "Rust cross target ${rustTriple}: staticlib probe OK -- gst-ptp-helper will be built for the target"
+            } else {
+                log "Rust cross target ${rustTriple}: probe FAILED (exit $LASTEXITCODE) -- rust stays OUT of the cross file; gst-ptp-helper is skipped on this lane (a PTP clock helper, not a media feature)"
+            }
+            $global:LASTEXITCODE = 0
+        } else {
+            log 'Rust cross target: rustup/rustc not on PATH -- rust stays out of the cross file; gst-ptp-helper is skipped on this lane'
+        }
+
+return @{ TargetLine = $rustTargetLine; Rustc = $rustc }
+}
+
+function Write-GstMesonNativeFile {
+    param([string]$resolvedLogDir, [string]$rustc)
+# A native file gives the build machine its compilers; without one the build-machine glib fallback and webrtc/nice die.
+        $nccList = Format-MesonExeList -Command $env:CC
+        $ncxxList = Format-MesonExeList -Command $env:CXX
+        # LIB names the target's dirs; /vctoolsdir: and /winsdkdir: pick the arch from /machine:, unlike /LIBPATH under clang-cl.
+        $vcToolsDir = $null; $winSdkDir = $null; $winSdkVer = $null
+        foreach ($entry in @(($env:LIB -split ';') | Where-Object { $_ })) {
+            if (-not $vcToolsDir -and $entry -match '^(.*\\VC\\Tools\\MSVC\\[^\\]+)\\+lib\\') { $vcToolsDir = $Matches[1] }
+            if (-not $winSdkDir -and $entry -match '^(.*\\Windows Kits\\10)\\+lib\\+([^\\]+)\\+(um|ucrt)\\') { $winSdkDir = $Matches[1]; $winSdkVer = $Matches[2] }
+        }
+        if (-not $vcToolsDir) { $vcToolsDir = Get-MsvcToolsRoot }
+        # libffi finds cl/ml64 on PATH, which VsDevCmd -arch=arm64 leads with ARM64-targeting tools; [binaries] wins over PATH.
+        $buildCl   = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'cl.exe'
+        $buildMl64 = Resolve-BuildMachineMsvcTool -VcToolsDir $vcToolsDir -Name 'ml64.exe'
+        $buildLinkArgList = @()
+        if ($vcToolsDir -and (Test-Path $vcToolsDir)) { $buildLinkArgList += "/vctoolsdir:$($vcToolsDir -replace '\\', '/')" }
+        if ($winSdkDir -and (Test-Path $winSdkDir)) {
+            $buildLinkArgList += "/winsdkdir:$($winSdkDir -replace '\\', '/')"
+            if ($winSdkVer) { $buildLinkArgList += "/winsdkversion:$winSdkVer" }
+        }
+        $buildLibDirs = $buildLinkArgList
+        $buildLinkArgs = (($buildLinkArgList | ForEach-Object { "'" + $_ + "'" }) -join ', ')
+        # The build machine links its own ffi-7.dll (a default target) from the same ffi.h, so it needs -fcommon too.
+        $nativeFile = Join-Path $resolvedLogDir 'meson-native-amd64.ini'
+        Set-Content -Path $nativeFile -Encoding ASCII -Value @"
+$(Format-MesonWindowsBinaries -C $nccList -Cpp $ncxxList -ExtraLine @("cl = '$buildCl'", "ml64 = '$buildMl64'", $(if ($rustc) { "rust = ['$($rustc -replace '\\', '/')']" } else { '' })))
+
+[built-in options]
+c_args = ['-fcommon']
+c_link_args = [$buildLinkArgs]
+cpp_link_args = [$buildLinkArgs]
+"@
+        if ($buildLibDirs.Count -eq 0) { log "WARNING: neither a VC tools root nor a Windows SDK root could be derived from LIB for the build machine -- native links will rely on LIB as-is (expect the build-machine sanity check to fail if LIB is the target's)" }
+
+return $nativeFile
+}
+
+Import-CanonicalVersions -ScriptRoot $PSScriptRoot
+
+if ([string]::IsNullOrWhiteSpace($GstVersion)) {
+    $GstVersion = Get-SourceBuildVersion -EnvironmentVariables @('GSTREAMER_VERSION') -DefaultValue '1.29.2'
+}
+
+function Invoke-GstSourceBuild {
+    param(
+        [string]$GstVersion, [string]$InstallDir, [string]$SourceDir, [string]$BuildDir,
+        [string]$LogDir, [string]$GitRepo, [switch]$KeepBuildArtifacts, [switch]$ScrubAfter,
+        [string[]]$MesonSetupArgs, [switch]$SkipPluginGate, [string]$scriptAssetRoot, [object]$logContext
+    )
+try {
+    log "START - GStreamer source build"
+    log "Version:   $GstVersion"
+    log "Install:   $InstallDir"
+    log "SourceDir: $SourceDir"
+    log "BuildDir:  $BuildDir"
+    log "LogDir:    $LogDir"
+    log "GitRepo:   $GitRepo"
+
+        $gstDirs = Resolve-GstBuildDirectories -InstallDir $InstallDir -SourceDir $SourceDir -BuildDir $BuildDir -LogDir $LogDir
+    $resolvedInstallDir = $gstDirs.InstallDir
+    $resolvedSrcDir = $gstDirs.SourceDir
+    $resolvedBuildDir = $gstDirs.BuildDir
+    $resolvedLogDir = $gstDirs.LogDir
+
+    $mesonExe = Initialize-GstMeson -resolvedLogDir $resolvedLogDir
+
+    Initialize-GstCompiler -resolvedInstallDir $resolvedInstallDir -SkipPluginGate $SkipPluginGate
+
+    $gstSrcDir = Get-GstSourceTree -resolvedSrcDir $resolvedSrcDir -resolvedLogDir $resolvedLogDir -GstVersion $GstVersion
+
+    Initialize-GstWrapSources -gstSrcDir $gstSrcDir -resolvedLogDir $resolvedLogDir
+
+    Initialize-GstCompatibilityHeaders -gstSrcDir $gstSrcDir
+
+    $gstEnvironment = Get-GstBuildEnvironmentPlan -resolvedLogDir $resolvedLogDir
+    $gpuEnv = $gstEnvironment.GpuEnv
+    $rocmScrub = $gstEnvironment.RocmScrub
+    $linkArgElems = $gstEnvironment.LinkArgElems
+    $gstCrossArg = $gstEnvironment.CrossArg
+    $gstTargetArch = $gstEnvironment.TargetArch
+
+    Invoke-GstMediaSourcePatches -gstSrcDir $gstSrcDir
+
+    $requiredPlugins = @(Assert-GstMandatoryPluginInputs -gstSrcDir $gstSrcDir -resolvedInstallDir $resolvedInstallDir -resolvedLogDir $resolvedLogDir -SkipPluginGate $SkipPluginGate)
+
+    Invoke-GstCrossSourcePatches -gstSrcDir $gstSrcDir
+
+    $mesonCrossArgs = @(Get-GstMesonCrossArgs -gstTargetArch $gstTargetArch -resolvedLogDir $resolvedLogDir)
+
+    $setupArgs = @(Get-GstMesonSetupArgs -resolvedBuildDir $resolvedBuildDir -gstSrcDir $gstSrcDir -resolvedInstallDir $resolvedInstallDir -gstCrossArg $gstCrossArg -linkArgElems $linkArgElems -requiredPlugins $requiredPlugins -gpuEnv $gpuEnv -mesonCrossArgs $mesonCrossArgs -MesonSetupArgs $MesonSetupArgs)
+
+    Invoke-GstMesonSetupWithRetry -setupArgs $setupArgs -resolvedLogDir $resolvedLogDir -resolvedBuildDir $resolvedBuildDir -gstSrcDir $gstSrcDir -mesonExe $mesonExe
+
+    Assert-GstConfiguredSources -gpuEnv $gpuEnv -resolvedBuildDir $resolvedBuildDir -gstSrcDir $gstSrcDir
+
+    $gstJobs = Invoke-GstCompile -mesonExe $mesonExe -resolvedBuildDir $resolvedBuildDir -resolvedLogDir $resolvedLogDir -gstSrcDir $gstSrcDir -scriptAssetRoot $scriptAssetRoot
+
+    Invoke-GstInstall -mesonExe $mesonExe -resolvedBuildDir $resolvedBuildDir -resolvedInstallDir $resolvedInstallDir -gpuEnv $gpuEnv -rocmScrub $rocmScrub
+
+    $gstRust = Install-GstRustPlugins -resolvedSrcDir $resolvedSrcDir -resolvedInstallDir $resolvedInstallDir -resolvedBuildDir $resolvedBuildDir -requiredPlugins $requiredPlugins -gstJobs $gstJobs -GstVersion $GstVersion -SkipPluginGate $SkipPluginGate
+    $rsSrcDir = $gstRust.SourceDir
+    $rsCargoScratch = $gstRust.CargoScratch
+
+    Assert-GstInstalledPlugins -resolvedInstallDir $resolvedInstallDir -resolvedBuildDir $resolvedBuildDir -resolvedLogDir $resolvedLogDir -gstSrcDir $gstSrcDir -SkipPluginGate $SkipPluginGate
+
+    Complete-GstBuild -gstSrcDir $gstSrcDir -resolvedBuildDir $resolvedBuildDir -rsSrcDir $rsSrcDir -rsCargoScratch $rsCargoScratch -KeepBuildArtifacts:$KeepBuildArtifacts
+
 
 } catch {
     # Name the failing phase before the stack.
@@ -1439,3 +1700,8 @@ if ($ScrubAfter) { Clear-BuildScratch }
 
 # Explicit success -- see Complete-SourceBuild in WindowsSourceBuild.Common.psm1 for why.
 exit 0
+}
+
+Invoke-GstSourceBuild -GstVersion $GstVersion -InstallDir $InstallDir -SourceDir $SourceDir -BuildDir $BuildDir `
+    -LogDir $LogDir -GitRepo $GitRepo -KeepBuildArtifacts:$KeepBuildArtifacts -ScrubAfter:$ScrubAfter `
+    -MesonSetupArgs $MesonSetupArgs -SkipPluginGate:$SkipPluginGate -scriptAssetRoot $scriptAssetRoot -logContext $logContext

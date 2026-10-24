@@ -128,16 +128,17 @@ function Add-MachineVerdict {
     return $true
 }
 
+function Invoke-TargetArchTreeScan {
 # A .pyd is a DLL too; skipping it would also hide it from -MinInspected.
 $extensions = @('.dll', '.exe', '.pyd')
 if ($IncludeArchives) { $extensions += '.lib' }
 
-$inspected = 0
-$skippedHostTools = @()
-$launcherTemplates = @()
-$installerStubs = @()
-$unreadable = @()
-$violations = @()
+$script:inspected = 0
+$script:skippedHostTools = @()
+$script:launcherTemplates = @()
+$script:installerStubs = @()
+$script:unreadable = @()
+$script:violations = @()
 $script:peFiles = @()
 
 foreach ($root in $Path) {
@@ -152,30 +153,29 @@ foreach ($root in $Path) {
             if ((Add-MachineVerdict -LiteralPath $_.FullName -Label $_.FullName -Archive:$isLib) -and -not $isLib) { $script:peFiles += $_.FullName }
         }
 }
+}
 
-# Static import walk
-$importUnresolved = @()
-$importWalked = 0
-$importExternal = @()
-$importClientOs = @()
-if ($ImportWalk) {
+Invoke-TargetArchTreeScan
+
+function Get-TargetArchWheelWalk {
+    param([string[]]$Roots, [string[]]$PeFiles)
     $walkFiles = [System.Collections.Generic.List[string]]::new()
-    foreach ($f in $script:peFiles) { $walkFiles.Add($f) }
+    foreach ($f in $PeFiles) { $walkFiles.Add($f) }
     # A wheel's native members are what pip installs on the device, so they are machine-checked like the tree.
     $wheelTmp = Join-Path ([System.IO.Path]::GetTempPath()) ('archgate-wheels-' + [guid]::NewGuid().ToString('N'))
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $wheelCount = 0
     # A cp3XYt wheel's modules may import only its python3XYt.dll; the bundle ships the GIL runtime too, so the walk resolves either.
     $ftModuleRuntime = @{}
-    $ftWheelHits = [ordered]@{}
-    foreach ($root in $Path) {
+    $script:ftWheelHits = [ordered]@{}
+    foreach ($root in $Roots) {
         foreach ($whl in @(Get-ChildItem -LiteralPath $root -Recurse -Filter '*.whl' -File -ErrorAction SilentlyContinue)) {
             # Numbered: each CPython tree's ensurepip ships the same pip wheel, and a second extract into one directory throws.
             $wheelCount++
             $dest = Join-Path $wheelTmp ('{0}-{1}' -f $wheelCount, [IO.Path]::GetFileNameWithoutExtension($whl.Name))
             [System.IO.Compression.ZipFile]::ExtractToDirectory($whl.FullName, $dest)
             $ftRuntime = if ($whl.BaseName -match '-cp(\d+)-cp\1t-[^-]+$') { "python$($Matches[1])t.dll" } else { '' }
-            if ($ftRuntime) { $ftWheelHits[$whl.FullName] = 0 }
+            if ($ftRuntime) { $script:ftWheelHits[$whl.FullName] = 0 }
             foreach ($m in @(Get-ChildItem -Path $dest -Recurse -File -Include '*.dll', '*.pyd', '*.exe')) {
                 $walkFiles.Add($m.FullName)
                 $member = '{0}!{1}' -f $whl.FullName, $m.FullName.Substring($dest.Length + 1)
@@ -184,6 +184,48 @@ if ($ImportWalk) {
             }
         }
     }
+    return [pscustomobject]@{ Files = $walkFiles; ModuleRuntime = $ftModuleRuntime; TempDir = $wheelTmp }
+}
+
+function Add-TargetArchFreeThreadedFinding {
+    param([string]$File, [string[]]$Imports, [hashtable]$FtModuleRuntime)
+    if (-not $FtModuleRuntime.ContainsKey($File)) { return }
+    $want, $owner, $member = $FtModuleRuntime[$File]
+    $runtimes = @($Imports | Where-Object { $_ -match '^python\d+t?(_d)?\.dll$' })
+    if ($runtimes -contains $want) { $script:ftWheelHits[$owner]++ }
+    foreach ($other in @($runtimes | Where-Object { $_ -ne $want })) { $script:ftAbiFindings += "$member imports $other, not $want" }
+}
+
+function Add-TargetArchImportFindings {
+    param($WalkFiles, [hashtable]$FtModuleRuntime, [hashtable]$BundleNames, [hashtable]$SystemNames, [string]$CrtPattern)
+    foreach ($f in $walkFiles) {
+        $imports = try { Get-PeImportNames -Path $f -IncludeDelayLoad } catch { $script:unreadable += $f; continue }
+        $script:importWalked++
+        Add-TargetArchFreeThreadedFinding -File $f -Imports $imports -FtModuleRuntime $ftModuleRuntime
+        foreach ($imp in $imports) {
+            $n = $imp.ToLowerInvariant()
+            if ($n -match '^(api|ext)-ms-') { continue }
+            if ($bundleNames.ContainsKey($n)) { continue }
+            if ($ImportAllowlist -and $imp -match $ImportAllowlist) { $script:importExternal += "$f -> $imp"; continue }
+            $isCrt = ($n -match $crtPattern)
+            if ($systemNames.ContainsKey($n) -and -not ($script:standsAlone -and $isCrt)) { continue }
+            if ($ClientOsPattern -and $n -match $ClientOsPattern) { $script:importClientOs += "$f -> $imp"; continue }
+            $script:importUnresolved += [pscustomobject]@{ File = $f; Import = $imp; Crt = $isCrt }
+        }
+    }
+}
+
+function Invoke-TargetArchImportWalk {
+# Static import walk
+$script:importUnresolved = @()
+$script:importWalked = 0
+$script:importExternal = @()
+$script:importClientOs = @()
+if ($ImportWalk) {
+    $wheelState = Get-TargetArchWheelWalk -Roots $Path -PeFiles $script:peFiles
+    $walkFiles = $wheelState.Files
+    $ftModuleRuntime = $wheelState.ModuleRuntime
+    $wheelTmp = $wheelState.TempDir
     # Names only: consumers register the bundle's DLL homes, so the loader just needs the name somewhere there.
     $bundleNames = @{}
     foreach ($f in $walkFiles) { $bundleNames[([IO.Path]::GetFileName($f)).ToLowerInvariant()] = $true }
@@ -193,42 +235,18 @@ if ($ImportWalk) {
         foreach ($d in @(Get-ChildItem -Path (Join-Path $env:SystemRoot 'System32') -Filter '*.dll' -File -ErrorAction SilentlyContinue)) { $systemNames[$d.Name.ToLowerInvariant()] = $true }
     }
     # A cross device or a standalone bundle has no image PATH behind it.
-    $standsAlone = (Test-WindowsCrossTarget -Arch $targetArch) -or $Standalone
+    $script:standsAlone = (Test-WindowsCrossTarget -Arch $targetArch) -or $Standalone
     $crtPattern = '^(vcruntime|msvcp|concrt|vcomp|vccorlib|vcamp|msvcr|mfc)[0-9]'
-    $ftAbiFindings = @()
-    foreach ($f in $walkFiles) {
-        $imports = try { Get-PeImportNames -Path $f -IncludeDelayLoad } catch { $unreadable += $f; continue }
-        $importWalked++
-        if ($ftModuleRuntime.ContainsKey($f)) {
-            $want, $owner, $member = $ftModuleRuntime[$f]
-            $runtimes = @($imports | Where-Object { $_ -match '^python\d+t?(_d)?\.dll$' })
-            if ($runtimes -contains $want) { $ftWheelHits[$owner]++ }
-            foreach ($other in @($runtimes | Where-Object { $_ -ne $want })) { $ftAbiFindings += "$member imports $other, not $want" }
-        }
-        foreach ($imp in $imports) {
-            $n = $imp.ToLowerInvariant()
-            if ($n -match '^(api|ext)-ms-') { continue }
-            if ($bundleNames.ContainsKey($n)) { continue }
-            if ($ImportAllowlist -and $imp -match $ImportAllowlist) { $importExternal += "$f -> $imp"; continue }
-            $isCrt = ($n -match $crtPattern)
-            if ($systemNames.ContainsKey($n) -and -not ($standsAlone -and $isCrt)) { continue }
-            if ($ClientOsPattern -and $n -match $ClientOsPattern) { $importClientOs += "$f -> $imp"; continue }
-            $importUnresolved += [pscustomobject]@{ File = $f; Import = $imp; Crt = $isCrt }
-        }
-    }
+    $script:ftAbiFindings = @()
+    Add-TargetArchImportFindings -WalkFiles $walkFiles -FtModuleRuntime $ftModuleRuntime -BundleNames $bundleNames -SystemNames $systemNames -CrtPattern $crtPattern
     Remove-Item -Path $wheelTmp -Recurse -Force -ErrorAction SilentlyContinue
-    foreach ($w in @($ftWheelHits.Keys | Where-Object { $ftWheelHits[$_] -eq 0 })) { $ftAbiFindings += "$w has no module importing its free-threaded runtime" }
+    foreach ($w in @($script:ftWheelHits.Keys | Where-Object { $script:ftWheelHits[$_] -eq 0 })) { $script:ftAbiFindings += "$w has no module importing its free-threaded runtime" }
+}
 }
 
-Write-Host ''
-Write-Host "=== target-arch verification ($targetArch / $expectedName) ==="
-Write-Host ("  roots      : {0}" -f ($Path -join ', '))
-Write-Host ("  inspected  : {0}" -f $inspected)
-Write-Host ("  violations : {0}" -f $violations.Count)
-if ($ImportWalk) {
-    Write-Host ("  import walk: {0} file(s) walked, {1} unresolved import(s), {2} allowlisted external(s), {3} device-OS (client SKU) import(s)" -f $importWalked, $importUnresolved.Count, $importExternal.Count, $importClientOs.Count)
-    foreach ($e in ($importExternal | Select-Object -First 20)) { Write-Host "    external (driver/toolkit): $e" }
-    foreach ($e in ($importClientOs | Select-Object -First 20)) { Write-Host "    device OS (client SKU, not on this Server Core reference): $e" }
+Invoke-TargetArchImportWalk
+
+function Write-TargetArchUnresolvedImportReport {
     if ($importUnresolved.Count -gt 0) {
         # By name first: hundreds of edges are usually a few DLLs, and the name says whether the gap is real.
         $byName = $importUnresolved | Group-Object { $_.Import.ToLowerInvariant() } | Sort-Object Count -Descending
@@ -241,6 +259,19 @@ if ($ImportWalk) {
         }
         if ($importUnresolved.Count -gt 40) { Write-Host ("    ... {0} more edge(s), all in the by-name summary above" -f ($importUnresolved.Count - 40)) }
     }
+}
+
+function Write-TargetArchReport {
+Write-Host ''
+Write-Host "=== target-arch verification ($targetArch / $expectedName) ==="
+Write-Host ("  roots      : {0}" -f ($Path -join ', '))
+Write-Host ("  inspected  : {0}" -f $inspected)
+Write-Host ("  violations : {0}" -f $violations.Count)
+if ($ImportWalk) {
+    Write-Host ("  import walk: {0} file(s) walked, {1} unresolved import(s), {2} allowlisted external(s), {3} device-OS (client SKU) import(s)" -f $importWalked, $importUnresolved.Count, $importExternal.Count, $importClientOs.Count)
+    foreach ($e in ($importExternal | Select-Object -First 20)) { Write-Host "    external (driver/toolkit): $e" }
+    foreach ($e in ($importClientOs | Select-Object -First 20)) { Write-Host "    device OS (client SKU, not on this Server Core reference): $e" }
+    Write-TargetArchUnresolvedImportReport
     Write-Host ("  cp3XYt wheels: {0} wheel(s), {1} module(s) import their free-threaded runtime, {2} finding(s)" -f $ftWheelHits.Count, (@($ftWheelHits.Values) | Measure-Object -Sum).Sum, $ftAbiFindings.Count)
     foreach ($e in $ftAbiFindings) { Write-Host "    FREE-THREADED ABI: $e" -ForegroundColor Red }
 }
@@ -262,8 +293,22 @@ if ($unreadable.Count -gt 0) {
     Write-Host ("  not PE/COFF, ignored: {0} file(s)" -f $unreadable.Count)
     $unreadable | Select-Object -First 20 | ForEach-Object { Write-Host "    ? $_" }
 }
+}
 
-$failed = $false
+Write-TargetArchReport
+
+function Write-TargetArchViolations {
+    if ($violations.Count -eq 0) { return $false }
+    Write-Host ''
+    Write-Host 'ARCHITECTURE VIOLATIONS:' -ForegroundColor Red
+    foreach ($v in $violations) {
+        Write-Host ("  {0}  is {1}, expected {2}" -f $v.Path, (Format-Machine $v.Machine), (Format-Machine $expected)) -ForegroundColor Red
+    }
+    return $true
+}
+
+function Assert-TargetArchResult {
+$failed = Write-TargetArchViolations
 
 if ($ImportWalk -and $importUnresolved.Count -gt 0) {
     if ($standsAlone) {
@@ -279,15 +324,6 @@ if ($ImportWalk -and $ftAbiFindings.Count -gt 0) {
 if ($ImportWalk -and $MinInspected -gt 0 -and $importWalked -lt $MinInspected) {
     throw "target-arch verification FAILED: the import walk covered only $importWalked file(s), below the -MinInspected floor of $MinInspected"
 }
-if ($violations.Count -gt 0) {
-    Write-Host ''
-    Write-Host 'ARCHITECTURE VIOLATIONS:' -ForegroundColor Red
-    foreach ($v in $violations) {
-        Write-Host ("  {0}  is {1}, expected {2}" -f $v.Path, (Format-Machine $v.Machine), (Format-Machine $expected)) -ForegroundColor Red
-    }
-    $failed = $true
-}
-
 # [int]$null is 0, so an ARCH_GATE_MIN_INSPECTED build-arg that stops reaching the RUN must fail here, not disable the floor.
 if ($MinInspected -le 0 -and -not $AllowEmptyTree) {
     throw ("verify-target-arch: -MinInspected resolved to $MinInspected, which disables the coverage floor " +
@@ -308,3 +344,6 @@ if ($failed) {
 
 Write-Host ''
 Write-Host "TARGET ARCH VERIFICATION PASSED for $targetArch ($inspected binaries)" -ForegroundColor Green
+}
+
+Assert-TargetArchResult

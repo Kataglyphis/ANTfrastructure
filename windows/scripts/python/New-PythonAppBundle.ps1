@@ -29,6 +29,29 @@ Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsOrtPayload.Common.psm1
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsTargetArch.Common.psm1') -DisableNameChecking
 Import-Module (Join-Path $PSScriptRoot '..\modules\WindowsPythonApp.Common.psm1') -Force -DisableNameChecking
 
+function New-PythonAppBundleLaunchers {
+    param($App, [string]$SitePackages, [string]$Bundle, [string]$WorkDir, [string]$Arch)
+    $entryPoints = Get-PythonAppEntryPoint -SitePackages $SitePackages -Distribution $App['distribution']
+    $wanted = if ($App.ContainsKey('scripts')) { @($App['scripts']) } else { @($entryPoints.Keys) }
+    foreach ($name in $wanted) {
+        if (-not $entryPoints.Contains($name)) { throw "$($App['distribution']) declares no console script '$name'" }
+        $exe = New-PythonAppLauncher -Name $name -EntryPoint $entryPoints[$name] -Destination $Bundle -DataEnv $App['data_env'] -DataDir $App['data_dir'] -WorkDir $WorkDir -Arch $Arch
+        Write-Host "  $name -> $($entryPoints[$name]) ($exe)"
+    }
+    return $wanted
+}
+
+function Copy-PythonAppBundleData {
+    param($App, [string]$RepoRoot, [string]$Bundle)
+    foreach ($item in @($App['data'])) {
+        if (-not $item) { continue }
+        $to = Join-Path $Bundle $item['to']
+        $null = New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent)
+        Copy-Item -LiteralPath (Resolve-PythonAppPath $RepoRoot $item['from']) -Destination $to -Force
+        Write-Host "  $($item['from']) -> $($item['to'])"
+    }
+}
+
 $arch = Get-WindowsTargetArch -Arch $TargetArch
 $cross = Test-WindowsCrossTarget -Arch $arch
 $packageArch = Get-WindowsPackageArch -Arch $arch
@@ -83,22 +106,10 @@ if ($chainOpenCv) {
 }
 
 Write-Host '== launchers'
-$entryPoints = Get-PythonAppEntryPoint -SitePackages $sitePackages -Distribution $app['distribution']
-$wanted = if ($app.ContainsKey('scripts')) { @($app['scripts']) } else { @($entryPoints.Keys) }
-foreach ($name in $wanted) {
-    if (-not $entryPoints.Contains($name)) { throw "$($app['distribution']) declares no console script '$name'" }
-    $exe = New-PythonAppLauncher -Name $name -EntryPoint $entryPoints[$name] -Destination $bundle -DataEnv $app['data_env'] -DataDir $app['data_dir'] -WorkDir $WorkDir -Arch $arch
-    Write-Host "  $name -> $($entryPoints[$name]) ($exe)"
-}
+$wanted = @(New-PythonAppBundleLaunchers -App $app -SitePackages $sitePackages -Bundle $bundle -WorkDir $WorkDir -Arch $arch)
 
 Write-Host '== data'
-foreach ($item in @($app['data'])) {
-    if (-not $item) { continue }
-    $to = Join-Path $bundle $item['to']
-    $null = New-Item -ItemType Directory -Force -Path (Split-Path $to -Parent)
-    Copy-Item -LiteralPath (Resolve-PythonAppPath $RepoRoot $item['from']) -Destination $to -Force
-    Write-Host "  $($item['from']) -> $($item['to'])"
-}
+Copy-PythonAppBundleData -App $app -RepoRoot $RepoRoot -Bundle $bundle
 
 Write-Host '== VC++ runtime closure'
 if (-not $VcRuntimeDir) {

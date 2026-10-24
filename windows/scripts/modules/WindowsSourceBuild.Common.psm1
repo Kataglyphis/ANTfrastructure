@@ -68,37 +68,8 @@ function Reset-SourceBuildDirectory {
     }
 }
 
-function Invoke-GitClone {
-    param(
-        [Parameter(Mandatory)]
-        [string]$RepoUrl,
-        [Parameter(Mandatory)]
-        [string]$SourceDir,
-        [string]$Branch = '',
-        [string]$Tag = '',
-        [switch]$Recursive,
-        [switch]$SkipOnFailure,
-        [int]$Depth = 1,
-        # The driver does not retry script failures, so the clone retries itself.
-        [int]$MaxAttempts = 3,
-        [int]$InitialDelaySeconds = 10
-    )
-
-    $ref = if ($Tag) { $Tag } else { $Branch }
-    if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
-
-    # `git clone --branch` rejects a commit hash, so a hash is fetched and checked out after the clone.
-    $isCommitHash = $ref -match '^[0-9a-f]{7,40}$'
-
-    $delay = $InitialDelaySeconds
-    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
-        # Wipe on every attempt: git refuses a non-empty directory.
-        Reset-SourceBuildDirectory -Path $SourceDir
-
-        $oldEAP = $ErrorActionPreference
-        $ErrorActionPreference = 'Continue'
-        $env:GIT_TERMINAL_PROMPT = '0'
-
+function Get-GitCloneAttemptResult {
+    param([string]$RepoUrl, [string]$SourceDir, [string]$Ref, [bool]$IsCommitHash, [switch]$Recursive, [int]$Depth)
         if ($isCommitHash) {
             # Full clone: the commit may not be reachable from a shallow default-branch tip.
             $cloneArgs = @('clone')
@@ -138,6 +109,43 @@ function Invoke-GitClone {
             $cloneExit = $LASTEXITCODE
         }
 
+    return [pscustomobject]@{ ExitCode = $cloneExit; Output = $cloneOut }
+}
+
+function Invoke-GitClone {
+    param(
+        [Parameter(Mandatory)]
+        [string]$RepoUrl,
+        [Parameter(Mandatory)]
+        [string]$SourceDir,
+        [string]$Branch = '',
+        [string]$Tag = '',
+        [switch]$Recursive,
+        [switch]$SkipOnFailure,
+        [int]$Depth = 1,
+        # The driver does not retry script failures, so the clone retries itself.
+        [int]$MaxAttempts = 3,
+        [int]$InitialDelaySeconds = 10
+    )
+
+    $ref = if ($Tag) { $Tag } else { $Branch }
+    if ([string]::IsNullOrWhiteSpace($ref)) { throw 'Either -Branch or -Tag is required' }
+
+    # `git clone --branch` rejects a commit hash, so a hash is fetched and checked out after the clone.
+    $isCommitHash = $ref -match '^[0-9a-f]{7,40}$'
+
+    $delay = $InitialDelaySeconds
+    for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+        # Wipe on every attempt: git refuses a non-empty directory.
+        Reset-SourceBuildDirectory -Path $SourceDir
+
+        $oldEAP = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $env:GIT_TERMINAL_PROMPT = '0'
+
+        $result = Get-GitCloneAttemptResult -RepoUrl $RepoUrl -SourceDir $SourceDir -Ref $ref -IsCommitHash $isCommitHash -Recursive:$Recursive -Depth $Depth
+        $cloneOut = $result.Output
+        $cloneExit = $result.ExitCode
         $ErrorActionPreference = $oldEAP
 
         if ($cloneExit -eq 0) { return $true }
@@ -997,6 +1005,17 @@ function Get-RequiredBuildArtifact {
     return $files
 }
 
+function Get-UniqueBuildArtifact {
+    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Filter,
+        [string]$Description = $Filter, [string]$Context = '')
+    $files = @(Get-RequiredBuildArtifact -Root $Root -Filter $Filter -Recurse -MaximumCount 1 -FailureMessage {
+            param($found)
+            $prefix = if ($Context) { "${Context}: " } else { '' }
+            "${prefix}expected exactly one $Description under $Root, found $($found.Count): $(($found | ForEach-Object Name) -join ', ')"
+        })
+    return $files[0]
+}
+
 function Copy-SourceBuildFileTree {
     param(
         [Parameter(Mandatory)][string]$SourceRoot,
@@ -1319,6 +1338,11 @@ function Invoke-PythonWheelBuild {
     return Install-StagedPythonWheel -Python $Python -SourceDir $DistDir -ModuleName $ModuleName -NoDeps:$NoDeps
 }
 
+function Test-PythonExtensionHostTag {
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][string]$TargetTag)
+    return $Name -match '\.cp\d+t?-win_(amd64|arm64)\.pyd$' -and $Name -notmatch [regex]::Escape($TargetTag)
+}
+
 function Assert-WheelTargetArch {
     # A wheel tagged for the wrong platform installs fine and then fails at import.
     param([Parameter(Mandatory)][string]$WheelPath)
@@ -1337,7 +1361,7 @@ function Assert-WheelTargetArch {
         if ($pe.Count -eq 0) { throw "wheel $name contains no native modules at all -- the binding was not built" }
         foreach ($f in $pe) {
             # The target interpreter only loads its own EXT_SUFFIX tag, whatever the PE machine field says.
-            if ($f.Name -match '\.cp\d+t?-win_(amd64|arm64)\.pyd$' -and $f.Name -notmatch [regex]::Escape($wantTag)) {
+            if (Test-PythonExtensionHostTag -Name $f.Name -TargetTag $wantTag) {
                 throw "wheel ${name}: member $($f.Name) carries a host EXT_SUFFIX tag, expected '$wantTag' -- the target interpreter would never import it (the sitecustomize shim pins EXT_SUFFIX to the target; is it active?)"
             }
             $m = Get-PeFileMachine -Path $f.FullName
@@ -1422,6 +1446,12 @@ function New-FreeThreadedBuildPython {
     return New-CrossBuildPython -GilPython $GilPython -VenvDir $VenvDir -Package $Package -FreeThreaded
 }
 
+function Get-SourceBuildHostPythonExe {
+    param([Parameter(Mandatory)][hashtable]$GilPython, [switch]$FreeThreaded)
+    if ($FreeThreaded) { return (Get-SourceBuildPython -FreeThreaded).Exe }
+    return $GilPython.Exe
+}
+
 function New-CrossBuildPython {
     <#
     .SYNOPSIS
@@ -1437,7 +1467,7 @@ untime\python\libs.
         [switch]$FreeThreaded,
         [string]$LibDir = ''
     )
-    $base = if ($FreeThreaded) { (Get-SourceBuildPython -FreeThreaded).Exe } else { $GilPython.Exe }
+    $base = Get-SourceBuildHostPythonExe -GilPython $GilPython -FreeThreaded:$FreeThreaded
     $link = Get-TargetBuildPython -FreeThreaded:$FreeThreaded
     if ($LibDir) {
         $lib = Select-CpythonImportLib -LibDir $LibDir -FreeThreaded:$FreeThreaded
@@ -1852,6 +1882,24 @@ function Get-PersistentBuildLogPath {
     return $logPath
 }
 
+function Assert-NinjaBuildSucceeded {
+    param([int]$ExitCode, [string]$LogFile)
+    if ($ExitCode -eq 0) { return }
+    if ($LogFile -and (Test-Path $LogFile)) {
+        Write-Host "`n=== BUILD FAILED - last 50 lines ==="
+        Get-Content $LogFile -Tail 50 | ForEach-Object { Write-Host $_ }
+    }
+    throw "Build failed (exit $ExitCode)"
+}
+
+function Invoke-NinjaInstall {
+    param([switch]$Install, [string]$BuildDir, [string]$InstallConfig)
+    if (-not $Install) { return }
+    Write-Host "Installing..."
+    & cmake --install $BuildDir --config $InstallConfig
+    if ($LASTEXITCODE -ne 0) { throw "Install failed" }
+}
+
 function Invoke-NinjaBuildWithRetry {
     # A guard-kill is not OOM-shaped, so it retries at full -j; only a compile failure drops to -j$RetryJobs once.
     param(
@@ -1913,18 +1961,8 @@ function Invoke-NinjaBuildWithRetry {
             Get-Content $StallMarkerPath -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "[sccache-stall-guard] $_" -ForegroundColor Yellow }
         }
     }
-    if ($LASTEXITCODE -ne 0) {
-        if ($LogFile -and (Test-Path $LogFile)) {
-            Write-Host "`n=== BUILD FAILED - last 50 lines ==="
-            Get-Content $LogFile -Tail 50 | ForEach-Object { Write-Host $_ }
-        }
-        throw "Build failed (exit $LASTEXITCODE)"
-    }
-    if ($Install) {
-        Write-Host "Installing..."
-        & cmake --install $BuildDir --config $InstallConfig
-        if ($LASTEXITCODE -ne 0) { throw "Install failed" }
-    }
+    Assert-NinjaBuildSucceeded -ExitCode $LASTEXITCODE -LogFile $LogFile
+    Invoke-NinjaInstall -Install:$Install -BuildDir $BuildDir -InstallConfig $InstallConfig
 }
 
 function Expand-SourceTarball {
@@ -2195,6 +2233,15 @@ function Install-StagedPythonWheel {
     return $staged[0]
 }
 
+function Copy-SelectedBuildArtifacts {
+    param([Parameter(Mandatory)][object[]]$Artifact, [Parameter(Mandatory)][string]$Destination,
+        [string]$LogPrefix = '')
+    foreach ($file in $Artifact) {
+        Copy-Item $file.FullName -Destination $Destination -Force
+        if ($LogPrefix) { Write-Host "$LogPrefix $($file.Name) -> $Destination" }
+    }
+}
+
 function Save-PythonWheel {
     # The final image exposes C:\runtime\wheels as PYTHON_WHEELS.
     param(
@@ -2213,10 +2260,7 @@ function Save-PythonWheel {
     # A cp3XYt wheel here would reach every GIL install of the store; Save-FreeThreadedWheel stores the twins apart.
     $twins = @($wheels | Where-Object { $_.Name -match '-cp\d+-cp\d+t-[^-]+\.whl$' })
     if ($twins.Count -gt 0) { throw "Save-PythonWheel: $($twins.Name -join ', ') is free-threaded and never goes into $WheelDir; Save-FreeThreadedWheel stores it in $(Get-FreeThreadedWheelStore)" }
-    foreach ($w in $wheels) {
-        Copy-Item $w.FullName -Destination $WheelDir -Force
-        Write-Host "Staged wheel: $($w.Name) -> $WheelDir"
-    }
+    Copy-SelectedBuildArtifacts -Artifact $wheels -Destination $WheelDir -LogPrefix 'Staged wheel:'
     return @($wheels | ForEach-Object { Join-Path $WheelDir $_.Name })
 }
 
@@ -2674,6 +2718,7 @@ Export-ModuleMember -Function @(
     'Write-SccacheStatsToStderr',
     'Write-SccacheStats',
     'Save-PythonWheel',
+    'Copy-SelectedBuildArtifacts',
     'Get-CudaRoot',
     'Resolve-TensorRtRoot',
     'Resolve-TensorRtSdkRoot',
@@ -2711,6 +2756,7 @@ Export-ModuleMember -Function @(
     'Get-PeImportNames',
     'Get-DllDependencyGraph',
     'Assert-WheelTargetArch',
+    'Test-PythonExtensionHostTag',
     'Get-PeFileMachine',
     'Edit-CppKeywordAlternatives',
     'Update-NinjaFile',
@@ -2761,6 +2807,7 @@ Export-ModuleMember -Function @(
     'Get-FreeThreadedTwinPlan',
     'Assert-NinjaFreeThreadedDefine',
     'New-FreeThreadedBuildPython',
+    'Get-SourceBuildHostPythonExe',
     'New-CrossBuildPython',
     'Invoke-CrossWheelBuild',
     'Invoke-FreeThreadedTwinWheel',
@@ -2790,6 +2837,7 @@ Export-ModuleMember -Function @(
     'Copy-BuildArtifact',
     'Copy-SourceBuildFileTree',
     'Get-RequiredBuildArtifact',
+    'Get-UniqueBuildArtifact',
     'Copy-SidecarDll',
     'Get-NvccCudaCmakeArgs',
     'Get-WindowsTargetArch',

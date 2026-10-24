@@ -70,6 +70,12 @@ Describe 'WindowsVulkanValidation.Common' {
       (Test-VulkanValidationLog -LogPath $script:hazardLog) | Should -Be $false
     }
 
+    It 'prints the hazard header and the matching line' {
+      $report = @(Test-VulkanValidationLog -LogPath $script:hazardLog 6>&1 | ForEach-Object { $_.ToString() }) -join "`n"
+      $report | Should -Match 'SYNCHRONIZATION HAZARDS DETECTED \(1\)'
+      $report | Should -Match 'VALIDATION - SYNC-HAZARD-WRITE_AFTER_WRITE'
+    }
+
     It 'is true for a clean log' {
       (Test-VulkanValidationLog -LogPath $script:cleanLog -Quiet) | Should -Be $true
     }

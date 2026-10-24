@@ -12,6 +12,28 @@ param(
     [string]$FreeThreadedRoot = ''
 )
 
+function Import-FreshBuildVersions {
+    param([Parameter(Mandatory)][string]$AssetRoot)
+
+    # Fresh versions.env beats baked NUGET pins, while forwarded process overrides retain precedence.
+    $versionsEnvFile = ''
+    foreach ($cand in @((Join-Path $AssetRoot 'versions.env'),
+            $(if ($env:TEMP_DIR) { Join-Path $env:TEMP_DIR 'versions.env' }))) {
+        if ($cand -and (Test-Path $cand)) { $versionsEnvFile = $cand; break }
+    }
+    if (-not $versionsEnvFile) { return }
+    Write-Host "Overriding process env from fresh $versionsEnvFile (baked values only; forwarded overrides win)"
+    foreach ($entry in (ConvertFrom-VersionsEnv -Path $versionsEnvFile).GetEnumerator()) {
+        $procVal = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
+        $machVal = [Environment]::GetEnvironmentVariable($entry.Key, 'Machine')
+        if ($procVal -and $procVal -ne $machVal -and $procVal -ne $entry.Value) {
+            Write-Host "  keeping forwarded $($entry.Key)=$procVal (file has $($entry.Value))"
+        } else {
+            [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
+        }
+    }
+}
+
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $src = $SourceDir
@@ -29,25 +51,7 @@ if (-not (Get-Module -Name 'WindowsSourceBuild.Common')) { Import-Module $source
 # WU spool writes land in the layer and kill its finalize; no-op outside a container.
 Disable-ContainerWindowsUpdate
 
-# The NUGET_* pins are baked into the base's Machine env, so a fresh versions.env (sibling mount first) must beat them.
-$versionsEnvFile = ''
-foreach ($cand in @((Join-Path $scriptAssetRoot 'versions.env'),
-        $(if ($env:TEMP_DIR) { Join-Path $env:TEMP_DIR 'versions.env' }))) {
-    if ($cand -and (Test-Path $cand)) { $versionsEnvFile = $cand; break }
-}
-if ($versionsEnvFile) {
-    # As in Import-Versions.ps1: the file beats baked values, a deliberately forwarded value beats the file.
-    Write-Host "Overriding process env from fresh $versionsEnvFile (baked values only; forwarded overrides win)"
-    foreach ($entry in (ConvertFrom-VersionsEnv -Path $versionsEnvFile).GetEnumerator()) {
-        $procVal = [Environment]::GetEnvironmentVariable($entry.Key, 'Process')
-        $machVal = [Environment]::GetEnvironmentVariable($entry.Key, 'Machine')
-        if ($procVal -and $procVal -ne $machVal -and $procVal -ne $entry.Value) {
-            Write-Host "  keeping forwarded $($entry.Key)=$procVal (file has $($entry.Value))"
-        } else {
-            [Environment]::SetEnvironmentVariable($entry.Key, $entry.Value, 'Process')
-        }
-    }
-}
+Import-FreshBuildVersions -AssetRoot $scriptAssetRoot
 
 $nugetExe = Join-Path $src 'externals\nuget.exe'
 # Pre-seeded so find_python.bat skips aka.ms/nugetclidl, which intermittently serves an HTML error page.

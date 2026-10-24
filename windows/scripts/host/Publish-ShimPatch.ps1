@@ -108,7 +108,7 @@ if ($ReportOnly) {
     return
 }
 
-if ($RecordCurrent) {
+function Write-InstalledShimPatchState {
     if ($ShimPath -or $Restore) { throw 'Pass -RecordCurrent alone: it records what is already installed and changes nothing else.' }
     if (-not (Test-Path $InstallPath)) { throw "no shim installed at $InstallPath - nothing to record." }
     Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1') -Force
@@ -128,6 +128,10 @@ if ($RecordCurrent) {
     Write-HostStep -Log $hostLog 'NOT a verification that the binary is actually patched - it records what is there.' 'Yellow'
     Write-HostStep -Log $hostLog 'Only use this when you know the installed shim IS the patched build.' 'Yellow'
     Save-HostMaintenanceLog -Log $hostLog
+}
+
+if ($RecordCurrent) {
+    Write-InstalledShimPatchState
     return
 }
 
@@ -135,15 +139,21 @@ if (-not $isAdmin) { throw 'Run from an elevated (admin) shell: replacing the bi
 
 if ($Restore -and $ShimPath) { throw 'Pass either -ShimPath or -Restore, not both.' }
 
-$source = $ShimPath
-if ($Restore) {
-    $source = "$InstallPath$Restore"
-    if (-not (Test-Path $source)) { throw "no such backup: $source (use -ReportOnly to list)" }
-} elseif (-not $source) {
-    throw 'Nothing to do: pass -ShimPath, -Restore or -ReportOnly.'
-} elseif (-not (Test-Path $source)) {
-    throw "shim binary not found: $source"
+function Resolve-ShimDeploymentSource {
+    param([string]$ShimPath, [string]$Restore, [string]$InstallPath)
+    $source = $ShimPath
+    if ($Restore) {
+        $source = "$InstallPath$Restore"
+        if (-not (Test-Path $source)) { throw "no such backup: $source (use -ReportOnly to list)" }
+    } elseif (-not $source) {
+        throw 'Nothing to do: pass -ShimPath, -Restore or -ReportOnly.'
+    } elseif (-not (Test-Path $source)) {
+        throw "shim binary not found: $source"
+    }
+    return $source
 }
+
+$source = Resolve-ShimDeploymentSource -ShimPath $ShimPath -Restore $Restore -InstallPath $InstallPath
 
 Write-HostStep -Log $hostLog '--- before ---'
 Show-State
@@ -164,26 +174,33 @@ $stopped = Stop-HostServices -Log $hostLog -Service $Service
 
 # --- swap (timestamped backups; .orig, the only stock copy, is never overwritten) ---
 
+function Install-ShimDeploymentBinary {
+param([string]$Source, [string]$InstallPath, [string]$Restore, $Log)
 $swapped = $false
 try {
     if (-not $Restore) {
         $stockBackup = "$InstallPath.orig"
         if (-not (Test-Path $stockBackup)) {
             Copy-Item $InstallPath $stockBackup -Force -ErrorAction Stop
-            Write-HostStep -Log $hostLog "stock binary preserved as $stockBackup"
+            Write-HostStep -Log $Log "stock binary preserved as $stockBackup"
         }
         $stamp = "$InstallPath.bak-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
         Copy-Item $InstallPath $stamp -Force -ErrorAction Stop
-        Write-HostStep -Log $hostLog "previous binary preserved as $stamp"
+        Write-HostStep -Log $Log "previous binary preserved as $stamp"
     }
     Copy-Item $source $InstallPath -Force -ErrorAction Stop
     $swapped = $true
-    Write-HostStep -Log $hostLog ('installed {0:N0} bytes' -f (Get-Item $InstallPath).Length) 'Green'
+    Write-HostStep -Log $Log ('installed {0:N0} bytes' -f (Get-Item $InstallPath).Length) 'Green'
 } catch {
-    Write-HostMaintenanceError -Log $hostLog -ErrorRecord $_ -Template 'SWAP ERROR: {0}' -Color 'Red'
+    Write-HostMaintenanceError -Log $Log -ErrorRecord $_ -Template 'SWAP ERROR: {0}' -Color 'Red'
+}
+return $swapped
 }
 
+$swapped = Install-ShimDeploymentBinary -Source $source -InstallPath $InstallPath -Restore $Restore -Log $hostLog
+
 # --- record the hash Assert-ShimPatch checks (best-effort: it must never fail a swap that succeeded) ---
+function Write-ShimDeploymentState {
 if ($swapped) {
     Invoke-HostMaintenanceTask -Log $hostLog -FailureTemplate 'STATE ERROR (gate falls back to the size check): {0}' -Operation {
         Import-Module (Join-Path $scriptAssetRoot 'modules\WindowsBuildDriver.Common.psm1')
@@ -204,9 +221,13 @@ if ($swapped) {
         }
     }.GetNewClosure()
 }
+}
+
+Write-ShimDeploymentState
 
 # --- service environment -----------------------------------------------------
 
+function Set-ShimDeploymentEnvironment {
 if ($swapped -and $ServiceEnvironment.Count -gt 0) {
     Write-HostStep -Log $hostLog "--- setting environment on $EnvironmentService ---"
     Invoke-HostMaintenanceTask -Log $hostLog -FailureTemplate 'ENV ERROR: {0}' -FailureColor 'Red' -Operation {
@@ -222,6 +243,9 @@ if ($swapped -and $ServiceEnvironment.Count -gt 0) {
         Write-HostStep -Log $hostLog ('environment now: ' + ((Get-ItemProperty $svcKey).Environment -join ' | ')) 'Green'
     }.GetNewClosure()
 }
+}
+
+Set-ShimDeploymentEnvironment
 
 # --- start -------------------------------------------------------------------
 

@@ -80,6 +80,8 @@ $installer = Join-Path $TempDir 'vs_buildtools.exe'
 $proc = $null
 
 try {
+    function Save-VsBootstrapper {
+        param([string]$Installer)
     Write-Host 'Downloading Visual Studio Build Tools Installer...'
     # VS 18 names its channel stable (its /release/ alias redirects to Bing, 2026-10-16), 17 and older release; the floating alias is last; no SHA pin, the bootstrapper refreshes in-channel.
     $vsFloatingUrl = 'https://aka.ms/vs/stable/vs_buildtools.exe'
@@ -106,6 +108,8 @@ try {
     }
     if (-not $vsDownloaded) { throw 'VS Build Tools bootstrapper unavailable from every candidate URL' }
     Write-Host ("VS Build Tools bootstrapper SHA256 (provenance): {0}" -f (Get-FileHash -Algorithm SHA256 -Path $installer).Hash)
+    }
+    Save-VsBootstrapper -Installer $installer
 
     $installerArgs = @(
         '--quiet',
@@ -177,7 +181,9 @@ try {
     }
 
     # The smoke test probes through the same resolver, so both accept the same Program Files roots.
-    $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $script:VsMajor
+    function Assert-VsInstallation {
+        param([string]$TempDir, [string]$VsMajor)
+    $vsBuildToolsRoot = Resolve-VsBuildToolsRoot -VsMajor $VsMajor
     if ($vsBuildToolsRoot) {
         Write-Host "VsDevCmd found ($vsBuildToolsRoot)."
 
@@ -221,6 +227,8 @@ try {
         Write-InstallerLogDump -TempDir $TempDir
         throw 'VS Build Tools not installed. Check dd_bootstrapper*.log and dd_setup_*.log under %TEMP%.'
     }
+    }
+    Assert-VsInstallation -TempDir $TempDir -VsMajor $script:VsMajor
 }
 finally {
     Get-Process -Name '*vs_installer*', '*vs_buildtools*', '*vs_setup*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue

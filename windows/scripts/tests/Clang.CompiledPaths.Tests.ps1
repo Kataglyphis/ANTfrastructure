@@ -14,6 +14,7 @@ function Get-Command { param($Name, $ErrorAction); [pscustomobject]@{ Source = '
 function Get-CompileCommandsDatabase { param($Context, $BuildRoot); $State.Db }
 function Get-ProjectCppFiles { param($WorkspacePath); $State.File }
 function Test-IsCxxModuleTranslationUnit { param($Content, $Pattern); $false }
+function Get-ClangTidyNonModuleFiles { param($Context, $TidyFiles, $ModuleImportPattern); $TidyFiles }
 function Write-BuildLog { param($Context, $Message) }
 function Invoke-BuildExternal { param($Context, $File, $Parameters); $State.Calls.Add(@{ File = $File; Arguments = $Parameters }) }
 '@

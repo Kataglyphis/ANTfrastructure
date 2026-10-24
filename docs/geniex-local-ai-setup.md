@@ -2037,6 +2037,11 @@ directory. Keep that companion when copying the script. `-ServerEnv` overrides
 are inherited by the hidden server process; parent variables retain their original
 absent, empty or configured state even if log setup or process startup fails.
 Readiness checks run after restoration and use the same paired stdout/stderr logs.
+Existing-listener checks, serve flags and endpoint reporting are separate steps. Fixtures
+verify that hidden launches keep their arguments and environment, and that the endpoint report
+shows only requested lanes while warning about a stale live model.
+The listener fixture also checks bind-address and GGUF/QAIRT mismatches before a busy lane is
+adopted.
 
 ## References
 

@@ -236,11 +236,6 @@ function Invoke-CodeQLRunPhase {
     return $succeeded
 }
 
-function Write-CodeQLMessages {
-    param([pscustomobject]$Context, [string[]]$Messages)
-    foreach ($message in $Messages) { Write-BuildLog -Context $Context -Message $message }
-}
-
 function Initialize-CodeQLDatabaseCluster {
     param([pscustomobject]$Run, [string]$InnerCommand, [bool]$CleanCodeQLDb)
 
@@ -251,7 +246,7 @@ function Initialize-CodeQLDatabaseCluster {
             Remove-Item -Recurse -Force $dbClusterDir
         } else {
             # A reused cluster keeps its original config because only database create reads it.
-            Write-CodeQLMessages -Context $Run.Context -Messages @(
+            Write-BuildLogMessages -Context $Run.Context -Messages @(
                 "Keeping existing CodeQL DB cluster (CleanCodeQLDb not set): $dbClusterDir",
                 'Skipping database creation and reusing existing CodeQL DB cluster (a code-scanning config applies only to a new one: -CleanCodeQLDb).'
             )
@@ -279,7 +274,7 @@ function Get-CodeQLAnalyzeArgs {
 function Invoke-CodeQLLanguageAnalysis {
     param([pscustomobject]$Run, [string]$DbClusterDir, [string]$ResultsDir, [string]$Language)
 
-    Write-CodeQLMessages -Context $Run.Context -Messages @('', '------------------------------------------------', ">>> Analyzing Language: $Language", '------------------------------------------------')
+    Write-BuildLogMessages -Context $Run.Context -Messages @('', '------------------------------------------------', ">>> Analyzing Language: $Language", '------------------------------------------------')
 
     $langDbDir = Join-Path $DbClusterDir $Language
     $sarifOutput = Join-Path $ResultsDir "$Language.sarif"

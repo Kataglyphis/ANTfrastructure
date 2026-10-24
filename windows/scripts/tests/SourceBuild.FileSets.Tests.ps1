@@ -69,6 +69,8 @@ Describe 'Shared source file-set operations' {
             '3rdparty/mlas/lib/mlasi.h' = '#define vmaxvq_f32(src) neon_fmaxv(src)'
         }
         Invoke-InTestDir -Files $files -Body { param($mainSrc)
+            . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Build-OpencvFromSource.ps1' `
+                -FunctionName 'Invoke-OpencvSoftfloatPatch', 'Invoke-OpencvMlasNeonPatch', 'Invoke-OpencvArmIntrinsicsPatches')
             $call = Get-TestScriptCommands -ScriptPath 'windows/scripts/build/Build-OpencvFromSource.ps1' -Name Invoke-SourceFilePatchSet
             $armBranch = Get-TestAstAncestor -Node $call -Type ([Management.Automation.Language.IfStatementAst]) -First
             $apply = & ([scriptblock]::Create($armBranch.Clauses[0].Item2.Extent.Text))
@@ -84,15 +86,15 @@ Describe 'Shared source file-set operations' {
     }
     It 'keeps the LiteRT-LM setter, quantization and GoogleTensor guard patterns at the real call sites' {
         $path = 'windows/scripts/build/Build-LitertLmFromSource.ps1'
-        $edits = @(Get-TestScriptCommands -ScriptPath $path -Name Edit-SourceFile)
+        $edits = @(Get-TestScriptCommands -ScriptPath $path -Name Edit-LitertLmSourceText)
         $cases = @(
-            @{ Variable = '$settingsUtils'; Input = "gpu_compilation_options.SetKernelBatchSize(`$bytes); runtime_options.SetDisableDelegateClustering(false);"; Marker = 'litert GpuOptions/RuntimeOptions setter absent on Windows'; Indent = '      '; Guards = 2
+            @{ Target = "'runtime\executor\llm_executor_settings_utils.cc'"; Input = "gpu_compilation_options.SetKernelBatchSize(`$bytes); runtime_options.SetDisableDelegateClustering(false);"; Marker = 'litert GpuOptions/RuntimeOptions setter absent on Windows'; Indent = '      '; Guards = 2
                 Parts = @('gpu_compilation_options.SetKernelBatchSize($bytes);', 'runtime_options.SetDisableDelegateClustering(false);') }
-            @{ Variable = '$npuExec'; Input = "if (tensor_expected->HasQuantization()) { q_params.zero_point = pq.zero_point; }`nif (logits_tensor.HasQuantization()) { LOG << "").""; }"; Marker = 'litert::SimpleTensor quantization API absent on Windows (NPU off)'; Indent = ''; Guards = 2
+            @{ Target = "'runtime\executor\llm_litert_npu_compiled_model_executor.cc'"; Input = "if (tensor_expected->HasQuantization()) { q_params.zero_point = pq.zero_point; }`nif (logits_tensor.HasQuantization()) { LOG << "").""; }"; Marker = 'litert::SimpleTensor quantization API absent on Windows (NPU off)'; Indent = ''; Guards = 2
                 Parts = @('if (tensor_expected->HasQuantization()) { q_params.zero_point = pq.zero_point; }', 'if (logits_tensor.HasQuantization()) { LOG << ")."; }') }
         )
         foreach ($case in $cases) {
-            $call = @($edits | Where-Object { (Get-TestCommandArguments -Command $_).Path -eq $case.Variable })
+            $call = @($edits | Where-Object { (Get-TestCommandArguments -Command $_).Target -eq $case.Target })
             Assert-Equal 1 $call.Count
             $transform = (Get-TestCommandArguments -Command $call[0] -AsAst).Transform.ScriptBlock.GetScriptBlock()
             $rendered = & $transform $case.Input
@@ -105,12 +107,7 @@ Describe 'Shared source file-set operations' {
         $guards = @(Get-TestScriptCommandBlock -ScriptPath $path -Name Add-SourceRegexGuard -ExpectedCount 3)
         $google = & $guards[2]
         Assert-Equal ("#if !defined(_WIN32)  // [LiteRTLM-winfix google_tensor] GoogleTensorOptions perf-mode API absent on Windows`n      " + $gtRaw + "`n#endif") $google
-        $link = $edits | Where-Object { (Get-TestCommandArguments -Command $_).Path -eq '$litertLmPkg' }
-        $linkTransform = (Get-TestCommandArguments -Command $link -AsAst).Transform.ScriptBlock.GetScriptBlock()
-        $cmake = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")' + "`n  if(APPLE)`n" + 'elseif(MSVC)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")'
-        $expected = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch' + "`n  if(APPLE)`n" + 'elseif(MSVC OR WIN32)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")'
-        Assert-Equal $expected (& $linkTransform $cmake) 'link-spec passes retain capture whitespace and literal flag forwarding'
-        $link = $edits | Where-Object { (Get-TestCommandArguments -Command $_).Path -eq '$litertLmPkg' }
+        $link = $edits | Where-Object { (Get-TestCommandArguments -Command $_).Target -eq "'cmake\packages\litert_lm\CMakeLists.txt'" }
         $linkTransform = (Get-TestCommandArguments -Command $link -AsAst).Transform.ScriptBlock.GetScriptBlock()
         $cmake = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")' + "`n  if(APPLE)`n" + 'elseif(MSVC)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "/WHOLEARCHIVE")'
         $expected = 'if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT WIN32)  # [LiteRTLM-winfix link-spec] lld-link ignores GNU --whole-archive/--start-group; route Windows to the MSVC branch' + "`n  if(APPLE)`n" + 'elseif(MSVC OR WIN32)  # Windows Linker' + "`n" + 'set(_LITERTLM_LINK_MULTIDEF "-Wl,/FORCE:MULTIPLE") set(_LITERTLM_LINK_WHOLE_START "-Wl,/WHOLEARCHIVE")'
@@ -120,7 +117,7 @@ Describe 'Shared source file-set operations' {
     It 'keeps the TVM core module query recursive, file-only and exactly one' {
         Invoke-InTestDir -Files @{ 'nested/core.cp987-win_arm64.pyd' = 'module'; 'ignore.txt' = 'decoy' } -Body { param($BuildDir)
             $null = New-Item -ItemType Directory -Path (Join-Path $BuildDir core-decoy.pyd)
-            $query = Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-TvmFromSource.ps1' -Name Get-RequiredBuildArtifact
+            $query = Get-TestScriptCommandBlock -ScriptPath 'windows/scripts/build/Build-TvmFromSource.ps1' -Name Get-UniqueBuildArtifact
             $one = @(& $query)
             Assert-Equal 1 $one.Count
             Assert-Equal 'core.cp987-win_arm64.pyd' $one[0].Name
@@ -151,6 +148,26 @@ Describe 'Shared source file-set operations' {
                 DescriptionPattern = [regex]::Escape($mapPolicy.Description)
                 Operation = { param($SourceDir) & $convert }
             }
+        }
+    }
+
+    It 'applies LiteRT-LM literal and regex source replacements once through the shared patch writer' {
+        . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/build/Build-LitertLmFromSource.ps1' `
+            -FunctionName 'Edit-LitertLmSourceText', 'Edit-LitertLmSourceReplacement')
+        Invoke-InTestDir -Files @{
+            'cmake/pin.cmake' = "GIT_TAG`n  20260107.1"
+            'cmake/tool.cmake' = 'set(OLD_TOOL ON)'
+        } -Body { param($dir)
+            $regexArgs = @{ SourceDir = $dir; Target = 'cmake/pin.cmake'; Marker = '20260817.0'; Regex = $true
+                Find = '(GIT_TAG\s*\r?\n\s*)20260107\.1'; Replacement = '${1}20260817.0' }
+            Assert-True (Edit-LitertLmSourceReplacement @regexArgs) 'the pinned version changes'
+            Assert-Equal "GIT_TAG`n  20260817.0" ([IO.File]::ReadAllText((Join-Path $dir 'cmake/pin.cmake')))
+            Assert-False (Edit-LitertLmSourceReplacement @regexArgs) 'the marker prevents a second edit'
+            $literalArgs = @{ SourceDir = $dir; Target = 'cmake/tool.cmake'; Marker = 'NEW_TOOL'
+                Find = 'set(OLD_TOOL ON)'; Replacement = 'set(NEW_TOOL ON)' }
+            Assert-True (Edit-LitertLmSourceReplacement @literalArgs) 'the literal source edit changes'
+            Assert-Equal 'set(NEW_TOOL ON)' ([IO.File]::ReadAllText((Join-Path $dir 'cmake/tool.cmake')))
+            Assert-False (Edit-LitertLmSourceReplacement @literalArgs) 'the literal edit is idempotent'
         }
     }
 

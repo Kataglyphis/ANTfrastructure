@@ -7,16 +7,35 @@
 $script:TorchAppScript = 'windows\scripts\build\Build-TorchApp.ps1'
 $script:TorchAppPath = if ([System.IO.Path]::IsPathRooted($script:TorchAppScript)) { $script:TorchAppScript } else { Join-Path (Get-RepoRoot) $script:TorchAppScript }
 $script:LinuxCensus = Join-Path (Get-RepoRoot) 'linux\scripts\03-media\runtime\ort-venv-census.py'
+$script:OrtCensusPath = $script:LinuxCensus
 
-Describe 'Build-TorchApp.ps1: the embedded census is ort-venv-census.py' {
+function Get-TorchAppFunctionIndex {
+    param([Parameter(Mandatory)]$Ast)
+    $functions = @{}
+    foreach ($definition in $Ast.EndBlock.Statements) {
+        if ($definition -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $functions[$definition.Name] = $definition }
+    }
+    return $functions
+}
+
+Describe 'Build-TorchApp.ps1: the staged census is ort-venv-census.py' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:TorchAppPath -FunctionName 'Get-TorchAppOrtCensusSource')
 
-    It 'embeds the Linux lane''s census verbatim (mutation)' {
-        $linux = [System.IO.File]::ReadAllText($script:LinuxCensus).Replace("`r`n", "`n").TrimEnd("`n")
-        $embedded = (Get-TorchAppOrtCensusSource).Replace("`r`n", "`n").TrimEnd("`n")
-        Assert-True ($linux.Length -gt 1000) 'the Linux census was read'
-        Assert-True ($embedded -ceq $linux) 'Build-TorchApp.ps1 embeds a different census; copy linux/scripts/03-media/runtime/ort-venv-census.py into Get-TorchAppOrtCensusSource'
-        Assert-False ($embedded -match "(?m)^'@") 'no line of the census can close the here-string'
+    It 'stages the shared file beside the script and reads those exact bytes (mutation)' {
+        $dockerfile = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.torch'))
+        $script = [IO.File]::ReadAllText($script:TorchAppPath)
+        Assert-Match 'COPY linux\\scripts\\03-media\\runtime\\ort-venv-census\.py C:\\temp\\scripts\\' $dockerfile 'the app image carries the shared source'
+        Assert-Match "Join-Path \`$PSScriptRoot 'ort-venv-census\.py'" $script 'the script reads its staged companion'
+        Invoke-InTestDir { param($dir)
+            $source = Join-Path $dir 'ort-venv-census.py'
+            Copy-Item -LiteralPath $script:LinuxCensus -Destination $source
+            $script:OrtCensusPath = $source
+            try {
+                Assert-Equal ([IO.File]::ReadAllText($script:LinuxCensus)) (Get-TorchAppOrtCensusSource) 'the same source bytes reach Windows'
+                [IO.File]::WriteAllText($source, 'changed')
+                Assert-Equal 'changed' (Get-TorchAppOrtCensusSource) 'a changed companion changes the source'
+            } finally { $script:OrtCensusPath = $script:LinuxCensus }
+        }
     }
 }
 
@@ -220,10 +239,7 @@ Describe 'Build-TorchApp.ps1: uv sync leaves ai-edge-litert out when the chain h
 
 Describe 'Build-TorchApp.ps1: the census gates install and verify' {
     $script:TorchAppAst = Get-TestScriptAst -ScriptPath $script:TorchAppPath
-    $script:TorchAppFns = @{}
-    foreach ($def in $script:TorchAppAst.EndBlock.Statements) {
-        if ($def -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $script:TorchAppFns[$def.Name] = $def }
-    }
+    $script:TorchAppFns = Get-TorchAppFunctionIndex -Ast $script:TorchAppAst
     # Every call of $Command inside function $In whose text matches $Like, in source order.
     function Find-TorchAppCall([string]$In, [string]$Command, [string]$Like = '') {
         Get-TestAstCommands -Ast $script:TorchAppFns[$In].Body -Name $Command | Where-Object { $_.Extent.Text -match $Like }

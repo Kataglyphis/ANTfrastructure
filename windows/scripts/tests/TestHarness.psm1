@@ -5,6 +5,7 @@
 
 Set-StrictMode -Version Latest
 Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsAst.Common.psm1') -ErrorAction Stop
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 $script:Results = New-Object System.Collections.ArrayList
 $script:CurrentGroup = ''
@@ -73,6 +74,15 @@ function Assert-Match {
     param([string]$Pattern, $Actual, [string]$Message = '')
     if ("$Actual" -notmatch $Pattern) { throw "Assert-Match: [$Actual] does not match /$Pattern/. $Message" }
 }
+
+function Assert-TestSingleFindingCases {
+    param([Parameter(Mandatory)][object[]]$Cases, [Parameter(Mandatory)][scriptblock]$Exercise, [string]$Message = 'finding')
+    foreach ($case in $Cases) {
+        $findings = @(& $Exercise $case)
+        Assert-Equal 1 $findings.Count "${Message} case /$($case.P)/: $($findings -join ' | ')"
+        Assert-Match $case.P $findings[0] "${Message} case"
+    }
+}
 function Assert-Throws {
     # -MessagePattern pins which failure fired, not just that something threw.
     param(
@@ -113,8 +123,7 @@ function Remove-TestDir {
 
 function New-TestDir {
     param([string]$Prefix = 'wbt-', [Collections.IDictionary]$Files)
-    $d = Join-Path ([System.IO.Path]::GetTempPath()) ($Prefix + [guid]::NewGuid().ToString('N'))
-    $null = New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop
+    $d = New-TemporaryDirectory -Prefix $Prefix
     try {
         if ($null -ne $Files) { Write-TestFileTree -Root $d -Files $Files }
         return $d
@@ -204,6 +213,34 @@ function Get-TestDockerfileStages {
     return [pscustomobject]@{ Global = @($global); Stages = @($stages); ByName = $byName }
 }
 
+function Get-TestDockerfileStagesFromPath {
+    param([Parameter(Mandatory)][string]$Path, [switch]$JoinContinuations, [switch]$IgnoreComments,
+        [switch]$TrimLines, [switch]$StrictFromHeader)
+    Get-TestDockerfileStages -Text ([IO.File]::ReadAllText($Path)) -JoinContinuations:$JoinContinuations `
+        -IgnoreComments:$IgnoreComments -TrimLines:$TrimLines -StrictFromHeader:$StrictFromHeader
+}
+
+function Get-TestDockerfileStageFacts {
+    param([Parameter(Mandatory)][string]$Path)
+    $parsed = Get-TestDockerfileStagesFromPath -Path $Path -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
+    $facts = @{}
+    foreach ($name in $parsed.ByName.Keys) {
+        $stage = $parsed.ByName[$name]
+        $record = @{ Parent = $stage.From; Args = @(); EnvMirrored = @(); MountedModules = @() }
+        foreach ($line in $stage.Lines) {
+            if ($line -match '^ARG\s+([A-Za-z_][A-Za-z0-9_]*)') { $record.Args += $Matches[1] }
+            if ($line -match '^ENV\s') {
+                $record.EnvMirrored += @([regex]::Matches($line, '([A-Za-z_][A-Za-z0-9_]*)="\$\{\1\}"') | ForEach-Object { $_.Groups[1].Value })
+            }
+            if ($line -match '^COPY\s' -and $line -match 'bkmods') {
+                $record.MountedModules += @([regex]::Matches($line, '(?i)modules[\\/]([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
+            }
+        }
+        $facts[$name] = $record
+    }
+    return $facts
+}
+
 function Invoke-InTestScriptDir {
     param([Parameter(Mandatory)][string]$ScriptPath, [Parameter(Mandatory)][scriptblock]$Body)
     $source = Get-TestScriptAst -ScriptPath $ScriptPath
@@ -213,7 +250,7 @@ function Invoke-InTestScriptDir {
 
 Export-ModuleMember -Function Invoke-InTestScriptDir
 
-Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree, Get-TestJsonFile, Get-TestDockerfileStages
+Export-ModuleMember -Function Get-TestFileTreeEntry, Write-TestFileTree, Get-TestJsonFile, Get-TestDockerfileStages, Get-TestDockerfileStagesFromPath, Get-TestDockerfileStageFacts
 
 function New-TestBatchTool {
     param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Name,
@@ -747,7 +784,7 @@ function Invoke-TestFunctionMutations {
     Invoke-TestMutationCases -ModuleArguments $ModuleArguments -Case $Case -ExerciseBody $exerciseBody -AssertThrows $assertThrows -IncludeControl:$IncludeControl
 }
 
-Export-ModuleMember -Function Invoke-TestFunctionMutations
+Export-ModuleMember -Function Invoke-TestFunctionMutations, Assert-TestSingleFindingCases
 
 function Start-LoopbackListener {
     # A started TcpListener on a free loopback port; after Stop() nothing answers on that port.

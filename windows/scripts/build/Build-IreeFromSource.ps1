@@ -152,6 +152,252 @@ function Invoke-IreeFreeThreadedTwin {
     Remove-Item -LiteralPath $VenvDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+function Install-IreeSourcePatches {
+    param([string]$SourceDir)
+
+    # Upstream adds the x64 MASM trampoline whenever the arch ID MATCHES 64, which "ARM64" does; unconditional, a no-op on amd64.
+    $ireeElfCmake = Join-Path $SourceDir 'runtime\src\iree\hal\local\elf\CMakeLists.txt'
+    if (Test-Path $ireeElfCmake) {
+        [void](Invoke-InlineRegexPatch -Path $ireeElfCmake `
+                -SkipIfMatch 'MSVC_C_ARCHITECTURE_ID MATCHES "\^\(x64' `
+                -Pattern 'MSVC_C_ARCHITECTURE_ID MATCHES 64 OR MSVC_CXX_ARCHITECTURE_ID MATCHES 64' `
+                -Replacement 'MSVC_C_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$" OR MSVC_CXX_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$"' `
+                -AssertGone 'MATCHES 64' `
+                -Description 'IREE elf loader: x86_64_msvc.obj only for x64 targets (ARM64 matched "64")')
+        # A literal ml64 becomes llvm-ml; -m64 is load-bearing, as llvm-ml defaults to i386 and rejects the .seh_* directives.
+        if (-not (Invoke-InlineRegexPatch -Path $ireeElfCmake `
+                    -SkipIfMatch 'IREE_MASM_COMPILER' `
+                    -Pattern 'COMMAND ml64 ' `
+                    -Replacement 'COMMAND ${IREE_MASM_COMPILER} -m64 ' `
+                    -AssertGone 'COMMAND ml64 ' `
+                    -Description 'IREE elf loader: x86_64_msvc.asm assembled by ${IREE_MASM_COMPILER} (llvm-ml) instead of a literal ml64 (#123)')) {
+            if (-not (Select-String -Path $ireeElfCmake -Pattern 'IREE_MASM_COMPILER' -Quiet)) {
+                throw "IREE elf CMakeLists: neither the literal ml64 command nor the IREE_MASM_COMPILER form is present -- upstream layout changed (#123); check $ireeElfCmake"
+            }
+        }
+    }
+    # Throws when absent rather than fall back to ml64; forward slashes for CMake's string expansion.
+    $ireeMasm = Resolve-LlvmMasm
+    if (-not $ireeMasm) { throw 'llvm-ml not found on PATH -- the pinned LLVM ships it (bin\llvm-ml.exe); IREE''s x86_64 ELF trampoline would fall back to ml64 (#123)' }
+    $ireeMasm = $ireeMasm -replace '\\', '/'
+
+    # A C99 `inline` definition emits no symbol, yet this ukernel is used by address; -fgnu89-inline did not help under clang-cl.
+    $ireeI8mm = Join-Path $SourceDir 'runtime\src\iree\builtins\ukernel\arch\arm_64\mmt4d_arm_64_i8mm.c'
+    [void](Invoke-InlineRegexPatch -IfPresent -Path $ireeI8mm `
+            -SkipIfMatch '(?m)^void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+            -Pattern 'IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void(\s*\r?\n)iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+            -Replacement 'void$1iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(' `
+            -AssertGone 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
+            -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition (C99 inline emitted no symbol)')
+
+    # v3.12.0's VM ISA genrules run a bare `python3`, which no Windows image has (measured 2026-10-07); the configured Python runs them.
+    $ireeIsa = Join-Path $SourceDir 'runtime\src\iree\vm\bytecode\isa\CMakeLists.txt'
+    [void](Invoke-InlineRegexPatch -IfPresent -Path $ireeIsa -SkipIfMatch 'Python3_EXECUTABLE' -Pattern '"python3 \$\(rootpath' `
+            -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
+            -Description 'IREE VM ISA genrules: the configured Python3_EXECUTABLE, not a bare python3')
+
+    return $ireeMasm
+}
+
+function Get-IreePythonBuildPlan {
+    param([bool]$Cross, [bool]$SkipPython, [hashtable]$BuildPython)
+
+    $pythonBindings = 'OFF'
+    # Cross builds iree.runtime with the host interpreter against the target python314.lib; staged and PE-checked, never imported.
+    $ireeTargetPy = $null
+    $ireeNumpyInc = ''
+    if ($Cross -and -not $SkipPython) {
+        $ireeTargetPy = Get-TargetBuildPython
+        if ($ireeTargetPy.Available) {
+            $pythonBindings = 'ON'
+            Install-CpythonPip -Python $BuildPython
+            Initialize-PythonPlatformTag | Out-Null   # EXT_SUFFIX -> target tag for the .pyd name
+            Install-CpythonPipPin -Python $BuildPython -Name wheel, setuptools, numpy
+            $ireeNumpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($BuildPython.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
+            if (-not $ireeNumpyInc -or -not (Test-Path (Join-Path $ireeNumpyInc 'numpy\arrayobject.h'))) {
+                throw "IREE: numpy include dir not usable ('$ireeNumpyInc') -- numpy must be importable by the build interpreter $($BuildPython.Exe) before configure"
+            }
+            Write-Host "IREE cross: RUNTIME build + iree.runtime python bindings for the target (#133) -- host interpreter $($BuildPython.Exe), TARGET import lib $($ireeTargetPy.Lib); compiler + iree.compiler stay ABSENT"
+        } else {
+            Write-Host "IREE cross: RUNTIME-ONLY build, python OFF -- no target CPython import lib at $($ireeTargetPy.Lib) (Build-TargetCpython.ps1 did not run?)"
+        }
+    } elseif ($Cross) {
+        Write-Host 'IREE cross: RUNTIME-ONLY build (compiler OFF, python OFF by -SkipPython); host tools first, then the target runtime via IREE_HOST_BIN_DIR (#116)'
+    } elseif (-not $SkipPython) {
+        # Bindings are expected here: only -SkipPython may turn them off, never a missing interpreter.
+        if (-not (Test-Path $BuildPython.Exe)) {
+            throw "IREE python bindings expected but source-built CPython is missing at $($BuildPython.Exe) (toolchain layer incomplete? pass -SkipPython for a deliberate no-python build)"
+        }
+        $pythonBindings = 'ON'
+        Install-CpythonPip -Python $BuildPython
+        # numpy: required by the runtime bindings at import; nanobind is vendored.
+        Install-CpythonPipPin -Python $BuildPython -Name wheel, setuptools, numpy
+    }
+    return [pscustomobject]@{ Bindings = $pythonBindings; TargetPython = $ireeTargetPy; NumpyInclude = $ireeNumpyInc }
+}
+
+function Install-IreeHostTools {
+    param([bool]$Cross, [string]$SourceDir, [string]$BuildType, [string]$EhscInclude, [string]$Masm)
+
+    if ($Cross) {
+        # Phase A: host tools, a native runtime-only configure of the same tree (upstream's cross recipe).
+        $hostBuildDir   = Join-Path $SourceDir 'build-host'
+        $hostInstallDir = Join-Path $hostBuildDir 'install'
+        Write-Host 'IREE cross: building HOST tools (native x64, runtime-only) for IREE_HOST_BIN_DIR...'
+        $hostArgs = @(
+            "-DCMAKE_BUILD_TYPE=$BuildType"
+            "-DCMAKE_PROJECT_INCLUDE=$EhscInclude"
+            '-DIREE_BUILD_COMPILER=OFF', '-DIREE_BUILD_TESTS=OFF', '-DIREE_BUILD_SAMPLES=OFF'
+            '-DIREE_BUILD_PYTHON_BINDINGS=OFF', '-DLLVM_ENABLE_DIA_SDK=OFF'
+        )
+        $hostArgs += Get-LlvmArchiverCmakeArg
+        $hostArgs += Get-IreeCompilerRtCmakeArgs -Arch (Get-WindowsHostArch)
+        # The host tools include the x86_64 ELF trampoline.
+        $hostArgs += "-DIREE_MASM_COMPILER=$Masm"
+        # The helper also swaps in the host's LIB/LIBPATH, or the first try-compile links the arm64 CRT.
+        $ireeHostBinDir = Invoke-HostToolCmakeBuild -SourceDir $SourceDir -BuildDir $hostBuildDir -InstallPrefix $hostInstallDir `
+            -ExtraArgs $hostArgs -Install -InstallConfig $BuildType -LogName 'iree-host-tools-build.log' -Label 'IREE host tools'
+        # The two tools the target build runs, under IREE 3.x's names; a missing one is layout drift, caught before ninja.
+        foreach ($tool in @('iree-flatcc-cli.exe', 'iree-c-embed-data.exe')) {
+            $toolPath = Join-Path $ireeHostBinDir $tool
+            if (-not (Test-Path $toolPath)) { throw "IREE cross: host tool $tool missing in $ireeHostBinDir after the host install (upstream install layout drift?)" }
+            # IREE names host tools without .exe and ninja wants that exact file; CreateProcess runs the twin fine.
+            Copy-Item -Path $toolPath -Destination (Join-Path $ireeHostBinDir ([IO.Path]::GetFileNameWithoutExtension($tool))) -Force
+        }
+        Write-Host "IREE cross: host tools ready at $ireeHostBinDir"
+    }
+    return $ireeHostBinDir
+}
+
+function Assert-IreeBuiltBinary {
+    param([string]$InstallDir, [bool]$Cross, [string]$PythonBindings, [bool]$Rocm)
+
+    # A real compile and run, not an existence check: on Server Core binaries can exist and still not run.
+    $ireeCompile = Join-Path $InstallDir 'bin\iree-compile.exe'
+    $ireeRun     = Join-Path $InstallDir 'bin\iree-run-module.exe'
+    # Cross lane: the compiler is OFF by design, so only the runtime tool is required.
+    $ireeRequiredTools = if ($Cross) { @($ireeRun) } else { @($ireeCompile, $ireeRun) }
+    foreach ($tool in $ireeRequiredTools) {
+        if (-not (Test-Path $tool)) { throw "IREE install incomplete: $tool missing" }
+    }
+    # One module for both gates; MLIR ignores whitespace, so the python gate embeds it on one line.
+    $gateMlir = @'
+func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
+  %result = math.absf %input : tensor<f32>
+  return %result : tensor<f32>
+}
+'@
+    if ($Cross) {
+        # Static gate: a leaked host tool or an empty install shows in the PE headers; the run proof is the arm64 job's.
+        $ireeBinCount = Assert-DirectoryTargetArch -Path (Join-Path $InstallDir 'bin') -Include @('*.exe', '*.dll') -MinCount 1 -Context 'IREE cross (a host tool leaked into the target install?)'
+        $absentComponent = if ($PythonBindings -eq 'ON') { 'iree-compile.exe and the iree.compiler python package' } else { 'iree-compile.exe and the iree.compiler / iree.runtime python packages' }
+        [void](Write-AbsentOnCrossMarker -Root $InstallDir -Component $absentComponent -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
+            'The compiler needs TARGET-arch LLVM libraries (an LLVM cross-built for aarch64-windows; backlog #116/#133) -- not attempted.',
+            $(if ($PythonBindings -eq 'ON') { 'The iree.runtime python package IS built for the target (#133) and staged as a win_arm64 wheel in C:\runtime\wheels; only iree.compiler is missing.' } else { 'The python packages were not built on this pass (no target CPython import lib or -SkipPython).' }),
+            'bin\ carries the runtime tools (iree-run-module & co.), lib\ the runtime libraries, include\ the headers.'
+        ))
+        Write-Host ('iree static gate OK (cross lane): {0} target binaries under bin\, all PE machine 0x{1:X4}; iree-compile + python ABSENT by design (#116)' -f $ireeBinCount, (Get-PeMachineType))
+    } else {
+    $mlirPath = Join-Path $env:TEMP 'iree-gate.mlir'
+    $vmfbPath = Join-Path $env:TEMP 'iree-gate.vmfb'
+    $gateMlir | Set-Content -Path $mlirPath -Encoding ascii
+    [void](Invoke-ShieldedNative -Label 'iree-compile gate' -CommandLine """$ireeCompile"" --iree-hal-target-backends=llvm-cpu ""$mlirPath"" -o ""$vmfbPath""")
+    $runOut = (Invoke-ShieldedNative -Label 'iree-run-module gate' -CommandLine """$ireeRun"" --module=""$vmfbPath"" --device=local-task --function=abs --input=f32=-5") | Out-String
+    if ($runOut -notmatch 'f32=5') { throw 'iree-run-module gate failed (abs(-5) != 5)' }
+    Write-Host 'iree native gate OK (llvm-cpu compile + local-task run, abs(-5)=5)'
+    if ($Rocm) {
+        # Compile and list only: no GPU in the build container. rocm-checks\IREE.ps1 re-checks the image.
+        $hipVmfb = Join-Path $env:TEMP 'iree-gate-hip.vmfb'
+        [void](Invoke-ShieldedNative -Label 'iree-compile rocm gate' -CommandLine """$ireeCompile"" --iree-hal-target-device=hip --iree-rocm-target=gfx1201 ""$mlirPath"" -o ""$hipVmfb""")
+        if (-not (Test-Path $hipVmfb) -or (Get-Item $hipVmfb).Length -eq 0) { throw 'iree rocm gate: iree-compile produced no gfx1201 vmfb' }
+        $driverList = (Invoke-ShieldedNative -Label 'iree-run-module --list_drivers' -CommandLine """$ireeRun"" --list_drivers") | Out-String
+        if ($driverList -notmatch '(?m)^\s*hip:') { throw 'iree rocm gate: the hip HAL driver is not compiled into iree-run-module' }
+        if (-not [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($ireeRun)).Contains('amdhip64_7.dll')) {
+            throw 'iree rocm gate: iree-run-module does not carry the amdhip64_7.dll name -- the dylib-name patch did not reach the build'
+        }
+        Write-Host 'iree rocm gate OK (hip->gfx1201 vmfb, hip driver listed, amdhip64_7.dll lookup compiled in)'
+        Remove-Item $hipVmfb -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item $mlirPath, $vmfbPath -Force -ErrorAction SilentlyContinue
+    }
+    return $gateMlir
+}
+
+function Invoke-IreePythonWheelStage {
+    param([string]$SourceDir, [string]$BuildDir, [hashtable]$Python, [string]$PythonBindings, [bool]$Cross, [bool]$Rocm, [string]$GateMlir)
+
+    # Wheels from the build tree's synthesized packages; --no-build-isolation reuses the ninja objects instead of rebuilding LLVM.
+    if ($PythonBindings -eq 'ON') {
+        Edit-IreeCleanEggInfo -BuildDir $BuildDir
+        if ($Cross) {
+            # Cross: only the runtime wheel, built and staged by -CrossStage (win_arm64 tag, PE check), never imported.
+            $pkgDir = Join-Path $BuildDir 'runtime'
+            if (-not (Test-Path (Join-Path $pkgDir 'setup.py'))) { throw "IREE python package dir missing setup.py: $pkgDir" }
+            Write-Host 'Building IREE runtime wheel for the target (cross lane; compiler package ABSENT by design)...'
+            Invoke-PythonWheelBuild -Python $Python -WorkingDir $pkgDir -Arguments 'setup.py bdist_wheel' -ModuleName 'iree.runtime' -NoDeps -CrossStage | Out-Null
+        } else {
+        foreach ($pkg in @(
+            @{ Dir = 'compiler'; Module = 'iree.compiler' },
+            @{ Dir = 'runtime';  Module = 'iree.runtime' }
+        )) {
+            $pkgDir = Join-Path $BuildDir $pkg.Dir
+            if (-not (Test-Path (Join-Path $pkgDir 'setup.py'))) {
+                throw "IREE python package dir missing setup.py: $pkgDir"
+            }
+            $wheelOut = Join-Path $SourceDir "dist-$($pkg.Dir)"
+            Write-Host "Building IREE $($pkg.Dir) wheel (reusing the ninja build tree)..."
+            Invoke-CpythonPip -Python $Python -Arguments @('wheel', $pkgDir, '--no-deps', '--no-build-isolation', '-w', $wheelOut)
+            Install-StagedPythonWheel -Python $Python -SourceDir $wheelOut -ModuleName $pkg.Module | Out-Null
+        }
+        }
+        # Native only: compile through the python compiler, run on the python runtime, proving the wheels interoperate.
+        if (-not $Cross) {
+        $pyGate = Join-Path $env:TEMP 'iree-py-gate.py'
+        @"
+import numpy as np
+import iree.compiler.tools as tools
+import iree.runtime as rt
+MLIR = '$($GateMlir -replace '\s+', ' ')'
+vmfb = tools.compile_str(MLIR, target_backends=["llvm-cpu"])
+module = rt.load_vm_flatbuffer(vmfb, driver="local-task")
+# tensor<f32> inputs must be numpy arrays -- a bare python float dies in the
+# VM marshaling layer with FAILED_PRECONDITION (list.c), spike round 10.
+value = float(module.abs(np.asarray(-5.0, dtype=np.float32)).to_host())
+assert value == 5.0, value
+print("iree python gate OK: abs(-5) =", value)
+"@ | Set-Content -Path $pyGate -Encoding ascii
+        if ($Rocm) {
+            # Appended, so the cpu/nvidia gate file stays byte-identical: the wheels carry hip + the rocm plugin.
+            Add-Content -Path $pyGate -Encoding ascii -Value @'
+drivers = sorted(rt.query_available_drivers())
+assert "hip" in drivers, drivers
+hip = tools.compile_str(MLIR, target_backends=["rocm"], extra_args=["--iree-rocm-target=gfx1201"])
+at = hip.find(b"\x7fELF")
+assert at >= 0 and int.from_bytes(hip[at + 18:at + 20], "little") == 224, "no AMDGPU code object in the rocm vmfb"
+print("iree python rocm gate OK: hip driver + gfx1201 code object")
+'@
+        }
+        [void](Invoke-ShieldedNative -Label 'IREE python end-to-end gate' -CommandLine """$($Python.Exe)"" ""$pyGate""")
+        Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+}
+
+function Get-IreeFreeThreadedTwinPackage {
+    param([string]$PythonBindings, [bool]$Cross)
+
+    return @(if ($PythonBindings -eq 'ON') {
+            foreach ($pkg in @(@{ Dir = 'compiler'; Dist = 'iree-base-compiler'; Module = 'iree.compiler' }, @{ Dir = 'runtime'; Dist = 'iree-base-runtime'; Module = 'iree.runtime' })) {
+                # Cross builds no compiler, so it has no compiler wheel to pair.
+                if ($Cross -and $pkg.Dir -eq 'compiler') { continue }
+                $plan = Get-FreeThreadedTwinPlan -Distribution $pkg.Dist
+                Write-Host $plan.Reason
+                if ($plan.Build) { $pkg }
+            }
+        })
+}
+
 $InstallDir = Initialize-SourceBuildScript -InstallDir $InstallDir -ScriptRoot $PSScriptRoot
 
 $IreeVersion = Get-SourceBuildVersion -Value $IreeVersion -EnvironmentVariables @('IREE_VERSION') -DefaultValue 'v3.12.0'
@@ -166,46 +412,7 @@ if (-not (Test-Path (Join-Path $SourceDir 'third_party\llvm-project\llvm\CMakeLi
     throw 'IREE submodules incomplete: third_party/llvm-project missing after clone'
 }
 
-# Upstream adds the x64 MASM trampoline whenever the arch ID MATCHES 64, which "ARM64" does; unconditional, a no-op on amd64.
-$ireeElfCmake = Join-Path $SourceDir 'runtime\src\iree\hal\local\elf\CMakeLists.txt'
-if (Test-Path $ireeElfCmake) {
-    [void](Invoke-InlineRegexPatch -Path $ireeElfCmake `
-            -SkipIfMatch 'MSVC_C_ARCHITECTURE_ID MATCHES "\^\(x64' `
-            -Pattern 'MSVC_C_ARCHITECTURE_ID MATCHES 64 OR MSVC_CXX_ARCHITECTURE_ID MATCHES 64' `
-            -Replacement 'MSVC_C_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$" OR MSVC_CXX_ARCHITECTURE_ID MATCHES "^(x64|X64|AMD64|x86_64)$"' `
-            -AssertGone 'MATCHES 64' `
-            -Description 'IREE elf loader: x86_64_msvc.obj only for x64 targets (ARM64 matched "64")')
-    # A literal ml64 becomes llvm-ml; -m64 is load-bearing, as llvm-ml defaults to i386 and rejects the .seh_* directives.
-    if (-not (Invoke-InlineRegexPatch -Path $ireeElfCmake `
-                -SkipIfMatch 'IREE_MASM_COMPILER' `
-                -Pattern 'COMMAND ml64 ' `
-                -Replacement 'COMMAND ${IREE_MASM_COMPILER} -m64 ' `
-                -AssertGone 'COMMAND ml64 ' `
-                -Description 'IREE elf loader: x86_64_msvc.asm assembled by ${IREE_MASM_COMPILER} (llvm-ml) instead of a literal ml64 (#123)')) {
-        if (-not (Select-String -Path $ireeElfCmake -Pattern 'IREE_MASM_COMPILER' -Quiet)) {
-            throw "IREE elf CMakeLists: neither the literal ml64 command nor the IREE_MASM_COMPILER form is present -- upstream layout changed (#123); check $ireeElfCmake"
-        }
-    }
-}
-# Throws when absent rather than fall back to ml64; forward slashes for CMake's string expansion.
-$ireeMasm = Resolve-LlvmMasm
-if (-not $ireeMasm) { throw 'llvm-ml not found on PATH -- the pinned LLVM ships it (bin\llvm-ml.exe); IREE''s x86_64 ELF trampoline would fall back to ml64 (#123)' }
-$ireeMasm = $ireeMasm -replace '\\', '/'
-
-# A C99 `inline` definition emits no symbol, yet this ukernel is used by address; -fgnu89-inline did not help under clang-cl.
-$ireeI8mm = Join-Path $SourceDir 'runtime\src\iree\builtins\ukernel\arch\arm_64\mmt4d_arm_64_i8mm.c'
-[void](Invoke-InlineRegexPatch -IfPresent -Path $ireeI8mm `
-        -SkipIfMatch '(?m)^void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
-        -Pattern 'IREE_UK_ATTRIBUTE_ALWAYS_INLINE inline void(\s*\r?\n)iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
-        -Replacement 'void$1iree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm(' `
-        -AssertGone 'ALWAYS_INLINE inline void\s*\r?\niree_uk_mmt4d_tile_s8s4s32_1x8x16_arm_64_i8mm\(' `
-        -Description 'IREE ukernel: s8s4s32 1x8x16 i8mm tile is used by address -- plain external definition (C99 inline emitted no symbol)')
-
-# v3.12.0's VM ISA genrules run a bare `python3`, which no Windows image has (measured 2026-10-07); the configured Python runs them.
-$ireeIsa = Join-Path $SourceDir 'runtime\src\iree\vm\bytecode\isa\CMakeLists.txt'
-[void](Invoke-InlineRegexPatch -IfPresent -Path $ireeIsa -SkipIfMatch 'Python3_EXECUTABLE' -Pattern '"python3 \$\(rootpath' `
-        -Replacement '"$${Python3_EXECUTABLE} $$(rootpath' -AssertGone '"python3 ' `
-        -Description 'IREE VM ISA genrules: the configured Python3_EXECUTABLE, not a bare python3')
+$ireeMasm = Install-IreeSourcePatches -SourceDir $SourceDir
 
 # Also copies pyconfig.h into Include\, where FindPython looks; in-tree CPython keeps it in PC\.
 $py = Initialize-ToolchainPythonEnvironment
@@ -215,37 +422,10 @@ $ireeInstallDir = Join-Path $InstallDir 'iree'
 
 # Cross is runtime-only: host tools build natively for IREE_HOST_BIN_DIR, and the compiler would need target-arch LLVM.
 $ireeCross = Test-WindowsCrossTarget
-$pythonBindings = 'OFF'
-# Cross builds iree.runtime with the host interpreter against the target python314.lib; staged and PE-checked, never imported.
-$ireeTargetPy = $null
-$ireeNumpyInc = ''
-if ($ireeCross -and -not $SkipPython) {
-    $ireeTargetPy = Get-TargetBuildPython
-    if ($ireeTargetPy.Available) {
-        $pythonBindings = 'ON'
-        Install-CpythonPip -Python $py
-        Initialize-PythonPlatformTag | Out-Null   # EXT_SUFFIX -> target tag for the .pyd name
-        Install-CpythonPipPin -Python $py -Name wheel, setuptools, numpy
-        $ireeNumpyInc = (Invoke-ShieldedNative -Label 'numpy include probe' -CommandLine """$($py.Exe)"" -c ""import numpy; print(numpy.get_include())""" | Select-Object -Last 1)
-        if (-not $ireeNumpyInc -or -not (Test-Path (Join-Path $ireeNumpyInc 'numpy\arrayobject.h'))) {
-            throw "IREE: numpy include dir not usable ('$ireeNumpyInc') -- numpy must be importable by the build interpreter $($py.Exe) before configure"
-        }
-        Write-Host "IREE cross: RUNTIME build + iree.runtime python bindings for the target (#133) -- host interpreter $($py.Exe), TARGET import lib $($ireeTargetPy.Lib); compiler + iree.compiler stay ABSENT"
-    } else {
-        Write-Host "IREE cross: RUNTIME-ONLY build, python OFF -- no target CPython import lib at $($ireeTargetPy.Lib) (Build-TargetCpython.ps1 did not run?)"
-    }
-} elseif ($ireeCross) {
-    Write-Host 'IREE cross: RUNTIME-ONLY build (compiler OFF, python OFF by -SkipPython); host tools first, then the target runtime via IREE_HOST_BIN_DIR (#116)'
-} elseif (-not $SkipPython) {
-    # Bindings are expected here: only -SkipPython may turn them off, never a missing interpreter.
-    if (-not (Test-Path $py.Exe)) {
-        throw "IREE python bindings expected but source-built CPython is missing at $($py.Exe) (toolchain layer incomplete? pass -SkipPython for a deliberate no-python build)"
-    }
-    $pythonBindings = 'ON'
-    Install-CpythonPip -Python $py
-    # numpy: required by the runtime bindings at import; nanobind is vendored.
-    Install-CpythonPipPin -Python $py -Name wheel, setuptools, numpy
-}
+$ireePythonPlan = Get-IreePythonBuildPlan -Cross $ireeCross -SkipPython $SkipPython -BuildPython $py
+$pythonBindings = $ireePythonPlan.Bindings
+$ireeTargetPy = $ireePythonPlan.TargetPython
+$ireeNumpyInc = $ireePythonPlan.NumpyInclude
 
 # Neither the CUDA HAL driver (dlopens nvcuda.dll) nor the NVPTX target needs nvcc.
 $gpuEnv = Get-GpuEnvironment
@@ -260,34 +440,7 @@ if ($ireeRocm) {
 }
 
 $ireeEhscInclude = (Join-Path $scriptAssetRoot 'patches\iree\enable-ehsc.cmake') -replace '\\', '/'
-$ireeHostBinDir = $null
-if ($ireeCross) {
-    # Phase A: host tools, a native runtime-only configure of the same tree (upstream's cross recipe).
-    $hostBuildDir   = Join-Path $SourceDir 'build-host'
-    $hostInstallDir = Join-Path $hostBuildDir 'install'
-    Write-Host 'IREE cross: building HOST tools (native x64, runtime-only) for IREE_HOST_BIN_DIR...'
-    $hostArgs = @(
-        "-DCMAKE_BUILD_TYPE=$BuildType"
-        "-DCMAKE_PROJECT_INCLUDE=$ireeEhscInclude"
-        '-DIREE_BUILD_COMPILER=OFF', '-DIREE_BUILD_TESTS=OFF', '-DIREE_BUILD_SAMPLES=OFF'
-        '-DIREE_BUILD_PYTHON_BINDINGS=OFF', '-DLLVM_ENABLE_DIA_SDK=OFF'
-    )
-    $hostArgs += Get-LlvmArchiverCmakeArg
-    $hostArgs += Get-IreeCompilerRtCmakeArgs -Arch (Get-WindowsHostArch)
-    # The host tools include the x86_64 ELF trampoline.
-    $hostArgs += "-DIREE_MASM_COMPILER=$ireeMasm"
-    # The helper also swaps in the host's LIB/LIBPATH, or the first try-compile links the arm64 CRT.
-    $ireeHostBinDir = Invoke-HostToolCmakeBuild -SourceDir $SourceDir -BuildDir $hostBuildDir -InstallPrefix $hostInstallDir `
-        -ExtraArgs $hostArgs -Install -InstallConfig $BuildType -LogName 'iree-host-tools-build.log' -Label 'IREE host tools'
-    # The two tools the target build runs, under IREE 3.x's names; a missing one is layout drift, caught before ninja.
-    foreach ($tool in @('iree-flatcc-cli.exe', 'iree-c-embed-data.exe')) {
-        $toolPath = Join-Path $ireeHostBinDir $tool
-        if (-not (Test-Path $toolPath)) { throw "IREE cross: host tool $tool missing in $ireeHostBinDir after the host install (upstream install layout drift?)" }
-        # IREE names host tools without .exe and ninja wants that exact file; CreateProcess runs the twin fine.
-        Copy-Item -Path $toolPath -Destination (Join-Path $ireeHostBinDir ([IO.Path]::GetFileNameWithoutExtension($tool))) -Force
-    }
-    Write-Host "IREE cross: host tools ready at $ireeHostBinDir"
-}
+$ireeHostBinDir = Install-IreeHostTools -Cross $ireeCross -SourceDir $SourceDir -BuildType $BuildType -EhscInclude $ireeEhscInclude -Masm $ireeMasm
 
 $cmakeExtra = @(
     "-DCMAKE_BUILD_TYPE=$BuildType"
@@ -313,15 +466,8 @@ if ($pythonBindings -eq 'ON' -and $ireeCross) {
 $cmakeExtra += Get-LlvmArchiverCmakeArg
 $cmakeExtra += Get-IreeCompilerRtCmakeArgs -Arch (Get-WindowsTargetArch)
 # The cp3XYt twins re-configure this tree after the GIL wheels, so the GIL configure settles first (-Settle).
-$ireeTwins = @(if ($pythonBindings -eq 'ON') {
-        foreach ($pkg in @(@{ Dir = 'compiler'; Dist = 'iree-base-compiler'; Module = 'iree.compiler' }, @{ Dir = 'runtime'; Dist = 'iree-base-runtime'; Module = 'iree.runtime' })) {
-            # Cross builds no compiler, so it has no compiler wheel to pair.
-            if ($ireeCross -and $pkg.Dir -eq 'compiler') { continue }
-            $plan = Get-FreeThreadedTwinPlan -Distribution $pkg.Dist
-            Write-Host $plan.Reason
-            if ($plan.Build) { $pkg }
-        }
-    })
+$ireeTwins = @(Get-IreeFreeThreadedTwinPackage -PythonBindings $pythonBindings -Cross $ireeCross)
+
 # No QNN flags: IREE has no QNN backend; the QAIRT runtime staged below serves ORT's QNN EP.
 $qnnSdk = Resolve-QnnSdk -DropDir 'C:\temp\qnn-sdk' -ExpectedSha256 $env:QNN_SDK_ZIP_SHA256
 # Unused on cross, where the ARM64 branch never reaches the trampoline command.
@@ -342,110 +488,9 @@ Invoke-NinjaBuildWithRetry -BuildDir $buildDir -RetryJobs 1 -MemGBPerJob 2 -LogF
 # Hit-rate evidence on STDERR - survives the 2MiB step-log clip (backlog #3).
 Write-SccacheStatsToStderr -Advanced -RequireRemote
 
-# A real compile and run, not an existence check: on Server Core binaries can exist and still not run.
-$ireeCompile = Join-Path $ireeInstallDir 'bin\iree-compile.exe'
-$ireeRun     = Join-Path $ireeInstallDir 'bin\iree-run-module.exe'
-# Cross lane: the compiler is OFF by design, so only the runtime tool is required.
-$ireeRequiredTools = if ($ireeCross) { @($ireeRun) } else { @($ireeCompile, $ireeRun) }
-foreach ($tool in $ireeRequiredTools) {
-    if (-not (Test-Path $tool)) { throw "IREE install incomplete: $tool missing" }
-}
-# One module for both gates; MLIR ignores whitespace, so the python gate embeds it on one line.
-$gateMlir = @'
-func.func @abs(%input : tensor<f32>) -> (tensor<f32>) {
-  %result = math.absf %input : tensor<f32>
-  return %result : tensor<f32>
-}
-'@
-if ($ireeCross) {
-    # Static gate: a leaked host tool or an empty install shows in the PE headers; the run proof is the arm64 job's.
-    $ireeBinCount = Assert-DirectoryTargetArch -Path (Join-Path $ireeInstallDir 'bin') -Include @('*.exe', '*.dll') -MinCount 1 -Context 'IREE cross (a host tool leaked into the target install?)'
-    $absentComponent = if ($pythonBindings -eq 'ON') { 'iree-compile.exe and the iree.compiler python package' } else { 'iree-compile.exe and the iree.compiler / iree.runtime python packages' }
-    [void](Write-AbsentOnCrossMarker -Root $ireeInstallDir -Component $absentComponent -FileName 'COMPILER-ABSENT-ON-ARM64.txt' -Reason @(
-        'The compiler needs TARGET-arch LLVM libraries (an LLVM cross-built for aarch64-windows; backlog #116/#133) -- not attempted.',
-        $(if ($pythonBindings -eq 'ON') { 'The iree.runtime python package IS built for the target (#133) and staged as a win_arm64 wheel in C:\runtime\wheels; only iree.compiler is missing.' } else { 'The python packages were not built on this pass (no target CPython import lib or -SkipPython).' }),
-        'bin\ carries the runtime tools (iree-run-module & co.), lib\ the runtime libraries, include\ the headers.'
-    ))
-    Write-Host ('iree static gate OK (cross lane): {0} target binaries under bin\, all PE machine 0x{1:X4}; iree-compile + python ABSENT by design (#116)' -f $ireeBinCount, (Get-PeMachineType))
-} else {
-$mlirPath = Join-Path $env:TEMP 'iree-gate.mlir'
-$vmfbPath = Join-Path $env:TEMP 'iree-gate.vmfb'
-$gateMlir | Set-Content -Path $mlirPath -Encoding ascii
-[void](Invoke-ShieldedNative -Label 'iree-compile gate' -CommandLine """$ireeCompile"" --iree-hal-target-backends=llvm-cpu ""$mlirPath"" -o ""$vmfbPath""")
-$runOut = (Invoke-ShieldedNative -Label 'iree-run-module gate' -CommandLine """$ireeRun"" --module=""$vmfbPath"" --device=local-task --function=abs --input=f32=-5") | Out-String
-if ($runOut -notmatch 'f32=5') { throw 'iree-run-module gate failed (abs(-5) != 5)' }
-Write-Host 'iree native gate OK (llvm-cpu compile + local-task run, abs(-5)=5)'
-if ($ireeRocm) {
-    # Compile and list only: no GPU in the build container. rocm-checks\IREE.ps1 re-checks the image.
-    $hipVmfb = Join-Path $env:TEMP 'iree-gate-hip.vmfb'
-    [void](Invoke-ShieldedNative -Label 'iree-compile rocm gate' -CommandLine """$ireeCompile"" --iree-hal-target-device=hip --iree-rocm-target=gfx1201 ""$mlirPath"" -o ""$hipVmfb""")
-    if (-not (Test-Path $hipVmfb) -or (Get-Item $hipVmfb).Length -eq 0) { throw 'iree rocm gate: iree-compile produced no gfx1201 vmfb' }
-    $driverList = (Invoke-ShieldedNative -Label 'iree-run-module --list_drivers' -CommandLine """$ireeRun"" --list_drivers") | Out-String
-    if ($driverList -notmatch '(?m)^\s*hip:') { throw 'iree rocm gate: the hip HAL driver is not compiled into iree-run-module' }
-    if (-not [System.Text.Encoding]::Latin1.GetString([System.IO.File]::ReadAllBytes($ireeRun)).Contains('amdhip64_7.dll')) {
-        throw 'iree rocm gate: iree-run-module does not carry the amdhip64_7.dll name -- the dylib-name patch did not reach the build'
-    }
-    Write-Host 'iree rocm gate OK (hip->gfx1201 vmfb, hip driver listed, amdhip64_7.dll lookup compiled in)'
-    Remove-Item $hipVmfb -Force -ErrorAction SilentlyContinue
-}
-Remove-Item $mlirPath, $vmfbPath -Force -ErrorAction SilentlyContinue
-}
+$gateMlir = Assert-IreeBuiltBinary -InstallDir $ireeInstallDir -Cross $ireeCross -PythonBindings $pythonBindings -Rocm $ireeRocm
 
-# Wheels from the build tree's synthesized packages; --no-build-isolation reuses the ninja objects instead of rebuilding LLVM.
-if ($pythonBindings -eq 'ON') {
-    Edit-IreeCleanEggInfo -BuildDir $buildDir
-    if ($ireeCross) {
-        # Cross: only the runtime wheel, built and staged by -CrossStage (win_arm64 tag, PE check), never imported.
-        $pkgDir = Join-Path $buildDir 'runtime'
-        if (-not (Test-Path (Join-Path $pkgDir 'setup.py'))) { throw "IREE python package dir missing setup.py: $pkgDir" }
-        Write-Host 'Building IREE runtime wheel for the target (cross lane; compiler package ABSENT by design)...'
-        Invoke-PythonWheelBuild -Python $py -WorkingDir $pkgDir -Arguments 'setup.py bdist_wheel' -ModuleName 'iree.runtime' -NoDeps -CrossStage | Out-Null
-    } else {
-    foreach ($pkg in @(
-        @{ Dir = 'compiler'; Module = 'iree.compiler' },
-        @{ Dir = 'runtime';  Module = 'iree.runtime' }
-    )) {
-        $pkgDir = Join-Path $buildDir $pkg.Dir
-        if (-not (Test-Path (Join-Path $pkgDir 'setup.py'))) {
-            throw "IREE python package dir missing setup.py: $pkgDir"
-        }
-        $wheelOut = Join-Path $SourceDir "dist-$($pkg.Dir)"
-        Write-Host "Building IREE $($pkg.Dir) wheel (reusing the ninja build tree)..."
-        Invoke-CpythonPip -Python $py -Arguments @('wheel', $pkgDir, '--no-deps', '--no-build-isolation', '-w', $wheelOut)
-        Install-StagedPythonWheel -Python $py -SourceDir $wheelOut -ModuleName $pkg.Module | Out-Null
-    }
-    }
-    # Native only: compile through the python compiler, run on the python runtime, proving the wheels interoperate.
-    if (-not $ireeCross) {
-    $pyGate = Join-Path $env:TEMP 'iree-py-gate.py'
-    @"
-import numpy as np
-import iree.compiler.tools as tools
-import iree.runtime as rt
-MLIR = '$($gateMlir -replace '\s+', ' ')'
-vmfb = tools.compile_str(MLIR, target_backends=["llvm-cpu"])
-module = rt.load_vm_flatbuffer(vmfb, driver="local-task")
-# tensor<f32> inputs must be numpy arrays -- a bare python float dies in the
-# VM marshaling layer with FAILED_PRECONDITION (list.c), spike round 10.
-value = float(module.abs(np.asarray(-5.0, dtype=np.float32)).to_host())
-assert value == 5.0, value
-print("iree python gate OK: abs(-5) =", value)
-"@ | Set-Content -Path $pyGate -Encoding ascii
-    if ($ireeRocm) {
-        # Appended, so the cpu/nvidia gate file stays byte-identical: the wheels carry hip + the rocm plugin.
-        Add-Content -Path $pyGate -Encoding ascii -Value @'
-drivers = sorted(rt.query_available_drivers())
-assert "hip" in drivers, drivers
-hip = tools.compile_str(MLIR, target_backends=["rocm"], extra_args=["--iree-rocm-target=gfx1201"])
-at = hip.find(b"\x7fELF")
-assert at >= 0 and int.from_bytes(hip[at + 18:at + 20], "little") == 224, "no AMDGPU code object in the rocm vmfb"
-print("iree python rocm gate OK: hip driver + gfx1201 code object")
-'@
-    }
-    [void](Invoke-ShieldedNative -Label 'IREE python end-to-end gate' -CommandLine """$($py.Exe)"" ""$pyGate""")
-    Remove-Item $pyGate -Force -ErrorAction SilentlyContinue
-    }
-}
+Invoke-IreePythonWheelStage -SourceDir $SourceDir -BuildDir $buildDir -Python $py -PythonBindings $pythonBindings -Cross $ireeCross -Rocm $ireeRocm -GateMlir $gateMlir
 
 # After every GIL gate, since the twins rebuild this tree's python modules in place.
 if ($ireeTwins.Count -gt 0) {

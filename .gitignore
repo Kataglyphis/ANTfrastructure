@@ -2,6 +2,7 @@ docs/_build/*
 *.log
 logs/**/*
 out/**/*
+/out/complexity/
 __pycache__/
 *.pyc
 # resource-monitor.sh writes to the repo root when run without --log-dir.
@@ -85,3 +86,5 @@ linux/hailo-sdk/*
 .agentout/
 # The home network's real addresses (site.local.env.example names them); never published.
 /site.local.env
+
+.buildscripts-*

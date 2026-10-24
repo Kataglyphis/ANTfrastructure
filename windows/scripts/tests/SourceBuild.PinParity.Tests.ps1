@@ -123,6 +123,22 @@ function Assert-PinDefaultSites {
     Assert-True ($failures.Count -eq 0) ("${FailureLabel}:`n  " + ($failures -join "`n  "))
 }
 
+function Get-PinTwinSite {
+    param([object[]]$Sites, [string[]]$Scripts, [string]$Key, [string]$KeyProperty)
+    foreach ($site in $Sites) {
+        if ($Scripts -contains $site.Script -and @($site.$KeyProperty) -contains $Key) { $site }
+    }
+}
+
+function Assert-PinTwinLiterals {
+    param([object[]]$Sites, [string]$CountMessage, [string]$DisplayName, [scriptblock]$Check)
+    Assert-Equal 2 $Sites.Count $CountMessage
+    foreach ($site in $Sites) {
+        Assert-True $site.DefaultIsLiteral "$($site.Script):$($site.Line) $DisplayName default must be a string literal"
+        if ($Check) { & $Check $site }
+    }
+}
+
 Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' {
 
     function Get-PinParityPins { return (Get-CanonicalPins -Label 'PinParity') }
@@ -179,8 +195,8 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         $pins = Get-PinParityPins
         Assert-True ($pins.Count -gt 0) 'versions.env parsed to a non-empty table'
         $sites = @(Get-PinParitySite)
-        # 13 known version-pin sites + the VCPKG_ROOT allowlisted site = 14.
-        Assert-True ($sites.Count -ge 14) "expected at least 14 -DefaultValue sites, scanner found $($sites.Count) - scan broke or sites were removed; update this suite deliberately"
+        # 14 known version-pin sites + the VCPKG_ROOT allowlisted site = 15.
+        Assert-True ($sites.Count -ge 15) "expected at least 15 -DefaultValue sites, scanner found $($sites.Count) - scan broke or sites were removed; update this suite deliberately"
     }
 
     It 'still discovers every known (script, key) pin site - scanner-rot guard' {
@@ -195,6 +211,7 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
                 'Build-LitertFromSource.ps1|LITERT_VERSION',
                 'Export-LitertLmBridge.ps1|LITERT_VERSION',
                 'Build-LitertLmFromSource.ps1|LITERT_LM_VERSION',
+                'Build-LitertLmBazel.ps1|LITERT_LM_VERSION',
                 'Build-LitertLmFromSource.ps1|PROTOC_VERSION',
                 'Build-LitertLmFromSource.ps1|JRE_VERSION',
                 'Build-OpencvFromSource.ps1|OPENCV_VERSION',
@@ -233,14 +250,22 @@ Describe 'SourceBuild pin parity (W1): -DefaultValue fallbacks vs versions.env' 
         $pins = Get-PinParityPins
         Assert-True ($pins.Contains('LITERT_VERSION')) 'LITERT_VERSION is pinned in versions.env'
         $canonical = [string]$pins['LITERT_VERSION']
-        $twins = @(Get-PinParitySite | Where-Object {
-                ($_.Script -eq 'Build-LitertFromSource.ps1' -or $_.Script -eq 'Export-LitertLmBridge.ps1') -and
-                (@($_.EnvVars) -contains 'LITERT_VERSION') })
-        Assert-Equal 2 $twins.Count 'exactly the two twin LITERT_VERSION default sites exist (build script + export bridge)'
-        foreach ($s in $twins) {
-            Assert-True $s.DefaultIsLiteral "$($s.Script):$($s.Line) LiteRT default must be a string literal"
+        $twins = @(Get-PinTwinSite -Sites @(Get-PinParitySite) -Scripts 'Build-LitertFromSource.ps1', 'Export-LitertLmBridge.ps1' -Key LITERT_VERSION -KeyProperty EnvVars)
+        Assert-PinTwinLiterals -Sites $twins -DisplayName LiteRT -CountMessage 'exactly the two twin LITERT_VERSION default sites exist (build script + export bridge)' -Check { param($s)
             # Neither twin uses -StripVPrefix, so the default must carry the v prefix too.
             Assert-True ($s.Default -ceq $canonical) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env LITERT_VERSION=$canonical - the two LiteRT defaults must be bumped together"
+        }
+    }
+
+    # This static pin gate cannot prove the build driver forwards the environment variable at runtime.
+    It 'LiteRT-LM CMake and Bazel resolve the same environment pin and literal default' {
+        $pins = Get-PinParityPins
+        $canonical = [string]$pins['LITERT_LM_VERSION']
+        $twins = @(Get-PinTwinSite -Sites @(Get-PinParitySite) -Scripts 'Build-LitertLmFromSource.ps1', 'Build-LitertLmBazel.ps1' -Key LITERT_LM_VERSION -KeyProperty EnvVars)
+        Assert-PinTwinLiterals -Sites $twins -DisplayName LiteRT-LM -CountMessage 'exactly the two LiteRT-LM default sites exist' -Check { param($s)
+            Assert-True ((@($s.EnvVars) -join ',') -ceq 'LITERT_LM_VERSION') "$($s.Script):$($s.Line): unexpected environment pin order"
+            Assert-True ($s.Default -ceq $canonical) "$($s.Script):$($s.Line): default differs from versions.env LITERT_LM_VERSION=$canonical"
+            Assert-True (-not $s.StripV) "$($s.Script):$($s.Line): unexpected v-prefix stripping"
         }
     }
 }
@@ -308,6 +333,33 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
         return $null
     }
 
+    function Assert-RcivKnownDriftEntries {
+        param([object[]]$Entry, [object[]]$Sites, $Pins)
+        foreach ($record in $Entry) {
+            $id = "$($record.Script)|$($record.EnvVar)"
+            $hits = @($Sites | Where-Object { $_.Script -eq $record.Script -and $_.EnvVar -eq $record.EnvVar })
+            # Guard 1: the site must still exist -- otherwise the entry is stale.
+            Assert-True ($hits.Count -ge 1) "stale KnownDrift entry [$id]: call site no longer exists - remove it from `$script:KnownDriftAwaitingRebuildWindow"
+            foreach ($s in $hits) {
+                Assert-True $s.DefaultIsLiteral "$($s.Script):$($s.Line): KnownDrift site default must be a string literal, got ($($s.Default))"
+                $resolved = Resolve-RcivExpected -Site $s -Pins $Pins
+                Assert-NotNull $resolved "KnownDrift entry [$id]: $($record.EnvVar) is no longer a versions.env (or derived) pin - re-pin it or remove the entry"
+                $cmpExpected = $resolved.Expected
+                $cmpActual = $s.Default
+                if ($s.TrimV) {
+                    $cmpExpected = $cmpExpected.TrimStart('v')
+                    $cmpActual = $cmpActual.TrimStart('v')
+                }
+                # Guard 2: fixed drift must be delisted, or the entry would mask a future re-drift.
+                Assert-True ($cmpActual -cne $cmpExpected) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' now MATCHES versions.env $($resolved.Key)=$($resolved.Expected) - drift is FIXED: remove this entry from `$script:KnownDriftAwaitingRebuildWindow"
+                # Guard 3: a third value is new, untracked drift.
+                Assert-True ($s.Default -ceq $record.DriftedDefault) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' is neither the pin ($($resolved.Expected)) nor the recorded drifted value '$($record.DriftedDefault)' - NEW drift; fix the script or update the KnownDrift entry deliberately"
+                # The harness has no Set-ItResult -Pending; this yellow line is the pending marker.
+                Write-Host "  [pend] $($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $($resolved.Key)=$($resolved.Expected) - KNOWN drift awaiting the batched Windows rebuild window (backlog W1b); fix the script default in that window and delete the KnownDrift entry" -ForegroundColor Yellow
+            }
+        }
+    }
+
     It 'discovers a plausible number of Resolve-ContainerImageValue -DefaultValue sites' {
         $pins = Get-RcivPins
         Assert-True ($pins.Count -gt 0) 'versions.env parsed to a non-empty table'
@@ -354,40 +406,25 @@ Describe 'SourceBuild pin parity (W1b): Resolve-ContainerImageValue -DefaultValu
     It 'known drifted defaults (backlog W1b) are tracked as PENDING until the rebuild window - and must be delisted the moment they are fixed' {
         $pins = Get-RcivPins
         $sites = @(Get-RcivSite)
-        foreach ($entry in $script:KnownDriftAwaitingRebuildWindow) {
-            $id = "$($entry.Script)|$($entry.EnvVar)"
-            $hits = @($sites | Where-Object { $_.Script -eq $entry.Script -and $_.EnvVar -eq $entry.EnvVar })
-            # Guard 1: the site must still exist -- otherwise the entry is stale.
-            Assert-True ($hits.Count -ge 1) "stale KnownDrift entry [$id]: call site no longer exists - remove it from `$script:KnownDriftAwaitingRebuildWindow"
-            foreach ($s in $hits) {
-                Assert-True $s.DefaultIsLiteral "$($s.Script):$($s.Line): KnownDrift site default must be a string literal, got ($($s.Default))"
-                $resolved = Resolve-RcivExpected -Site $s -Pins $pins
-                Assert-NotNull $resolved "KnownDrift entry [$id]: $($entry.EnvVar) is no longer a versions.env (or derived) pin - re-pin it or remove the entry"
-                $cmpExpected = $resolved.Expected
-                $cmpActual = $s.Default
-                if ($s.TrimV) {
-                    $cmpExpected = $cmpExpected.TrimStart('v')
-                    $cmpActual = $cmpActual.TrimStart('v')
-                }
-                # Guard 2: fixed drift must be delisted, or the entry would mask a future re-drift.
-                Assert-True ($cmpActual -cne $cmpExpected) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' now MATCHES versions.env $($resolved.Key)=$($resolved.Expected) - drift is FIXED: remove this entry from `$script:KnownDriftAwaitingRebuildWindow"
-                # Guard 3: a third value is new, untracked drift.
-                Assert-True ($s.Default -ceq $entry.DriftedDefault) "$($s.Script):$($s.Line): -DefaultValue '$($s.Default)' is neither the pin ($($resolved.Expected)) nor the recorded drifted value '$($entry.DriftedDefault)' - NEW drift; fix the script or update the KnownDrift entry deliberately"
-                # The harness has no Set-ItResult -Pending; this yellow line is the pending marker.
-                Write-Host "  [pend] $($s.Script):$($s.Line): -DefaultValue '$($s.Default)' != versions.env $($resolved.Key)=$($resolved.Expected) - KNOWN drift awaiting the batched Windows rebuild window (backlog W1b); fix the script default in that window and delete the KnownDrift entry" -ForegroundColor Yellow
-            }
-        }
+        Assert-RcivKnownDriftEntries -Entry $script:KnownDriftAwaitingRebuildWindow -Sites $sites -Pins $pins
+    }
+
+    It 'rejects stale, fixed and changed known-drift records instead of silently treating them as pending' {
+        $entry = [pscustomobject]@{ Script = 'fixture.ps1'; EnvVar = 'PIN'; DriftedDefault = '0.9' }
+        $site = [pscustomobject]@{ Script = 'fixture.ps1'; Line = 1; EnvVar = 'PIN'; Default = '0.9'; DefaultIsLiteral = $true; TrimV = $false }
+        $pins = @{ PIN = '1.0' }
+        Assert-RcivKnownDriftEntries -Entry @($entry) -Sites @($site) -Pins $pins
+        Assert-Throws { Assert-RcivKnownDriftEntries -Entry @($entry) -Sites @() -Pins $pins } -MessagePattern 'stale KnownDrift entry'
+        $site.Default = '1.0'
+        Assert-Throws { Assert-RcivKnownDriftEntries -Entry @($entry) -Sites @($site) -Pins $pins } -MessagePattern 'now MATCHES versions.env'
+        $site.Default = '0.8'
+        Assert-Throws { Assert-RcivKnownDriftEntries -Entry @($entry) -Sites @($site) -Pins $pins } -MessagePattern 'neither the pin'
     }
 
     It 'WIX_UI_EXT_VERSION twin defaults (Install-ScoopTools.ps1 + Test-Toolchain.ps1) carry the SAME literal - install and verify gates must never disagree' {
         # Even when drifted they must agree, or a defaults-only build installs one version and fails its own toolchain gate.
-        $twins = @(Get-RcivSite | Where-Object {
-                ($_.Script -eq 'Install-ScoopTools.ps1' -or $_.Script -eq 'Test-Toolchain.ps1') -and
-                $_.EnvVar -eq 'WIX_UI_EXT_VERSION' })
-        Assert-Equal 2 $twins.Count 'exactly the two twin WIX_UI_EXT_VERSION default sites exist (install script + verify gate)'
-        foreach ($s in $twins) {
-            Assert-True $s.DefaultIsLiteral "$($s.Script):$($s.Line) WiX UI extension default must be a string literal"
-        }
+        $twins = @(Get-PinTwinSite -Sites @(Get-RcivSite) -Scripts 'Install-ScoopTools.ps1', 'Test-Toolchain.ps1' -Key WIX_UI_EXT_VERSION -KeyProperty EnvVar)
+        Assert-PinTwinLiterals -Sites $twins -DisplayName 'WiX UI extension' -CountMessage 'exactly the two twin WIX_UI_EXT_VERSION default sites exist (install script + verify gate)'
         Assert-True (@($twins)[0].Default -ceq @($twins)[1].Default) "WIX_UI_EXT_VERSION twin defaults disagree: $(@($twins)[0].Script):$(@($twins)[0].Line)='$(@($twins)[0].Default)' vs $(@($twins)[1].Script):$(@($twins)[1].Line)='$(@($twins)[1].Default)' - the two must be bumped together"
     }
 }
@@ -447,7 +484,6 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
             if ($pins.Contains($site.Key)) { $site.Key }
         } -Scanner 'env-else-literal' -Expected @(
                 'Build-FfmpegFromSource.ps1|NV_CODEC_HEADERS_REF',
-                'Build-LitertLmBazel.ps1|LITERT_LM_VERSION',
                 'Build-TorchApp.ps1|APP_REF',
                 'Build-GstreamerFromSource.ps1|LIBFFI_MESON_VERSION',
                 'Build-ToolchainAll.ps1|NUGET_VERSION',
@@ -458,6 +494,17 @@ Describe 'SourceBuild pin parity (W1c): if($env:KEY){...}else{<literal>} fallbac
 }
 
 Describe 'Pin parity shared validation contracts' {
+    It 'selects only the requested twin sites and rejects missing or nonliteral defaults' {
+        $first = [pscustomobject]@{ Script = 'first.ps1'; Line = 1; EnvVars = @('PIN'); DefaultIsLiteral = $true }
+        $second = [pscustomobject]@{ Script = 'second.ps1'; Line = 2; EnvVars = @('PIN'); DefaultIsLiteral = $true }
+        $other = [pscustomobject]@{ Script = 'other.ps1'; Line = 3; EnvVars = @('PIN'); DefaultIsLiteral = $true }
+        $twins = @(Get-PinTwinSite -Sites @($first, $second, $other) -Scripts 'first.ps1', 'second.ps1' -Key PIN -KeyProperty EnvVars)
+        Assert-Equal 'first.ps1,second.ps1' (($twins.Script) -join ',') 'selected sites'
+        Assert-Throws { Assert-PinTwinLiterals -Sites @($first) -CountMessage fixture -DisplayName twin } -MessagePattern 'expected \[2\] but got \[1\]'
+        $second.DefaultIsLiteral = $false
+        Assert-Throws { Assert-PinTwinLiterals -Sites @($first, $second) -CountMessage fixture -DisplayName twin } -MessagePattern 'second.ps1:2 twin default must be a string literal'
+    }
+
     It 'fails closed when a scanner omits a required known site' {
         $site = [pscustomobject]@{ Script = 'fixture.ps1'; Key = 'PIN' }
         Assert-Throws {

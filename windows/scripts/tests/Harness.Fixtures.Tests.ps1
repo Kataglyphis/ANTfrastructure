@@ -87,7 +87,7 @@ Describe 'Harness fixture lifecycle' {
 
     It 'propagates a directory allocation error before file initialization or a body can report success' {
         Invoke-WithFunctionModule -ScriptPath 'windows/scripts/tests/TestHarness.psm1' -FunctionName New-TestDir, Remove-TestDir -Prefix Allocation `
-            -Prelude 'function New-Item { param($ItemType, [switch]$Force, $Path, $ErrorAction); Write-Error "directory allocation sentinel" -ErrorAction $ErrorAction }' -Body {
+            -Prelude 'function New-TemporaryDirectory { throw "directory allocation sentinel" }' -Body {
                 Assert-Throws { New-AllocationTestDir } -MessagePattern 'directory allocation sentinel'
             }
     }
@@ -491,6 +491,13 @@ Describe 'Direct mutation inputs and required exceptions' {
 }
 
 Describe 'Harness exception assertions' {
+    It 'requires exactly one matching finding for every table case' {
+        Assert-TestSingleFindingCases -Cases @(@{ P = '^expected$' }) -Exercise { 'expected' }
+        Assert-Throws { Assert-TestSingleFindingCases -Cases @(@{ P = '^expected$' }) -Exercise { } } -MessagePattern 'expected \[1\] but got \[0\]'
+        Assert-Throws { Assert-TestSingleFindingCases -Cases @(@{ P = '^expected$' }) -Exercise { 'expected'; 'expected' } } -MessagePattern 'expected \[1\] but got \[2\]'
+        Assert-Throws { Assert-TestSingleFindingCases -Cases @(@{ P = '^expected$' }) -Exercise { 'other' } } -MessagePattern 'does not match'
+    }
+
     It 'requires an exception and matches its message without accepting a different error' {
         Assert-Throws { throw 'expected failure' } -MessagePattern '^expected failure$'
         Assert-Throws { Assert-Throws { } } -MessagePattern 'expected an exception but none was thrown'
@@ -553,17 +560,18 @@ Describe 'Recorded fixture state' {
 }
 
 Describe 'Harness fixture mutation proofs' {
-    $source = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'TestHarness.psm1'))
     It 'detects a directory allocator that ignores a suite prefix' {
-        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir, Remove-TestDir -Find '($Prefix +' -Replace "('wbt-' +" -Body {
-            $dir = New-MutTestDir -Prefix 'fixture mutation-'
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsScripts.Shared.psm1' -FunctionName New-TemporaryDirectory `
+            -Find '($Prefix +' -Replace "('wbt-' +" -Body {
+            $dir = New-MutTemporaryDirectory -Prefix 'fixture mutation-'
             try { Assert-Throws { Assert-Match '^fixture mutation-' (Split-Path $dir -Leaf) } -MessagePattern 'does not match' }
             finally { Remove-TestDir -Path $dir }
         }
     }
     It 'detects a directory allocator that returns an uncreated path' {
-        Invoke-WithFunctionModule -Text $source -FunctionName New-TestDir, Remove-TestDir -Find '$null = New-Item -ItemType Directory -Force -Path $d -ErrorAction Stop' -Replace '' -Body {
-            $dir = New-MutTestDir
+        Invoke-WithFunctionModule -ScriptPath 'windows/scripts/modules/WindowsScripts.Shared.psm1' -FunctionName New-TemporaryDirectory `
+            -Find '$null = New-Item -ItemType Directory -Force -Path $path -ErrorAction Stop' -Replace '' -Body {
+            $dir = New-MutTemporaryDirectory -Prefix 'fixture mutation-'
             Assert-Throws { Assert-True (Test-Path -LiteralPath $dir -PathType Container) } -MessagePattern 'Assert-True failed'
         }
     }

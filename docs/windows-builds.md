@@ -1648,10 +1648,10 @@ linkable, and a refusal condition or a trap gets its own paragraph, not a table 
 
 - **Chain components — `windows/scripts/build/`**: [`Build-OnnxFromSource.ps1`](#build-onnxfromsourceps1) · [`Build-OnnxGenaiFromSource.ps1`](#build-onnxgenaifromsourceps1) · [`Build-OpencvFromSource.ps1`](#build-opencvfromsourceps1) · [`Build-OpencvGstreamerPlugin.ps1`](#build-opencvgstreamerpluginps1) · [`Build-LitertFromSource.ps1`](#build-litertfromsourceps1) · [`Build-LitertLmBazel.ps1`](#build-litertlmbazelps1) · [`Build-LitertLmFromSource.ps1`](#build-litertlmfromsourceps1) · [`Copy-CudaRuntime.ps1`](#copy-cudaruntimeps1) · [`Build-TvmFromSource.ps1`](#build-tvmfromsourceps1) · [`Build-FfmpegFromSource.ps1`](#build-ffmpegfromsourceps1) · [`Build-GstreamerFromSource.ps1`](#build-gstreamerfromsourceps1) · [`Import-Versions.ps1`](#import-versionsps1) · [`Complete-Container.ps1`](#complete-containerps1) · [`Test-Toolchain.ps1`](#test-toolchainps1) · [`Test-Health.ps1`](#test-healthps1) · [`Test-Container.ps1`](#test-containerps1) · [`Set-TensorrtTree.ps1`](#set-tensorrttreeps1) · [`Copy-TensorrtRuntime.ps1`](#copy-tensorrtruntimeps1)
 - **Host setup and maintenance — `windows/scripts/host/`**: [`Install-Vs.ps1`](#install-vsps1) · [`Install-ScoopTools.ps1`](#install-scooptoolsps1) · [`Install-Vcpkg.ps1`](#install-vcpkgps1) · [`Install-RustToolchain.ps1`](#install-rusttoolchainps1) · [`Install-Cuda.ps1`](#install-cudaps1) · [`Install-Tensorrt.ps1`](#install-tensorrtps1) · [`Publish-ShimPatch.ps1`](#publish-shimpatchps1) · [`Install-NewHost.ps1`](#install-newhostps1) · [`Set-Rdna4Gpu.ps1`](#set-rdna4gpups1) · [`Get-HostDockerState.ps1`](#get-hostdockerstateps1) · [`Reset-ContainerStores.ps1`](#reset-containerstoresps1) · [`Sync-DefenderExclusions.ps1`](#sync-defenderexclusionsps1) · [`Repair-WindowsComponentstore.ps1`](#repair-windowscomponentstoreps1) · [`Test-HostSetup.ps1`](#test-hostsetupps1) · [`Set-ContainerdConfig.ps1`](#set-containerdconfigps1) · [`Optimize-HostVhdx.ps1`](#optimize-hostvhdxps1) · [`Initialize-Pwsh.ps1`](#initialize-pwshps1) · [`Update-HostVhdx.ps1`](#update-hostvhdxps1) · [`Clear-DiskSpace.ps1`](#clear-diskspaceps1)
-- **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`Test-BuildCopy.ps1`](#test-buildcopyps1) · [`Test-Rdna4LayerLock.ps1`](#test-rdna4layerlockps1) · [`Test-CudaCache.ps1`](#test-cudacacheps1) · [`Invoke-SccacheCudaLlmDeadlock.ps1`](#invoke-sccachecudallmdeadlockps1) · [`Test-GeniexNpuDriver.ps1`](#test-geniexnpudriverps1)
+- **Diagnostics and probes — `windows/scripts/diagnostics/`**: [`Measure-BuildWarnings.ps1`](#measure-buildwarningsps1) · [`Test-BuildCopy.ps1`](#test-buildcopyps1) · [`Find-LsmEventHolder.ps1`](#find-lsmeventholderps1) · [`Test-Rdna4LayerLock.ps1`](#test-rdna4layerlockps1) · [`Test-CudaCache.ps1`](#test-cudacacheps1) · [`Invoke-SccacheCudaLlmDeadlock.ps1`](#invoke-sccachecudallmdeadlockps1) · [`Test-GeniexNpuDriver.ps1`](#test-geniexnpudriverps1)
 - **Reusable modules — `windows/scripts/modules/`**: [`WindowsSourceBuild.Common.psm1`](#windowssourcebuildcommonpsm1) · [`WindowsSmokeTest.Common.psm1`](#windowssmoketestcommonpsm1) · [`WindowsGstPlugins.Common.psm1`](#windowsgstpluginscommonpsm1)
 - **Drivers and entry points**: [`Dockerfile.smoke-gate`](#dockerfilesmoke-gate) · [`Dockerfile.publish-gate`](#dockerfilepublish-gate) · [`patches/litert-lm/patch-assert.cmake`](#patcheslitert-lmpatch-assertcmake) · [`Test-SccacheWrite.ps1` + `Invoke-SccacheWriteProbe.ps1` + `Dockerfile.sccache-write-probe`](#test-sccachewriteps1--invoke-sccachewriteprobeps1--dockerfilesccache-write-probe) · [`Test-OpencvVideoBackends.ps1` + `Invoke-OpencvVideoProbe.ps1` + `Dockerfile.opencv-video-probe`](#test-opencvvideobackendsps1--invoke-opencvvideoprobeps1--dockerfileopencv-video-probe)
-- **No entry here yet** (counted 2026-09-25; the script's header comment is its reference until one is written): `build/` — `Build-HailortFromSource.ps1`, `Build-IreeFromSource.ps1`, `Build-LitertAll.ps1`, `Build-LlvmFromSource.ps1`, `Build-MediaCoreAll.ps1`, `Build-MediaTvmAll.ps1`, `Build-MigraphxFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps1`, `Build-ResourceSampler.ps1`, `Build-TargetCpython.ps1`, `Build-ToolchainAll.ps1`, `Build-TorchApp.ps1`, `Copy-TargetPythonDeps.ps1`, `Debug-LitertlmLink.ps1`, `Export-LitertLmBridge.ps1`, `Install-LlamaCpp.ps1`, `Install-TorchRocm.ps1`, `Test-RocmImage.ps1`, `Test-TargetArch.ps1`, `Write-BundleManifest.ps1`; `host/` — `Clear-SccacheMount.ps1`, `Disable-Sleep.ps1`, `Install-DufsService.ps1`, `Install-Rocm.ps1`, `Install-VulkanLoader.ps1`, `Invoke-BkMaterialize.ps1`, `Invoke-BkWarm.ps1`, `Reset-ContainerLocks.ps1`, `Set-BuildkitdGcpolicy.ps1`, `Set-ElevatedWindow.ps1`, `Start-GeniexServers.ps1`; `diagnostics/` — `Find-LsmEventHolder.ps1`, `Get-HostLsm.ps1`, `Get-LsmWaitObject.ps1`, `Get-LsmWaitstack.ps1`, `Get-SiloProcesses.ps1`, `Invoke-DiagnosticProbe.ps1`, `Invoke-LlvmAarch64Layout.ps1`, `Measure-WarningStream.ps1`, `Test-Arm64Prereqs.ps1`, `Test-GpuPassthrough.ps1`, `Test-LayerRename.ps1`, `Test-OnnxTuReplay.ps1`, `Test-OpencvCudaCmdshape.ps1`, `Test-ProcessIsolationCommit.ps1`. Several are described on the page that owns their topic ([`windows-cross-builds.md`](windows-cross-builds.md), [`windows-rocm.md`](windows-rocm.md), [`windows-build-lanes.md`](windows-build-lanes.md)).
+- **No entry here yet** (counted 2026-09-25; the script's header comment is its reference until one is written): `build/` — `Build-HailortFromSource.ps1`, `Build-IreeFromSource.ps1`, `Build-LitertAll.ps1`, `Build-LlvmFromSource.ps1`, `Build-MediaCoreAll.ps1`, `Build-MediaTvmAll.ps1`, `Build-MigraphxFromSource.ps1`, `Build-OrtAmdgpuEpFromSource.ps1`, `Build-ResourceSampler.ps1`, `Build-TargetCpython.ps1`, `Build-ToolchainAll.ps1`, `Build-TorchApp.ps1`, `Copy-TargetPythonDeps.ps1`, `Debug-LitertlmLink.ps1`, `Export-LitertLmBridge.ps1`, `Install-LlamaCpp.ps1`, `Install-TorchRocm.ps1`, `Test-RocmImage.ps1`, `Test-TargetArch.ps1`, `Write-BundleManifest.ps1`; `host/` — `Clear-SccacheMount.ps1`, `Disable-Sleep.ps1`, `Install-DufsService.ps1`, `Install-Rocm.ps1`, `Install-VulkanLoader.ps1`, `Invoke-BkMaterialize.ps1`, `Invoke-BkWarm.ps1`, `Reset-ContainerLocks.ps1`, `Set-BuildkitdGcpolicy.ps1`, `Set-ElevatedWindow.ps1`, `Start-GeniexServers.ps1`; `diagnostics/` — `Get-HostLsm.ps1`, `Get-LsmWaitObject.ps1`, `Get-LsmWaitstack.ps1`, `Get-SiloProcesses.ps1`, `Invoke-DiagnosticProbe.ps1`, `Invoke-LlvmAarch64Layout.ps1`, `Test-Arm64Prereqs.ps1`, `Test-GpuPassthrough.ps1`, `Test-LayerRename.ps1`, `Test-OnnxTuReplay.ps1`, `Test-OpencvCudaCmdshape.ps1`, `Test-ProcessIsolationCommit.ps1`. Several are described on the page that owns their topic ([`windows-cross-builds.md`](windows-cross-builds.md), [`windows-rocm.md`](windows-rocm.md), [`windows-build-lanes.md`](windows-build-lanes.md)).
 
 ### Chain components — `windows/scripts/build/`
 
@@ -1854,10 +1854,15 @@ containers. Runs Cargokit-shaped asserts, bakes `flutter_rust_bridge_codegen`.
 Installs CUDA + cuDNN at the `versions.env` pins, with post-install verification
 (headers/libs/DLLs). `-TargetArch arm64` also stages the Windows-arm64 redist components and cuDNN
 into the same root (`lib\arm64`, `bin\arm64`; #176).
+The cuDNN verification is a separate step: all three payload classes must be present, even
+when each discovery finds only one file. A fixture removes each class in turn to verify failure.
 
 #### `Install-Tensorrt.ps1`
 
 Auto-detects a TensorRT zip in `windows/downloads/` and installs it.
+Acquisition checks an explicit path, the staged repo and public download directories, then
+tries the CUDA-matched NVIDIA URL followed by two older CUDA URL shapes. The retries use the
+same PK signature check; tests hold archive precedence and the successful/failing fallback paths.
 
 #### `Publish-ShimPatch.ps1`
 
@@ -1895,6 +1900,11 @@ orchestrates the canonical per-concern scripts rather than duplicating them, in 
 
 Idempotent. Every sub-script is called with a HASHTABLE splat: array splatting would bind
 `-ReportOnly`/`-ShimPath` by position (the array-splat rule in AGENTS.md).
+The dufs step separates executable discovery, server launch, scheduled task registration,
+machine endpoint configuration and its HTTP check. Task and endpoint changes share one
+report-only/apply decision. A host-free fixture verifies that report mode applies neither
+change, never creates the cache directory or launches dufs, and a live launch hides the
+process window and retains its arguments.
 
 #### `Set-Rdna4Gpu.ps1`
 
@@ -1905,6 +1915,8 @@ RX 9070 XT default; the gate fires for ALL RX 9xxx/R9700 SKUs, so the remedy mus
 RUN-layer finalize (`ActivateLayer 0x20`, docker/for-win#14977; A/B-proven). Workflow: `-Disable` →
 build (display falls back to the iGPU) → default action re-enables. `Build-Buildkit.ps1`'s
 `Assert-NoActiveRdna4Gpu` preflight refuses while the dGPU is enabled.
+The toggle handles each matching device independently: one failed change does
+not skip the others, and the command returns a failed verdict if any failed.
 
 #### `Get-HostDockerState.ps1`
 
@@ -1976,6 +1988,8 @@ parameters (`-VhdxPath` mandatory, `-Service`, `-BlockingProcess`, `-VerifyPath`
 `-Mode`). Warns on ReFS guests, where compaction reclaims ~nothing (measured: 0.2 GB of a possible
 254 GB; [`windows-build-lanes.md`](windows-build-lanes.md) § Store GC). When it reports a near-zero
 reclaim, `Update-HostVhdx.ps1` is the answer.
+The guest report is a separate helper; tests cover both the ReFS warning and an unattached guest
+without mounting or compacting a host disk.
 
 The lock-reset and component-store repair scripts share `Test-Elevated`; lock reset still throws
 when unelevated, while component-store repair keeps its prompt and exit.
@@ -2022,6 +2036,9 @@ profile, and the host had to be rebuilt by hand).
 - Works from an ALLOWLIST, never a denylist; **reports by default, `-Apply` is required to delete**;
   every live-directory rule is **age-gated** (`-TempOlderThanDays`, default 7), so nothing in flight
   is touched.
+- Plan reporting and daemon advice/prune use separate helpers; the file delete
+  loop remains below the `-Apply` and live-build refusals, with protected-root
+  and reparse-point checks immediately before each delete.
 - `-StoreHusksOnly` selects only `C:\ProgramData\{containerd,buildkitd,Docker}.bak-*`
   directories and disables every daemon report/prune call, even with `-Apply`. It excludes TEMP,
   logs and checkout scratch. Report with this selector first; apply only after checking the list.
@@ -2053,6 +2070,15 @@ known upstream floods against their pre-suppression counts with a verdict per fa
 chain to PROVE the targeted `-Wno-` flags (OpenCV/ONNX/TVM) and IREE's
 `_SILENCE_NONFLOATING_COMPLEX_DEPRECATION_WARNING` still earn their place: 16 % of one chain log was
 upstream warnings, and buildkitd clips a RUN step at 2 MiB, then deadlocks it.
+The baseline renderer is separate from the streaming count; it still folds
+`-Wdeprecated-copy-with-user-provided-copy` into the deprecated-copy flood.
+
+#### `Measure-WarningStream.ps1`
+
+Streams a build log in bounded batches, counts clang and MSVC warning classes,
+and keeps the first signal lines after removing BuildKit's progress prefix.
+The parser and summary are separate so the diagnostic can be checked with
+strict complexity limits; its fixture covers both the counts and CLI output.
 
 #### `Test-BuildCopy.ps1`
 
@@ -2062,6 +2088,18 @@ output path), per-lane exit codes. `-Heavy` adds the heavyweight-RUN finalize la
 RDNA4 interaction kills), `-Docker` the classic-builder lane. **Run `-Heavy` before trusting a new
 Windows host**: only a `-Heavy`-green verdict counts (light lanes stayed green while the chain died,
 2026-08-10). No admin.
+The module-free versions.env reader only passes a digest-pinned base when both the LTSC and
+base digest fields exist. BuildKit and classic docker obtain their different base-argument
+forms from the same resolver; a fixture checks both forms and incomplete pins.
+
+#### `Find-LsmEventHolder.ps1`
+
+The elevated silo diagnostic finds the LSM thread in a new container, reads the waited event
+handle from R10, then reports every process holding the same kernel object. Discovery is a
+separate step so a fake debugger fixture checks thread binding and the no-silo refusal without
+starting a container. Its stack capture shares the debugger transport with the silo-process
+diagnostic; the fixture checks the exact command and saved-log path. See [the LSM failure mode](failure-modes.md) for why the first service
+process wait is misleading.
 
 #### `Test-Rdna4LayerLock.ps1`
 
@@ -2098,6 +2136,8 @@ v0.5.0's bundled llama.cpp `ggml-hexagon` backend dlsyms. A driver predating 202
 legacy FastRPC API and fails with `ggml-hex: failed to dlsym dspqueue_create` /
 `Device 'HTP0' not found`. Reporting only; never throws on a negative result. See
 [`geniex-local-ai-setup.md`](geniex-local-ai-setup.md) § The NPU problem.
+Active-copy discovery is isolated from the symbol report. A fake PnP and DriverStore fixture
+checks version matching and preserves the advisory result when discovery fails.
 
 ### Reusable modules — `windows/scripts/modules/`
 

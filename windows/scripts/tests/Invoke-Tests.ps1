@@ -57,6 +57,41 @@ function Write-TestSummary {
     return 0
 }
 
+function Invoke-PesterSuites {
+    param([object[]]$Files, [bool]$Available, [version]$MinimumVersion)
+    $failures = 0
+    $passed = 0
+    $total = 0
+    $skipped = @()
+    foreach ($file in $Files) {
+        Write-Host ''
+        Write-Host "== $($file.Name) ==" -ForegroundColor Yellow
+        if (-not $Available) {
+            Write-Host "   SKIPPED (Pester-style suite; Pester >= $MinimumVersion is not installed)" -ForegroundColor Yellow
+            $skipped += $file.Name
+            continue
+        }
+        Import-Module Pester -MinimumVersion $MinimumVersion -ErrorAction Stop
+        $configuration = New-PesterConfiguration
+        $configuration.Run.Path = $file.FullName
+        $configuration.Run.PassThru = $true
+        $configuration.Output.Verbosity = 'None'
+        $run = Invoke-Pester -Configuration $configuration
+        Write-Host ("   Pester: {0}/{1} passed" -f $run.PassedCount, $run.TotalCount) `
+            -ForegroundColor $(if ($run.FailedCount -gt 0) { 'Red' } else { 'Green' })
+        foreach ($failedTest in @($run.Failed)) {
+            Write-Host "   FAIL $($failedTest.ExpandedPath)" -ForegroundColor Red
+            foreach ($errorRecord in @($failedTest.ErrorRecord)) {
+                if ($errorRecord) { Write-Host "        $(($errorRecord.Exception.Message -split "`r?`n")[0])" -ForegroundColor DarkRed }
+            }
+        }
+        $failures += $run.FailedCount
+        $passed += $run.PassedCount
+        $total += $run.TotalCount
+    }
+    return [pscustomobject]@{ Failures = $failures; Passed = $passed; Total = $total; Skipped = $skipped }
+}
+
 # One pwsh per file, not batches: a suite that swaps a module for a temp copy broke the next suite in its batch.
 if (-not $Only -and $Jobs -gt 1 -and $testFiles.Count -gt 1) {
     Import-Module (Join-Path $modDir 'WindowsFanOut.Common.psm1') -Force -DisableNameChecking
@@ -114,36 +149,11 @@ foreach ($f in $harnessFiles) {
     . $f.FullName
 }
 
-# Pass 2: Pester suites.
-foreach ($f in $pesterFiles) {
-    Write-Host ''
-    Write-Host "== $($f.Name) ==" -ForegroundColor Yellow
-
-    if (-not $pesterAvailable) {
-        Write-Host "   SKIPPED (Pester-style suite; Pester >= $pesterMinVersion is not installed)" -ForegroundColor Yellow
-        $skippedSuites += $f.Name
-        continue
-    }
-
-    Import-Module Pester -MinimumVersion $pesterMinVersion -ErrorAction Stop
-    # Output.Verbosity 'None' replaces Pester 3/4's -Quiet and works on 5.x and 6.x.
-    $pesterConf = New-PesterConfiguration
-    $pesterConf.Run.Path = $f.FullName
-    $pesterConf.Run.PassThru = $true
-    $pesterConf.Output.Verbosity = 'None'
-    $pesterRun = Invoke-Pester -Configuration $pesterConf
-    Write-Host ("   Pester: {0}/{1} passed" -f $pesterRun.PassedCount, $pesterRun.TotalCount) `
-        -ForegroundColor $(if ($pesterRun.FailedCount -gt 0) { 'Red' } else { 'Green' })
-    foreach ($ft in @($pesterRun.Failed)) {
-        Write-Host "   FAIL $($ft.ExpandedPath)" -ForegroundColor Red
-        # The assertion text is the diagnosis; without it a red suite needs a second run.
-        foreach ($er in @($ft.ErrorRecord)) { if ($er) { Write-Host "        $(($er.Exception.Message -split "`r?`n")[0])" -ForegroundColor DarkRed } }
-    }
-    $pesterFailures += $pesterRun.FailedCount
-    $pesterPassed += $pesterRun.PassedCount
-    $pesterTotal += $pesterRun.TotalCount
-}
-
+$pesterReport = Invoke-PesterSuites -Files $pesterFiles -Available $pesterAvailable -MinimumVersion $pesterMinVersion
+$pesterFailures = $pesterReport.Failures
+$pesterPassed = $pesterReport.Passed
+$pesterTotal = $pesterReport.Total
+$skippedSuites = $pesterReport.Skipped
 $results = @(Get-TestResult)
 $failed = @($results | Where-Object { -not $_.Ok })
 $passed = $results.Count - $failed.Count + $pesterPassed

@@ -874,7 +874,7 @@ function Invoke-ContainerBuild {
     $cacheArgs = Get-ContainerEnvArgs -Environment (Add-HostSccacheRemoteEnv -CacheEnv $CacheEnv)
     $buildArgs = Resolve-ContainerBuildCommand -BuildCommand $BuildCommand -WorkspacePath $WorkspacePath
 
-    # Bind mount is opt-in: see docs/windows-container-build-performance.md ? Why the bind mount lost here
+    # Bind mount is opt-in: see docs/windows-container-build-performance.md § Why the bind mount lost here
     $bindMountUsable = $false
     if ($UseBindMount) {
         Write-Host 'Probing bind mount support...'

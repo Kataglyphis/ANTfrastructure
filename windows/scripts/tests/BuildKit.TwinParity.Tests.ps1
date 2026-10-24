@@ -7,32 +7,7 @@
 
 BeforeAll {
     $script:dfPath = Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) 'Dockerfile.media-builder'
-
-    # stage name -> @{ Parent; Args = [set]; EnvMirrored = [set] }
-    $script:stages = @{}
-    $current = $null
-    $inEnvContinuation = $false
-    foreach ($line in (Get-Content $script:dfPath)) {
-        if ($line -match '^\s*FROM\s+(\S+)\s+AS\s+(\S+)') {
-            $current = $Matches[2]
-            $script:stages[$current] = @{ Parent = $Matches[1]; Args = @(); EnvMirrored = @() }
-            $inEnvContinuation = $false
-            continue
-        }
-        if ($null -eq $current) { continue }
-        if ($line -match '^\s*ARG\s+([A-Za-z_][A-Za-z0-9_]*)') {
-            $script:stages[$current].Args += $Matches[1]
-            $inEnvContinuation = $false
-        }
-        # The first ENV line starts with ENV; backtick continuations carry more NAME="${NAME}" pairs.
-        if ($line -match '^\s*ENV\s') { $inEnvContinuation = $true }
-        if ($inEnvContinuation) {
-            foreach ($m in [regex]::Matches($line, '([A-Za-z_][A-Za-z0-9_]*)="\$\{\1\}"')) {
-                $script:stages[$current].EnvMirrored += $m.Groups[1].Value
-            }
-            if ($line -notmatch '`\s*$') { $inEnvContinuation = $false }
-        }
-    }
+    $script:stages = Get-TestDockerfileStageFacts -Path $script:dfPath
 
     # branch -> env stage and its BK descendant; media-core is partitioned per component and has its own Describe.
     $script:branches = @(
@@ -56,6 +31,26 @@ BeforeAll {
 }
 
 Describe 'Dockerfile.media-builder version-env contract' {
+    It 'reads continued ENV mirrors and exposes a missing mirror in a later stage' {
+        $root = New-TestDir -Prefix 'twin-parity-'
+        try {
+            $path = Join-Path $root 'Dockerfile'
+            [IO.File]::WriteAllText($path, @'
+FROM base AS fixture
+ARG PIN
+ENV PIN="${PIN}" `
+    EXTRA="${EXTRA}"
+FROM fixture AS child
+ARG CHILD
+'@)
+            $stages = Get-TestDockerfileStageFacts -Path $path
+            $stages['fixture'].EnvMirrored | Should -Contain 'PIN'
+            $stages['fixture'].EnvMirrored | Should -Contain 'EXTRA'
+            $stages['child'].Args | Should -Contain 'CHILD'
+            $stages['child'].EnvMirrored | Should -Not -Contain 'CHILD'
+        } finally { Remove-TestDir -Path $root }
+    }
+
     It 'defines a shared version-env stage per media branch' {
         foreach ($b in $script:branches) {
             $script:stages.Keys | Should -Contain $b.Env

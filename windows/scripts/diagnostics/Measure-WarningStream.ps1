@@ -15,6 +15,29 @@ param(
     [int]$Top = 15
 )
 
+function Get-WarningStreamCounts {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][System.Collections.IDictionary]$SignalClasses)
+    $counts = @{}
+    $signalHits = [System.Collections.Generic.List[string]]::new()
+    $totalWarnings = 0
+    # Stream, do not slurp: run logs reach 34 MB.
+    Get-Content -LiteralPath $Path -ReadCount 2000 | ForEach-Object {
+        foreach ($line in $_) {
+            if ($line -match 'warning:.*\[(-W[a-z0-9-]+)\]') {
+                $cls = $Matches[1]
+            } elseif ($line -match 'warning (C\d{4}):') {
+                $cls = $Matches[1]
+            } else { continue }
+            $totalWarnings++
+            $counts[$cls] = 1 + $(if ($counts.ContainsKey($cls)) { $counts[$cls] } else { 0 })
+            if ($SignalClasses.Contains($cls) -and $signalHits.Count -lt 400) {
+                $signalHits.Add(($line -replace '^#\d+\s+[\d.]+\s*', '').Trim())
+            }
+        }
+    }
+    return [pscustomobject]@{ Counts = $counts; SignalHits = $signalHits; TotalWarnings = $totalWarnings }
+}
+
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path $LogPath)) { throw "analyze-warning-stream: log not found: $LogPath" }
 
@@ -32,27 +55,10 @@ $noiseClasses = @(
     '-Wundef', '-Wmissing-field-initializers'
 )
 
-$counts = @{}
-$signalHits = [System.Collections.Generic.List[string]]::new()
-$totalWarnings = 0
-
-# Stream, do not slurp: run logs reach 34 MB.
-Get-Content -LiteralPath $LogPath -ReadCount 2000 | ForEach-Object {
-    foreach ($line in $_) {
-        # clang-cl: `... warning: ... [-Wclass]`   MSVC: `... warning C4715: ...`
-        if ($line -match 'warning:.*\[(-W[a-z0-9-]+)\]') {
-            $cls = $Matches[1]
-        } elseif ($line -match 'warning (C\d{4}):') {
-            $cls = $Matches[1]
-        } else { continue }
-        $totalWarnings++
-        $counts[$cls] = 1 + $(if ($counts.ContainsKey($cls)) { $counts[$cls] } else { 0 })
-        if ($signalClasses.Contains($cls) -and $signalHits.Count -lt 400) {
-            # Strip the BuildKit `#N t.t ` prefix so file:line survives compactly.
-            $signalHits.Add(($line -replace '^#\d+\s+[\d.]+\s*', '').Trim())
-        }
-    }
-}
+$measure = Get-WarningStreamCounts -Path $LogPath -SignalClasses $signalClasses
+$counts = $measure.Counts
+$signalHits = $measure.SignalHits
+$totalWarnings = $measure.TotalWarnings
 
 Write-Host "=== warning stream: $LogPath ==="
 Write-Host ("total warnings: {0}  distinct classes: {1}" -f $totalWarnings, $counts.Count)

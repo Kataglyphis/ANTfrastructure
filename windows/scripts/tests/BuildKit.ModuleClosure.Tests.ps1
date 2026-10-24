@@ -43,30 +43,50 @@ Describe 'BuildKit module closure' {
         # Follows `FROM <parent> AS <name>` so a derived stage inherits its parent's modules.
         function script:Get-ModuleStages {
             param([string]$DockerfilePath)
+            $facts = Get-TestDockerfileStageFacts -Path $DockerfilePath
             $stages = @{}
-            $parents = @{}
-            $parsed = Get-TestDockerfileStages -Text ([IO.File]::ReadAllText($DockerfilePath)) -JoinContinuations -IgnoreComments -TrimLines -StrictFromHeader
-            foreach ($stage in $parsed.Stages) {
-                $name = $stage.Name
-                if (-not $name -or $name -notmatch '^[\w.-]+$') { continue }
-                $parents[$name] = $stage.From
-                if (-not $stages.ContainsKey($name)) { $stages[$name] = @() }
-                foreach ($line in $stage.Lines) {
-                    if ($line -match '^COPY\s' -and $line -match 'bkmods') {
-                        $stages[$name] += @([regex]::Matches($line, '(?i)modules[\\/]([A-Za-z0-9._]+)\.psm1') | ForEach-Object { $_.Groups[1].Value })
-                    }
-                }
+            foreach ($name in $facts.Keys) {
+                if ($name -notmatch '^[\w.-]+$') { continue }
+                $stages[$name] = @($facts[$name].MountedModules)
             }
             # inherit through FROM <stage> AS <derived>
             foreach ($s in @($stages.Keys)) {
                 $chain = @(); $cur = $s
                 while ($cur -and $stages.ContainsKey($cur)) {
                     $chain += $stages[$cur]
-                    $cur = if ($parents.ContainsKey($cur)) { $parents[$cur] } else { $null }
+                    $cur = $facts[$cur].Parent
                 }
                 $stages[$s] = @($chain | Sort-Object -Unique)
             }
             $stages
+        }
+
+        function script:Get-RunModuleClosureReport {
+            param([string[]]$DockerfilePaths, [string]$BuildDir, [string]$HostDir, [string]$ModuleDir)
+            $missing = @()
+            $checked = 0
+            foreach ($df in $DockerfilePaths) {
+                $stages = Get-ModuleStages -DockerfilePath $df
+                foreach ($run in (Get-RunMounts -DockerfilePath $df)) {
+                    if ($run.Scripts -and ($run.FromStages -or $run.SingleModules)) { $checked++ }
+                    if (-not $run.Scripts) { continue }
+                    $available = @($run.SingleModules)
+                    foreach ($sourceStage in $run.FromStages) {
+                        if ($stages.ContainsKey($sourceStage)) { $available += $stages[$sourceStage] }
+                    }
+                    $available = @($available | Sort-Object -Unique)
+                    if (-not $available) { continue }
+                    foreach ($scriptName in $run.Scripts) {
+                        $scriptPath = @((Join-Path $BuildDir "$scriptName.ps1"), (Join-Path $HostDir "$scriptName.ps1")) |
+                            Where-Object { Test-Path $_ } | Select-Object -First 1
+                        if (-not $scriptPath) { continue }
+                        $needed = Get-ModuleImportClosure -Seed (Get-ReferencedModules -Path $scriptPath) -ModuleDir $ModuleDir
+                        $absent = @($needed | Where-Object { $_ -notin $available })
+                        if ($absent) { $missing += "$(Split-Path $df -Leaf) / $scriptName.ps1 -> missing [$($absent -join ', ')]; mounted [$($available -join ', ')]" }
+                    }
+                }
+            }
+            return [pscustomobject]@{ Missing = $missing; Checked = $checked }
         }
 
         $script:mediaDf = Join-Path $script:repoRoot 'windows\Dockerfile.media-builder'
@@ -74,37 +94,10 @@ Describe 'BuildKit module closure' {
     }
 
     It 'every mounted build script''s transitive module closure is present in that RUN' {
-        $bad = @()
-        foreach ($df in @($script:mediaDf, $script:mergeDf)) {
-            $stages = Get-ModuleStages -DockerfilePath $df
-            foreach ($run in (Get-RunMounts -DockerfilePath $df)) {
-                if (-not $run.Scripts) { continue }
-                $available = @($run.SingleModules)
-                foreach ($st in $run.FromStages) {
-                    if ($stages.ContainsKey($st)) { $available += $stages[$st] }
-                }
-                $available = @($available | Sort-Object -Unique)
-                if (-not $available) { continue }   # a RUN that mounts no modules at all
-                foreach ($s in $run.Scripts) {
-                    $sp = @((Join-Path $script:buildDir "$s.ps1"), (Join-Path $script:hostDir "$s.ps1")) |
-                        Where-Object { Test-Path $_ } | Select-Object -First 1
-                    if (-not $sp) { continue }
-                    $needed = Get-ModuleImportClosure -Seed (Get-ReferencedModules -Path $sp) -ModuleDir $script:moduleDir
-                    $missing = @($needed | Where-Object { $_ -notin $available })
-                    if ($missing) { $bad += "$(Split-Path $df -Leaf) / $s.ps1 -> missing [$($missing -join ', ')]; mounted [$($available -join ', ')]" }
-                }
-            }
-        }
-        # Scanner-rot guard: an empty $bad over zero checked RUNs would report green.
-        $checked = 0
-        foreach ($df in @($script:mediaDf, $script:mergeDf)) {
-            foreach ($run in (Get-RunMounts -DockerfilePath $df)) {
-                if ($run.Scripts -and ($run.FromStages -or $run.SingleModules)) { $checked++ }
-            }
-        }
-        $checked | Should -BeGreaterThan 5 -Because 'the RUN/mount scan found almost nothing — the Dockerfile layout moved and this gate is checking air'
-        $bad | Should -BeNullOrEmpty -Because ("a module imported at RUN time but not mounted throws 'Required module not found' " +
-            "inside the container, typically ~40 min into a compile, and never on a dev box where the whole modules dir is on disk:`n  " + ($bad -join "`n  "))
+        $report = Get-RunModuleClosureReport -DockerfilePaths @($script:mediaDf, $script:mergeDf) -BuildDir $script:buildDir -HostDir $script:hostDir -ModuleDir $script:moduleDir
+        $report.Checked | Should -BeGreaterThan 5 -Because 'the RUN/mount scan found almost nothing — the Dockerfile layout moved and this gate is checking air'
+        $report.Missing | Should -BeNullOrEmpty -Because ("a module imported at RUN time but not mounted throws 'Required module not found' " +
+            "inside the container, typically ~40 min into a compile, and never on a dev box where the whole modules dir is on disk:`n  " + ($report.Missing -join "`n  "))
     }
 
     It 'keeps the TVM leaf module OUT of the shared buildmods closure' {

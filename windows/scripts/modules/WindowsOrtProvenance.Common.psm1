@@ -413,6 +413,19 @@ function Resolve-OrtImport {
     return ''
 }
 
+function Get-OrtImportFailureReason {
+    param([string]$Name, [hashtable]$Index, [string[]]$Dir, [string]$System32,
+        [string[]]$SearchPath, [System.Collections.Generic.HashSet[string]]$RefSha)
+    $hit = Resolve-OrtImport -Name $Name -Index $Index -Dir $Dir -System32 $System32 -SearchPath $SearchPath
+    if ($hit -eq '::system32::') {
+        $where = if ($Dir.Count -gt 0) { $Dir -join ' or ' } else { 'no host exe dir (none in the tree)' }
+        return "$Name is not in $where, so a client host loads System32's Windows ML copy"
+    }
+    if (-not $hit) { return "no $Name on its search path" }
+    if (-not $RefSha.Contains($Index[$hit].Sha256)) { return "$Name resolves to $($Index[$hit].Path), which is not the chain ORT" }
+    return ''
+}
+
 function Get-OrtResolutionFinding {
     param([object[]]$Candidate, [System.Collections.Generic.HashSet[string]]$RefSha, [string[]]$AppDir, [string]$System32,
         [switch]$AssumeSystemOrt, [string[]]$SearchPath)
@@ -427,12 +440,8 @@ function Get-OrtResolutionFinding {
         $said = [System.Collections.Generic.HashSet[string]]::new()
         foreach ($name in $wanted) {
             foreach ($dirs in $loaders) {
-                $hit = Resolve-OrtImport -Name $name -Index $index -Dir $dirs -System32 $sys -SearchPath $SearchPath
-                $where = if ($dirs.Count -gt 0) { $dirs -join ' or ' } else { 'no host exe dir (none in the tree)' }
-                $why = if ($hit -eq '::system32::') { "$name is not in $where, so a client host loads System32's Windows ML copy" }
-                elseif (-not $hit) { "no $name on its search path" }
-                elseif (-not $RefSha.Contains($index[$hit].Sha256)) { "$name resolves to $($index[$hit].Path), which is not the chain ORT" }
-                else { '' }
+                $why = Get-OrtImportFailureReason -Name $name -Index $index -Dir $dirs -System32 $sys `
+                    -SearchPath $SearchPath -RefSha $RefSha
                 if ($why -and $said.Add($why)) { New-OrtFinding 'UNRESOLVED' $c.Path $why }
             }
         }

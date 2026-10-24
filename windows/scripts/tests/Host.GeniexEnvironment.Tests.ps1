@@ -4,6 +4,7 @@
 function Invoke-GeniexEnvironmentFixture {
     param([scriptblock]$Body, [scriptblock]$BeforeDirectory = {}, [scriptblock]$BeforeProcess = {}, [string]$Find = '', [string]$Replace = '')
     $source = (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/host/Start-GeniexServers.ps1' -FunctionName Start-Lane).ToString()
+    $source += "`n" + (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/host/Start-GeniexServers.ps1' -FunctionName @('Test-GeniexLaneAlreadyListening', 'Get-GeniexServeArguments')).ToString()
     $source += "`n" + (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/modules/WindowsScripts.Shared.psm1' -FunctionName Invoke-WithProcessEnvironment).ToString()
     $exercise = $Body
     Invoke-WithEnv -Vars @{ ANT_GENIEX_UNSET = $null; ANT_GENIEX_EMPTY = ''; ANT_GENIEX_VALUE = 'parent' } -Body {

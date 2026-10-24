@@ -252,41 +252,8 @@ function Invoke-InlineRegexPatch {
     clang-cl (llvm #57700) rejects instantiating them against the incomplete type. The regex fallback behind
     the .patch: idempotent via the "[clang-cl DML fix]" marker, a no-op when the anchors no longer match.
 #>
-function Invoke-OnnxDmlClangClPatch {
-    param([Parameter(Mandatory)][string]$SourceDir)
-
-    $dmlHelpers  = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\External\DirectMLHelpers"
-    $dmlAbstract = Join-Path $dmlHelpers 'AbstractOperatorDesc.h'
-    $dmlTypes    = Join-Path $dmlHelpers 'GeneratedSchemaTypes.h'
-    if ((Test-Path $dmlAbstract) -and (Test-Path $dmlTypes)) {
-        $abs = [System.IO.File]::ReadAllText($dmlAbstract)
-        if ($abs -notmatch '\[clang-cl DML fix\]') {
-            $ctorRx = 'AbstractOperatorDesc\(\) = default;\r?\n\s*AbstractOperatorDesc\(const DML_OPERATOR_SCHEMA\* schema, std::vector<OperatorField>&& fields\)\r?\n\s*: schema\(schema\)\r?\n\s*, fields\(std::move\(fields\)\)\r?\n\s*\{\}'
-            $accessorRx = '(?s)(std::vector<[^\r\n]+?> Get(?:Input|Output)Tensors\(\)(?: const)?)\r?\n\s*\{\r?\n\s*return GetTensors<[^\r\n]+?>\(\);\r?\n\s*\}'
-            $getTensorsRx = '(?s)template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>\r?\n\s*std::vector<TensorType\*> GetTensors\(\) const\r?\n\s*\{.*?return tensors;\r?\n\s*\}'
-            $ctorHit = [regex]::IsMatch($abs, $ctorRx)
-            $accHit  = ([regex]::Matches($abs, $accessorRx)).Count
-            $gtHit   = ([regex]::Matches($abs, $getTensorsRx)).Count
-            if ($ctorHit -and $accHit -eq 4 -and $gtHit -eq 1) {
-                $ctorDecls = @'
-AbstractOperatorDesc();
-    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields);
-    AbstractOperatorDesc(const AbstractOperatorDesc&);
-    AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept;
-    AbstractOperatorDesc& operator=(const AbstractOperatorDesc&);
-    AbstractOperatorDesc& operator=(AbstractOperatorDesc&&) noexcept;
-    ~AbstractOperatorDesc();
-'@
-                $gtDecl = @'
-template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
-    std::vector<TensorType*> GetTensors() const;
-'@
-                $abs = [regex]::Replace($abs, $ctorRx, $ctorDecls)
-                $abs = [regex]::Replace($abs, $accessorRx, '$1;')
-                $abs = [regex]::Replace($abs, $getTensorsRx, $gtDecl)
-                $abs = $abs -replace '(class OperatorField;)', "`$1`r`n// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h"
-                [System.IO.File]::WriteAllText($dmlAbstract, $abs)
-                $outOfLine = @'
+function Get-OnnxDmlOutOfLineText {
+    return @'
 
 // [clang-cl DML fix] Out-of-line AbstractOperatorDesc members. Defined here, AFTER OperatorField is
 // complete, so the std::vector<OperatorField> special members (dtor/move), GetTensors<>() and the 4
@@ -349,6 +316,43 @@ inline std::vector<const DmlBufferTensorDesc*> AbstractOperatorDesc::GetOutputTe
     return GetTensors<const DmlBufferTensorDesc, DML_SCHEMA_FIELD_KIND_OUTPUT_TENSOR>();
 }
 '@
+}
+
+function Invoke-OnnxDmlClangClPatch {
+    param([Parameter(Mandatory)][string]$SourceDir)
+
+    $dmlHelpers  = "$SourceDir\onnxruntime\core\providers\dml\DmlExecutionProvider\src\External\DirectMLHelpers"
+    $dmlAbstract = Join-Path $dmlHelpers 'AbstractOperatorDesc.h'
+    $dmlTypes    = Join-Path $dmlHelpers 'GeneratedSchemaTypes.h'
+    if ((Test-Path $dmlAbstract) -and (Test-Path $dmlTypes)) {
+        $abs = [System.IO.File]::ReadAllText($dmlAbstract)
+        if ($abs -notmatch '\[clang-cl DML fix\]') {
+            $ctorRx = 'AbstractOperatorDesc\(\) = default;\r?\n\s*AbstractOperatorDesc\(const DML_OPERATOR_SCHEMA\* schema, std::vector<OperatorField>&& fields\)\r?\n\s*: schema\(schema\)\r?\n\s*, fields\(std::move\(fields\)\)\r?\n\s*\{\}'
+            $accessorRx = '(?s)(std::vector<[^\r\n]+?> Get(?:Input|Output)Tensors\(\)(?: const)?)\r?\n\s*\{\r?\n\s*return GetTensors<[^\r\n]+?>\(\);\r?\n\s*\}'
+            $getTensorsRx = '(?s)template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>\r?\n\s*std::vector<TensorType\*> GetTensors\(\) const\r?\n\s*\{.*?return tensors;\r?\n\s*\}'
+            $ctorHit = [regex]::IsMatch($abs, $ctorRx)
+            $accHit  = ([regex]::Matches($abs, $accessorRx)).Count
+            $gtHit   = ([regex]::Matches($abs, $getTensorsRx)).Count
+            if ($ctorHit -and $accHit -eq 4 -and $gtHit -eq 1) {
+                $ctorDecls = @'
+AbstractOperatorDesc();
+    AbstractOperatorDesc(const DML_OPERATOR_SCHEMA* schema, std::vector<OperatorField>&& fields);
+    AbstractOperatorDesc(const AbstractOperatorDesc&);
+    AbstractOperatorDesc(AbstractOperatorDesc&&) noexcept;
+    AbstractOperatorDesc& operator=(const AbstractOperatorDesc&);
+    AbstractOperatorDesc& operator=(AbstractOperatorDesc&&) noexcept;
+    ~AbstractOperatorDesc();
+'@
+                $gtDecl = @'
+template <typename TensorType, DML_SCHEMA_FIELD_KIND Kind>
+    std::vector<TensorType*> GetTensors() const;
+'@
+                $abs = [regex]::Replace($abs, $ctorRx, $ctorDecls)
+                $abs = [regex]::Replace($abs, $accessorRx, '$1;')
+                $abs = [regex]::Replace($abs, $getTensorsRx, $gtDecl)
+                $abs = $abs -replace '(class OperatorField;)', "`$1`r`n// [clang-cl DML fix] special members + GetTensors + accessors moved out-of-line to GeneratedSchemaTypes.h"
+                [System.IO.File]::WriteAllText($dmlAbstract, $abs)
+                $outOfLine = Get-OnnxDmlOutOfLineText
                 [System.IO.File]::AppendAllText($dmlTypes, $outOfLine)
                 Write-Host 'Applied [clang-cl DML fix]: out-of-lined AbstractOperatorDesc special members + GetTensors + 4 tensor accessors'
             } else {

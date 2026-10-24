@@ -83,6 +83,19 @@ function Install-CudaWindowsArm64Redist {
     Write-Host ("arm64 CUDA payload staged into {0} (lib\arm64, bin\arm64)" -f $CudaRoot)
 }
 
+function Assert-CudnnInstallation {
+    param([Parameter(Mandatory)][string]$Root)
+    Write-Host 'Verifying cuDNN installation...'
+    # @(...) keeps a single FileInfo result countable.
+    $headers = @(Get-ChildItem -Path $Root -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue)
+    $libs = @(Get-ChildItem -Path $Root -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue)
+    $dlls = @(Get-ChildItem -Path $Root -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue)
+    if (-not $headers) { throw "cuDNN headers (cudnn.h) not found under $Root" }
+    if (-not $libs) { throw "cuDNN import libs (cudnn*.lib) not found under $Root" }
+    if (-not $dlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $Root" }
+    Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $headers.Count, $libs.Count, $dlls.Count)
+}
+
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 # NVIDIA's installer, not Scoop, whose portable install strips the CCCL headers.
@@ -227,16 +240,7 @@ Copy-Item -Path (Join-Path $cudnnDir '*') -Destination $CudnnRoot -Recurse -Forc
 Remove-Item $cudnnArchive -Force
 Remove-Item $cudnnExtracted -Recurse -Force
 
-# Verify cuDNN installation
-Write-Host 'Verifying cuDNN installation...'
-# @(...) so a single FileInfo result still exposes .Count (scalar trap).
-$cudnnHeaders = @(Get-ChildItem -Path $CudnnRoot -Filter 'cudnn.h' -Recurse -ErrorAction SilentlyContinue)
-$cudnnLibs = @(Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.lib' -Recurse -ErrorAction SilentlyContinue)
-$cudnnDlls = @(Get-ChildItem -Path $CudnnRoot -Filter 'cudnn*.dll' -Recurse -ErrorAction SilentlyContinue)
-if (-not $cudnnHeaders) { throw "cuDNN headers (cudnn.h) not found under $CudnnRoot" }
-if (-not $cudnnLibs) { throw "cuDNN import libs (cudnn*.lib) not found under $CudnnRoot" }
-if (-not $cudnnDlls) { throw "cuDNN DLLs (cudnn*.dll) not found under $CudnnRoot" }
-Write-Host ('cuDNN verified: {0} headers, {1} libs, {2} DLLs' -f $cudnnHeaders.Count, $cudnnLibs.Count, $cudnnDlls.Count)
+Assert-CudnnInstallation -Root $CudnnRoot
 Write-Host 'cuDNN installation complete.'
 
 # Release lingering file handles before the layer commit.

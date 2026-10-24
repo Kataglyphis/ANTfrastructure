@@ -199,7 +199,7 @@ Describe 'OpenCV ORT: Get-NinjaBuildVariable' {
 }
 
 Describe 'OpenCV ORT: configure gate' {
-    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtOcvScript -FunctionName 'Get-NinjaBuildVariable', 'Get-OpencvOrtConfigureFinding')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtOcvScript -FunctionName 'Get-NinjaBuildVariable', 'Get-OpencvOrtNinjaFinding', 'Get-OpencvOrtConfigureFinding')
     $gateOf = {
         param([string]$Log = $script:OrtCfgLog, [string]$Cache = $script:OrtCache, [string]$Ninja = (& $script:OrtNinjaOf),
             [string]$Chain = $script:OrtChain, [string]$Shim = $script:OrtShim)
@@ -297,7 +297,7 @@ Describe 'OpenCV ORT: the G-API delay-load hook' {
         $body = [System.IO.File]::ReadAllText($hook)
         $loads = @([regex]::Matches($body, '/DELAYLOAD:([\w.]+)') | ForEach-Object { $_.Groups[1].Value })
         Assert-Equal ($script:OrtDelayLoads -join ',') ($loads -join ',')
-        $gate = (Get-ScriptFunctionDefinition -ScriptPath $script:OrtOcvScript -FunctionName 'Get-OpencvOrtConfigureFinding').ToString()
+        $gate = (Get-ScriptFunctionDefinition -ScriptPath $script:OrtOcvScript -FunctionName 'Get-OpencvOrtNinjaFinding').ToString()
         foreach ($dll in $script:OrtDelayLoads) { Assert-Match "'$([regex]::Escape($dll))'" $gate "the gate checks $dll" }
         Assert-Match 'target_link_libraries\(\$\{the_module\} PRIVATE delayimp\.lib\)' $body
         # ocv_create_module sets LINK_FLAGS (/NODEFAULTLIB:libc /DEBUG) just before this hook runs; overwriting it drops both.
@@ -326,11 +326,25 @@ Describe 'OpenCV ORT: wiring in Build-OpencvFromSource.ps1' {
         }
     }
 
-    It 'appends the args before configure, and nothing else names ONNXRT_ROOT_DIR' {
-        $edits = @(Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra')
+    It 'appends the ORT args without a lane guard' {
         $append = Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value '$ocvOrtArgs' -Single
-        Assert-False (& $underIf $append) 'the append is unconditional'
-        Assert-True ($append.Extent.StartOffset -lt $configure.Extent.StartOffset) 'before Invoke-CmakeConfigure'
+        Assert-Null (Get-TestAstAncestor -Node $append -Type ([Management.Automation.Language.IfStatementAst]) -First) 'the append is unconditional'
+    }
+
+    It 'passes the appended ORT args to one configure call' {
+        $append = Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra' -Operator PlusEquals -Value '$ocvOrtArgs' -Single
+        $configureCall = @(Get-TestAstCommands -Ast $wiring.Ast -Name 'Invoke-OpencvConfigureAndGate')
+        Assert-TestAstCommand -Command $configureCall -Text 'Invoke-OpencvConfigureAndGate -mainSrc $mainSrc -buildDir $buildDir -ocvInstallDir $ocvInstallDir -cmakeExtra $cmakeExtra -ortRoot $ortRoot -ortShimRoot $ortShimRoot -ortVersion $ortVersion -gpuEnv $gpuEnv' -Assignment '$cfgLog'
+        $configureAssignment = Get-TestAstAncestor -Node $configureCall[0] -Type ([Management.Automation.Language.AssignmentStatementAst]) -First
+        Assert-True ($wiring.Ast.EndBlock.Statements.IndexOf($append) -lt $wiring.Ast.EndBlock.Statements.IndexOf($configureAssignment)) 'before configure helper call'
+    }
+
+    It 'configures once with the accumulated CMake arguments' {
+        Assert-TestAstCommand -Command @(Get-TestAstCommands -Ast $wiring.Ast -Name Invoke-CmakeConfigure) -Text 'Invoke-CmakeConfigure -SourceDir $mainSrc -BuildDir $buildDir -InstallPrefix $ocvInstallDir -ExtraArgs $cmakeExtra 2>&1'
+    }
+
+    It 'has no second ONNXRT_ROOT_DIR or download switch' {
+        $edits = @(Get-MediaTestAssignment -Ast $wiring.Ast -Variable '$cmakeExtra')
         Assert-Equal 0 @($edits | Where-Object { $_.Extent.Text -match 'ONNXRT_ROOT_DIR|DOWNLOAD_ONNXRUNTIME' }).Count 'no second ORT root or download switch'
     }
 
@@ -360,5 +374,21 @@ Describe 'Media finding guard mutation coverage' {
         Assert-Throws {
             Assert-MediaTestFindingGuard -Command @(Get-TestAstCommands -Ast $mutant -Name Get-FixtureFinding) -Variable '$findings' -Unconditional
         } -MessagePattern 'a direct throw'
+    }
+}
+
+Describe 'OpenCV configure helper output' {
+    It 'returns only the log path while showing and saving configure output' {
+        Invoke-InTestDir { param($dir)
+            . (Get-ScriptFunctionDefinition -ScriptPath $script:OrtOcvScript -FunctionName 'Invoke-OpencvConfigureAndGate')
+            function Get-PersistentBuildLogPath { param($Name, $FallbackDir) Join-Path $FallbackDir $Name }
+            function Invoke-CmakeConfigure { 'configured by fixture' }
+            function Get-OpencvOrtConfigureFinding { @() }
+            $cfgLog = Join-Path $dir 'opencv-configure.log'
+            $result = Invoke-OpencvConfigureAndGate -mainSrc $dir -buildDir $dir -ocvInstallDir $dir -cmakeExtra @() `
+                -ortRoot $dir -ortShimRoot $dir -ortVersion '1.30.0' -gpuEnv @{ HasRocm = $false }
+            Assert-Equal $cfgLog $result 'configure text cannot contaminate the returned path'
+            Assert-Match 'configured by fixture' (Get-Content -LiteralPath $cfgLog -Raw) 'configure output reaches the log'
+        }
     }
 }

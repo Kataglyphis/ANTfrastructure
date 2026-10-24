@@ -57,8 +57,7 @@ $script:OcvLapackLeak = '    Lapack:                      YES (OpenBLAS C:/TheRo
 
 Describe 'OpenCV rocm lane: CMake delta' {
     . (Get-ScriptFunctionDefinition -ScriptPath $script:OcvScript -FunctionName 'Get-OpencvRocmCmakeArgs')
-
-    It 'adds nothing on the cpu and nvidia lanes, native or cross' {
+    function Assert-OcvNonRocmCmakeArgs {
         foreach ($gpu in @(
                 @{ GpuType = 'cpu'; HasCuda = $false; HasRocm = $false; RocmRoot = $null }
                 @{ GpuType = 'nvidia'; HasCuda = $true; HasRocm = $false; CudaRoot = 'C:\cuda' })) {
@@ -66,6 +65,10 @@ Describe 'OpenCV rocm lane: CMake delta' {
                 Assert-Equal 0 @(Get-OpencvRocmCmakeArgs -GpuEnv $gpu -Cross $cross).Count "$($gpu.GpuType) cross=$cross"
             }
         }
+    }
+
+    It 'adds nothing on the cpu and nvidia lanes, native or cross' {
+        Assert-OcvNonRocmCmakeArgs
     }
 
     It 'adds nothing for a GPU hashtable that predates HasRocm' {
@@ -165,8 +168,11 @@ Describe 'OpenCV rocm lane: wiring in Build-OpencvFromSource.ps1' {
     $assertHolds = { param([string]$Var, $Node) Get-MediaTestAssignment -Ast $wiring.Ast -Variable $Var -Contains $Node -Single }
 
     It 'keeps WITH_OPENCL/WITH_OPENCL_SVM ON in the every-lane array (the rocm lane relies on it)' {
-        $init = @($cmakeEdits | Where-Object { $_.Operator -eq 'Equals' })
-        Assert-Equal 1 $init.Count 'one $cmakeExtra initializer'
+        $init = @($cmakeEdits | Where-Object {
+                $owner = Get-TestAstAncestor -Node $_ -Type ([Management.Automation.Language.FunctionDefinitionAst]) -First
+                $_.Operator -eq 'Equals' -and $owner -and $owner.Name -eq 'Get-OpencvBaseCmakeArgs'
+            })
+        Assert-Equal 1 $init.Count 'one base $cmakeExtra initializer'
         Assert-Match "'-DWITH_OPENCL=ON'" $init[0].Right.Extent.Text
         Assert-Match "'-DWITH_OPENCL_SVM=ON'" $init[0].Right.Extent.Text
     }
@@ -267,10 +273,10 @@ Describe 'rocm-checks/OpenCV.ps1: OpenCL loader probe' {
 
 Describe 'rocm-checks/OpenCV.ps1: end to end against a fake python' {
     $checkPath = Join-Path (Get-RepoRoot) $script:OcvCheck
-    $pwshExe = (Get-Process -Id $PID).Path
     # The fake answers each of the check's three python calls from files beside it.
-    $newFakePython = {
+    function New-FakeOpenCvPython {
         param([string]$Dir, [string]$BuildInfo, [int]$BuildExit, [string]$Loader, [int]$LoaderExit)
+        $pwshExe = (Get-Process -Id $PID).Path
         if ($IsWindows) {
             Set-Content -LiteralPath (Join-Path $Dir 'python.cmd') -Encoding ASCII -Value @(
                 '@echo off', "`"$pwshExe`" -NoProfile -File `"%~dp0fake.ps1`" %*", 'exit /b %ERRORLEVEL%')
@@ -307,7 +313,7 @@ exit [int](Get-Content -LiteralPath (Join-Path $PSScriptRoot "$kind.exit"))
         )
         foreach ($case in $cases) {
             Invoke-InTestDir { param($dir)
-                & $newFakePython $dir $case.Info $case.InfoExit $case.Loader $case.LoaderExit
+                New-FakeOpenCvPython $dir $case.Info $case.InfoExit $case.Loader $case.LoaderExit
                 $out = @(Invoke-WithEnv @{ PATH = $dir; ROCM_PATH = $script:RocmRoot; HIP_PATH = $null } { & $checkPath 6>$null })
                 Assert-Equal $case.Expect.Count $out.Count "$($case.Name): $($out -join ' / ')"
                 $next = 0

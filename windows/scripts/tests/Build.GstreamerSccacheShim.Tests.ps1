@@ -4,9 +4,8 @@
 # Hub #182: meson dropped 'sccache' in front of clang-cl, so GStreamer compiled cold on every merge rebuild.
 
 Describe 'Build-GstreamerFromSource: meson compiles through the sccache shim (hub #182)' {
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'New-SccacheCompilerShim')
-    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'Format-MesonExeList')
-    $script:GstText = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\scripts\build\Build-GstreamerFromSource.ps1'))
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1' -FunctionName 'New-SccacheCompilerShim', 'Format-MesonExeList')
+    $script:GstText = (Get-TestScriptAst -ScriptPath 'windows\scripts\build\Build-GstreamerFromSource.ps1').Extent.Text
 
     It 'writes a shim that runs the named sccache on the named compiler, builds it for the x64 host with LIB cleared, and restores LIB (mutation)' {
         Invoke-InTestDir { param($d)

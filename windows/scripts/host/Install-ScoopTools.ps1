@@ -127,6 +127,21 @@ $NasmVersion  = Resolve-ContainerImageValue -Value $NasmVersion  -EnvironmentVar
 $TempDir = Initialize-ContainerImageTempDirectory -TempDir $TempDir
 
 #region 1. Git (pinned installer)
+function Install-GitExecutable {
+param([string]$Installer)
+# Without the exit-code gate a failed install surfaces only as "git not recognized" in a media build.
+$gitProc = Start-Process -FilePath $Installer -ArgumentList '/SILENT', '/NORESTART' -Wait -NoNewWindow -PassThru
+if ($gitProc.ExitCode -ne 0) { throw "Git for Windows installer failed (exit $($gitProc.ExitCode))" }
+Remove-Item $Installer -Force
+Sync-ContainerProcessPath -AdditionalPaths @(
+    'C:\Program Files\Git\cmd',
+    'C:\Program Files\Git\bin',
+    'C:\Program Files\Git\usr\bin'
+) | Out-Null
+}
+
+function Get-PinnedGitPlan {
+param([string]$TempDir, [string]$GitInstallerUrl)
 # Derived from GIT_VERSION so the pin cannot drift in a default; .windows.1 covers normal releases.
 $gitVer = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_VERSION' -DefaultValue '2.56.0'
 $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -EnvironmentVariable 'GIT_INSTALLER_URL' `
@@ -135,19 +150,22 @@ $GitInstallerUrl = Resolve-ContainerImageValue -Value $GitInstallerUrl -Environm
 $gitInstaller = Join-Path $TempDir 'Git-64-bit.exe'
 # An empty pin (a respun-release URL override) skips the hash check.
 $gitSha = Resolve-ContainerImageValue -EnvironmentVariable 'GIT_WINDOWS_INSTALLER_SHA256' -DefaultValue ''
-Invoke-DownloadWithRetry -Url $GitInstallerUrl -DestinationPath $gitInstaller -Description 'Git for Windows installer' -ExpectSignature MZ -ExpectedSha256 $gitSha
-# Without the exit-code gate a failed install surfaces only as "git not recognized" in a media build.
-$gitProc = Start-Process -FilePath $gitInstaller -ArgumentList '/SILENT', '/NORESTART' -Wait -NoNewWindow -PassThru
-if ($gitProc.ExitCode -ne 0) { throw "Git for Windows installer failed (exit $($gitProc.ExitCode))" }
-Remove-Item $gitInstaller -Force
-Sync-ContainerProcessPath -AdditionalPaths @(
-    'C:\Program Files\Git\cmd',
-    'C:\Program Files\Git\bin',
-    'C:\Program Files\Git\usr\bin'
-) | Out-Null
+$plan = [pscustomobject]@{ Url = $GitInstallerUrl; Path = $gitInstaller; Sha256 = $gitSha }
+return $plan
+}
 
+function Install-PinnedGit {
+param([string]$TempDir, [string]$GitInstallerUrl)
+$plan = Get-PinnedGitPlan -TempDir $TempDir -GitInstallerUrl $GitInstallerUrl
+Invoke-DownloadWithRetry -Url $plan.Url -DestinationPath $plan.Path -Description 'Git for Windows installer' -ExpectSignature MZ -ExpectedSha256 $plan.Sha256
+Install-GitExecutable -Installer $plan.Path
+
+}
+
+Install-PinnedGit -TempDir $TempDir -GitInstallerUrl $GitInstallerUrl
 #endregion
 #region 2. WiX toolset (dotnet tool, pinned)
+function Install-PinnedWix {
 # Shared with Test-Toolchain.ps1's assert; the defaults keep a standalone run working.
 $WixVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_VERSION' -DefaultValue '7.0.0'
 $WixUiExtVersion = Resolve-ContainerImageValue -EnvironmentVariable 'WIX_UI_EXT_VERSION' -DefaultValue '7.0.0'
@@ -165,9 +183,14 @@ Invoke-ScoopStep -Description "wix extension add WixToolset.UI.wixext/$WixUiExtV
 }
 
 Enable-Tls12ForDownloads
+}
+
+Install-PinnedWix
 $scoopInstallScript = Join-Path $TempDir 'install-scoop.ps1'
 #endregion
 #region 3. scoop bootstrap + shims
+function Initialize-ScoopBootstrap {
+param([string]$ScoopInstallScript, [string]$ScoopRoot)
 # Hash-pinned because it is executed: a mismatch means scoop revved it, so re-review before bumping.
 $scoopSha = Resolve-ContainerImageValue -EnvironmentVariable 'SCOOP_INSTALLER_SHA256' -DefaultValue ''
 Invoke-DownloadWithRetry -Url 'https://get.scoop.sh' -DestinationPath $scoopInstallScript -Description 'scoop installer script' -ExpectedSha256 $scoopSha
@@ -179,7 +202,6 @@ Sync-ContainerProcessPath -AdditionalPaths @(
 Assert-ContainerCommandAvailable -Name 'git' | Out-Null
 Assert-ContainerCommandAvailable -Name 'scoop' | Out-Null
 # Test the bucket directory: `scoop bucket add` exits 2 for an existing one, and the installer pre-adds main.
-$scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
 foreach ($bucket in @('main', 'extras', 'versions')) {
     if (Test-Path (Join-Path $scoopRoot "buckets\$bucket")) {
         Write-Host "==> scoop bucket add $bucket -- already present, skipped"
@@ -192,8 +214,14 @@ Invoke-ScoopStep -Description 'scoop config use_external_7zip true' -Command { s
 
 # No rust here: Install-RustToolchain.ps1's rustup is the single provider.
 
+}
+
+$scoopRoot = if ($env:SCOOP) { $env:SCOOP } else { Join-Path $env:USERPROFILE 'scoop' }
+Initialize-ScoopBootstrap -ScoopInstallScript $scoopInstallScript -ScoopRoot $scoopRoot
 #endregion
 #region 4. Vulkan LAN preseed + pinned installs (cmake/vulkan/flutter)
+function Install-PinnedVulkanAndFlutter {
+param([string]$VulkanVersion, [string]$ArmStrict)
 # Preseeded from the LAN under scoop's cache name, since sdk.lunarg.com stalls in containers; scoop still checks the hash.
 if ($VulkanVersion) {
     Copy-PreseedToScoopCache -App 'vulkan' -Version $VulkanVersion -Url "https://sdk.lunarg.com/sdk/download/$VulkanVersion/windows/vulkansdk-windows-X64-$VulkanVersion.exe"
@@ -201,7 +229,6 @@ if ($VulkanVersion) {
 Install-ScoopPackage -Package 'main/vulkan' -Version $VulkanVersion
 
 # The aarch64 libs are an optional SDK component; warn-only since this layer is shared with amd64 (docs/windows-cross-builds.md).
-$armStrict = if (-not [string]::IsNullOrWhiteSpace($WindowsArm64Strict)) { $WindowsArm64Strict } else { $env:WINDOWS_ARM64_STRICT }
 $vkRoot = Join-Path $env:USERPROFILE 'scoop\apps\vulkan\current'
 $vkArm64Lib = Join-Path $vkRoot 'Lib-ARM64'
 if (Test-Path $vkArm64Lib) {
@@ -229,6 +256,10 @@ if (Test-Path $vkArm64Lib) {
 
 # Pinned so the Windows image cannot silently diverge from the Linux lane.
 Install-ScoopPackage -Package 'extras/flutter' -Version ([string]$env:FLUTTER_VERSION) -Global
+}
+
+$armStrict = if (-not [string]::IsNullOrWhiteSpace($WindowsArm64Strict)) { $WindowsArm64Strict } else { $env:WINDOWS_ARM64_STRICT }
+Install-PinnedVulkanAndFlutter -VulkanVersion $VulkanVersion -ArmStrict $armStrict
 #endregion
 #region 5. PINNED compiled-output packages + floating toolset + cache scrub
 # Pinned: they shape compiled output, and patches are written against one clang-cl (independent of Linux's LLVM_RELEASE).
@@ -237,6 +268,8 @@ Install-ScoopPackage -Package 'main/ninja' -Version $NinjaVersion
 Install-ScoopPackage -Package 'main/nasm'  -Version $NasmVersion
 
 # aarch64 compiler-rt builtins, unconditionally; see docs/windows-cross-builds.md § aarch64 compiler-rt is a base prerequisite.
+function Install-ScoopArm64CompilerRt {
+param([string]$LlvmVersion, [string]$ArmStrict)
 $llvmAppRoot = Join-Path $env:USERPROFILE 'scoop\apps\llvm\current'
 $rtHost = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmAppRoot -LibraryName 'clang_rt.builtins-x86_64.lib')
 $rtTarget = @(Find-InstalledCompilerRtLibrary -LlvmRoot $llvmAppRoot)
@@ -271,6 +304,10 @@ if ($rtTarget.Count -gt 0) {
         Write-Warning ($msg + ' Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 }
+}
+
+Install-ScoopArm64CompilerRt -LlvmVersion $LlvmVersion -ArmStrict $armStrict
+
 # Both OpenSSL architectures follow the bucket manifest the x64 install reads: slproweb deletes superseded installers, so a literal pin 404s.
 $sslManifest = $null
 try {
@@ -279,6 +316,20 @@ try {
     Write-Warning "the main bucket's openssl manifest is unreadable: $($_.Exception.Message)"
 }
 # aarch64 OpenSSL beside the host one, warn-only; see docs/windows-cross-builds.md § aarch64 OpenSSL is a base prerequisite too.
+function Get-ScoopInnounpPath {
+    $innounp = $null
+    $innounpCmd = @(Get-Command 'innounp' -CommandType Application -ErrorAction SilentlyContinue)
+    if ($innounpCmd.Count -gt 0) { $innounp = $innounpCmd[0].Source }
+    if (-not $innounp) {
+        $cand = Join-Path $env:USERPROFILE 'scoop\apps\innounp\current\innounp.exe'
+        if (Test-Path $cand) { $innounp = $cand }
+    }
+    if (-not $innounp) { throw 'innounp not found (scoop installs it for innosetup manifests such as openssl) - cannot extract the aarch64 OpenSSL package.' }
+    return $innounp
+}
+
+function Install-ScoopArm64OpenSsl {
+param($SslManifest, [string]$ArmStrict)
 $sslArm64Root = 'C:\opt\openssl-arm64'
 $sslArm64Lib = Find-FirstTreeFile -Root $sslArm64Root -Filter 'libcrypto.lib'
 if ($sslArm64Lib) {
@@ -305,14 +356,7 @@ if ($sslArm64Lib) {
         Install-ScoopPackage -Package 'main/innounp'
 
         # @() and .Count: (Get-Command ...).Source on a null result throws under StrictMode.
-        $innounp = $null
-        $innounpCmd = @(Get-Command 'innounp' -CommandType Application -ErrorAction SilentlyContinue)
-        if ($innounpCmd.Count -gt 0) { $innounp = $innounpCmd[0].Source }
-        if (-not $innounp) {
-            $cand = Join-Path $env:USERPROFILE 'scoop\apps\innounp\current\innounp.exe'
-            if (Test-Path $cand) { $innounp = $cand }
-        }
-        if (-not $innounp) { throw 'innounp not found (scoop installs it for innosetup manifests such as openssl) - cannot extract the aarch64 OpenSSL package.' }
+        $innounp = Get-ScoopInnounpPath
         New-Item -Path $sslArm64Root -ItemType Directory -Force | Out-Null
         # Output logged, never swallowed: a silent failure here looks like success.
         $unpOut = & $innounp -x -y "-d$sslArm64Root" $sslExe 2>&1
@@ -345,6 +389,10 @@ if ($sslArm64Lib) {
                        'Set WINDOWS_ARM64_STRICT=1 to make this a hard failure.')
     }
 }
+
+}
+
+Install-ScoopArm64OpenSsl -SslManifest $sslManifest -ArmStrict $armStrict
 
 # The x64 installer comes from the same throttled host: a 251 MB single stream ran 3.6 h and then failed (2026-09-30).
 if ($sslManifest) {

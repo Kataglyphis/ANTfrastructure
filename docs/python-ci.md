@@ -448,6 +448,8 @@ with `-RepoRoot` set to the mount. The driver runs the Linux lane's four steps, 
 1. **pytest per leg**, each leg in its own venv, synced `--locked` when `uv.lock` exists. The
    `bench/` demos log `skipped` instead of failing. A leg with no extras of its own that
    `EXPERIMENTAL_PYTHON_VERSIONS` lists (default: the pin's X.Yt) may fail without failing the run.
+   Leg selection and its per-leg failure policy run in one helper; the settings fixture checks
+   the selected legs, extras and test invocation together.
 2. **`Invoke-CiStaticAnalysis.ps1`**, which gates.
 3. **`DataLocks`**, each fetched beside itself by the hub's `fetch-data-lock.py`
    ([`data-repositories.md`](data-repositories.md#the-hubs-fetcher)), then **`Invoke-CiPackaging.ps1`**.
@@ -507,6 +509,7 @@ pin, writes `dist\windows-arm64-python`:
   declares free-threading (`Resolve-PythonLegList`); `pinned` and `pinnedt` stand for X.Y and X.Yt.
 - **Interpreters:** per leg a copy of the image's target tree, `C:\runtime\python` or
   `C:\runtime\python-freethreaded`, with its site-packages emptied.
+  A disposable-tree fixture checks that only the interpreter marker remains before packages install.
 - **Wheels:** the leg's `cpXY` or `cpXYt` `win_arm64` wheel, cross-built with the image's VS 2026 and
   clang-cl in a child process (`New-CrossBuildPython`, `Invoke-CrossWheelBuild`, `CYTHONIZE=True`).
   `CL` carries `--target=aarch64-pc-windows-msvc`, so a `setup.py` that swaps in clang-cl needs no
@@ -516,6 +519,7 @@ pin, writes `dist\windows-arm64-python`:
   `free-threaded-extras` for an X.Yt leg. Every package is hash-checked from `uv.lock`; pyyaml is built
   pure from its locked sdist; a `cp3XYt` wheel PyPI lacks (psutil) comes from the image's
   `wheels-free-threaded\deps`, by its own hash.
+  A host-free fixture checks that the X.Yt helper forwards its own host Python, extras and stores.
 - **Tests:** `arm64-test-files` (empty: `tests` and the root's pytest configuration files) are copied
   to `run\` without the package, so the tests import the installed wheel. `arm64-test-env` takes
   `NAME=value` pairs, `test-paths` pytest's paths.

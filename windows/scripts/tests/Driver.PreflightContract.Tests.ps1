@@ -19,7 +19,9 @@ Describe 'driver preflight contract (Build-Buildkit.ps1)' {
         # The history gate on every exported image, in Invoke-BkHistoryGate.
         'Assert-ImageConfigPublishable',
         # No nvidia mode=max cache, which carries the TensorRT SDK, in the public package (CON136).
-        'Assert-BkCacheExportRef'
+        'Assert-BkCacheExportRef',
+        # A ROCm subset cannot inherit a stale post-media parent.
+        'Assert-BkRocmStageClosure'
     )
 
     It 'wires every required preflight' {

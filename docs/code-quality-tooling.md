@@ -1644,13 +1644,21 @@ The limits are 15, 5 and 80 respectively; there is no Windows exception list.
 structural test harness; the scanner owns file selection and metric rules, and
 the harness keeps its rooted-path and missing-file policies.
 
-The default command prints every finding and is nonblocking while the existing
-Windows findings are refactored. `-Path <file-or-dir> -Strict` enforces all three
-limits on a selected scope; `-JsonPath <file>` saves the complete report for
-sorting or trend checks. Windows x64 CI runs the whole-tree report after the
-PowerShell lint gate and strictly checks the scanner, AST reader, Slang, CodeQL,
-image config, LLVM diagnostic and agentic loop files. The report is measurement, not a claim that all Windows
-functions already meet the limits. Pester fixtures test the metric counts,
+The default command prints a nonblocking report. Windows x64 CI runs the full
+tracked-tree scan with `-Strict` after the PowerShell lint gate. Use
+`-Path <file-or-dir> -Strict` to include a new file before Git tracks it, and
+save local JSON results in the Git-ignored `out/complexity/` folder:
+
+```pwsh
+New-Item -ItemType Directory -Force out/complexity | Out-Null
+pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath out/complexity/windows-full.json
+```
+
+`-JsonPath` remains optional; CI runs the strict gate without writing a report.
+The BuildKit driver keeps
+stage solves, optional child arguments, preseed setup and teardown in separate
+functions; focused variant, media, solve-order and publish-gate fixtures check
+those handoffs. Pester fixtures test the metric counts,
 malformed input and strict failure. This scanner does not measure duplication,
 runtime-generated code or call graphs; `verify_code_dupes.py --kind ps` separately
 checks PowerShell duplication.
@@ -1664,16 +1672,8 @@ checks PowerShell duplication.
 same scan set as `code-size` (`linux/scripts`, `linux/host-config`,
 `docs/scripts`, `linux/llm-stack`), frozen in `code-complexity.allow` under the
 four-way contract.
-Today: `cc: 59 over 15 paths; 59 frozen` and `nesting: 1 over 5 levels; 1 frozen`
-(EX1 widened the scan to `linux/llm-stack` on 2026-09-07 and every one of those
-rows has since left: the benchmark rows with the lab, and the last of them --
-`nas_census.py extract_xlsx_text`, the only `nesting` row EX1 added -- with the
-NAS census on 2026-09-15. `linux/llm-stack` stays in SCAN; it simply has nothing
-frozen against it now.)
-(Re-derived from the gate on 2026-09-18, which is where the 59 and the 1 come
-from: F1's split of `bump_versions.py main` took its `cc` row off the register.
-The page read 61 until then -- one ABOVE the 60 the gate was already reporting,
-which is the drift this page's own rule about census figures exists to catch.)
+The current gate reports zero complexity or nesting offenders and no frozen
+exceptions. `linux/llm-stack` remains in the scan.
 
 **Why, next to `code-size`.** Length is the cheap proxy. A 60-line function with
 a `case` inside a `while` inside two `if`s is the one that actually resists

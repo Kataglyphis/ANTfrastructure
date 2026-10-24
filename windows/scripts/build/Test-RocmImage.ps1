@@ -113,6 +113,21 @@ function Get-RocmCheckFinding {
 .SYNOPSIS
     The spike mode the run asked for vs the image; both modes share their tags, so a stale parent shows up here.
 #>
+function Write-RocmImageFailureLines {
+    param([string[]]$Failures)
+    foreach ($failure in $Failures) { Write-Host "  [FAIL] $failure" -ForegroundColor Red }
+}
+
+function Write-RocmImageSummary {
+    param([string[]]$Failures, [string]$RocmRoot, [string]$OffloadArch)
+    if ($Failures.Count -gt 0) {
+        Write-Host "ROCm image checks: $($Failures.Count) failure(s)" -ForegroundColor Red
+        return 1
+    }
+    Write-Host "ROCm image checks: all passed (root $RocmRoot, kernel compiled for $OffloadArch)" -ForegroundColor Green
+    return 0
+}
+
 function Get-RocmSpikeFinding {
     param(
         [string]$Expect = '',
@@ -167,10 +182,5 @@ $tvmRoot = if ($env:TVM_ROOT) { $env:TVM_ROOT } else { 'C:\runtime\lib\tvm' }
 Write-Host "  spike mode: EXPECT_ROCM_SPIKES='$ExpectSpikes', MIGRAPHX_ROOT='$env:MIGRAPHX_ROOT'"
 $failures += @(Get-RocmSpikeFinding -Expect $ExpectSpikes -MigraphxRoot "$env:MIGRAPHX_ROOT" -TvmMarker (Join-Path $tvmRoot 'ROCM-FEATURES.txt'))
 
-foreach ($f in $failures) { Write-Host "  [FAIL] $f" -ForegroundColor Red }
-if ($failures.Count -gt 0) {
-    Write-Host "ROCm image checks: $($failures.Count) failure(s)" -ForegroundColor Red
-    exit 1
-}
-Write-Host "ROCm image checks: all passed (root $rocmRoot, kernel compiled for $OffloadArch)" -ForegroundColor Green
-exit 0
+Write-RocmImageFailureLines -Failures $failures
+exit (Write-RocmImageSummary -Failures $failures -RocmRoot $rocmRoot -OffloadArch $OffloadArch)

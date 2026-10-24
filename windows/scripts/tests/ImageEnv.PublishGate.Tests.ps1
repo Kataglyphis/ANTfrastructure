@@ -170,35 +170,52 @@ function Get-EnclosingFunctionName {
     if ($parent) { return $parent.Name }
     ''
 }
+function Find-DriverCallText {
+    param([object[]]$Calls, [string]$Pattern)
+    $Calls | Where-Object { $_.Extent.Text -match $Pattern }
+}
+function Get-UniqueDriverCall {
+    param([object[]]$Calls, [string]$Pattern, [string]$Label)
+    $foundCalls = @(Find-DriverCallText -Calls $Calls -Pattern $Pattern)
+    $problem = if ($foundCalls.Count -eq 1) { '' } else { "expected one $Label, found $($foundCalls.Count)" }
+    $call = if ($foundCalls.Count -eq 1) { $foundCalls[0] } else { $null }
+    return [pscustomobject]@{ Call = $call; Problem = $problem }
+}
 
-# '' when Build-Buildkit.ps1 wires the publish gate as documented, else the first problem.
-function Get-PublishGateWiringProblem {
-    param([Parameter(Mandatory)][string]$Text)
-    $ast = ConvertTo-TestScriptAst -Text $Text
-    $stages = Find-DriverCall $ast 'Invoke-BkStage'
-    $solve = @($stages | Where-Object { $_.Extent.Text -match 'Dockerfile\.publish-gate' })
-    if ($solve.Count -ne 1) { return "expected one publish-gate solve, found $($solve.Count)" }
-    $s = $solve[0]
-    if ((Get-EnclosingFunctionName $s) -ne 'Invoke-BkPublishGate') { return 'the publish-gate solve is not inside Invoke-BkPublishGate' }
-    if ($s.Extent.Text -notmatch '-NoOutput') { return 'the publish gate must not export anything' }
-    if ($s.Extent.Text -notmatch '-NoParentGate') { return 'the publish gate would gate its own BASE_IMAGE' }
-    if ($s.Extent.Text -notmatch 'BASE_IMAGE\s*=\s*\$Image\b') { return 'the gate does not grade the image it is handed' }
+function Get-DriverCallProblem {
+    param([object[]]$Calls, [string]$Pattern, [string]$Label, [scriptblock]$Check)
+    $match = Get-UniqueDriverCall -Calls $Calls -Pattern $Pattern -Label $Label
+    if ($match.Problem) { return $match.Problem }
+    return & $Check $match.Call
+}
 
-    $gates = Find-DriverCall $ast 'Invoke-BkPublishGate'
-    $final = @($gates | Where-Object { $_.Extent.Text -match '-Image \(Get-BkTag \$script:FinalTagName\)' })
-    if ($final.Count -ne 1) { return "expected one publish gate on the final tag, found $($final.Count)" }
-    $g = $final[0]
+function Get-PublishGateSolveExportProblem {
+    param([Parameter(Mandatory)][object[]]$Stages, [Parameter(Mandatory)][object[]]$Gates)
+    $problem = Get-DriverCallProblem -Calls $Stages -Pattern 'Dockerfile\.publish-gate' -Label 'publish-gate solve' -Check { param($s)
+        if ((Get-EnclosingFunctionName $s) -ne 'Invoke-BkPublishGate') { return 'the publish-gate solve is not inside Invoke-BkPublishGate' }
+        if ($s.Extent.Text -notmatch '-NoOutput') { return 'the publish gate must not export anything' }
+        if ($s.Extent.Text -notmatch '-NoParentGate') { return 'the publish gate would gate its own BASE_IMAGE' }
+        if ($s.Extent.Text -notmatch 'BASE_IMAGE\s*=\s*\$Image\b') { return 'the gate does not grade the image it is handed' }
+        return ''
+    }
+    if ($problem) { return $problem }
+    return Get-DriverCallProblem -Calls $Gates -Pattern '-Image \(Get-BkTag \$script:FinalTagName\)' -Label 'publish gate on the final tag' -Check { param($g)
     foreach ($label in 'final-tar', 'final-push') {
-        $export = @($stages | Where-Object { $_.Extent.Text -match "-Label '$label'" })
+        $export = @(Find-DriverCallText -Calls $Stages -Pattern "-Label '$label'")
         if ($export.Count -eq 0) { return "no $label solve found (scanner rot?)" }
         if ($export[0].Extent.StartOffset -lt $g.Extent.StartOffset) { return "$label runs before the publish gate" }
     }
     if (Get-TestAstAncestor -Node $g -Type ([Management.Automation.Language.IfStatementAst]) -First -Predicate {
         param($branch) @($branch.Clauses | Where-Object { $_.Item1.Extent.Text -match 'SkipSmokeGate' }).Count -gt 0
     }) { return 'the publish gate sits in a -SkipSmokeGate branch' }
+    return ''
+    }
+}
 
-    $tcSolve = @($stages | Where-Object { $_.Extent.Text -match 'Dockerfile\.toolchain-builder' })
-    $tcGate = @($gates | Where-Object { $_.Extent.Text -match "-Image \(Get-BkTag 'windows-toolchain'\)" })
+function Get-PublishGateToolchainProblem {
+    param([Parameter(Mandatory)][object[]]$Stages, [Parameter(Mandatory)][object[]]$Gates)
+    $tcSolve = @(Find-DriverCallText -Calls $Stages -Pattern 'Dockerfile\.toolchain-builder')
+    $tcGate = @(Find-DriverCallText -Calls $Gates -Pattern "-Image \(Get-BkTag 'windows-toolchain'\)")
     if ($tcSolve.Count -ne 1 -or $tcGate.Count -ne 1) {
         return "expected one toolchain solve and one gate on the toolchain, found $($tcSolve.Count) and $($tcGate.Count)"
     }
@@ -206,16 +223,43 @@ function Get-PublishGateWiringProblem {
         $tcGate[0].Extent.StartOffset -lt $tcSolve[0].Extent.EndOffset) {
         return 'the toolchain is not graded right after its solve, in the same block'
     }
+    return ''
+}
 
-    $hook = @($gates | Where-Object { (Get-EnclosingFunctionName $_) -eq 'Invoke-BkStage' })
-    if ($hook.Count -ne 1) { return "expected Invoke-BkStage to gate an unbuilt parent once, found $($hook.Count)" }
-    if ($hook[0].Extent.Text -notmatch '-Image \$parent\b') { return 'the parent gate grades something other than BASE_IMAGE' }
-    $buildctl = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
+function Get-ParentStageBuildctlCall {
+    param([Parameter(Mandatory)]$Ast)
+    @($Ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.CommandAst] -and
                 $n.InvocationOperator -eq 'Ampersand' -and $n.CommandElements[0].Extent.Text -eq '$BuildCtl' }, $true) |
             Where-Object { (Get-EnclosingFunctionName $_) -eq 'Invoke-BkStage' })
+}
+
+function Get-ParentGateBuildctlProblem {
+    param([Parameter(Mandatory)]$Ast, [Parameter(Mandatory)]$Hook)
+    $buildctl = @(Get-ParentStageBuildctlCall -Ast $Ast)
     if ($buildctl.Count -eq 0) { return 'no buildctl call in Invoke-BkStage (scanner rot?)' }
-    if ($hook[0].Extent.StartOffset -gt $buildctl[0].Extent.StartOffset) { return 'the parent gate runs after the stage solves' }
-    ''
+    if ($Hook.Extent.StartOffset -gt $buildctl[0].Extent.StartOffset) { return 'the parent gate runs after the stage solves' }
+    return ''
+}
+
+function Get-PublishGateParentProblem {
+    param([Parameter(Mandatory)]$Ast, [Parameter(Mandatory)][object[]]$Gates)
+    $hook = @($Gates | Where-Object { (Get-EnclosingFunctionName $_) -eq 'Invoke-BkStage' })
+    if ($hook.Count -ne 1) { return "expected Invoke-BkStage to gate an unbuilt parent once, found $($hook.Count)" }
+    if ($hook[0].Extent.Text -notmatch '-Image \$parent\b') { return 'the parent gate grades something other than BASE_IMAGE' }
+    return Get-ParentGateBuildctlProblem -Ast $Ast -Hook $hook[0]
+}
+
+# '' when Build-Buildkit.ps1 wires the publish gate as documented, else the first problem.
+function Get-PublishGateWiringProblem {
+    param([Parameter(Mandatory)][string]$Text)
+    $ast = ConvertTo-TestScriptAst -Text $Text
+    $stages = @(Find-DriverCall $ast 'Invoke-BkStage')
+    $gates = @(Find-DriverCall $ast 'Invoke-BkPublishGate')
+    $problem = Get-PublishGateSolveExportProblem -Stages $stages -Gates $gates
+    if ($problem) { return $problem }
+    $problem = Get-PublishGateToolchainProblem -Stages $stages -Gates $gates
+    if ($problem) { return $problem }
+    return Get-PublishGateParentProblem -Ast $ast -Gates $gates
 }
 
 Describe 'Build-Buildkit.ps1: where the publish gate runs' {

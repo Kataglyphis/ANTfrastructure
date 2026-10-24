@@ -80,49 +80,48 @@ function Get-ProcLabel([long]$procId) {
     return "pid $procId  $($p.Name)  (parent $ppid $pn)"
 }
 
-$cdb = $null
-if (-not $LsmPid -or -not $Handle) {
+function Find-LsmWaitHandle {
+    param([string]$OutDir, [int]$WaitForSiloSec, [bool]$NoBait)
     $cdb = Get-CdbPath
-
     $baseWininit = @(Get-SiloWininitId)
-
     if (-not $NoBait) {
         $bait = Start-SiloBaitContainer -Tag 'lsmbait' -PassThru
         Write-Host "bait solve started (buildctl pid $($bait.Id)); its container is the one we inspect"
     }
-
     Write-Host "Waiting for a NEW silo (max $WaitForSiloSec s)..."
     $newWininit = Wait-ForNewSilo -BaselinePid $baseWininit -TimeoutSec $WaitForSiloSec -PollSec 3
     if (-not $newWininit) { throw 'No new silo appeared - start a build/probe and retry.' }
-
     $svchosts = @(Get-SiloSvchost -ServicesParentPid $newWininit.ProcessId)
-
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     foreach ($p in $svchosts) {
         $log = Join-Path $OutDir "holder-probe-$($p.ProcessId)-$stamp.txt"
         # Two passes: .printf swallows the semicolons after it, so a combined command prints no stack.
-        Invoke-SiloDebugger -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -Command '.reload /f; ~*kb; qd' -LogPath $log
+        Invoke-SiloStackCapture -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -LogPath $log
         if (-not (Select-String -Path $log -Pattern 'lsm!CService::Start' -Quiet -ErrorAction SilentlyContinue)) { continue }
-
-        # Bind the frame to its thread: the process's first wait is the SCM dispatcher's idle loop.
         $idx = $null; $cur = $null
         foreach ($ln in (Get-Content $log)) {
             if ($ln -match '^[.#]?\s*(\d+)\s+Id:\s') { $cur = $Matches[1]; continue }
             if ($ln -match 'lsm!CService::Start' -and $null -ne $cur) { $idx = $cur; break }
         }
         if ($null -eq $idx) { Write-Warning "pid $($p.ProcessId) shows LSM but no thread could be bound to it"; continue }
-
-        # The syscall stub does mov r10,rcx, so R10 holds the handle; kb's args-to-child columns are unreliable.
+        # The syscall stub puts the waited handle in R10; kb's arg columns are unreliable.
         $rlog = Join-Path $OutDir "holder-r10-$($p.ProcessId)-$stamp.txt"
         Invoke-SiloDebugger -CdbPath $cdb -ProcessId $p.ProcessId -OutDir $OutDir -Command ".reload /f; ~$($idx)s; r r10; qd" -LogPath $rlog
         $rm = Select-String -Path $rlog -Pattern 'r10=([0-9a-f`]+)' -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $rm) { Write-Warning "pid $($p.ProcessId): thread $idx is LSM but R10 was unreadable (see $rlog)"; continue }
-        $Handle = [uint32][Convert]::ToUInt64(($rm.Matches[0].Groups[1].Value -replace '`', ''), 16)
-        $LsmPid = $p.ProcessId
-        Write-Host "LSM host: pid $LsmPid, thread $idx, waited handle 0x$($Handle.ToString('x')) (R10)" -ForegroundColor Green
-        break
+        $handle = [uint32][Convert]::ToUInt64(($rm.Matches[0].Groups[1].Value -replace '`', ''), 16)
+        Write-Host "LSM host: pid $($p.ProcessId), thread $idx, waited handle 0x$($handle.ToString('x')) (R10)" -ForegroundColor Green
+        return [pscustomobject]@{ Pid = $p.ProcessId; Handle = $handle; Cdb = $cdb }
     }
-    if (-not $LsmPid) { throw 'No svchost showed lsm!CService::Start - hang window missed, retry on the next container.' }
+    throw 'No svchost showed lsm!CService::Start - hang window missed, retry on the next container.'
+}
+
+$cdb = $null
+if (-not $LsmPid -or -not $Handle) {
+    $discovered = Find-LsmWaitHandle -OutDir $OutDir -WaitForSiloSec $WaitForSiloSec -NoBait:$NoBait
+    $LsmPid = $discovered.Pid
+    $Handle = $discovered.Handle
+    $cdb = $discovered.Cdb
 }
 
 # 2. Resolve the kernel object and every holder of it

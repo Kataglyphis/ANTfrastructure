@@ -150,6 +150,37 @@ function Get-OrtGateLinkTarget {
     return $t.FullName
 }
 
+function Get-OrtGateDirectoryFinding {
+    param([System.IO.DirectoryInfo]$Entry, [string]$Suffix, [string]$Via, [bool]$Pyke,
+        [string[]]$Root, [string[]]$Stay, $Stack, $Walked, [System.Collections.IDictionary]$Link)
+    if ($script:OrtGateFetchedDir.IsMatch($Entry.Name)) { "fetched ONNX Runtime content at $($Entry.FullName)$Suffix" }
+    $target = $null
+    if ($Entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
+        try { $target = Get-OrtGateLinkTarget -Item $Entry }
+        catch { "cannot resolve the link $($Entry.FullName)$($Suffix): $($_.Exception.Message)"; return }
+    }
+    if ($null -eq $target) { $Stack.Push(@($Entry.FullName, $Via, $Pyke)); return }
+    if ($Link) { $Link[(ConvertTo-OrtGatePath $Entry.FullName)] = ConvertTo-OrtGatePath $target }
+    if (-not (Test-Path -LiteralPath $target -PathType Container) -or (Test-OrtGateUnder -Path $target -Root $Stay)) { return }
+    if (@($Root | Where-Object { Test-OrtGateUnder -Path $_ -Root @($target) }).Count -gt 0) {
+        "the link $($Entry.FullName) points at $target, which holds the tree itself"
+        return
+    }
+    if ($Walked.Add((ConvertTo-OrtGatePath $target))) { $Stack.Push(@($target, $Entry.FullName, $Pyke)) }
+}
+
+function Get-OrtGateFileFinding {
+    param([System.IO.FileInfo]$Entry, [string]$Suffix, [bool]$Pyke,
+        [hashtable]$Index, [hashtable]$Count, [bool]$Cache)
+    if ($Count -and -not $Cache) { $Count.Files++ }
+    if ($Pyke) { "pyke's ORT download cache holds $($Entry.FullName)$Suffix"; return }
+    if ($Entry.Name -match 'onnxruntime|_provider_factory\.h$|\.tar\.lzma2$') {
+        Get-OrtGateNameFinding -Path $Entry.FullName -Index $Index -Count $Count | ForEach-Object { "$_$Suffix" }
+    } elseif ($Cache -and $Entry.FullName -match '[\\/]http-v2[\\/]') {
+        Get-OrtGateWheelBodyFinding -Path $Entry.FullName -Index $Index
+    }
+}
+
 function Get-OrtGateTreeFinding {
     # Hidden entries too; a dir link leaving the roots is walked and recorded in -Link for record paths spelled through it.
     param([AllowEmptyCollection()][string[]]$Root, [Parameter(Mandatory)][hashtable]$Index, [hashtable]$Count, [switch]$Cache,
@@ -172,25 +203,11 @@ function Get-OrtGateTreeFinding {
         try { $entries = @([System.IO.DirectoryInfo]::new($dir).EnumerateFileSystemInfos('*', $opt)) } catch { "cannot read ${dir}: $($_.Exception.Message)"; continue }
         foreach ($e in $entries) {
             if ($e -is [System.IO.DirectoryInfo]) {
-                if ($script:OrtGateFetchedDir.IsMatch($e.Name)) { "fetched ONNX Runtime content at $($e.FullName)$sfx" }
-                $target = $null
-                if ($e.Attributes -band [System.IO.FileAttributes]::ReparsePoint) {
-                    try { $target = Get-OrtGateLinkTarget -Item $e } catch { "cannot resolve the link $($e.FullName)$($sfx): $($_.Exception.Message)"; continue }
-                }
-                if ($null -eq $target) { $stack.Push(@($e.FullName, $via, $pyke)); continue }
-                if ($Link) { $Link[(ConvertTo-OrtGatePath $e.FullName)] = ConvertTo-OrtGatePath $target }
-                if (-not (Test-Path -LiteralPath $target -PathType Container) -or (Test-OrtGateUnder -Path $target -Root $stay)) { continue }
-                if (@($roots | Where-Object { Test-OrtGateUnder -Path $_ -Root @($target) }).Count -gt 0) { "the link $($e.FullName) points at $target, which holds the tree itself"; continue }
-                if ($walked.Add((ConvertTo-OrtGatePath $target))) { $stack.Push(@($target, $e.FullName, $pyke)) }
+                Get-OrtGateDirectoryFinding -Entry $e -Suffix $sfx -Via $via -Pyke $pyke `
+                    -Root $roots -Stay $stay -Stack $stack -Walked $walked -Link $Link
                 continue
             }
-            if ($Count -and -not $Cache) { $Count.Files++ }
-            if ($pyke) { "pyke's ORT download cache holds $($e.FullName)$sfx"; continue }
-            if ($e.Name -match 'onnxruntime|_provider_factory\.h$|\.tar\.lzma2$') {
-                Get-OrtGateNameFinding -Path $e.FullName -Index $Index -Count $Count | ForEach-Object { "$_$sfx" }
-            } elseif ($Cache -and $e.FullName -match '[\\/]http-v2[\\/]') {
-                Get-OrtGateWheelBodyFinding -Path $e.FullName -Index $Index
-            }
+            Get-OrtGateFileFinding -Entry $e -Suffix $sfx -Pyke $pyke -Index $Index -Count $Count -Cache:$Cache
         }
     }
 }
@@ -259,6 +276,46 @@ function Get-OrtGateRecordToken {
     return @($seen)
 }
 
+function Get-OrtGateSearchPathFinding {
+    param([string]$Path, [string]$Record, [hashtable]$Index, [string[]]$OsRoot)
+    if ((Test-OrtGateUnder -Path $Path -Root $OsRoot) -or -not (Test-Path -LiteralPath $Path -PathType Container)) { return }
+    foreach ($dir in @($Path, "$Path/onnxruntime", "$Path/onnxruntime/core/session") | Where-Object { Test-Path -LiteralPath $_ -PathType Container }) {
+        foreach ($file in @([System.IO.Directory]::EnumerateFiles($dir, '*onnxruntime*')) + @([System.IO.Directory]::EnumerateFiles($dir, '*_provider_factory.h'))) {
+            Get-OrtGateNameFinding -Path $file -Index $Index | ForEach-Object { "${Record} searches ${dir}: $_" }
+        }
+    }
+}
+
+function Get-OrtGateRecordPathFinding {
+    param([string]$Token, [string]$Record, [hashtable]$Index, [string[]]$ChainRoot,
+        [string[]]$Allowed, [hashtable]$Count, [System.Collections.IDictionary]$Link,
+        [string[]]$OsRoot, [regex]$Segment)
+    if ($Count) { $Count.Tokens++ }
+    $real = Resolve-OrtGateLinkedPath -Path $Token -Link $Link
+    if ((Test-OrtGateUnder -Path $Token -Root $ChainRoot) -or (Test-OrtGateUnder -Path $real -Root $ChainRoot)) {
+        if ($Count) { $Count.ChainRefs++ }
+        return
+    }
+    $leaf = ($real -split '/')[-1]
+    $ortLeaf = $Index.Sha.ContainsKey($leaf) -or $script:OrtGateBinaryName.IsMatch($leaf)
+    if (Test-OrtGateUnder -Path $real -Root $Allowed) {
+        if ($ortLeaf -and (Test-Path -LiteralPath $real -PathType Leaf)) {
+            Get-OrtGateNameFinding -Path $real -Index $Index | ForEach-Object { "${Record}: $_" }
+        }
+        return
+    }
+    $named = if ($real -ne $Token) { "$Token (= $real)" } else { $Token }
+    if ($ortLeaf) {
+        if (Test-Path -LiteralPath $real -PathType Leaf) {
+            Get-OrtGateNameFinding -Path $real -Index $Index | ForEach-Object { "${Record}: $_" }
+        } else { "${Record} names $named, an ONNX Runtime file outside the chain (not on disk to compare)" }
+    } elseif ($Segment.IsMatch($real)) {
+        "${Record} names an ONNX Runtime path outside the chain: $named"
+    } else {
+        Get-OrtGateSearchPathFinding -Path $real -Record $Record -Index $Index -OsRoot $OsRoot
+    }
+}
+
 function Get-OrtGateRecordFinding {
     # Records may name ORT only under the chain, a shim or the tree; the Windows dir is G1's question, not a build input.
     param([AllowEmptyCollection()][string[]]$Record, [Parameter(Mandatory)][hashtable]$Index, [string[]]$ChainRoot, [string[]]$Allowed, [hashtable]$Count,
@@ -269,28 +326,8 @@ function Get-OrtGateRecordFinding {
         if (-not (Test-Path -LiteralPath $rec -PathType Leaf)) { "the build record $rec is missing"; continue }
         try { $tokens = @(Get-OrtGateRecordToken -Path $rec) } catch { "the build record $rec cannot be read: $($_.Exception.Message)"; continue }
         foreach ($tok in $tokens) {
-            if ($Count) { $Count.Tokens++ }
-            $real = Resolve-OrtGateLinkedPath -Path $tok -Link $Link
-            if ((Test-OrtGateUnder -Path $tok -Root $ChainRoot) -or (Test-OrtGateUnder -Path $real -Root $ChainRoot)) { if ($Count) { $Count.ChainRefs++ }; continue }
-            $leaf = ($real -split '/')[-1]
-            $ortLeaf = $Index.Sha.ContainsKey($leaf) -or $script:OrtGateBinaryName.IsMatch($leaf)
-            if (Test-OrtGateUnder -Path $real -Root $Allowed) {
-                if ($ortLeaf -and (Test-Path -LiteralPath $real -PathType Leaf)) { Get-OrtGateNameFinding -Path $real -Index $Index | ForEach-Object { "${rec}: $_" } }
-                continue
-            }
-            $named = if ($real -ne $tok) { "$tok (= $real)" } else { $tok }
-            if ($ortLeaf) {
-                if (Test-Path -LiteralPath $real -PathType Leaf) { Get-OrtGateNameFinding -Path $real -Index $Index | ForEach-Object { "${rec}: $_" } }
-                else { "${rec} names $named, an ONNX Runtime file outside the chain (not on disk to compare)" }
-            } elseif ($segment.IsMatch($real)) {
-                "${rec} names an ONNX Runtime path outside the chain: $named"
-            } elseif (-not (Test-OrtGateUnder -Path $real -Root $os) -and (Test-Path -LiteralPath $real -PathType Container)) {
-                foreach ($d in @($real, "$real/onnxruntime", "$real/onnxruntime/core/session") | Where-Object { Test-Path -LiteralPath $_ -PathType Container }) {
-                    foreach ($f in @([System.IO.Directory]::EnumerateFiles($d, '*onnxruntime*')) + @([System.IO.Directory]::EnumerateFiles($d, '*_provider_factory.h'))) {
-                        Get-OrtGateNameFinding -Path $f -Index $Index | ForEach-Object { "${rec} searches ${d}: $_" }
-                    }
-                }
-            }
+            Get-OrtGateRecordPathFinding -Token $tok -Record $rec -Index $Index -ChainRoot $ChainRoot `
+                -Allowed $Allowed -Count $Count -Link $Link -OsRoot $os -Segment $segment
         }
     }
 }
@@ -306,6 +343,22 @@ function Get-OrtGateLogFinding {
             if ($script:OrtGateFetchLine.IsMatch($line)) { "${l}:${n} fetches an ONNX Runtime: $($line.Trim())" }
         }
     }
+}
+
+function Add-OrtGateScanFindings {
+    param([System.Collections.Generic.List[string]]$All, [hashtable]$Index, [hashtable]$Count,
+        [string[]]$Tree, [string[]]$CacheRoot, [string[]]$Record, [string[]]$Log,
+        [string[]]$Refs, [string[]]$Finding, [string]$OrtRoot, [System.Collections.IDictionary]$Link)
+    foreach ($f in @($Finding | Where-Object { $_ })) { $All.Add("consumer gate: $f") }
+    foreach ($f in $Index.Finding) { $All.Add($f) }
+    if ($Tree.Count -eq 0) { $All.Add('no source or build tree was given, so nothing was checked') }
+    foreach ($f in @(Get-OrtGateTreeFinding -Root $Tree -Index $Index -Count $Count -Allowed $Refs -Link $Link)) { $All.Add($f) }
+    if ($Tree.Count -gt 0 -and $Count.Files -eq 0) { $All.Add("the tree(s) $($Tree -join ', ') hold no files: a vacuous scan, not a clean build") }
+    foreach ($f in @(Get-OrtGateTreeFinding -Root $CacheRoot -Index $Index -Cache -Allowed $Refs)) { $All.Add($f) }
+    foreach ($f in @(Get-OrtGateRecordFinding -Record $Record -Index $Index -ChainRoot $Refs -Allowed $Tree -Count $Count -Link $Link)) { $All.Add($f) }
+    if ($Count.ChainRefs -eq 0) { $All.Add("no build record names the chain ONNX Runtime at $OrtRoot or a shim of it, so nothing proves the build used it") }
+    if ($Log.Count -eq 0) { $All.Add('no build log was given, so no configure or build step was checked for an ONNX Runtime fetch') }
+    foreach ($f in @(Get-OrtGateLogFinding -Log $Log)) { $All.Add($f) }
 }
 
 function Assert-ChainOrtOnly {
@@ -334,16 +387,8 @@ function Assert-ChainOrtOnly {
     $link = [System.Collections.Generic.Dictionary[string, string]]::new([StringComparer]::OrdinalIgnoreCase)
     $logs = @($Log | Where-Object { $_ })
     $all = [System.Collections.Generic.List[string]]::new()
-    foreach ($f in @($Finding | Where-Object { $_ })) { $all.Add("consumer gate: $f") }
-    foreach ($f in $index.Finding) { $all.Add($f) }
-    if ($trees.Count -eq 0) { $all.Add('no source or build tree was given, so nothing was checked') }
-    foreach ($f in @(Get-OrtGateTreeFinding -Root $trees -Index $index -Count $count -Allowed $refs -Link $link)) { $all.Add($f) }
-    if ($trees.Count -gt 0 -and $count.Files -eq 0) { $all.Add("the tree(s) $($trees -join ', ') hold no files: a vacuous scan, not a clean build") }
-    foreach ($f in @(Get-OrtGateTreeFinding -Root $CacheRoot -Index $index -Cache -Allowed $refs)) { $all.Add($f) }
-    foreach ($f in @(Get-OrtGateRecordFinding -Record $Record -Index $index -ChainRoot $refs -Allowed $trees -Count $count -Link $link)) { $all.Add($f) }
-    if ($count.ChainRefs -eq 0) { $all.Add("no build record names the chain ONNX Runtime at $OrtRoot or a shim of it, so nothing proves the build used it") }
-    if ($logs.Count -eq 0) { $all.Add('no build log was given, so no configure or build step was checked for an ONNX Runtime fetch') }
-    foreach ($f in @(Get-OrtGateLogFinding -Log $logs)) { $all.Add($f) }
+    Add-OrtGateScanFindings -All $all -Index $index -Count $count -Tree $trees -CacheRoot $CacheRoot `
+        -Record $Record -Log $logs -Refs $refs -Finding $Finding -OrtRoot $OrtRoot -Link $link
     if ($all.Count -gt 0) {
         foreach ($f in ($all | Select-Object -First 200)) { Write-Host "  ORT gate ($Consumer) FAIL: $f" -ForegroundColor Red }
         throw "ORT gate ($Consumer): $($all.Count) finding(s), the build reached an ONNX Runtime other than the chain's at ${OrtRoot}: $(($all | Select-Object -First 10) -join ' | ')"

@@ -491,6 +491,91 @@ function Write-ShimPatchState {
     return $resolved
 }
 
+function Resolve-ShimPatchPath {
+    param([string]$ShimPath, [string[]]$AlternateRoot, [switch]$Force, [string]$Advice)
+    # Fail closed: "could not check" must not read as "fine".
+    if (-not (Test-Path $ShimPath)) {
+        $alt = @($AlternateRoot) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+        if ($alt) {
+            Write-Host "shim not at $ShimPath; using $alt" -ForegroundColor DarkGray
+            $ShimPath = $alt
+        } elseif ($Force) {
+            Write-Warning "shim not found at $ShimPath and no alternate root has one - continuing because -Force/-SkipHostChecks was passed."
+            return
+        } else {
+            throw ("containerd shim not found at '$ShimPath' (nor under D:\Stevedore\bin). " +
+                   'Refusing to build: an UNPATCHED shim kills heavy RUN layers with ExportLayer 0x3 only ' +
+                   "AFTER the compile is paid for, so an unverifiable shim is not a safe default. $advice " +
+                   'Pass -SkipHostChecks to override deliberately.')
+        }
+    }
+    return $ShimPath
+}
+
+function Read-ShimPatchState {
+    param([string]$ShimPath, [string]$StatePath)
+    $state = $null
+    if (Test-Path $statePath) {
+        try { $state = Get-Content $statePath -Raw | ConvertFrom-Json }
+        catch { Write-Warning "shim state file $statePath is unreadable ($($_.Exception.Message)) - falling back to the size check." }
+    }
+    # A state file for a different install path describes another binary.
+    if ($state -and $state.shimPath -and $state.shimPath -ne $ShimPath) {
+        Write-Warning "shim state file $statePath records '$($state.shimPath)', not '$ShimPath' - falling back to the size check."
+        $state = $null
+    }
+    return $state
+}
+
+function Assert-ShimHashVerdict {
+    param([string]$ShimPath, [pscustomobject]$State, [long]$Size, [string]$Advice, [switch]$Force)
+    if ($state -and $State.sha256) {
+        $live = (Get-FileHash -Algorithm SHA256 -Path $ShimPath).Hash
+        if ($live -eq $State.sha256) {
+            $variant = if ($State.variant) { ", variant $($State.variant)" } else { '' }
+            Write-Host "runhcs shim: hash matches the deployed patch (deployed $($State.deployedAt)$variant)" -ForegroundColor Cyan
+            return $true
+        }
+        $what = if ($State.stockSha256 -and $live -eq $State.stockSha256) {
+            'has been REVERTED TO THE STOCK BINARY'
+        } else {
+            'has CHANGED since the patch was deployed'
+        }
+        $detail = ("runhcs shim at $ShimPath $what (recorded $($State.sha256.Substring(0,12))… on " +
+            "$($State.deployedAt), live $($live.Substring(0,12))…, $('{0:N0}' -f $Size) bytes) - " +
+            'most likely a Stevedore/containerd update. Heavy media layers WILL fail with ' +
+            "hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice")
+        if ($Force) {
+            Write-Warning "$detail Continuing because -Force was passed."
+            return $true
+        }
+        throw "$detail Pass -Force to override."
+    }
+    return $false
+}
+
+function Assert-ShimSizeVerdict {
+    param([string]$ShimPath, [string]$StatePath, [long]$Size, [long[]]$PatchedSize, [long[]]$StockSize, [string]$Advice, [switch]$Force)
+    $record = "Record the deployed binary's hash so this gate stops guessing: re-run " +
+        'windows\scripts\host\Publish-ShimPatch.ps1 (it writes ' + $statePath + ' on a successful swap).'
+    if ($PatchedSize -contains $Size) {
+        Write-Host "runhcs shim: patched build by SIZE ($('{0:N0}' -f $Size) bytes; no recorded hash)" -ForegroundColor Cyan
+        Write-Warning $record
+        return
+    }
+    if ($StockSize -contains $Size) {
+        if ($Force) {
+            Write-Warning "runhcs shim is STOCK ($('{0:N0}' -f $Size) bytes) - continuing because -Force was passed. Expect ExportLayer 0x3 on the first heavy media finalize. $advice"
+            return
+        }
+        throw ("runhcs shim at $ShimPath is the STOCK binary ($('{0:N0}' -f $Size) bytes) - the teardown-timeout " +
+            'patch has been reverted, most likely by a Stevedore/containerd update. Heavy media layers WILL fail ' +
+            "with hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice Pass -Force to override.")
+    }
+    Write-Warning ("runhcs shim size $('{0:N0}' -f $Size) bytes is neither a known patched nor a known stock build, " +
+        "and no deployed hash is recorded on this host. $record $advice")
+}
+
 function Assert-ShimPatch {
     # Works around microsoft/hcsshim#2855, whose patch every Stevedore update reverts: hash first, size heuristic as fallback.
     param(
@@ -511,78 +596,17 @@ function Assert-ShimPatch {
         '-ShimPath <your build> (and -ServiceEnvironment for an upstream-patch build, which needs ' +
         'CONTAINERD_SHIM_RUNHCS_V1_TEARDOWN_TIMEOUT set or it silently keeps the 30s default). ' +
         'Recipe + patch: windows/upstream/hcsshim-teardown-timeout/.'
-    # Fail closed: "could not check" must not read as "fine".
-    if (-not (Test-Path $ShimPath)) {
-        $alt = @($AlternateRoot) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
-        if ($alt) {
-            Write-Host "shim not at $ShimPath; using $alt" -ForegroundColor DarkGray
-            $ShimPath = $alt
-        } elseif ($Force) {
-            Write-Warning "shim not found at $ShimPath and no alternate root has one - continuing because -Force/-SkipHostChecks was passed."
-            return
-        } else {
-            throw ("containerd shim not found at '$ShimPath' (nor under D:\Stevedore\bin). " +
-                   'Refusing to build: an UNPATCHED shim kills heavy RUN layers with ExportLayer 0x3 only ' +
-                   "AFTER the compile is paid for, so an unverifiable shim is not a safe default. $advice " +
-                   'Pass -SkipHostChecks to override deliberately.')
-        }
-    }
+    $ShimPath = Resolve-ShimPatchPath -ShimPath $ShimPath -AlternateRoot $AlternateRoot -Force:$Force -Advice $advice
+    if (-not $ShimPath) { return }
     $size = (Get-Item $ShimPath).Length
 
     $statePath = Get-ShimPatchStatePath -StatePath $StatePath
-    $state = $null
-    if (Test-Path $statePath) {
-        try { $state = Get-Content $statePath -Raw | ConvertFrom-Json }
-        catch { Write-Warning "shim state file $statePath is unreadable ($($_.Exception.Message)) - falling back to the size check." }
-    }
-    # A state file for a different install path describes another binary.
-    if ($state -and $state.shimPath -and $state.shimPath -ne $ShimPath) {
-        Write-Warning "shim state file $statePath records '$($state.shimPath)', not '$ShimPath' - falling back to the size check."
-        $state = $null
-    }
+    $state = Read-ShimPatchState -ShimPath $ShimPath -StatePath $statePath
 
-    if ($state -and $state.sha256) {
-        $live = (Get-FileHash -Algorithm SHA256 -Path $ShimPath).Hash
-        if ($live -eq $state.sha256) {
-            $variant = if ($state.variant) { ", variant $($state.variant)" } else { '' }
-            Write-Host "runhcs shim: hash matches the deployed patch (deployed $($state.deployedAt)$variant)" -ForegroundColor Cyan
-            return
-        }
-        $what = if ($state.stockSha256 -and $live -eq $state.stockSha256) {
-            'has been REVERTED TO THE STOCK BINARY'
-        } else {
-            'has CHANGED since the patch was deployed'
-        }
-        $detail = ("runhcs shim at $ShimPath $what (recorded $($state.sha256.Substring(0,12))… on " +
-            "$($state.deployedAt), live $($live.Substring(0,12))…, $('{0:N0}' -f $size) bytes) - " +
-            'most likely a Stevedore/containerd update. Heavy media layers WILL fail with ' +
-            "hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice")
-        if ($Force) {
-            Write-Warning "$detail Continuing because -Force was passed."
-            return
-        }
-        throw "$detail Pass -Force to override."
-    }
+    if (Assert-ShimHashVerdict -ShimPath $ShimPath -State $state -Size $size -Advice $advice -Force:$Force) { return }
 
     # ── fallback: size heuristic (no recorded hash on this host yet) ──────────
-    $record = "Record the deployed binary's hash so this gate stops guessing: re-run " +
-        'windows\scripts\host\Publish-ShimPatch.ps1 (it writes ' + $statePath + ' on a successful swap).'
-    if ($PatchedSize -contains $size) {
-        Write-Host "runhcs shim: patched build by SIZE ($('{0:N0}' -f $size) bytes; no recorded hash)" -ForegroundColor Cyan
-        Write-Warning $record
-        return
-    }
-    if ($StockSize -contains $size) {
-        if ($Force) {
-            Write-Warning "runhcs shim is STOCK ($('{0:N0}' -f $size) bytes) - continuing because -Force was passed. Expect ExportLayer 0x3 on the first heavy media finalize. $advice"
-            return
-        }
-        throw ("runhcs shim at $ShimPath is the STOCK binary ($('{0:N0}' -f $size) bytes) - the teardown-timeout " +
-            'patch has been reverted, most likely by a Stevedore/containerd update. Heavy media layers WILL fail ' +
-            "with hcsshim::ExportLayer 0x3 after the compile is already paid for. $advice Pass -Force to override.")
-    }
-    Write-Warning ("runhcs shim size $('{0:N0}' -f $size) bytes is neither a known patched nor a known stock build, " +
-        "and no deployed hash is recorded on this host. $record $advice")
+    Assert-ShimSizeVerdict -ShimPath $ShimPath -StatePath $statePath -Size $size -PatchedSize $PatchedSize -StockSize $StockSize -Advice $advice -Force:$Force
 }
 
 function Get-StageDiskFloorGb {
