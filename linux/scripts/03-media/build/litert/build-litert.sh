@@ -479,7 +479,14 @@ _install_manual_flatbuffers() {
     fi
     if [ "$fb_found" -eq 0 ]; then
         local fbheader fbdir
-        fbheader=$(find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h" -print -quit 2>/dev/null || true)
+        if ! declare -F first_match_using >/dev/null; then
+            printf 'ERROR: FlatBuffers header discovery requires first_match_using from guard-helpers.sh\n' >&2
+            exit 1
+        fi
+        fbheader=$(
+            _litert_header_find() { find "$@"; }
+            first_match_using _litert_header_find "${LITERT_SRC}/litert" -type f -path "*/flatbuffers/flatbuffers.h"
+        )
         if [ -n "$fbheader" ]; then
             fbdir=$(dirname "$fbheader")
             info "Found flatbuffers header at $fbheader; copying from $fbdir..."

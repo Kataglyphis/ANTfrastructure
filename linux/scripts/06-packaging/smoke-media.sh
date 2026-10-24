@@ -8,6 +8,20 @@ echo "=== Media Library Functional Smoke Tests ==="
 echo ""
 
 # ONNX Runtime: import and inference
+_smoke_query_matches() {
+  local producer="$1" consumer="$2"
+  shift 2
+  "${producer}" "$@" 2>/dev/null | "${consumer}" -q .
+}
+
+_smoke_python_files() {
+  find "$@"
+}
+
+_smoke_python_match() {
+  grep "$@"
+}
+
 _smoke_media_python_library() {
   local module="$1" pattern="$2" imported="$3" presence="$4" mode
   shift 4
@@ -22,7 +36,7 @@ _smoke_media_python_library() {
   else
     return 0
   fi
-  if find "$@" -name "${pattern}" -type f 2>/dev/null | grep -q .; then
+  if _smoke_query_matches _smoke_python_files _smoke_python_match "$@" -name "${pattern}" -type f; then
     "${presence}" "${mode}" present "$1"
   else
     "${presence}" "${mode}" missing "$1"
@@ -126,6 +140,14 @@ fi
 
 # Browser assets the container never loads: real WASM magic plus a JS loader, and a shortfall only WARNs.
 echo "--- LiteRT web (WASM/JS) ---"
+_smoke_web_loaders() {
+  find "$@"
+}
+
+_smoke_web_match() {
+  grep "$@"
+}
+
 _check_web_runtime() {
   local label="$1" dir="$2" expect="${3:-1}"
   local wasm bad=0 n=0 magic
@@ -138,7 +160,7 @@ _check_web_runtime() {
     magic="$(head -c4 "${wasm}" 2>/dev/null | od -An -tx1 2>/dev/null | tr -d ' \n')"
     [ "${magic}" = "0061736d" ] || { echo "  bad magic (${magic:-empty}) in ${wasm}"; bad=$((bad + 1)); }
   done < <(find "${dir}" -name '*.wasm' 2>/dev/null)
-  if find "${dir}" \( -name '*.js' -o -name '*.mjs' \) -print -quit 2>/dev/null | grep -q .; then :; else
+  if _smoke_query_matches _smoke_web_loaders _smoke_web_match "${dir}" \( -name '*.js' -o -name '*.mjs' \) -print -quit; then :; else
     echo "  INFO: ${label} has .wasm but no JS loader alongside"
   fi
   if [ "${bad}" -ne 0 ]; then

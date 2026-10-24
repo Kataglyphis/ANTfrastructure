@@ -196,7 +196,7 @@ _chain_extra_arg() {
     --from-stage) FROM_STAGE="$2"; _OARG_SHIFT=2 ;;
     --to-stage) TO_STAGE="$2"; _OARG_SHIFT=2 ;;
     --only) ONLY_STAGE="$2"; _OARG_SHIFT=2 ;;
-    --log-dir) LOG_DIR="$2"; _OARG_SHIFT=2 ;;
+    --log-dir) orchestrator_consume_log_dir "$@" ;;
     --verify-chain) VERIFY_CHAIN_ONLY=1; _OARG_SHIFT=1 ;;
     --describe-chain) DESCRIBE_CHAIN=1; _OARG_SHIFT=1 ;;
     --no-push) CROSS_NO_PUSH=1; export CROSS_NO_PUSH; _OARG_SHIFT=1

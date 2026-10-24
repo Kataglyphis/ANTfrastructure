@@ -18470,7 +18470,7 @@
  {
   "id": "lib.smoke-media-library-presence",
   "target": "linux/scripts/06-packaging/smoke-media.sh",
-  "find": "if find \"$@\" -name \"${pattern}\" -type f 2>/dev/null | grep -q .; then",
+  "find": "if _smoke_query_matches _smoke_python_files _smoke_python_match \"$@\" -name \"${pattern}\" -type f; then",
   "replace": "if false; then",
   "test": "bash linux/scripts/tests/test-media-onnx-policy.sh",
   "why": "native import failures defer only when a real library exists; cross required ORT needs presence"
@@ -21773,8 +21773,8 @@
  {
   "id": "lib.cross-cli-consumed-target-value",
   "target": "linux/scripts/lib-orchestrator.sh",
-  "find": "  _OARG_SHIFT=2",
-  "replace": "  _OARG_SHIFT=1",
+  "find": "orchestrator_set_cross_targets() {\n  local -n _oct_targets=CROSS_TARGETS\n  _oct_targets=\"$1\"\n  _OARG_SHIFT=2\n}",
+  "replace": "orchestrator_set_cross_targets() {\n  local -n _oct_targets=CROSS_TARGETS\n  _oct_targets=\"$1\"\n  _OARG_SHIFT=1\n}",
   "test": "bash linux/scripts/tests/test-runtime-sdk-help.sh",
   "why": "Both callbacks consume the option and its value while retaining dynamic caller locals."
  },
@@ -24807,5 +24807,301 @@
   "replace": "for companion in compiler-cache-utils.sh load-versions-env.sh versions.env platform.sh; do",
   "test": "bash linux/scripts/tests/test-compiler-cache-companions.sh",
   "why": "A complete common-module initialization must succeed before the missing-cache comparison; another missing companion cannot mask cache-guard regressions."
+ },
+ {
+  "id": "lib.smoke-query-quiet-producer",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "\"${producer}\" \"$@\" 2>/dev/null | \"${consumer}\" -q .",
+  "replace": "\"${producer}\" \"$@\" | \"${consumer}\" -q .",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "Only the producer diagnostics are quiet; consumer failures stay observable."
+ },
+ {
+  "id": "lib.smoke-query-consumer-arguments",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "| \"${consumer}\" -q .",
+  "replace": "| \"${consumer}\" -q wrong",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "Both callers retain the fixed quiet nonempty-output query and exact consumer arguments."
+ },
+ {
+  "id": "lib.smoke-query-pipeline-status",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "\"${producer}\" \"$@\" 2>/dev/null | \"${consumer}\" -q .",
+  "replace": "\"${producer}\" \"$@\" 2>/dev/null | \"${consumer}\" -q . || true",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "Producer failures including141 and empty or failed consumers cannot become successful presence verdicts."
+ },
+ {
+  "id": "lib.smoke-query-web-find-binding",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "_smoke_web_loaders() {\n  find \"$@\"\n}",
+  "replace": "_smoke_web_loaders() {\n  _smoke_python_files \"$@\"\n}",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "Web producer lookup retains its own later parse-time alias rather than the Python phase binding."
+ },
+ {
+  "id": "lib.smoke-query-web-grep-binding",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "_smoke_web_match() {\n  grep \"$@\"\n}",
+  "replace": "_smoke_web_match() {\n  _smoke_python_match \"$@\"\n}",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "Web consumer lookup retains its later parse-time alias independently from the Python consumer."
+ },
+ {
+  "id": "lib.smoke-query-web-selectors",
+  "target": "linux/scripts/06-packaging/smoke-media.sh",
+  "find": "_smoke_web_match \"${dir}\" \\( -name '*.js' -o -name '*.mjs' \\) -print -quit",
+  "replace": "_smoke_web_match \"${dir}\" -name '*.js' -print -quit",
+  "test": "bash linux/scripts/tests/test-smoke-query-contract.sh",
+  "why": "JS and MJS selector grouping, print/quit order and spaced roots remain caller owned."
+ },
+ {
+  "id": "lib.log-dir-raw-value",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "orchestrator_consume_log_dir() {\n  LOG_DIR=\"$2\"\n  _OARG_SHIFT=2\n}",
+  "replace": "orchestrator_consume_log_dir() {\n  LOG_DIR=\"$1\"\n  _OARG_SHIFT=2\n}",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "The handler value is the second raw argument, including empty strings and newlines."
+ },
+ {
+  "id": "lib.log-dir-consumption",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "orchestrator_consume_log_dir() {\n  LOG_DIR=\"$2\"\n  _OARG_SHIFT=2\n}",
+  "replace": "orchestrator_consume_log_dir() {\n  LOG_DIR=\"$2\"\n  _OARG_SHIFT=1\n}",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "The log-directory flag consumes its value as well as the flag."
+ },
+ {
+  "id": "lib.log-dir-assignment-order",
+  "target": "linux/scripts/lib-orchestrator.sh",
+  "find": "orchestrator_consume_log_dir() {\n  LOG_DIR=\"$2\"\n  _OARG_SHIFT=2\n}",
+  "replace": "orchestrator_consume_log_dir() {\n  _OARG_SHIFT=2\n  LOG_DIR=\"$2\"\n}",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "Readonly destinations and aliased shift state preserve assignment order."
+ },
+ {
+  "id": "lib.log-dir-stage-required",
+  "target": "linux/scripts/build-cross-stage.sh",
+  "find": "--log-dir) orchestrator_consume_log_dir \"$@\" ;;",
+  "replace": "--log-dir) _OARG_SHIFT=2 ;;",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "Each actual handler must assign its log directory through the consumer."
+ },
+ {
+  "id": "lib.log-dir-stage-argv",
+  "target": "linux/scripts/build-cross-stage.sh",
+  "find": "--log-dir) orchestrator_consume_log_dir \"$@\" ;;",
+  "replace": "--log-dir) orchestrator_consume_log_dir \"$1\" \"$2\" ;;",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "Full handler positional context remains visible to nameref array subscripts."
+ },
+ {
+  "id": "lib.log-dir-chain-required",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "--log-dir) orchestrator_consume_log_dir \"$@\" ;;",
+  "replace": "--log-dir) _OARG_SHIFT=2 ;;",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "Each actual handler must assign its log directory through the consumer."
+ },
+ {
+  "id": "lib.log-dir-chain-argv",
+  "target": "linux/scripts/build-cross-chain.sh",
+  "find": "--log-dir) orchestrator_consume_log_dir \"$@\" ;;",
+  "replace": "--log-dir) orchestrator_consume_log_dir \"$1\" \"$2\" ;;",
+  "test": "bash linux/scripts/tests/test-log-dir-consumer.sh",
+  "why": "Full handler positional context remains visible to nameref array subscripts."
+ },
+ {
+  "id": "lib.header-discovery-advisory-find",
+  "target": "linux/scripts/01-core/guard-helpers.sh",
+  "find": "\"${_fmu_find}\" \"${_fmu_path}\" \"$@\" -print -quit 2>/dev/null || true",
+  "replace": "\"${_fmu_find}\" \"${_fmu_path}\" \"$@\" -print -quit 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "a failed find keeps any partial header path and remains advisory exactly as before"
+ },
+ {
+  "id": "lib.header-discovery-quiet-find",
+  "target": "linux/scripts/01-core/guard-helpers.sh",
+  "find": "\"${_fmu_find}\" \"${_fmu_path}\" \"$@\" -print -quit 2>/dev/null || true",
+  "replace": "\"${_fmu_find}\" \"${_fmu_path}\" \"$@\" -print -quit || true",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "legacy first-match stderr remains suppressed while partial stdout survives"
+ },
+ {
+  "id": "lib.header-discovery-first-only",
+  "target": "linux/scripts/01-core/guard-helpers.sh",
+  "find": "\"${_fmu_find}\" \"${_fmu_path}\" \"$@\" -print -quit 2>/dev/null || true",
+  "replace": "\"${_fmu_find}\" \"${_fmu_path}\" \"$@\" -print 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the shared query retains first-hit traversal and exact -print -quit arguments"
+ },
+ {
+  "id": "lib.header-discovery-legacy-required-path",
+  "target": "linux/scripts/01-core/guard-helpers.sh",
+  "find": "local _path=\"$1\"; shift",
+  "replace": "local _path=\"${1:-}\"; shift",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "legacy zero-argument nounset and empty-argument behavior remain distinct"
+ },
+ {
+  "id": "lib.header-discovery-legacy-shift",
+  "target": "linux/scripts/01-core/guard-helpers.sh",
+  "find": "local _path=\"$1\"; shift",
+  "replace": "local _path=\"$1\"",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the legacy path operand is consumed once before forwarding predicate or additional-root arguments"
+ },
+ {
+  "id": "lib.header-discovery-legacy-find-binding",
+  "target": "linux/scripts/01-core/guard-helpers.sh",
+  "find": "first_match_using _first_match_find \"${_path}\" \"$@\"",
+  "replace": "first_match_using find \"${_path}\" \"$@\"",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "legacy first_match retains its owner-bound find alias and dynamic local _path visibility"
+ },
+ {
+  "id": "lib.header-discovery-litert-binding",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "_litert_header_find() { find \"$@\"; }",
+  "replace": "_litert_header_find() { _first_match_find \"$@\"; }",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the caller command-substitution retains late alias binding instead of borrowing the earlier helper-owner alias"
+ },
+ {
+  "id": "lib.header-discovery-litert-api",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "if ! declare -F first_match_using >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "selected discovery fails closed on an old helper owner while already-present header branches need no new API"
+ },
+ {
+  "id": "lib.header-discovery-litert-callback-scope",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "fbheader=$(\n            _litert_header_find() { find \"$@\"; }",
+  "replace": "_litert_header_find() { find \"$@\"; }\n        fbheader=$(",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the find callback stays inside the existing captured subshell and leaves no parent function behind"
+ },
+ {
+  "id": "lib.header-discovery-ort-binding",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "_ort_trt_header_find() { find \"$@\"; }",
+  "replace": "_ort_trt_header_find() { _first_match_find \"$@\"; }",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the caller command-substitution retains late alias binding instead of borrowing the earlier helper-owner alias"
+ },
+ {
+  "id": "lib.header-discovery-ort-api",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "if ! declare -F first_match_using >/dev/null; then",
+  "replace": "if false; then",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "selected discovery fails closed on an old helper owner while already-present header branches need no new API"
+ },
+ {
+  "id": "lib.header-discovery-ort-callback-scope",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "TRT_INC=$(\n      _ort_trt_header_find() { find \"$@\"; }",
+  "replace": "_ort_trt_header_find() { find \"$@\"; }\n    TRT_INC=$(",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the find callback stays inside the existing captured subshell and leaves no parent function behind"
+ },
+ {
+  "id": "lib.header-discovery-trt-root-order",
+  "target": "linux/scripts/03-media/build/onnxruntime/build/30-build-native-nvidia.sh",
+  "find": "first_match_using _ort_trt_header_find /usr/include /usr/local -name \"NvInfer.h\"",
+  "replace": "first_match_using _ort_trt_header_find /usr/local /usr/include -name \"NvInfer.h\"",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "the original TensorRT search roots retain their precedence and exact argument boundaries"
+ },
+ {
+  "id": "lib.header-discovery-flatbuffers-regular-file",
+  "target": "linux/scripts/03-media/build/litert/build-litert.sh",
+  "find": "first_match_using _litert_header_find \"${LITERT_SRC}/litert\" -type f -path",
+  "replace": "first_match_using _litert_header_find \"${LITERT_SRC}/litert\" -path",
+  "test": "bash linux/scripts/tests/test-header-discovery.sh",
+  "why": "FlatBuffers discovery keeps its regular-file predicate instead of admitting any matching pathname type"
+ },
+ {
+  "id": "lib.npm-python-arguments",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "  \"$1\" \"${@:2}\" 2>/dev/null",
+  "replace": "  \"$1\" ${*:2} 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "Python code, empty arguments and archive paths remain separate literal arguments"
+ },
+ {
+  "id": "lib.npm-python-stderr",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "  \"$1\" \"${@:2}\" 2>/dev/null",
+  "replace": "  \"$1\" \"${@:2}\"",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "both metadata and digest interpreter diagnostics retain their original quiet policy"
+ },
+ {
+  "id": "lib.npm-python-status",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "  \"$1\" \"${@:2}\" 2>/dev/null",
+  "replace": "  \"$1\" \"${@:2}\" 2>/dev/null || true",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "the transport returns raw interpreter failure so digest failures keep strict-shell behavior"
+ },
+ {
+  "id": "lib.npm-python-bound-command",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "  \"$1\" \"${@:2}\" 2>/dev/null",
+  "replace": "  python3 \"${@:2}\" 2>/dev/null",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "caller-bound Python transports preserve runtime aliases and provided interpreter callbacks"
+ },
+ {
+  "id": "lib.npm-python-metadata-advisory",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "      | _npm_python_quiet _npm_metadata_python -c 'import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))' || true",
+  "replace": "      | _npm_python_quiet _npm_metadata_python -c 'import json,sys; print(json.load(sys.stdin).get(\"dist\",{}).get(\"integrity\",\"\"))'",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "metadata lookup remains advisory even when Python or curl fails after partial output"
+ },
+ {
+  "id": "lib.npm-python-digest-fatal",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "      _npm_python_quiet _npm_digest_python -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())' \"${tmp}/pkg.tgz\"",
+  "replace": "      _npm_python_quiet _npm_digest_python -c 'import hashlib,base64,sys; print(base64.b64encode(hashlib.sha512(open(sys.argv[1],\"rb\").read()).digest()).decode())' \"${tmp}/pkg.tgz\" || true",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "digest interpreter failure must not be normalized into a later mismatch or a successful install"
+ },
+ {
+  "id": "lib.npm-python-metadata-quiet",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "| _npm_python_quiet _npm_metadata_python -c",
+  "replace": "| _npm_metadata_python -c",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "metadata errors remain quiet while the caller emits its existing best-effort warning"
+ },
+ {
+  "id": "lib.npm-python-digest-quiet",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "      _npm_python_quiet _npm_digest_python -c",
+  "replace": "      _npm_digest_python -c",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "digest errors retain their quiet stderr and original raw status"
+ },
+ {
+  "id": "lib.npm-python-metadata-scope",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "  _want_int=\"$(\n",
+  "replace": "  _npm_metadata_python() { python3 \"$@\"; }\n  _want_int=\"$(\n",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "metadata command binding remains inside the existing capture and does not leak a parent function"
+ },
+ {
+  "id": "lib.npm-python-digest-scope",
+  "target": "linux/scripts/03-media/build/litert/install-litert-web.sh",
+  "find": "    _got_int=\"sha512-$(\n",
+  "replace": "    _npm_digest_python() { python3 \"$@\"; }\n    _got_int=\"sha512-$(\n",
+  "test": "bash linux/scripts/tests/test-npm-python-transport.sh",
+  "why": "digest command binding remains inside its capture rather than altering parent function state"
  }
 ]

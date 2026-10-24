@@ -87,6 +87,8 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied `python_uv.sh` bundles include `verified-script-install.sh`; Rust carries the same narrow installer companion.
    Validate the host binfmt owner's source API marker before sourcing its probe mode; an older installer ignores unknown arguments and could install.
    Invoke selected Meson providers and callbacks unconditionally; retain availability guards, order, partial flags and raw failures.
+   Shared CLI consumers retain complete argument lists when nameref assignments can read positional parameters.
+   Bound command callbacks retain their original parse phase and source scope; preserve caller-specific raw failure and advisory policies.
    Copied core and dependency preambles carry `cross-active-fallback.sh`; source it at the original registration point to retain alias binding.
    Ordered directory visitors retain the caller's `dir` binding, append policy and unconditional selected calls.
    QNN artifact verification carries the fresh SDK query owner; import it only when its provider is present and fail on selected import errors.

@@ -127,6 +127,35 @@ Timer fixtures share function-source assembly and carry the process definition,
 while real heartbeat lifetime
 and process-tree assertions remain independent.
 
+The chain and single-stage CLI handlers share log-directory consumption through
+`orchestrator_consume_log_dir`. Pass their complete argument list: Bash nameref
+subscripts may read later positional parameters or the argument count. The consumer
+keeps assignment order and introduces no local alias that could shadow a target.
+Cross-target handling retains its separate existing policy.
+
+## Bound commands and artifact queries
+
+`guard-helpers.sh` owns `first_match_using`, which appends `-print -quit`, hides
+finder stderr and retains partial stdout on failure. The original `first_match`
+entry keeps its argument and local-binding behavior. LiteRT FlatBuffers and ORT
+TensorRT discovery bind their find command inside the existing capture, so later
+aliases retain their original effect without leaving callback functions in the
+parent shell. Existing headers still bypass the selected discovery requirement.
+Both producer RUNs already bind the fresh core owner.
+
+Media smoke queries share producer stderr suppression and the `grep -q .` verdict.
+Caller callbacks retain find and grep bindings at their original declaration
+points. Python-library and JS-loader predicates stay separate, as do native import
+fallbacks and optional web diagnostics. Unlike first-match lookup, the query keeps
+its raw pipeline status, including producer failures after partial output.
+
+The npm vendor script shares quiet Python invocation for metadata and archive
+digests. Each command binds inside its existing capture and leaves no parent
+callback behind. Metadata remains advisory; digest failures retain their original
+strict-shell behavior. Download retries, integrity comparisons, tar fallback and
+cleanup remain caller policy. Offline receipts use fake HTTP and tar commands;
+they do not establish registry trust or archive validity.
+
 ## The tree, as AGENTS.md drew it
 
 Moved out of `AGENTS.md` on 2026-09-15 (owner decision D10), and edited since

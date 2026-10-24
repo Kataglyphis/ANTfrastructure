@@ -1,0 +1,494 @@
+{
+  "('litert', False, 0, 'direct', False)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 0, 'direct', True)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 0, 'conditional', False)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 0, 'conditional', True)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 23, 'direct', False)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 23, 'direct', True)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 23, 'conditional', False)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 23, 'conditional', True)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 47, 'direct', False)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 47, 'direct', True)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 47, 'conditional', False)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', False, 47, 'conditional', True)": {
+    "rc": 0,
+    "out": "WARN:FlatBuffers headers not found in expected build locations; some targets may fail to compile\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\n",
+    "state": "declare -- fb_found=\"0\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": []
+  },
+  "('litert', True, 0, 'direct', False)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 0, 'direct', True)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 0, 'conditional', False)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 0, 'conditional', True)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 23, 'direct', False)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 23, 'direct', True)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 23, 'conditional', False)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 23, 'conditional', True)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 47, 'direct', False)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 47, 'direct', True)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 47, 'conditional', False)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('litert', True, 47, 'conditional', True)": {
+    "rc": 0,
+    "out": "INFO:Found flatbuffers header at WORK/selected/include/flatbuffers.h; copying from WORK/selected/include...\n'WORK/selected/include/NvInfer.h' -> 'WORK/include/flatbuffers/NvInfer.h'\n'WORK/selected/include/flatbuffers.h' -> 'WORK/include/flatbuffers/flatbuffers.h'\nSTATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/source/litert\n-type\nf\n-path\n*/flatbuffers/flatbuffers.h\n-print\n-quit\nmkdir\n-p\nWORK/include/flatbuffers\ncp\n-rv\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/include/flatbuffers/\n",
+    "state": "declare -- fb_found=\"1\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\n",
+    "tree": [
+      [
+        "include/flatbuffers/NvInfer.h",
+        "tensor header"
+      ],
+      [
+        "include/flatbuffers/flatbuffers.h",
+        "flat header"
+      ]
+    ]
+  },
+  "('ort', False, 0, 'direct', False)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 0, 'direct', True)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 0, 'conditional', False)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 0, 'conditional', True)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 23, 'direct', False)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 23, 'direct', True)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 23, 'conditional', False)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 23, 'conditional', True)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 47, 'direct', False)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 47, 'direct', True)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 47, 'conditional', False)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', False, 47, 'conditional', True)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/trt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"\"\n",
+    "tree": []
+  },
+  "('ort', True, 0, 'direct', False)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 0, 'direct', True)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 0, 'conditional', False)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 0, 'conditional', True)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 23, 'direct', False)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 23, 'direct', True)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 23, 'conditional', False)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 23, 'conditional', True)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 47, 'direct', False)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 47, 'direct', True)": {
+    "rc": 0,
+    "out": "",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 47, 'conditional', False)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  },
+  "('ort', True, 47, 'conditional', True)": {
+    "rc": 0,
+    "out": "STATUS:0\n",
+    "err": "",
+    "trace": "early\nWORK/system/usr/include\nWORK/system/usr/local\n-name\nNvInfer.h\n-print\n-quit\nmkdir\n-p\nWORK/system/tmp/tensorrt/include\nWORK/system/tmp/tensorrt/lib\nln\n-snf\nWORK/selected/include/NvInfer.h\nWORK/selected/include/flatbuffers.h\nWORK/system/tmp/tensorrt/include/\nln\n-snf\nWORK/system/usr/lib/libnvinfer*\nWORK/system/tmp/tensorrt/lib/\n",
+    "state": "declare -- NATIVE_GPU_OUTPUT_DIR=\"WORK/system/usr/local/lib/onnxruntime-gpu\"\ndeclare -- CUDA_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -x TENSORRT_HOME=\"WORK/system/tmp/tensorrt\"\ndeclare -- CUDNN_HOME=\"WORK/system/usr/local/cuda\"\ndeclare -- NATIVE_GPU_BUILD_DIR=\"WORK/ort/build_native_gpu\"\ndeclare -- TRT_INC=\"WORK/selected/include/NvInfer.h\"\ndeclare -- ARCH=\"x86_64\"\ndeclare -- DEB_ARCH=\"x86_64-linux-gnu\"\n",
+    "tree": []
+  }
+}

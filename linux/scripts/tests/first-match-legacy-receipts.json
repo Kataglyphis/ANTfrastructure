@@ -1,0 +1,194 @@
+{
+  "([], False, False, 0)": {
+    "rc": 127,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], False, False, 23)": {
+    "rc": 127,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], False, True, 0)": {
+    "rc": 127,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], False, True, 23)": {
+    "rc": 127,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], True, False, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], True, False, 23)": {
+    "rc": 1,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], True, True, 0)": {
+    "rc": 1,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([], True, True, 23)": {
+    "rc": 1,
+    "out": "",
+    "err": "WORK/helper: line N: $1: unbound variable\n",
+    "trace": ""
+  },
+  "([''], False, False, 0)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], False, False, 23)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], False, True, 0)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], False, True, 23)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], True, False, 0)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], True, False, 23)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], True, True, 0)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "([''], True, True, 23)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:\nBOUND:-print\nBOUND:-quit\nscope:\n"
+  },
+  "(['root [*]'], False, False, 0)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], False, False, 23)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], False, True, 0)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], False, True, 23)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], True, False, 0)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], True, False, 23)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], True, True, 0)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root [*]'], True, True, 23)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root [*]\nBOUND:-print\nBOUND:-quit\nscope:root [*]\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], False, False, 0)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], False, False, 23)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], False, True, 0)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], False, True, 23)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], True, False, 0)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], True, False, 23)": {
+    "rc": 0,
+    "out": "partial\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], True, True, 0)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  },
+  "(['root with space', 'second root', '-name', '*.h'], True, True, 23)": {
+    "rc": 0,
+    "out": "partial\nSTATUS:0\n",
+    "err": "",
+    "trace": "BOUND:root with space\nBOUND:second root\nBOUND:-name\nBOUND:*.h\nBOUND:-print\nBOUND:-quit\nscope:root with space\n"
+  }
+}
