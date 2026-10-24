@@ -3002,7 +3002,7 @@
  {
   "id": "probe.advert-unknown-verb",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "      *)      bad=$((bad + 1))\n              fail \"advertised-version gate: unknown verdict '${verb}' for ${key} on ${target_arch} -- a verb no arm handles is a silently dropped row\" ;;",
+  "find": "      *)      _smoke_unknown_verdict bad advertised-version \"${verb}\" \"${key}\" \"${target_arch}\" \\\n                \" -- a verb no arm handles is a silently dropped row\" ;;",
   "replace": "      *)      : ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "a verb no arm handles is a silently dropped row -- the same class as the SKIP arms themselves"
@@ -3010,8 +3010,8 @@
  {
   "id": "probe.tree-arch-mismatch",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "      *)           printf 'BAD %s %s %s %s\\n' \"${tree}\" \"${machine}\" \"${count}\" \"${sample}\" ;;",
-  "replace": "      *)           printf 'OK %s %s %s\\n' \"${tree}\" \"${machine}\" \"${count}\" ;;",
+  "find": "      BAD)     _tree_arch_bad_verdict ;;",
+  "replace": "      BAD)     : ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "a builder-arch tree in a foreign image is the whole point of the gate; without this arm it reports OK on the 2 GB x86_64 rustup"
  },
@@ -3026,8 +3026,8 @@
  {
   "id": "probe.tree-arch-scan-sentinel",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  if ! printf '%s\\n' \"${out}\" | grep -qxF -- 'TREESCAN_DONE'; then",
-  "replace": "  if false; then",
+  "find": "  _smoke_probe_required marker \"${out}\" TREESCAN_DONE _tree_arch_probe_failure \\\n    \"${target_arch}\" \"${out}\" || return 0",
+  "replace": "  :",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "exit status is not evidence: a scanner that never ran prints nothing, and without the sentinel the gate passes on empty output"
  },
@@ -3346,8 +3346,8 @@
  {
   "id": "tree-arch.capped-is-not-a-pass",
   "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  while read -r tree cap; do\n    [ -n \"${tree}\" ] || continue\n    n=$((n + 1))\n    printf 'CAPPED %s %s -\\n' \"${tree}\" \"${cap}\"\n  done < <(printf '%s\\n' \"${probe}\" | sed -n 's/^TREECAP //p')",
-  "replace": "  :",
+  "find": "      CAPPED)  bad=$((bad + 1))\n               fail \"tree-arch: the walk of ${tree} hit the ${machine}-file cap, so everything past it was never read -- a partial scan is not a pass. Raise RT_TREE_CAP or narrow the tree\" ;;",
+  "replace": "      CAPPED)  : ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "a walk that ran out of budget read only part of the tree; reporting that as OK is the silent false green"
  },
@@ -3713,7 +3713,7 @@
  },
  {
   "id": "probe.contract-workspace-location",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    /workspace*) printf 'BAD %s points into the bind-mounted checkout: %s\\n' \"${row}\" \"${val}\" ;;",
   "replace": "    /nowhere*)   printf 'BAD %s points into the bind-mounted checkout: %s\\n' \"${row}\" \"${val}\" ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3721,7 +3721,7 @@
  },
  {
   "id": "probe.contract-writable",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    *)           if [ \"${write}\" = yes ]; then",
   "replace": "    *)           if [ \"${write}\" != skip ]; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3737,7 +3737,7 @@
  },
  {
   "id": "probe.contract-image-user",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "      *\" ${want} \"*) ;;\n      *) printf \"the probe ran as",
   "replace": "      *) ;;\n      *) printf \"the probe ran as",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3745,7 +3745,7 @@
  },
  {
   "id": "probe.contract-done-marker",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  if ! printf '%s\\n' \"${probe}\" | grep -qxF -- 'CCPROBE_DONE'; then",
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3753,7 +3753,7 @@
  },
  {
   "id": "probe.contract-empty-table",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  if [ \"${asserted:-0}\" = 0 ]; then",
   "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3761,7 +3761,7 @@
  },
  {
   "id": "probe.contract-nofact",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    *) printf 'NOFACT %s no WRITE line\\n' \"${row}\"; return 0 ;;",
   "replace": "    *) ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3769,7 +3769,7 @@
  },
  {
   "id": "probe.contract-exemption-rot",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "_consumer_exempt_verdict() {\n  case \"$3\" in",
   "replace": "_consumer_exempt_verdict() {\n  case \"no\" in",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3777,7 +3777,7 @@
  },
  {
   "id": "probe.contract-owner-count",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  elif [ \"${n}\" != 0 ]; then",
   "replace": "  elif false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3785,7 +3785,7 @@
  },
  {
   "id": "probe.contract-android-platform-tools",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  elif [ \"${dir}\" != yes ]; then",
   "replace": "  elif false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3793,7 +3793,7 @@
  },
  {
   "id": "probe.contract-android-path",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  elif [ \"${onpath}\" != yes ]; then\n    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' \"${row}\" \"${val}\"",
   "replace": "  elif false; then\n    printf 'BAD %s neither %s/platform-tools nor cmdline-tools/latest/bin is on PATH' \"${row}\" \"${val}\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -3833,9 +3833,9 @@
  },
  {
   "id": "probe.jdk-needs-java-home",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  elif [ -z \"${home}\" ]; then\n    printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' \"${row}\"",
-  "replace": "  elif false; then\n    printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' \"${row}\"",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "      elif [ -z \"${home}\" ]; then\n        printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' \"${row}\"",
+  "replace": "      elif false; then\n        printf 'BAD %s java runs but JAVA_HOME is unset, which is what Gradle reads' \"${row}\"",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "Gradle reads JAVA_HOME, not PATH: java on PATH with the variable unset is exactly the shape the Android lane died on"
  },
@@ -3881,7 +3881,7 @@
  },
  {
   "id": "probe.appimagetool-readability",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  elif [ \"${readable}\" != yes ]; then",
   "replace": "  elif false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -4057,7 +4057,7 @@
  },
  {
   "id": "probe.contract-exempt-fact-is-read",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "      fact=\"$(_consumer_exempt_fact \"${row}\")\"",
   "replace": "      fact=flutter-sdk",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -4642,16 +4642,16 @@
  {
   "id": "arg-consistency.arg-default-drift-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "if [ \"$VALUE_ERRORS\" -gt 0 ]; then",
-  "replace": "if false; then",
+  "find": "_finish_fatal_check \"${VALUE_ERRORS}\"",
+  "replace": "_finish_fatal_check 0",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "a Dockerfile ARG default that drifts from versions.env wins silently on any non-orchestrated docker build"
  },
  {
   "id": "arg-consistency.defaultless-arg-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "if [ \"$DEFAULTLESS_ERRORS\" -gt 0 ]; then",
-  "replace": "if false; then",
+  "find": "_finish_fatal_check \"${DEFAULTLESS_ERRORS}\"",
+  "replace": "_finish_fatal_check 0",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "the LITERTJS_VERSION class: a default-less ARG builds with an EMPTY value and the image ships built against nothing"
  },
@@ -4698,8 +4698,8 @@
  {
   "id": "arg-consistency.handforward-fatal",
   "target": "linux/scripts/01-core/verify-arg-consistency.sh",
-  "find": "if [ \"$HANDFWD_ERRORS\" -gt 0 ]; then",
-  "replace": "if false; then",
+  "find": "_finish_fatal_check \"${HANDFWD_ERRORS}\"",
+  "replace": "_finish_fatal_check 0",
   "test": "bash linux/scripts/tests/test-arg-consistency.sh",
   "why": "XC7: a literal --build-arg beside the auto-forward is a second channel that survives refactors of the first and then diverges"
  },
@@ -6321,7 +6321,7 @@
  },
  {
   "id": "probe.ort-crate-env-lib-dir",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    /usr/local/lib/onnxruntime-cpu/lib|/usr/local/lib/onnxruntime-gpu/lib) ;;",
   "replace": "    *) ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6329,7 +6329,7 @@
  },
  {
   "id": "probe.ort-crate-env-link-lib",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "FACT ort-link-lib)\" != yes ]; then",
   "replace": "FACT ort-link-lib)\" = never ]; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6337,7 +6337,7 @@
  },
  {
   "id": "probe.ort-crate-env-dylib",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    \"${lreal}\"/libonnxruntime.so*) ;;",
   "replace": "    *) ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6345,7 +6345,7 @@
  },
  {
   "id": "probe.ort-crate-env-switches",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "      1|true) ;;",
   "replace": "      *) ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6353,7 +6353,7 @@
  },
  {
   "id": "probe.ort-crate-env-lib-path",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  if [ \"${v}\" != '<unset>' ]; then\n    printf 'ORT_LIB_PATH is set",
   "replace": "  if false; then\n    printf 'ORT_LIB_PATH is set",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6361,7 +6361,7 @@
  },
  {
   "id": "probe.ort-crate-env-cargo-offline",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    '<unset>'|1|true) ;;\n    *) printf 'CARGO_NET_OFFLINE",
   "replace": "    *) ;;\n    *) printf 'CARGO_NET_OFFLINE",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6369,15 +6369,15 @@
  },
  {
   "id": "probe.ort-crate-env-nofact",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "FACT ort-probe)\" != yes ]; then",
-  "replace": "FACT ort-probe)\" = never ]; then",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "  if [ \"$(_consumer_contract_fact \"$2\" FACT ort-probe)\" != yes ]; then",
+  "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "an unset variable and a missing line read the same; only the completion fact tells them apart"
  },
  {
   "id": "probe.ort-crate-env-dispatch",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "        ort-crate-env) line=\"$(_consumer_ort_env_verdict \"${row}\" \"${probe}\")\" ;;\n",
   "replace": "",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6393,7 +6393,7 @@
  },
  {
   "id": "probe.ort-crate-env-lib-path-empty",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "  if [ \"${v}\" != '<unset>' ]; then",
   "replace": "  if [ -n \"${v}\" ] && [ \"${v}\" != '<unset>' ]; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -6401,7 +6401,7 @@
  },
  {
   "id": "probe.ort-crate-env-cargo-offline-empty",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    '<unset>'|1|true) ;;",
   "replace": "    ''|'<unset>'|1|true) ;;",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -11949,7 +11949,7 @@
  },
  {
   "id": "packaging.gtk4-contract-row-bad",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    \"OK: gtk4 \"*) printf 'OK %s %s' \"${row}\" \"${have#OK: }\" ;;",
   "replace": "    *) printf 'OK %s %s' \"${row}\" \"${have#OK: }\" ;;",
   "test": "bash linux/scripts/tests/test-package-image-wiring.sh",
@@ -13157,8 +13157,8 @@
  },
  {
   "id": "probe.free-threaded-python-gil-off",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  elif [ \"${have}\" != \"${want} gil=False\" ]; then",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "  elif [ \"${have}\" != \"${want}\" ]; then",
   "replace": "  elif false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "the row must prove the shipped interpreter is PYTHON_VERSION with the GIL off, not merely present"
@@ -13205,9 +13205,9 @@
  },
  {
   "id": "probe.free-threaded-python-source-build",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  elif [ \"${build}\" != \"prefix=/opt/python-freethreaded Py_GIL_DISABLED=1\" ]; then",
-  "replace": "  elif false; then",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "    if [ \"${build}\" != 'prefix=/opt/python-freethreaded Py_GIL_DISABLED=1' ]; then",
+  "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
   "why": "only the sysconfig prefix tells the toolchain's source build from uv's python-build-standalone download it replaced, and the import line is what proves ctypes and ssl on every arch"
  },
@@ -14085,7 +14085,7 @@
  },
  {
   "id": "uv-cache-seed.row-riscv64-must-be-seeded",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "      *) printf 'BAD %s the riscv64 seed does not verify: %s' \"${row}\" \"${have}\" ;;",
   "replace": "      *) printf 'OK %s %s' \"${row}\" \"${have}\" ;;",
   "test": "bash linux/scripts/tests/test-uv-cache-seed.sh",
@@ -14157,9 +14157,9 @@
  },
  {
   "id": "lint-tools.row-compares-the-pins",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "    printf 'BAD %s the image has %s, the pins are %s' \"${row}\" \"${have}\" \"${want}\"",
-  "replace": "    printf 'OK %s %s' \"${row}\" \"${have}\"",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "  elif [ \"${have}\" != \"${want}\" ]; then",
+  "replace": "  elif false; then",
   "test": "bash linux/scripts/tests/test-lint-tools.sh",
   "why": "an image whose shellcheck or hadolint is missing or off its pin would pass the contract"
  },
@@ -14261,7 +14261,7 @@
  },
  {
   "id": "packaging.host-payload-contract-off-not-advertised",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "    if [ -n \"${val}\" ] || [ -n \"${root}\" ]; then",
   "replace": "    if false; then",
   "test": "bash linux/scripts/tests/test-runtime-image-gates.sh",
@@ -21269,7 +21269,7 @@
  },
  {
   "id": "lib.consumer-required-facts-optional-environment",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "path ENV appimagetool optional readable FACT appimagetool-readable required",
   "replace": "path ENV appimagetool required readable FACT appimagetool-readable required",
   "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
@@ -21277,15 +21277,15 @@
  },
  {
   "id": "lib.consumer-required-facts-android-lazy-evidence",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  if [ \"${required_verdict}\" != continue ]; then return 0; fi",
-  "replace": "  if false; then return 0; fi",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "  _consumer_required_facts_continue \"${required_verdict}\" || return 0",
+  "replace": "  :",
   "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
   "why": "Missing payload-off evidence stops Android before any ENV or payload lookup."
  },
  {
   "id": "lib.consumer-required-facts-jdk-complete-evidence",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
   "find": "onpath FACT java-on-path required javac FACT javac required",
   "replace": "onpath FACT java-on-path required",
   "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
@@ -21301,9 +21301,9 @@
  },
  {
   "id": "lib.consumer-required-facts-unconditional-collection",
-  "target": "linux/scripts/06-packaging/smoke-runtime-image.sh",
-  "find": "  _consumer_collect_required_facts \"$2\" required_verdict \"${row}\" 'no FACT java-on-path / FACT javac line' \\\n    home ENV java-home optional onpath FACT java-on-path required javac FACT javac required",
-  "replace": "  if _consumer_collect_required_facts \"$2\" required_verdict \"${row}\" 'no FACT java-on-path / FACT javac line' \\\n    home ENV java-home optional onpath FACT java-on-path required javac FACT javac required; then :; fi",
+  "target": "linux/scripts/06-packaging/runtime-consumer-contract.sh",
+  "find": "  _consumer_collect_required_facts \"${probe}\" required_verdict \"${row}\" \"${missing}\" \"${facts[@]}\"",
+  "replace": "  if _consumer_collect_required_facts \"${probe}\" required_verdict \"${row}\" \"${missing}\" \"${facts[@]}\"; then :; fi",
   "test": "bash linux/scripts/tests/test-consumer-required-facts.sh",
   "why": "Collection remains unconditional so direct strict lookup failures are not suppressed by if."
  },
@@ -23203,8 +23203,8 @@
  {
   "id": "lib.raw-pin-android-fresh-copy",
   "target": "linux/Dockerfile.android",
-  "find": "COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/load-versions-env.sh /opt/scripts/core/",
-  "replace": "COPY --chmod=755 linux/scripts/01-core/platform.sh /opt/scripts/core/platform.sh",
+  "find": "COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/load-versions-env.sh linux/scripts/01-core/modules.sh /opt/scripts/core/",
+  "replace": "COPY --chmod=755 linux/scripts/01-core/platform.sh linux/scripts/01-core/modules.sh /opt/scripts/core/",
   "test": "bash linux/scripts/tests/test-raw-pin-reader.sh",
   "why": "The Android child refreshes the canonical raw pin API instead of inheriting an old owner."
  },
@@ -27059,8 +27059,8 @@
  {
   "id": "lib.sudo-policy-sdk-companion",
   "target": "linux/Dockerfile.sdk",
-  "find": "COPY --chmod=755 \\\n    linux/scripts/01-core/modules.sh \\\n    linux/scripts/01-core/module-bootstrap.sh \\\n    linux/scripts/01-core/path-helpers.sh \\\n    linux/scripts/01-core/common.sh \\\n    linux/scripts/01-core/sudo-policy.sh \\\n    linux/scripts/01-core/cross-active-fallback.sh \\\n    linux/scripts/01-core/sccache-server-address.sh \\\n    linux/scripts/01-core/load-versions-env.sh \\\n    linux/scripts/01-core/logging.sh \\\n    linux/scripts/01-core/arch-mapping.sh \\\n    linux/scripts/01-core/ubuntu-mirror.sh \\\n    linux/scripts/01-core/downloads.sh \\\n    linux/scripts/01-core/parallelism.sh \\\n    linux/scripts/01-core/cross-env.sh \\\n    linux/scripts/01-core/cross-gcc.sh \\\n    linux/scripts/01-core/cross-python.sh \\\n    linux/scripts/01-core/cross-apt.sh \\\n    linux/scripts/01-core/cross-meson.sh \\\n    linux/scripts/01-core/repos.sh \\\n    linux/scripts/01-core/verify.sh \\\n    linux/scripts/01-core/vulkan-env.sh \\\n    /opt/scripts/core/\n",
-  "replace": "COPY --chmod=755 \\\n    linux/scripts/01-core/modules.sh \\\n    linux/scripts/01-core/module-bootstrap.sh \\\n    linux/scripts/01-core/path-helpers.sh \\\n    linux/scripts/01-core/common.sh \\\n    linux/scripts/01-core/cross-active-fallback.sh \\\n    linux/scripts/01-core/sccache-server-address.sh \\\n    linux/scripts/01-core/load-versions-env.sh \\\n    linux/scripts/01-core/logging.sh \\\n    linux/scripts/01-core/arch-mapping.sh \\\n    linux/scripts/01-core/ubuntu-mirror.sh \\\n    linux/scripts/01-core/downloads.sh \\\n    linux/scripts/01-core/parallelism.sh \\\n    linux/scripts/01-core/cross-env.sh \\\n    linux/scripts/01-core/cross-gcc.sh \\\n    linux/scripts/01-core/cross-python.sh \\\n    linux/scripts/01-core/cross-apt.sh \\\n    linux/scripts/01-core/cross-meson.sh \\\n    linux/scripts/01-core/repos.sh \\\n    linux/scripts/01-core/verify.sh \\\n    linux/scripts/01-core/vulkan-env.sh \\\n    /opt/scripts/core/\n",
+  "find": "    linux/scripts/01-core/sudo-policy.sh \\\n",
+  "replace": "",
   "test": "bash linux/scripts/tests/test-sudo-policy-closures.sh",
   "why": "The SDK copies the current source-only policy alongside its current common owner."
  },
