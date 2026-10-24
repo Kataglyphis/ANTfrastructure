@@ -531,24 +531,30 @@ PREFLIGHT_ONLY=python-types bash linux/scripts/preflight.sh
 The script passes tracked Python paths to ty rather than scanning a directory of generated
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
 `windows/`. The three ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
-missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`. The
+missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
+The full-tree ANN205 gate writes `logs/code-quality/ruff-annotations-gate.txt`. The
 Linux x64 workflow uploads these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
-**Every tracked `docs/scripts/*.py` and `linux/scripts/verify_*.py`, plus the shared
-quality helpers, is a strict type gate.** This checks the tools that grade the rest of
-the repo. The wider first-party scan and annotation
-audit remain reports while type errors and optional package resolution are corrected.
+**Every tracked `docs/scripts/*.py`, `linux/scripts/verify_*.py` and
+`linux/scripts/tests/*.py`, plus the shared quality helpers, is a strict type gate.**
+This checks the tools and Python test helpers that grade the rest of the repo.
+The wider first-party ty scan and the other annotation rules remain reports while
+type errors and optional package resolution are corrected.
 There is no allowlist or raised diagnostic threshold. The full report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
 return and an error in a verifier, requiring the gate to fail for both.
-`python-types.strict-verdict` and `python-types.verifier-scope` mutate the verdict and
-the verifier path selection; the suite must catch both.
+`python-types.strict-verdict`, `python-types.verifier-scope` and
+`python-types.test-scope` mutate the verdict and both path selections; the suite
+must catch each.
 
 Ty uses declared and inferred types. It does **not** add annotations or require every
-function to have one. Ruff's `ANN001`–`ANN003`, `ANN201`, `ANN202` and
-`ANN204`–`ANN206` report missing parameter and return annotations; they will
-become a gate after the existing findings are fixed.
+function to have one. Ruff's `ANN205` now fails on missing static-method return
+annotations across every tracked Python file; the four existing findings were fixed.
+`ANN001`–`ANN003`, `ANN201`, `ANN202`, `ANN204` and `ANN206` remain reports until
+their existing findings are fixed. The focused suite injects an unannotated static
+method, and `python-types.staticmethod-annotation-gate` removes the selector to prove
+the gate can fail.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
@@ -748,7 +754,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3417 entries** over **373 distinct test commands**; both digits are
+manifest holds **3419 entries** over **373 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1736,8 +1742,21 @@ The Windows test runner writes a JSON summary for each parent run to
 ## Windows Pester coverage
 
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
-for `WindowsAppRunner.Common.psm1` (85% floor), `WindowsBuildSweep.Common.psm1` (90%)
-and `WindowsAgenticLoop.Common.psm1` (60%). Each target has a focused Pester suite.
+for eight modules, each with a focused Pester suite:
+
+| Module | Minimum command coverage |
+|---|---:|
+| `WindowsAppRunner.Common.psm1` | 85% |
+| `WindowsBuildSweep.Common.psm1` | 90% |
+| `WindowsAgenticLoop.Common.psm1` | 60% |
+| `WindowsConfig.Common.psm1` | 90% |
+| `WindowsOnnx.Common.psm1` | 100% |
+| `WindowsRepoHygiene.Common.psm1` | 85% |
+| `WindowsPerfBaseline.Common.psm1` | 90% |
+| `WindowsClang.Common.psm1` | 80% |
+
+The target-inventory test pins every suite/module pair and floor, and mutations prove
+that removing the ONNX target or lowering its floor fails the test.
 The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
 zero measured files or commands, inconsistent counts, a missing or duplicate target,
 or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict

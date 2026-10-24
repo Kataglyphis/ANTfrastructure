@@ -117,7 +117,7 @@ class HelpContracts(unittest.TestCase):
         self.assertIn("UNKNOWN_HELP_ROW", result.stderr)
 
     @staticmethod
-    def env_fixture(root, consumer=None, zombie=False):
+    def env_fixture(root, consumer=None, zombie=False) -> subprocess.CompletedProcess[str]:
         scripts = root / "scripts"
         core = scripts / "01-core"
         core.mkdir(parents=True)

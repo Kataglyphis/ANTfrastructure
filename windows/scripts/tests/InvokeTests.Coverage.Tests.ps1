@@ -31,7 +31,37 @@ function Assert-CoverageRejected {
 
 Describe 'Invoke-Tests coverage gate' {
     . (Get-ScriptFunctionDefinition -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `
-        -FunctionName Get-CoberturaModuleFailure, Get-CoverageFailure)
+        -FunctionName Get-CoberturaModuleFailure, Get-CoverageFailure, Get-CoverageTargets)
+
+    It 'keeps every measured suite and its floor armed' {
+        $expected = @(
+            'WindowsAppRunner.Common.Tests.ps1=WindowsAppRunner.Common.psm1:85'
+            'WindowsBuildSweep.Common.Tests.ps1=WindowsBuildSweep.Common.psm1:90'
+            'WindowsAgenticLoop.Common.Tests.ps1=WindowsAgenticLoop.Common.psm1:60'
+            'WindowsConfig.Common.Tests.ps1=WindowsConfig.Common.psm1:90'
+            'WindowsOnnx.Common.Tests.ps1=WindowsOnnx.Common.psm1:100'
+            'WindowsRepoHygiene.Common.Tests.ps1=WindowsRepoHygiene.Common.psm1:85'
+            'WindowsPerfBaseline.Common.Tests.ps1=WindowsPerfBaseline.Common.psm1:90'
+            'WindowsClang.Common.Tests.ps1=WindowsClang.Common.psm1:80'
+        ) | Sort-Object
+        $targets = Get-CoverageTargets
+        $actual = @($targets.Keys | ForEach-Object { "$_=$($targets[$_].Module):$($targets[$_].MinimumPercent)" } | Sort-Object)
+        Assert-Equal ($expected -join '|') ($actual -join '|')
+    }
+
+    It 'detects a removed target or a relaxed floor in the target inventory' {
+        $row = "'WindowsOnnx.Common.Tests.ps1' = @{ Module = 'WindowsOnnx.Common.psm1'; MinimumPercent = 100 }"
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `
+            -FunctionName Get-CoverageTargets -IncludeControl -Case @(
+                @{ Find = $row; Replace = ''; Expected = 'Assert-Equal: expected' }
+                @{ Find = $row; Replace = ($row -replace '100', '0'); Expected = 'Assert-Equal: expected' }
+            ) -Body {
+            $targets = Get-MutCoverageTargets
+            $entry = $targets['WindowsOnnx.Common.Tests.ps1']
+            $actual = if ($null -eq $entry) { '' } else { "$($entry.Module):$($entry.MinimumPercent)" }
+            Assert-Equal 'WindowsOnnx.Common.psm1:100' $actual
+        }
+    }
 
     It 'accepts a measured module above its floor' {
         Invoke-CoverageFixture { param($report, $measured, $expectedClass)

@@ -84,7 +84,7 @@ esac
         self.assertNotIn("--platform chrome", (directory / "calls").read_text())
 
     @staticmethod
-    def write(path, content, *, executable=False):
+    def write(path, content, *, executable=False) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         if executable:

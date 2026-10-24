@@ -19,12 +19,14 @@ linux_report="${report_dir}/ty-linux.txt"
 windows_report="${report_dir}/ty-windows.txt"
 strict_report="${report_dir}/ty-quality-gate.txt"
 annotations_report="${report_dir}/ruff-annotations.txt"
+annotations_gate_report="${report_dir}/ruff-annotations-gate.txt"
 
 mapfile -d '' -t py_files < <(git ls-files -z -- '*.py')
 mapfile -d '' -t quality_files < <(git ls-files -z -- 'docs/scripts/*.py' 'linux/scripts/verify_*.py' \
-  'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' 'linux/scripts/extract_embedded_python.py')
+  'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
+  'linux/scripts/extract_embedded_python.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
-[ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality scripts found" >&2; exit 2; }
+[ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 
 linux_files=()
 windows_files=()
@@ -63,6 +65,17 @@ case "${annotation_rc}" in
   1) printf 'Ruff annotation report: findings (%s files); %s\n' "${#py_files[@]}" "${annotations_report}" ;;
   *) cat "${annotations_report}" >&2; exit "${annotation_rc}" ;;
 esac
+
+# Other ANN rules have existing findings, so only clean ANN205 can fail CI today.
+if uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN205 --output-format concise \
+  "${py_files[@]}" > "${annotations_gate_report}" 2>&1; then
+  printf 'Ruff staticmethod annotation gate: clean (%s files); %s\n' "${#py_files[@]}" "${annotations_gate_report}"
+else
+  rc=$?
+  cat "${annotations_gate_report}" >&2
+  printf 'Ruff staticmethod annotation gate failed (exit %s)\n' "${rc}" >&2
+  exit "${rc}"
+fi
 
 if "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}" > "${strict_report}" 2>&1; then
   printf 'ty quality gate: clean (%s files); %s\n' "${#quality_files[@]}" "${strict_report}"

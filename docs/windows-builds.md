@@ -974,7 +974,7 @@ the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and cove
 The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
 suites, the discovery floor, targeted Pester coverage and the exit code. Child suites only
-hand tallies to the parent. Coverage XML for the three measured modules also stays under
+hand tallies to the parent. Coverage XML for the eight measured modules also stays under
 `logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports.
 
 Run the driver from the repository root. It parses `linux/scripts/01-core/versions.env`, passes
@@ -2598,7 +2598,7 @@ fixtures exercise these policies with independent expectations; they do not
 replace container, compiler, certificate or GPU acceptance.
 
 
-The Windows unit runner's discovery floor is 2,678 after a complete 2,705-test
+The Windows unit runner's discovery floor is 2,680 after a complete 2,707-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
 

@@ -57,7 +57,7 @@ class Registry:
             self.token = json.load(response)["token"]
 
     @staticmethod
-    def credentials():
+    def credentials() -> tuple[str, str] | list[str]:
         if os.environ.get("GHCR_TOKEN"):
             return os.environ.get("GITHUB_ACTOR", "oauth2"), os.environ["GHCR_TOKEN"]
         config_path = Path(os.environ.get("DOCKER_CONFIG", str(Path.home() / ".docker"))) / "config.json"

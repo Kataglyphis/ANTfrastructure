@@ -27351,5 +27351,21 @@
   "replace": "'linux/scripts/verify_none_*.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "Every tracked Python verifier must remain in the strict type scope."
+ },
+ {
+  "id": "python-types.test-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/tests/*.py'",
+  "replace": "'linux/scripts/tests/no_matches_*.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Every tracked Python test helper must remain in the strict type scope."
+ },
+ {
+  "id": "python-types.staticmethod-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN205",
+  "replace": "--select ANN206",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A missing staticmethod return annotation must fail the full tracked-tree gate."
  }
 ]

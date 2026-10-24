@@ -45,6 +45,7 @@ jobs:
           path: |
             logs/code-quality/ty-*.txt
             logs/code-quality/ruff-annotations.txt
+            logs/code-quality/ruff-annotations-gate.txt
           if-no-files-found: error
 
   # The mutations slug (docs/scripts/verify_mutations.py) in eight shards. See docs/code-quality-tooling.md#the-mutation-gate-in-ci-sharded

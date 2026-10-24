@@ -62,7 +62,7 @@ class FetchReceipts(unittest.TestCase):
                 self.assertEqual(EXPECTED[name]["stderr"], actual["stderr"])
 
     @staticmethod
-    def run_fixture(root, config):
+    def run_fixture(root, config) -> dict[str, int | str]:
         base = Path(root)
         paths = {
             "start": base / "caller start",

@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — Wider quality coverage
+
+- Make pinned ty checks fatal for tracked Linux Python test helpers as well as verifiers, growing the clean strict scope from 40 to 93 files; test a bad type and mutation-test the new selection.
+- Annotate the four remaining static methods and make Ruff ANN205 fatal across all tracked Python; keep the other annotation findings visible in ignored reports.
+- Extend enforced Windows Pester coverage from three to eight modules without lowering the existing floors; pin the target inventory and mutation-test removal and floor relaxation.
+
 ## 2026-10-24 — Stronger executable quality gates
 
 - Fail Python lint on suppressed exceptions and late-bound loop closures (Ruff B012/B023), including Python extracted from shell scripts; test both defects and mutation-test the selector.

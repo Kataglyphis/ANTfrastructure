@@ -172,11 +172,11 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
    Windows Python CI build, packaging and installed-wheel drivers share the summary, log-close and fatal-step verdict in `Complete-CiBuildSession`; preserve that order and verdict.
-   The hub's pinned ty gate checks tracked `docs/scripts/*.py`, `linux/scripts/verify_*.py` and their shared quality helpers strictly; the full Linux and Windows Python scans and Ruff annotation audit stay visible in ignored `logs/code-quality/`. A checker setup failure is fatal. Ty checks types but does not require annotations.
+   The hub's pinned ty gate checks tracked `docs/scripts/*.py`, `linux/scripts/verify_*.py`, `linux/scripts/tests/*.py` and shared quality helpers strictly; the full Linux and Windows Python scans and Ruff annotation audit stay visible in ignored `logs/code-quality/`. Ruff ANN205 is strict over every tracked Python file; the other ANN findings remain reports. A checker setup failure is fatal. Ty checks types but does not require annotations.
    Ruff B012 and B023 are fatal for tracked Python and extracted shell heredocs; keep the gate tier and its mutation proof intact.
    Consumer Python lint includes tracked shell heredocs; extraction failure is fatal and a valid no-block scan is green.
    Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
-   Windows Pester coverage must measure one file and executed commands in each targeted module; missing or empty reports and scores below the module floor fail the test run.
+   Windows Pester coverage must measure one file and executed commands in each of its eight named modules; missing or empty reports, missing targets and scores below the module floor fail the test run.
    Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
    Consumer Windows PowerShell lint jobs report complexity over the same selected path; enable strict verdicts with `complexity-strict` after the consumer meets the limits.
 
