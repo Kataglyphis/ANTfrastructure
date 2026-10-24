@@ -438,7 +438,7 @@ if _posix_host "process groups (os.killpg)"; then
 for n in $(seq 20); do printf "timeout-middle-%s\n" "$n"; done
 printf "timeout-last-stdout\n"
 sleep 60' 1
-  _out="$(_iso 2>&1)"; _code=$?
+  _out="$(_iso --jobs 1 2>&1)"; _code=$?
   t_assert_eq "1" "${_code}" "the timed-out unmutated test is a vacuous bite"
   t_assert_contains "${_out}" "leader still running" "the test leader had not exited at the deadline"
   t_assert_contains "${_out}" "timeout-first-stderr" "preserve early stderr from TimeoutExpired"
@@ -457,7 +457,7 @@ sleep 0.2
 exit 0
 EOF
   _t0="$(date +%s)"
-  _out="$(_iso 2>&1)"; _code=$?
+  _out="$(_iso --jobs 1 2>&1)"; _code=$?
   t_assert_eq "1" "${_code}" "a child-held pipe cannot count as a healthy baseline"
   t_assert_ok test "$(( $(date +%s) - _t0 ))" -lt 10
   t_assert_contains "${_out}" "leader exited rc=0" "the test itself finished before its child-held pipe timed out"
