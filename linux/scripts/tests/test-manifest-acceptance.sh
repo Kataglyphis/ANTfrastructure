@@ -6,16 +6,15 @@ source "${TESTS_DIR}/test-harness.sh"
 SUBJECT="${TESTS_DIR}/../build-runtime-manifest.sh"
 subject="$(t_fn_src "${SUBJECT}" create_manifest)"
 
-# shellcheck disable=SC2034 # The extracted production function reads these test inputs through eval.
 scenario() (
   eval "${subject}"
-  TARGET_ARCHES=amd64,arm64,riscv64
-  IMAGE_NAME=ghcr.io/kataglyphis/example:latest
-  CROSS_RUN_ID=test-run
-  PUSH_MANIFEST=1
-  RUNTIME_MANIFEST_COHERENCE=1
-  RUNTIME_MANIFEST_COMPLETENESS=1
-  NERDCTL_BIN=engine
+  export TARGET_ARCHES=amd64,arm64,riscv64
+  export IMAGE_NAME=ghcr.io/kataglyphis/example:latest
+  export CROSS_RUN_ID=test-run
+  export PUSH_MANIFEST=1
+  export RUNTIME_MANIFEST_COHERENCE=1
+  export RUNTIME_MANIFEST_COMPLETENESS=1
+  export NERDCTL_BIN=engine
   arch_list_to_words() { printf '%s' "${1//,/ }"; }
   runtime_wrapper_tag() { printf 'wrapper:%s' "$1"; }
   is_dry_run() { return 1; }
