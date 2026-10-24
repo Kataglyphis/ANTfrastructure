@@ -19,6 +19,11 @@
 - Preserve installed-before-repository order, caller arguments, source-visible path variables and fatal statuses.
 - Remove one measured duplication exception without changing scanner thresholds or coverage.
 
+## 2026-10-24 — keep the consumer contract gate in its companion
+
+- Move consumer fact collection, row dispatch and shared verdicts into the existing contract module while preserving the probe and independent assertions.
+- Keep browser and emulator verdicts with their smoke-specific checks; shrink the smoke file's measured size budget by 263 lines.
+
 ## 2026-10-24 — keep shell function boundaries accurate in code-dupes
 
 - Reuse the code-size shell lexer so braces in strings, comments and here-docs cannot merge later function units.

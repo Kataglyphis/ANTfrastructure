@@ -52,13 +52,13 @@ eval "${_CC_ROWS_SRC}"
 
 _CC_FACT_PARTS="$(_extract _consumer_contract_fact)
 $(_extract _consumer_collect_required_facts)
+$(_extract _consumer_tooling_verdict)
 $(_extract _consumer_required_facts_continue)"
 
 _CC_PARTS="${_CC_ROWS_SRC}
 $(_extract _consumer_contract_exempt)
 $(_extract _consumer_exempt_fact)
 ${_CC_FACT_PARTS}
-$(_extract _consumer_required_facts_continue)
 $(_extract _consumer_dir_verdict)
 $(_extract _consumer_exempt_verdict)
 $(_extract _consumer_android_verdict)
@@ -383,6 +383,7 @@ $(_extract _consumer_version_matches)
 $(_extract _consumer_chrome_verdict)
 $(_extract _consumer_emulator_verdict)
 $(_extract _consumer_cargo_qa_verdict)
+$(_extract _consumer_versioned_contract_verdict)
 $(_extract _consumer_free_threaded_verdict)"
 # _cc_tr <probe> <arch> <row>
 _cc_tr() {

@@ -23,7 +23,7 @@ t_assert_eq 7 "$(_torch_select_max_jobs)"
 unset MAX_JOBS
 
 t_case "Torch prefers the memory-heavy parallelism profile"
-compute_cpp_heavy_jobs() { [ "$#" -eq 1 ] && [ -z "$1" ] && printf 'heavy'; }
+compute_cpp_heavy_jobs() { if [ "$#" -eq 1 ] && [ -z "$1" ]; then printf 'heavy'; fi; }
 compute_jobs_with_mem_cap() { printf 'generic-%s-%s' "$1" "$2"; }
 nproc() { printf 'cores'; }
 t_assert_eq heavy "$(compute_cpp_heavy_jobs '')"

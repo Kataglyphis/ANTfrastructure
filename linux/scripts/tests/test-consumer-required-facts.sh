@@ -8,7 +8,7 @@ source "${TESTS_DIR}/runtime-function-fixtures.sh"
 SMOKE="${1:-${TESTS_DIR}/../06-packaging/smoke-runtime-image.sh}"
 RECEIPT="${2:-}"
 [ -z "$RECEIPT" ] || : > "$RECEIPT"
-for fn in _consumer_contract_fact _consumer_tool_verdict _consumer_jdk_verdict _consumer_android_verdict _consumer_required_facts_continue; do t_runtime_function "$SMOKE" "$fn"; done > "$WORK/functions.sh"
+for fn in _consumer_contract_fact _consumer_tooling_verdict _consumer_tool_verdict _consumer_jdk_verdict _consumer_android_verdict _consumer_required_facts_continue; do t_runtime_function "$SMOKE" "$fn"; done > "$WORK/functions.sh"
 if grep -q '^_consumer_collect_required_facts() {' "$SMOKE" "${SMOKE%/*}/runtime-consumer-contract.sh"; then t_runtime_function "$SMOKE" _consumer_collect_required_facts >> "$WORK/functions.sh"; fi
 sed '1s/_consumer_contract_fact/_fixture_contract_fact/' < <(t_runtime_function "$SMOKE" _consumer_contract_fact) >> "$WORK/functions.sh"
 cat > "$WORK/worker.sh" <<'WORKER'
