@@ -362,8 +362,9 @@ distribution named `onnxruntime` or `onnxruntime-*` and every owner of the
 `onnxruntime`, `onnxruntime_genai` or `onnxruntime_extensions` package, never a
 fixed list. `--check --store DIR` requires each of them to match the store wheel
 of the same name and version file by file, `onnxruntime` to have exactly one
-owner, and the import to resolve to it. `Build-TorchApp.ps1` embeds a verbatim
-copy, pinned by `TorchApp.OrtCensus.Tests.ps1`.
+owner, and the import to resolve to it. The Windows torch Dockerfile stages the
+same script beside `Build-TorchApp.ps1`; the driver reads its source and feeds
+it to the venv interpreter. `TorchApp.OrtCensus.Tests.ps1` pins that handoff.
 
 **The app `uv sync` installs no ORT.** On Windows every `onnxruntime` or
 `onnxruntime-*` name in `uv.lock` goes to `--no-install-package`, and a locked

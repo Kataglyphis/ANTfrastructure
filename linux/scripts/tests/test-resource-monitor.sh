@@ -46,23 +46,23 @@ log() { :; }
 pgrep() { return 1; }
 export MON_CALLS="${WORK}/monitor-args"
 LOG_DIR=""
-CROSS_RUN_ID=""
+
+_assert_monitor_dir() {
+  local expected="$1"
+  rm -f "${MON_CALLS}"
+  CROSS_RUN_ID='' start_resource_monitor fixture
+  t_assert_ok t_wait_file "${MON_CALLS}" 30
+  wait "$!"
+  t_assert_ok test -d "${expected}"
+  t_assert_contains "$(cat "${MON_CALLS}")" "--out-dir ${expected}"
+}
 
 t_case "the orchestrator's resource CSV defaults under logs"
-start_resource_monitor fixture
-t_assert_ok t_wait_file "${MON_CALLS}" 30
-wait "$!"
-t_assert_ok test -d "${REPO_ROOT}/logs"
-t_assert_contains "$(cat "${MON_CALLS}")" "--out-dir ${REPO_ROOT}/logs"
+_assert_monitor_dir "${REPO_ROOT}/logs"
 
 t_case "an explicit stage log directory still owns its resource CSV"
 LOG_DIR="${WORK}/chosen-logs"
-rm -f "${MON_CALLS}"
-start_resource_monitor fixture
-t_assert_ok t_wait_file "${MON_CALLS}" 30
-wait "$!"
-t_assert_ok test -d "${LOG_DIR}"
-t_assert_contains "$(cat "${MON_CALLS}")" "--out-dir ${LOG_DIR}"
+_assert_monitor_dir "${LOG_DIR}"
 
 _probe_monitor_default() (
   eval "$(t_fn_src "${MONITOR}" main)"

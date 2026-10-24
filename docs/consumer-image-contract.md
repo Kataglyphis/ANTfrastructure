@@ -1002,7 +1002,8 @@ run at the next image build.
   twins of those flavours sit in `/opt/wheels-free-threaded` (`PYTHON_WHEELS_FREE_THREADED`).
 - **Windows:** the same wheels sit in `C:\runtime\wheels` (`PYTHON_WHEELS`). The
   census ships at `C:\temp\scripts\ort-venv-census.py`, beside the module copy whose
-  `Sync-UvChainOnnxRuntime` runs it; `Build-TorchApp.ps1` embeds its own copy.
+  `Sync-UvChainOnnxRuntime` runs it; `Build-TorchApp.ps1` reads that staged sibling
+  and feeds its source to the app venv's interpreter.
 - **Who gets them:** a consumer on the hub's Python CI has its venvs reconciled onto
   them inside our images
   ([`python-ci.md` § Trap 3](python-ci.md#trap-3--onnx-runtime-comes-from-the-chain-not-pypi)).

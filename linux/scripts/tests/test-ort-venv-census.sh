@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
-# ort-venv-census.py and Build-TorchApp.ps1's copy on fixture dists, plus the wiring; no real venv or wheel.
+# Shared ort-venv-census.py from source and its Windows staged path on fixture dists; no real venv or wheel.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 CENSUS="${TESTS_DIR}/../03-media/runtime/ort-venv-census.py"
 ASSEMBLE="${TESTS_DIR}/../03-media/runtime/assemble-torch-app.sh"
 TORCH_APP_PS1="${TESTS_DIR}/../../../windows/scripts/build/Build-TorchApp.ps1"
+TORCH_DOCKERFILE="${TESTS_DIR}/../../../windows/Dockerfile.torch"
 _PY="${PREFLIGHT_PYTHON:-python3}"
 
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 
-# The Windows copy, lifted from its here-string.
-_WIN_COPY="${_work}/ort-venv-census-win.py"
-awk '/^function Get-TorchAppOrtCensusSource/ {f=1} f && /^'"'"'@$/ {exit} p {print} f && /^    return @'"'"'$/ {p=1}' \
-  "${TORCH_APP_PS1}" > "${_WIN_COPY}"
-t_case "Build-TorchApp.ps1 embeds a census"
-t_assert_contains "$(cat "${_WIN_COPY}")" "def check(store):" "the here-string was found and lifted"
+_WIN_STAGE="${_work}/windows-stage"
+mkdir -p "${_WIN_STAGE}" || exit 1
+_WIN_COPY="${_WIN_STAGE}/ort-venv-census.py"
+cp "${CENSUS}" "${_WIN_COPY}" || exit 1
+t_case "Build-TorchApp.ps1 reads the shared census staged by Dockerfile.torch"
+t_assert_contains "$(cat "${_WIN_COPY}")" "def check(store):" "the staged source contains the census"
+cmp -s "${CENSUS}" "${_WIN_COPY}"
+t_assert_eq 0 "$?" "the Windows stage gets the same source bytes"
+t_assert_eq 1 "$(tr -d '\r' < "${TORCH_DOCKERFILE}" | grep -Fxc 'COPY linux\scripts\03-media\runtime\ort-venv-census.py C:\temp\scripts\')" "the image stages the shared source beside Build-TorchApp.ps1"
+t_assert_eq 1 "$(grep -Fc 'Join-Path $PSScriptRoot '\''ort-venv-census.py'\'' ' "${TORCH_APP_PS1}")" "the builder resolves its sibling census"
+t_assert_eq 1 "$(grep -Fc 'if (-not (Test-Path -LiteralPath $script:OrtCensusPath -PathType Leaf))' "${TORCH_APP_PS1}")" "a missing census fails before the build"
+t_assert_eq 1 "$(grep -Fc 'return [IO.File]::ReadAllText($script:OrtCensusPath)' "${TORCH_APP_PS1}")" "the builder reads the staged bytes"
+t_assert_eq 1 "$(grep -Fc 'Get-TorchAppOrtCensusSource | & $Python -I - "--$Mode" --store $Store' "${TORCH_APP_PS1}")" "the venv interpreter executes those bytes in isolation"
 
 # Fixture dists `wheel|install NAME VERSION TOP [flag...]` or `dir TOP`; flags: tamper drop extra stray norecord datalib.
 _fixture_py() {
@@ -111,7 +119,8 @@ CHAIN=("wheel onnxruntime 1.30.0 onnxruntime" "wheel onnxruntime-genai 0.15.2 on
 HEALTHY=("${CHAIN[@]}" "install onnxruntime 1.30.0 onnxruntime" "install onnxruntime-genai 0.15.2 onnxruntime_genai")
 
 for _copy in "${CENSUS}" "${_WIN_COPY}"; do
-  _tag="(${_copy##*/})"
+  _tag="(source)"
+  [[ "${_copy}" != "${_WIN_COPY}" ]] || _tag="(Windows stage)"
 
   t_case "a venv of chain wheels passes ${_tag}"
   _out="$(_scenario "${_copy}" check "${HEALTHY[@]}")"
