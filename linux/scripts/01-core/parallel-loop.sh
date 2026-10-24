@@ -2,6 +2,22 @@
 [ -n "${_PARALLEL_LOOP_SH_LOADED:-}" ] && return 0
 _PARALLEL_LOOP_SH_LOADED=1
 
+parallel_require_child_stop() {
+  if ! declare -F parallel_stop_child_advisory >/dev/null; then
+    printf 'ERROR: child cleanup requires parallel_stop_child_advisory from parallel-loop.sh\n' >&2
+    return 1
+  fi
+  return 0
+}
+
+# Reap after signaling even when an already-finished child makes kill fail.
+parallel_stop_child_advisory() {
+  local _psca_action
+  for _psca_action in kill wait; do
+    "${_psca_action}" "$1" 2>/dev/null || true
+  done
+}
+
 # A bare prefix, not a dir: the loop mktemp's "<prefix>.XXXXXX" itself and removes it.
 arch_loop_flag_prefix() {
   printf '%s/%s' "${TMPDIR:-/tmp}" "$1"

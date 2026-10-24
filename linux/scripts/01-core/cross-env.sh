@@ -474,18 +474,21 @@ _export_pkg_config() {
   export PKG_CONFIG_LIBDIR
 }
 
+_cross_append_library_path() {
+  local -n _calp_state="$1"
+  _calp_state="${_calp_state:+${_calp_state}:}$2"
+}
+
 _export_library_path() {
   local -n _elp=$1
   local target_link_path="" dir
-  for dir in \
+  path_require_directory_visitor _cross_append_library_path || return $?
+  path_visit_existing_directories _cross_append_library_path target_link_path \
     "${_elp[runtime_libdir]}" \
     "${_elp[gcc_prefix]}/${_elp[triplet]}/lib" \
     "/usr/lib/${_elp[triplet]}" \
     "/lib/${_elp[triplet]}" \
-    "/usr/${_elp[triplet]}/lib"; do
-    [ -d "${dir}" ] || continue
-    target_link_path="${target_link_path:+${target_link_path}:}${dir}"
-  done
+    "/usr/${_elp[triplet]}/lib"
   if [ -n "${target_link_path}" ]; then
     export LIBRARY_PATH="${target_link_path}${LIBRARY_PATH:+:${LIBRARY_PATH}}"
   fi

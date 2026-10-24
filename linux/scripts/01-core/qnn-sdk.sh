@@ -72,6 +72,10 @@ resolve_qnn_sdk() {
     printf '%s\n' "$qnn_home"
 }
 
+qnn_has_runtime_libraries() {
+    find "$1" -maxdepth 1 -name "$2" -type f 2>/dev/null | grep -q .
+}
+
 # stage_qnn_runtime <qnn_home> <target_dir> [provider_pattern]: mirrors Copy-QnnRuntime; a named provider must exist.
 stage_qnn_runtime() {
     local qnn_home="${1:?qnn_home required}"
@@ -81,7 +85,7 @@ stage_qnn_runtime() {
     local lib_dir="$target_dir"
     if [ -d "${target_dir}/lib" ]; then
         lib_dir="${target_dir}/lib"
-        if ! find "${lib_dir}" -maxdepth 1 -name '*.so*' -type f 2>/dev/null | grep -q .; then
+        if ! qnn_has_runtime_libraries "${lib_dir}" '*.so*'; then
             local first_dir
             first_dir="$(find "${target_dir}" -type f -name '*.so*' 2>/dev/null | head -1 | xargs -r dirname 2>/dev/null || true)"
             [ -n "${first_dir}" ] && lib_dir="${first_dir}"

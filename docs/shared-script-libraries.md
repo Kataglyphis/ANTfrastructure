@@ -69,7 +69,9 @@ cleanup and input trees. Fixtures continue to execute the actual subject gates.
 `01-core/compiler-cache-utils.sh` supplies launcher selection and start/health probes
 without initializing defaults or starting a server when sourced. Copy it beside
 `common.sh`, `compiler-cache.sh` and standalone cache probes. Base-image steps use
-narrow companion mounts. Callers retain hook versus direct startup, stream routing,
+narrow companion mounts. Copied-module refusal fixtures first load the complete
+closure successfully, then remove only the targeted companion. Another missing
+dependency cannot stand in for the protected failure. Callers retain hook versus direct startup, stream routing,
 S3 defaults and failure policy.
 
 `install-deps-preamble.sh` reports staged target Python development readiness;
@@ -90,6 +92,40 @@ preserve ordered shell-quoted fields, and worker invocations pass the harness pa
 explicitly. `t_capture_command` captures merged output and raw failure status for
 assertions; it does not turn a failed command into a successful test. These fixtures
 exercise stubbed operations and do not prove live cache servers or package builds.
+
+## Ordered probes and compatibility fallbacks
+
+Media core shares ordered regular-file checks for TensorFlow SDK completeness and
+staged HarfBuzz development files. Each caller keeps its branch selection,
+completion-stamp policy and diagnostics. Missing selected helper APIs fail before
+an absent function can be mistaken for an ordinary cache miss.
+
+The platform owner visits existing directories in caller order. Cross environment
+publication keeps duplicate entries; LLVM keeps its colon-based deduplication.
+The visitor uses the caller's `dir` loop binding so readonly-variable failures and
+shell state remain unchanged. Check the visitor and callback before invocation,
+then invoke it unconditionally and retain the caller's final status policy.
+
+`01-core/cross-active-fallback.sh` registers the core and native compatibility
+profiles. Source it at the original registration point so optional providers and
+aliases retain their binding time. Existing functions and commands keep precedence;
+the native profile keeps its false fallback. Narrow copies of `common.sh` and
+`install-deps-preamble.sh` carry the companion. Failed imports clear the caller's
+loaded flag and permit retry after restoration.
+
+QNN staging and CPU artifact verification share the shallow regular-library query
+in `qnn-sdk.sh`, with caller-specific filename patterns. The verifier imports it
+only for a detected QNN provider and requires successful sourcing and its export.
+The CPU verification RUN binds that exact companion without widening core mounts.
+
+`parallel-loop.sh` owns advisory child signaling followed by reaping. Runtime
+timers and chain disk watchers keep their PID guards, variable reset and command
+status. Both cleanup commands remain advisory; their stderr stays suppressed.
+Selected timers and watchers require the cleanup API before spawning; an older
+loaded owner or incomplete definition cannot leave a child behind and report success.
+Timer fixtures share function-source assembly and carry the process definition,
+while real heartbeat lifetime
+and process-tree assertions remain independent.
 
 ## The tree, as AGENTS.md drew it
 

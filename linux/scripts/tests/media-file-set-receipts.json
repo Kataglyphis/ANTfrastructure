@@ -1,0 +1,770 @@
+{
+  "('tf', 0, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 0, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 1, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 1, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 1, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 1, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 1, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 1, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 1, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 1, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 2, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 3, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\nmkdir\n"
+  },
+  "('tf', 3, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\nmkdir\n"
+  },
+  "('tf', 3, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 3, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 3, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\nmkdir\n"
+  },
+  "('tf', 3, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\nmkdir\n"
+  },
+  "('tf', 3, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 3, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 4, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 5, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 5, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 5, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 5, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 5, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 5, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nmkdir\n"
+  },
+  "('tf', 5, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 5, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'regular', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'regular', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'symlink', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'symlink', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 6, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 7, 'regular', False)": {
+    "rc": 0,
+    "out": "TensorFlow C SDK 1 [*] already cached at WORK/space [*]/tensorflow-c\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\n"
+  },
+  "('tf', 7, 'regular', True)": {
+    "rc": 0,
+    "out": "TensorFlow C SDK 1 [*] already cached at WORK/space [*]/tensorflow-c\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\n"
+  },
+  "('tf', 7, 'directory', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 7, 'directory', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 7, 'symlink', False)": {
+    "rc": 0,
+    "out": "TensorFlow C SDK 1 [*] already cached at WORK/space [*]/tensorflow-c\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\n"
+  },
+  "('tf', 7, 'symlink', True)": {
+    "rc": 0,
+    "out": "TensorFlow C SDK 1 [*] already cached at WORK/space [*]/tensorflow-c\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nWORK/space [*]/tensorflow-c/lib/libtensorflow.so\nWORK/space [*]/tensorflow-c/include/tensorflow/c/c_api.h\n"
+  },
+  "('tf', 7, 'dangling', False)": {
+    "rc": 1,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('tf', 7, 'dangling', True)": {
+    "rc": 0,
+    "out": "Skipping TensorFlow C SDK: upstream publishes no aarch64 C-library build (last x86_64 build is 2.18.0)\nSTATUS:1\n",
+    "err": "",
+    "trace": "WORK/space [*]/tensorflow-c/.complete-1 [*]\nmkdir\n"
+  },
+  "('hb', 0, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 0, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 1, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 1, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 1, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 1, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 1, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 1, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 1, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 1, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 2, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 3, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 3, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 3, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 3, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 3, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 3, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 3, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 3, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 4, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 5, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 5, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 5, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 5, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 5, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 5, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\n"
+  },
+  "('hb', 5, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 5, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'regular', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'regular', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'symlink', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'symlink', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 6, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 7, 'regular', False)": {
+    "rc": 0,
+    "out": "[INFO] harfbuzz (riscv64): static target harfbuzz 2 staged at /usr/fixture-triplet (lib+hb-ft.h+pc)\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 7, 'regular', True)": {
+    "rc": 0,
+    "out": "[INFO] harfbuzz (riscv64): static target harfbuzz 2 staged at /usr/fixture-triplet (lib+hb-ft.h+pc)\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 7, 'directory', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 7, 'directory', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 7, 'symlink', False)": {
+    "rc": 0,
+    "out": "[INFO] harfbuzz (riscv64): static target harfbuzz 2 staged at /usr/fixture-triplet (lib+hb-ft.h+pc)\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 7, 'symlink', True)": {
+    "rc": 0,
+    "out": "[INFO] harfbuzz (riscv64): static target harfbuzz 2 staged at /usr/fixture-triplet (lib+hb-ft.h+pc)\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\nWORK/space [*]/usr/fixture-triplet/include/harfbuzz/hb-ft.h\nWORK/space [*]/usr/fixture-triplet/lib/pkgconfig/harfbuzz.pc\n"
+  },
+  "('hb', 7, 'dangling', False)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  },
+  "('hb', 7, 'dangling', True)": {
+    "rc": 0,
+    "out": "[WARN] harfbuzz (riscv64): static target harfbuzz NOT staged; build-opencv.sh will keep BUILD_opencv_freetype=OFF\nSTATUS:0\n",
+    "err": "",
+    "trace": "WORK/space [*]/usr/fixture-triplet/lib/libharfbuzz.a\n"
+  }
+}

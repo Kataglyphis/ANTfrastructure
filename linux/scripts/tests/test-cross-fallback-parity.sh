@@ -12,8 +12,8 @@ _probe() {
   bash -c "
     arch_normalize() { case \"\$1\" in x86_64) echo amd64;; aarch64) echo arm64;; *) echo \"\$1\";; esac; }
     ${approximation}
-    src=\$(awk '/if ! command -v cross_build_is_active/,/^fi\$/' '${file}')
-    eval \"\${src}\"
+    source '${file%/*}/cross-active-fallback.sh'
+    register_cross_active_fallback core
     $* cross_build_is_active && echo ACTIVE || echo INACTIVE
   " 2>/dev/null
 }
@@ -56,8 +56,8 @@ for f in "${FILES[@]}"; do
   out="$(bash -c "
     arch_normalize() { echo \"\$1\"; }
     cross_build_enabled() { return 0; }
-    src=\$(awk '/if ! command -v cross_build_is_active/,/^fi\$/' '${f}')
-    eval \"\${src}\"
+    source '${f%/*}/cross-active-fallback.sh'
+    register_cross_active_fallback core
     BUILD_MODE=native cross_build_is_active && echo DELEGATED || echo RAW
   " 2>/dev/null)"
   t_assert_eq "DELEGATED" "${out}" "authoritative predicate must win over the approximation"

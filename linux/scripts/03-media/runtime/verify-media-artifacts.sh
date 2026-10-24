@@ -137,7 +137,16 @@ case "${STAGE}" in
     verify_file_exists "${PREFIX}/include/onnxruntime/core/session/onnxruntime_c_api.h" "ONNX Runtime C API header"
     # A QNN provider needs its backend libs beside it; no provider means QNN is off.
     if find "${PREFIX}/lib" -maxdepth 1 -name 'libonnxruntime_providers_qnn.so*' -type f 2>/dev/null | grep -q .; then
-      if ! find "${PREFIX}/lib" -maxdepth 1 -name 'libQnn*.so' -type f 2>/dev/null | grep -q .; then
+      # shellcheck source=linux/scripts/01-core/qnn-sdk.sh
+      source "${BASH_SOURCE[0]%/*}/../../01-core/qnn-sdk.sh"
+      _qnn_verifier_source_status=$?
+      [ "${_qnn_verifier_source_status}" -eq 0 ] || exit "${_qnn_verifier_source_status}"
+      unset _qnn_verifier_source_status
+      if ! declare -F qnn_has_runtime_libraries >/dev/null; then
+        printf 'ERROR: QNN verifier requires qnn_has_runtime_libraries from qnn-sdk.sh\n' >&2
+        exit 1
+      fi
+      if ! qnn_has_runtime_libraries "${PREFIX}/lib" 'libQnn*.so'; then
         echo "FAIL [${STAGE}]: libonnxruntime_providers_qnn.so present but no libQnn*.so staged — QNN runtime missing"
         exit 1
       fi

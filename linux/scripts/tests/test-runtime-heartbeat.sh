@@ -10,6 +10,8 @@ trap 'rm -f "${_LOG}"' EXIT
 log() { echo "$*" >> "${_LOG}"; }
 is_dry_run() { if [ "${DRY_RUN:-0}" = 1 ]; then return 0; fi; return 1; }
 eval "${FNS}"
+eval "$(t_fn_src "${TESTS_DIR}/../01-core/parallel-loop.sh" parallel_require_child_stop)" || exit 1
+eval "$(t_fn_src "${TESTS_DIR}/../01-core/parallel-loop.sh" parallel_stop_child_advisory)" || exit 1
 eval "${FNT}"
 
 t_case "a step under the first threshold prints no heartbeat"
