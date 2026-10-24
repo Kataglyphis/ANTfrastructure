@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # See docs/code-quality-tooling.md#python-type-analysis for the strict scope and report policy.
+# NOT covered by strict ty: files needing optional or image-only imports; the full platform reports retain them.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -18,15 +19,35 @@ mkdir -p "${report_dir}"
 linux_report="${report_dir}/ty-linux.txt"
 windows_report="${report_dir}/ty-windows.txt"
 strict_report="${report_dir}/ty-quality-gate.txt"
+windows_gate_report="${report_dir}/ty-windows-gate.txt"
 annotations_report="${report_dir}/ruff-annotations.txt"
 annotations_gate_report="${report_dir}/ruff-annotations-gate.txt"
 
 mapfile -d '' -t py_files < <(git ls-files -z -- '*.py')
-mapfile -d '' -t quality_files < <(git ls-files -z -- 'docs/scripts/*.py' 'linux/scripts/verify_*.py' \
+mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs/scripts/*.py' \
+  'linux/ansible/scripts/*.py' 'linux/host-config/*.py' 'linux/llm-stack/gateway/*.py' \
+  'linux/llm-stack/tests/gateway_e2e/gw_*.py' \
+  'linux/scripts/01-core/manifest-*.py' 'linux/scripts/01-core/registry-*.py' \
+  'linux/scripts/02-toolchain/oci-layers-extract.py' \
+  'linux/scripts/02-toolchain/registry-platform-digest.py' \
+  'linux/scripts/02-toolchain/python/free-threaded-wheel.py' \
+  'linux/scripts/02-toolchain/python/verify-test-reports.py' \
+  'linux/scripts/02-toolchain/python/wheel-smoke.py' \
+  'linux/scripts/03-media/*.py' 'linux/scripts/05-frameworks/*.py' \
+  'linux/scripts/06-packaging/free-threaded-sysconfig-tools.py' \
+  'linux/scripts/06-packaging/ort_census_probe.py' \
+  'linux/scripts/06-packaging/python-app-selftest.py' \
+  'linux/scripts/develop_red.py' 'linux/scripts/image-acceptance.py' \
+  'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
+  'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/renovate_cmake.py' \
+  'linux/scripts/renovate_locator.py' 'linux/scripts/renovate_planner.py' \
+  'linux/scripts/verify_*.py' \
   'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
-  'linux/scripts/extract_embedded_python.py')
+  'linux/scripts/extract_embedded_python.py' 'shared/python/*.py')
+mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
+[ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
 
 linux_files=()
 windows_files=()
@@ -78,8 +99,10 @@ strict_scan() {
   printf '%s: clean (%s files); %s\n' "${label}" "${count}" "${report}"
 }
 
-# Other ANN rules have existing findings, so only clean ANN205 can fail CI today.
-strict_scan "Ruff staticmethod annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
-  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN205 --output-format concise "${py_files[@]}"
+# Other ANN rules have existing findings, so only clean method-return rules can fail CI today.
+strict_scan "Ruff method annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
+  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN204,ANN205,ANN206 --output-format concise "${py_files[@]}"
 strict_scan "ty quality gate" "${strict_report}" "${#quality_files[@]}" \
   "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}"
+strict_scan "ty Windows gate" "${windows_gate_report}" "${#windows_quality_files[@]}" \
+  "${ty[@]}" --python-platform windows "${search[@]}" "${windows_quality_files[@]}"

@@ -102,7 +102,7 @@ class Req:
 
     __slots__ = ("guarded", "line", "name", "path", "scope", "why")
 
-    def __init__(self, name, path, line, scope, guarded, why):
+    def __init__(self, name, path, line, scope, guarded, why) -> None:
         self.name, self.path, self.line = name, path, line
         self.scope, self.guarded, self.why = scope, guarded, why
 

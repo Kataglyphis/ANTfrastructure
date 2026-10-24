@@ -19,6 +19,7 @@ function Assert-CoverageInventoryFailure {
         [Parameter(Mandatory)][string]$Pattern)
     Assert-Equal 1 (Write-TestSummary -Tally $Tally -SummaryFile $Path -RequireCoverageTargets 6>$null)
     $saved = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    Assert-False $saved.CoverageFloorMet
     Assert-Match $Pattern ($saved.CoverageFailures -join '|')
 }
 
@@ -75,14 +76,16 @@ Describe 'Invoke-Tests run summary' {
                 [pscustomobject]@{ Suite = $_; Module = $targets[$_].Module; Percent = 100;
                     MinimumPercent = $targets[$_].MinimumPercent; Analyzed = 1; Executed = 1; ReportPath = 'fixture.xml' }
             })
-            $baseline['Coverage'] = @($rows | Select-Object -First 2)
+            $withoutWasm = @($rows | Where-Object { $_.Suite -ne 'WindowsWasmOpt.Common.Tests.ps1' })
+            $baseline['Coverage'] = $withoutWasm
             Assert-CoverageInventoryFailure -Tally $baseline -Path (Join-Path $dir 'logs/windows-tests/missing.json') `
-                -Pattern 'expected one .* report, got 0'
+                -Pattern 'WindowsWasmOpt.Common.Tests.ps1.*got 0'
 
-            $baseline['Coverage'] = @($rows) + @($rows[0])
+            $baseline['Coverage'] = $withoutWasm + @($rows | Where-Object { $_.Suite -eq 'WindowsMsix.Common.Tests.ps1' })
+            Assert-Equal $targets.Count @($baseline['Coverage']).Count
             $baseline['CoverageFailures'] = @()
             Assert-CoverageInventoryFailure -Tally $baseline -Path (Join-Path $dir 'logs/windows-tests/duplicate.json') `
-                -Pattern 'expected one .* report, got 2'
+                -Pattern 'WindowsMsix.Common.Tests.ps1.*got 2'
         }
     }
 }

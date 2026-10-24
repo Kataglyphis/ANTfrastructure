@@ -22,8 +22,8 @@ $modDir = Join-Path (Split-Path $here -Parent) 'modules'
 
 $testFiles = @(Get-ChildItem -Path $here -Filter '*.Tests.ps1' | Sort-Object Name)
 if ($Only) { $testFiles = @($testFiles | Where-Object { $_.Name -eq $Only }) }
-# ~1% below the measured 2707 tests: raise it when suites grow, never lower it to make a red run green.
-$minTests = 2680
+# ~1% below the measured 2712 tests: raise it when suites grow, never lower it to make a red run green.
+$minTests = 2686
 
 function New-TestTally {
     param([int]$Total, [int]$Passed, [int]$PesterFailures, [object[]]$Failed = @(), [string[]]$Skipped = @(),
@@ -169,6 +169,9 @@ function Get-CoverageTargets {
         'WindowsRepoHygiene.Common.Tests.ps1' = @{ Module = 'WindowsRepoHygiene.Common.psm1'; MinimumPercent = 85 }
         'WindowsPerfBaseline.Common.Tests.ps1' = @{ Module = 'WindowsPerfBaseline.Common.psm1'; MinimumPercent = 90 }
         'WindowsClang.Common.Tests.ps1' = @{ Module = 'WindowsClang.Common.psm1'; MinimumPercent = 80 }
+        'WindowsMsix.Common.Tests.ps1' = @{ Module = 'WindowsMsix.Common.psm1'; MinimumPercent = 80 }
+        'WindowsSlang.Common.Tests.ps1' = @{ Module = 'WindowsSlang.Common.psm1'; MinimumPercent = 65 }
+        'WindowsWasmOpt.Common.Tests.ps1' = @{ Module = 'WindowsWasmOpt.Common.psm1'; MinimumPercent = 80 }
     }
 }
 

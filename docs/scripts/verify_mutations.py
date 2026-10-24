@@ -248,7 +248,7 @@ def passes(cmd, root, timeout):
 class Baselines:
     """One unmutated run per distinct test command, shared by every shard."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._ok = {}
         self._guards = {}
         self._lock = threading.Lock()
@@ -265,7 +265,7 @@ class Baselines:
 class Report:
     """Prints and flushes each verdict as it completes, so a run killed at its timeout still reports; summary() lists failures."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.failed = set()
         self.skipped = set()
         self._lock = threading.Lock()

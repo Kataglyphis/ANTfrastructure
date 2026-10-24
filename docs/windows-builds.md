@@ -974,8 +974,12 @@ the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and cove
 The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
 suites, the discovery floor, targeted Pester coverage and the exit code. Child suites only
-hand tallies to the parent. Coverage XML for the eight measured modules also stays under
-`logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports.
+hand tallies to the parent. Coverage XML for the eleven measured modules also stays under
+`logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports. The MSIX,
+Slang and wasm-opt module floors are 80%, 65% and 80%, against measured command coverage
+of 233/282, 229/342 and 87/108 respectively. The wasm-opt suite now exercises cached
+installs, checksum failures, command arguments and retry verdicts. The runner requires
+one measured report per target even when another target has a duplicate report.
 
 Run the driver from the repository root. It parses `linux/scripts/01-core/versions.env`, passes
 every version as `--build-arg` (the Dockerfile ARG defaults are only fallbacks), builds the stages
@@ -2598,7 +2602,7 @@ fixtures exercise these policies with independent expectations; they do not
 replace container, compiler, certificate or GPU acceptance.
 
 
-The Windows unit runner's discovery floor is 2,680 after a complete 2,707-test
+The Windows unit runner's discovery floor is 2,686 after a complete 2,712-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
 

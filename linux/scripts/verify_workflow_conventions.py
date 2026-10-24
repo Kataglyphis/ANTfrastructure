@@ -185,7 +185,7 @@ def _lines(text: str):
 
 
 class _Cursor:
-    def __init__(self, rows):
+    def __init__(self, rows) -> None:
         self.rows = rows
         self.i = 0
 

@@ -51,7 +51,7 @@ def registry(lanes, ports, budget=3900, listen=None):
 
 
 class Gateway:
-    def __init__(self, root, lanes):
+    def __init__(self, root, lanes) -> None:
         self.lanes = lanes
         self.lanes_models = dict(LANE_MODELS)
         self.root = root

@@ -29,7 +29,7 @@ def parse_args():
 class Latest:
     """The newest item, handed from one producer to any number of waiting consumers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.cond = threading.Condition()
         self.item, self.seq = None, 0
 
@@ -47,7 +47,7 @@ class Latest:
 class FastSSD:
     """SSDLite replayed from a CUDA graph with one batched NMS instead of torchvision's per-class loop."""
 
-    def __init__(self, model, dev, cuda_graph=True):
+    def __init__(self, model, dev, cuda_graph=True) -> None:
         self.m = model
         self.static_in = torch.zeros(1, 3, SIZE, SIZE, device=dev)
         with torch.inference_mode():
@@ -71,7 +71,7 @@ class FastSSD:
         return head["bbox_regression"][0], head["cls_logits"][0]
 
     @torch.inference_mode()
-    def __call__(self, rgb_u8, threshold, iou=0.55, top=100):
+    def __call__(self, rgb_u8, threshold, iou=0.55, top=100) -> tuple[list[list[float]], list[int], list[float]]:
         h, w = rgb_u8.shape[:2]
         x = rgb_u8.permute(2, 0, 1).unsqueeze(0).float().div_(255)
         x = torch.nn.functional.interpolate(x, size=(SIZE, SIZE), mode="bilinear", align_corners=False)

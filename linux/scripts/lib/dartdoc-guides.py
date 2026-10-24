@@ -109,7 +109,7 @@ class LinkTargets:
     """Where a relative link in a guide goes: the guide rendered from it, or the file or folder on GitHub."""
 
     def __init__(self, guide_pages: dict, repo_url: str = "", submodules=(), project_root: str = "",
-                 site_root: str = ""):
+                 site_root: str = "") -> None:
         self.guide_pages = guide_pages
         self.repo_url = repo_url.rstrip("/")
         self.submodules = list(submodules)

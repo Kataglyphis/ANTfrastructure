@@ -27,7 +27,7 @@ LINE_RANGE = re.compile(r"^(\d+)-(\d+)$")
 class Page(HTMLParser):
     """The ids a page defines, its <base href>, and every link it carries."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.ids, self.links, self.base, self.is_document = set(), [], None, False
 
@@ -103,7 +103,7 @@ def anchor_ok(ids, fragment):
 class Site:
     """A built tree: its documents, parsed once each, and the findings over their links."""
 
-    def __init__(self, root):
+    def __init__(self, root) -> None:
         self.root = os.path.abspath(root)
         self.pages, self.findings = {}, {}
 

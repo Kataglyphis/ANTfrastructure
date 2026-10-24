@@ -45,7 +45,7 @@ def shell_code(body_lines):
 class _Walker:
     """Token state of one shell body; case frames tell a case arm's ')' from $(...)'s."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.cc, self.depth, self.top, self.parens, self.frames = 1, 0, 0, 0, []
         self.cmd = True
 

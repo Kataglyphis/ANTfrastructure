@@ -74,7 +74,7 @@ class SpaHandler(http.server.SimpleHTTPRequestHandler):
 
 
 class E2ETestSuite:
-    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str, routes=None, forbidden_hosts=None):
+    def __init__(self, *, build_dir: Path, port: int, chromium_bin: str, screenshot_path: str, routes=None, forbidden_hosts=None) -> None:
         self.routes = routes or []
         self.forbidden_hosts = forbidden_hosts or []
         self.third_party = collections.Counter()

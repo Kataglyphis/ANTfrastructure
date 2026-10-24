@@ -40,7 +40,7 @@ def parse_directives(value):
 
 
 class Received:
-    def __init__(self, method, path, headers, raw):
+    def __init__(self, method, path, headers, raw) -> None:
         self.method, self.path, self.raw = method, path, raw
         self.headers = {k.lower(): v for k, v in headers.items()}
         try:
@@ -51,7 +51,7 @@ class Received:
 
 
 class FakeLane:
-    def __init__(self, name):
+    def __init__(self, name) -> None:
         self.name = name
         self.requests = []
         self.sent = []

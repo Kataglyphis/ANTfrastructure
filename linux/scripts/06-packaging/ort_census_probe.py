@@ -284,7 +284,7 @@ def reference_manifest(root, manifest):
 
 
 class Census:
-    def __init__(self, args):
+    def __init__(self, args) -> None:
         self.root = args.root
         self.contract = [c.split("|") for c in args.contract]
         self.sha_cache, self.sites, self.files, self.skipped, self.uses = {}, [], 0, 0, []

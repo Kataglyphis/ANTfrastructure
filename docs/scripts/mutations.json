@@ -27361,11 +27361,43 @@
   "why": "Every tracked Python test helper must remain in the strict type scope."
  },
  {
+  "id": "python-types.framework-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'linux/scripts/05-frameworks/*.py'",
+  "replace": "'linux/scripts/05-frameworks/no_matches_*.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Framework Python scripts must remain in the strict Linux type scope."
+ },
+ {
+  "id": "python-types.windows-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'windows/scripts/certificates/*.py'",
+  "replace": "'windows/scripts/certificates/no_matches_*.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Windows Python source must retain a strict Windows-platform type check."
+ },
+ {
   "id": "python-types.staticmethod-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "--select ANN205",
-  "replace": "--select ANN206",
+  "find": "--select ANN204,ANN205,ANN206",
+  "replace": "--select ANN204,ANN206",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "A missing staticmethod return annotation must fail the full tracked-tree gate."
+ },
+ {
+  "id": "python-types.classmethod-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN204,ANN205,ANN206",
+  "replace": "--select ANN204,ANN205",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A missing classmethod return annotation must fail the full tracked-tree gate."
+ },
+ {
+  "id": "python-types.constructor-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN204,ANN205,ANN206",
+  "replace": "--select ANN205,ANN206",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A missing constructor return annotation must fail the full tracked-tree gate."
  }
 ]

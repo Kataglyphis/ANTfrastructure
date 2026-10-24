@@ -86,4 +86,83 @@ Describe 'WindowsWasmOpt.Common' {
       (Get-WasmOptArgument -InputPath 'in.wasm' -OutputPath 'out.wasm' -OptimizationLevel '-O3')[0] | Should -Be '-O3'
     }
   }
+
+  Context 'Install-WasmOpt' {
+    It 'reuses the pinned cache without downloading and publishes its bin directory' {
+      $cache = New-TestDir -Prefix 'wasmopt-cache-'
+      $savedPath = $env:PATH
+      try {
+        $bin = Join-Path $cache 'binaryen-version_999/bin'
+        $null = New-Item -ItemType Directory -Path $bin -Force
+        $exe = Join-Path $bin 'wasm-opt.exe'
+        Set-Content -LiteralPath $exe -Value 'cached binary'
+        Mock -ModuleName WindowsWasmOpt.Common -CommandName Invoke-DownloadWithRetry { throw 'download must not run' }
+
+        Install-WasmOpt -VersionsEnvPath $script:fixtureEnv -CacheRoot $cache -Force | Should -Be $exe
+        $env:PATH.Split([IO.Path]::PathSeparator)[0] | Should -Be $bin
+        Should -Invoke Invoke-DownloadWithRetry -ModuleName WindowsWasmOpt.Common -Times 0
+      } finally {
+        $env:PATH = $savedPath
+        Remove-TestDir -Path $cache
+      }
+    }
+
+    It 'deletes a corrupt downloaded archive and propagates its checksum failure' {
+      $cache = New-TestDir -Prefix 'wasmopt-checksum-'
+      try {
+        Mock -ModuleName WindowsWasmOpt.Common -CommandName Invoke-DownloadWithRetry {
+          param($Url, $DestinationPath)
+          Set-Content -LiteralPath $DestinationPath -Value 'bad archive'
+        }
+        Mock -ModuleName WindowsWasmOpt.Common -CommandName Assert-FileSha256 { throw 'checksum sentinel' }
+        Assert-Throws -MessagePattern 'checksum sentinel' -Body {
+          Install-WasmOpt -VersionsEnvPath $script:fixtureEnv -CacheRoot $cache -Force
+        }
+        Test-Path (Join-Path $cache 'binaryen-version_999-x86_64-windows.tar.gz') | Should -BeFalse
+      } finally {
+        Remove-TestDir -Path $cache
+      }
+    }
+  }
+
+  Context 'Invoke-WasmOpt' {
+    BeforeAll {
+      function Invoke-WasmOptFixture {
+        param([int[]]$ExitCodes, [scriptblock]$Body)
+        $state = New-TestCallState @{ Code = 0; ExitCodes = $ExitCodes }
+        Invoke-WithTestNativeCommand -Name wasm-opt -FixtureState $state -Implementation {
+          param($state, $argumentList)
+          $state.Code = $state.ExitCodes[$state.Calls.Count - 1]
+        } -Body $Body
+      }
+    }
+
+    It 'passes a path with spaces as one argument and stops after success' {
+      Invoke-WasmOptFixture -ExitCodes @(0) -Body { param($state)
+        Invoke-WasmOpt -InputPath 'input dir/in.wasm' -OutputPath 'output dir/out.wasm'
+        $state.Calls.Count | Should -Be 1
+        $state.Calls[0][-3] | Should -Be 'input dir/in.wasm'
+        $state.Calls[0][-1] | Should -Be 'output dir/out.wasm'
+        $state.Calls[0] | Should -Contain '--enable-simd'
+      }
+    }
+
+    It 'retries with all features after a failed first attempt' {
+      Invoke-WasmOptFixture -ExitCodes @(5, 0) -Body { param($state)
+        { Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm' } | Should -Not -Throw
+        $state.Calls.Count | Should -Be 2
+        $state.Calls[1] | Should -Contain '--all-features'
+        $state.Calls[1] | Should -Not -Contain '--enable-simd'
+      }
+    }
+
+    It 'propagates a failed retry' {
+      Invoke-WasmOptFixture -ExitCodes @(5, 7) -Body { param($state)
+        Assert-Throws -MessagePattern 'wasm-opt failed \(exit code 7\)' -Body {
+          Invoke-WasmOpt -InputPath 'in.wasm' -OutputPath 'out.wasm'
+        }
+        $state.Calls.Count | Should -Be 2
+      }
+    }
+  }
 }

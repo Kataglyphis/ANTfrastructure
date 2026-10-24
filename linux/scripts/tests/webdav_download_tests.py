@@ -15,7 +15,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "01-core/download-webdav-files.py
 
 
 class Client:
-    def __init__(self, *args):
+    def __init__(self, *args) -> None:
         self.calls = []
         self.failure = None
 
@@ -27,7 +27,7 @@ class Client:
 
 
 class StubWebDavApi(types.ModuleType):
-    def __init__(self, client: Client):
+    def __init__(self, client: Client) -> None:
         super().__init__("kataglyphis_webdavclient.webdavclient")
         self.WebDavClient = lambda *args: client
 

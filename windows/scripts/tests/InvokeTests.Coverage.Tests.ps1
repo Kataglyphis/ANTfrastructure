@@ -43,6 +43,9 @@ Describe 'Invoke-Tests coverage gate' {
             'WindowsRepoHygiene.Common.Tests.ps1=WindowsRepoHygiene.Common.psm1:85'
             'WindowsPerfBaseline.Common.Tests.ps1=WindowsPerfBaseline.Common.psm1:90'
             'WindowsClang.Common.Tests.ps1=WindowsClang.Common.psm1:80'
+            'WindowsMsix.Common.Tests.ps1=WindowsMsix.Common.psm1:80'
+            'WindowsSlang.Common.Tests.ps1=WindowsSlang.Common.psm1:65'
+            'WindowsWasmOpt.Common.Tests.ps1=WindowsWasmOpt.Common.psm1:80'
         ) | Sort-Object
         $targets = Get-CoverageTargets
         $actual = @($targets.Keys | ForEach-Object { "$_=$($targets[$_].Module):$($targets[$_].MinimumPercent)" } | Sort-Object)
@@ -50,16 +53,23 @@ Describe 'Invoke-Tests coverage gate' {
     }
 
     It 'detects a removed target or a relaxed floor in the target inventory' {
-        $row = "'WindowsOnnx.Common.Tests.ps1' = @{ Module = 'WindowsOnnx.Common.psm1'; MinimumPercent = 100 }"
-        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `
-            -FunctionName Get-CoverageTargets -IncludeControl -Case @(
-                @{ Find = $row; Replace = ''; Expected = 'Assert-Equal: expected' }
-                @{ Find = $row; Replace = ($row -replace '100', '0'); Expected = 'Assert-Equal: expected' }
-            ) -Body {
-            $targets = Get-MutCoverageTargets
-            $entry = $targets['WindowsOnnx.Common.Tests.ps1']
-            $actual = if ($null -eq $entry) { '' } else { "$($entry.Module):$($entry.MinimumPercent)" }
-            Assert-Equal 'WindowsOnnx.Common.psm1:100' $actual
+        foreach ($target in @(
+            @{ Suite = 'WindowsOnnx.Common.Tests.ps1'; Module = 'WindowsOnnx.Common.psm1'; Floor = 100 }
+            @{ Suite = 'WindowsWasmOpt.Common.Tests.ps1'; Module = 'WindowsWasmOpt.Common.psm1'; Floor = 80 }
+        )) {
+            $row = "'$($target.Suite)' = @{ Module = '$($target.Module)'; MinimumPercent = $($target.Floor) }"
+            Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `
+                -FunctionName Get-CoverageTargets -BodyArgumentList @($target.Suite, "$($target.Module):$($target.Floor)") `
+                -IncludeControl -Case @(
+                    @{ Find = $row; Replace = ''; Expected = 'Assert-Equal: expected' }
+                    @{ Find = $row; Replace = ($row -replace "MinimumPercent = $($target.Floor)", 'MinimumPercent = 0'); Expected = 'Assert-Equal: expected' }
+                ) -Body {
+                param($suite, $expected)
+                $targets = Get-MutCoverageTargets
+                $entry = $targets[$suite]
+                $actual = if ($null -eq $entry) { '' } else { "$($entry.Module):$($entry.MinimumPercent)" }
+                Assert-Equal $expected $actual
+            }
         }
     }
 

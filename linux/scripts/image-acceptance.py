@@ -44,7 +44,7 @@ def image_parts(image, pinned=True):
 
 
 class Registry:
-    def __init__(self, repository, *, write=False):
+    def __init__(self, repository, *, write=False) -> None:
         self.repository = repository
         scope = f"repository:{repository}:pull" + (",push" if write else "")
         headers = {}

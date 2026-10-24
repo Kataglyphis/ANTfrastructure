@@ -6,7 +6,7 @@ import time
 
 
 class Reply:
-    def __init__(self, status, headers, chunks, error, elapsed):
+    def __init__(self, status, headers, chunks, error, elapsed) -> None:
         self.status = status
         self.headers = {k.lower(): v for k, v in headers}
         self.chunks = chunks
@@ -56,7 +56,7 @@ def call(port, path, body=None, key=None, headers=None, method="POST", timeout=3
 class LogTail:
     """New lines of the gateway's JSON request log since the last mark()."""
 
-    def __init__(self, path):
+    def __init__(self, path) -> None:
         self.path = path
         self.offset = 0
 

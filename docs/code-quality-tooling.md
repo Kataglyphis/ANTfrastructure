@@ -530,31 +530,31 @@ PREFLIGHT_ONLY=python-types bash linux/scripts/preflight.sh
 
 The script passes tracked Python paths to ty rather than scanning a directory of generated
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
-`windows/`. The three ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
+`windows/`. The four ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
-The full-tree ANN205 gate writes `logs/code-quality/ruff-annotations-gate.txt`. The
+The full-tree ANN204/ANN205/ANN206 gate writes `logs/code-quality/ruff-annotations-gate.txt`. The
 Linux x64 workflow uploads these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
-**Every tracked `docs/scripts/*.py`, `linux/scripts/verify_*.py` and
-`linux/scripts/tests/*.py`, plus the shared quality helpers, is a strict type gate.**
-This checks the tools and Python test helpers that grade the rest of the repo.
-The wider first-party ty scan and the other annotation rules remain reports while
-type errors and optional package resolution are corrected.
+**129 of 146 tracked Python files are a strict type gate.** This includes all tracked
+`docs/scripts/*.py`, `linux/scripts/verify_*.py`, `linux/scripts/tests/*.py`,
+dependency-free Linux build helpers, shared Python helpers and the Windows certificate
+helper. The Linux and Windows strict results have separate ignored reports.
+The full first-party ty scan remains a report for the 17 files that import optional or
+image-only packages unavailable in this CI lane. A new Python path outside the strict
+patterns also starts in that report until the strict scope is extended.
 There is no allowlist or raised diagnostic threshold. The full report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
-return and an error in a verifier, requiring the gate to fail for both.
-`python-types.strict-verdict`, `python-types.verifier-scope` and
-`python-types.test-scope` mutate the verdict and both path selections; the suite
-must catch each.
+return and errors in selected Linux and Windows helpers, requiring the gate to fail.
+Mutation cases remove the verdict and path selections; the suite must catch each.
 
 Ty uses declared and inferred types. It does **not** add annotations or require every
-function to have one. Ruff's `ANN205` now fails on missing static-method return
-annotations across every tracked Python file; the four existing findings were fixed.
-`ANN001`–`ANN003`, `ANN201`, `ANN202`, `ANN204` and `ANN206` remain reports until
-their existing findings are fixed. The focused suite injects an unannotated static
-method, and `python-types.staticmethod-annotation-gate` removes the selector to prove
-the gate can fail. The ANN205 and ty checks share one fatal report/exit path so
+function to have one. Ruff's `ANN204`, `ANN205` and `ANN206` now fail on missing
+special-method, static-method and class-method return annotations across every tracked
+Python file. The 22 existing `ANN204` findings and four `ANN205` findings were fixed;
+`ANN206` was already clean. `ANN001`–`ANN003`, `ANN201` and `ANN202` remain reports.
+The focused suite injects unannotated methods, and selector mutations prove
+the gate can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
@@ -755,7 +755,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3419 entries** over **373 distinct test commands**; both digits are
+manifest holds **3423 entries** over **373 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1743,7 +1743,7 @@ The Windows test runner writes a JSON summary for each parent run to
 ## Windows Pester coverage
 
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
-for eight modules, each with a focused Pester suite:
+for eleven modules, each with a focused Pester suite:
 
 | Module | Minimum command coverage |
 |---|---:|
@@ -1755,17 +1755,20 @@ for eight modules, each with a focused Pester suite:
 | `WindowsRepoHygiene.Common.psm1` | 85% |
 | `WindowsPerfBaseline.Common.psm1` | 90% |
 | `WindowsClang.Common.psm1` | 80% |
+| `WindowsMsix.Common.psm1` | 80% |
+| `WindowsSlang.Common.psm1` | 65% |
+| `WindowsWasmOpt.Common.psm1` | 80% |
 
 The target-inventory test pins every suite/module pair and floor, and mutations prove
-that removing the ONNX target or lowering its floor fails the test.
+that removing the ONNX or wasm-opt target or lowering its floor fails the test.
 The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
 zero measured files or commands, inconsistent counts, a missing or duplicate target,
 or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict
 in its JSON summary. The XML
 reports and summary live under ignored `logs/windows-tests/`; Windows x64 CI uploads
 them even when a suite fails. Coverage counts show executed commands, not whether test
-assertions prove the intended behavior. New failure-path tests plant missing, empty
-and low reports so a zero-work run cannot pass.
+assertions prove the intended behavior. Failure-path tests plant missing, empty,
+duplicate and low reports so a zero-work or wrong-inventory run cannot pass.
 
 ## Windows PowerShell complexity
 

@@ -13,6 +13,12 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-25 — Wider strict analysis and Windows coverage
+
+- Expand fatal ty checks from 93 to 129 of 146 tracked Python files, including the Windows certificate helper; retain full Linux and Windows diagnostic reports for the remaining optional-dependency files.
+- Add return annotations to the remaining 22 constructors and callable methods, then make Ruff ANN204 and ANN206 fatal beside ANN205 over all tracked Python; prove each selector with failing fixtures and mutations.
+- Raise measured Windows Pester command-coverage enforcement from eight to eleven modules: MSIX, Slang and wasm-opt now have focused floors and missing-report proofs; move the suite discovery floor from 2,680 to 2,686 after adding five tests.
+
 ## 2026-10-24 — Wider quality coverage
 
 - Make pinned ty checks fatal for tracked Linux Python test helpers as well as verifiers, growing the clean strict scope from 40 to 93 files; test a bad type and mutation-test the new selection.
