@@ -229,8 +229,7 @@ Some very helpful literature, tutorials, etc.
 ## Reusable Sphinx theme package
 
 The theme and the brand belong to DocumANTation, vendored here at `third_party/DocumANTation`.
-`requirements.txt` installs it editable
-(`-e ./third_party/DocumANTation/sphinx-kataglyphis-theme`) and `docs/conf.py` calls
+`docs/pyproject.toml` installs it editable through the pinned submodule, and `docs/conf.py` calls
 `setup_theme()`. How any project uses it, and where the brand's CSS is changed (in DocumANTation,
 never here):
 [DocumANTation's `style/README.md`](https://github.com/Kataglyphis/DocumANTation/blob/develop/style/README.md#sphinx-docs).
@@ -238,10 +237,13 @@ never here):
 ### Building the hub's docs
 
 `bash linux/scripts/build-docs.sh` builds `docs/_build/html`; `docs.yml` runs it in `:latest`
-through `build-docs.yml`. In the image it downloads nothing: the image's `python3` carries Sphinx,
-sphinx-book-theme, myst-parser, sphinx-design and Pygments, so `.venv` sees that interpreter's
+through `build-docs.yml`. Both paths first check that `docs/uv.lock` matches the project without
+network access. In the image it downloads nothing: the image's `python3` carries Sphinx,
+sphinx-book-theme, myst-parser, sphinx-design and Pygments, so `docs/.venv` sees that interpreter's
 site-packages through a `.pth`, and only the vendored theme goes into it, editable, with
 `--offline --no-deps --no-build-isolation`. A requirement of the theme the image does not meet
-stops the build and is named. CI without the image refuses; a workstation without it installs
-`requirements.txt` from PyPI. Built in `:latest` with `--network none` on 2026-10-19: the same
+stops the build and is named. CI without the image refuses; a workstation without it runs
+`uv sync --locked` from `docs/pyproject.toml` and the committed `docs/uv.lock`, using
+`docs/.venv`. Update dependencies with `uv lock --project docs`; the next local build checks the lock.
+Built in `:latest` with `--network none` on 2026-10-19: the same
 98 pages and 49 warnings as the PyPI build, 15 s instead of 20.

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT
+[project]
+name = "antfrastructure-docs"
+version = "0.0.0"
+requires-python = ">=3.14"
+dependencies = ["sphinx-kataglyphis-theme"]
+
+[tool.uv]
+package = false
+
+[tool.uv.sources]
+sphinx-kataglyphis-theme = { path = "../third_party/DocumANTation/sphinx-kataglyphis-theme", editable = true }

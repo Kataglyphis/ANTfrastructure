@@ -65,7 +65,7 @@ Registry `ghcr.io/kataglyphis/kataglyphis_beschleuniger`, one manifest per tag o
 
 | I want to… | Read |
 | --- | --- |
-| Find the page that owns a topic | [docs/INDEX.md](docs/INDEX.md) |
+| Find a topic or build the docs locally | [docs/INDEX.md](docs/INDEX.md) · [Locked docs setup](docs/project-info.md#building-the-hubs-docs) |
 | Wire a new project or reuse build, installer, discovery, reporting and process helpers | [Adoption](docs/adopting-in-a-new-project.md) · [Shared libraries](docs/shared-script-libraries.md) · [Image defaults](.github/actions/README.md#the-two-images-and-the-one-place-they-are-named) |
 | Upgrade dependencies, Renovate as a local CLI | [docs/dependency-updates.md](docs/dependency-updates.md) |
 | See what is published, how the chain is laid out, what is in it | [docs/overview.md](docs/overview.md) |

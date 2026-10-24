@@ -5,8 +5,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-VENV_DIR="${REPO_ROOT}/.venv"
-REQUIREMENTS="${REPO_ROOT}/requirements.txt"
+VENV_DIR="${REPO_ROOT}/docs/.venv"
 IMAGE_VENV=/opt/venv
 
 # Without the DocumANTation submodule, make html would fail deep inside sphinx.
@@ -60,17 +59,22 @@ if unmet:
 PY
 }
 
-# docs_venv: the image's stack offline; never PyPI in CI; requirements.txt from PyPI on a workstation without the image.
+check_docs_lock() {
+  uv lock --project "${REPO_ROOT}/docs" --check --offline || err "docs/uv.lock is missing or stale; run uv lock --project docs"
+}
+
+# docs_venv: CI uses the image offline; a workstation syncs the docs project's lock.
 docs_venv() {
   if [ -d "${IMAGE_VENV}" ]; then
+    check_docs_lock
     image_docs_venv "$(command -v python3)"
     theme_requirements_met || err "CI and the image never download the docs stack; put it in the image"
     info "Docs from the image's Sphinx stack and the vendored theme, offline"
   elif [ "${CI:-}" = true ]; then
     err "no ${IMAGE_VENV}: the docs build in the family image (build-docs.yml), never from PyPI in CI"
   else
-    uv_venv_create "${VENV_DIR}" ""
-    uv_pip_install_requirements "${VENV_DIR}" "${REQUIREMENTS}"
+    check_docs_lock
+    UV_PROJECT_ENVIRONMENT="${VENV_DIR}" uv sync --project "${REPO_ROOT}/docs" --locked
   fi
 }
 

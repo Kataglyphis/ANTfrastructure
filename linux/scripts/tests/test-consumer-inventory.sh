@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verify_consumer_inventory.py over a tree whose answer is known in advance; offline, nothing is cloned.
+# Offline fixtures grade static references; runtime-built paths still need consumer checks.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -21,6 +21,7 @@ _hub() {
   # It names its own path: a file naming itself is not a caller.
   printf '#!/usr/bin/env bash\necho linux/scripts/nobody-names-it.sh\n' \
     > "${d}/linux/scripts/nobody-names-it.sh"
+  printf '%s\n' '-e ./third_party/DocumANTation/theme' > "${d}/requirements.txt"
   # One real module, or every Windows* name dangles and the module case passes for the wrong reason.
   mkdir -p "${d}/windows/scripts/modules"
   printf '%s\n' 'function Get-Thing { }' > "${d}/windows/scripts/modules/WindowsBuild.Common.psm1"
@@ -87,6 +88,7 @@ JSON
 }
 
 _CLASSES='[ { "kind": "linux-script", "glob": "linux/scripts/*.sh", "needle": "path" } ]'
+_ROOT_CLASS='[ { "kind": "root-file", "glob": "requirements.txt", "needle": "path", "match": "root-file" } ]'
 _CLASSES_EMPTY='[ { "kind": "linux-script", "glob": "linux/scripts/*.sh", "needle": "path" },
                   { "kind": "nothing-here", "glob": "no/such/dir/*.sh", "needle": "path" } ]'
 
@@ -147,6 +149,37 @@ t_assert_contains "$(_section 'Mentioned, never reached')" "linux/scripts/only-m
 
 t_assert_contains "$(_section 'Named by nobody')" "linux/scripts/nobody-names-it.sh" \
   "the only hit on it is its own file naming itself, which is not a caller"
+
+t_case "a root file ignores suffixes and other projects' requirement paths"
+_root_c="$(_consumer plain)"
+printf '%s\n' \
+  'uv pip install -r linux/scripts/cmake-format.requirements.txt' \
+  'uv pip install -r /tmp/requirements.txt' \
+  'uv pip install -r scripts/requirements.txt' \
+  'uv pip install -r requirements.txt.bak' >> "${_root_c}/scripts/build.sh"
+printf '%s\n' 'local requirement' > "${_root_c}/scripts/requirements.txt"
+t_git_commit "${_root_c}"
+_inventory "${_work}/root-class.json" "${_ROOT_CLASS}"
+_run "${_h}" "${_root_c}" "${_work}/root-class.json"
+t_assert_eq 0 "${rc}" "a false requirement caller must not fail inventory"
+t_assert_contains "$(_section 'Named by nobody')" '`requirements.txt`' \
+  "another file ending in requirements.txt is not the hub root file"
+
+t_case "the hub's rooted reference is internal; a qualified consumer reference is external"
+printf '%s\n' 'uv pip install -r ${REPO_ROOT}/require'"ments.txt" >> "${_h}/Makefile"
+t_git_commit "${_h}"
+_run "${_h}" "${_root_c}" "${_work}/root-class.json"
+t_assert_contains "$(_section 'Hub-internal only')" '`requirements.txt`' \
+  "the hub's own root requirement is not an external call"
+printf '%s\n' 'uv pip install -r third_party/ANTfrastructure/require'"ments.txt" \
+  'uv pip install -r third_party\\ANTfrastructure\\require'"ments.txt" >> "${_root_c}/scripts/build.sh"
+t_git_commit "${_root_c}"
+_run "${_h}" "${_root_c}" "${_work}/root-class.json"
+t_assert_contains "$(_section 'Reached by a consumer')" '`requirements.txt`' \
+  "qualified slash and backslash references reach the hub root file"
+t_assert_contains "$(_section 'Reached by a consumer')" 'consumer-a (`scripts/build.sh:7`' \
+  "the report preserves the executable caller's location"
+rm -rf "${_root_c}"
 
 t_case "a BACKSLASH-spelled hub path is a hub path"
 # Half the fleet writes hub paths with backslashes.

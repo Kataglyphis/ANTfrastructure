@@ -1,3 +1,0 @@
-# Shared Sphinx theme + its transitive docs deps (sphinx, sphinx-book-theme,
-# sphinx-design, myst-parser) come from the DocumANTation submodule.
--e ./third_party/DocumANTation/sphinx-kataglyphis-theme

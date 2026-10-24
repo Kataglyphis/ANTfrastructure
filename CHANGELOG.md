@@ -13,6 +13,11 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — Locked docs dependencies
+
+- Replace the root theme `requirements.txt` with `docs/pyproject.toml` and `docs/uv.lock`; local docs builds use `uv sync --locked`, and image builds check the lock offline while keeping their shipped Sphinx stack.
+- Verify that no consumer names the removed root file and test both local locked sync and the offline image path.
+
 ## 2026-10-24 — Python type analysis
 
 - Pin ty 0.0.91 beside Ruff and run it in the Linux x64 preflight: tracked documentation and Linux verifier quality scripts are a strict type gate, while full Linux and Windows scans save findings under ignored `logs/code-quality/`.

@@ -1348,6 +1348,10 @@ how to run it and what breaks; no filler, no marketing, no repetition.
   `readme-length` gate fails a root README over 100 lines, here and through `run-lint-gates.sh` in
   every consumer.
 - **The theme and the brand belong to DocumANTation.** Change `custom.css` there, not here.
+- **Keep the docs lock current.** Local docs builds sync `docs/uv.lock` through Astral uv; the
+  image build checks it offline while using its shipped Sphinx stack. Change
+  `docs/pyproject.toml` and the lock together; see
+  [`docs/project-info.md`](docs/project-info.md#building-the-hubs-docs).
 
 How each gate decides, and what its allowlist means:
 [`code-quality-tooling.md`](docs/code-quality-tooling.md).

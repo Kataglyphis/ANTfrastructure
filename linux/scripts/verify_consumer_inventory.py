@@ -66,6 +66,7 @@ class Failure(Exception):
 class EntryPoint(TypedDict):
     kind: str
     needle: str
+    root_file: bool
     alias_stem: str | None
     alias_re: re.Pattern[str] | None
     alias_name: str | None
@@ -105,7 +106,8 @@ def load_inventory(path):
 def entry_forms(spec, path, rel) -> EntryPoint:
     """One entry point: its path needle plus any by-name form its class declares."""
     needle = rel.rsplit("/", 1)[0] if spec.get("needle") == "dir" else rel
-    entry: EntryPoint = {"kind": spec["kind"], "needle": needle, "alias_stem": None,
+    entry: EntryPoint = {"kind": spec["kind"], "needle": needle,
+                         "root_file": spec.get("match") == "root-file", "alias_stem": None,
                          "alias_re": None, "alias_name": None}
     alias = spec.get("alias")
     if not alias:
@@ -211,6 +213,15 @@ def path_universe(files):
 
 def is_hub_reference(text, start, matched, entry, ctx):
     """Does this hit mean the hub's copy? In a consumer only when qualified or the consumer has no such file."""
+    if entry["root_file"]:
+        before = text[max(0, start - 64):start]
+        suffix = text[start + len(matched):start + len(matched) + 1]
+        if suffix and (suffix.isalnum() or suffix in "_.-"):
+            return False
+        if any(before.endswith(q) or before.endswith(q.replace("/", "\\"))
+               for q in ctx["qualifiers"]):
+            return True
+        return ctx["is_self"] and before.endswith(("${REPO_ROOT}/", "${HUB_ROOT}/"))
     if ctx["is_self"]:
         return True
     before = text[max(0, start - 64):start]

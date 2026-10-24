@@ -1,6 +1,6 @@
 # Sphinx configuration: https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-# An editable install from the DocumANTation submodule (requirements.txt).
+# The docs lock installs the DocumANTation theme editable from the pinned submodule.
 from sphinx_kataglyphis import brand, setup_theme
 
 # Project information

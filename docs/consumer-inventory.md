@@ -104,6 +104,15 @@ path at all:
 An alias hit is discarded when the consumer owns a file of that basename: its
 own module shadows the hub's, so the reference is not evidence about the hub.
 
+For a root file slated for deletion, a one-off class can use `"match": "root-file"`.
+It counts a consumer path only when it is explicitly qualified with the hub's
+name or submodule path, and a hub path only when rooted at `${REPO_ROOT}` or
+`${HUB_ROOT}`. A bare `requirements.txt` may mean a consumer's own file, a
+temporary export or a generic helper default, so it is not evidence about the
+hub root file. Review dynamic and unqualified paths separately; the static
+inventory cannot prove where they resolve at runtime. Remove the temporary
+class when deleting the file, since an empty class correctly fails the run.
+
 ## What makes the run fail
 
 Only integrity failures — never the verdicts themselves. The counts are a

@@ -7588,6 +7588,14 @@
   "why": "the manifest row is what decides how an asset is compared: graded as body, a consumer's edits to .clang-format's leading comments stop being drift."
  },
  {
+  "id": "consumer-inventory.root-file-boundary",
+  "target": "linux/scripts/verify_consumer_inventory.py",
+  "find": "    if entry[\"root_file\"]:",
+  "replace": "    if False:",
+  "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
+  "why": "a suffix like cmake-format.requirements.txt or another project's generated requirements file is not a caller of the hub root file"
+ },
+ {
   "id": "consumer-inventory.external-is-not-self",
   "target": "linux/scripts/verify_consumer_inventory.py",
   "find": "    external = [r for r in reached_by if not r[1]]",
@@ -15638,8 +15646,8 @@
  {
   "id": "docs-site.hub-docs-image-first",
   "target": "linux/scripts/build-docs.sh",
-  "find": "  if [ -d \"${IMAGE_VENV}\" ]; then\n    image_docs_venv",
-  "replace": "  if false; then\n    image_docs_venv",
+  "find": "  if [ -d \"${IMAGE_VENV}\" ]; then",
+  "replace": "  if false; then",
   "test": "bash linux/scripts/tests/test-build-docs.sh",
   "why": "in the image the stack is already there; going to PyPI anyway downloads 35 packages per build"
  },
@@ -15658,6 +15666,30 @@
   "replace": "    if False:",
   "test": "bash linux/scripts/tests/test-build-docs.sh",
   "why": "a requirement only an extra asks for is no requirement of the build"
+ },
+ {
+  "id": "docs-site.hub-docs-workstation-locked",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "    UV_PROJECT_ENVIRONMENT=\"${VENV_DIR}\" uv sync --project \"${REPO_ROOT}/docs\" --locked",
+  "replace": "    UV_PROJECT_ENVIRONMENT=\"${VENV_DIR}\" uv sync --project \"${REPO_ROOT}/docs\"",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "a workstation build must fail if its docs lock no longer matches the project instead of re-resolving dependencies"
+ },
+ {
+  "id": "docs-site.hub-docs-project-scoped",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "    UV_PROJECT_ENVIRONMENT=\"${VENV_DIR}\" uv sync --project \"${REPO_ROOT}/docs\" --locked",
+  "replace": "    UV_PROJECT_ENVIRONMENT=\"${VENV_DIR}\" uv sync --project \"${REPO_ROOT}\" --locked",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "the docs dependency project must not become a root project that changes other uv commands"
+ },
+ {
+  "id": "docs-site.hub-docs-lock-checked-offline",
+  "target": "linux/scripts/build-docs.sh",
+  "find": "  uv lock --project \"${REPO_ROOT}/docs\" --check --offline || err \"docs/uv.lock is missing or stale; run uv lock --project docs\"",
+  "replace": "  uv lock --project \"${REPO_ROOT}/docs\" --offline || err \"docs/uv.lock is missing or stale; run uv lock --project docs\"",
+  "test": "bash linux/scripts/tests/test-build-docs.sh",
+  "why": "the image build must reject a stale docs lock without fetching from PyPI"
  },
  {
   "id": "shared-config.help-block-is-header",
