@@ -42,6 +42,13 @@ on:
         required: false
         type: string
         default: ''
+      coverage-min:
+        description: >-
+          Minimum covered package line percentage for each stable Python test leg.
+          Zero still requires a nonempty test run and measured, covered package code.
+        required: false
+        type: string
+        default: '0'
       free-threaded-extras:
         description: >-
           Comma-separated extras a free-threaded leg (X.Yt) syncs instead of
@@ -236,6 +243,7 @@ jobs:
           extra-args: >-
             --platform ${{ matrix.platform }}
             -e PYTEST_PATHS=${{ inputs.test-paths }}
+            -e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}
             -e FREE_THREADED_SYNC_EXTRAS=${{ inputs.free-threaded-extras }}
             -e SYNC_EXTRAS=${{ inputs.test-extras }}
             ${{ matrix.arch == 'riscv64' && inputs.package-emulated && '-e UV_CACHE_DIR=/workspace/.uv-cache' || '' }}

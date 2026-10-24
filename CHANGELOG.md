@@ -13,6 +13,14 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-24 — CI quality evidence
+
+- Lint Python embedded in tracked consumer shell scripts, including shell-only consumers; fail on extraction errors and batch the hub sweep for Windows Git Bash.
+- Require fresh JUnit and package coverage XML after each successful stable Linux Python test leg; expose a per-leg `coverage-min` workflow input.
+- Report PowerShell complexity on the selected path in the reusable Windows lint job, with `complexity-strict` available once a consumer meets the limits.
+- Grade detected consumer CI lint calls for active, fatal ratchets in the weekly inventory, and report consumers with no detected call.
+- Add focused fixtures and mutations for the new failure paths.
+
 ## 2026-10-24 — Windows PowerShell quality and harness controls
 
 - Consolidate generated build logs, resource samples and test reports under ignored `logs/` paths on both lanes, including a durable Windows test summary; retain root chain status for live readers and the separate `out/complexity/` reports.

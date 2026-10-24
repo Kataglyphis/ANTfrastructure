@@ -71,19 +71,18 @@ def main():
         return 2
     outdir = sys.argv[1]
     os.makedirs(outdir, exist_ok=True)
-    written = 0
+    failed = False
     for src in sys.argv[2:]:
         try:
             with open(src, encoding="utf-8", errors="replace") as fh:
                 text = fh.read()
-        except OSError:
+        except OSError as exc:
+            sys.stderr.write("extract-embedded-python: cannot read %s: %s\n" % (src, exc))
+            failed = True
             continue
-        n_blocks, fragments = _extract_blocks(src, text, outdir)
-        written += n_blocks + _extract_families(src, fragments, outdir)
-    if not written:
-        sys.stderr.write("extract-embedded-python: nothing extracted\n")
-        return 1
-    return 0
+        _, fragments = _extract_blocks(src, text, outdir)
+        _extract_families(src, fragments, outdir)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

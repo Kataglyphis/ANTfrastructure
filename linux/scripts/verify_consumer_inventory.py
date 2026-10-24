@@ -16,6 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from verify_consumer_quality_wiring import inspect as inspect_quality_wiring
+
 HERE = Path(__file__).resolve().parent
 HUB_ROOT = HERE.parent.parent
 DEFAULT_INVENTORY = HUB_ROOT / ".github" / "consumers.json"
@@ -405,7 +407,25 @@ def render_dangling(dangling):
     return out
 
 
-def render_report(rows, consumers, dangling):
+def render_quality_wiring(quality, consumers):
+    out = ["", "## CI quality wiring", "",
+           "Every detected lint call must keep its ratchets enabled and its failure fatal. "
+           "A consumer with no lint call is reported only: removal of every lint call "
+           "is outside this gate.", ""]
+    providers = {item["name"] for item in consumers if item["self"]}
+    for name, (witnesses, failures) in quality.items():
+        if name in providers:
+            out.append("- **%s:** hub provider; consumer wiring is out of scope" % name)
+            continue
+        verdict = "FAIL" if failures else ("OK" if witnesses else "ADVISORY")
+        out.append("- **%s:** %s" % (name, verdict))
+        out.extend("  - %s" % item for item in witnesses + failures)
+        if not witnesses and not failures:
+            out.append("  - No tracked CI lint call was found.")
+    return out
+
+
+def render_report(rows, consumers, dangling, quality=None):
     counts = {s: len([r for r in rows if r["status"] == s]) for s in STATUS_ORDER}
     names = ", ".join("%s%s" % (c["name"], " (hub)" if c["self"] else "")
                       for c in consumers)
@@ -429,6 +449,8 @@ def render_report(rows, consumers, dangling):
                    "Load-bearing outside this repository. Changing one of these is a "
                    "breaking change for the named repos.", evidence_reached)
     out += render_dangling(dangling)
+    if quality is not None:
+        out += render_quality_wiring(quality, consumers)
     return "\n".join(out) + "\n"
 
 
@@ -482,7 +504,7 @@ def ref_qualifiers(hub):
 
 
 def collect(data, args, hub_root, entries, work):
-    """Obtain every consumer and scan it. Returns (per-consumer hits, dangling)."""
+    """Obtain every consumer and scan paths and CI quality calls."""
     names = [c["name"] for c in data["consumers"]]
     local = parse_local(args.local, args.local_root, names)
     qualifiers = qualifier_set(data["hub"])
@@ -492,18 +514,21 @@ def collect(data, args, hub_root, entries, work):
                         % "|".join(re.escape(q) for q in ref_qualifiers(data["hub"])))
     per_consumer = {}
     dangling = {}
+    quality = {}
     for spec in data["consumers"]:
         root = obtain(spec, local, work, args.offline)
         files = tracked_files(root, spec["name"])
         ctx = scan_context(files, qualifiers, spec["self"])
         hits = scan_consumer(root, files, entries, ctx)
         per_consumer[spec["name"]] = (spec["self"], hits)
+        quality[spec["name"]] = (([], []) if spec["self"] else
+                                 inspect_quality_wiring(root, files))
         dangling[spec["name"]] = sorted(set(
             dangling_refs(root, files, hub_root, ref_re, vendored)
             + dangling_modules(root, files, hub_root)))
         print("   %-22s %5d tracked files, %3d entry points touched, %d dangling"
               % (spec["name"], len(files), len(hits), len(dangling[spec["name"]])))
-    return per_consumer, dangling
+    return per_consumer, dangling, quality
 
 
 def report_out(args, text):
@@ -532,16 +557,22 @@ def main():
         print("== consumer inventory: %d entry points, %d consumers =="
               % (len(entries), len(data["consumers"])))
         with tempfile.TemporaryDirectory(prefix="consumer-inventory-") as tmp:
-            per_consumer, dangling = collect(data, args, hub_root, entries, Path(tmp))
+            per_consumer, dangling, quality = collect(data, args, hub_root, entries, Path(tmp))
     except Failure as exc:
         sys.stderr.write("FAIL: %s\n" % exc)
         return 1
     rows = [grade(e, per_consumer) for e in entries]
-    report_out(args, render_report(rows, data["consumers"], dangling))
+    report_out(args, render_report(rows, data["consumers"], dangling, quality))
     for status in STATUS_ORDER:
         print("   %-26s %d" % (status, len([r for r in rows if r["status"] == status])))
-    if print_dangling(dangling):
-        sys.stderr.write("CONSUMER INVENTORY FAILED (dangling hub references)\n")
+    broken_paths = print_dangling(dangling)
+    broken_quality = sum(len(failures) for _witnesses, failures in quality.values())
+    for name, (_witnesses, failures) in quality.items():
+        for failure in failures:
+            sys.stderr.write("FAIL: %s CI quality wiring: %s\n" % (name, failure))
+    if broken_paths or broken_quality:
+        sys.stderr.write("CONSUMER INVENTORY FAILED (%d dangling references, %d CI quality calls)\n"
+                         % (broken_paths, broken_quality))
         return 1
     print("CONSUMER INVENTORY OK (%d unconfirmed candidate repo(s) still to resolve)"
           % len(data.get("unconfirmed", [])))

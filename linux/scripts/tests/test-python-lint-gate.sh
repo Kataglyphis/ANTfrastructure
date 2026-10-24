@@ -12,13 +12,13 @@ if ! command -v ruff >/dev/null 2>&1 && ! command -v uvx >/dev/null 2>&1; then
   t_summary
 fi
 
-# _mkroot: prints a fixture root with the gate and its pin; only _targets adds the extractor, whose own findings are noise.
+# A complete fixture keeps extractor failures separate from Ruff verdicts.
 _mkroot() {
   local d
   d="$(mktemp -d)"
   mkdir -p "${d}/linux/scripts/01-core" "${d}/docs/scripts" \
            "${d}/linux/host-config/git-hooks"
-  cp "${S}/lint-python.sh" "${d}/linux/scripts/"
+  cp "${S}/lint-python.sh" "${S}/extract_embedded_python.py" "${d}/linux/scripts/"
   # The gate sources these 01-core files; without them every case fails on a missing source.
   cp "${S}/01-core/load-versions-env.sh" "${S}/01-core/lint-root.sh" "${S}/01-core/lint-scope-init.sh" \
      "${S}/01-core/python-probe.sh" \
@@ -27,11 +27,12 @@ _mkroot() {
   printf '%s\n' "${d}"
 }
 
-# _run <root> -> the gate's output plus `rc=<n>`; consumes the root.
+# _run <root> [targets...] -> the gate's output plus `rc=<n>`; consumes the root.
 _run() {
   local out rc
-  out="$(bash "$1/linux/scripts/lint-python.sh" 2>&1)"; rc=$?
-  rm -rf "$1"
+  local root="$1"; shift
+  out="$(bash "${root}/linux/scripts/lint-python.sh" "$@" 2>&1)"; rc=$?
+  rm -rf "${root}"
   printf '%s\nrc=%s\n' "${out}" "${rc}"
 }
 
@@ -40,14 +41,13 @@ _lint() {
   local d
   d="$(_mkroot)"
   printf '%s\n' "$1" > "${d}/docs/scripts/subject.py"
-  _run "${d}"
+  _run "${d}" "${d}/docs/scripts/subject.py"
 }
 
 # _targets <subject.py> <heredoc py> [hook heredoc py]: every target shape; openers are printf args, so this suite is not extracted.
 _targets() {
   local d
   d="$(_mkroot)"
-  cp "${S}/extract_embedded_python.py" "${d}/linux/scripts/"
   printf '%s\n' "$1" > "${d}/docs/scripts/subject.py"
   { printf 'probe() {\n'
     printf '  python3 - %s\n' "<<'PY'"
@@ -95,6 +95,67 @@ _out="$(_lint 'print("ok")')"
 t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean"
 t_assert_contains "${_out}" "advisory pass: clean"
 t_assert_contains "${_out}" "rc=0" "nothing to report, nothing to fail"
+
+t_case "a tree with no embedded Python still passes after a complete extraction"
+_d="$(_mkroot)"
+printf 'print("ok")\n' > "${_d}/docs/scripts/subject.py"
+printf 'echo hello\n' > "${_d}/linux/scripts/plain.sh"
+_out="$(_run "${_d}")"
+t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82): clean"
+t_assert_contains "${_out}" "rc=0"
+
+t_case "a missing extractor makes the gate fail before Ruff"
+_d="$(_mkroot)"
+printf 'print("ok")\n' > "${_d}/docs/scripts/subject.py"
+rm -f "${_d}/linux/scripts/extract_embedded_python.py"
+_out="$(_run "${_d}")"
+t_assert_contains "${_out}" "Embedded Python extraction failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "large shell scopes reach Ruff through multiple bounded extractor calls"
+_batch_d="$(_mkroot)"
+printf 'print("ok")\n' > "${_batch_d}/docs/scripts/subject.py"
+for _batch_n in $(seq -w 1 33); do
+  _batch_file="${_batch_d}/linux/scripts/batch-${_batch_n}.sh"
+  if [ "${_batch_n}" = 01 ] || [ "${_batch_n}" = 33 ]; then
+    { printf 'python3 - %s\n' "<<'PY'"
+      printf 'print(nope_batch_%s)\nPY\n' "${_batch_n}"
+    } > "${_batch_file}"
+  else
+    printf 'echo ok\n' > "${_batch_file}"
+  fi
+done
+_batch_py="${_batch_d}/python-wrapper"
+cat > "${_batch_py}" <<'BATCH_SH'
+#!/usr/bin/env bash
+if [ "$1" = linux/scripts/extract_embedded_python.py ]; then
+  printf '%s\n' "$#" >> "${EXTRACT_BATCH_LOG}"
+  [ "${FAIL_EXTRACT_BATCH:-0}" -ne "$(wc -l < "${EXTRACT_BATCH_LOG}")" ] || exit 42
+fi
+exec python3 "$@"
+BATCH_SH
+chmod +x "${_batch_py}"
+_batch_log="$(mktemp)"
+_batch_out="$(PREFLIGHT_PYTHON="${_batch_py}" EXTRACT_BATCH_LOG="${_batch_log}" bash "${_batch_d}/linux/scripts/lint-python.sh" 2>&1)"
+t_assert_eq "2" "$(wc -l < "${_batch_log}")" "one child with every tracked script exceeds Git Bash's argument limit"
+t_assert_eq "34" "$(sort -nr "${_batch_log}" | head -1)" "each child gets at most 32 shell paths plus two fixed arguments"
+t_assert_contains "${_batch_out}" "nope_batch_01" "the first batch must reach Ruff"
+t_assert_contains "${_batch_out}" "nope_batch_33" "the last batch must reach Ruff"
+
+_batch_failure() {
+  : > "${_batch_log}"
+  _batch_out="$(PREFLIGHT_PYTHON="${_batch_py}" EXTRACT_BATCH_LOG="${_batch_log}" FAIL_EXTRACT_BATCH="$1" \
+    bash "${_batch_d}/linux/scripts/lint-python.sh" 2>&1)"; _batch_rc=$?
+  t_assert_contains "${_batch_out}" "Embedded Python extraction failed"
+  t_assert_eq "$1" "$(wc -l < "${_batch_log}")"
+  t_assert_eq "1" "${_batch_rc}"
+}
+
+t_case "a later extractor batch failure makes the whole lint verdict fail"
+_batch_failure 2
+t_case "a full extractor batch failure stops before later batches run"
+_batch_failure 1
+rm -rf "${_batch_d}" "${_batch_log}"
 
 t_case "an advisory-only finding is reported but does not fail"
 _out="$(_lint 'import os')"
@@ -194,6 +255,28 @@ t_case "heredoc Python in the CONSUMER's shell reaches ruff too"
 _c_heredoc="$(_consumer heredoc)"
 t_assert_contains "$(_at_root "${_c_heredoc}")" "nope_in_consumer_heredoc"
 t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" --root "${_c_heredoc}")"
+
+t_case "an explicit shell file reaches the embedded Python check alongside a Python file"
+_out="$(bash "${S}/lint-python.sh" "${_c_heredoc}/app.py" "${_c_heredoc}/probe.sh" 2>&1)"
+t_assert_contains "${_out}" "nope_in_consumer_heredoc"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" "${_c_heredoc}/app.py" "${_c_heredoc}/probe.sh")"
+
+t_case "an explicit shell-only list with embedded Python still fails on its bug"
+_out="$(bash "${S}/lint-python.sh" "${_c_heredoc}/probe.sh" 2>&1)"
+t_assert_contains "${_out}" "nope_in_consumer_heredoc"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" "${_c_heredoc}/probe.sh")"
+
+t_case "a shell-only explicit list with no embedded blocks is an honest empty Python scope"
+printf 'echo hello\n' > "${_c_heredoc}/plain.sh"
+_out="$(bash "${S}/lint-python.sh" "${_c_heredoc}/plain.sh" 2>&1)"
+t_assert_contains "${_out}" "No Python source or embedded blocks"
+t_assert_eq "0" "$(t_rc bash "${S}/lint-python.sh" "${_c_heredoc}/plain.sh")"
+
+t_case "a missing explicit shell file fails the gate rather than losing its extraction scope"
+_out="$(bash "${S}/lint-python.sh" "${_c_clean}/app.py" "${_c_clean}/gone.sh" 2>&1)"
+t_assert_contains "${_out}" "cannot read"
+t_assert_contains "${_out}" "Embedded Python extraction failed"
+t_assert_eq "1" "$(t_rc bash "${S}/lint-python.sh" "${_c_clean}/app.py" "${_c_clean}/gone.sh")"
 
 t_case "an empty file list under an explicit root is an ERROR, never a green pass"
 _c_empty="$(_consumer empty)"

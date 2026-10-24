@@ -16,6 +16,7 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   echo "  log file defaults to \$CI_TESTS_LOG_FILE or 'logs/test-results/ci_tests-<timestamp>.log'"
   echo "  test reports are written to 'logs/test-results'"
   echo "  \$PYTEST_PATHS (comma list) narrows pytest; empty runs the project's configured testpaths"
+  echo "  \$PYTHON_COVERAGE_MIN requires that percentage of covered package lines; zero still requires measured code"
   echo "  \$FREE_THREADED_SYNC_EXTRAS (comma list) makes a free-threaded leg sync only those extras and gate"
   echo "  \$SYNC_EXTRAS (comma list) makes every leg sync only those extras and gate"
   exit 0
@@ -41,6 +42,7 @@ fi
 
 # Empty runs the project's own testpaths: a hard-coded subdir once left a consumer's real suite on no lane.
 PYTEST_PATHS="${PYTEST_PATHS:-}"
+PYTHON_COVERAGE_MIN="${PYTHON_COVERAGE_MIN:-0}"
 # Set, a free-threaded leg syncs only these extras and gates like any other; unset, it stays experimental.
 FREE_THREADED_SYNC_EXTRAS="${FREE_THREADED_SYNC_EXTRAS:-}"
 # Set, every leg syncs only these extras (a riscv64 row cannot build the full extra set under QEMU).
@@ -129,13 +131,23 @@ for V in $PY_VERSIONS; do
     --md-report-output "$TEST_RESULTS_DIR/pytest-report-${V}.md"
   )
 
-  if [ "$experimental" -eq 1 ]; then
-    uv_run pytest "${pytest_args[@]}" || {
-      echo "::warning title=Python ${V} tests failed::the experimental leg's tests failed; see report-${V}.xml"
-      warn "[experimental] Tests failed for $V; continuing"
-    }
-  else
-    uv_run pytest "${pytest_args[@]}" || TEST_EXIT=$?
+  # A previous leg run cannot certify a new pytest invocation that wrote no report.
+  rm -f "$TEST_RESULTS_DIR/report-${V}.xml" "$TEST_RESULTS_DIR/coverage-${V}.xml"
+  test_status=0
+  uv_run pytest "${pytest_args[@]}" || test_status=$?
+  if [ "$test_status" -eq 0 ]; then
+    python3 -I "$SCRIPT_DIR/verify-test-reports.py" \
+      --junit "$TEST_RESULTS_DIR/report-${V}.xml" \
+      --coverage "$TEST_RESULTS_DIR/coverage-${V}.xml" \
+      --min-coverage "$PYTHON_COVERAGE_MIN" || test_status=$?
+  fi
+  if [ "$test_status" -ne 0 ]; then
+    if [ "$experimental" -eq 1 ]; then
+      echo "::warning title=Python ${V} tests failed::the experimental leg's tests or reports failed; see report-${V}.xml"
+      warn "[experimental] Tests or reports failed for $V; continuing"
+    else
+      TEST_EXIT="$test_status"
+    fi
   fi
 
   uv_run python bench/demo_cprofile.py 2>/dev/null || info "demo_cprofile.py skipped"

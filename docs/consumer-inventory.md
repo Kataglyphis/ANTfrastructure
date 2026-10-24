@@ -29,10 +29,11 @@ checks; a file that exists can still reject arguments or produce the wrong resul
 |---|---|
 | The declared list of consumers and of the entry-point classes | `.github/consumers.json` |
 | The checker that clones them and grades the entry points | `linux/scripts/verify_consumer_inventory.py` |
+| The checker for active consumer CI quality calls | `linux/scripts/verify_consumer_quality_wiring.py` |
 | The weekly run that produces the report | `.github/workflows/consumer-inventory.yml` |
 
 A failed weekly run **files or updates a GitHub issue** titled
-`consumer-inventory: dangling hub references`, labelled `documentation`, with
+`consumer-inventory: integrity failure`, labelled `documentation`, with
 `logs/reports/consumer-inventory.md` as the body (the issue-filing step in that workflow,
 `if: failure()`, job-scoped `issues: write`). It updates the open issue instead
 of opening a second one, and it does not suppress the failure: the run is still
@@ -56,6 +57,15 @@ python3 linux/scripts/verify_consumer_inventory.py --offline \
 `--local-root DIR` picks up `DIR/<name>` for every consumer whose name matches a
 directory there; `--local NAME=PATH` names one explicitly. Under `--offline` a
 consumer with neither is a **failure**, not a skip.
+
+The same run inspects each consumer's tracked CI workflows. A detected call to
+`lint-gates.yml` must pass literal `ratchets: true`; a direct `run-lint-gates.sh`
+call must pass `--ratchets`. Disabled or nonfatal calls fail the inventory. The
+report lists consumers with no detected call as advisory. Deleting every lint
+call or hiding one behind a wrapper is outside this check; review the advisory
+rows before treating the family as fully covered. To check one local consumer
+without cloning the family, run `python3
+linux/scripts/verify_consumer_quality_wiring.py --root <consumer-root>`.
 
 ## What counts as reachable
 
@@ -97,7 +107,8 @@ own module shadows the hub's, so the reference is not evidence about the hub.
 ## What makes the run fail
 
 Only integrity failures — never the verdicts themselves. The counts are a
-report for a human; these are defects:
+report for a human; these are defects, alongside a detected CI lint call with
+disabled ratchets or suppressed failure:
 
 1. **A consumer cannot be obtained.** The clone failed, the checkout is missing,
    or `--offline` was given without a local path for it. A skip here would turn
@@ -109,6 +120,10 @@ report for a human; these are defects:
    a path was removed is prose about the hub, not a broken call.
 4. **The inventory does not parse, or declares no self consumer.** Without a row
    marked `self`, nothing can separate hub-internal use from a real caller.
+5. **A workflow naming a lint call does not parse.** The quality call check
+   cannot safely grade that call from partial YAML. A detected lint call with
+   inactive or nonfatal settings also fails. Malformed workflows with no lint
+   reference remain advisory here; their syntax is owned by the workflow lint.
 
 ## Keeping the list true
 

@@ -12,6 +12,7 @@ The Python consumers (OrchestrANT, WebDavClient) share their whole CI surface wi
 | Linux lane | [`../.github/workflows/python-ci-linux.yml`](../.github/workflows/python-ci-linux.yml) (`workflow_call`) |
 | Windows lane | [`../.github/workflows/python-ci-windows.yml`](../.github/workflows/python-ci-windows.yml) (`workflow_call`), and its build driver `windows/scripts/python/Invoke-PythonCiBuild.ps1` (§ The Windows build driver) |
 | Step drivers | `linux/scripts/02-toolchain/python/ci_{tests,static_analysis,build_docs,packaging}.sh` |
+| Test report verifier | `linux/scripts/02-toolchain/python/verify-test-reports.py` |
 | uv primitives | `linux/scripts/01-core/python_uv.sh` |
 | Chain ORT reconcile | `uv_reconcile_chain_ort` in `python_uv.sh`, `Sync-UvChainOnnxRuntime` in `windows/scripts/modules/WindowsUv.Common.psm1`; both run the ORT census `linux/scripts/03-media/runtime/ort-venv-census.py` (the Windows image's module copy runs the one `windows/Dockerfile` puts in `C:\temp\scripts\`) |
 | Chain OpenCV (Windows) | `Sync-UvChainOpenCv` in `WindowsUv.Common.psm1`, over `Copy-ChainOpenCvPackage` in `WindowsPythonApp.Common.psm1` |
@@ -424,6 +425,17 @@ every lane narrowed to that directory, and its six WebDAV client tests and the i
 on no lane until 2026-10-01. The Windows driver takes the same list as `TestPaths`
 (§ The Windows build driver).
 
+**A green pytest needs evidence.** Each successful stable Linux leg checks its JUnit XML and
+Cobertura XML with `verify-test-reports.py`. The gate requires at least one passed test and
+measured, covered lines in the named package. Missing or malformed reports, an all-skipped run,
+or zero package coverage fail the leg. Skipped cases are allowed when another test passed.
+`coverage-min` on `python-ci-linux.yml` sets a per-leg percentage floor; its default `0` still
+requires covered package lines. An experimental leg reports a failed check as a warning. Run the
+same script in a separate CI job with `python3 verify-test-reports.py --junit <file> --coverage
+<file> --min-coverage 70`. The gate checks report integrity and a line percentage; it does not
+judge whether test assertions are useful or which package paths should count. Its fixture suite
+is `linux/scripts/tests/test-verify-test-reports.sh`.
+
 **A free-threaded leg that gates.** The pinned X.Yt sits in `EXPERIMENTAL_PYTHON_VERSIONS` by default,
 because `--all-extras` pulls in wheels that exist only for the GIL build (onnxruntime-genai-cuda,
 ai-edge-litert, atheris, bcrypt 4). Measured 2026-10-01: that leg synced nothing and ran no test on
@@ -443,6 +455,11 @@ Tests: `linux/scripts/tests/test-python-ci-defaults.sh`, mutations
 `python.ci-tests-experimental-sync-failure-is-annotated`.
 
 ## The Windows build driver
+
+The reusable lane's optional `lint-powershell` job scans the consumer's `lint-path`
+with PSScriptAnalyzer and the PowerShell complexity scanner. Complexity findings
+are reported by default; `complexity-strict: true` makes them fail the job once
+the consumer code meets the 15/5/80 limits. Parse and scan failures still fail.
 
 `python-ci-windows.yml`'s build job runs `build-script` in the `:winamd64` container. Left empty,
 that is the repo's own `scripts\windows\Build-Windows.ps1` when the checkout has one, else

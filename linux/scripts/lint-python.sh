@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# [--root <dir>] [file.py ...]: ruff, no imports run; E9,F63,F7,F82 fail, the rest is advisory.
+# [--root <dir>] [file.py|file.sh ...]: ruff, no imports run; E9,F63,F7,F82 fail, the rest is advisory.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -30,9 +30,16 @@ _LINT_PY="${PREFLIGHT_PYTHON}"
 # shellcheck source=01-core/lint-scope-init.sh
 . "${_core}/lint-scope-init.sh" || exit 1
 
-# Target set: first-party Python only
+_EMB_SH=()
 if [ "$#" -gt 0 ]; then
-  PY_FILES=("$@")
+  PY_FILES=()
+  for f in "$@"; do
+    case "${f}" in
+      *.py) PY_FILES+=("${f}") ;;
+      *.sh) _EMB_SH+=("${f}") ;;
+      *) err "Expected a .py or .sh file, got ${f}" ;;
+    esac
+  done
 elif [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
   # The same three exclusions the hub sweep carries, as git pathspecs.
   PY_FILES=()
@@ -49,13 +56,8 @@ else
              -not -path '*/node_modules/*' -not -path '*/__pycache__/*' \
              -not -path '*/.venv/*' 2>/dev/null | sort)
 fi
-[ "${#PY_FILES[@]}" -gt 0 ] || err "No Python files found to lint under ${SCAN_ROOT}."
-
 # Heredoc Python, hub's or consumer's, is invisible to ruff otherwise. docs/code-quality-tooling.md#python-that-lives-in-shell-heredocs
 if [ "$#" -eq 0 ]; then
-  _EMB_DIR="$(mktemp -d)"
-  _EMB_MAP="${_EMB_DIR}/.sources"
-  _EMB_SH=()
   if [ "${LINT_ROOT_GIVEN}" -eq 1 ]; then
     while IFS= read -r -d '' f; do _EMB_SH+=("${SCAN_ROOT}/${f}"); done \
       < <(lint_root_tracked "${SCAN_ROOT}" '*.sh')
@@ -63,13 +65,31 @@ if [ "$#" -eq 0 ]; then
     while IFS= read -r f; do _EMB_SH+=("${f}"); done \
       < <(find linux/scripts -name '*.sh' -type f; find linux/host-config/git-hooks -type f)
   fi
-  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
-  if ${_LINT_PY} linux/scripts/extract_embedded_python.py "${_EMB_DIR}" \
-       ${_EMB_SH[@]+"${_EMB_SH[@]}"} > "${_EMB_MAP}" 2>/dev/null; then
-    while IFS= read -r f; do PY_FILES+=("${f}"); done \
-      < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)
-  fi
 fi
+[ "${#PY_FILES[@]}" -gt 0 ] || [ "${#_EMB_SH[@]}" -gt 0 ] || err "No Python files found to lint under ${SCAN_ROOT}."
+_lint_python_extract_batch() {
+  [ "$#" -gt 0 ] || return 0
+  # shellcheck disable=SC2086  # a multi-word PREFLIGHT_PYTHON is a command line
+  ${_LINT_PY} linux/scripts/extract_embedded_python.py "${_EMB_DIR}" "$@" >> "${_EMB_MAP}"
+}
+if [ "${#_EMB_SH[@]}" -gt 0 ]; then
+  _EMB_DIR="$(mktemp -d)" || err "Could not create embedded Python workspace"
+  _EMB_MAP="${_EMB_DIR}/.sources"
+  : > "${_EMB_MAP}" || err "Could not create embedded Python source map"
+  _EMB_BATCH=()
+  # Git Bash passes a Windows child one command line, so a whole-tree argv can exceed its limit.
+  for f in "${_EMB_SH[@]}"; do
+    _EMB_BATCH+=("${f}")
+    if [ "${#_EMB_BATCH[@]}" -ge 32 ]; then
+      _lint_python_extract_batch "${_EMB_BATCH[@]}" || err "Embedded Python extraction failed; refusing a partial lint result"
+      _EMB_BATCH=()
+    fi
+  done
+  _lint_python_extract_batch "${_EMB_BATCH[@]}" || err "Embedded Python extraction failed; refusing a partial lint result"
+  while IFS= read -r f; do PY_FILES+=("${f}"); done \
+    < <(find "${_EMB_DIR}" -name '*.py' -type f | sort)
+fi
+[ "${#PY_FILES[@]}" -gt 0 ] || { echo "No Python source or embedded blocks in the selected scripts"; exit 0; }
 
 # Maps a probe__2.py:1: finding back to the shell file and its real line.
 _name_sources() {

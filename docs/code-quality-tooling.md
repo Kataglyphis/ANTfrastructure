@@ -428,6 +428,14 @@ embedded Python that would silently leave the gate if that half were dropped.
 not on the exit code, so
 a fixture that never reaches ruff cannot pass the case by accident.
 
+The consumer aggregator now passes its tracked first-party `.py` and `.sh` files to the
+same lint entry point. Before this, its explicit `.py` arguments disabled heredoc
+extraction, and a shell-only consumer skipped Ruff entirely. An extractor failure or
+unreadable selected script fails the lint gate; a valid scan with no embedded Python
+passes. The hub sweep feeds extraction in bounded batches so Git Bash does not exceed
+Windows' child-command length. The extractor cannot identify Python assembled
+dynamically at runtime.
+
 ## Proving a gate can go red
 
 Three slugs read "proven" in the registry while nothing could turn them red:
@@ -1636,6 +1644,20 @@ call-site credit rules, the
 convention breaches they catch, 32 in `tests/test-crlf-guard.sh`,
 and 28 entries (`gate-registry.*`).
 
+## Python test report integrity
+
+`linux/scripts/02-toolchain/python/verify-test-reports.py` is called after every
+successful stable `ci_tests.sh` pytest leg. It requires a JUnit report with at least
+one passing test and a Cobertura report with measured, covered package lines. The
+driver removes prior XML for that leg before pytest, so stale output cannot certify
+a new run. Pass `coverage-min` to `python-ci-linux.yml` to require a percentage; the
+default `0` still rejects zero covered lines. The check accepts skipped tests when
+another test passed. Experimental legs annotate failures. Run it separately with
+`python3 linux/scripts/02-toolchain/python/verify-test-reports.py --junit
+logs/test-results/report-3.14.xml --coverage logs/test-results/coverage-3.14.xml
+--min-coverage 70`. The fixture suite checks missing, malformed, empty and low reports;
+it cannot prove that test assertions cover important behavior.
+
 ## Generated quality reports
 
 Build transcripts, resource measurements, test results and coverage reports live under the
@@ -1671,6 +1693,11 @@ pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath out/compl
 ```
 
 `-JsonPath` remains optional; CI runs the strict gate without writing a report.
+The optional `lint-powershell` job in `python-ci-windows.yml` runs the scanner
+on the consumer's `lint-path` after PSScriptAnalyzer. Set `complexity-strict: true`
+in a consumer's workflow to fail on findings; parse and scan failures are fatal
+even in report mode. The default stays report-only while existing consumer code
+is brought under the same limits.
 The BuildKit driver keeps
 stage solves, optional child arguments, preseed setup and teardown in separate
 functions; focused variant, media, solve-order and publish-gate fixtures check

@@ -11,7 +11,8 @@ IMAGE_PY="$(sed -n 's/^PYTHON_VERSION=\([0-9][0-9]*\.[0-9][0-9]*\)\..*/\1/p' "${
 _work="$(mktemp -d)"; trap 'rm -rf "${_work}"' EXIT
 python_ci_fixture "${_work}" "${SCRIPTS}" 01-core/versions.env \
   02-toolchain/python/ci_tests.sh 02-toolchain/python/ci_build_docs.sh \
-  02-toolchain/python/free-threaded-wheel.py || exit 1
+  02-toolchain/python/free-threaded-wheel.py \
+  02-toolchain/python/verify-test-reports.py || exit 1
 REC="${CALLS}"
 mkdir -p "${WS}/docs"
 printf '#!/usr/bin/env bash\nprintf "make %%s\\n" "$*" >> "${REC}"\n' > "${_work}/bin/make"; chmod +x "${_work}/bin/make"
@@ -23,7 +24,27 @@ prepare_ci_workspace() { :; }
 derive_package_name() { printf 'pkg'; }
 uv_venv_create() { echo "interpreter $2" >> "${REC}"; _LEG="$2"; }
 uv_venv_ensure() { echo "interpreter $2" >> "${REC}"; printf -v "$4" 1; }
-uv_run() { echo "run $*" >> "${REC}"; echo "coverage_file ${COVERAGE_FILE:-}" >> "${REC}"; ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }; }
+uv_run() {
+  echo "run $*" >> "${REC}"; echo "coverage_file ${COVERAGE_FILE:-}" >> "${REC}"
+  if [ "$1" = pytest ]; then
+    local arg junit="" coverage=""
+    for arg in "$@"; do
+      case "$arg" in
+        --junitxml=*) junit="${arg#*=}" ;;
+        --cov-report=xml:*) coverage="${arg#*:}" ;;
+      esac
+    done
+    if [ -z "${OMIT_TEST_REPORTS:-}" ]; then
+      printf '<testsuite tests="1" failures="0" errors="0"><testcase name="pass"/></testsuite>\n' > "$junit"
+      if [ -n "${ZERO_COVERAGE:-}" ]; then
+        printf '<coverage lines-valid="10" lines-covered="0"/>\n' > "$coverage"
+      else
+        printf '<coverage lines-valid="10" lines-covered="7"/>\n' > "$coverage"
+      fi
+    fi
+  fi
+  ! { [ "$1" = pytest ] && [ -n "${FAIL_TEST_LEG:-}" ] && [ "${FAIL_TEST_LEG}" = "${_LEG:-}" ]; }
+}
 uv_sync_project() { echo "sync ${_LEG:-} extras=${UV_SYNC_EXTRAS:-}" >> "${REC}"; [ -z "${FAIL_SYNC_LEG:-}" ] || [ "${FAIL_SYNC_LEG}" != "${_LEG:-}" ]; }
 uv_venv_activate() { :; }; uv_venv_deactivate() { :; }; uv_venv_remove() { :; }
 uv_cache_seed_restore() { echo "seed restore" >> "${REC}"; }
@@ -45,6 +66,19 @@ t_case "ci_tests.sh with no version runs one leg, on the image interpreter the c
 t_assert_ok _driver ci_tests
 t_assert_eq "${IMAGE_PY}" "$(_legs)" "no other stable leg: an older venv cannot take the chain's wheels for the pinned tag"
 t_assert_fails test -e "${WS}/docs/test_results"
+
+t_case "a green pytest without reports cannot certify a stable test leg"
+OMIT_TEST_REPORTS=1 t_assert_fails _driver ci_tests
+t_assert_contains "$(cat "${_work}/out")" "test report check failed"
+
+t_case "a green pytest with zero package coverage cannot certify a stable test leg"
+ZERO_COVERAGE=1 t_assert_fails _driver ci_tests
+t_assert_contains "$(cat "${_work}/out")" "no measured, covered package lines"
+
+t_case "a consumer's coverage floor is checked on every stable leg"
+PYTHON_COVERAGE_MIN=70 t_assert_ok _driver ci_tests
+PYTHON_COVERAGE_MIN=71 t_assert_fails _driver ci_tests
+t_assert_contains "$(cat "${_work}/out")" "below the 71% floor"
 
 t_case "the default test log and raw coverage stay under logs"
 env -u CI_TESTS_LOG_FILE -u PY_VERSIONS -u EXPERIMENTAL_PYTHON_VERSIONS \

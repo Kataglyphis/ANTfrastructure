@@ -171,6 +171,10 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Windows archives share extraction lifecycle; strict failures remain the default and pinned link exceptions stay explicit.
    ORT directory indexing preserves caller recursion, filename and unreadable-file policies. Flutter sync preserves CMake-state exclusions and robocopy verdicts.
    Python CI suites carry their shared driver fixture; preserve child status, call logs and parent environment isolation.
+   Consumer Python lint includes tracked shell heredocs; extraction failure is fatal and a valid no-block scan is green.
+   Stable Python CI test legs require fresh JUnit and measured, covered package lines; a configured coverage floor must reach every leg.
+   Detected consumer lint calls keep ratchets enabled and failures fatal; the weekly inventory reports missing calls as advisory.
+   Consumer Windows PowerShell lint jobs report complexity over the same selected path; enable strict verdicts with `complexity-strict` after the consumer meets the limits.
 
 ## Container Architecture
 
@@ -1204,7 +1208,9 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
 
 - **PowerShell complexity:** `pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict`
   enforces the 15/5/80 cyclomatic, nesting and function-line limits across every tracked
-  Windows PowerShell file in CI. Use `-Path <file-or-dir> -Strict` while working on new
+  Windows PowerShell file in hub CI; the optional reusable consumer lint job reports
+  the consumer's `lint-path` and gates it when `complexity-strict: true` is set.
+  Use `-Path <file-or-dir> -Strict` while working on new
   files that Git has not tracked yet. For an untracked JSON result, create
   `out/complexity/` with `New-Item -ItemType Directory -Force out/complexity`, then add
   `-JsonPath out/complexity/windows-full.json` to the strict command. Parse and scan

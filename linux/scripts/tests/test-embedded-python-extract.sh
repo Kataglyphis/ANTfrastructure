@@ -57,6 +57,15 @@ _extract_fresh "${_work}/fragment.sh"
 t_assert_eq "0" "$(find "${_work}/out" -name '*.py' 2>/dev/null | wc -l)" \
   "linting a fragment alone reports bogus undefined names"
 
+t_case "no embedded Python is a successful empty scan"
+t_assert_eq "0" "$(t_rc _extract_fresh "${_work}/fragment.sh")"
+
+t_case "an unreadable source fails and names the missing path"
+_out="$("${PY}" "${EXTRACT}" "${_work}/out" "${_work}/gone.sh" 2>&1)"
+t_assert_contains "${_out}" "cannot read"
+t_assert_contains "${_out}" "gone.sh"
+t_assert_eq "1" "$(t_rc "${PY}" "${EXTRACT}" "${_work}/out" "${_work}/gone.sh")"
+
 t_case "the real tree yields extractable blocks, and the lint gate consumes them"
 t_needs "a POSIX python3 (Windows caps its command line at 32 KiB)" t_posix_python
 _extract_fresh $(find "${TESTS_DIR}/.." -name '*.sh' -type f)

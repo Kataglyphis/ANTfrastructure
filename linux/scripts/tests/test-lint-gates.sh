@@ -61,6 +61,30 @@ t_assert_contains "${_files}" "aß-dir/d.sh" \
   "git QUOTES a non-ASCII path unless -z is used, and the quoted string names nothing"
 t_assert_eq "" "$(printf '%s\n' "${_files}" | grep 'third_party' || true)"
 
+t_case "the consumer Ruff gate passes first-party shell scripts to embedded Python extraction"
+_pyroot="$(_consumer)"
+printf 'print("ok")\n' > "${_pyroot}/app.py"
+git -C "${_pyroot}" add app.py >/dev/null 2>&1
+_pystub="$(mktemp -d "${_work}/pystub.XXXXXX")"
+cat > "${_pystub}/lint-python.sh" <<'SHELL_GATE'
+printf '%s\n' "$@" > "${LINT_SCOPE_RECORD}"
+SHELL_GATE
+_pyargs="${_work}/python-args"
+_consumer_python_args() {
+  LINT_SCOPE_RECORD="${_pyargs}" _LINT_GATES_DIR="${_pystub}" _LINT_GATES_ROOT="$1" _lint_gates_python >/dev/null
+}
+_consumer_python_args "${_pyroot}"
+t_assert_contains "$(cat "${_pyargs}")" "${_pyroot}/app.py"
+t_assert_contains "$(cat "${_pyargs}")" "${_pyroot}/scripts/a.sh"
+t_assert_eq "" "$(grep 'third_party[/\\]' "${_pyargs}" || true)" \
+  "excluded vendor scripts must not reach the extractor"
+
+t_case "a consumer with only shell scripts still runs the embedded Python gate"
+_shellonly="$(_consumer)"
+_consumer_python_args "${_shellonly}"
+t_assert_contains "$(cat "${_pyargs}")" "${_shellonly}/scripts/a.sh"
+t_assert_eq "" "$(grep '\.py$' "${_pyargs}" || true)"
+
 t_case "the secret scope keeps the consumer's own file inside the vendored dir"
 _scope="$(_lint_gates_secret_scope | sort)"
 t_assert_contains "${_scope}" "third_party/CMakeLists.txt" \

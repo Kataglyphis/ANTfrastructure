@@ -2346,8 +2346,8 @@
  {
   "id": "python-lint.embedded-extraction-off",
   "target": "linux/scripts/lint-python.sh",
-  "find": "  if ${_LINT_PY} linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \\\n       ${_EMB_SH[@]+\"${_EMB_SH[@]}\"} > \"${_EMB_MAP}\" 2>/dev/null; then",
-  "replace": "  if false; then",
+  "find": "  ${_LINT_PY} linux/scripts/extract_embedded_python.py \"${_EMB_DIR}\" \"$@\" >> \"${_EMB_MAP}\"",
+  "replace": "  true",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "the extraction call is the only thing putting heredoc Python in front of ruff; switching it off drops ~775 lines out of the gate while every suite stays green"
  },
@@ -2394,10 +2394,58 @@
  {
   "id": "python-lint.empty-root-scope-is-an-error",
   "target": "linux/scripts/lint-python.sh",
-  "find": "[ \"${#PY_FILES[@]}\" -gt 0 ] || err \"No Python files found to lint under ${SCAN_ROOT}.\"",
+  "find": "[ \"${#PY_FILES[@]}\" -gt 0 ] || [ \"${#_EMB_SH[@]}\" -gt 0 ] || err \"No Python files found to lint under ${SCAN_ROOT}.\"",
   "replace": ":",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "ruff with no file arguments lints the CWD, so an empty target set under a root turns into a green verdict about this repo instead of an error about the consumer"
+ },
+ {
+  "id": "lint-gates.consumer-embedded-python-scope",
+  "target": "linux/scripts/run-lint-gates.sh",
+  "find": "_lint_gates_scope embedded-python '*.sh' allow-empty",
+  "replace": "_lint_gates_scope embedded-python '*.none' allow-empty",
+  "test": "bash linux/scripts/tests/test-lint-gates.sh",
+  "why": "a consumer's shell heredocs would never reach Ruff if the aggregator handed it only .py files"
+ },
+ {
+  "id": "python-lint.extractor-failure-fatal",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "  done\n  _lint_python_extract_batch \"${_EMB_BATCH[@]}\" || err \"Embedded Python extraction failed; refusing a partial lint result\"",
+  "replace": "  done\n  _lint_python_extract_batch \"${_EMB_BATCH[@]}\" || true",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "a missing or failing extractor must make the lint verdict fail rather than quietly dropping every embedded block"
+ },
+ {
+  "id": "python-lint.bounded-extractor-batches",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "    if [ \"${#_EMB_BATCH[@]}\" -ge 32 ]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "Git Bash cannot pass a whole tracked shell tree to a Windows Python child in one command line"
+ },
+ {
+  "id": "python-lint.full-extractor-batch-fatal",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "      _lint_python_extract_batch \"${_EMB_BATCH[@]}\" || err \"Embedded Python extraction failed; refusing a partial lint result\"",
+  "replace": "      _lint_python_extract_batch \"${_EMB_BATCH[@]}\" || true",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "a failed full extractor batch must stop before later batches run and return a partial verdict"
+ },
+ {
+  "id": "python-lint.empty-extraction-succeeds",
+  "target": "linux/scripts/extract_embedded_python.py",
+  "find": "    return 1 if failed else 0",
+  "replace": "    return 1",
+  "test": "bash linux/scripts/tests/test-embedded-python-extract.sh",
+  "why": "a shell tree without Python heredocs is a successful empty extraction, so lint can distinguish it from an unreadable file"
+ },
+ {
+  "id": "python-lint.unreadable-extraction-source-fails",
+  "target": "linux/scripts/extract_embedded_python.py",
+  "find": "            failed = True",
+  "replace": "            failed = False",
+  "test": "bash linux/scripts/tests/test-embedded-python-extract.sh",
+  "why": "skipping a vanished source silently produces a partial lint result when files change between selection and extraction"
  },
  {
   "id": "mutations.preflight-callsite-isolated",
@@ -7566,8 +7614,8 @@
  {
   "id": "consumer-inventory.dangling-fails-the-run",
   "target": "linux/scripts/verify_consumer_inventory.py",
-  "find": "    if print_dangling(dangling):",
-  "replace": "    if False:",
+  "find": "    broken_paths = print_dangling(dangling)",
+  "replace": "    broken_paths = 0",
   "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
   "why": "a consumer calling a hub path that no longer exists must FAIL the run; printed and exited 0 it is a broken build for someone else, filed as a paragraph in a report nobody reads"
  },
@@ -27151,5 +27199,53 @@
   "replace": "source \"${_dep_env}\" || return 0",
   "test": "bash linux/scripts/tests/test-media-file-selection.sh",
   "why": "A selected preamble that fails must remain fatal and cannot fall through to the repo copy."
+ },
+ {
+  "id": "python.test-reports-zero-package-coverage",
+  "target": "linux/scripts/02-toolchain/python/verify-test-reports.py",
+  "find": "if valid <= 0 or covered <= 0 or covered > valid:",
+  "replace": "if valid <= 0 or covered > valid:",
+  "test": "bash linux/scripts/tests/test-verify-test-reports.sh",
+  "why": "A test run with no covered package lines cannot certify that the requested package was measured."
+ },
+ {
+  "id": "python.ci-tests-report-check-executed",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "python3 -I \"$SCRIPT_DIR/verify-test-reports.py\"",
+  "replace": "true",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "A green pytest command without JUnit or package coverage reports must fail its stable leg."
+ },
+ {
+  "id": "python.ci-tests-stale-reports-removed",
+  "target": "linux/scripts/02-toolchain/python/ci_tests.sh",
+  "find": "rm -f \"$TEST_RESULTS_DIR/report-${V}.xml\" \"$TEST_RESULTS_DIR/coverage-${V}.xml\"",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-ci-defaults.sh",
+  "why": "A previous run's reports must not certify a new green pytest invocation that wrote nothing."
+ },
+ {
+  "id": "python.lane-coverage-floor-forwarded",
+  "target": ".github/workflows/python-ci-linux.yml",
+  "find": "-e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}",
+  "replace": "-e PYTHON_COVERAGE_MIN=0",
+  "test": "bash linux/scripts/tests/test-reusable-linux-lane.sh",
+  "why": "The declared minimum coverage input must reach the test driver, not remain a dead workflow option."
+ },
+ {
+  "id": "windows-lane.powershell-complexity-strict-opt-in",
+  "target": ".github/workflows/python-ci-windows.yml",
+  "find": "Strict = ('${{ inputs.complexity-strict }}' -eq 'true')",
+  "replace": "Strict = $false",
+  "test": "bash linux/scripts/tests/test-reusable-windows-lane.sh",
+  "why": "The opt-in must turn a consumer complexity finding into a failed job while report mode stays the default."
+ },
+ {
+  "id": "consumer-inventory.ratchets-required",
+  "target": "linux/scripts/verify_consumer_quality_wiring.py",
+  "find": "    if ratchets != \"true\" or _inactive(job) or _nonfatal(job):",
+  "replace": "    if _inactive(job) or _nonfatal(job):",
+  "test": "bash linux/scripts/tests/test-consumer-quality-wiring.sh",
+  "why": "A declared consumer quality call with the measurement ratchets disabled must fail the weekly inventory."
  }
 ]

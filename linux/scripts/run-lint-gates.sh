@@ -100,12 +100,19 @@ _lint_gates_shell() {
 # Absolute paths: lint-python.sh cds to the hub root before resolving its arguments.
 _lint_gates_python() {
   local rc=0
-  _lint_gates_scope ruff '*.py' allow-empty || rc=$?
-  # 2 = no python here, which is an answer; 1 = a real scope failure.
-  [ "${rc}" -eq 2 ] && return 0
-  [ "${rc}" -eq 0 ] || return "${rc}"
   local abs=() f
-  for f in "${_LINT_GATES_SCOPE[@]}"; do abs+=("${_LINT_GATES_ROOT}/${f}"); done
+  _lint_gates_scope ruff '*.py' allow-empty || rc=$?
+  [ "${rc}" -eq 0 ] || [ "${rc}" -eq 2 ] || return "${rc}"
+  if [ "${rc}" -eq 0 ]; then
+    for f in "${_LINT_GATES_SCOPE[@]}"; do abs+=("${_LINT_GATES_ROOT}/${f}"); done
+  fi
+  rc=0
+  _lint_gates_scope embedded-python '*.sh' allow-empty || rc=$?
+  [ "${rc}" -eq 0 ] || [ "${rc}" -eq 2 ] || return "${rc}"
+  if [ "${rc}" -eq 0 ]; then
+    for f in "${_LINT_GATES_SCOPE[@]}"; do abs+=("${_LINT_GATES_ROOT}/${f}"); done
+  fi
+  [ "${#abs[@]}" -gt 0 ] || return 0
   bash "${_LINT_GATES_DIR}/lint-python.sh" "${abs[@]}"
 }
 

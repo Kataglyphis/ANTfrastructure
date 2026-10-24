@@ -98,6 +98,12 @@ t_case "arches is an optional string whose default is today's two rows"
 # Every caller that predates the input must keep both rows.
 t_assert_eq "string|false|x64 arm64" "$(_input_meta arches)"
 
+t_case "the Python coverage floor reaches each test leg and defaults to an integrity check"
+t_assert_eq "string|false|0" "$(_input_meta coverage-min)"
+t_assert_contains "$(grep -F 'Run Python tests|' "${EXTRA}")" \
+  '-e PYTHON_COVERAGE_MIN=${{ inputs.coverage-min }}' \
+  "a declared input with no test-step forwarding cannot raise the coverage floor"
+
 t_case "the DEFAULT yields exactly the rows the static matrix held, in order"
 # A changed row silently renames the caller's jobs (matrix.arch) and artifacts (matrix.runs_on).
 t_assert_eq "${X64_ROW}

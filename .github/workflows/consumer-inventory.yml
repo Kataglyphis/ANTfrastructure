@@ -10,12 +10,18 @@ on:
     paths:
       - '.github/consumers.json'
       - 'linux/scripts/verify_consumer_inventory.py'
+      - 'linux/scripts/verify_consumer_quality_wiring.py'
+      - 'linux/scripts/tests/test-consumer-quality-wiring.sh'
+      - 'linux/scripts/tests/consumer_quality_wiring_tests.py'
       - '.github/workflows/consumer-inventory.yml'
   pull_request:
     branches: [main, develop]
     paths:
       - '.github/consumers.json'
       - 'linux/scripts/verify_consumer_inventory.py'
+      - 'linux/scripts/verify_consumer_quality_wiring.py'
+      - 'linux/scripts/tests/test-consumer-quality-wiring.sh'
+      - 'linux/scripts/tests/consumer_quality_wiring_tests.py'
       - '.github/workflows/consumer-inventory.yml'
 
 permissions:
@@ -54,7 +60,7 @@ jobs:
           python-version: ${{ steps.python.outputs.version }}
 
       # An unclonable consumer is a finding: this must never answer from a partial view of the family.
-      - name: Clone every declared consumer and grade the entry points
+      - name: Clone every declared consumer and grade entry points and CI quality calls
         run: |
           python3 linux/scripts/verify_consumer_inventory.py \
             --report logs/reports/consumer-inventory.md
@@ -79,21 +85,22 @@ jobs:
           retention-days: 90
 
       # One reused issue: a fresh one every Monday trains everyone to close them unread.
-      - name: File or update the dangling-reference issue
+      - name: File or update the consumer-integrity issue
         if: failure()
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('fs');
-            const title = 'consumer-inventory: dangling hub references';
+            const title = 'consumer-inventory: integrity failure';
+            const legacyTitle = 'consumer-inventory: dangling hub references';
             const path = 'logs/reports/consumer-inventory.md';
             const report = fs.existsSync(path)
               ? fs.readFileSync(path, 'utf8')
               : '_No report was produced - the run failed before any consumer was graded._';
             const body = [
               'The weekly consumer inventory failed. Either a declared consumer could',
-              'not be cloned, or a consumer names a hub entry point that no longer',
-              'exists at HEAD.',
+              'not be cloned, a consumer names a missing hub entry point, or a',
+              'detected CI quality call has disabled its ratchets or failure verdict.',
               '',
               `Run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
               '',
@@ -107,12 +114,13 @@ jobs:
               state: 'open',
               labels: 'documentation',
             });
-            const existing = issues.find(i => i.title === title);
+            const existing = issues.find(i => i.title === title || i.title === legacyTitle);
             if (existing) {
               await github.rest.issues.update({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: existing.number,
+                title: title,
                 body: body,
               });
               console.log(`Updated #${existing.number}.`);

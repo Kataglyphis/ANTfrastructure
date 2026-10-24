@@ -23,6 +23,9 @@ workflow_assert_input_fields lint-powershell type 'boolean' default 'false' requ
 t_case "lint-path is a string defaulting to the family layout's scripts tree"
 workflow_assert_input_fields lint-path type 'string' default 'scripts'
 
+t_case "complexity-strict defaults off while existing consumer scripts are refactored"
+workflow_assert_input_fields complexity-strict type 'boolean' default 'false' required 'false'
+
 t_case "the lint job exists and is gated on the input"
 t_assert_eq "True" "$(_q "job is not None")"
 t_assert_contains "$(_q "V.value(job,'if')")" "inputs.lint-powershell" \
@@ -54,6 +57,14 @@ t_assert_eq "True" "$(_raw_has '$gate = '"'"'third_party/ANTfrastructure/windows
 t_case "the gate is invoked with -Path <lint-path> AND -FailOnAnalyzer"
 # Without -FailOnAnalyzer, analyzer findings print and the script still exits 0.
 t_assert_eq "True" "$(_raw_has "pwsh -NoProfile -File \$gate -Path '\${{ inputs.lint-path }}' -FailOnAnalyzer")"
+
+t_case "complexity always reports on the same caller tree and gates findings only by opt-in"
+t_assert_eq "True" "$(_q "len([s for s in steps if V.value(s,'name') == 'Report PowerShell complexity' and V.value(s,'if') is None]) == 1")"
+t_assert_eq "True" "$(_raw_has "\$complexityGate = 'third_party/ANTfrastructure/windows/scripts/Invoke-CodeComplexity.ps1'")"
+t_assert_eq "True" "$(_raw_has 'Test-Path -LiteralPath $complexityGate -PathType Leaf')"
+t_assert_eq "True" "$(_raw_has "Path = '\${{ inputs.lint-path }}'")"
+t_assert_eq "True" "$(_raw_has "Strict = ('\${{ inputs.complexity-strict }}' -eq 'true')")"
+t_assert_eq "True" "$(_raw_has '& $complexityGate @complexityArgs')"
 
 # Build half: a caller without a Python package must be able to take the lint alone
 t_case "build-python-package is a boolean that DEFAULTS ON"

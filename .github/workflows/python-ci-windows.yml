@@ -86,10 +86,10 @@ on:
       lint-powershell:
         description: >-
           Run ANTfrastructure's PowerShell lint gate (mandatory parse pass, AST
-          traps, PSScriptAnalyzer) over this repo's PowerShell tree, as a second
-          job on the same Windows runner. Default false, so every existing caller
-          is unchanged. Pair it with `build-python-package: false` to run the
-          lint and nothing else.
+          traps, PSScriptAnalyzer) and complexity report over this repo's
+          PowerShell tree, as a second job on the same Windows runner. Default
+          false, so every existing caller is unchanged. Pair it with
+          `build-python-package: false` to run these checks alone.
 
           It is a SEPARATE JOB and not a step of the build above, for two
           reasons: it must run even when the build fails (a syntax error in the
@@ -108,7 +108,7 @@ on:
         default: false
       lint-path:
         description: >-
-          What the lint gate walks, relative to the repo root: a directory
+          What the PowerShell gates walk, relative to the repo root: a directory
           (recursive) or a single .ps1/.psm1. The default is the family layout's
           `scripts`, which covers scripts\windows\ and everything under it.
           OrchestrANT's narrower `scripts/windows` is the other spelling in use.
@@ -119,6 +119,14 @@ on:
         required: false
         type: string
         default: scripts
+      complexity-strict:
+        description: >-
+          Fail the optional PowerShell job when the complexity report exceeds
+          the hub's 15/5/80 limits. Default false while consumer trees adopt
+          the limits; parse and scanner failures still fail the job.
+        required: false
+        type: boolean
+        default: false
       arm64-tests:
         description: >-
           Also run the pytest suite on windows-11-arm, one leg per
@@ -419,3 +427,15 @@ jobs:
             throw "Missing $gate - this lane expects ANTfrastructure at third_party/ANTfrastructure (the family layout) and checks it out with submodules: true."
           }
           pwsh -NoProfile -File $gate -Path '${{ inputs.lint-path }}' -FailOnAnalyzer
+
+      - name: Report PowerShell complexity
+        run: |
+          $complexityGate = 'third_party/ANTfrastructure/windows/scripts/Invoke-CodeComplexity.ps1'
+          if (-not (Test-Path -LiteralPath $complexityGate -PathType Leaf)) {
+            throw "Missing $complexityGate - this lane expects ANTfrastructure at third_party/ANTfrastructure and checks it out with submodules: true."
+          }
+          $complexityArgs = @{
+            Path = '${{ inputs.lint-path }}'
+            Strict = ('${{ inputs.complexity-strict }}' -eq 'true')
+          }
+          & $complexityGate @complexityArgs
