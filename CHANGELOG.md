@@ -12,7 +12,18 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
-## 2026-10-24 — restore the harness byte-verdict mutation control
+## 2026-10-24 — Windows PowerShell quality and harness controls
+
+- Add an AST-based Windows PowerShell complexity report to Windows x64 CI, with strict 15/5/80 checks for the scanner, AST reader, Slang, CodeQL, image config, LLVM diagnostic and agentic loop files, a parser shared with the test harness and mutation-tested metric fixtures.
+- Import the exact pinned PSScriptAnalyzer version in parent and batch lint processes; both Windows CI installers read the pin, and action changes trigger the x64 workflow.
+- Split Slang shader compilation and CodeQL analysis into smaller phases, with regression tests for cache, failure, fallback and result policies.
+- Separate image config token checks from finding assembly while keeping order and deduplication; the history gate tests both.
+- Split target CPython staging into PE, copy, redist, launcher and CRT phases; split the LLVM arm64 layout diagnostic's plan and run phases. Both now meet the strict function limits, with new edge-case tests.
+- Separate CMake configure's base, CUDA and cross/ROCm argument phases without changing caller override order; focused tests cover both CUDA cache opt-in and ROCm opt-out.
+- Split free-threaded wheel setup from the cross-stage plan; tests preserve stale GIL wheel cleanup, one target tag and native no-op behavior.
+- Split BuildKit stage argument, cache, metadata and retry preparation into private helpers; stage execution now meets the strict function limits, and tests preserve three or five attempts and gate order.
+- Share the agent process output reader and separate loop input validation and Claude arguments; real child-process tests cover stderr, timeout and role policy.
+- Remove one obsolete duplication exception and lower a measured budget after the refactors.
 
 - Require all 44 current harness fixture tests to pass in the byte-verdict mutation control; retain exact discovery, failure and skip checks.
 - Verify that removing the byte comparison still fails the suite.

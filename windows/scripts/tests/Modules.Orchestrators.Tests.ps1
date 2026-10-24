@@ -1,5 +1,4 @@
 #requires -Version 7.0
-# The modules' entry points via PATH fakes; Invoke-BuildCodeQL needs a real codeql.exe PE, so it stays untested.
 
 $modDir = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules'
 Import-Module (Join-Path $modDir 'WindowsWasmOpt.Common.psm1') -Force -DisableNameChecking

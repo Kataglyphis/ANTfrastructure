@@ -1622,6 +1622,29 @@ call-site credit rules, the
 convention breaches they catch, 32 in `tests/test-crlf-guard.sh`,
 and 28 entries (`gate-registry.*`).
 
+## Windows PowerShell complexity
+
+`pwsh -File windows/scripts/Invoke-CodeComplexity.ps1` parses tracked `.ps1` and
+`.psm1` files under `windows/`, `shared/windows/` and `.github/actions/` with the
+PowerShell 7 AST. It excludes archived trees, reports each script, function and
+class method, and fails on parse errors or an incomplete file scan. It counts
+decision paths, deepest control-flow nesting and code-bearing function lines.
+The limits are 15, 5 and 80 respectively; there is no Windows exception list.
+`WindowsAst.Common.psm1` owns the parse and token result shared with the
+structural test harness; the scanner owns file selection and metric rules, and
+the harness keeps its rooted-path and missing-file policies.
+
+The default command prints every finding and is nonblocking while the existing
+Windows findings are refactored. `-Path <file-or-dir> -Strict` enforces all three
+limits on a selected scope; `-JsonPath <file>` saves the complete report for
+sorting or trend checks. Windows x64 CI runs the whole-tree report after the
+PowerShell lint gate and strictly checks the scanner, AST reader, Slang, CodeQL,
+image config, LLVM diagnostic and agentic loop files. The report is measurement, not a claim that all Windows
+functions already meet the limits. Pester fixtures test the metric counts,
+malformed input and strict failure. This scanner does not measure duplication,
+runtime-generated code or call graphs; `verify_code_dupes.py --kind ps` separately
+checks PowerShell duplication.
+
 ## Shell complexity (`code-complexity`)
 
 `linux/scripts/verify_code_complexity.py`, preflight slug `code-complexity`,
@@ -3323,6 +3346,13 @@ and keeps bootstrap refusal cases; these helpers do not replace the parser
 or relax a workflow convention.
 
 ### Shared Windows lint diagnostics
+
+`Invoke-Lint.ps1` reads `PSSCRIPTANALYZER_VERSION` from
+`linux/scripts/01-core/versions.env` and imports that exact installed version.
+Both Windows CI installers use the same pin. A missing, duplicate or invalid
+pin, or an unavailable pinned module, is an infrastructure failure rather than
+a clean lint result. The fixture supplies a newer installed version to catch a
+regression to "use latest" behavior.
 
 The command-element rules share AST traversal and diagnostic rendering. Glued
 PowerShell arguments retain the approved-verb filter; bareword native attributes

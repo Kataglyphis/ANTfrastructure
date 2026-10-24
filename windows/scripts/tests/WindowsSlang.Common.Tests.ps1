@@ -5,6 +5,59 @@
 
 Describe 'WindowsSlang.Common' {
   BeforeAll {
+    function New-SlangFixtureShader {
+      param([string]$Workspace, [string]$Directory, [string]$File)
+      $root = (New-Item -ItemType Directory -Force -Path (Join-Path $Workspace $Directory)).FullName
+      $shader = Join-Path $root $File
+      Set-Content -LiteralPath $shader -Value 'void main() {}'
+      return [pscustomobject]@{ Root = $root; Shader = $shader }
+    }
+
+    function New-SlangFixtureRootPair {
+      param([string]$Workspace, [string]$Prefix)
+      $primary = (New-Item -ItemType Directory -Force -Path (Join-Path $Workspace "$Prefix-primary")).FullName
+      $secondary = New-SlangFixtureShader -Workspace $Workspace -Directory "$Prefix-secondary" -File 'owned.slang'
+      return [pscustomobject]@{ Primary = $primary; Secondary = $secondary.Root; Shader = $secondary.Shader }
+    }
+
+    function New-SlangFixtureEntry {
+      param([string]$File, [string[]]$Targets)
+      return [pscustomobject]@{ file = $File; entry = 'main'; stage = 'compute'; targets = $Targets }
+    }
+
+    function New-SlangFixtureCompiler {
+      param([string]$Workspace, [string]$Wgsl)
+      $scriptPath = Join-Path $Workspace ("slangc-" + [IO.Path]::GetFileNameWithoutExtension($Wgsl) + '.cmd')
+      [IO.File]::WriteAllLines($scriptPath, @(
+        '@echo off',
+        'if "%~1"=="-version" (',
+        '  echo 2026.8',
+        '  exit /b 0',
+        ')',
+        ':seek',
+        'if "%~1"=="-o" goto emit',
+        'if "%~1"=="" exit /b 2',
+        'shift',
+        'goto seek',
+        ':emit',
+        "copy /Y `"$Wgsl`" `"%~2`" >nul",
+        'exit /b %errorlevel%'
+      ), [Text.Encoding]::ASCII)
+      return $scriptPath
+    }
+
+    function New-SlangFixtureManifestPair {
+      param([string]$Workspace, [string]$Prefix, [string]$OwnerJson, [string]$DestinationPrefix = '')
+      $ownerName = "$Prefix-owner.json"
+      $owner = Join-Path $Workspace $ownerName
+      $consumer = Join-Path $Workspace "$Prefix-consumer.json"
+      Set-Content -LiteralPath $owner -Value $OwnerJson
+      $consumerData = [ordered]@{ manifest = @(); wgslManifest = $ownerName }
+      if ($DestinationPrefix) { $consumerData['wgslDestinationPrefix'] = $DestinationPrefix }
+      Set-Content -LiteralPath $consumer -Value (ConvertTo-Json -InputObject $consumerData -Depth 4 -Compress)
+      return [pscustomobject]@{ Owner = $owner; Consumer = $consumer }
+    }
+
     $modulePath = Join-Path (Split-Path $PSScriptRoot -Parent) 'modules\WindowsSlang.Common.psm1'
     Import-Module $modulePath -Force
 
@@ -61,22 +114,17 @@ Describe 'WindowsSlang.Common' {
 
   Context 'Pinned shader owners' {
     It 'resolves another root and adds its common modules to include paths' {
-      $consumer = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'consumer')).FullName
-      $owner = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'owner')).FullName
-      $common = (New-Item -ItemType Directory -Force -Path (Join-Path $owner 'common')).FullName
-      $shader = Join-Path $owner 'owned.slang'
-      Set-Content -LiteralPath $shader -Value 'void main() {}'
-      (Resolve-SlangSourcePath -Relative 'owned.slang' -SourceRoot $consumer -AdditionalSourceRoots @($owner)) | Should -Be $shader
-      $include = Get-SlangIncludeArgument -SourceRoot $consumer -SourceDirectory $consumer -AdditionalSourceRoots @($owner)
+      $roots = New-SlangFixtureRootPair -Workspace $script:root -Prefix 'pinned'
+      $common = (New-Item -ItemType Directory -Force -Path (Join-Path $roots.Secondary 'common')).FullName
+      (Resolve-SlangSourcePath -Relative 'owned.slang' -SourceRoot $roots.Primary -AdditionalSourceRoots @($roots.Secondary)) | Should -Be $roots.Shader
+      $include = Get-SlangIncludeArgument -SourceRoot $roots.Primary -SourceDirectory $roots.Primary -AdditionalSourceRoots @($roots.Secondary)
       $include | Should -Contain $common
     }
 
     It 'imports owner entries and prefixes only their destinations' {
-      $owner = Join-Path $script:root 'owner-manifest.json'
-      Set-Content -LiteralPath $owner -Value '{"manifest":[{"file":"owned.slang"}],"wgslMap":[{"src":"owned.slang","out":"shader.wgsl","dst":"crate"}],"depthTexturePatches":{},"minSlangcVersionForWgsl":"2026.8"}'
-      $consumer = Join-Path $script:root 'consumer-manifest.json'
-      Set-Content -LiteralPath $consumer -Value '{"manifest":[],"wgslManifest":"owner-manifest.json","wgslDestinationPrefix":"third_party/owner"}'
-      $doc = Get-SlangShaderManifest -Path $consumer
+      $pair = New-SlangFixtureManifestPair -Workspace $script:root -Prefix 'manifest' -DestinationPrefix 'third_party/owner' `
+        -OwnerJson '{"manifest":[{"file":"owned.slang"}],"wgslMap":[{"src":"owned.slang","out":"shader.wgsl","dst":"crate"}],"depthTexturePatches":{},"minSlangcVersionForWgsl":"2026.8"}'
+      $doc = Get-SlangShaderManifest -Path $pair.Consumer
       $doc.manifest[0].file | Should -Be 'owned.slang'
       $doc.wgslMap[0].dst | Should -Be (Join-Path 'third_party/owner' 'crate')
       $doc.minSlangcVersionForWgsl | Should -Be '2026.8'
@@ -111,6 +159,97 @@ Describe 'WindowsSlang.Common' {
       ($argv -contains $tree) | Should -Be $true
       ($argv -contains (Join-Path $tree 'common')) | Should -Be $true
       ($argv -contains (Join-Path $tree 'forward')) | Should -Be $true
+    }
+  }
+
+  Context 'Compile staging' {
+    It 'treats owner manifests and additional roots as inputs for cache staleness' {
+      $roots = New-SlangFixtureRootPair -Workspace $script:root -Prefix 'stamp'
+      $pair = New-SlangFixtureManifestPair -Workspace $script:root -Prefix 'stamp' `
+        -OwnerJson '{"manifest":[],"wgslMap":[],"depthTexturePatches":{},"minSlangcVersionForWgsl":"2026.8"}'
+      $owner = $pair.Owner
+      $consumer = $pair.Consumer
+      $stamp = [datetime]::UtcNow.AddHours(-3)
+      (Get-Item $roots.Shader).LastWriteTimeUtc = $stamp.AddHours(1)
+      (Get-Item $consumer).LastWriteTimeUtc = $stamp
+      (Get-Item $owner).LastWriteTimeUtc = $stamp.AddHours(2)
+      $manifest = Get-SlangShaderManifest -Path $consumer
+
+      InModuleScope WindowsSlang.Common -Parameters @{
+        Primary = $roots.Primary; Additional = $roots.Secondary; Consumer = $consumer; Manifest = $manifest
+      } -ScriptBlock {
+        $newest = Get-SlangNewestInputStamp -SourceRoot $Primary -AdditionalSourceRoots @($Additional) -ManifestPath $Consumer -Manifest $Manifest
+        $newest | Should -Be (Get-Item (Join-Path (Split-Path $Consumer -Parent) 'stamp-owner.json')).LastWriteTimeUtc
+      }
+    }
+
+    It 'skips current artifacts for both targets without invoking slangc' {
+      $cached = New-SlangFixtureShader -Workspace $script:root -Directory 'cached-source' -File 'cached.slang'
+      $source = $cached.Root
+      $spirv = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'cached-spirv')).FullName
+      $wgsl = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'cached-wgsl')).FullName
+      $shader = $cached.Shader
+      $entry = New-SlangFixtureEntry -File 'cached.slang' -Targets @('spirv', 'wgsl')
+      Set-Content -LiteralPath (Join-Path $spirv 'cached.main.spv') -Value 'cached'
+      Set-Content -LiteralPath (Join-Path $wgsl 'cached.main.wgsl') -Value 'cached'
+      $oldStamp = [datetime]::UtcNow.AddHours(-1)
+      $newStamp = [datetime]::UtcNow
+      (Get-Item $shader).LastWriteTimeUtc = $oldStamp
+      (Get-Item (Join-Path $spirv 'cached.main.spv')).LastWriteTimeUtc = $newStamp
+      (Get-Item (Join-Path $wgsl 'cached.main.wgsl')).LastWriteTimeUtc = $newStamp
+
+      InModuleScope WindowsSlang.Common -Parameters @{
+        Source = $source; Spirv = $spirv; Wgsl = $wgsl; Entry = $entry; Stamp = $oldStamp
+      } -ScriptBlock {
+        $result = Invoke-SlangManifestEntry -Entry $Entry -SourceRoot $Source -SpirvOutputRoot $Spirv `
+          -WgslOutputRoot $Wgsl -NewestSource $Stamp -Slangc 'missing-slangc.exe'
+        $result.Compiled | Should -Be 0
+        $result.Failures.Count | Should -Be 0
+      }
+    }
+
+    It 'reports a missing manifest shader as a failed entry' {
+      $source = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'missing-source')).FullName
+      $entry = New-SlangFixtureEntry -File 'gone.slang' -Targets @('spirv')
+      InModuleScope WindowsSlang.Common -Parameters @{ Source = $source; Entry = $entry } -ScriptBlock {
+        $result = Invoke-SlangManifestEntry -Entry $Entry -SourceRoot $Source -SpirvOutputRoot $Source `
+          -WgslOutputRoot $Source -NewestSource ([datetime]::UtcNow) -Slangc 'missing-slangc.exe' 3>$null
+        $result.Compiled | Should -Be 0
+        $result.Failures | Should -Contain (Join-Path $Source 'gone.slang')
+      }
+    }
+
+    It 'copies valid combined WGSL but preserves the destination for an invalid emit' {
+      $root = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'combined-source')).FullName
+      Set-Content -LiteralPath (Join-Path $root 'owned.slang') -Value 'void main() {}'
+      $stage = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'combined-stage')).FullName
+      $destination = (New-Item -ItemType Directory -Force -Path (Join-Path $script:root 'combined-dest')).FullName
+      $manifest = [pscustomobject]@{
+        wgslMap = @([pscustomobject]@{ src = 'owned.slang'; out = 'owned.wgsl'; dst = 'crate' })
+        depthTexturePatches = [pscustomobject]@{}
+        minSlangcVersionForWgsl = '2026.8'
+      }
+      $goodCompiler = New-SlangFixtureCompiler -Workspace $script:root -Wgsl $script:goodWgsl
+      $badCompiler = New-SlangFixtureCompiler -Workspace $script:root -Wgsl $script:badWgsl
+      $target = Join-Path $destination 'crate\owned.wgsl'
+
+      InModuleScope WindowsSlang.Common -Parameters @{
+        Root = $root; Stage = $stage; Destination = $destination; Manifest = $manifest
+        GoodCompiler = $goodCompiler; BadCompiler = $badCompiler; Target = $target
+      } -ScriptBlock {
+        $good = Invoke-SlangCombinedEmits -Manifest $Manifest -SourceRoot $Root -CombinedOutputDir $Stage `
+          -DestinationRoot $Destination -Slangc $GoodCompiler
+        $good.Emitted | Should -Be 1
+        $good.Invalid.Count | Should -Be 0
+        (Test-Path -LiteralPath $Target -PathType Leaf) | Should -BeTrue
+
+        Set-Content -LiteralPath $Target -Value 'keep-me'
+        $bad = Invoke-SlangCombinedEmits -Manifest $Manifest -SourceRoot $Root -CombinedOutputDir $Stage `
+          -DestinationRoot $Destination -Slangc $BadCompiler 3>$null
+        $bad.Emitted | Should -Be 0
+        $bad.Invalid | Should -Contain 'owned.wgsl'
+        (Get-Content -LiteralPath $Target -Raw).Trim() | Should -Be 'keep-me'
+      }
     }
   }
 

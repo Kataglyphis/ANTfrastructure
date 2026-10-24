@@ -364,6 +364,105 @@ $script:NoCacheStageMatched = @{}
 $script:BkBuiltTags = [System.Collections.Generic.HashSet[string]]::new()
 $script:BkGatedImages = [System.Collections.Generic.HashSet[string]]::new()
 
+function Test-BkParentNeedsGate {
+    param([string]$Parent, [switch]$NoParentGate)
+    return (-not $NoParentGate -and $Parent -and -not $script:BkBuiltTags.Contains($Parent) -and
+        -not $script:BkGatedImages.Contains($Parent))
+}
+
+function Get-BkStageCacheArguments {
+    param([Parameter(Mandatory)][string]$Label)
+    # Re-exports of the smoked final solve must remain cache hits.
+    $exportOnlyLabel = $Label -in @('final-tar', 'final-push')
+    $matched = @()
+    if (-not $exportOnlyLabel) { $matched = @($NoCacheStage | Where-Object { $Label -like "*$_*" }) }
+    # A misspelled selector must fail at the end of the run.
+    foreach ($m in $matched) { $script:NoCacheStageMatched[$m] = $true }
+    $stageNoCache = $matched.Count -gt 0
+    if ($stageNoCache -and -not $NoCache) { Write-Host "[bk:$Label] -NoCacheStage match -> --no-cache for THIS stage only" -ForegroundColor Yellow }
+    if (($NoCache -or $stageNoCache) -and -not $exportOnlyLabel) { return @('--no-cache') }
+}
+
+function Get-BkStageBaseArguments {
+    param([Parameter(Mandatory)][string]$Dockerfile, [string]$Tag, [string]$Context,
+        [string]$Target, [string]$Label, [switch]$NoOutput, [string]$OutputSpec)
+    $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
+    $dfName = [IO.Path]::GetFileName($Dockerfile)
+    $bkArgs = @(
+        'build',
+        '--frontend', 'dockerfile.v0',
+        '--local', "context=$Context",
+        '--local', "dockerfile=$dfDir",
+        '--opt', "filename=$dfName",
+        # Stage handoff resolves FROM refs locally, before contacting docker.io.
+        '--opt', 'image-resolve-mode=local',
+        '--progress', 'plain'
+    )
+    if ($OutputSpec) { $bkArgs += @('--output', $OutputSpec) }
+    elseif (-not $NoOutput) { $bkArgs += @('--output', "type=image,name=$Tag,unpack=true") }
+    $bkArgs += @(Get-BkStageCacheArguments -Label $Label)
+    if ($Target) { $bkArgs += @('--opt', "target=$Target") }
+    # mode=max also caches non-exported intermediate stages.
+    if ($ImportCacheRef) { $bkArgs += @('--import-cache', "type=registry,ref=$ImportCacheRef") }
+    if ($ExportCacheRef) { $bkArgs += @('--export-cache', "type=registry,ref=$ExportCacheRef,mode=max") }
+    return $bkArgs
+}
+
+function Get-BkStageBuildArgOptions {
+    param([Parameter(Mandatory)][hashtable]$BuildArgs)
+    $options = @()
+    foreach ($k in ($BuildArgs.Keys | Sort-Object)) {
+        $v = $BuildArgs[$k]
+        if ($null -ne $v -and "$v" -ne '') { $options += @('--opt', "build-arg:$k=$v") }
+    }
+    # A missing arch arg silently makes a cross stage build for amd64.
+    if ($BuildArgs.ContainsKey('WINDOWS_TARGET_ARCH')) {
+        Write-Host "    [build-arg] WINDOWS_TARGET_ARCH=$($BuildArgs['WINDOWS_TARGET_ARCH'])" -ForegroundColor DarkGray
+    } elseif ($TargetArch -ne 'amd64') {
+        Write-Host "    [build-arg] WINDOWS_TARGET_ARCH NOT PASSED to this stage (target is $TargetArch) - it will default to amd64" -ForegroundColor Yellow
+    }
+    # Explicit one-off arguments override a stage's computed value.
+    foreach ($extra in $BuildArg) {
+        if ($extra -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') {
+            throw ("-BuildArg '$extra' is not in KEY=VALUE form with a clean identifier key. " +
+                'If several args arrived as ONE quoted string, the caller crossed a process boundary ' +
+                '(`pwsh -File` flattens comma arrays, quotes included) - invoke Build-Buildkit.ps1 ' +
+                'directly or pass one -BuildArg element per KEY=VALUE.')
+        }
+        $options += @('--opt', "build-arg:$extra")
+    }
+    # A stage without secret mounts ignores these env-sourced arguments.
+    if ($script:BkSecretArgs) { $options += $script:BkSecretArgs }
+    return $options
+}
+
+function Get-BkStageMetadataFile {
+    param([Parameter(Mandatory)][string]$StageLog, [switch]$NoOutput, [string]$OutputSpec)
+    if ($NoOutput -or $OutputSpec) { return '' }
+    $metaFile = [IO.Path]::ChangeExtension($StageLog, '.metadata.json')
+    Remove-Item -LiteralPath $metaFile -Force -ErrorAction SilentlyContinue
+    return $metaFile
+}
+
+function Get-BkStageRetryTail {
+    param([Parameter(Mandatory)][string]$StageLog, [Parameter(Mandatory)][string]$Label,
+        [string]$PreviousTail, [Parameter(Mandatory)][int]$Attempt, [Parameter(Mandatory)][int]$MaxAttempts,
+        [Parameter(Mandatory)][int]$ExitCode, [Parameter(Mandatory)]$StageClock)
+    $tail = if (Test-Path $StageLog) { (Get-Content $StageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
+    # An identical failure is a poisoned snapshot, except known mount contention.
+    if (Invoke-TransientCooldown -Tail $tail -PreviousTail $PreviousTail -Attempt $Attempt -MaxAttempts $MaxAttempts -Label "bk:$Label" -CooldownSeconds 15) {
+        return $tail
+    }
+    # The tail carries the cause when the retry policy refuses another solve.
+    if ($tail) {
+        Write-Host "`n--- [bk:$Label] tail of the failing attempt ---" -ForegroundColor Yellow
+        Write-Host $tail
+        Write-Host "--- end of tail (full log: $StageLog) ---`n" -ForegroundColor Yellow
+    }
+    Write-DriverRecord "[bk:$Label] FAILED (exit $ExitCode) after $([math]::Round($StageClock.Elapsed.TotalSeconds, 1))s: $StageLog"
+    throw "[bk:$Label] buildctl failed (exit $ExitCode) — full log: $StageLog"
+}
+
 function Invoke-BkStage {
     param(
         [Parameter(Mandatory)][string]$Dockerfile,   # repo-relative
@@ -385,7 +484,7 @@ function Invoke-BkStage {
     if (-not $Label) { $Label = [IO.Path]::GetFileName($Dockerfile) + $(if ($Target) { ":$Target" } else { '' }) }
     # Grade an unbuilt parent's ENV now, in seconds, not at the final gate.
     $parent = "$($BuildArgs['BASE_IMAGE'])"
-    if (-not $NoParentGate -and $parent -and -not $script:BkBuiltTags.Contains($parent) -and -not $script:BkGatedImages.Contains($parent)) {
+    if (Test-BkParentNeedsGate -Parent $parent -NoParentGate:$NoParentGate) {
         Invoke-BkPublishGate -Image $parent -Label "publish-gate:$($parent -replace '^.*:', '')" -Hint (
             "$parent was not built by this run and failed the publish gate: a build-host setting in its ENV " +
             "(built before 2026-09-23?) or no such image. Rebuild it: put the stage that produces it in -Stages, " +
@@ -396,64 +495,13 @@ function Invoke-BkStage {
     $script:CurrentPhase = $Label
     # Per stage too: one heavy stage can walk the disk into hcsshim's dishonest-failure band.
     Assert-StageDiskHeadroom -Label $Label -Drive (Split-Path -Qualifier $repoRoot).TrimEnd(':') -Force:$SkipHostChecks
-    $dfDir = Split-Path (Join-Path $repoRoot $Dockerfile) -Parent
-    $dfName = [IO.Path]::GetFileName($Dockerfile)
-    $bkArgs = @(
-        'build',
-        '--frontend', 'dockerfile.v0',
-        '--local', "context=$Context",
-        '--local', "dockerfile=$dfDir",
-        '--opt', "filename=$dfName",
-        # Stage handoff: resolve FROM refs locally, else buildkit goes to docker.io.
-        '--opt', 'image-resolve-mode=local',
-        '--progress', 'plain'
-    )
-    if ($OutputSpec) { $bkArgs += @('--output', $OutputSpec) }
-    elseif (-not $NoOutput) { $bkArgs += @('--output', "type=image,name=$Tag,unpack=true") }
-    # final-tar/final-push re-export the smoked final solve, so they stay cache hits.
-    $exportOnlyLabel = $Label -in @('final-tar', 'final-push')
-    $matched = @()
-    if (-not $exportOnlyLabel) { $matched = @($NoCacheStage | Where-Object { $Label -like "*$_*" }) }
-    # Recorded so a misspelled entry fails at the end of the run instead of silently caching everything.
-    foreach ($m in $matched) { $script:NoCacheStageMatched[$m] = $true }
-    $stageNoCache = $matched.Count -gt 0
-    if (($NoCache -or $stageNoCache) -and -not $exportOnlyLabel) { $bkArgs += @('--no-cache') }
-    if ($stageNoCache -and -not $NoCache) { Write-Host "[bk:$Label] -NoCacheStage match -> --no-cache for THIS stage only" -ForegroundColor Yellow }
-    if ($Target) { $bkArgs += @('--opt', "target=$Target") }
-    # mode=max also caches non-exported intermediate stages.
-    if ($ImportCacheRef) { $bkArgs += @('--import-cache', "type=registry,ref=$ImportCacheRef") }
-    if ($ExportCacheRef) { $bkArgs += @('--export-cache', "type=registry,ref=$ExportCacheRef,mode=max") }
-    foreach ($k in ($BuildArgs.Keys | Sort-Object)) {
-        $v = $BuildArgs[$k]
-        if ($null -ne $v -and "$v" -ne '') { $bkArgs += @('--opt', "build-arg:$k=$v") }
-    }
-    # A missing arch arg is invisible: the stage falls back to amd64 and fails much later as something else.
-    if ($BuildArgs.ContainsKey('WINDOWS_TARGET_ARCH')) {
-        Write-Host "    [build-arg] WINDOWS_TARGET_ARCH=$($BuildArgs['WINDOWS_TARGET_ARCH'])" -ForegroundColor DarkGray
-    } elseif ($TargetArch -ne 'amd64') {
-        Write-Host "    [build-arg] WINDOWS_TARGET_ARCH NOT PASSED to this stage (target is $TargetArch) - it will default to amd64" -ForegroundColor Yellow
-    }
-    # Applied last, so an explicit one-off overrides the stage's computed value.
-    foreach ($extra in $BuildArg) {
-        # buildctl silently discards undeclared ARG names, so a key mangled by pwsh -File would vanish.
-        if ($extra -notmatch '^[A-Za-z_][A-Za-z0-9_]*=') {
-            throw ("-BuildArg '$extra' is not in KEY=VALUE form with a clean identifier key. " +
-                'If several args arrived as ONE quoted string, the caller crossed a process boundary ' +
-                '(`pwsh -File` flattens comma arrays, quotes included) - invoke Build-Buildkit.ps1 ' +
-                'directly or pass one -BuildArg element per KEY=VALUE.')
-        }
-        $bkArgs += @('--opt', "build-arg:$extra")
-    }
-    # Env-sourced, so no value is in an argument; a stage without the secret mounts ignores them.
-    if ($script:BkSecretArgs) { $bkArgs += $script:BkSecretArgs }
+    $bkArgs = @(Get-BkStageBaseArguments -Dockerfile $Dockerfile -Tag $Tag -Context $Context -Target $Target `
+        -Label $Label -NoOutput:$NoOutput -OutputSpec $OutputSpec)
+    $bkArgs += @(Get-BkStageBuildArgOptions -BuildArgs $BuildArgs)
     $stageLog = Join-Path $script:LogDir ("bk-" + $script:RunId + "-" + ($Label -replace '[:\\/]', '-') + ".log")
     # The exported image's config digest, for the history gate; -OutputSpec re-exports a solve already graded.
-    $metaFile = ''
-    if (-not $NoOutput -and -not $OutputSpec) {
-        $metaFile = [IO.Path]::ChangeExtension($stageLog, '.metadata.json')
-        Remove-Item -LiteralPath $metaFile -Force -ErrorAction SilentlyContinue
-        $bkArgs += @('--metadata-file', $metaFile)
-    }
+    $metaFile = Get-BkStageMetadataFile -StageLog $stageLog -NoOutput:$NoOutput -OutputSpec $OutputSpec
+    if ($metaFile) { $bkArgs += @('--metadata-file', $metaFile) }
     Set-BuildPhase $Label
     $stageClock = [System.Diagnostics.Stopwatch]::StartNew()
     $dest = if ($NoOutput) { '(warm solve, no output)' } else { $Tag }
@@ -466,20 +514,8 @@ function Invoke-BkStage {
         "`n===== [bk:$Label] attempt $attempt/$MaxAttempts =====" | Add-Content -Path $stageLog -Encoding utf8
         & $BuildCtl @bkArgs 2>&1 | Tee-Object -FilePath $stageLog -Append
         if ($LASTEXITCODE -eq 0) { break }
-        $tail = if (Test-Path $stageLog) { (Get-Content $stageLog -Tail 40 -ErrorAction SilentlyContinue) -join "`n" } else { '' }
-        # An identical failure is a poisoned snapshot, not a flake, so it is not retried.
-        if (Invoke-TransientCooldown -Tail $tail -PreviousTail $previousTail -Attempt $attempt -MaxAttempts $MaxAttempts -Label "bk:$Label" -CooldownSeconds 15) {
-            $previousTail = $tail
-            continue
-        }
-        # Surface the cause, not just a log path.
-        if ($tail) {
-            Write-Host "`n--- [bk:$Label] tail of the failing attempt ---" -ForegroundColor Yellow
-            Write-Host $tail
-            Write-Host "--- end of tail (full log: $stageLog) ---`n" -ForegroundColor Yellow
-        }
-        Write-DriverRecord "[bk:$Label] FAILED (exit $LASTEXITCODE) after $([math]::Round($stageClock.Elapsed.TotalSeconds, 1))s: $stageLog"
-        throw "[bk:$Label] buildctl failed (exit $LASTEXITCODE) — full log: $stageLog"
+        $previousTail = Get-BkStageRetryTail -StageLog $stageLog -Label $Label -PreviousTail $previousTail `
+            -Attempt $attempt -MaxAttempts $MaxAttempts -ExitCode $LASTEXITCODE -StageClock $stageClock
     }
     if ($metaFile) { Invoke-BkHistoryGate -MetadataFile $metaFile -Image $Tag -Label $Label }
     $stageClock.Stop()

@@ -6,6 +6,7 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - '.github/actions/**'
       - 'linux/scripts/01-core/versions.env'
       - '.github/workflows/windows-x64.yml'
   pull_request:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'windows/**'
       - 'shared/windows/**'
+      - '.github/actions/**'
       - 'linux/scripts/01-core/versions.env'
       - '.github/workflows/windows-x64.yml'
 
@@ -33,12 +35,34 @@ jobs:
 
       - name: Install PSScriptAnalyzer
         shell: pwsh
-        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
+        run: |
+          $pins = @(Get-Content -LiteralPath 'linux/scripts/01-core/versions.env' | Where-Object { $_ -match '^\s*PSSCRIPTANALYZER_VERSION\s*=' })
+          if ($pins.Count -ne 1) { throw 'PSSCRIPTANALYZER_VERSION must occur exactly once in versions.env' }
+          $pin = ($pins[0] -split '=', 2)[1].Trim().Trim('"', "'")
+          Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser
 
       # Without -FailOnAnalyzer the analyzer prints findings and still exits 0.
       - name: Lint (parse gate + PSScriptAnalyzer)
         shell: pwsh
         run: pwsh -NoProfile -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer
+
+      - name: Report PowerShell complexity
+        shell: pwsh
+        run: pwsh -NoProfile -File windows/scripts/Invoke-CodeComplexity.ps1
+
+      - name: Enforce refactored PowerShell complexity
+        shell: pwsh
+        run: |
+          & ./windows/scripts/Invoke-CodeComplexity.ps1 -Path @(
+            'windows/scripts/Invoke-CodeComplexity.ps1',
+            'windows/scripts/modules/WindowsAst.Common.psm1',
+            'windows/scripts/modules/WindowsSlang.Common.psm1',
+            'windows/scripts/modules/WindowsCodeQL.Common.psm1',
+            'windows/scripts/modules/WindowsImageEnv.Common.psm1',
+            'windows/scripts/diagnostics/Invoke-LlvmAarch64Layout.ps1',
+            'windows/scripts/modules/WindowsAgenticLoop.Common.psm1',
+            'windows/scripts/tests/AgenticLoop.Execution.Tests.ps1'
+          ) -Strict
 
       # Our own floor: runner-image updates have swapped preinstalled module versions before.
       - name: Ensure Pester >= 6.2

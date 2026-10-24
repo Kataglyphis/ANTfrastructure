@@ -494,19 +494,25 @@ and SHA256-verified (`lint-shell.sh`, `lint-dockerfiles.sh`,
 `lint-workflows.sh`). First run needs network; a failed bootstrap fails the
 gate loudly (no silent skip).
 
-### B6. Run all three gates
+### B6. Run lint, tests and the complexity report
 
 ```pwsh
 pwsh -File windows/scripts/Invoke-Lint.ps1 -FailOnAnalyzer # parse gate + PSScriptAnalyzer, findings fatal as in CI
 pwsh -File windows/scripts/tests/Invoke-Tests.ps1          # harness + Pester suites
+pwsh -File windows/scripts/Invoke-CodeComplexity.ps1      # tracked PowerShell metric report; -Path <file> -Strict enforces a refactor
 ```
+
+`Invoke-Lint.ps1` requires the exact `PSSCRIPTANALYZER_VERSION` in
+`linux/scripts/01-core/versions.env`. Install that version with
+`Install-Module PSScriptAnalyzer -RequiredVersion <pin> -Scope CurrentUser -Force` if it is
+missing; a newer preinstalled release does not substitute for the pin.
 
 ```bash
 # Git Bash (not WSL bash):
 PREFLIGHT_PYTHON="uv run --no-project python" bash linux/scripts/preflight.sh
 ```
 
-Both PowerShell gates run side by side since 2026-10-21. `Invoke-Tests.ps1` runs each test file
+The lint and test PowerShell gates run side by side since 2026-10-21. `Invoke-Tests.ps1` runs each test file
 in its own `pwsh`, `-Jobs` at a time (default: the CPU count), and adds up the tallies, so the
 797-test floor applies to the sum. A suite whose process dies counts as unfinished, never as green.
 One process per file rather than batches, because a suite that imports a module from a temp copy

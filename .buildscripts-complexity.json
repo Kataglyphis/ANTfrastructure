@@ -1,0 +1,3796 @@
+{
+  "SchemaVersion": 1,
+  "Limits": {
+    "Cyclomatic": 15,
+    "Nesting": 5,
+    "CodeLines": 80
+  },
+  "FileCount": 62,
+  "UnitCount": 389,
+  "FindingCount": 35,
+  "Units": [
+    {
+      "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 55
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
+      "Name": "Copy-CodecStaticLib",
+      "Kind": "Function",
+      "Line": 37,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
+      "Name": "Add-CodecPcSystemLib",
+      "Kind": "Function",
+      "Line": 52,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
+      "Name": "Initialize-CodecMeson",
+      "Kind": "Function",
+      "Line": 64,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
+      "Name": "Invoke-CodecMeson",
+      "Kind": "Function",
+      "Line": 79,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegCodecs.ps1",
+      "Name": "Get-CodecTarball",
+      "Kind": "Function",
+      "Line": 97,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 116,
+      "Nesting": 5,
+      "CodeLines": 472
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "ConvertTo-MsysPath",
+      "Kind": "Function",
+      "Line": 40,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegLlvmNm",
+      "Kind": "Function",
+      "Line": 45,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Assert-FfmpegPkgConfig",
+      "Kind": "Function",
+      "Line": 53,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 32
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Remove-MakefileShowIncludes",
+      "Kind": "Function",
+      "Line": 88,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegAmfPlan",
+      "Kind": "Function",
+      "Line": 107,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegVulkanPlan",
+      "Kind": "Function",
+      "Line": 122,
+      "Cyclomatic": 7,
+      "Nesting": 2,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegRocmConfigureArg",
+      "Kind": "Function",
+      "Line": 139,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegAmfConfigSymbol",
+      "Kind": "Function",
+      "Line": 156,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegAmfConfigGap",
+      "Kind": "Function",
+      "Line": 164,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegVulkanConfigSymbol",
+      "Kind": "Function",
+      "Line": 172,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegVulkanConfigGap",
+      "Kind": "Function",
+      "Line": 184,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Get-FfmpegRocmLeak",
+      "Kind": "Function",
+      "Line": 196,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Copy-FfmpegAmfHeaderTree",
+      "Kind": "Function",
+      "Line": 210,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Add-FfmpegPkgConfigDir",
+      "Kind": "Function",
+      "Line": 228,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Install-FfmpegAmfHeader",
+      "Kind": "Function",
+      "Line": 238,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Name": "Invoke-BoundedProvisionStep",
+      "Kind": "Function",
+      "Line": 331,
+      "Cyclomatic": 10,
+      "Nesting": 3,
+      "CodeLines": 29
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 221,
+      "Nesting": 8,
+      "CodeLines": 1011
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "log",
+      "Kind": "Function",
+      "Line": 98,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Get-GstRocmMesonArgs",
+      "Kind": "Function",
+      "Line": 103,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "ConvertTo-GstDtlsRetryRead",
+      "Kind": "Function",
+      "Line": 111,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Get-GstGdkPixbufMesonArgs",
+      "Kind": "Function",
+      "Line": 118,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Get-GstRocmScrubbedSearchPath",
+      "Kind": "Function",
+      "Line": 126,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Get-GstRocmLeakFinding",
+      "Kind": "Function",
+      "Line": 150,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Set-GstRocmIsolation",
+      "Kind": "Function",
+      "Line": 167,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Restore-GstRocmPath",
+      "Kind": "Function",
+      "Line": 178,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "New-SccacheCompilerShim",
+      "Kind": "Function",
+      "Line": 185,
+      "Cyclomatic": 5,
+      "Nesting": 3,
+      "CodeLines": 41
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Format-MesonExeList",
+      "Kind": "Function",
+      "Line": 229,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "ConvertTo-GstOpenCv5Text",
+      "Kind": "Function",
+      "Line": 236,
+      "Cyclomatic": 5,
+      "Nesting": 4,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Get-GstRocmMissingArtifact",
+      "Kind": "Function",
+      "Line": 257,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Name": "Get-UnresolvedDeps",
+      "Kind": "Function",
+      "Line": 1294,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Build-HailortFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 20,
+      "Nesting": 3,
+      "CodeLines": 140
+    },
+    {
+      "File": "windows/scripts/build/Build-HailortFromSource.ps1",
+      "Name": "Resolve-HailortSourceRoot",
+      "Kind": "Function",
+      "Line": 60,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-HailortFromSource.ps1",
+      "Name": "Invoke-HailortSourcePatch",
+      "Kind": "Function",
+      "Line": 86,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 54,
+      "Nesting": 4,
+      "CodeLines": 260
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Get-IreeRocmCmakeArgs",
+      "Kind": "Function",
+      "Line": 23,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Invoke-IreeHipDylibNamePatch",
+      "Kind": "Function",
+      "Line": 31,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Assert-IreeRocmDeviceBitcodePin",
+      "Kind": "Function",
+      "Line": 51,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Get-IreeCompilerRtCmakeArgs",
+      "Kind": "Function",
+      "Line": 67,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Edit-IreeCleanEggInfo",
+      "Kind": "Function",
+      "Line": 79,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Get-IreeFreeThreadedCmakeArgs",
+      "Kind": "Function",
+      "Line": 90,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Update-IreeCrossNinjaFile",
+      "Kind": "Function",
+      "Line": 101,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Name": "Invoke-IreeFreeThreadedTwin",
+      "Kind": "Function",
+      "Line": 120,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 29
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertAll.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 35
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 19,
+      "Nesting": 3,
+      "CodeLines": 178
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 25,
+      "Nesting": 3,
+      "CodeLines": 143
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Name": "Get-LitertLmToolPin",
+      "Kind": "Function",
+      "Line": 31,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Name": "Get-LitertLmBazelArg",
+      "Kind": "Function",
+      "Line": 51,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Name": "Assert-LitertLmDxcPin",
+      "Kind": "Function",
+      "Line": 59,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Name": "Get-LitertLmGpuPayload",
+      "Kind": "Function",
+      "Line": 70,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Name": "Install-LitertLmGpuPayload",
+      "Kind": "Function",
+      "Line": 87,
+      "Cyclomatic": 6,
+      "Nesting": 3,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 96,
+      "Nesting": 6,
+      "CodeLines": 658
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 15,
+      "Nesting": 2,
+      "CodeLines": 105
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Get-LitertWheelPin",
+      "Kind": "Function",
+      "Line": 30,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Get-LitertWheelBazelArg",
+      "Kind": "Function",
+      "Line": 37,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 26
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "New-HermeticPythonTarball",
+      "Kind": "Function",
+      "Line": 72,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "New-PipOverrideRepo",
+      "Kind": "Function",
+      "Line": 95,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "New-LitertPrebuiltsRepo",
+      "Kind": "Function",
+      "Line": 117,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Edit-ExternalText",
+      "Kind": "Function",
+      "Line": 139,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Invoke-LitertExternalRewrite",
+      "Kind": "Function",
+      "Line": 151,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 34
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Get-LitertGetMessageSource",
+      "Kind": "Function",
+      "Line": 194,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Move-HighwayHashAlignas",
+      "Kind": "Function",
+      "Line": 213,
+      "Cyclomatic": 9,
+      "Nesting": 3,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Assert-LitertWheelContract",
+      "Kind": "Function",
+      "Line": 233,
+      "Cyclomatic": 14,
+      "Nesting": 2,
+      "CodeLines": 26
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertWheelBazel.ps1",
+      "Name": "Invoke-LitertWheelSmoke",
+      "Kind": "Function",
+      "Line": 264,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-LlamaCppHipFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 46
+    },
+    {
+      "File": "windows/scripts/build/Build-LlamaCppHipFromSource.ps1",
+      "Name": "Get-LlamaCppHipSourcePin",
+      "Kind": "Function",
+      "Line": 36,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-LlamaCppHipFromSource.ps1",
+      "Name": "Get-LlamaCppHipCmakeArgs",
+      "Kind": "Function",
+      "Line": 47,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 22
+    },
+    {
+      "File": "windows/scripts/build/Build-LlamaCppHipFromSource.ps1",
+      "Name": "Write-LlamaCppHipBuildRecord",
+      "Kind": "Function",
+      "Line": 78,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 16,
+      "Nesting": 1,
+      "CodeLines": 101
+    },
+    {
+      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
+      "Name": "Install-TargetCompilerRt",
+      "Kind": "Function",
+      "Line": 41,
+      "Cyclomatic": 7,
+      "Nesting": 3,
+      "CodeLines": 24
+    },
+    {
+      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
+      "Name": "Get-PeTimeDateStamp",
+      "Kind": "Function",
+      "Line": 67,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
+      "Name": "Assert-ReproducibleLink",
+      "Kind": "Function",
+      "Line": 78,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-MediaCoreAll.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 22
+    },
+    {
+      "File": "windows/scripts/build/Build-MediaTvmAll.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/Build-MigraphxFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 10,
+      "Nesting": 3,
+      "CodeLines": 65
+    },
+    {
+      "File": "windows/scripts/build/Build-MigraphxFromSource.ps1",
+      "Name": "Get-MigraphxDepCmakeArgs",
+      "Kind": "Function",
+      "Line": 32,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 30
+    },
+    {
+      "File": "windows/scripts/build/Build-MigraphxFromSource.ps1",
+      "Name": "Write-SqliteCmakeProject",
+      "Kind": "Function",
+      "Line": 65,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-MigraphxFromSource.ps1",
+      "Name": "Get-MigraphxCmakeArgs",
+      "Kind": "Function",
+      "Line": 77,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 32
+    },
+    {
+      "File": "windows/scripts/build/Build-MigraphxFromSource.ps1",
+      "Name": "Get-MigraphxInstallGap",
+      "Kind": "Function",
+      "Line": 115,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 58,
+      "Nesting": 3,
+      "CodeLines": 270
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtPtxLauncherExemptArg",
+      "Kind": "Function",
+      "Line": 23,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuPlan",
+      "Kind": "Function",
+      "Line": 35,
+      "Cyclomatic": 7,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuPin",
+      "Kind": "Function",
+      "Line": 46,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtDepsRow",
+      "Kind": "Function",
+      "Line": 64,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtDawnDepsEntry",
+      "Kind": "Function",
+      "Line": 74,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtKleidiaiDepsEntry",
+      "Kind": "Function",
+      "Line": 83,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-KleidiaiArmasmWrapper",
+      "Kind": "Function",
+      "Line": 91,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Edit-KleidiaiMarmasmRule",
+      "Kind": "Function",
+      "Line": 102,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Assert-OrtDependencyArchiveSha1",
+      "Kind": "Function",
+      "Line": 120,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Initialize-OrtKleidiaiSource",
+      "Kind": "Function",
+      "Line": 130,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 23
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtDawnPatchName",
+      "Kind": "Function",
+      "Line": 155,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtDawnRequiredDep",
+      "Kind": "Function",
+      "Line": 163,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtDawnDepsProbeSource",
+      "Kind": "Function",
+      "Line": 168,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Invoke-OrtDawnDepsProbe",
+      "Kind": "Function",
+      "Line": 189,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "ConvertTo-OrtDawnDepPin",
+      "Kind": "Function",
+      "Line": 197,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Save-OrtDawnDep",
+      "Kind": "Function",
+      "Line": 209,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Expand-OrtZipMember",
+      "Kind": "Function",
+      "Line": 229,
+      "Cyclomatic": 5,
+      "Nesting": 3,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Expand-OrtWebGpuDxc",
+      "Kind": "Function",
+      "Line": 252,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Expand-OrtDawnArchive",
+      "Kind": "Function",
+      "Line": 264,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Invoke-DawnPrebuiltDxcPatch",
+      "Kind": "Function",
+      "Line": 275,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 22
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Resolve-GnuPatchExe",
+      "Kind": "Function",
+      "Line": 299,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Initialize-OrtWebGpuInput",
+      "Kind": "Function",
+      "Line": 311,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 32
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuCmakeArgs",
+      "Kind": "Function",
+      "Line": 345,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuConfigureFinding",
+      "Kind": "Function",
+      "Line": 353,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Install-OrtWebGpuRuntime",
+      "Kind": "Function",
+      "Line": 366,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuWheelFinding",
+      "Kind": "Function",
+      "Line": 382,
+      "Cyclomatic": 9,
+      "Nesting": 1,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtDxcNoticeTitle",
+      "Kind": "Function",
+      "Line": 397,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 1
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Add-OrtWebGpuWheelNotice",
+      "Kind": "Function",
+      "Line": 400,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuWheelReport",
+      "Kind": "Function",
+      "Line": 413,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 23
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Get-OrtWebGpuFeatureMarker",
+      "Kind": "Function",
+      "Line": 438,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Update-OrtNinjaFile",
+      "Kind": "Function",
+      "Line": 450,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 34
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Set-OrtNinjaCommandPython",
+      "Kind": "Function",
+      "Line": 494,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Invoke-OrtFreeThreadedTwin",
+      "Kind": "Function",
+      "Line": 504,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 31
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Name": "Invoke-OrtRegexPatchWithFallback",
+      "Kind": "Function",
+      "Line": 601,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 34,
+      "Nesting": 2,
+      "CodeLines": 196
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Name": "New-GenaiOrtHome",
+      "Kind": "Function",
+      "Line": 135,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Name": "Get-GenaiOrtCmakeArgs",
+      "Kind": "Function",
+      "Line": 152,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Name": "Get-GenaiOrtConfigureFinding",
+      "Kind": "Function",
+      "Line": 161,
+      "Cyclomatic": 13,
+      "Nesting": 3,
+      "CodeLines": 40
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Name": "Get-GenaiOrtNinjaFinding",
+      "Kind": "Function",
+      "Line": 203,
+      "Cyclomatic": 15,
+      "Nesting": 3,
+      "CodeLines": 30
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Name": "Get-GenaiOrtTreeFinding",
+      "Kind": "Function",
+      "Line": 235,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 70,
+      "Nesting": 4,
+      "CodeLines": 370
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-OcvPythonQueryResult",
+      "Kind": "Function",
+      "Line": 139,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "New-OpencvOrtNestedInclude",
+      "Kind": "Function",
+      "Line": 296,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-OpencvOrtCmakeArgs",
+      "Kind": "Function",
+      "Line": 313,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-OpencvRocmCmakeArgs",
+      "Kind": "Function",
+      "Line": 342,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-OpencvRocmConfigureFinding",
+      "Kind": "Function",
+      "Line": 352,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-NinjaBuildVariable",
+      "Kind": "Function",
+      "Line": 371,
+      "Cyclomatic": 9,
+      "Nesting": 3,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-OpencvOrtConfigureFinding",
+      "Kind": "Function",
+      "Line": 391,
+      "Cyclomatic": 19,
+      "Nesting": 3,
+      "CodeLines": 60
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Get-OpenCvSummaryValue",
+      "Kind": "Function",
+      "Line": 535,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Name": "Write-OpenCvProbeDiagnostics",
+      "Kind": "Function",
+      "Line": 544,
+      "Cyclomatic": 4,
+      "Nesting": 3,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvGstreamerPlugin.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 15,
+      "Nesting": 1,
+      "CodeLines": 68
+    },
+    {
+      "File": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 22,
+      "Nesting": 4,
+      "CodeLines": 90
+    },
+    {
+      "File": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+      "Name": "Get-OrtAmdgpuEpCmakeArgs",
+      "Kind": "Function",
+      "Line": 34,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+      "Name": "Get-OrtAmdgpuEpStageGap",
+      "Kind": "Function",
+      "Line": 59,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-ResourceSampler.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 18,
+      "Nesting": 3,
+      "CodeLines": 70
+    },
+    {
+      "File": "windows/scripts/build/Build-TargetCpython.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 13,
+      "Nesting": 2,
+      "CodeLines": 65
+    },
+    {
+      "File": "windows/scripts/build/Build-TargetSdistWheel.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 13,
+      "Nesting": 3,
+      "CodeLines": 55
+    },
+    {
+      "File": "windows/scripts/build/Build-TargetSdistWheel.ps1",
+      "Name": "Get-TargetSdistTable",
+      "Kind": "Function",
+      "Line": 28,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Build-TargetSdistWheel.ps1",
+      "Name": "Get-WheelMsvcLinkedMember",
+      "Kind": "Function",
+      "Line": 33,
+      "Cyclomatic": 1,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-ToolchainAll.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 19,
+      "Nesting": 3,
+      "CodeLines": 56
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 27
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppOrtCensusSource",
+      "Kind": "Function",
+      "Line": 41,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 219
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Invoke-TorchAppOrtCensus",
+      "Kind": "Function",
+      "Line": 262,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppOrtCensusFinding",
+      "Kind": "Function",
+      "Line": 275,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppOrtPurgeName",
+      "Kind": "Function",
+      "Line": 286,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Assert-TorchAppOrtChainOnly",
+      "Kind": "Function",
+      "Line": 296,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppLockOrtName",
+      "Kind": "Function",
+      "Line": 305,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppOrtFamily",
+      "Kind": "Function",
+      "Line": 311,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppOrtSyncArg",
+      "Kind": "Function",
+      "Line": 319,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Get-TorchAppLitertSyncArg",
+      "Kind": "Function",
+      "Line": 331,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Enable-TorchAppClangClSdist",
+      "Kind": "Function",
+      "Line": 345,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Assert-TorchAppSdistCompiler",
+      "Kind": "Function",
+      "Line": 361,
+      "Cyclomatic": 11,
+      "Nesting": 3,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Install-TorchAppEnvironment",
+      "Kind": "Function",
+      "Line": 381,
+      "Cyclomatic": 18,
+      "Nesting": 4,
+      "CodeLines": 80
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Name": "Test-TorchAppEnvironment",
+      "Kind": "Function",
+      "Line": 476,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 44
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 8,
+      "Nesting": 2,
+      "CodeLines": 69
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmBuildVersion",
+      "Kind": "Function",
+      "Line": 31,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Assert-TorchRocmTreeVersion",
+      "Kind": "Function",
+      "Line": 40,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmInitSource",
+      "Kind": "Function",
+      "Line": 49,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmCommonEnv",
+      "Kind": "Function",
+      "Line": 63,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 23
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmTorchEnv",
+      "Kind": "Function",
+      "Line": 88,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmVisionEnv",
+      "Kind": "Function",
+      "Line": 108,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Copy-TorchRocmEnv",
+      "Kind": "Function",
+      "Line": 117,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmWheelName",
+      "Kind": "Function",
+      "Line": 126,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Assert-TorchRocmSystemLibomp",
+      "Kind": "Function",
+      "Line": 132,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Assert-TorchRocmStagedWheel",
+      "Kind": "Function",
+      "Line": 140,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Set-TorchRocmProcessEnv",
+      "Kind": "Function",
+      "Line": 148,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Set-TorchRocmBootstrapEnvironment",
+      "Kind": "Function",
+      "Line": 157,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Copy-TorchRocmVenvShim",
+      "Kind": "Function",
+      "Line": 163,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Invoke-TorchRocmLogged",
+      "Kind": "Function",
+      "Line": 173,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Save-TorchRocmTree",
+      "Kind": "Function",
+      "Line": 187,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmPythonTag",
+      "Kind": "Function",
+      "Line": 198,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Install-TorchRocmBuiltWheel",
+      "Kind": "Function",
+      "Line": 206,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Get-TorchRocmRuntimePin",
+      "Kind": "Function",
+      "Line": 219,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchRocmFromSource.ps1",
+      "Name": "Save-TorchRocmRuntimeWheel",
+      "Kind": "Function",
+      "Line": 232,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchvisionRocmFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 45
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 77,
+      "Nesting": 3,
+      "CodeLines": 325
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmRocmPlan",
+      "Kind": "Function",
+      "Line": 30,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmLlvmTargetList",
+      "Kind": "Function",
+      "Line": 44,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmRocmCmakeArgs",
+      "Kind": "Function",
+      "Line": 51,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmRocmPatchSpec",
+      "Kind": "Function",
+      "Line": 64,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 27
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Invoke-TvmRocmSourcePatch",
+      "Kind": "Function",
+      "Line": 92,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Assert-TvmLlvmConfigNotRocm",
+      "Kind": "Function",
+      "Line": 102,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Test-TvmLlvmHasAmdgpu",
+      "Kind": "Function",
+      "Line": 110,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Assert-TvmLlvmHasAmdgpu",
+      "Kind": "Function",
+      "Line": 115,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmLlvmTargetsBuilt",
+      "Kind": "Function",
+      "Line": 123,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "ConvertTo-TvmLlvmTargetString",
+      "Kind": "Function",
+      "Line": 129,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmLlvmChoice",
+      "Kind": "Function",
+      "Line": 135,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "Get-TvmRocmFeatureMarker",
+      "Kind": "Function",
+      "Line": 151,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Name": "New-TvmFfiCrossWheel",
+      "Kind": "Function",
+      "Line": 163,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 50
+    },
+    {
+      "File": "windows/scripts/build/Build-VulkanValidationLayers.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 15,
+      "Nesting": 3,
+      "CodeLines": 66
+    },
+    {
+      "File": "windows/scripts/build/Build-VulkanValidationLayers.ps1",
+      "Name": "Get-VvlDependencyPlan",
+      "Kind": "Function",
+      "Line": 28,
+      "Cyclomatic": 12,
+      "Nesting": 2,
+      "CodeLines": 24
+    },
+    {
+      "File": "windows/scripts/build/Build-VulkanValidationLayers.ps1",
+      "Name": "Assert-ValidationLayerManifest",
+      "Kind": "Function",
+      "Line": 58,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Complete-Container.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 7,
+      "Nesting": 3,
+      "CodeLines": 54
+    },
+    {
+      "File": "windows/scripts/build/Complete-Container.ps1",
+      "Name": "Get-ToolBanner",
+      "Kind": "Function",
+      "Line": 23,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Complete-Container.ps1",
+      "Name": "Get-DirectoryVersion",
+      "Kind": "Function",
+      "Line": 53,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/Copy-Arm64TorchWheels.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 11,
+      "Nesting": 3,
+      "CodeLines": 35
+    },
+    {
+      "File": "windows/scripts/build/Copy-Arm64TorchWheels.ps1",
+      "Name": "Get-Arm64WheelStack",
+      "Kind": "Function",
+      "Line": 32,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 51
+    },
+    {
+      "File": "windows/scripts/build/Copy-Arm64VsRuntime.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 21,
+      "Nesting": 3,
+      "CodeLines": 63
+    },
+    {
+      "File": "windows/scripts/build/Copy-CudaRuntime.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 12,
+      "Nesting": 2,
+      "CodeLines": 38
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 27,
+      "Nesting": 3,
+      "CodeLines": 78
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-WheelDistName",
+      "Kind": "Function",
+      "Line": 47,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-RequirementName",
+      "Kind": "Function",
+      "Line": 51,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "ConvertTo-CmdSafeRequirement",
+      "Kind": "Function",
+      "Line": 57,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Select-ActiveRequirement",
+      "Kind": "Function",
+      "Line": 62,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-WheelRequirements",
+      "Kind": "Function",
+      "Line": 82,
+      "Cyclomatic": 6,
+      "Nesting": 3,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Save-TargetRequirement",
+      "Kind": "Function",
+      "Line": 102,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-StoreWheel",
+      "Kind": "Function",
+      "Line": 110,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-TargetRequirement",
+      "Kind": "Function",
+      "Line": 114,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-UnresolvedTargetRequirement",
+      "Kind": "Function",
+      "Line": 122,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Assert-TargetEdgeResolved",
+      "Kind": "Function",
+      "Line": 133,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Name": "Get-ForeignAbiWheel",
+      "Kind": "Function",
+      "Line": 139,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Copy-TensorrtRuntime.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 39
+    },
+    {
+      "File": "windows/scripts/build/Debug-LitertlmLink.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 21,
+      "Nesting": 4,
+      "CodeLines": 65
+    },
+    {
+      "File": "windows/scripts/build/Export-Arm64Bundle.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 9,
+      "Nesting": 1,
+      "CodeLines": 26
+    },
+    {
+      "File": "windows/scripts/build/Export-LitertLmBridge.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 0
+    },
+    {
+      "File": "windows/scripts/build/Export-LitertLmBridge.ps1",
+      "Name": "Invoke-LiteRtLmExportStubs",
+      "Kind": "Function",
+      "Line": 6,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 76
+    },
+    {
+      "File": "windows/scripts/build/Export-LitertLmBridge.ps1",
+      "Name": "Invoke-LiteRtLmSupportGraft",
+      "Kind": "Function",
+      "Line": 86,
+      "Cyclomatic": 14,
+      "Nesting": 2,
+      "CodeLines": 67
+    },
+    {
+      "File": "windows/scripts/build/Export-LitertLmBridge.ps1",
+      "Name": "Add-LiteRtLmV014OrphanSources",
+      "Kind": "Function",
+      "Line": 162,
+      "Cyclomatic": 7,
+      "Nesting": 2,
+      "CodeLines": 69
+    },
+    {
+      "File": "windows/scripts/build/Import-Versions.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 10,
+      "Nesting": 3,
+      "CodeLines": 37
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Get-LlamaCppBackendSpec",
+      "Kind": "Function",
+      "Line": 40,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 22
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Assert-LlamaCppLane",
+      "Kind": "Function",
+      "Line": 69,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Get-LlamaCppAsset",
+      "Kind": "Function",
+      "Line": 88,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Assert-LlamaCppZipEntry",
+      "Kind": "Function",
+      "Line": 103,
+      "Cyclomatic": 8,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Get-LlamaCppBuiltRecord",
+      "Kind": "Function",
+      "Line": 124,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Write-LlamaCppManifest",
+      "Kind": "Function",
+      "Line": 147,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Install-LlamaCpp.ps1",
+      "Name": "Install-LlamaCpp",
+      "Kind": "Function",
+      "Line": 173,
+      "Cyclomatic": 9,
+      "Nesting": 2,
+      "CodeLines": 51
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 12,
+      "Nesting": 2,
+      "CodeLines": 58
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmPinMap",
+      "Kind": "Function",
+      "Line": 40,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Test-TorchRocmLane",
+      "Kind": "Function",
+      "Line": 54,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "ConvertFrom-TorchRocmFileName",
+      "Kind": "Function",
+      "Line": 70,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmPinnedFile",
+      "Kind": "Function",
+      "Line": 95,
+      "Cyclomatic": 7,
+      "Nesting": 1,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmGpuTarget",
+      "Kind": "Function",
+      "Line": 122,
+      "Cyclomatic": 9,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmWheelSet",
+      "Kind": "Function",
+      "Line": 150,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmBuiltWheel",
+      "Kind": "Function",
+      "Line": 178,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Assert-TorchRocmGpuCoverage",
+      "Kind": "Function",
+      "Line": 200,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Assert-TorchRocmOrtUnchanged",
+      "Kind": "Function",
+      "Line": 213,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Assert-TorchRocmVenvMatch",
+      "Kind": "Function",
+      "Line": 223,
+      "Cyclomatic": 8,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmCachedPath",
+      "Kind": "Function",
+      "Line": 248,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmRequirement",
+      "Kind": "Function",
+      "Line": 257,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Get-TorchRocmInstallCommand",
+      "Kind": "Function",
+      "Line": 273,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Install-TorchRocm.ps1",
+      "Name": "Save-TorchRocmWheel",
+      "Kind": "Function",
+      "Line": 294,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/Invoke-RepoContainerBuild.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 65
+    },
+    {
+      "File": "windows/scripts/build/Invoke-StagedTests.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 13,
+      "Nesting": 3,
+      "CodeLines": 54
+    },
+    {
+      "File": "windows/scripts/build/Invoke-StagedTests.ps1",
+      "Name": "Format-StagedExitCode",
+      "Kind": "Function",
+      "Line": 47,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Invoke-StagedTests.ps1",
+      "Name": "Get-StagedCrashReport",
+      "Kind": "Function",
+      "Line": 54,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Invoke-StagedTests.ps1",
+      "Name": "Add-StagedCount",
+      "Kind": "Function",
+      "Line": 70,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/Invoke-StagedTests.ps1",
+      "Name": "Get-StagedTestCount",
+      "Kind": "Function",
+      "Line": 74,
+      "Cyclomatic": 14,
+      "Nesting": 3,
+      "CodeLines": 32
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 9,
+      "Nesting": 3,
+      "CodeLines": 31
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Test-FfmpegListingRow",
+      "Kind": "Function",
+      "Line": 17,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegAmfExpectation",
+      "Kind": "Function",
+      "Line": 28,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegAmfListingFinding",
+      "Kind": "Function",
+      "Line": 38,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegVulkanExpectation",
+      "Kind": "Function",
+      "Line": 44,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegVulkanListingFinding",
+      "Kind": "Function",
+      "Line": 56,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegFeatureListingFinding",
+      "Kind": "Function",
+      "Line": 61,
+      "Cyclomatic": 8,
+      "Nesting": 3,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegVulkanImportFinding",
+      "Kind": "Function",
+      "Line": 83,
+      "Cyclomatic": 5,
+      "Nesting": 3,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/FFmpeg.ps1",
+      "Name": "Get-FfmpegAmfInstallFinding",
+      "Kind": "Function",
+      "Line": 97,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 66
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Name": "Get-OpenClIcdRegistryFinding",
+      "Kind": "Function",
+      "Line": 22,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Name": "Get-VulkanSdkHeaderVersion",
+      "Kind": "Function",
+      "Line": 38,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Name": "Get-VulkanLoaderCopyFinding",
+      "Kind": "Function",
+      "Line": 47,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Name": "Get-GpuLoaderProbeFinding",
+      "Kind": "Function",
+      "Line": 60,
+      "Cyclomatic": 25,
+      "Nesting": 3,
+      "CodeLines": 51
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Name": "Invoke-GpuLoaderProbe",
+      "Kind": "Function",
+      "Line": 164,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 7,
+      "Nesting": 2,
+      "CodeLines": 30
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "Get-GstPeExportName",
+      "Kind": "Function",
+      "Line": 17,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "Get-GstDllClosure",
+      "Kind": "Function",
+      "Line": 39,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "Get-GstHiprtcDllName",
+      "Kind": "Function",
+      "Line": 48,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "Get-GstHipRuntimeFinding",
+      "Kind": "Function",
+      "Line": 58,
+      "Cyclomatic": 9,
+      "Nesting": 2,
+      "CodeLines": 36
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "Invoke-GstInspectProbe",
+      "Kind": "Function",
+      "Line": 96,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GStreamer.ps1",
+      "Name": "Get-GstPluginFinding",
+      "Kind": "Function",
+      "Line": 115,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 32
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "Get-ElfHeaderRecord",
+      "Kind": "Function",
+      "Line": 19,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "Get-AmdgpuCodeObjectFinding",
+      "Kind": "Function",
+      "Line": 40,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "Get-IreeHipSearchPathFinding",
+      "Kind": "Function",
+      "Line": 59,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "Get-IreeRocmGateMlir",
+      "Kind": "Function",
+      "Line": 69,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "Get-IreeRocmPythonProbe",
+      "Kind": "Function",
+      "Line": 77,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/IREE.ps1",
+      "Name": "Get-IreeRocmFinding",
+      "Kind": "Function",
+      "Line": 101,
+      "Cyclomatic": 13,
+      "Nesting": 2,
+      "CodeLines": 50
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LiteRtLm.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LiteRtLm.ps1",
+      "Name": "Get-LiteRtLmGpuExport",
+      "Kind": "Function",
+      "Line": 22,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LiteRtLm.ps1",
+      "Name": "Get-LiteRtLmFileFinding",
+      "Kind": "Function",
+      "Line": 36,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LiteRtLm.ps1",
+      "Name": "Get-LiteRtLmLoadFinding",
+      "Kind": "Function",
+      "Line": 49,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LiteRtLm.ps1",
+      "Name": "Get-LiteRtLmHelpFinding",
+      "Kind": "Function",
+      "Line": 73,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 27
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "ConvertTo-PeFileOffset",
+      "Kind": "Function",
+      "Line": 31,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Read-PeString",
+      "Kind": "Function",
+      "Line": 46,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Invoke-PeReader",
+      "Kind": "Function",
+      "Line": 62,
+      "Cyclomatic": 1,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-PeSymbolTable",
+      "Kind": "Function",
+      "Line": 73,
+      "Cyclomatic": 13,
+      "Nesting": 3,
+      "CodeLines": 41
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-ClangOffloadBundleTarget",
+      "Kind": "Function",
+      "Line": 119,
+      "Cyclomatic": 8,
+      "Nesting": 2,
+      "CodeLines": 25
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-HipOffloadTarget",
+      "Kind": "Function",
+      "Line": 149,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Resolve-LoaderDll",
+      "Kind": "Function",
+      "Line": 163,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Test-SameDirectory",
+      "Kind": "Function",
+      "Line": 177,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppHipLinkFinding",
+      "Kind": "Function",
+      "Line": 188,
+      "Cyclomatic": 14,
+      "Nesting": 4,
+      "CodeLines": 39
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppHipTargetFinding",
+      "Kind": "Function",
+      "Line": 233,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppCheckSpec",
+      "Kind": "Function",
+      "Line": 251,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppManifestFinding",
+      "Kind": "Function",
+      "Line": 268,
+      "Cyclomatic": 12,
+      "Nesting": 2,
+      "CodeLines": 29
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppRocmShadowFinding",
+      "Kind": "Function",
+      "Line": 303,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppPathFinding",
+      "Kind": "Function",
+      "Line": 317,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-PathDirectory",
+      "Kind": "Function",
+      "Line": 329,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppRunFinding",
+      "Kind": "Function",
+      "Line": 345,
+      "Cyclomatic": 7,
+      "Nesting": 1,
+      "CodeLines": 22
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppVulkanLoaderFinding",
+      "Kind": "Function",
+      "Line": 372,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppProbeScript",
+      "Kind": "Function",
+      "Line": 394,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppProbeModuleFinding",
+      "Kind": "Function",
+      "Line": 420,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppVulkanProbeFinding",
+      "Kind": "Function",
+      "Line": 440,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Invoke-LlamaCppLoadProbe",
+      "Kind": "Function",
+      "Line": 462,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppVulkanLoadFinding",
+      "Kind": "Function",
+      "Line": 482,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppHipLoadFinding",
+      "Kind": "Function",
+      "Line": 495,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppSearchDir",
+      "Kind": "Function",
+      "Line": 512,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppHipFinding",
+      "Kind": "Function",
+      "Line": 521,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/LlamaCpp.ps1",
+      "Name": "Get-LlamaCppVulkanFinding",
+      "Kind": "Function",
+      "Line": 546,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 10,
+      "Nesting": 1,
+      "CodeLines": 32
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "Get-MigraphxCheckInstallFinding",
+      "Kind": "Function",
+      "Line": 21,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "Get-MigraphxCheckLicenseFinding",
+      "Kind": "Function",
+      "Line": 38,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "Get-MigraphxCheckHipSidecarFinding",
+      "Kind": "Function",
+      "Line": 51,
+      "Cyclomatic": 5,
+      "Nesting": 2,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "Get-MigraphxCheckImportFinding",
+      "Kind": "Function",
+      "Line": 66,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 19
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "ConvertTo-MigraphxLoadFinding",
+      "Kind": "Function",
+      "Line": 87,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/MIGraphX.ps1",
+      "Name": "Invoke-MigraphxLoadProbe",
+      "Kind": "Function",
+      "Line": 104,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OpenCV.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OpenCV.ps1",
+      "Name": "Get-OcvRocmBuildInfoFinding",
+      "Kind": "Function",
+      "Line": 13,
+      "Cyclomatic": 8,
+      "Nesting": 3,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OpenCV.ps1",
+      "Name": "Get-OcvRocmOpenClLoaderFinding",
+      "Kind": "Function",
+      "Line": 37,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 11,
+      "Nesting": 2,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Read-OrtWebGpuMarker",
+      "Kind": "Function",
+      "Line": 19,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Get-OrtWebGpuDxcKey",
+      "Kind": "Function",
+      "Line": 26,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 3
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Get-OrtWebGpuRetiredDxcDll",
+      "Kind": "Function",
+      "Line": 31,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 1
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Get-OrtWebGpuMarkerFinding",
+      "Kind": "Function",
+      "Line": 34,
+      "Cyclomatic": 14,
+      "Nesting": 3,
+      "CodeLines": 30
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Test-OrtWebGpuOutcome",
+      "Kind": "Function",
+      "Line": 66,
+      "Cyclomatic": 2,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Get-OrtWebGpuProbeSource",
+      "Kind": "Function",
+      "Line": 72,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 61
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Invoke-OrtWebGpuProbe",
+      "Kind": "Function",
+      "Line": 135,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Name": "Get-OrtWebGpuInterpreterFinding",
+      "Kind": "Function",
+      "Line": 146,
+      "Cyclomatic": 19,
+      "Nesting": 2,
+      "CodeLines": 28
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 7,
+      "Nesting": 1,
+      "CodeLines": 20
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmProbeSource",
+      "Kind": "Function",
+      "Line": 23,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 61
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmRocblasGpu",
+      "Kind": "Function",
+      "Line": 86,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmReportSection",
+      "Kind": "Function",
+      "Line": 98,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmExtraFinding",
+      "Kind": "Function",
+      "Line": 106,
+      "Cyclomatic": 10,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmFinding",
+      "Kind": "Function",
+      "Line": 122,
+      "Cyclomatic": 20,
+      "Nesting": 2,
+      "CodeLines": 34
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmImageFinding",
+      "Kind": "Function",
+      "Line": 161,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Name": "Get-TorchRocmVenvReport",
+      "Kind": "Function",
+      "Line": 169,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 11,
+      "Nesting": 2,
+      "CodeLines": 30
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Read-TvmRocmFeatureMarker",
+      "Kind": "Function",
+      "Line": 22,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmSidecarFinding",
+      "Kind": "Function",
+      "Line": 36,
+      "Cyclomatic": 8,
+      "Nesting": 2,
+      "CodeLines": 21
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmRuntimeProbe",
+      "Kind": "Function",
+      "Line": 63,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmMarkerFinding",
+      "Kind": "Function",
+      "Line": 79,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmLlvmTargetFinding",
+      "Kind": "Function",
+      "Line": 92,
+      "Cyclomatic": 7,
+      "Nesting": 3,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmRuntimeFinding",
+      "Kind": "Function",
+      "Line": 108,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 8
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmCodegenProbe",
+      "Kind": "Function",
+      "Line": 122,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 50
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Get-TvmRocmCodegenFinding",
+      "Kind": "Function",
+      "Line": 177,
+      "Cyclomatic": 8,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/TVM.ps1",
+      "Name": "Invoke-TvmRocmProbe",
+      "Kind": "Function",
+      "Line": 189,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Set-TensorrtTree.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 17,
+      "Nesting": 3,
+      "CodeLines": 62
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 21,
+      "Nesting": 2,
+      "CodeLines": 118
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Name": "Get-BundleVerdict",
+      "Kind": "Function",
+      "Line": 35,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 13
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Name": "Invoke-BundleStep",
+      "Kind": "Function",
+      "Line": 50,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Name": "Find-FirstPath",
+      "Kind": "Function",
+      "Line": 68,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Name": "Import-GateModule",
+      "Kind": "Function",
+      "Line": 73,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Name": "Assert-VulkanInfoSummary",
+      "Kind": "Function",
+      "Line": 81,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 222,
+      "Nesting": 6,
+      "CodeLines": 1229
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Get-CommandVersion",
+      "Kind": "Function",
+      "Line": 51,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Get-ExpectedVersion",
+      "Kind": "Function",
+      "Line": 83,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 7
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Get-TorchAppOrtProbeSource",
+      "Kind": "Function",
+      "Line": 93,
+      "Cyclomatic": 1,
+      "Nesting": 0,
+      "CodeLines": 47
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Resolve-ChainOrtWheel",
+      "Kind": "Function",
+      "Line": 142,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Get-TorchAppOrtFinding",
+      "Kind": "Function",
+      "Line": 162,
+      "Cyclomatic": 20,
+      "Nesting": 2,
+      "CodeLines": 37
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Invoke-TorchAppOrtProbe",
+      "Kind": "Function",
+      "Line": 201,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Name": "Get-OrtCrateEnvFinding",
+      "Kind": "Function",
+      "Line": 209,
+      "Cyclomatic": 13,
+      "Nesting": 2,
+      "CodeLines": 29
+    },
+    {
+      "File": "windows/scripts/build/Test-Health.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 18,
+      "Nesting": 2,
+      "CodeLines": 57
+    },
+    {
+      "File": "windows/scripts/build/Test-Health.ps1",
+      "Name": "Check",
+      "Kind": "Function",
+      "Line": 21,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 10
+    },
+    {
+      "File": "windows/scripts/build/Test-Health.ps1",
+      "Name": "Resolve-ToolPath",
+      "Kind": "Function",
+      "Line": 33,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 11
+    },
+    {
+      "File": "windows/scripts/build/Test-Health.ps1",
+      "Name": "Invoke-HealthToolVersion",
+      "Kind": "Function",
+      "Line": 61,
+      "Cyclomatic": 5,
+      "Nesting": 1,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Test-RocmImage.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 12,
+      "Nesting": 3,
+      "CodeLines": 43
+    },
+    {
+      "File": "windows/scripts/build/Test-RocmImage.ps1",
+      "Name": "Get-RocmImageEnvFinding",
+      "Kind": "Function",
+      "Line": 32,
+      "Cyclomatic": 10,
+      "Nesting": 2,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Test-RocmImage.ps1",
+      "Name": "Get-RocmShadowFinding",
+      "Kind": "Function",
+      "Line": 53,
+      "Cyclomatic": 4,
+      "Nesting": 2,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-RocmImage.ps1",
+      "Name": "Get-RocmKernelCompileFinding",
+      "Kind": "Function",
+      "Line": 73,
+      "Cyclomatic": 3,
+      "Nesting": 1,
+      "CodeLines": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-RocmImage.ps1",
+      "Name": "Get-RocmCheckFinding",
+      "Kind": "Function",
+      "Line": 93,
+      "Cyclomatic": 6,
+      "Nesting": 2,
+      "CodeLines": 17
+    },
+    {
+      "File": "windows/scripts/build/Test-RocmImage.ps1",
+      "Name": "Get-RocmSpikeFinding",
+      "Kind": "Function",
+      "Line": 116,
+      "Cyclomatic": 6,
+      "Nesting": 1,
+      "CodeLines": 16
+    },
+    {
+      "File": "windows/scripts/build/Test-TargetArch.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 67,
+      "Nesting": 5,
+      "CodeLines": 185
+    },
+    {
+      "File": "windows/scripts/build/Test-TargetArch.ps1",
+      "Name": "Test-NsisInstaller",
+      "Kind": "Function",
+      "Line": 73,
+      "Cyclomatic": 3,
+      "Nesting": 2,
+      "CodeLines": 9
+    },
+    {
+      "File": "windows/scripts/build/Test-TargetArch.ps1",
+      "Name": "Format-Machine",
+      "Kind": "Function",
+      "Line": 82,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 6
+    },
+    {
+      "File": "windows/scripts/build/Test-TargetArch.ps1",
+      "Name": "Get-ArchiveMachine",
+      "Kind": "Function",
+      "Line": 90,
+      "Cyclomatic": 14,
+      "Nesting": 4,
+      "CodeLines": 25
+    },
+    {
+      "File": "windows/scripts/build/Test-TargetArch.ps1",
+      "Name": "Add-MachineVerdict",
+      "Kind": "Function",
+      "Line": 117,
+      "Cyclomatic": 13,
+      "Nesting": 1,
+      "CodeLines": 12
+    },
+    {
+      "File": "windows/scripts/build/Test-Toolchain.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 26,
+      "Nesting": 4,
+      "CodeLines": 114
+    },
+    {
+      "File": "windows/scripts/build/Test-Toolchain.ps1",
+      "Name": "Test-PinnedBanner",
+      "Kind": "Function",
+      "Line": 21,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 4
+    },
+    {
+      "File": "windows/scripts/build/Test-Toolchain.ps1",
+      "Name": "Invoke-Arm64StrictPolicy",
+      "Kind": "Function",
+      "Line": 105,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 5
+    },
+    {
+      "File": "windows/scripts/build/Test-Toolchain.ps1",
+      "Name": "Assert-Arm64ComponentLib",
+      "Kind": "Function",
+      "Line": 112,
+      "Cyclomatic": 2,
+      "Nesting": 1,
+      "CodeLines": 14
+    },
+    {
+      "File": "windows/scripts/build/Write-BundleManifest.ps1",
+      "Name": "<script>",
+      "Kind": "Script",
+      "Line": 1,
+      "Cyclomatic": 36,
+      "Nesting": 2,
+      "CodeLines": 165
+    },
+    {
+      "File": "windows/scripts/build/Write-BundleManifest.ps1",
+      "Name": "Get-BundleEnvironmentAction",
+      "Kind": "Function",
+      "Line": 27,
+      "Cyclomatic": 4,
+      "Nesting": 1,
+      "CodeLines": 18
+    },
+    {
+      "File": "windows/scripts/build/Write-BundleManifest.ps1",
+      "Name": "ConvertTo-BundleEnvironmentScript",
+      "Kind": "Function",
+      "Line": 46,
+      "Cyclomatic": 8,
+      "Nesting": 3,
+      "CodeLines": 24
+    }
+  ],
+  "Findings": [
+    {
+      "File": "windows/scripts/build/Build-FfmpegFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 116,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 221,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-GstreamerFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Nesting",
+      "Actual": 8,
+      "Limit": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-HailortFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 20,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-IreeFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 54,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 19,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmBazel.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 25,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 96,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-LitertLmFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Nesting",
+      "Actual": 6,
+      "Limit": 5
+    },
+    {
+      "File": "windows/scripts/build/Build-LlvmFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 16,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 58,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OnnxGenaiFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 34,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 70,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OpencvFromSource.ps1",
+      "Line": 391,
+      "Name": "Get-OpencvOrtConfigureFinding",
+      "Metric": "Cyclomatic",
+      "Actual": 19,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-OrtAmdgpuEpFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 22,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-ResourceSampler.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 18,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-ToolchainAll.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 19,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Line": 41,
+      "Name": "Get-TorchAppOrtCensusSource",
+      "Metric": "CodeLines",
+      "Actual": 219,
+      "Limit": 80
+    },
+    {
+      "File": "windows/scripts/build/Build-TorchApp.ps1",
+      "Line": 381,
+      "Name": "Install-TorchAppEnvironment",
+      "Metric": "Cyclomatic",
+      "Actual": 18,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Build-TvmFromSource.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 77,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Copy-Arm64VsRuntime.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 21,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Copy-TargetPythonDeps.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 27,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Debug-LitertlmLink.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 21,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/GpuLoaders.ps1",
+      "Line": 60,
+      "Name": "Get-GpuLoaderProbeFinding",
+      "Metric": "Cyclomatic",
+      "Actual": 25,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/OrtWebGpu.ps1",
+      "Line": 146,
+      "Name": "Get-OrtWebGpuInterpreterFinding",
+      "Metric": "Cyclomatic",
+      "Actual": 19,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/rocm-checks/Torch.ps1",
+      "Line": 122,
+      "Name": "Get-TorchRocmFinding",
+      "Metric": "Cyclomatic",
+      "Actual": 20,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Set-TensorrtTree.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 17,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-Arm64Bundle.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 21,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 222,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Nesting",
+      "Actual": 6,
+      "Limit": 5
+    },
+    {
+      "File": "windows/scripts/build/Test-Container.ps1",
+      "Line": 162,
+      "Name": "Get-TorchAppOrtFinding",
+      "Metric": "Cyclomatic",
+      "Actual": 20,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-Health.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 18,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-TargetArch.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 67,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Test-Toolchain.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 26,
+      "Limit": 15
+    },
+    {
+      "File": "windows/scripts/build/Write-BundleManifest.ps1",
+      "Line": 1,
+      "Name": "<script>",
+      "Metric": "Cyclomatic",
+      "Actual": 36,
+      "Limit": 15
+    }
+  ]
+}

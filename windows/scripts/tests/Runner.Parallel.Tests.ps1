@@ -14,6 +14,7 @@ function New-RunnerCopy {
     $runner = [IO.File]::ReadAllText((Join-Path $tests 'Invoke-Tests.ps1'))
     foreach ($m in [regex]::Matches($runner, "Join-Path \`$modDir '([^']+)'")) { Set-Content (Join-Path $mods $m.Groups[1].Value) '' }
     Copy-Item (Join-Path $src 'modules\WindowsFanOut.Common.psm1') $mods -Force
+    Copy-Item (Join-Path $src 'modules\WindowsAst.Common.psm1') $mods -Force
     foreach ($name in $Suites.Keys) { Set-Content (Join-Path $tests $name) $Suites[$name] }
     return $tests
 }

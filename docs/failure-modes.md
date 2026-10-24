@@ -1998,6 +1998,8 @@ the A/B: it freezes the five real offenders as preprocessed `.i` files (`-Captur
 OpenCV bump) and then compiles them with the workaround OFF against any candidate `clang-cl`.
 Because a frozen `.i` has no `#include`s left, the run phase needs no OpenCV tree, no VsDevCmd and
 no container — only a compiler that can target `aarch64-pc-windows-msvc`.
+Its plan builder separates token selection and workaround removal from each
+compiler run; the run phase validates corpus hashes before it grades candidates.
 
 It **gates every verdict on its own control arms**: the stock compiler must still reproduce the
 abort with the workaround off, and must still compile clean with it on. If either fails the run

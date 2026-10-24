@@ -244,25 +244,33 @@ Describe 'Build-Buildkit.ps1: where the publish gate runs' {
 
 # A fake buildctl records each solve as '<Dockerfile>|<BASE_IMAGE>', fails $FailDockerfile, and serves $Config to `debug get`.
 $script:gateScenarioPrelude = @'
-param($Dir, $FailDockerfile, $ImageEnvModule, $Config, $NoMetadata)
+param($Dir, $FailDockerfile, $ImageEnvModule, $Config, $NoMetadata, $FailAttempts)
 Import-Module $ImageEnvModule -Force -DisableNameChecking
 $script:Solves = [System.Collections.Generic.List[string]]::new()
 $script:ConfigReads = 0
+$script:SolveAttemptCount = 0
+$script:CooldownCalls = [System.Collections.Generic.List[string]]::new()
 $script:LogDir = $Dir; $script:RunId = 'test'; $script:StageTimings = @{}
 $script:BkHistoryGateValue = @{ EndpointHost = @('10.0.0.26'); Bucket = 'kata-bucket'; Region = 'kata-region' }
 $repoRoot = $Dir; $SkipHostChecks = $true; $NoCacheStage = @(); $NoCache = $false
 $ImportCacheRef = ''; $ExportCacheRef = ''; $TargetArch = 'amd64'; $BuildArg = @()
 function Assert-StageDiskHeadroom { }
 function Set-BuildPhase { param($Name) }
-function Invoke-TransientCooldown { $false }
+function Invoke-TransientCooldown {
+    param($Tail, $PreviousTail, $Attempt, $MaxAttempts, $Label, $CooldownSeconds)
+    [void]$script:CooldownCalls.Add("$Attempt/$MaxAttempts")
+    return ($FailAttempts -gt 0 -and $Attempt -lt $MaxAttempts)
+}
 $BuildCtl = {
     if ($args[0] -eq 'debug') { $script:ConfigReads++; $global:LASTEXITCODE = 0; return $Config }
     $file = "$($args | Where-Object { "$_" -like 'filename=*' })" -replace '^filename=', ''
     $base = "$($args | Where-Object { "$_" -like 'build-arg:BASE_IMAGE=*' })" -replace '^build-arg:BASE_IMAGE=', ''
     $script:Solves.Add("$file|$base")
+    $script:SolveAttemptCount++
     $meta = [array]::IndexOf([string[]]$args, '--metadata-file')
     if ($meta -ge 0 -and -not $NoMetadata) { Set-Content -LiteralPath $args[$meta + 1] -Value ('{"containerimage.config.digest":"sha256:' + ('ab' * 32) + '"}') }
-    $global:LASTEXITCODE = if ($FailDockerfile -and $file -eq $FailDockerfile) { 1 } else { 0 }
+    $global:LASTEXITCODE = if ($FailAttempts -gt 0 -and $script:SolveAttemptCount -le $FailAttempts) { 1 }
+        elseif ($FailDockerfile -and $file -eq $FailDockerfile) { 1 } else { 0 }
 }
 '@
 
@@ -274,21 +282,23 @@ $script:leakyConfigJson = @{ history = @(@{ created_by = 'ARG SCCACHE_ENDPOINT=h
 function Invoke-GateScenario {
     param([Parameter(Mandatory)][string]$Driver, [Parameter(Mandatory)][scriptblock]$Scenario,
         [string]$FailDockerfile = '', [string]$Find = '', [AllowEmptyString()][string]$Replace = '',
-        [string]$Config = $script:cleanConfigJson, [switch]$NoMetadata)
+        [string]$Config = $script:cleanConfigJson, [switch]$NoMetadata, [int]$FailAttempts = 0)
     $ast = ConvertTo-TestScriptAst -Text $Driver
     $state = @($ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] -and
                 $n.Left.Extent.Text -in @('$script:NoCacheStageMatched', '$script:BkBuiltTags', '$script:BkGatedImages') }, $true) |
             ForEach-Object { $_.Extent.Text })
     if ($state.Count -ne 3) { throw "scenario: found $($state.Count) of the driver's three state initialisers" }
     Invoke-InTestDir { param($dir)
-        $m = Import-FunctionModule -Text $Driver -FunctionName 'Invoke-BkStage', 'Invoke-BkPublishGate', 'Invoke-BkHistoryGate' -Dir $dir -Prefix Scn `
+        $m = Import-FunctionModule -Text $Driver -FunctionName 'Test-BkParentNeedsGate', 'Get-BkStageCacheArguments',
+            'Get-BkStageBaseArguments', 'Get-BkStageBuildArgOptions', 'Get-BkStageMetadataFile', 'Get-BkStageRetryTail',
+            'Invoke-BkStage', 'Invoke-BkPublishGate', 'Invoke-BkHistoryGate' -Dir $dir -Prefix Scn `
             -Prelude ($script:gateScenarioPrelude + "`n" + ($state -join "`n")) -Find $Find -Replace $Replace `
-            -ArgumentList $dir, $FailDockerfile, $script:imageEnvModule, $Config, ([bool]$NoMetadata)
+            -ArgumentList $dir, $FailDockerfile, $script:imageEnvModule, $Config, ([bool]$NoMetadata), $FailAttempts
         try {
             $err = ''
             try { $null = & $m $Scenario 6>$null } catch { $err = $_.Exception.Message }
             [pscustomobject]@{ Solves = (@(& $m { $script:Solves }) -join '; '); Error = $err; Reads = (& $m { $script:ConfigReads })
-                Leftover = @(Get-ChildItem -LiteralPath $dir -Filter '*.metadata.json').Count }
+                Cooldowns = (@(& $m { $script:CooldownCalls }) -join '; '); Leftover = @(Get-ChildItem -LiteralPath $dir -Filter '*.metadata.json').Count }
         } finally { Remove-Module $m -Force }
     }
 }
@@ -309,7 +319,7 @@ Describe 'Build-Buildkit.ps1: a parent this run did not build is graded before a
             @{ Why = 'the gate grades exactly the image it is handed, never that image''s own parent'
                 Scenario = { Invoke-BkPublishGate -Image 'img:final' }; Want = '^Dockerfile\.publish-gate\|img:final$' },
             @{ Why = 'a driver without the parent gate solves the stage ungraded, so the first case bites (mutation)'
-                Scenario = $oneStage; Find = 'if (-not $NoParentGate -and $parent -and'; Replace = 'if ($false -and'
+                Scenario = $oneStage; Find = 'if (Test-BkParentNeedsGate -Parent $parent -NoParentGate:$NoParentGate) {'; Replace = 'if ($false) {'
                 Want = '^Dockerfile\.media-builder\|img:toolchain$' },
             @{ Why = 'a driver that forgets what it built re-grades its own output, so the second case bites (mutation)'
                 Scenario = $chain; Find = 'if ($Tag) { $null = $script:BkBuiltTags.Add($Tag) }'; Replace = ''
@@ -362,5 +372,42 @@ Describe 'Build-Buildkit.ps1: the history gate grades every image a stage export
         Assert-True $drv.Contains($gateCall) 'mutation target is gone'
         $r = Invoke-GateScenario -Driver $drv -Scenario $chain -Config $script:leakyConfigJson -Find $gateCall -Replace ''
         Assert-Equal '' $r.Error
+    }
+}
+
+function Assert-BkRetryBudget {
+    param([Parameter(Mandatory)][string]$Driver, [Parameter(Mandatory)][scriptblock]$Scenario,
+        [Parameter(Mandatory)][int]$FailAttempts, [Parameter(Mandatory)][int]$ExpectedAttempts,
+        [Parameter(Mandatory)][string]$ExpectedCooldowns)
+    $result = Invoke-GateScenario -Driver $Driver -Scenario $Scenario -FailAttempts $FailAttempts
+    Assert-Equal '' $result.Error
+    Assert-Equal $ExpectedAttempts @($result.Solves -split '; ').Count
+    Assert-Equal $ExpectedCooldowns $result.Cooldowns
+}
+
+Describe 'Build-Buildkit.ps1: per-stage retry budgets' {
+    $driver = $script:bkDriver
+    $defaultStage = { Invoke-BkStage -Dockerfile 'windows/Dockerfile.base' -NoOutput }
+    $mergeStage = { Invoke-BkStage -Dockerfile 'windows/Dockerfile.media-merge-builder' -NoOutput -MaxAttempts 5 }
+
+    It 'uses the three-attempt default and forwards the full budget to cooldown' {
+        Assert-BkRetryBudget -Driver $driver -Scenario $defaultStage -FailAttempts 2 -ExpectedAttempts 3 `
+            -ExpectedCooldowns '1/3; 2/3'
+    }
+
+    It 'lets the media merge use five attempts and fails after the fifth' {
+        Assert-BkRetryBudget -Driver $driver -Scenario $mergeStage -FailAttempts 4 -ExpectedAttempts 5 `
+            -ExpectedCooldowns '1/5; 2/5; 3/5; 4/5'
+        $red = Invoke-GateScenario -Driver $driver -Scenario $mergeStage -FailAttempts 5
+        Assert-Match 'buildctl failed \(exit 1\)' $red.Error
+        Assert-Equal 5 @($red.Solves -split '; ').Count
+        Assert-Equal '1/5; 2/5; 3/5; 4/5; 5/5' $red.Cooldowns
+    }
+
+    It 'detects a loop that stops one attempt early (mutation)' {
+        $mutant = Invoke-GateScenario -Driver $driver -Scenario $mergeStage -FailAttempts 4 `
+            -Find 'for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++)' `
+            -Replace 'for ($attempt = 1; $attempt -lt $MaxAttempts; $attempt++)'
+        Assert-Throws -Body { Assert-Equal 5 @($mutant.Solves -split '; ').Count } -MessagePattern 'expected \[5\] but got \[4\]'
     }
 }

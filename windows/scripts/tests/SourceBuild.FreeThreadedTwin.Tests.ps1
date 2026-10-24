@@ -17,6 +17,24 @@ function script:New-FakeFreeThreadedInstall {
     return $Dir
 }
 
+function script:New-CmakeRecorder {
+    param([Parameter(Mandatory)][string]$Dir)
+    $bin = New-Item -ItemType Directory -Force -Path (Join-Path $Dir 'bin')
+    @('@echo off', 'echo %*>> "%WBT_CMAKE_LOG%"', 'exit /b %WBT_CMAKE_RC%') -join "`r`n" |
+        Set-Content -LiteralPath (Join-Path $bin.FullName 'cmake.bat') -Encoding ASCII
+    return $bin.FullName
+}
+
+function script:Invoke-CmakeRecorderCase {
+    param([hashtable]$Vars = @{}, [Parameter(Mandatory)][scriptblock]$Body)
+    Invoke-InTestDir { param($d)
+        $bin = New-CmakeRecorder -Dir $d
+        $environment = @{ PATH = "$bin;$env:PATH"; WBT_CMAKE_LOG = "$d\cmake.log"; WBT_CMAKE_RC = '0' }
+        foreach ($name in $Vars.Keys) { $environment[$name] = $Vars[$name] }
+        Invoke-WithEnv $environment { & $Body $d $bin }
+    }
+}
+
 function script:Get-TwinWiringText([string]$Rel) { return [System.IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $Rel)) }
 
 # A wheel at -Path whose members are -Machine PEs: -Member maps a member path to the DLLs it imports.
@@ -146,20 +164,48 @@ Describe 'Free-threaded build interpreters' {
     }
 
     It 'Invoke-CmakeConfigure -Settle configures twice, and never after a failed first configure (mutation)' {
-        Invoke-InTestDir { param($d)
-            $bin = New-Item -ItemType Directory -Force -Path "$d\bin"
-            @('@echo off', 'echo %*>> "%WBT_CMAKE_LOG%"', 'exit /b %WBT_CMAKE_RC%') -join "`r`n" | Set-Content -LiteralPath "$bin\cmake.bat" -Encoding ASCII
-            Invoke-WithEnv @{ PATH = "$bin;$env:PATH"; WBT_CMAKE_LOG = "$d\cmake.log"; WBT_CMAKE_RC = '0'; WINDOWS_TARGET_ARCH = 'amd64' } {
-                $null = Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p" -Settle
-                Assert-Equal 2 @(Get-Content "$d\cmake.log").Count 'the settling second run'
-                Remove-Item "$d\cmake.log"
-                $null = Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p"
-                Assert-Equal 1 @(Get-Content "$d\cmake.log").Count 'without -Settle, one run'
-                Remove-Item "$d\cmake.log"
-                $env:WBT_CMAKE_RC = '1'
-                Assert-Throws { Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p" -Settle } -MessagePattern 'CMake configuration failed'
-                Assert-Equal 1 @(Get-Content "$d\cmake.log").Count 'a failed configure is not repeated'
-            }
+        Invoke-CmakeRecorderCase -Vars @{ WINDOWS_TARGET_ARCH = 'amd64' } -Body { param($d)
+            $null = Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p" -Settle
+            Assert-Equal 2 @(Get-Content "$d\cmake.log").Count 'the settling second run'
+            Remove-Item "$d\cmake.log"
+            $null = Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p"
+            Assert-Equal 1 @(Get-Content "$d\cmake.log").Count 'without -Settle, one run'
+            Remove-Item "$d\cmake.log"
+            $env:WBT_CMAKE_RC = '1'
+            Assert-Throws { Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p" -Settle } -MessagePattern 'CMake configuration failed'
+            Assert-Equal 1 @(Get-Content "$d\cmake.log").Count 'a failed configure is not repeated'
+        }
+    }
+
+    It 'Invoke-CmakeConfigure keeps cross and ROCm guards before caller overrides' {
+        Invoke-CmakeRecorderCase -Vars @{ WINDOWS_TARGET_ARCH = 'arm64'; GPU_TYPE = 'rocm'; ROCM_PATH = $null; HIP_PATH = $null } -Body { param($d)
+            $env:ROCM_PATH = $d
+            $extra = @('-DCMAKE_SYSTEM_NAME=Caller', '-DCMAKE_IGNORE_PREFIX_PATH=Caller')
+            Assert-True (Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p" -TargetArch arm64 -ExtraArgs $extra)
+            $line = Get-Content -LiteralPath "$d\cmake.log" -Raw
+            $cross = $line.IndexOf('-DCMAKE_SYSTEM_NAME=Windows')
+            $rocm = $line.IndexOf("-DCMAKE_IGNORE_PREFIX_PATH=$($d -replace '\\', '/')")
+            Assert-True ($cross -ge 0 -and $cross -lt $line.IndexOf($extra[0])) 'the caller overrides the cross setting'
+            Assert-True ($rocm -ge 0 -and $rocm -lt $line.IndexOf($extra[1])) 'the caller overrides the ROCm isolation setting'
+            Remove-Item -LiteralPath "$d\cmake.log"
+            Assert-True (Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p" -TargetArch arm64 -AllowRocmPrefix)
+            Assert-False ((Get-Content -LiteralPath "$d\cmake.log" -Raw).Contains('-DCMAKE_IGNORE_PREFIX_PATH=')) 'HIP consumers opt out of isolation'
+        }
+    }
+
+    It 'Invoke-CmakeConfigure leaves CUDA bare unless the remote sccache launcher is opted in' {
+        Invoke-CmakeRecorderCase -Vars @{ WINDOWS_TARGET_ARCH = 'amd64'; SCCACHE_WEBDAV_ENDPOINT = 'https://cache.example';
+            SCCACHE_CUDA_LAUNCHER = $null; SCCACHE_MAX_JOBS = '2' } -Body { param($d, $bin)
+            New-Item -ItemType File -Path (Join-Path $bin 'sccache.exe') | Out-Null
+            Assert-True (Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p")
+            $line = Get-Content -LiteralPath "$d\cmake.log" -Raw
+            Assert-Match 'CMAKE_C_COMPILER_LAUNCHER:FILEPATH=' $line
+            Assert-Match 'CMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=' $line
+            Assert-False $line.Contains('CMAKE_CUDA_COMPILER_LAUNCHER') 'CUDA launcher stays opt-in'
+            Remove-Item -LiteralPath "$d\cmake.log"
+            $env:SCCACHE_CUDA_LAUNCHER = '1'
+            Assert-True (Invoke-CmakeConfigure -SourceDir $d -BuildDir "$d\b" -InstallPrefix "$d\p")
+            Assert-Match 'CMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=' (Get-Content -LiteralPath "$d\cmake.log" -Raw)
         }
     }
 
@@ -228,12 +274,28 @@ Describe 'Free-threaded cross twins (arm64): static gates, the venv pin and the 
             $twin = New-PeTestWheel -Path "$d\made\m-1.0-cp314-cp314t-win_arm64.whl" -Member @{ 'm.cp314t-win_arm64.pyd' = @('python314t.dll') }
             Set-Content -LiteralPath "$d\py.cmd" -Encoding ascii -Value @('@echo %*> "%~dp0args.txt"', "@copy /y ""$([IO.Path]::GetFullPath($twin))"" ""%~dp0dist\"" >nul")
             $null = New-Item -ItemType Directory -Force -Path "$d\dist"
+            Set-Content -LiteralPath "$d\dist\stale.whl" -Value 'old GIL output'
             Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64'; PYTHON_VERSION = '3.14.8'; PYTHON_WHEELS_FREE_THREADED = "$d\store" } {
                 $stored = Invoke-PythonWheelBuild -Python @{ Exe = "$d\py.cmd"; FreeThreaded = $true } -WorkingDir $d -Arguments 'setup.py bdist_wheel' `
                     -ModuleName 'm' -FreeThreaded -Distribution 'm' -DistDir "$d\dist"
                 Assert-Equal 'setup.py bdist_wheel --plat-name win_arm64' "$(Get-Content "$d\args.txt")".Trim() 'the target tag, added once'
                 Assert-Equal "$d\store\m-1.0-cp314-cp314t-win_arm64.whl" "$stored" 'gated and stored apart'
+                Assert-False (Test-Path -LiteralPath "$d\dist\stale.whl") 'old GIL output never competes with the twin'
             }
+        }
+    }
+
+    It 'cross-stage wheel planning adds the target tag once and implies staging only on a cross lane' {
+        $module = Get-Module WindowsSourceBuild.Common
+        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'arm64' } {
+            $cross = & $module { Get-PythonWheelCrossPlan -Arguments 'setup.py bdist_wheel' -ModuleName m -CrossStage }
+            Assert-Equal 'setup.py bdist_wheel --plat-name win_arm64|True' "$($cross.Arguments)|$($cross.StageOnly)"
+            $explicit = & $module { Get-PythonWheelCrossPlan -Arguments 'setup.py bdist_wheel --plat-name win_arm64' -ModuleName m -CrossStage }
+            Assert-Equal 'setup.py bdist_wheel --plat-name win_arm64' $explicit.Arguments 'an explicit platform is never duplicated'
+        }
+        Invoke-WithEnv @{ WINDOWS_TARGET_ARCH = 'amd64' } {
+            $native = & $module { Get-PythonWheelCrossPlan -Arguments 'setup.py bdist_wheel' -ModuleName m -CrossStage }
+            Assert-Equal 'setup.py bdist_wheel|False' "$($native.Arguments)|$($native.StageOnly)" 'CrossStage is a no-op on the native lane'
         }
     }
 

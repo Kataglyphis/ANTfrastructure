@@ -11,6 +11,27 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Assert-TensorrtRuntimeDll {
+    param([string]$Stable, [object]$VersionDir, [string]$Actual)
+
+    # TensorRT 10+ keeps its runtime DLLs in bin\, while older releases use lib\.
+    $binDir = Join-Path $Stable 'bin'
+    $libDir = Join-Path $Stable 'lib'
+    # The outer @() matters: one surviving dir is a bare scalar, whose .Count throws under StrictMode.
+    $dllDirs = @(@($binDir, $libDir) | Where-Object {
+        Test-Path $_
+    } | Where-Object {
+        @(Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File -ErrorAction SilentlyContinue).Count -gt 0
+    })
+    if ($dllDirs.Count -eq 0) {
+        $present = @(Get-ChildItem -LiteralPath $Stable -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) -join ', '
+        throw ("TensorRT tree '$(if ($VersionDir) { $VersionDir.Name } else { $Stable })' carries no runtime DLLs in bin\ or lib\ (subdirs: $present) — " +
+               'the EP would be dropped silently at runtime. Refusing to ship an unloadable TensorRT.')
+    }
+    $dllCount = @($dllDirs | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File }).Count
+    Write-Host "TensorRT $Actual normalized to '$Stable' ($dllCount runtime DLLs in: $(($dllDirs | Split-Path -Leaf) -join ', '))."
+}
+
 $stable = Join-Path $TensorRtRoot 'current'
 # Skips the rename, never the DLL gate.
 $alreadyStable = $false
@@ -65,19 +86,4 @@ if (-not $alreadyStable -and $ExpectedVersion -and $actual -ne $ExpectedVersion)
 
 if (-not $alreadyStable) { Rename-Item -LiteralPath $versionDir.FullName -NewName 'current' }
 
-# Fail closed; TensorRT 10+ keeps its runtime DLLs in bin\, older releases in lib\, so accept either.
-$binDir = Join-Path $stable 'bin'
-$libDir = Join-Path $stable 'lib'
-# The outer @() matters: one surviving dir is a bare scalar, whose .Count throws under StrictMode.
-$dllDirs = @(@($binDir, $libDir) | Where-Object {
-    Test-Path $_
-} | Where-Object {
-    @(Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File -ErrorAction SilentlyContinue).Count -gt 0
-})
-if ($dllDirs.Count -eq 0) {
-    $present = @(Get-ChildItem -LiteralPath $stable -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name) -join ', '
-    throw ("TensorRT tree '$(if ($versionDir) { $versionDir.Name } else { $stable })' carries no runtime DLLs in bin\ or lib\ (subdirs: $present) — " +
-           'the EP would be dropped silently at runtime. Refusing to ship an unloadable TensorRT.')
-}
-$dllCount = @($dllDirs | ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter '*.dll' -File }).Count
-Write-Host "TensorRT $actual normalized to '$stable' ($dllCount runtime DLLs in: $(($dllDirs | Split-Path -Leaf) -join ', '))."
+Assert-TensorrtRuntimeDll -Stable $stable -VersionDir $versionDir -Actual $actual

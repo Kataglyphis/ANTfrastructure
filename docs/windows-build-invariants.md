@@ -651,6 +651,9 @@ other stage and flakes proportionally — 2026-08-06 it burned its whole
 on the last try). Retries are cheap: completed RUN vertices stay cached, only
 the failed finalize/export re-runs. Raise the per-stage budget rather than
 the global default.
+The fake-buildctl retry fixture exercises default three, media five and a
+fifth-attempt failure; stage argument preparation must keep the bound on the
+retry loop and pass it to `Invoke-TransientCooldown`.
 
 ### The classic lane's fallback needs a RUNNING dockerd
 

@@ -662,6 +662,160 @@ function Resolve-ContainerBuildCommand {
     return $resolved
 }
 
+function Invoke-BindMountContainerBuild {
+    param(
+        [string]$DockerExe, [string]$Image, [string]$ContainerName, [string]$RepoRoot,
+        [string]$WorkspacePath, [string[]]$IsolationArgs, [string[]]$CacheArgs,
+        [string[]]$BuildArgs, [double]$WaitTimeoutMinutes
+    )
+    Write-Host 'Bind mount usable - building directly in the working tree.'
+    # Named and not --rm, both load-bearing: docs/windows-container-build-performance.md § Reusable implementation
+    $runContainer = "$ContainerName-bindmount"
+    $leftover = Get-ContainerInspectField -DockerExe $DockerExe -Name $runContainer -Format '{{.State.Status}}'
+    if ($leftover.Ok -and $leftover.Value -in @('running', 'paused', 'restarting')) {
+        throw ("A bind-mount build container '$runContainer' is already $($leftover.Value) - another " +
+            "build of this tree, or a runaway a timed-out wait kept for inspection. Refusing to kill " +
+            "it: wait for it, read it with 'docker logs $runContainer', or remove it with " +
+            "'docker rm -f $runContainer'.")
+    }
+    if (-not (Remove-BuildContainerSafe -DockerExe $DockerExe -Name $runContainer)) {
+        # A held name fails 'docker run' and the wait would read the stale exit code.
+        $runContainer = "$runContainer-$([Guid]::NewGuid().ToString('N').Substring(0, 6))"
+        Write-Warning "Falling back to '$runContainer' so this run cannot inherit the old container's exit code."
+    }
+    $keep = $false
+    $created = $false
+    try {
+        # Out-Host: build output must not join this function's result; $LASTEXITCODE survives the pipe.
+        & $DockerExe run --name $runContainer @IsolationArgs @CacheArgs `
+            --mount "type=bind,source=$RepoRoot,target=$WorkspacePath" `
+            -w $WorkspacePath $Image @BuildArgs | Out-Host
+        $clientExit = $LASTEXITCODE
+        $created = $true
+        if ($clientExit -ne 0) {
+            # No container means no state to wait on (unresolvable image, refused mount).
+            $started = Get-ContainerInspectField -DockerExe $DockerExe -Name $runContainer `
+                -Format '{{.State.Status}}'
+            if ($started.Missing) {
+                $created = $false
+                throw ("Container build failed (exit $clientExit) - docker run never created a container " +
+                    "to wait on. docker said: $($started.Error)")
+            }
+        }
+        $buildExit = Wait-ContainerExit -DockerExe $DockerExe -Name $runContainer -Label 'bindmount' `
+            -TimeoutMinutes $WaitTimeoutMinutes
+        if ($clientExit -ne $buildExit) {
+            # Never silent: if a green build is ever wrong, this line is the first place to look.
+            Write-Warning ("The docker client exited $clientExit but the container's real exit code is " +
+                "$buildExit (dropped client pipe). Trusting the container.")
+        }
+        if ($buildExit -ne 0) { throw "Container build failed (exit $buildExit)." }
+    } catch {
+        # The throws above point at 'docker logs', so a failed container is kept as evidence.
+        if ($created) {
+            $keep = $true
+            Write-Warning ("Keeping container '$runContainer' so it can be inspected: " +
+                "docker logs $runContainer - remove it with: docker rm -f $runContainer")
+        }
+        throw
+    } finally {
+        if (-not $keep) { [void](Remove-BuildContainerSafe -DockerExe $DockerExe -Name $runContainer) }
+    }
+    return [pscustomobject]@{ Transport = 'bindmount'; Container = $null; Verified = @{} }
+}
+
+function Copy-ContainerIncrementalDirs {
+    param(
+        [string]$DockerExe, [string]$Container, [string]$RepoRoot, [string]$WorkspacePath,
+        [string[]]$IncrementalDirs, [string[]]$IncrementalExclude, [bool]$ReusedContainer
+    )
+    if ($ReusedContainer) { return }
+    $streamedIn = @()
+    foreach ($buildDirName in $IncrementalDirs) {
+        if (-not $buildDirName) { continue }
+        $hostBuildDir = Join-Path $RepoRoot $buildDirName
+        if (-not (Test-Path $hostBuildDir)) { continue }
+        Write-Host "Streaming existing $buildDirName into the container (incremental build)..."
+        # Deep generated trees (cxxbridge) exceed the path limit and fail the whole transfer; they rebuild cheaply.
+        $treeIn = Copy-IntoBuildContainer -DockerExe $DockerExe -Container $Container `
+            -SourceRoot $RepoRoot -TargetPath $WorkspacePath `
+            -Items @($buildDirName) `
+            -Exclude @($IncrementalExclude | ForEach-Object { "$buildDirName/$_" })
+        if (-not $treeIn) { Write-Host '  transfer reported errors - ninja will rebuild whatever did not arrive' }
+        $streamedIn += $buildDirName
+    }
+    # A streamed-in cache holds host source paths CMake rejects; only those trees, as a reused one's objects must survive.
+    foreach ($buildDirName in $streamedIn) {
+        Write-Host "Deleting stale CMakeCache.txt in $buildDirName (container paths differ from host)..."
+        $stale = "$WorkspacePath\$buildDirName"
+        & $DockerExe exec $Container cmd /c "if exist $stale\CMakeCache.txt del /q $stale\CMakeCache.txt 2>nul" | Out-Host
+        & $DockerExe exec $Container cmd /c "if exist $stale\CMakeFiles rmdir /s /q $stale\CMakeFiles 2>nul" | Out-Host
+    }
+}
+
+function Invoke-TarPipeBuildCommand {
+    param([string]$DockerExe, [string]$Container, [string]$WorkspacePath, [string]$EntrypointPath, [string[]]$BuildArgs)
+    # The S3 level rides on this exec alone, by name: a reused container keeps whatever its docker run was given.
+    $s3Env = Get-HostSccacheS3ExecEnv
+    $s3Args = @($s3Env.Keys | ForEach-Object { '-e', $_ })
+    if ($s3Args) { Write-Host "Forwarding this host's sccache S3 level into the build by name: $(@($s3Env.Keys) -join ', ')" }
+    # docker exec bypasses the entrypoint, which provides the VS environment and the ASan runtime on PATH.
+    Invoke-WithProcessEnvironment -Environment $s3Env -ScriptBlock {
+        & $DockerExe exec @s3Args -w $WorkspacePath $Container cmd /S /C $EntrypointPath @BuildArgs | Out-Host
+    }
+    return $LASTEXITCODE
+}
+
+function Copy-TarPipeBuildOutputs {
+    param([string]$DockerExe, [string]$Container, [string]$WorkspacePath, [string]$RepoRoot,
+        [string[]]$OutputDirs, [string[]]$OutboundExclude)
+    Write-Host 'Streaming build trees and logs back to the working tree...'
+    $existing = @()
+    foreach ($dir in $OutputDirs) {
+        & $DockerExe exec $Container cmd /c "if exist $WorkspacePath\$dir (exit 0) else (exit 1)" | Out-Host
+        if ($LASTEXITCODE -eq 0) { $existing += $dir }
+    }
+    if ($existing.Count -gt 0) {
+        # Only what the host runs: the container keeps the full tree, and deep paths abort extraction.
+        $artifactsOut = Copy-FromBuildContainer -DockerExe $DockerExe -Container $Container `
+            -SourcePath $WorkspacePath -TargetRoot $RepoRoot -Items $existing -Exclude $OutboundExclude
+        if (-not $artifactsOut) { Write-Warning 'Artifact extraction reported errors - check executable timestamps.' }
+    }
+    return $existing
+}
+
+function Assert-TarPipeBuildSucceeded {
+    param([string]$DockerExe, [string]$Container, [int]$BuildExit)
+    if ($BuildExit -eq 0) { return }
+    # A dead or missing container is not a compile error, so classify it.
+    $state = Get-ContainerInspectField -DockerExe $DockerExe -Name $Container -Format '{{.State.Status}}'
+    if ($state.Missing) {
+        throw ("The build container '$Container' disappeared while the build was running (docker exec " +
+            "exit $BuildExit). Nothing compiled past that point, so this is not a build failure to " +
+            "look for in the log. docker said: $($state.Error)")
+    }
+    if ($state.Ok -and $state.Value -ne 'running') {
+        throw ("The build container '$Container' stopped (state '$($state.Value)') while the build was " +
+            "running (docker exec exit $BuildExit) - the build died with the container, not on an " +
+            'error in the code.')
+    }
+    throw "Container build failed (exit $BuildExit)."
+}
+
+function Get-TarPipeVerifiedOutputs {
+    param([string]$DockerExe, [string]$Container, [string]$WorkspacePath, [string]$RepoRoot,
+        [string[]]$Existing, [string[]]$VerifyDirs)
+    $verified = [ordered]@{}
+    foreach ($dir in $Existing) {
+        if ($VerifyDirs -notcontains $dir) { continue }
+        $delivered = Test-BuildArtifactsDelivered -DockerExe $DockerExe -Container $Container `
+            -WorkspacePath $WorkspacePath -Directory $dir -HostRoot $RepoRoot
+        $verified[$dir] = $delivered
+        Write-Host "Verified $delivered executable(s) delivered from $dir."
+    }
+    return $verified
+}
+
 <#
 .SYNOPSIS
   Builds a project inside a Windows build container, choosing the transport.

@@ -205,6 +205,9 @@ default `scripts`). Together they add a second job on the same Windows runner th
 [`windows/scripts/Invoke-Lint.ps1`](../windows/scripts/Invoke-Lint.ps1) — the mandatory parse
 pass, the AST traps and PSScriptAnalyzer — over the **caller's** tree, with the hub's ruleset
 consumed by reference.
+The job installs `PSSCRIPTANALYZER_VERSION` from the checked-out hub's
+`linux/scripts/01-core/versions.env`; the lint process imports that exact version.
+A missing pin or pinned installation fails the job.
 
 ```yaml
 jobs:

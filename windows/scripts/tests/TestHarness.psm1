@@ -4,6 +4,7 @@
 # Not Pester: Pester 5 needs a PSGallery install the offline container cannot do, and these need nothing installed.
 
 Set-StrictMode -Version Latest
+Import-Module (Join-Path (Split-Path $PSScriptRoot -Parent) 'modules/WindowsAst.Common.psm1') -ErrorAction Stop
 
 $script:Results = New-Object System.Collections.ArrayList
 $script:CurrentGroup = ''
@@ -518,9 +519,7 @@ function Get-TestScriptAst {
     param([Parameter(Mandatory)][string]$ScriptPath, [string]$ErrorLabel = 'Get-TestScriptAst')
     $full = if ([IO.Path]::IsPathRooted($ScriptPath)) { $ScriptPath } else { Join-Path (Get-RepoRoot) $ScriptPath }
     if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { throw "${ErrorLabel}: script not found: $full" }
-    $tokens = $null; $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($full, [ref]$tokens, [ref]$parseErrors)
-    Resolve-TestParseResult -Ast $ast -ParseError $parseErrors -FailurePrefix "${ErrorLabel}: parse errors in $full"
+    (Get-WindowsAstParseResult -File $full -ErrorLabel "${ErrorLabel}: parse errors in").Ast
 }
 
 function Get-TestAstCommands {

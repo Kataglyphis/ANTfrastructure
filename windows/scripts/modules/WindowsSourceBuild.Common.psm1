@@ -174,6 +174,61 @@ function Get-SourceBuildSccache {
     return $command
 }
 
+function Get-SourceCmakeBaseArgs {
+    param([string]$SourceDir, [string]$BuildDir, [string]$InstallPrefix, [string]$Generator,
+        [string]$Platform, [string]$Toolset, [string]$BuildType, [string]$CCompiler,
+        [string]$CxxCompiler, [string]$Linker, [string]$Archiver)
+    $cmakeArgs = @('-S', $SourceDir, '-B', $BuildDir, "-DCMAKE_INSTALL_PREFIX=$InstallPrefix")
+    if ($Generator) {
+        $cmakeArgs += '-G', $Generator
+        if ($Platform) { $cmakeArgs += '-A', $Platform }
+        if ($Toolset) { $cmakeArgs += '-T', $Toolset }
+    }
+    if ($BuildType) { $cmakeArgs += "-DCMAKE_BUILD_TYPE=$BuildType" }
+    if ($CCompiler) { $cmakeArgs += "-DCMAKE_C_COMPILER=$CCompiler" }
+    if ($CxxCompiler) { $cmakeArgs += "-DCMAKE_CXX_COMPILER=$CxxCompiler" }
+    if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
+    if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
+    return $cmakeArgs
+}
+
+function Get-SourceCmakeLauncherArgs {
+    $remoteCacheConfigured = Test-SccacheRemoteConfigured
+    if (-not $remoteCacheConfigured) {
+        Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
+        return @()
+    }
+    $sccacheCmd = Get-SourceBuildSccache -RemoteConfigured $remoteCacheConfigured
+    if (-not $sccacheCmd) { return @() }
+    $cmakeArgs = @("-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)",
+        "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)")
+    # The CUDA launcher stays opt-in (mozilla/sccache#2811); C/CXX are unconditional.
+    if ($env:SCCACHE_CUDA_LAUNCHER -eq '1') {
+        $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
+        Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers + CUDA OPT-IN ACTIVE - three-canary bar applies)"
+    } else {
+        Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers; CUDA stays bare - miscompile verdict 2026-08-10)"
+    }
+    return $cmakeArgs
+}
+
+function Get-SourceCmakeTargetArgs {
+    param([string]$TargetArch, [switch]$AllowRocmPrefix)
+    # Cross args precede caller flags so the caller's later -D wins.
+    $cmakeArgs = @(Get-CMakeCrossArgs -Arch $TargetArch)
+    if ($cmakeArgs.Count -gt 0) {
+        Write-Host "CMake cross-compiling for $(Get-WindowsTargetArch -Arch $TargetArch): $($cmakeArgs -join ' ')"
+    }
+    if (-not $AllowRocmPrefix) {
+        $rocmIsolation = @(Get-CMakeRocmIsolationArgs)
+        if ($rocmIsolation.Count -gt 0) {
+            $cmakeArgs += $rocmIsolation
+            Write-Host "CMake: ROCm tree isolated from package search ($($rocmIsolation -join ' '))"
+        }
+    }
+    return $cmakeArgs
+}
+
 function Invoke-CmakeConfigure {
     param(
         [Parameter(Mandatory)]
@@ -205,52 +260,11 @@ function Invoke-CmakeConfigure {
     New-Item -Path $BuildDir -ItemType Directory -Force | Out-Null
     New-Item -Path $InstallPrefix -ItemType Directory -Force | Out-Null
 
-    $cmakeArgs = @('-S', $SourceDir, '-B', $BuildDir, "-DCMAKE_INSTALL_PREFIX=$InstallPrefix")
-
-    if ($Generator) {
-        $cmakeArgs += '-G', $Generator
-        if ($Platform) { $cmakeArgs += '-A', $Platform }
-        if ($Toolset) { $cmakeArgs += '-T', $Toolset }
-    }
-
-    if ($BuildType) { $cmakeArgs += "-DCMAKE_BUILD_TYPE=$BuildType" }
-    if ($CCompiler) { $cmakeArgs += "-DCMAKE_C_COMPILER=$CCompiler" }
-    if ($CxxCompiler) { $cmakeArgs += "-DCMAKE_CXX_COMPILER=$CxxCompiler" }
-    if ($Linker) { $cmakeArgs += "-DCMAKE_LINKER=$Linker" }
-    if ($Archiver) { $cmakeArgs += "-DCMAKE_AR=$Archiver" }
-
-    $remoteCacheConfigured = Test-SccacheRemoteConfigured
-    if ($remoteCacheConfigured) {
-        $sccacheCmd = Get-SourceBuildSccache -RemoteConfigured $remoteCacheConfigured
-        if ($sccacheCmd) {
-            $cmakeArgs += "-DCMAKE_C_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            $cmakeArgs += "-DCMAKE_CXX_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-            # The CUDA launcher stays opt-in (mozilla/sccache#2811); C/CXX are unconditional.
-            if ($env:SCCACHE_CUDA_LAUNCHER -eq '1') {
-                $cmakeArgs += "-DCMAKE_CUDA_COMPILER_LAUNCHER:FILEPATH=$($sccacheCmd.Source)"
-                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers + CUDA OPT-IN ACTIVE - three-canary bar applies)"
-            } else {
-                Write-Host "sccache enabled at: $($sccacheCmd.Source) (remote backend, max $env:SCCACHE_MAX_JOBS jobs; C/CXX launchers; CUDA stays bare - miscompile verdict 2026-08-10)"
-            }
-        }
-    } else {
-        Write-Host 'sccache disabled (no remote backend configured; a container-local cache would only bloat layers)'
-    }
-
-    # Cross args go before $ExtraArgs so a caller's -D wins: cmake honours the last occurrence.
-    $crossArgs = @(Get-CMakeCrossArgs -Arch $TargetArch)
-    if ($crossArgs.Count -gt 0) {
-        $cmakeArgs += $crossArgs
-        Write-Host "CMake cross-compiling for $(Get-WindowsTargetArch -Arch $TargetArch): $($crossArgs -join ' ')"
-    }
-    if (-not $AllowRocmPrefix) {
-        $rocmIsolation = @(Get-CMakeRocmIsolationArgs)
-        if ($rocmIsolation.Count -gt 0) {
-            $cmakeArgs += $rocmIsolation
-            Write-Host "CMake: ROCm tree isolated from package search ($($rocmIsolation -join ' '))"
-        }
-    }
-
+    $cmakeArgs = @(Get-SourceCmakeBaseArgs -SourceDir $SourceDir -BuildDir $BuildDir -InstallPrefix $InstallPrefix `
+        -Generator $Generator -Platform $Platform -Toolset $Toolset -BuildType $BuildType -CCompiler $CCompiler `
+        -CxxCompiler $CxxCompiler -Linker $Linker -Archiver $Archiver)
+    $cmakeArgs += @(Get-SourceCmakeLauncherArgs)
+    $cmakeArgs += @(Get-SourceCmakeTargetArgs -TargetArch $TargetArch -AllowRocmPrefix:$AllowRocmPrefix)
     if ($ExtraArgs.Count -gt 0) { $cmakeArgs += $ExtraArgs }
 
     Write-Host "CMake configure: $($cmakeArgs -join ' ')"
@@ -596,6 +610,117 @@ function Assert-CpythonInterpreter {
     Write-Host "CPython $($fields[0]) ($kind) verified: $Exe"
 }
 
+function Assert-CpythonTargetExeMachine {
+    param([string]$BuildDir, [string]$ExeName, [string]$Arch, [string]$Label)
+    $tgtExe = Join-Path $BuildDir $ExeName
+    # The target interpreter cannot run on the build host, so its PE header is the first arch proof.
+    $machine = Get-PeFileMachine -Path $tgtExe
+    $wantMachine = Get-PeMachineType -Arch $Arch
+    if ($machine -ne $wantMachine) {
+        throw ('{0}: {1} machine is 0x{2:X4}, expected 0x{3:X4} -- the {4} platform build produced a host-arch binary (PreferredToolArchitecture / toolset resolution went wrong)' -f $Label, $ExeName, $machine, $wantMachine, $Arch)
+    }
+    Write-Host ('{0}: {1} PE machine 0x{2:X4} verified' -f $Label, $ExeName, $machine)
+    return $wantMachine
+}
+
+function Copy-CpythonTargetExecutables {
+    param([string]$BuildDir, [string]$Root, [string]$ExeName, [switch]$FreeThreaded, [string]$Label)
+    # The arch gate scans this python.org-style install root.
+    foreach ($d in @($Root, "$Root\DLLs", "$Root\libs", "$Root\include")) { New-Item -Path $d -ItemType Directory -Force | Out-Null }
+    Copy-Item "$BuildDir\python*.exe" $Root -Force
+    Copy-Item "$BuildDir\python*.dll" $Root -Force
+    Copy-Item "$BuildDir\*.pyd" "$Root\DLLs" -Force -ErrorAction SilentlyContinue
+    Get-ChildItem $BuildDir -Filter '*.dll' -File | Where-Object { $_.Name -notmatch '^python' } |
+        ForEach-Object { Copy-Item $_.FullName "$Root\DLLs" -Force }
+    if ($FreeThreaded) {
+        # PCbuild may copy each free-threaded exe under a plain name too.
+        foreach ($plainName in 'python.exe', 'pythonw.exe') {
+            $twinName = $ExeName -replace '^python', ($plainName -replace '\.exe$', '')
+            $plain = Join-Path $Root $plainName
+            $twin = Join-Path $Root $twinName
+            if ((Test-Path -LiteralPath $plain) -and (Test-Path -LiteralPath $twin) -and
+                ((Get-FileHash -LiteralPath $plain).Hash -eq (Get-FileHash -LiteralPath $twin).Hash)) {
+                Remove-Item -LiteralPath $plain -Force
+                Write-Host "${Label}: dropped $plainName, the byte-identical twin of $twinName"
+            }
+        }
+    }
+    if ($FreeThreaded -and (Test-Path (Join-Path $Root 'python.exe'))) {
+        throw "${Label}: $Root\python.exe exists, so a GIL request could resolve to the free-threaded build"
+    }
+}
+
+function Repair-CpythonTargetPeFiles {
+    param([string]$Root, [string]$RedistDir, [uint16]$WantMachine, [string]$Arch, [string]$Label)
+    # MSBuild can place host-arch CRT DLLs in the target output.
+    foreach ($staged in (Get-ChildItem -Path $Root -Recurse -Include '*.dll', '*.exe', '*.pyd' -File)) {
+        $m = Get-PeFileMachine -Path $staged.FullName
+        if ($m -eq $WantMachine) { continue }
+        $replacement = if ($RedistDir) { Join-Path $RedistDir $staged.Name } else { $null }
+        if ($replacement -and (Test-Path $replacement) -and ((Get-PeFileMachine -Path $replacement) -eq $WantMachine)) {
+            Copy-Item $replacement $staged.FullName -Force
+            Write-Host ('{0}: replaced host-arch {1} (0x{2:X4}) with the VS {3} redist copy' -f $Label, $staged.Name, $m, $Arch)
+        } elseif ($staged.Name -ieq 'vcruntime140_1.dll' -and (Test-Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -and ((Get-PeFileMachine -Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -eq $WantMachine)) {
+            # vcruntime140_1.dll has no ARM64 edition; see docs/windows-cross-builds.md § The target CPython is built from source.
+            Remove-Item $staged.FullName -Force
+            Write-Host ('{0}: dropped {1} (0x{2:X4}) -- no {3} edition of this DLL exists; vcruntime140.dll (target-arch) carries its role' -f $Label, $staged.Name, $m, $Arch)
+        } else {
+            throw ('{0}: staged {1} is machine 0x{2:X4}, expected 0x{3:X4}, and no {4} redist replacement was found -- refusing to ship a host-arch binary in the bundle' -f $Label, $staged.FullName, $m, $WantMachine, $Arch)
+        }
+    }
+}
+
+function Install-CpythonTargetStdlib {
+    param([string]$BuildDir, [string]$SourceDir, [string]$Root, [object]$TargetLib,
+        [switch]$FreeThreaded, [uint16]$WantMachine, [string]$Label)
+    Copy-Item $TargetLib.FullName "$Root\libs" -Force
+    if ($FreeThreaded) {
+        # IREE's cross twin requires the stable-ABI import library beside the versioned one.
+        $stableLib = Join-Path $BuildDir 'python3t.lib'
+        if (-not (Test-Path -LiteralPath $stableLib)) { throw "${Label}: no python3t.lib stable-ABI import library in $BuildDir" }
+        Copy-Item -LiteralPath $stableLib "$Root\libs" -Force
+    }
+    # PC\pyconfig.h selects the architecture through compiler macros.
+    Copy-Item "$SourceDir\Include\*" "$Root\include" -Recurse -Force
+    Copy-Item "$SourceDir\PC\pyconfig.h" "$Root\include" -Force
+    Copy-Item "$SourceDir\Lib" "$Root\Lib" -Recurse -Force
+    $sitePackages = Join-Path $Root 'Lib\site-packages'
+    if (Test-Path $sitePackages) { Get-ChildItem -LiteralPath $sitePackages -Force | Remove-Item -Recurse -Force }
+    New-Item -Path $sitePackages -ItemType Directory -Force | Out-Null
+    if ($FreeThreaded) {
+        # Without a python.exe, uv venv needs these launchers at PC\layout's path.
+        $venvScripts = New-Item -Path (Join-Path $Root 'Lib\venv\scripts\nt') -ItemType Directory -Force
+        foreach ($launcher in 'venvlaunchert.exe', 'venvwlaunchert.exe') {
+            $src = Join-Path $BuildDir $launcher
+            if (-not (Test-Path $src)) { throw "${Label}: $src was not produced, so neither uv nor venv could make an environment from this tree" }
+            if ((Get-PeFileMachine -Path $src) -ne $WantMachine) { throw "${Label}: $src is not target-arch -- refusing to stage it" }
+            Copy-Item $src $venvScripts.FullName -Force
+        }
+    }
+    return $sitePackages
+}
+
+function Copy-CpythonTargetCrt {
+    param([string]$Root, [string]$RedistDir, [string]$BundleBin, [uint16]$WantMachine,
+        [string]$ExeName, [string]$Arch, [string]$Label)
+    # DLLs\ is a Python search path the Windows loader never sees (0xC0000135).
+    $crtNames = @('vcruntime140.dll', 'vcruntime140_threads.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'concrt140.dll', 'vccorlib140.dll')
+    if ($BundleBin) { New-Item -Path $BundleBin -ItemType Directory -Force | Out-Null }
+    $crtStaged = 0
+    foreach ($crt in $crtNames) {
+        $src = if (Test-Path (Join-Path "$Root\DLLs" $crt)) { Join-Path "$Root\DLLs" $crt } elseif ($RedistDir -and (Test-Path (Join-Path $RedistDir $crt))) { Join-Path $RedistDir $crt } else { $null }
+        if (-not $src) { continue }
+        if ((Get-PeFileMachine -Path $src) -ne $WantMachine) { throw "${Label}: CRT candidate $src is not target-arch -- refusing to stage it" }
+        Copy-Item $src (Join-Path $Root $crt) -Force
+        if ($BundleBin) { Copy-Item $src (Join-Path $BundleBin $crt) -Force }
+        $crtStaged++
+    }
+    if (-not (Test-Path (Join-Path $Root 'vcruntime140.dll'))) {
+        throw "${Label}: vcruntime140.dll (target-arch) could not be staged beside $ExeName -- neither the build output nor the VS $Arch redist tree ($RedistDir) had it; the interpreter would not start on a clean device"
+    }
+    Write-Host "${Label}: staged $crtStaged CRT DLL(s) beside $ExeName$(if ($BundleBin) { " and in $BundleBin" }) (loader-visible; #124)"
+}
+
 function Install-CpythonTargetTree {
     <#
     .SYNOPSIS
@@ -622,116 +747,28 @@ function Install-CpythonTargetTree {
     $label = if ($FreeThreaded) { 'Target CPython (free-threaded)' } else { 'Target CPython' }
     $exeName = if ($FreeThreaded) { Get-CpythonFreeThreadedExeName } else { 'python.exe' }
     $tgtExe = Join-Path $BuildDir $exeName
-    $tgtLib = Select-CpythonImportLib -LibDir $BuildDir -FreeThreaded:$FreeThreaded
     if (-not (Test-Path $tgtExe)) { throw "${label}: $tgtExe was not produced" }
+    $tgtLib = Select-CpythonImportLib -LibDir $BuildDir -FreeThreaded:$FreeThreaded
     if (-not $tgtLib) { throw "${label}: no python3XY$(if ($FreeThreaded) { 't' }).lib import library in $BuildDir" }
-    # Checked here, not only at the merge gate, so a wrong-arch interpreter fails naming the defect.
-    $machine = Get-PeFileMachine -Path $tgtExe
-    $wantMachine = Get-PeMachineType -Arch $Arch
-    if ($machine -ne $wantMachine) {
-        throw ('{0}: {1} machine is 0x{2:X4}, expected 0x{3:X4} -- the {4} platform build produced a host-arch binary (PreferredToolArchitecture / toolset resolution went wrong)' -f $label, $exeName, $machine, $wantMachine, $Arch)
-    }
-    Write-Host ('{0}: {1} PE machine 0x{2:X4} verified' -f $label, $exeName, $machine)
-
-    # Laid out like a python.org install, under the arch gate's scan root.
-    $pyRoot = $Destination
-    foreach ($d in @($pyRoot, "$pyRoot\DLLs", "$pyRoot\libs", "$pyRoot\include")) { New-Item -Path $d -ItemType Directory -Force | Out-Null }
-    Copy-Item "$BuildDir\python*.exe" $pyRoot -Force
-    Copy-Item "$BuildDir\python*.dll" $pyRoot -Force
-    Copy-Item "$BuildDir\*.pyd" "$pyRoot\DLLs" -Force -ErrorAction SilentlyContinue
-    # Sidecar DLLs the pyds need (libffi, ssl/crypto, sqlite, tk if built).
-    Get-ChildItem $BuildDir -Filter '*.dll' -File | Where-Object { $_.Name -notmatch '^python' } |
-        ForEach-Object { Copy-Item $_.FullName "$pyRoot\DLLs" -Force }
-    if ($FreeThreaded) {
-        # 3.15's PCbuild builds python.exe and pythonw.exe and copies each to its X.Yt name; only a byte-identical copy may go.
-        foreach ($plainName in 'python.exe', 'pythonw.exe') {
-            $twinName = $exeName -replace '^python', ($plainName -replace '\.exe$', '')
-            $plain = Join-Path $pyRoot $plainName
-            $twin = Join-Path $pyRoot $twinName
-            if ((Test-Path -LiteralPath $plain) -and (Test-Path -LiteralPath $twin) -and
-                ((Get-FileHash -LiteralPath $plain).Hash -eq (Get-FileHash -LiteralPath $twin).Hash)) {
-                Remove-Item -LiteralPath $plain -Force
-                Write-Host "${label}: dropped $plainName, the byte-identical twin of $twinName"
-            }
-        }
-    }
-    if ($FreeThreaded -and (Test-Path (Join-Path $pyRoot 'python.exe'))) {
-        throw "${label}: $pyRoot\python.exe exists, so a GIL request could resolve to the free-threaded build"
-    }
-
-    # MSBuild's redist copy drops host-arch CRT DLLs into the target output; replace them or fail here, not at the merge gate.
-    foreach ($staged in (Get-ChildItem -Path $pyRoot -Recurse -Include '*.dll', '*.exe', '*.pyd' -File)) {
-        $m = Get-PeFileMachine -Path $staged.FullName
-        if ($m -eq $wantMachine) { continue }
-        $replacement = if ($RedistDir) { Join-Path $RedistDir $staged.Name } else { $null }
-        if ($replacement -and (Test-Path $replacement) -and ((Get-PeFileMachine -Path $replacement) -eq $wantMachine)) {
-            Copy-Item $replacement $staged.FullName -Force
-            Write-Host ('{0}: replaced host-arch {1} (0x{2:X4}) with the VS {3} redist copy' -f $label, $staged.Name, $m, $Arch)
-        } elseif ($staged.Name -ieq 'vcruntime140_1.dll' -and (Test-Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -and ((Get-PeFileMachine -Path (Join-Path $staged.DirectoryName 'vcruntime140.dll')) -eq $wantMachine)) {
-            # vcruntime140_1.dll has no ARM64 edition by design; see docs/windows-cross-builds.md § The target CPython is built from source (#120 step 1).
-            Remove-Item $staged.FullName -Force
-            Write-Host ('{0}: dropped {1} (0x{2:X4}) -- no {3} edition of this DLL exists; vcruntime140.dll (target-arch) carries its role' -f $label, $staged.Name, $m, $Arch)
-        } else {
-            throw ('{0}: staged {1} is machine 0x{2:X4}, expected 0x{3:X4}, and no {4} redist replacement was found -- refusing to ship a host-arch binary in the bundle' -f $label, $staged.FullName, $m, $wantMachine, $Arch)
-        }
-    }
-    Copy-Item $tgtLib.FullName "$pyRoot\libs" -Force
-    # The cross twins link this tree, and IREE's FindPython requires Development.SABIModule, the stub beside the version lib.
-    if ($FreeThreaded) {
-        $stableLib = Join-Path $BuildDir 'python3t.lib'
-        if (-not (Test-Path -LiteralPath $stableLib)) { throw "${label}: no python3t.lib stable-ABI import library in $BuildDir" }
-        Copy-Item -LiteralPath $stableLib "$pyRoot\libs" -Force
-    }
-    # Headers are arch-neutral: PC\pyconfig.h selects by compiler macros at include time.
-    Copy-Item "$SourceDir\Include\*" "$pyRoot\include" -Recurse -Force
-    Copy-Item "$SourceDir\PC\pyconfig.h" "$pyRoot\include" -Force
-    # The tree's site-packages belongs to the host interpreter, so the target's starts empty.
-    Copy-Item "$SourceDir\Lib" "$pyRoot\Lib" -Recurse -Force
-    $tgtSitePackages = Join-Path $pyRoot 'Lib\site-packages'
-    if (Test-Path $tgtSitePackages) { Get-ChildItem -LiteralPath $tgtSitePackages -Force | Remove-Item -Recurse -Force }
-    New-Item -Path $tgtSitePackages -ItemType Directory -Force | Out-Null
-    if ($FreeThreaded) {
-        # Where PC\layout --include-venv puts them: with no python.exe to copy, uv venv has no other way to make an X.Yt venv (measured 2026-10-07).
-        $venvScripts = New-Item -Path (Join-Path $pyRoot 'Lib\venv\scripts\nt') -ItemType Directory -Force
-        foreach ($launcher in 'venvlaunchert.exe', 'venvwlaunchert.exe') {
-            $src = Join-Path $BuildDir $launcher
-            if (-not (Test-Path $src)) { throw "${label}: $src was not produced, so neither uv nor venv could make an environment from this tree" }
-            if ((Get-PeFileMachine -Path $src) -ne $wantMachine) { throw "${label}: $src is not target-arch -- refusing to stage it" }
-            Copy-Item $src $venvScripts.FullName -Force
-        }
-    }
-
-    # The CRT must sit beside the exe: DLLs\ is a Python search path the loader never sees (0xC0000135).
-    $crtNames = @('vcruntime140.dll', 'vcruntime140_threads.dll', 'msvcp140.dll', 'msvcp140_1.dll', 'msvcp140_2.dll', 'msvcp140_atomic_wait.dll', 'msvcp140_codecvt_ids.dll', 'concrt140.dll', 'vccorlib140.dll')
-    if ($BundleBin) { New-Item -Path $BundleBin -ItemType Directory -Force | Out-Null }
-    $crtStaged = 0
-    foreach ($crt in $crtNames) {
-        $src = if (Test-Path (Join-Path "$pyRoot\DLLs" $crt)) { Join-Path "$pyRoot\DLLs" $crt } elseif ($RedistDir -and (Test-Path (Join-Path $RedistDir $crt))) { Join-Path $RedistDir $crt } else { $null }
-        if (-not $src) { continue }
-        if ((Get-PeFileMachine -Path $src) -ne $wantMachine) { throw "${label}: CRT candidate $src is not target-arch -- refusing to stage it" }
-        Copy-Item $src (Join-Path $pyRoot $crt) -Force
-        if ($BundleBin) { Copy-Item $src (Join-Path $BundleBin $crt) -Force }
-        $crtStaged++
-    }
-    if (-not (Test-Path (Join-Path $pyRoot 'vcruntime140.dll'))) {
-        throw "${label}: vcruntime140.dll (target-arch) could not be staged beside $exeName -- neither the build output nor the VS $Arch redist tree ($RedistDir) had it; the interpreter would not start on a clean device"
-    }
-    Write-Host "${label}: staged $crtStaged CRT DLL(s) beside $exeName$(if ($BundleBin) { " and in $BundleBin" }) (loader-visible; #124)"
-
+    $wantMachine = Assert-CpythonTargetExeMachine -BuildDir $BuildDir -ExeName $exeName -Arch $Arch -Label $label
+    Copy-CpythonTargetExecutables -BuildDir $BuildDir -Root $Destination -ExeName $exeName -FreeThreaded:$FreeThreaded -Label $label
+    Repair-CpythonTargetPeFiles -Root $Destination -RedistDir $RedistDir -WantMachine $wantMachine -Arch $Arch -Label $label
+    $tgtSitePackages = Install-CpythonTargetStdlib -BuildDir $BuildDir -SourceDir $SourceDir -Root $Destination `
+        -TargetLib $tgtLib -FreeThreaded:$FreeThreaded -WantMachine $wantMachine -Label $label
+    Copy-CpythonTargetCrt -Root $Destination -RedistDir $RedistDir -BundleBin $BundleBin -WantMachine $wantMachine `
+        -ExeName $exeName -Arch $Arch -Label $label
     if ($ShimWrittenBy) {
-        # The host's shim writer, without the host-only platform/EXT_SUFFIX patches.
+        # The target shim excludes host-only platform and EXT_SUFFIX patches.
         $tgtShim = Write-PythonDllDirectoryShim -SitePackages $tgtSitePackages -OpenCvArchDir (Get-OpenCvArchDir -Arch $Arch) -WrittenBy $ShimWrittenBy
         Write-Host "${label}: wrote the DLL-directory sitecustomize shim for the target interpreter: $tgtShim"
     }
-
     # The device gets pip offline from ensurepip's bundled wheel.
-    $ensurepipWheel = Get-ChildItem -Path (Join-Path $pyRoot 'Lib\ensurepip\_bundled') -Filter 'pip-*.whl' -File -ErrorAction SilentlyContinue | Select-Object -First 1
+    $ensurepipWheel = Get-ChildItem -Path (Join-Path $Destination 'Lib\ensurepip\_bundled') -Filter 'pip-*.whl' -File -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $ensurepipWheel) { throw "${label}: Lib\ensurepip\_bundled\pip-*.whl missing -- the device would have no way to install the staged wheels" }
     Write-Host "${label}: ensurepip bundle present ($($ensurepipWheel.Name)) -- $exeName -m ensurepip works offline on the device"
-
-    $fileCount = @(Get-ChildItem $pyRoot -Recurse -File).Count
-    Write-Host "${label}: staged $fileCount files -> $pyRoot (interpreter + CRT + import lib + headers + stdlib$(if ($FreeThreaded) { ' + venv launchers' })$(if ($ShimWrittenBy) { ' + shim' }))"
-    return [pscustomobject]@{ Root = $pyRoot; Exe = (Join-Path $pyRoot $exeName); Lib = (Join-Path $pyRoot "libs\$($tgtLib.Name)"); Files = $fileCount }
+    $fileCount = @(Get-ChildItem $Destination -Recurse -File).Count
+    Write-Host "${label}: staged $fileCount files -> $Destination (interpreter + CRT + import lib + headers + stdlib$(if ($FreeThreaded) { ' + venv launchers' })$(if ($ShimWrittenBy) { ' + shim' }))"
+    return [pscustomobject]@{ Root = $Destination; Exe = (Join-Path $Destination $exeName); Lib = (Join-Path $Destination "libs\$($tgtLib.Name)"); Files = $fileCount }
 }
 
 function Get-SourceBuildPython {
@@ -1217,6 +1254,28 @@ function Copy-QnnRuntime {
     return $staged.Count
 }
 
+function Initialize-FreeThreadedWheelBuild {
+    param($Python, [string]$ModuleName, [string]$Distribution, [string]$WorkingDir, [string]$DistDir)
+    if (-not ($Python -is [hashtable] -and $Python['FreeThreaded'])) { throw "python wheel ($ModuleName) -FreeThreaded needs New-FreeThreadedBuildPython's interpreter, not $($Python.Exe)" }
+    if (-not $Distribution) { throw "python wheel ($ModuleName) -FreeThreaded needs -Distribution, the name the proof looks up" }
+    if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
+    # A previous GIL wheel in dist would make twin selection ambiguous.
+    if (Test-Path -LiteralPath $DistDir) { Get-ChildItem -LiteralPath $DistDir -Filter '*.whl' -File | Remove-Item -Force }
+    return $DistDir
+}
+
+function Get-PythonWheelCrossPlan {
+    param([string]$Arguments, [string]$ModuleName, [switch]$CrossStage, [switch]$FreeThreaded, [switch]$StageOnly)
+    if (($CrossStage -or $FreeThreaded) -and (Test-WindowsCrossTarget)) {
+        if ($Arguments -match '\bbdist_wheel\b' -and $Arguments -notmatch '--plat-name') { $Arguments = "$Arguments --plat-name $(Get-PythonWheelTag)" }
+        if ($CrossStage) {
+            $StageOnly = $true
+            Write-Host "python wheel ($ModuleName): cross lane -- building for $(Get-PythonWheelTag), staging only (never installed or imported here)"
+        }
+    }
+    return [pscustomobject]@{ Arguments = $Arguments; StageOnly = [bool]$StageOnly }
+}
+
 function Invoke-PythonWheelBuild {
     # Through cmd.exe: setup.py logs to stderr, which EAP=Stop would turn into an error.
     param(
@@ -1235,19 +1294,11 @@ function Invoke-PythonWheelBuild {
         [string]$Distribution = ''
     )
     if ($FreeThreaded) {
-        if (-not ($Python -is [hashtable] -and $Python['FreeThreaded'])) { throw "python wheel ($ModuleName) -FreeThreaded needs New-FreeThreadedBuildPython's interpreter, not $($Python.Exe)" }
-        if (-not $Distribution) { throw "python wheel ($ModuleName) -FreeThreaded needs -Distribution, the name the proof looks up" }
-        if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
-        # One wheel or none: a GIL wheel left in the dist dir would be ambiguous.
-        if (Test-Path -LiteralPath $DistDir) { Get-ChildItem -LiteralPath $DistDir -Filter '*.whl' -File | Remove-Item -Force }
+        $DistDir = Initialize-FreeThreadedWheelBuild -Python $Python -ModuleName $ModuleName -Distribution $Distribution -WorkingDir $WorkingDir -DistDir $DistDir
     }
-    if (($CrossStage -or $FreeThreaded) -and (Test-WindowsCrossTarget)) {
-        if ($Arguments -match '\bbdist_wheel\b' -and $Arguments -notmatch '--plat-name') { $Arguments = "$Arguments --plat-name $(Get-PythonWheelTag)" }
-        if ($CrossStage) {
-            $StageOnly = $true
-            Write-Host "python wheel ($ModuleName): cross lane -- building for $(Get-PythonWheelTag), staging only (never installed or imported here)"
-        }
-    }
+    $crossPlan = Get-PythonWheelCrossPlan -Arguments $Arguments -ModuleName $ModuleName -CrossStage:$CrossStage -FreeThreaded:$FreeThreaded -StageOnly:$StageOnly
+    $Arguments = $crossPlan.Arguments
+    $stageOnlyEffective = $crossPlan.StageOnly
     if (-not $DistDir) { $DistDir = Join-Path $WorkingDir 'dist' }
     Push-Location $WorkingDir
     try {
@@ -1260,7 +1311,7 @@ function Invoke-PythonWheelBuild {
         if (-not $twin) { throw "free-threaded: the $Distribution build left a pure wheel, so there is no cp3XYt twin to store" }
         return Save-FreeThreadedWheel -Wheel $twin.FullName -Distribution $Distribution
     }
-    if ($StageOnly) {
+    if ($stageOnlyEffective) {
         $staged = @(Save-PythonWheel -SourceDir $DistDir -Required)
         foreach ($w in $staged) { Assert-WheelTargetArch -WheelPath $w }
         return $staged[0]

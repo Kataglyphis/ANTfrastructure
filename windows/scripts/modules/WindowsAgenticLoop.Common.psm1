@@ -269,12 +269,143 @@ function Get-AgentTimeoutForRole {
 }
 
 # -- Generic agent process runner -----------------------------------------
+function New-AgentCliProcess {
+    param([string]$FilePath, [string[]]$Arguments)
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    foreach ($argument in $Arguments) { $psi.ArgumentList.Add($argument) }
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    return $process
+}
+
+function Start-AgentOutputReader {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = 'vars passed via -ArgumentList/param')]
+    param($Process, [string]$LogFile, $Lines, [string]$Label, [ValidateSet('stdout', 'stderr')][string]$Stream, [bool]$RenderClaudeStream = $false)
+    Start-ThreadJob -Name "agent-$Stream-$Label" -ArgumentList $Process, $LogFile, $Lines, $RenderClaudeStream, $Stream -ScriptBlock {
+        param($process, $logFile, $outLines, $renderStream, $stream)
+
+        function Get-AgentOneLine {
+            param($Text, [int]$Limit)
+            $line = "$Text" -replace "`r?`n", ' '
+            if ($line.Length -gt $Limit) { return $line.Substring(0, $Limit) + '...' }
+            return $line
+        }
+
+        function Get-AgentToolDetail {
+            param($Content)
+            $detail = $Content.input.file_path
+            if (-not $detail) { $detail = $Content.input.command }
+            if (-not $detail) { $detail = $Content.input.pattern }
+            if (-not $detail) { $detail = $Content.input.description }
+            if (-not $detail) { $detail = $Content.input.prompt }
+            return Get-AgentOneLine -Text $detail -Limit 160
+        }
+
+        function Write-ClaudeAssistantContent {
+            param($Content, [scriptblock]$Emit)
+            foreach ($item in @($Content)) {
+                if ($item.type -eq 'tool_use') {
+                    $detail = Get-AgentToolDetail -Content $item
+                    & $Emit "  -> $($item.name): $detail"
+                } elseif ($item.type -eq 'text' -and $item.text) {
+                    & $Emit $item.text
+                }
+            }
+        }
+
+        function Write-ClaudeUserErrors {
+            param($Content, [scriptblock]$Emit)
+            foreach ($item in @($Content)) {
+                if ($item.type -eq 'tool_result' -and $item.is_error) {
+                    $detail = Get-AgentOneLine -Text $item.content -Limit 200
+                    & $Emit "  !! tool error: $detail"
+                }
+            }
+        }
+
+        function Write-ClaudeStreamEvent {
+            param([string]$Line, [scriptblock]$Emit)
+            $streamEvent = $null
+            try { $streamEvent = $Line | ConvertFrom-Json } catch { $streamEvent = $null }
+            if (-not $streamEvent -or -not $streamEvent.PSObject.Properties['type']) { return $false }
+            switch ($streamEvent.type) {
+                'system' {
+                    if ($streamEvent.subtype -eq 'init') { & $Emit "[claude] session started (model: $($streamEvent.model))" }
+                }
+                'assistant' { Write-ClaudeAssistantContent -Content $streamEvent.message.content -Emit $Emit }
+                'user' { Write-ClaudeUserErrors -Content $streamEvent.message.content -Emit $Emit }
+                'result' {
+                    $duration = [math]::Round(($streamEvent.duration_ms / 1000), 1)
+                    $cost = [math]::Round(($streamEvent.total_cost_usd), 4)
+                    $summary = "[claude] result: $($streamEvent.num_turns) turns, $($duration)s, " + '$' + $cost
+                    & $Emit $summary
+                    if ($streamEvent.result) { & $Emit $streamEvent.result }
+                }
+            }
+            return $true
+        }
+
+        # Console output stays live while the parent waits to receive the job.
+        $emit = { param($text) [Console]::Out.WriteLine($text); if ($logFile) { Add-Content $logFile -Value $text } }
+        $reader = if ($stream -eq 'stdout') { $process.StandardOutput } else { $process.StandardError }
+        try {
+            while ($null -ne ($line = $reader.ReadLine())) {
+                $outLines.Enqueue($line)
+                if ($stream -eq 'stderr') {
+                    [Console]::Error.WriteLine($line)
+                    if ($logFile) { Add-Content $logFile -Value $line }
+                    continue
+                }
+                if ($renderStream -and $line.StartsWith('{') -and (Write-ClaudeStreamEvent -Line $line -Emit $emit)) { continue }
+                & $emit $line
+            }
+        } catch { Write-Verbose "$stream stream closed: $($_.Exception.Message)" }
+    }
+}
+
+function Wait-AgentProcessExit {
+    param($Process, [int]$TimeoutSeconds, [string]$Label)
+    if ($TimeoutSeconds -gt 0) {
+        $completed = $Process.WaitForExit($TimeoutSeconds * 1000)
+        if (-not $completed) {
+            $Process.Kill($true)
+            Write-AgenticLog ("$Label timed out after {0}s" -f $TimeoutSeconds) 'ERROR'
+            return -1
+        }
+        return $Process.ExitCode
+    }
+    $Process.WaitForExit()
+    return $Process.ExitCode
+}
+
+function Receive-AgentProcessOutput {
+    param($StdoutJob, $StderrJob, $OutLines, $ErrLines, [string]$LogFile, [string]$Label)
+    Receive-Job -Job $StdoutJob -Wait -ErrorAction SilentlyContinue | Out-Null
+    Receive-Job -Job $StderrJob -Wait -ErrorAction SilentlyContinue | Out-Null
+    $output = $OutLines -join "`n"
+    $errors = $ErrLines -join "`n"
+    if ($errors) {
+        Write-AgenticLog "$Label had stderr output" 'WARN'
+        if ($LogFile) {
+            Add-Content $LogFile -Value '--- stderr ---'
+            Add-Content $LogFile -Value $errors
+            Add-Content $LogFile -Value '--- stderr end ---'
+        }
+    }
+    return $output
+}
+
 function Invoke-AgentProcess {
     <#
     .SYNOPSIS
       Run an agent CLI with the prompt on stdin, streaming both outputs live; returns @{ ExitCode; Output }.
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseUsingScopeModifierInNewRunspaces', '', Justification = 'vars passed via -ArgumentList/param')]
     param([string]$Executable, [string[]]$ArgumentList, [string]$Message,
           [int]$TimeoutSeconds = 0, [string]$Label = 'agent', [switch]$RenderClaudeStream)
     $cmdInfo = Get-Command $Executable -ErrorAction SilentlyContinue
@@ -285,125 +416,29 @@ function Invoke-AgentProcess {
     }
     $logFile = $script:AgenticLogFile
     $exitCode = 0; $outStr = ''
-    $p = $null
+    $process = $null
     try {
-        $psi = New-Object System.Diagnostics.ProcessStartInfo
-        $psi.FileName = $cmdInfo.Source
-        foreach ($a in $ArgumentList) { $psi.ArgumentList.Add($a) }
-        $psi.RedirectStandardInput = $true
-        $psi.RedirectStandardOutput = $true
-        $psi.RedirectStandardError = $true
-        $psi.UseShellExecute = $false
-        $psi.CreateNoWindow = $true
-        $p = New-Object System.Diagnostics.Process
-        $p.StartInfo = $psi
-        $p.Start() | Out-Null
-
-        $stdin = $p.StandardInput
+        $process = New-AgentCliProcess -FilePath $cmdInfo.Source -Arguments $ArgumentList
+        $process.Start() | Out-Null
+        $stdin = $process.StandardInput
         $stdin.Write($Message)
         $stdin.Close()
 
-        # Concurrent readers avoid the pipe deadlock; a queue, not a bag, because a bag enumerates LIFO.
+        # Concurrent readers avoid pipe deadlock; queues preserve output order.
         $outLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
         $errLines = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
-        $renderStream = [bool]$RenderClaudeStream
-        $stdoutJob = Start-ThreadJob -Name "agent-stdout-$Label" -ArgumentList $p, $logFile, $outLines, $renderStream -ScriptBlock {
-            param($p, $logFile, $outLines, $renderStream)
-            # [Console]::Out, not Write-Host: thread-job host output is buffered until Receive-Job.
-            $emit = { param($text) [Console]::Out.WriteLine($text); if ($logFile) { Add-Content $logFile -Value $text } }
-            $r = $p.StandardOutput
-            try {
-                while ($null -ne ($line = $r.ReadLine())) {
-                    $outLines.Enqueue($line)
-                    if ($renderStream -and $line.StartsWith('{')) {
-                        # Non-JSON lines are expected and fall through to the plain emit.
-                        $evt = $null
-                        try { $evt = $line | ConvertFrom-Json } catch { $evt = $null }
-                        if ($evt -and $evt.PSObject.Properties['type']) {
-                            switch ($evt.type) {
-                                'system' {
-                                    if ($evt.subtype -eq 'init') { & $emit "[claude] session started (model: $($evt.model))" }
-                                }
-                                'assistant' {
-                                    foreach ($c in @($evt.message.content)) {
-                                        if ($c.type -eq 'tool_use') {
-                                            $detail = $c.input.file_path
-                                            if (-not $detail) { $detail = $c.input.command }
-                                            if (-not $detail) { $detail = $c.input.pattern }
-                                            if (-not $detail) { $detail = $c.input.description }
-                                            if (-not $detail) { $detail = $c.input.prompt }
-                                            $detail = "$detail" -replace "`r?`n", ' '
-                                            if ($detail.Length -gt 160) { $detail = $detail.Substring(0, 160) + '...' }
-                                            & $emit "  -> $($c.name): $detail"
-                                        } elseif ($c.type -eq 'text' -and $c.text) {
-                                            & $emit $c.text
-                                        }
-                                    }
-                                }
-                                'user' {
-                                    foreach ($c in @($evt.message.content)) {
-                                        if ($c.type -eq 'tool_result' -and $c.is_error) {
-                                            $txt = "$($c.content)" -replace "`r?`n", ' '
-                                            if ($txt.Length -gt 200) { $txt = $txt.Substring(0, 200) + '...' }
-                                            & $emit "  !! tool error: $txt"
-                                        }
-                                    }
-                                }
-                                'result' {
-                                    $dur = [math]::Round(($evt.duration_ms / 1000), 1)
-                                    $cost = [math]::Round(($evt.total_cost_usd), 4)
-                                    & $emit "[claude] result: $($evt.num_turns) turns, ${dur}s, `$$cost"
-                                    if ($evt.result) { & $emit $evt.result }
-                                }
-                            }
-                            continue
-                        }
-                    }
-                    & $emit $line
-                }
-            } catch { Write-Verbose "stdout stream closed: $($_.Exception.Message)" }
-        }
-        $stderrJob = Start-ThreadJob -Name "agent-stderr-$Label" -ArgumentList $p, $logFile, $errLines -ScriptBlock {
-            param($p, $logFile, $errLines)
-            $r = $p.StandardError
-            try {
-                while ($null -ne ($line = $r.ReadLine())) {
-                    $errLines.Enqueue($line)
-                    [Console]::Error.WriteLine($line)
-                    if ($logFile) { Add-Content $logFile -Value $line }
-                }
-            } catch { Write-Verbose "stderr stream closed: $($_.Exception.Message)" }
-        }
-
-        if ($TimeoutSeconds -gt 0) {
-            $completed = $p.WaitForExit($TimeoutSeconds * 1000)
-            if (-not $completed) {
-                $p.Kill($true)
-                Write-AgenticLog "$Label timed out after ${TimeoutSeconds}s" 'ERROR'
-                $exitCode = -1
-            } else { $exitCode = $p.ExitCode }
-        } else {
-            $p.WaitForExit()
-            $exitCode = $p.ExitCode
-        }
-
-        Receive-Job -Job $stdoutJob -Wait -ErrorAction SilentlyContinue | Out-Null
-        Receive-Job -Job $stderrJob -Wait -ErrorAction SilentlyContinue | Out-Null
-
-        $outStr = $outLines -join "`n"
-        $errStr = $errLines -join "`n"
-        if ($errStr) {
-            Write-AgenticLog "$Label had stderr output" 'WARN'
-            if ($logFile) { Add-Content $logFile -Value '--- stderr ---'; Add-Content $logFile -Value $errStr; Add-Content $logFile -Value '--- stderr end ---' }
-        }
+        $stdoutJob = Start-AgentOutputReader -Process $process -LogFile $logFile -Lines $outLines -Label $Label -Stream stdout -RenderClaudeStream ([bool]$RenderClaudeStream)
+        $stderrJob = Start-AgentOutputReader -Process $process -LogFile $logFile -Lines $errLines -Label $Label -Stream stderr
+        $exitCode = Wait-AgentProcessExit -Process $process -TimeoutSeconds $TimeoutSeconds -Label $Label
+        $outStr = Receive-AgentProcessOutput -StdoutJob $stdoutJob -StderrJob $stderrJob -OutLines $outLines -ErrLines $errLines -LogFile $logFile -Label $Label
     } catch {
         Write-AgenticLog "$Label failed: $($_.Exception.Message)" 'ERROR'
         $exitCode = 1
     } finally {
-        if ($p -and -not $p.HasExited) { $p.Kill($true) }
-        if ($p) { $p.Dispose() }
+        if ($process -and -not $process.HasExited) { $process.Kill($true) }
+        if ($process) { $process.Dispose() }
     }
-    Write-AgenticLog "${Label}: $($outStr.Length) chars, exit $exitCode"
+    Write-AgenticLog ("{0}: {1} chars, exit {2}" -f $Label, $outStr.Length, $exitCode)
     return @{ ExitCode = $exitCode; Output = $outStr }
 }
 
@@ -459,20 +494,8 @@ function Invoke-OpenCode {
 }
 
 # -- Claude Code invocation -----------------------------------------------
-function Invoke-ClaudeCode {
-    <#
-    .SYNOPSIS
-      Headless `claude -p` with the task on stdin and the role prompt appended; returns @{ ExitCode; Output }.
-    .DESCRIPTION
-      The planner is sandboxed by --allowed-tools; the executor's default bypassPermissions suits trusted repos only.
-    #>
-    param([string]$Role, [string]$Model, [string]$Message, [hashtable]$EngineConfig)
-    $timeoutSeconds = Get-AgentTimeoutForRole -EngineConfig $EngineConfig -Role $Role
-    if ($script:AgenticDryRun) {
-        Write-AgenticLog "[DRY RUN] claude -p --model $Model (role=$Role)"
-        return @{ ExitCode = 0; Output = '[DRY RUN]' }
-    }
-
+function New-ClaudeArgumentList {
+    param([string]$Role, [string]$Model, [hashtable]$EngineConfig)
     $argList = [System.Collections.Generic.List[string]]::new()
     $argList.AddRange([string[]]@('-p', '--model', $Model))
     if ($EngineConfig.StreamOutput) {
@@ -505,9 +528,26 @@ function Invoke-ClaudeCode {
     if ($EngineConfig.ExtraArgs) {
         foreach ($extra in ($EngineConfig.ExtraArgs -split '\s+' | Where-Object { $_ })) { $argList.Add($extra) }
     }
+    return ,$argList.ToArray()
+}
 
+function Invoke-ClaudeCode {
+    <#
+    .SYNOPSIS
+      Headless `claude -p` with the task on stdin and the role prompt appended; returns @{ ExitCode; Output }.
+    .DESCRIPTION
+      The planner is sandboxed by --allowed-tools; the executor's default bypassPermissions suits trusted repos only.
+    #>
+    param([string]$Role, [string]$Model, [string]$Message, [hashtable]$EngineConfig)
+    $timeoutSeconds = Get-AgentTimeoutForRole -EngineConfig $EngineConfig -Role $Role
+    if ($script:AgenticDryRun) {
+        Write-AgenticLog "[DRY RUN] claude -p --model $Model (role=$Role)"
+        return @{ ExitCode = 0; Output = '[DRY RUN]' }
+    }
+
+    $argList = New-ClaudeArgumentList -Role $Role -Model $Model -EngineConfig $EngineConfig
     Write-AgenticLog "Invoking claude: role=$Role model=$Model (timeout=${timeoutSeconds}s)"
-    $result = Invoke-AgentProcess -Executable 'claude' -ArgumentList $argList.ToArray() `
+    $result = Invoke-AgentProcess -Executable 'claude' -ArgumentList $argList `
         -Message $Message -TimeoutSeconds $timeoutSeconds -Label "claude-$Role" `
         -RenderClaudeStream:$EngineConfig.StreamOutput
     if ($result.ExitCode -ne 0 -and $result.ExitCode -ne 127) {
@@ -973,16 +1013,9 @@ function Invoke-SanitizerTestCommand {
     return Invoke-TestCommand -Command $Command -RepoRoot $RepoRoot -Environment $envVars
 }
 
-# -- Main loop ------------------------------------------------------------
-function Invoke-AgenticLoop {
-    param(
-        $Config, [string]$PlannerPrompt, [string]$ExecutorPrompt,
-        $BuildConfigs = $null, [bool]$OnWindows = (Test-IsWindows), [string]$RepoRoot = (Get-Location).Path,
-        [int]$MaxIterations = -1, [switch]$SkipBuild, [switch]$SkipTests, [switch]$SkipQuality,
-        [switch]$PlannerOnly, [switch]$ExecutorOnly,
-        [string]$RefactorPlannerPrompt = '', [string]$Engine = ''
-    )
-    $engineConfig = Resolve-AgenticEngine -Config $Config -RepoRoot $RepoRoot -EngineOverride $Engine
+function Resolve-AgenticLoopInputs {
+    param($Config, $BuildConfigs, [bool]$OnWindows,
+        [string]$PlannerPrompt, [string]$ExecutorPrompt, [string]$RefactorPlannerPrompt)
     if (-not $BuildConfigs) { $BuildConfigs = Get-AgenticBuildConfigs -Config $Config -OnWindows $OnWindows }
     if (-not $BuildConfigs) {
         Write-AgenticLog 'No build configs (need buildMatrix or buildConfigurations in config)' 'FATAL'
@@ -1011,6 +1044,30 @@ function Invoke-AgenticLoop {
     }
     if (-not $ExecutorPrompt) { $ExecutorPrompt = Get-AgenticDefaultPrompt -Role 'executor' }
     if (-not $RefactorPlannerPrompt) { $RefactorPlannerPrompt = $PlannerPrompt }
+    return [pscustomobject]@{
+        BuildConfigs = $BuildConfigs
+        PlannerPrompt = $PlannerPrompt
+        ExecutorPrompt = $ExecutorPrompt
+        RefactorPlannerPrompt = $RefactorPlannerPrompt
+    }
+}
+
+# -- Main loop ------------------------------------------------------------
+function Invoke-AgenticLoop {
+    param(
+        $Config, [string]$PlannerPrompt, [string]$ExecutorPrompt,
+        $BuildConfigs = $null, [bool]$OnWindows = (Test-IsWindows), [string]$RepoRoot = (Get-Location).Path,
+        [int]$MaxIterations = -1, [switch]$SkipBuild, [switch]$SkipTests, [switch]$SkipQuality,
+        [switch]$PlannerOnly, [switch]$ExecutorOnly,
+        [string]$RefactorPlannerPrompt = '', [string]$Engine = ''
+    )
+    $engineConfig = Resolve-AgenticEngine -Config $Config -RepoRoot $RepoRoot -EngineOverride $Engine
+    $inputs = Resolve-AgenticLoopInputs -Config $Config -BuildConfigs $BuildConfigs -OnWindows $OnWindows `
+        -PlannerPrompt $PlannerPrompt -ExecutorPrompt $ExecutorPrompt -RefactorPlannerPrompt $RefactorPlannerPrompt
+    $BuildConfigs = $inputs.BuildConfigs
+    $PlannerPrompt = $inputs.PlannerPrompt
+    $ExecutorPrompt = $inputs.ExecutorPrompt
+    $RefactorPlannerPrompt = $inputs.RefactorPlannerPrompt
 
     $intervals = Get-AgenticConfigValue $Config 'intervals' $null
     $buildEveryN = [int](Get-AgenticConfigValue $intervals 'buildEveryNTasks' 3)
@@ -1154,42 +1211,45 @@ function Invoke-AgenticLoop {
         return
     }
 
-    $forcePlanner = $false
-    while ($true) {
-        $iteration++
-        if ($maxIter -gt 0 -and $iteration -gt $maxIter) { break }
-        $script:AgenticIterations = $iteration
-        Write-AgenticSection "ITERATION $iteration"
+    function Invoke-IterationLoop {
+        $forcePlanner = $false
+        while ($true) {
+            $iteration++
+            if ($maxIter -gt 0 -and $iteration -gt $maxIter) { break }
+            $script:AgenticIterations = $iteration
+            Write-AgenticSection "ITERATION $iteration"
 
-        # Planner skipped while actionable tasks remain; the starvation guard stops blocked ones stalling the loop.
-        $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
-        $pending = Get-UncheckedTaskCount -BacklogPath $backlogPath
-        $blocked = Get-BlockedTaskCount -BacklogPath $backlogPath
-        $plannerRan = $false
-        if ($skipPlannerWhenPending -and $pending -gt 0 -and -not $forcePlanner) {
-            Write-AgenticLog "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
-        } else {
-            if ($forcePlanner) {
-                Write-AgenticLog "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" 'WARN'
+            # Planner skipped while actionable tasks remain; the starvation guard stops blocked ones stalling the loop.
+            $backlogPath = Join-Path $RepoRoot 'BACKLOG.md'
+            $pending = Get-UncheckedTaskCount -BacklogPath $backlogPath
+            $blocked = Get-BlockedTaskCount -BacklogPath $backlogPath
+            $plannerRan = $false
+            if ($skipPlannerWhenPending -and $pending -gt 0 -and -not $forcePlanner) {
+                Write-AgenticLog "Skipping planner: $pending actionable task(s) pending in BACKLOG.md ($blocked blocked)"
+            } else {
+                if ($forcePlanner) {
+                    Write-AgenticLog "Starvation guard: no progress last iteration — running planner despite $pending pending task(s) ($blocked blocked)" 'WARN'
+                }
+                Invoke-PlannerPhase -Refactor:$($iteration % $refactorEveryN -eq 0)
+                $plannerRan = $true
             }
-            Invoke-PlannerPhase -Refactor:$($iteration % $refactorEveryN -eq 0)
-            $plannerRan = $true
-        }
 
-        $batch = Invoke-ExecutorTaskBatch -BacklogPath $backlogPath -CompletedTotal ([ref]$tasksDone) -FailureMessage 'Too many consecutive build failures — stopping loop'
-        if ($batch.Stopped) { break }
-        if ($batch.Completed -eq 0) {
-            if ($plannerRan) {
-                Write-AgenticLog 'No executor progress even after running the planner — stopping loop (no actionable tasks left)' 'WARN'
-                break
+            $batch = Invoke-ExecutorTaskBatch -BacklogPath $backlogPath -CompletedTotal ([ref]$tasksDone) -FailureMessage 'Too many consecutive build failures — stopping loop'
+            if ($batch.Stopped) { break }
+            if ($batch.Completed -eq 0) {
+                if ($plannerRan) {
+                    Write-AgenticLog 'No executor progress even after running the planner — stopping loop (no actionable tasks left)' 'WARN'
+                    break
+                }
+                Write-AgenticLog 'No executor progress this iteration — planner will run next iteration' 'WARN'
+                $forcePlanner = $true
+            } else {
+                $forcePlanner = $false
             }
-            Write-AgenticLog 'No executor progress this iteration — planner will run next iteration' 'WARN'
-            $forcePlanner = $true
-        } else {
-            $forcePlanner = $false
+            if ($loopDelay -gt 0 -and -not $script:AgenticDryRun) { Write-AgenticLog "Sleeping ${loopDelay}s..."; Start-Sleep $loopDelay }
         }
-        if ($loopDelay -gt 0 -and -not $script:AgenticDryRun) { Write-AgenticLog "Sleeping ${loopDelay}s..."; Start-Sleep $loopDelay }
     }
+    Invoke-IterationLoop
 }
 
 # Keep in lockstep with the .psd1's FunctionsToExport: consumers import this .psm1 by path, bypassing the manifest.

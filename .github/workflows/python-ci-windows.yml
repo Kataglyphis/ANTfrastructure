@@ -405,7 +405,12 @@ jobs:
 
       # Pinned: a new analyzer release must not fail this lane with no commit to blame.
       - name: Install PSScriptAnalyzer
-        run: Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser
+        run: |
+          $versions = 'third_party/ANTfrastructure/linux/scripts/01-core/versions.env'
+          $pins = @(Get-Content -LiteralPath $versions | Where-Object { $_ -match '^\s*PSSCRIPTANALYZER_VERSION\s*=' })
+          if ($pins.Count -ne 1) { throw "PSSCRIPTANALYZER_VERSION must occur exactly once in $versions" }
+          $pin = ($pins[0] -split '=', 2)[1].Trim().Trim('"', "'")
+          Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser
 
       # The ruleset resolves against the gate's own root (by reference); -FailOnAnalyzer is fixed, as without it the analyzer cannot fail.
       - name: Lint PowerShell (parse gate + AST traps + PSScriptAnalyzer)

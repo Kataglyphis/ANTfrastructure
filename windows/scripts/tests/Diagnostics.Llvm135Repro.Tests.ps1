@@ -11,7 +11,9 @@ if (-not (Get-Command Get-ScriptFunctionDefinition -ErrorAction SilentlyContinue
 
 $script:Target = 'aarch64-pc-windows-msvc'
 . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\diagnostics\Invoke-LlvmAarch64Layout.ps1' `
-        -FunctionName 'Split-CommandLine', 'Get-LlvmCompilePlan', 'Get-CodegenFlags')
+        -FunctionName 'Split-CommandLine', 'Get-LlvmWorkaroundSkipSpan', 'Get-LlvmPreprocessedSkipSpan',
+        'Get-LlvmCompilePlan', 'Get-CodegenFlags', 'Get-LlvmCorpusManifest', 'Get-LlvmVerifiedInput',
+        'Get-LlvmCaseResult', 'Write-LlvmOverallVerdict')
 
 # Get-CodegenFlags reads $Target from its enclosing scope, as it does in the script.
 $Target = $script:Target
@@ -150,10 +152,12 @@ Describe 'llvm135 shared capture and codegen argument selection' {
     It 'shares artifact filtering while retaining mode-specific preprocessing, codegen and operand policies' {
         $tokens = @('sccache.exe', 'clang-cl.exe', '/O2', '/Ob2', '/D', 'NAME.cpp', '/I', 'include path',
             '-imsvc', 'sdk path', '/FI', 'forced header', '/Fiold.i', '/Fpold.pch', '/Foout.obj', '/Fdout.pdb',
-            '-clang:-MFold.d', '/fp:precise', '-mllvm', '-inline-threshold=1', '/c', '--', 'source.cpp')
+            '-clang:-MFold.d', '/fp:precise', '-mllvm', '-other-pass', '-mllvm', '-inline-threshold=1',
+            '-Xclang', '-target-feature', '-Xclang', '+force-32bit-jump-tables', '/c', '--', 'source.cpp')
         $codegen = Get-LlvmCompilePlan -Tokens $tokens
-        Assert-Equal '/fp:precise' ($codegen.Flags -join ',')
+        Assert-Equal '/fp:precise,-mllvm,-other-pass' ($codegen.Flags -join ',')
         Assert-Equal 'source.cpp' $codegen.Source
+        Assert-False ($codegen.Flags -contains '+force-32bit-jump-tables')
         $capture = Get-LlvmCompilePlan -Tokens $tokens -Preprocess
         Assert-Equal 'source.cpp' $capture.Source
         Assert-True ($capture.Flags -contains '/O2')
@@ -163,9 +167,84 @@ Describe 'llvm135 shared capture and codegen argument selection' {
         Assert-True ($capture.Flags -contains '/Fiold.i')
         Assert-True ($capture.Flags -contains '/Fpold.pch')
         Assert-True ($capture.Flags -contains '-inline-threshold=1')
+        Assert-True ($capture.Flags -contains '+force-32bit-jump-tables')
         Assert-False ([bool]($capture.Flags -cmatch '^[-/]F[od]'))
         Assert-False ([bool]($capture.Flags -match '^-clang:-M'))
         Assert-False ($capture.Flags -contains '/c')
         Assert-False ($capture.Flags -contains '--')
+    }
+}
+
+Describe 'llvm135 compile-plan boundaries' {
+    It 'makes the target-feature skip fail when its four-token guard is removed' {
+        Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/diagnostics/Invoke-LlvmAarch64Layout.ps1' `
+            -FunctionName Get-LlvmWorkaroundSkipSpan -Find 'return 4' -Replace 'return 0' `
+            -Expected 'expected four workaround tokens' -IncludeControl -Body {
+                $tokens = @('-Xclang', '-target-feature', '-Xclang', '+force-32bit-jump-tables')
+                Assert-Equal 4 (Get-MutLlvmWorkaroundSkipSpan -Tokens $tokens -Index 0) 'expected four workaround tokens'
+            }
+    }
+}
+
+function New-LlvmCorpusFixture {
+    param([Parameter(Mandatory)][string]$Directory, [Parameter(Mandatory)][string]$Content)
+    $inputPath = Join-Path $Directory 'case.i'
+    [IO.File]::WriteAllText($inputPath, $Content)
+    $case = [pscustomobject]@{ Id = 'layout'; Ref = '#135'; Preprocessed = 'case.i';
+        Sha256 = (Get-FileHash $inputPath -Algorithm SHA256).Hash; CodegenFlags = @('/EHa');
+        OffFlags = @('/O2'); OnFlags = @('/Ob1'); Expect = 'fixup' }
+    return [pscustomobject]@{ Path = $inputPath; Case = $case }
+}
+
+Describe 'llvm135 verified corpus and verdicts' {
+    It 'rejects a tampered or missing preprocessed input before compiling' {
+        Invoke-InTestDir { param($dir)
+            $fixture = New-LlvmCorpusFixture -Directory $dir -Content 'original'
+            Assert-Equal $fixture.Path (Get-LlvmVerifiedInput -Case $fixture.Case -CorpusDir $dir)
+            [IO.File]::WriteAllText($fixture.Path, 'tampered')
+            Assert-Throws -Body { Get-LlvmVerifiedInput -Case $fixture.Case -CorpusDir $dir } -MessagePattern 'corpus tampered'
+            Remove-Item -LiteralPath $fixture.Path
+            Assert-Throws -Body { Get-LlvmVerifiedInput -Case $fixture.Case -CorpusDir $dir } -MessagePattern 'corpus incomplete'
+        }
+    }
+
+    It 'requires both control arms before trying a candidate and keeps all candidate outcomes' {
+        Invoke-InTestDir { param($dir)
+            $case = (New-LlvmCorpusFixture -Directory $dir -Content 'fixture').Case
+            $state = [pscustomobject]@{ Calls = [Collections.Generic.List[string]]::new(); Arms = @{} }
+            Invoke-WithTestFunction -Name Invoke-Arm -FixtureState $state -Definition {
+                param($ClangCl, $Flags, $InputPath, $ObjPath)
+                $arm = [IO.Path]::GetFileNameWithoutExtension($ObjPath).Replace('layout.', '')
+                [void]$State.Calls.Add("$ClangCl|$arm|$($Flags -join ',')|$InputPath")
+                return $State.Arms[$arm]
+            } -Body { param($state)
+                $rows = @(
+                    @{ Off = @{ ExitCode = 0; Output = '' }; On = @{ ExitCode = 0; Output = '' }; CandidateArm = @{ ExitCode = 0; Output = '' }; Verdict = 'INVALID-NO-REPRO'; Calls = 2 }
+                    @{ Off = @{ ExitCode = 1; Output = 'fixup error' }; On = @{ ExitCode = 1; Output = 'error' }; CandidateArm = @{ ExitCode = 0; Output = '' }; Verdict = 'INVALID-WORKAROUND-DEAD'; Calls = 2 }
+                    @{ Off = @{ ExitCode = 1; Output = 'fixup error' }; On = @{ ExitCode = 0; Output = '' }; CandidateArm = @{ ExitCode = 0; Output = '' }; Verdict = 'FIXED'; Calls = 3 }
+                    @{ Off = @{ ExitCode = 1; Output = 'fixup error' }; On = @{ ExitCode = 0; Output = '' }; CandidateArm = @{ ExitCode = 1; Output = 'fixup error' }; Verdict = 'NOT-FIXED'; Calls = 3 }
+                    @{ Off = @{ ExitCode = 1; Output = 'fixup error' }; On = @{ ExitCode = 0; Output = '' }; CandidateArm = @{ ExitCode = 1; Output = 'other error' }; Verdict = 'INCONCLUSIVE'; Calls = 3 }
+                )
+                foreach ($row in $rows) {
+                    $state.Calls.Clear()
+                    $state.Arms = @{ 'baseline-off' = $row.Off; 'baseline-on' = $row.On; 'candidate-off' = $row.CandidateArm }
+                    $result = Get-LlvmCaseResult -Case $case -Baseline stock -ObjDir $dir -CorpusDir $dir -Candidate candidate
+                    Assert-Equal $row.Verdict $result.Verdict
+                    Assert-Equal $row.Calls $state.Calls.Count
+                    Assert-Match 'stock\|baseline-off\|/EHa,/O2' $state.Calls[0]
+                    Assert-Match 'stock\|baseline-on\|/EHa,/Ob1' $state.Calls[1]
+                }
+            }
+        }
+    }
+
+    It 'gives invalid controls priority over a green candidate result' {
+        $results = @(
+            [pscustomobject]@{ Id = 'bad'; Verdict = 'INVALID-NO-REPRO'; BaselineTail = 'bad control' },
+            [pscustomobject]@{ Id = 'good'; Verdict = 'FIXED'; CandidateTail = '' }
+        )
+        $output = @(Write-LlvmOverallVerdict -Results $results -Candidate candidate 6>&1 | ForEach-Object { "$_" })
+        Assert-Equal 'INVALID' $output[-1]
+        Assert-True (($output -join "`n") -match 'HARNESS INVALID')
     }
 }

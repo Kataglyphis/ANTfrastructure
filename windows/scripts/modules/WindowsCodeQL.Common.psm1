@@ -152,6 +152,172 @@ function Disable-SccacheForTrace {
     Remove-CompilerWrapperEnvironment
 }
 
+function Get-CodeQLTimeoutMinutes {
+    # A hung extractor once burned a whole night, so database creation and analysis have watchdogs.
+    $timeoutMinutes = 180
+    if ($env:CODEQL_TIMEOUT_MINUTES) {
+        $parsed = 0
+        if ([int]::TryParse($env:CODEQL_TIMEOUT_MINUTES, [ref]$parsed) -and $parsed -gt 0) { $timeoutMinutes = $parsed }
+    }
+    return $timeoutMinutes
+}
+
+function Resolve-CodeQLExecutable {
+    param([pscustomobject]$Context, [string]$Workspace)
+
+    $codeQLDir = Join-Path $Workspace 'codeql-cli'
+    $codeQLExe = Join-Path $codeQLDir 'codeql\codeql.exe'
+    if (Test-Path $codeQLExe) { return $codeQLExe }
+
+    # $env:CODEQL_VERSION pins a release tag, deliberately not a versions.env key; else latest.
+    $codeQLUrl = if (-not [string]::IsNullOrWhiteSpace($env:CODEQL_VERSION)) {
+        "https://github.com/github/codeql-cli-binaries/releases/download/$($env:CODEQL_VERSION)/codeql-win64.zip"
+    } else {
+        'https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-win64.zip'
+    }
+    Write-BuildLog -Context $Context -Message "Downloading CodeQL CLI from $codeQLUrl ..."
+    New-Item -ItemType Directory -Force -Path $codeQLDir | Out-Null
+    $zipPath = Join-Path $codeQLDir 'codeql.zip'
+    # The PK guard rejects an HTML error page served as the asset.
+    Invoke-DownloadWithRetry -Url $codeQLUrl -DestinationPath $zipPath -ExpectSignature 'PK' -Description 'CodeQL CLI (codeql-win64.zip)'
+    Expand-Archive -Path $zipPath -DestinationPath $codeQLDir -Force
+    return $codeQLExe
+}
+
+function Invoke-CodeQLPackDownload {
+    param([string]$CodeQLExe, [string]$QueryPack)
+    & $CodeQLExe pack download $QueryPack | Out-Host
+    return $LASTEXITCODE
+}
+
+function Invoke-CodeQLPackDownloads {
+    param([pscustomobject]$Context, [string]$CodeQLExe, [string[]]$Languages, [bool]$Download)
+
+    if (-not $Download) {
+        Write-BuildLog -Context $Context -Message 'Skipping query pack download (CodeQLDownload not set).'
+        return
+    }
+    Write-BuildLog -Context $Context -Message 'Downloading query packs for all languages...'
+    foreach ($lang in $Languages) {
+        $queryPack = "codeql/$lang-queries"
+        Write-BuildLog -Context $Context -Message "Downloading Query Pack: $queryPack..."
+        $downloadExit = Invoke-CodeQLPackDownload -CodeQLExe $CodeQLExe -QueryPack $queryPack
+        if ($downloadExit -ne 0) {
+            Write-BuildLogWarning -Context $Context -Message "Failed to download $queryPack, continuing..."
+        }
+    }
+}
+
+function Get-CodeQLInnerCommand {
+    param([hashtable]$ForwardParameters, [string]$BuildScriptPath)
+
+    $innerArgs = @{}
+    foreach ($pair in $ForwardParameters.GetEnumerator()) {
+        if ($pair.Key -eq 'CodeQL') { continue }
+        $innerArgs[$pair.Key] = $pair.Value
+    }
+    $innerParamList = @()
+    foreach ($pair in $innerArgs.GetEnumerator()) {
+        if ($pair.Value -is [switch] -and $pair.Value.IsPresent) { $innerParamList += "-$($pair.Key)" }
+        elseif ($pair.Value -is [bool] -and $pair.Value) { $innerParamList += "-$($pair.Key)" }
+        elseif ($pair.Value -isnot [switch] -and $pair.Value -isnot [bool]) { $innerParamList += "-$($pair.Key)", "$($pair.Value)" }
+    }
+    # CodeQL tokenizes --command as one string, so an interpolated array loses quoting.
+    $innerCommandParts = @('cmd', '/c', 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
+    return ($innerCommandParts | ForEach-Object {
+        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { "$_" }
+    }) -join ' '
+}
+
+function Invoke-CodeQLRunPhase {
+    param([pscustomobject]$Run, [string[]]$Arguments, [string]$Phase, [string]$FailureMessage = '')
+    $succeeded = 0 -eq (Invoke-CodeQLProcess -CodeQLExe $Run.CodeQLExe -Arguments $Arguments -Phase $Phase -TimeoutMinutes $Run.TimeoutMinutes)
+    if (-not $succeeded -and $FailureMessage) { throw $FailureMessage }
+    return $succeeded
+}
+
+function Write-CodeQLMessages {
+    param([pscustomobject]$Context, [string[]]$Messages)
+    foreach ($message in $Messages) { Write-BuildLog -Context $Context -Message $message }
+}
+
+function Initialize-CodeQLDatabaseCluster {
+    param([pscustomobject]$Run, [string]$InnerCommand, [bool]$CleanCodeQLDb)
+
+    $dbClusterDir = Join-Path $Run.Workspace 'codeql-db-cluster'
+    if (Test-Path $dbClusterDir) {
+        if ($CleanCodeQLDb) {
+            Write-BuildLog -Context $Run.Context -Message "Cleaning existing CodeQL DB cluster: $dbClusterDir"
+            Remove-Item -Recurse -Force $dbClusterDir
+        } else {
+            # A reused cluster keeps its original config because only database create reads it.
+            Write-CodeQLMessages -Context $Run.Context -Messages @(
+                "Keeping existing CodeQL DB cluster (CleanCodeQLDb not set): $dbClusterDir",
+                'Skipping database creation and reusing existing CodeQL DB cluster (a code-scanning config applies only to a new one: -CleanCodeQLDb).'
+            )
+            return $dbClusterDir
+        }
+    }
+
+    # A cache hit would also hide the compile from the extractor.
+    Disable-SccacheForTrace
+    Write-BuildLog -Context $Run.Context -Message 'sccache is off for the traced build (KATAGLYPHIS_NO_SCCACHE=1, wrappers and launchers cleared).'
+    $createArgs = Get-CodeQLDatabaseCreateArgs -DbClusterDir $dbClusterDir -Languages $Run.Languages -InnerCommand $InnerCommand -SourceRoot $Run.Workspace -CodeScanningConfig $Run.CodeScanningConfig -Overwrite:$CleanCodeQLDb
+    $scope = if ($Run.CodeScanningConfig) { $Run.CodeScanningConfig } else { 'none, the analysis is unscoped' }
+    Write-BuildLog -Context $Run.Context -Message "Creating database cluster with languages: $($Run.Languages -join ', '); code-scanning config: $scope"
+    $null = Invoke-CodeQLRunPhase -Run $Run -Arguments $createArgs -Phase 'database create' -FailureMessage 'CodeQL Database Cluster creation failed'
+    return $dbClusterDir
+}
+
+function Get-CodeQLAnalyzeArgs {
+    param([string]$LangDbDir, [string]$Query, [string]$SarifOutput, [bool]$Download)
+    $analyzeArgs = @('database', 'analyze', $LangDbDir, $Query, '--format=sarif-latest', "--output=$SarifOutput")
+    if ($Download) { $analyzeArgs += '--download' }
+    return $analyzeArgs
+}
+
+function Invoke-CodeQLLanguageAnalysis {
+    param([pscustomobject]$Run, [string]$DbClusterDir, [string]$ResultsDir, [string]$Language)
+
+    Write-CodeQLMessages -Context $Run.Context -Messages @('', '------------------------------------------------', ">>> Analyzing Language: $Language", '------------------------------------------------')
+
+    $langDbDir = Join-Path $DbClusterDir $Language
+    $sarifOutput = Join-Path $ResultsDir "$Language.sarif"
+    $querySuite = "codeql/$Language-queries:codeql-suites/$Language-security-and-quality.qls"
+    $analyzeArgs = Get-CodeQLAnalyzeArgs -LangDbDir $langDbDir -Query $querySuite -SarifOutput $sarifOutput -Download $Run.Download
+
+    if (-not (Invoke-CodeQLRunPhase -Run $Run -Arguments $analyzeArgs -Phase "analyze $Language")) {
+        Write-BuildLogWarning -Context $Run.Context -Message "Analysis with query suite failed for $Language, trying with query pack..."
+        $fallbackQueryPack = "codeql/$Language-queries"
+        $fallbackArgs = Get-CodeQLAnalyzeArgs -LangDbDir $langDbDir -Query $fallbackQueryPack -SarifOutput $sarifOutput -Download $Run.Download
+        if (-not (Invoke-CodeQLRunPhase -Run $Run -Arguments $fallbackArgs -Phase "analyze $Language (pack)")) {
+            Write-BuildLogError -Context $Run.Context -Message "Analysis failed for $Language even with basic query pack"
+            return $false
+        }
+    }
+
+    Write-BuildLogSuccess -Context $Run.Context -Message "Analysis completed for $Language. Results saved to: $sarifOutput"
+    if ($Run.CodeScanningConfig) {
+        $dropped = Remove-SarifIgnoredResult -SarifPath $sarifOutput -IgnoredPaths (Get-CodeScanningPathsIgnore -ConfigPath $Run.CodeScanningConfig)
+        Write-BuildLog -Context $Run.Context -Message ("{0}: dropped {1} result(s) under the config's paths-ignore." -f $Language, $dropped)
+    }
+    return $true
+}
+
+function Invoke-CodeQLAnalyses {
+    param([pscustomobject]$Run, [string]$DbClusterDir, [string]$ResultsDir)
+
+    # Other languages still run, but each failure reaches the final verdict.
+    $failedLanguages = @()
+    foreach ($lang in $Run.Languages) {
+        $succeeded = Invoke-CodeQLLanguageAnalysis -Run $Run -DbClusterDir $DbClusterDir -ResultsDir $ResultsDir -Language $lang
+        if (-not $succeeded) { $failedLanguages += $lang }
+    }
+    if (@($failedLanguages).Count -gt 0) {
+        throw "CodeQL analysis failed for language(s): $($failedLanguages -join ', '). See log above; partial results in: $ResultsDir"
+    }
+}
+
 function Invoke-BuildCodeQL {
     param(
         [Parameter(Mandatory)]
@@ -163,172 +329,29 @@ function Invoke-BuildCodeQL {
         [Parameter(Mandatory)]
         [string]$BuildScriptPath,
         [string[]]$Languages = @('cpp', 'rust'),
-        # Optional code-scanning config (see Get-CodeQLDatabaseCreateArgs); empty scans unscoped.
+        # Optional config scopes analysis; an empty value scans unscoped.
         [string]$CodeScanningConfig = ''
     )
 
     Write-BuildLog -Context $Context -Message "=== CodeQL Mode Active ==="
-
     $cleanCodeQLDb = Get-ForwardSwitchValue -ForwardParameters $ForwardParameters -Name 'CleanCodeQLDb'
     $codeQLDownload = Get-ForwardSwitchValue -ForwardParameters $ForwardParameters -Name 'CodeQLDownload'
-    # Every phase is bounded: a hung extractor once burned a whole night with 8 s of CPU.
-    $timeoutMinutes = 180
-    if ($env:CODEQL_TIMEOUT_MINUTES) {
-        $parsed = 0
-        if ([int]::TryParse($env:CODEQL_TIMEOUT_MINUTES, [ref]$parsed) -and $parsed -gt 0) { $timeoutMinutes = $parsed }
-    }
-
+    $timeoutMinutes = Get-CodeQLTimeoutMinutes
     Write-BuildLog -Context $Context -Message "CodeQL cleanup enabled: $cleanCodeQLDb"
     Write-BuildLog -Context $Context -Message "CodeQL download enabled: $codeQLDownload"
 
-    # $env:CODEQL_VERSION pins a release tag (e.g. 'v2.18.4'), deliberately not a versions.env key; else latest.
-    $codeQLUrl = if (-not [string]::IsNullOrWhiteSpace($env:CODEQL_VERSION)) {
-        "https://github.com/github/codeql-cli-binaries/releases/download/$($env:CODEQL_VERSION)/codeql-win64.zip"
-    } else {
-        'https://github.com/github/codeql-cli-binaries/releases/latest/download/codeql-win64.zip'
+    $codeQLExe = Resolve-CodeQLExecutable -Context $Context -Workspace $Workspace
+    Invoke-CodeQLPackDownloads -Context $Context -CodeQLExe $codeQLExe -Languages $Languages -Download $codeQLDownload
+    $innerCommand = Get-CodeQLInnerCommand -ForwardParameters $ForwardParameters -BuildScriptPath $BuildScriptPath
+    $run = [pscustomobject]@{
+        Context = $Context; Workspace = $Workspace; CodeQLExe = $codeQLExe
+        Languages = $Languages; CodeScanningConfig = $CodeScanningConfig
+        Download = $codeQLDownload; TimeoutMinutes = $timeoutMinutes
     }
-    $codeQLDir = Join-Path $Workspace 'codeql-cli'
-    $codeQLExe = Join-Path $codeQLDir 'codeql\codeql.exe'
-
-    if (-not (Test-Path $codeQLExe)) {
-        Write-BuildLog -Context $Context -Message "Downloading CodeQL CLI from $codeQLUrl ..."
-        New-Item -ItemType Directory -Force -Path $codeQLDir | Out-Null
-        $zipPath = Join-Path $codeQLDir 'codeql.zip'
-        # The PK guard rejects an HTML error page served as the asset.
-        Invoke-DownloadWithRetry -Url $codeQLUrl -DestinationPath $zipPath -ExpectSignature 'PK' -Description 'CodeQL CLI (codeql-win64.zip)'
-        Expand-Archive -Path $zipPath -DestinationPath $codeQLDir -Force
-    }
-
-    if ($codeQLDownload) {
-        Write-BuildLog -Context $Context -Message 'Downloading query packs for all languages...'
-        foreach ($lang in $Languages) {
-            $queryPack = "codeql/$lang-queries"
-            Write-BuildLog -Context $Context -Message "Downloading Query Pack: $queryPack..."
-            & $codeQLExe pack download $queryPack
-
-            if ($LASTEXITCODE -ne 0) {
-                Write-BuildLogWarning -Context $Context -Message "Failed to download $queryPack, continuing..."
-            }
-        }
-    } else {
-        Write-BuildLog -Context $Context -Message 'Skipping query pack download (CodeQLDownload not set).'
-    }
-
-    $innerArgs = @{}
-    foreach ($pair in $ForwardParameters.GetEnumerator()) {
-        if ($pair.Key -eq 'CodeQL') {
-            continue
-        }
-        $innerArgs[$pair.Key] = $pair.Value
-    }
-
-    $innerParamList = @()
-    foreach ($pair in $innerArgs.GetEnumerator()) {
-        if ($pair.Value -is [switch] -and $pair.Value.IsPresent) { $innerParamList += "-$($pair.Key)" }
-        elseif ($pair.Value -is [bool] -and $pair.Value) { $innerParamList += "-$($pair.Key)" }
-        elseif ($pair.Value -isnot [switch] -and $pair.Value -isnot [bool]) { $innerParamList += "-$($pair.Key)", "$($pair.Value)" }
-    }
-    # --command is one string CodeQL tokenizes itself, so quote each element; an interpolated array loses quoting.
-    $innerCommandParts = @('cmd', '/c', 'pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $BuildScriptPath) + $innerParamList
-    $innerCommand = ($innerCommandParts | ForEach-Object {
-        if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { "$_" }
-    }) -join ' '
-
-    $dbClusterDir = Join-Path $Workspace 'codeql-db-cluster'
-    $shouldCreateDbCluster = $true
-
-    if (Test-Path $dbClusterDir) {
-        if ($cleanCodeQLDb) {
-            Write-BuildLog -Context $Context -Message "Cleaning existing CodeQL DB cluster: $dbClusterDir"
-            Remove-Item -Recurse -Force $dbClusterDir
-        } else {
-            Write-BuildLog -Context $Context -Message "Keeping existing CodeQL DB cluster (CleanCodeQLDb not set): $dbClusterDir"
-            $shouldCreateDbCluster = $false
-        }
-    }
-
-    if ($shouldCreateDbCluster) {
-        # A cache hit would also hide the compile from the extractor.
-        Disable-SccacheForTrace
-        Write-BuildLog -Context $Context -Message 'sccache is off for the traced build (KATAGLYPHIS_NO_SCCACHE=1, wrappers and launchers cleared).'
-        $createArgs = Get-CodeQLDatabaseCreateArgs -DbClusterDir $dbClusterDir -Languages $Languages `
-            -InnerCommand $innerCommand -SourceRoot $Workspace `
-            -CodeScanningConfig $CodeScanningConfig -Overwrite:$cleanCodeQLDb
-
-        $scope = if ($CodeScanningConfig) { $CodeScanningConfig } else { 'none, the analysis is unscoped' }
-        Write-BuildLog -Context $Context -Message "Creating database cluster with languages: $($Languages -join ', '); code-scanning config: $scope"
-        $createExit = Invoke-CodeQLProcess -CodeQLExe $codeQLExe -Arguments $createArgs -Phase 'database create' -TimeoutMinutes $timeoutMinutes
-
-        if ($createExit -ne 0) {
-            throw 'CodeQL Database Cluster creation failed'
-        }
-    } else {
-        # The config is read at `database create` only: a reused cluster keeps its scope.
-        Write-BuildLog -Context $Context -Message 'Skipping database creation and reusing existing CodeQL DB cluster (a code-scanning config applies only to a new one: -CleanCodeQLDb).'
-    }
-
+    $dbClusterDir = Initialize-CodeQLDatabaseCluster -Run $run -InnerCommand $innerCommand -CleanCodeQLDb $cleanCodeQLDb
     $resultsDir = Join-Path $Workspace 'codeql-results'
     New-Item -ItemType Directory -Force -Path $resultsDir | Out-Null
-
-    # Collected so the other languages still run, but any failure fails the function.
-    $failedLanguages = @()
-
-    foreach ($lang in $Languages) {
-        Write-BuildLog -Context $Context -Message ''
-        Write-BuildLog -Context $Context -Message '------------------------------------------------'
-        Write-BuildLog -Context $Context -Message ">>> Analyzing Language: $lang"
-        Write-BuildLog -Context $Context -Message '------------------------------------------------'
-
-        $langDbDir = Join-Path $dbClusterDir $lang
-        $sarifOutput = Join-Path $resultsDir "$lang.sarif"
-        $querySuite = "codeql/$lang-queries:codeql-suites/$lang-security-and-quality.qls"
-
-        $analyzeArgs = @(
-            'database', 'analyze', $langDbDir,
-            $querySuite,
-            '--format=sarif-latest',
-            "--output=$sarifOutput"
-        )
-
-        if ($codeQLDownload) {
-            $analyzeArgs += '--download'
-        }
-
-        $analyzeExit = Invoke-CodeQLProcess -CodeQLExe $codeQLExe -Arguments $analyzeArgs -Phase "analyze $lang" -TimeoutMinutes $timeoutMinutes
-
-        if ($analyzeExit -ne 0) {
-            Write-BuildLogWarning -Context $Context -Message "Analysis with query suite failed for $lang, trying with query pack..."
-            $fallbackQueryPack = "codeql/$lang-queries"
-            $fallbackArgs = @(
-                'database', 'analyze', $langDbDir,
-                $fallbackQueryPack,
-                '--format=sarif-latest',
-                "--output=$sarifOutput"
-            )
-
-            if ($codeQLDownload) {
-                $fallbackArgs += '--download'
-            }
-
-            $fallbackExit = Invoke-CodeQLProcess -CodeQLExe $codeQLExe -Arguments $fallbackArgs -Phase "analyze $lang (pack)" -TimeoutMinutes $timeoutMinutes
-            if ($fallbackExit -ne 0) {
-                Write-BuildLogError -Context $Context -Message "Analysis failed for $lang even with basic query pack"
-                $failedLanguages += $lang
-                continue
-            }
-        }
-
-        Write-BuildLogSuccess -Context $Context -Message "Analysis completed for $lang. Results saved to: $sarifOutput"
-        if ($CodeScanningConfig) {
-            $dropped = Remove-SarifIgnoredResult -SarifPath $sarifOutput -IgnoredPaths (Get-CodeScanningPathsIgnore -ConfigPath $CodeScanningConfig)
-            Write-BuildLog -Context $Context -Message "$lang`: dropped $dropped result(s) under the config's paths-ignore."
-        }
-    }
-
-    if (@($failedLanguages).Count -gt 0) {
-        throw "CodeQL analysis failed for language(s): $($failedLanguages -join ', '). See log above; partial results in: $resultsDir"
-    }
-
+    Invoke-CodeQLAnalyses -Run $run -DbClusterDir $dbClusterDir -ResultsDir $resultsDir
     Write-BuildLog -Context $Context -Message ''
     Write-BuildLogSuccess -Context $Context -Message '=== CodeQL Analysis Complete ==='
     Write-BuildLog -Context $Context -Message "All results available in: $resultsDir"

@@ -26,6 +26,7 @@ $ErrorActionPreference = 'Stop'
 $scriptsDir = $PSScriptRoot                                         # windows/scripts
 $windowsDir = Split-Path -Parent $scriptsDir                        # windows
 $settings = Join-Path $windowsDir 'PSScriptAnalyzerSettings.psd1'
+Import-Module (Join-Path $scriptsDir 'modules\WindowsScripts.Shared.psm1') -ErrorAction Stop
 
 # A file the analyzer never finished: counted apart from findings, as an infrastructure failure.
 function New-CrashVerdict {
@@ -51,9 +52,27 @@ function Invoke-AnalyzerOnce {
     }
 }
 
-# The newest PSScriptAnalyzer installed, or $null; the object, not the name, so the version reported is the one loaded.
+function Get-AnalyzerPin {
+    param([Parameter(Mandatory)][string]$File)
+    if (-not (Test-Path -LiteralPath $File -PathType Leaf)) { throw "PSScriptAnalyzer pin file is missing: $File" }
+    $rows = @(Select-String -LiteralPath $File -Pattern '^\s*PSSCRIPTANALYZER_VERSION\s*=')
+    if ($rows.Count -ne 1) { throw "PSSCRIPTANALYZER_VERSION must occur exactly once in $File" }
+    $pins = ConvertFrom-VersionsEnv -Path $File
+    $value = $pins['PSSCRIPTANALYZER_VERSION']
+    if ($value -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') { throw "Invalid PSSCRIPTANALYZER_VERSION in $File`: $value" }
+    return [version]$value
+}
+
+# A newer preinstalled analyzer can change lint results without a repo change.
 function Get-AnalyzerModule {
-    Get-Module -ListAvailable PSScriptAnalyzer | Sort-Object Version -Descending | Select-Object -First 1
+    param([string]$VersionsFile = (Join-Path (Split-Path -Parent $windowsDir) 'linux/scripts/01-core/versions.env'))
+    $pin = Get-AnalyzerPin -File $VersionsFile
+    $module = Get-Module -ListAvailable -Name PSScriptAnalyzer |
+        Where-Object { $_.Version -eq $pin } | Select-Object -First 1
+    if (-not $module) {
+        throw "PSScriptAnalyzer $pin is not installed: the analyzer pass cannot run. Install it with 'Install-Module PSScriptAnalyzer -RequiredVersion $pin -Force -Scope CurrentUser'."
+    }
+    return $module
 }
 
 # <verdict> <severity cast>: findings as plain data, so a verdict crosses a process boundary as JSON.
@@ -91,7 +110,8 @@ function Get-AnalyzerVerdict {
 
 # A batch child: PSSA keeps process-wide caches that runspaces corrupt, so parallel analysis takes processes.
 if ($PssaBatch) {
-    Import-Module (Get-AnalyzerModule) -Force
+    $analyzerModule = Get-AnalyzerModule
+    Import-Module $analyzerModule -Force -ErrorAction Stop
     $out = foreach ($f in @(Get-Content -LiteralPath $InputFile | Where-Object { $_ })) {
         ConvertTo-PlainVerdict -Verdict (Invoke-AnalyzerOnce -File $f) -Severity { param($s) [int]$s }
     }
@@ -184,34 +204,27 @@ $analyzerCrashes = @()
 $errs = @()
 $warns = @()
 $analyzerModule = Get-AnalyzerModule
-if ($analyzerModule) {
-    # The discovered object, not the name, which could load another install than the version reported.
-    Import-Module $analyzerModule -Force
-    $verdicts = @(Get-AnalyzerVerdict -Target $targets)
-    foreach ($v in @($verdicts)) {
-        if ($v.Note) { Write-Host $v.Note -ForegroundColor DarkYellow }
-        $analyzerFindings += @($v.Findings)
-        if ($v.Crash) { $analyzerCrashes += $v.Crash }
-    }
-    $errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
-    $warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })
-    $color = if ($errs.Count -gt 0) { 'Red' } elseif ($warns.Count -gt 0) { 'Yellow' } else { 'Green' }
-    Write-Host "PSSA: $($errs.Count) error(s), $($warns.Count) warning(s) [PSScriptAnalyzer $($analyzerModule.Version)]" -ForegroundColor $color
-    foreach ($f in ($analyzerFindings | Sort-Object Severity -Descending | Select-Object -First 40)) {
-        $c = if ($f.Severity -eq 'Error') { 'Red' } else { 'Yellow' }
-        Write-Host ("  [{0}] {1}:{2}  {3} ({4})" -f $f.Severity, $f.ScriptName, $f.Line, $f.Message, $f.RuleName) -ForegroundColor $c
-    }
-    if ($analyzerCrashes.Count -gt 0) {
-        # Reported apart from findings: these files were not analysed at all.
-        Write-Host "PSSA INFRASTRUCTURE FAILURE: $($analyzerCrashes.Count) file(s) could not be analysed after a retry:" -ForegroundColor Red
-        foreach ($c in $analyzerCrashes) { Write-Host "  $($c.File): $($c.Message)" -ForegroundColor Red }
-        Write-Host 'These files were NOT linted - coverage is incomplete.' -ForegroundColor Red
-    }
-} else {
-    # Throw, never skip: a gate that analysed nothing must not print LINT OK.
-    throw ("PSScriptAnalyzer is not installed: the analyzer pass would cover 0 of " +
-        "$($targets.Count) file(s), so this gate refuses to report a verdict. Install it with " +
-        "'Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0 -Force -Scope CurrentUser'.")
+# The discovered object, not the name, which could load another install than the version reported.
+Import-Module $analyzerModule -Force -ErrorAction Stop
+$verdicts = @(Get-AnalyzerVerdict -Target $targets)
+foreach ($v in @($verdicts)) {
+    if ($v.Note) { Write-Host $v.Note -ForegroundColor DarkYellow }
+    $analyzerFindings += @($v.Findings)
+    if ($v.Crash) { $analyzerCrashes += $v.Crash }
+}
+$errs = @($analyzerFindings | Where-Object { $_.Severity -eq 'Error' })
+$warns = @($analyzerFindings | Where-Object { $_.Severity -eq 'Warning' })
+$color = if ($errs.Count -gt 0) { 'Red' } elseif ($warns.Count -gt 0) { 'Yellow' } else { 'Green' }
+Write-Host "PSSA: $($errs.Count) error(s), $($warns.Count) warning(s) [PSScriptAnalyzer $($analyzerModule.Version)]" -ForegroundColor $color
+foreach ($f in ($analyzerFindings | Sort-Object Severity -Descending | Select-Object -First 40)) {
+    $c = if ($f.Severity -eq 'Error') { 'Red' } else { 'Yellow' }
+    Write-Host ("  [{0}] {1}:{2}  {3} ({4})" -f $f.Severity, $f.ScriptName, $f.Line, $f.Message, $f.RuleName) -ForegroundColor $c
+}
+if ($analyzerCrashes.Count -gt 0) {
+    # Reported apart from findings: these files were not analysed at all.
+    Write-Host "PSSA INFRASTRUCTURE FAILURE: $($analyzerCrashes.Count) file(s) could not be analysed after a retry:" -ForegroundColor Red
+    foreach ($c in $analyzerCrashes) { Write-Host "  $($c.File): $($c.Message)" -ForegroundColor Red }
+    Write-Host 'These files were NOT linted - coverage is incomplete.' -ForegroundColor Red
 }
 
 # Verdict

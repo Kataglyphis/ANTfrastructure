@@ -109,6 +109,40 @@ function Split-CommandLine {
     return $tokens.ToArray()
 }
 
+function Get-LlvmWorkaroundSkipSpan {
+    param([Parameter(Mandatory)][string[]]$Tokens, [Parameter(Mandatory)][int]$Index)
+    $token = $Tokens[$Index]
+    if ($token -eq '-mllvm') {
+        if ($Index + 1 -lt $Tokens.Count -and $Tokens[$Index + 1] -match 'compress-jump-tables|inline-threshold') { return 2 }
+        return 0
+    }
+    if ($token -match 'aarch64-enable-compress-jump-tables') { return 1 }
+    # The target-feature workaround occupies four adjacent tokens.
+    if ($token -eq '-Xclang' -and $Index + 3 -lt $Tokens.Count -and
+        $Tokens[$Index + 1] -eq '-target-feature' -and $Tokens[$Index + 3] -match 'force-32bit-jump-tables') {
+        return 4
+    }
+    return 0
+}
+
+function Get-LlvmPreprocessedSkipSpan {
+    param([Parameter(Mandatory)][string[]]$Tokens, [Parameter(Mandatory)][int]$Index)
+    $token = $Tokens[$Index]
+    if ($token -match '^[-/]O[0-9dxs]' -or $token -match '^[-/]Ob[0-3]$') { return 1 }
+    # A separated include, define, or forced header consumes its following value.
+    if ($token -cmatch '^[-/](I|D)$') { return 2 }
+    if ($token -cmatch '^[-/](I|D)') { return 1 }
+    if ($token -match '^-imsvc') {
+        if ($token -ceq '-imsvc') { return 2 }
+        return 1
+    }
+    if ($token -cmatch '^[-/]FI') {
+        if ($token -ceq '/FI' -or $token -ceq '-FI') { return 2 }
+        return 1
+    }
+    return 0
+}
+
 function Get-LlvmCompilePlan {
     param([Parameter(Mandatory)][string[]]$Tokens, [switch]$Preprocess)
     $out = [System.Collections.Generic.List[string]]::new()
@@ -118,32 +152,12 @@ function Get-LlvmCompilePlan {
     while ($i -lt $Tokens.Count -and $Tokens[$i] -match '\.exe$') { $i++ }
     while ($i -lt $Tokens.Count) {
         $t = $Tokens[$i]
-        $i++
         if (-not $Preprocess) {
-            # The workaround spellings, the separated -mllvm form included.
-            if ($t -eq '-mllvm') {
-                if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'compress-jump-tables') { $i++; continue }
-                if ($i -lt $Tokens.Count -and $Tokens[$i] -match 'inline-threshold') { $i++; continue }
-                [void]$out.Add($t); continue
-            }
-            if ($t -match 'aarch64-enable-compress-jump-tables') { continue }
-            # -Xclang -target-feature -Xclang +force-32bit-jump-tables : four tokens.
-            if ($t -eq '-Xclang' -and ($i + 2) -lt $Tokens.Count -and
-                $Tokens[$i] -eq '-target-feature' -and $Tokens[$i + 2] -match 'force-32bit-jump-tables') {
-                $i += 3; continue
-            }
-
-            # Optimisation and inlining are set per-arm.
-            if ($t -match '^[-/]O[0-9dxs]') { continue }
-            if ($t -match '^[-/]Ob[0-3]$') { continue }
-
-            # Baked into the .i; the separated /D NAME form must drop both tokens, or clang-cl reads NAME as an input.
-            if ($t -cmatch '^[-/](I|D)$') { $i++; continue }
-            if ($t -cmatch '^[-/](I|D)') { continue }
-            if ($t -match '^-imsvc') { if ($t -ceq '-imsvc') { $i++ }; continue }
-            if ($t -cmatch '^[-/]FI') { if ($t -ceq '/FI' -or $t -ceq '-FI') { $i++ }; continue }
-
+            $span = Get-LlvmWorkaroundSkipSpan -Tokens $Tokens -Index $i
+            if ($span -eq 0) { $span = Get-LlvmPreprocessedSkipSpan -Tokens $Tokens -Index $i }
+            if ($span -gt 0) { $i += $span; continue }
         }
+        $i++
         if ($t -match '^-clang:-M') { continue }
         # Case distinguishes output names from /fp:precise, which changes code generation.
         if ($t -cmatch $outputPattern) { continue }
@@ -306,7 +320,7 @@ function Invoke-Arm {
     }
 }
 
-function Invoke-Run {
+function Get-LlvmCorpusManifest {
     $manifestPath = Join-Path $CorpusDir 'manifest.json'
     if (-not (Test-Path $manifestPath)) {
         throw ("no corpus at $CorpusDir. Build one first: -Capture -OpenCvBuildDir <opencv build dir>. " +
@@ -317,80 +331,71 @@ function Invoke-Run {
     if ($manifest.Target -ne $Target) {
         throw "corpus was captured for $($manifest.Target) but -Target is $Target."
     }
+    return $manifest
+}
 
-    $baseline = Get-BaselineClangCl
-    Write-LlvmCompilerIdentity -Label 'baseline ' -Compiler $baseline
-    if ($CandidateClangCl) {
-        if (-not (Test-Path $CandidateClangCl)) { throw "-CandidateClangCl not found: $CandidateClangCl" }
-        Write-LlvmCompilerIdentity -Label candidate -Compiler $CandidateClangCl
+function Get-LlvmVerifiedInput {
+    param([Parameter(Mandatory)]$Case, [Parameter(Mandatory)][string]$CorpusDir)
+    $inputPath = Join-Path $CorpusDir $Case.Preprocessed
+    if (-not (Test-Path $inputPath)) { throw "corpus incomplete: $inputPath missing" }
+    $actual = (Get-FileHash -Path $inputPath -Algorithm SHA256).Hash
+    if ($actual -ne $Case.Sha256) {
+        throw "corpus tampered: $($Case.Preprocessed) hashes $actual, manifest says $($Case.Sha256)."
+    }
+    return $inputPath
+}
+
+function Get-LlvmCaseResult {
+    param([Parameter(Mandatory)]$Case, [Parameter(Mandatory)][string]$Baseline,
+        [Parameter(Mandatory)][string]$ObjDir, [Parameter(Mandatory)][string]$CorpusDir, [string]$Candidate = '')
+    $inputPath = Get-LlvmVerifiedInput -Case $Case -CorpusDir $CorpusDir
+    $flags = @($Case.CodegenFlags)
+    $offArm = Invoke-Arm -ClangCl $Baseline -Flags ($flags + @($Case.OffFlags)) `
+        -InputPath $inputPath -ObjPath (Join-Path $ObjDir "$($Case.Id).baseline-off.obj")
+    $onArm = Invoke-Arm -ClangCl $Baseline -Flags ($flags + @($Case.OnFlags)) `
+        -InputPath $inputPath -ObjPath (Join-Path $ObjDir "$($Case.Id).baseline-on.obj")
+
+    $reproduced = ($offArm.ExitCode -ne 0) -and ($offArm.Output -match $Case.Expect)
+    $suppressed = ($onArm.ExitCode -eq 0)
+    $candArm = $null
+    if (-not $reproduced) {
+        $verdict = 'INVALID-NO-REPRO'
+    } elseif (-not $suppressed) {
+        $verdict = 'INVALID-WORKAROUND-DEAD'
+    } elseif (-not $Candidate) {
+        $verdict = 'CONTROL-OK'
     } else {
-        Write-Host 'candidate: (none -- control arms only; this validates the corpus, it settles nothing)'
-    }
-    Write-Host ''
-
-    $objDir = Join-Path $WorkDir 'obj'
-    $null = New-Item -ItemType Directory -Force -Path $objDir
-    $results = [System.Collections.Generic.List[object]]::new()
-
-    foreach ($case in $manifest.Cases) {
-        $iPath = Join-Path $CorpusDir $case.Preprocessed
-        if (-not (Test-Path $iPath)) { throw "corpus incomplete: $iPath missing" }
-        $actual = (Get-FileHash -Path $iPath -Algorithm SHA256).Hash
-        if ($actual -ne $case.Sha256) {
-            throw "corpus tampered: $($case.Preprocessed) hashes $actual, manifest says $($case.Sha256)."
-        }
-
-        $flags = @($case.CodegenFlags)
-        $offArm = Invoke-Arm -ClangCl $baseline -Flags ($flags + @($case.OffFlags)) `
-            -InputPath $iPath -ObjPath (Join-Path $objDir "$($case.Id).baseline-off.obj")
-        $onArm = Invoke-Arm -ClangCl $baseline -Flags ($flags + @($case.OnFlags)) `
-            -InputPath $iPath -ObjPath (Join-Path $objDir "$($case.Id).baseline-on.obj")
-
-        $reproduced = ($offArm.ExitCode -ne 0) -and ($offArm.Output -match $case.Expect)
-        $suppressed = ($onArm.ExitCode -eq 0)
-
-        $verdict = ''
-        $candArm = $null
-        if (-not $reproduced) {
-            $verdict = 'INVALID-NO-REPRO'
-        } elseif (-not $suppressed) {
-            $verdict = 'INVALID-WORKAROUND-DEAD'
-        } elseif (-not $CandidateClangCl) {
-            $verdict = 'CONTROL-OK'
-        } else {
-            $candArm = Invoke-Arm -ClangCl $CandidateClangCl -Flags ($flags + @($case.OffFlags)) `
-                -InputPath $iPath -ObjPath (Join-Path $objDir "$($case.Id).candidate-off.obj")
-            if ($candArm.ExitCode -eq 0) { $verdict = 'FIXED' }
-            elseif ($candArm.Output -match $case.Expect) { $verdict = 'NOT-FIXED' }
-            else { $verdict = 'INCONCLUSIVE' }
-        }
-
-        # Precomputed: statement-valued hashtable entries parse differently across hosts.
-        $candExit = $null
-        $candTail = ''
-        if ($null -ne $candArm) {
-            $candExit = $candArm.ExitCode
-            $candTail = (@($candArm.Output -split "`n" | Where-Object { $_ -match 'error' } | Select-Object -First 3)) -join ' | '
-        }
-        $baseTail = (@($offArm.Output -split "`n" | Where-Object { $_ -match 'error' } | Select-Object -First 3)) -join ' | '
-
-        [void]$results.Add([pscustomobject]@{
-                Id            = $case.Id
-                Ref           = $case.Ref
-                Verdict       = $verdict
-                BaselineOff   = $offArm.ExitCode
-                BaselineOn    = $onArm.ExitCode
-                CandidateOff  = $candExit
-                Reproduced    = $reproduced
-                Suppressed    = $suppressed
-                CandidateTail = $candTail
-                BaselineTail  = $baseTail
-            })
+        $candArm = Invoke-Arm -ClangCl $Candidate -Flags ($flags + @($Case.OffFlags)) `
+            -InputPath $inputPath -ObjPath (Join-Path $ObjDir "$($Case.Id).candidate-off.obj")
+        if ($candArm.ExitCode -eq 0) { $verdict = 'FIXED' }
+        elseif ($candArm.Output -match $Case.Expect) { $verdict = 'NOT-FIXED' }
+        else { $verdict = 'INCONCLUSIVE' }
     }
 
-    Write-Host '=== per-case ==='
-    $results | Format-Table Id, Verdict, BaselineOff, BaselineOn, CandidateOff -AutoSize | Out-String | Write-Host
+    # Precomputed: statement-valued hashtable entries parse differently across hosts.
+    $candExit = $null
+    $candTail = ''
+    if ($null -ne $candArm) {
+        $candExit = $candArm.ExitCode
+        $candTail = (@($candArm.Output -split "`n" | Where-Object { $_ -match 'error' } | Select-Object -First 3)) -join ' | '
+    }
+    $baseTail = (@($offArm.Output -split "`n" | Where-Object { $_ -match 'error' } | Select-Object -First 3)) -join ' | '
+    return [pscustomobject]@{
+        Id            = $Case.Id
+        Ref           = $Case.Ref
+        Verdict       = $verdict
+        BaselineOff   = $offArm.ExitCode
+        BaselineOn    = $onArm.ExitCode
+        CandidateOff  = $candExit
+        Reproduced    = $reproduced
+        Suppressed    = $suppressed
+        CandidateTail = $candTail
+        BaselineTail  = $baseTail
+    }
+}
 
+function Write-LlvmOverallVerdict {
+    param([Parameter(Mandatory)][object[]]$Results, [string]$Candidate = '')
     $invalid = @($results | Where-Object { $_.Verdict -like 'INVALID*' })
     $notFixed = @($results | Where-Object { $_.Verdict -eq 'NOT-FIXED' })
     $inconclusive = @($results | Where-Object { $_.Verdict -eq 'INCONCLUSIVE' })
@@ -404,7 +409,7 @@ function Invoke-Run {
         Write-Host 'candidate is supported by this run -- including a green one. Fix the corpus'
         Write-Host '(re-capture against the current OpenCV tree) before reading anything else.'
         $overall = 'INVALID'
-    } elseif (-not $CandidateClangCl) {
+    } elseif (-not $Candidate) {
         Write-Host "  corpus validated: $($results.Count)/$($results.Count) cases reproduce the abort and are suppressed by the shipped workaround."
         Write-Host '  Re-run with -CandidateClangCl to test a compiler.'
         $overall = 'CONTROL-OK'
@@ -426,6 +431,31 @@ function Invoke-Run {
         Write-Host '    run -- that is what closed the offender list at two in the first place.'
         $overall = 'FIXED'
     }
+    return $overall
+}
+
+function Invoke-Run {
+    $manifest = Get-LlvmCorpusManifest
+    $baseline = Get-BaselineClangCl
+    Write-LlvmCompilerIdentity -Label 'baseline ' -Compiler $baseline
+    if ($CandidateClangCl) {
+        if (-not (Test-Path $CandidateClangCl)) { throw "-CandidateClangCl not found: $CandidateClangCl" }
+        Write-LlvmCompilerIdentity -Label candidate -Compiler $CandidateClangCl
+    } else {
+        Write-Host 'candidate: (none -- control arms only; this validates the corpus, it settles nothing)'
+    }
+    Write-Host ''
+
+    $objDir = Join-Path $WorkDir 'obj'
+    $null = New-Item -ItemType Directory -Force -Path $objDir
+    $results = [System.Collections.Generic.List[object]]::new()
+    foreach ($case in $manifest.Cases) {
+        [void]$results.Add((Get-LlvmCaseResult -Case $case -Baseline $baseline -ObjDir $objDir -CorpusDir $CorpusDir -Candidate $CandidateClangCl))
+    }
+
+    Write-Host '=== per-case ==='
+    $results | Format-Table Id, Verdict, BaselineOff, BaselineOn, CandidateOff -AutoSize | Out-String | Write-Host
+    $overall = Write-LlvmOverallVerdict -Results $results.ToArray() -Candidate $CandidateClangCl
 
     $summary = [pscustomobject]@{
         Overall      = $overall

@@ -229,6 +229,14 @@ Pass `-BuildConfigs` / `-PlannerPrompt` / `-ExecutorPrompt` /
 | `Get-AgenticBuildConfigs -Config <object> [-OnWindows <bool>]` | The platform's `buildMatrix` entries, else legacy `buildConfigurations`, else `$null`. |
 | `Get-AgentTimeoutForRole -EngineConfig <hashtable> -Role <string>` | Per-role timeout resolution. |
 
+`Invoke-AgentProcess` starts one reader transport for each output stream, then
+waits and collects their results through private helpers. Timeout still kills
+the process tree, and stderr stays visible. `Invoke-AgenticLoop` validates the
+matrix and prompts before its iterations; Claude arguments use one private
+builder so planner and executor permissions keep their distinct order.
+The isolated execution fixture loads the input resolver with the loop so its
+progress, retry and failure-cap checks exercise the current path.
+
 ### Role-Prompt Composition
 
 What [Role prompts: one composition, both engines](#role-prompts-one-composition-both-engines)

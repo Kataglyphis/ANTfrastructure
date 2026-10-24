@@ -84,6 +84,21 @@ function Assert-ReproducibleLink {
     }
 }
 
+function Assert-LlvmSourcePatches {
+    param([Parameter(Mandatory)][string]$SourceDir)
+
+    # An unapplied patch would rebuild the bug, resurfacing hours later as an unattributable MC error.
+    $instrInfo = Join-Path $SourceDir 'llvm\lib\Target\AArch64\AArch64InstrInfo.cpp'
+    $text = [System.IO.File]::ReadAllText($instrInfo)
+    if ($text -notmatch 'eh-asynch') {
+        throw ("AArch64InstrInfo.cpp carries no eh-asynch check after patching - the EH_LABEL fix did not " +
+            "apply (llvm#219275). Without it OpenCV's protobuf TUs abort with 'value evaluated as <N> is out of range'.")
+    }
+    if ($text -notmatch 'isSEHInstruction\(MI\)\s*\)?\s*\r?\n?\s*return 0;') {
+        Write-Warning 'The SEH sizing patch (llvm#219276) may not have applied - check the patch against this LLVM version.'
+    }
+}
+
 $clangCl = Join-Path $InstallPrefix 'bin\clang-cl.exe'
 if ($SkipIfPresent -and (Test-Path $clangCl)) {
     # Not a bare return: an older cached prefix lacks the aarch64 builtins and would never gain them.
@@ -102,16 +117,7 @@ foreach ($p in @('001-aarch64-ehlabel-size.patch', '002-aarch64-seh-pseudo-size.
         -Description "llvm: $p" -IgnoreWhitespace
 }
 
-# An unapplied patch would rebuild the bug, resurfacing hours later as an unattributable MC error.
-$instrInfo = Join-Path $srcDir 'llvm\lib\Target\AArch64\AArch64InstrInfo.cpp'
-$text = [System.IO.File]::ReadAllText($instrInfo)
-if ($text -notmatch 'eh-asynch') {
-    throw ("AArch64InstrInfo.cpp carries no eh-asynch check after patching - the EH_LABEL fix did not " +
-        "apply (llvm#219275). Without it OpenCV's protobuf TUs abort with 'value evaluated as <N> is out of range'.")
-}
-if ($text -notmatch 'isSEHInstruction\(MI\)\s*\)?\s*\r?\n?\s*return 0;') {
-    Write-Warning 'The SEH sizing patch (llvm#219276) may not have applied - check the patch against this LLVM version.'
-}
+Assert-LlvmSourcePatches -SourceDir $srcDir
 
 Enter-VsDevCmdEnvironment
 

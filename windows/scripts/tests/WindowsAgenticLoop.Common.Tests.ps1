@@ -103,6 +103,49 @@ Describe 'WindowsAgenticLoop.Common' {
             $result.ExitCode | Should -Be 3
             $result.Output | Should -Be "one`ntwo:stdin-text"
         }
+
+        It 'renders Claude events while returning the raw protocol in order' {
+            $pwsh = (Get-Process -Id $PID).Path
+            $events = @(
+                '{"type":"system","subtype":"init","model":"fixture-model"}',
+                '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/fixture.ps1"}},{"type":"text","text":"fixture answer"}]}}',
+                '{"type":"user","message":{"content":[{"type":"tool_result","is_error":true,"content":"fixture tool error"}]}}',
+                '{"type":"result","duration_ms":1400,"total_cost_usd":0.5,"num_turns":2,"result":"fixture done"}',
+                '{not valid json'
+            )
+            $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($events -join [char]10)))
+            $child = "[Console]::Out.Write([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$payload')))"
+            $result = Invoke-AgentProcess -Executable $pwsh -ArgumentList @('-NoProfile', '-Command', $child) -Message '' -TimeoutSeconds 60 -Label 'claude-render-test' -RenderClaudeStream 6>$null
+            $result.ExitCode | Should -Be 0
+            $result.Output | Should -Be ($events -join [char]10)
+            $log = Get-Content -LiteralPath (Get-AgenticLogFile) -Raw
+            $log | Should -Match '\[claude\] session started \(model: fixture-model\)'
+            $log | Should -Match '  -> Read: src/fixture\.ps1'
+            $log | Should -Match 'fixture answer'
+            $log | Should -Match '  !! tool error: fixture tool error'
+            $log | Should -Match '\[claude\] result: 2 turns, 1\.4s, \$0\.5'
+            $log | Should -Match 'fixture done'
+            $log | Should -Match '\{not valid json'
+            $log | Should -Not -Match '"type":"system"'
+        }
+
+        It 'keeps stderr visible and marks its persisted log section' {
+            $pwsh = (Get-Process -Id $PID).Path
+            $child = '[Console]::Out.WriteLine("fixture stdout"); [Console]::Error.WriteLine("fixture stderr")'
+            $result = Invoke-AgentProcess -Executable $pwsh -ArgumentList @('-NoProfile', '-Command', $child) -Message '' -TimeoutSeconds 60 -Label 'stderr-test' 6>$null
+            $result.ExitCode | Should -Be 0
+            $result.Output | Should -Be 'fixture stdout'
+            $log = Get-Content -LiteralPath (Get-AgenticLogFile) -Raw
+            $log | Should -Match 'stderr-test had stderr output'
+            $log | Should -Match '(?s)--- stderr ---.*fixture stderr.*--- stderr end ---'
+        }
+
+        It 'kills a timed-out child and reports exit minus one' {
+            $pwsh = (Get-Process -Id $PID).Path
+            $result = Invoke-AgentProcess -Executable $pwsh -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 20') -Message '' -TimeoutSeconds 1 -Label 'timeout-test' 6>$null
+            $result.ExitCode | Should -Be -1
+            (Get-Content -LiteralPath (Get-AgenticLogFile) -Raw) | Should -Match 'timeout-test timed out after 1s'
+        }
     }
 
     # The strings are what each CLI's --version really prints; see docs/windows-agentic-loop.md#opencode-v2
@@ -453,6 +496,43 @@ Plain text after the block.
         }
     }
 
+    Context 'Claude arguments' {
+        BeforeAll {
+            $script:claudeArgConfig = @{
+                StreamOutput = $false
+                PlannerPromptFile = ''
+                ExecutorPromptFile = ''
+                PlannerAllowedTools = ''
+                PermissionMode = 'default'
+                PlannerFallbackModel = ''
+                ExtraArgs = ''
+            }
+        }
+
+        It 'allows only the configured planner tools even when executor bypass is enabled' {
+            $engineConfig = $script:claudeArgConfig.Clone()
+            $engineConfig.PlannerAllowedTools = 'Read Edit'
+            $engineConfig.PermissionMode = 'bypassPermissions'
+            $actual = & (Get-Module WindowsAgenticLoop.Common) { param($config)
+                New-ClaudeArgumentList -Role 'planner' -Model 'fixture-model' -EngineConfig $config
+            } $engineConfig
+            ($actual -join '|') | Should -Be '-p|--model|fixture-model|--output-format|text|--allowed-tools|Read|Edit'
+        }
+
+        It 'passes executor permission modes through exactly' {
+            $engineConfig = $script:claudeArgConfig.Clone()
+            $actual = & (Get-Module WindowsAgenticLoop.Common) { param($config)
+                $config.PermissionMode = 'bypassPermissions'
+                $bypass = New-ClaudeArgumentList -Role 'executor' -Model 'm' -EngineConfig $config
+                $config.PermissionMode = 'default'
+                $default = New-ClaudeArgumentList -Role 'executor' -Model 'm' -EngineConfig $config
+                ($bypass -join '|'), ($default -join '|')
+            } $engineConfig
+            $actual[0] | Should -Be '-p|--model|m|--output-format|text|--dangerously-skip-permissions'
+            $actual[1] | Should -Be '-p|--model|m|--output-format|text|--permission-mode|default'
+        }
+    }
+
     # Claude invocation + dispatcher (dry-run)
 
     Context 'Invoke-ClaudeCode / Invoke-AgenticAgent' {
@@ -506,6 +586,16 @@ Plain text after the block.
                     build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
                 }
             }
+        }
+
+        It 'rejects a config with no build entries before running phases' {
+            { Invoke-AgenticLoop -Config $script:mockConfig -PlannerPrompt 'test' -ExecutorPrompt 'test' `
+                -OnWindows $true -RepoRoot $script:testDir -PlannerOnly } | Should -Throw '*No build configs*'
+        }
+
+        It 'rejects template values before running phases' {
+            { Invoke-AgenticLoop -Config $script:mockConfig -PlannerPrompt 'test' -ExecutorPrompt 'test' `
+                -BuildConfigs @('TODO-debug') -OnWindows $true -RepoRoot $script:testDir -PlannerOnly } | Should -Throw '*template placeholders*'
         }
 
         It 'runs planner-only mode without error' {

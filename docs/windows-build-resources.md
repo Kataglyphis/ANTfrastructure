@@ -719,6 +719,10 @@ without a word, so the static lint refuses it: a RUN that mounts both `C:\sccach
   `sccache` and `garage`, so nowhere else). A red gate prints the entry and the reason,
   never the value:
 
+  The history reader checks each `NAME=value` token for settings, addresses,
+  bucket and region, then reports each reason once per config entry. Repeated
+  build arguments cannot inflate the count or hide another reason.
+
   ```text
     LEAK history[62]: the build-host setting SCCACHE_ENDPOINT
     LEAK history[62]: RFC1918/link-local address in SCCACHE_ENDPOINT

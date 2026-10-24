@@ -896,6 +896,10 @@ steps; the remaining work is the Dockerfile surgery):
   previous attempt (snapshot-mount contention excepted) — caveat (a) as a
   gate. The live pattern list is the
   `Initialize-BuildDriverContext -TransientPattern` call in `Build-Buildkit.ps1`.
+  Stage argument, cache, metadata and retry-tail preparation now use private
+  helpers; the parent publish gate still runs before solve and the history
+  gate after export. The retry tests exercise default three, merge five and a
+  fifth-attempt failure.
 - **Per-library media-core split**: DONE, and escalated on 2026-08-04 from
   4 RUN layers to **4 chained SOLVES** (targets `media-core-built-onnx` →
   `-opencv` → `-ffmpeg` → `media-core-built`, image handoffs via the

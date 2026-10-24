@@ -53,6 +53,12 @@ An explicitly configured root that is missing fails the run.
 table. Pass the roots as a string array within the same PowerShell process.
 `Get-SlangShaderManifest` exposes the composed manifest, and
 `Resolve-SlangSourcePath` resolves one logical file against the ordered roots.
+The PowerShell driver measures staleness across all source roots and imported
+manifests, then compiles each entry point and target separately. Its combined
+emit helper validates each staged WGSL file before copying it; the caller keeps
+the final failure and artifact counts. The Pester suite checks cache reuse,
+imported-manifest staleness, missing-source failure and destination preservation
+when a combined emit is invalid.
 
 ## Manifest schema
 

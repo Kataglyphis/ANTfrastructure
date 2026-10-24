@@ -82,7 +82,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Copied runtime environments, shell CLI libraries and Windows launcher/uv modules carry their shared companions; do not restore private fallbacks.
    Windows module visibility suites share the cold-import probe; keep child failures and parent-session isolation observable.
    Architecture and UV test suites carry their shared fixture companions; use harness PE and wheel constructors for valid samples.
-   Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations.
+   Windows structural tests use the harness AST readers, command binder and Dockerfile stage parser; parse errors must fail before inspecting declarations. Copy `WindowsAst.Common.psm1` beside any copied harness module tree.
    Windows probe transports share child cleanup and report parsing; retain stderr, timeout, exit and assertion accounting policies.
    Windows diagnostic and host scripts carry their shared module companions; keep required failures fatal and advisory failures visible.
    Windows disk probes distinguish zero from unknown; shared lavapipe acquisition retains caller PE, registry and environment verdicts.
@@ -1160,6 +1160,13 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   The suite guards *classes* of defect, not instances: when you fix a bug here, prefer a guard for
   its class. Which classes, and why the linter exits 2 for an infrastructure failure:
   [`windows-builds.md`](docs/windows-builds.md).
+
+- **PowerShell complexity:** `pwsh -File windows/scripts/Invoke-CodeComplexity.ps1` reports
+  cyclomatic complexity, nesting and function code lines across tracked Windows PowerShell.
+  Use `-Path <file-or-dir> -Strict` to enforce the 15/5/80 limits on a refactor. CI runs
+  the whole-tree report and strictly checks the scanner, AST reader, Slang, CodeQL, image config, LLVM diagnostic and agentic loop files;
+  parse and scan failures are fatal even while existing metric debt keeps the full report
+  nonblocking. Do not add exceptions to silence findings.
 
 - **Runtime verification happens inside a container, or against raw symlink targets.** Never use
   `readlink -f` against `out/linux-runtime/*/rootfs`: absolute symlinks resolve against the host

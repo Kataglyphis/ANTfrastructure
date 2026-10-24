@@ -451,8 +451,9 @@ interpreter.
   resolution with downloads off. Tests: `SourceBuild.FreeThreadedCpython.Tests.ps1`.
 - **The arm64 bundle carries one too.** In media-core, `Build-TargetCpython.ps1` builds the target
   interpreter twice (`Invoke-CpythonPcbuild -Platform ARM64`, `-FreeThreaded`, both with
-  `/p:PreferredToolArchitecture=x64`); one function, `Install-CpythonTargetTree`, stages each tree
-  right after its own build (tests: `SourceBuild.TargetCpythonTree.Tests.ps1`):
+  `/p:PreferredToolArchitecture=x64`); `Install-CpythonTargetTree` stages each tree
+  right after its own build through PE validation, executable copy, redist repair,
+  stdlib/launcher and CRT phases (tests: `SourceBuild.TargetCpythonTree.Tests.ps1`):
   - **`C:\runtime\python`**: the GIL build, unchanged.
   - **`C:\runtime\python-freethreaded`**: `python3.15t.exe`, `libs\python315t.lib` and the
     stable-ABI `libs\python3t.lib` (IREE's twin needs FindPython's `Development.SABIModule`), no
@@ -518,6 +519,8 @@ declares free-threading (owner request 2026-10-07). The twins are built with the
     `cp3XYt` wheel after checking the tags (`Get-FreeThreadedWheelFinding`: the name, the target's
     platform, every tagged `.pyd`) and the imports (`Get-FreeThreadedWheelImportFinding`: a `.pyd`
     that imports a Python runtime imports `python3XYt.dll`, and at least one does).
+    Setup removes a stale GIL wheel before twin selection; the cross plan adds the
+    target tag once and stages the arm64 build without changing the native plan.
   - Then `Invoke-FreeThreadedWheelVenvProof` installs the wheel alone, offline, into a fresh venv
     and runs `linux/scripts/02-toolchain/python/free-threaded-wheel.py prove`, the helper the Linux
     lane runs. The proof venv's `sitecustomize.py` registers the image's DLL homes
@@ -2112,6 +2115,8 @@ arch-agnostic pair that replaced `Get-WindowsX86SimdFlags`/`Get-WindowsX86Avx512
 2026-08-26). This facade is mounted into all 11 media RUNs, so single-consumer helpers live on the
 leaf modules instead: `Write-AssembledWheelDistInfo` and `Get-PyprojectDependencies` moved to
 `WindowsTvm.Common.psm1` (2026-08-31), their only caller being `Build-TvmFromSource.ps1`.
+`Invoke-CmakeConfigure` assembles base, optional CUDA and cross/ROCm arguments in
+separate phases; caller definitions retain their final override position.
 
 #### `WindowsSmokeTest.Common.psm1`
 
@@ -2376,6 +2381,18 @@ An empty variable remains different from a removed variable. Packaging shares ve
 cleanup, CMake shares environment/stat diagnostics, Flutter shares link cleanup and
 the agentic loop shares lazy environment-to-config fallback. Caller ordering,
 whitespace, retry, broken-link and trace-marker policies stay at the caller.
+
+`WindowsCodeQL.Common` separates CLI acquisition, optional query-pack download,
+traced database creation, per-language security-suite fallback and SARIF filtering.
+Database creation and CLI download failures stop the run; query-pack download
+warnings stay advisory. Analysis attempts continue across languages, but any
+language whose suite and fallback both fail makes the final verdict fail. A reused
+database keeps its original code-scanning scope and leaves sccache untouched.
+
+`WindowsAst.Common` supplies the parsed AST and tokens to the PowerShell
+complexity report and `TestHarness`. The harness still resolves relative paths
+and fails on a missing script before parsing. Isolated runner fixtures that copy
+the harness also copy its AST module into the matching `scripts/modules` tree.
 
 `Test-UrlPortOpen` and the BuildKit sccache guard use one bounded socket probe in
 `WindowsScripts.Shared`. It resolves once, tries every IPv4/IPv6 address concurrently,

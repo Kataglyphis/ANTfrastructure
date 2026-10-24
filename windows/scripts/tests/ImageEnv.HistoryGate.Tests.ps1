@@ -86,6 +86,19 @@ Describe 'WindowsImageEnv.Common: Find-ImageConfigLeak' {
         Assert-Equal 'config.Env: RFC1918/link-local address in MIRROR' ((Get-HistoryReason $c @{}) -join ' | ')
     }
 
+    It 'keeps token reasons in order and reports each reason once per history entry' {
+        $c = New-TestImageConfig -CreatedBy @('RUN |4 SCCACHE_ENDPOINT=http://10.1.2.3 SCCACHE_ENDPOINT=http://10.1.2.3 SCCACHE_BUCKET=cache-bucket SCCACHE_REGION=cache-region pwsh')
+        $reasons = Get-HistoryReason $c @{ Bucket = 'cache-bucket'; Region = 'cache-region' }
+        Assert-Equal (@(
+            'history[0]: the build-host setting SCCACHE_ENDPOINT'
+            'history[0]: RFC1918/link-local address in SCCACHE_ENDPOINT'
+            'history[0]: the build-host setting SCCACHE_BUCKET'
+            'history[0]: the S3 bucket as SCCACHE_BUCKET'
+            'history[0]: the build-host setting SCCACHE_REGION'
+            'history[0]: the S3 region as SCCACHE_REGION'
+        ) -join ' | ') ($reasons -join ' | ')
+    }
+
     # A mutant without Rule (its Text replaced by StandIn) must lose the Lost finding of the first case.
     $rules = @(
         @{ Rule = 'the setting-name rule'; Lost = 'history[2]: the build-host setting SCCACHE_ENDPOINT'; StandIn = 'if ($false)'

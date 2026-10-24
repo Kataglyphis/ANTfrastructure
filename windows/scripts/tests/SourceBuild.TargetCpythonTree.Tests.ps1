@@ -100,6 +100,19 @@ Describe 'Install-CpythonTargetTree' {
         }
     }
 
+    It 'refuses a host-arch free-threaded venv launcher during target staging' {
+        Invoke-InTestDir { param($d)
+            $b = New-TargetBuild -Dir $d -FreeThreaded
+            New-TestPeFile -Path (Join-Path $b.Build 'venvlaunchert.exe') -Machine 0x8664 -Tag 'host-launcher'
+            Invoke-WithEnv @{ PYTHON_VERSION = '3.14.8' } {
+                Assert-Throws {
+                    Install-CpythonTargetTree -BuildDir $b.Build -SourceDir $b.Src -Destination (Join-Path $d 'out') `
+                        -Arch arm64 -FreeThreaded -RedistDir $b.Redist
+                } -MessagePattern 'venvlaunchert\.exe is not target-arch -- refusing to stage it'
+            }
+        }
+    }
+
     It 'refuses <Why>' -ForEach @(
         @{ Why = 'a host-arch interpreter'; Exe = 0x8664; Pattern = 'python\.exe machine is 0x8664, expected 0xAA64' }
         @{ Why = 'a free-threaded build of another minor version'; Ft = $true; Version = '3.15.0'; Pattern = 'python3\.15t\.exe was not produced' }

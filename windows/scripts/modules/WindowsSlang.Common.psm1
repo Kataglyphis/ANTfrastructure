@@ -143,6 +143,197 @@ function Resolve-SlangSourcePath {
     return Join-Path $SourceRoot $Relative
 }
 
+function Get-SlangSourceInputs {
+    param([string]$SourcePath, [string]$SourceRoot, [string[]]$AdditionalSourceRoots = @())
+    $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $SourcePath -Parent) -AdditionalSourceRoots $AdditionalSourceRoots
+    return [pscustomobject]@{ Path = $SourcePath; IncludeArgs = $includeArgs }
+}
+
+function Get-SlangNewestInputStamp {
+    param(
+        [Parameter(Mandatory)][string]$SourceRoot,
+        [string[]]$AdditionalSourceRoots = @(),
+        [Parameter(Mandatory)][string]$ManifestPath,
+        [Parameter(Mandatory)][object]$Manifest
+    )
+    # An import or manifest edit can retarget any output, so every source contributes to staleness.
+    $allSlangFiles = @(foreach ($root in @($SourceRoot) + $AdditionalSourceRoots) {
+        Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.slang' -ErrorAction SilentlyContinue
+    })
+    $ownerPath = Resolve-SlangManifestImport -ManifestPath $ManifestPath -Manifest $Manifest
+    if ($null -ne $ownerPath) { $allSlangFiles += Get-Item -LiteralPath $ownerPath }
+    return (($allSlangFiles + @(Get-Item $ManifestPath)) |
+        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
+}
+
+function Invoke-SlangTargetCompile {
+    param(
+        [Parameter(Mandatory)][object]$Entry,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string]$Target,
+        [Parameter(Mandatory)][string]$SpirvOutputRoot,
+        [Parameter(Mandatory)][string]$WgslOutputRoot,
+        [Parameter(Mandatory)][datetime]$NewestSource,
+        [string[]]$IncludeArgs = @(),
+        [Parameter(Mandatory)][string]$Slangc
+    )
+    $outExt = if ($Target -eq 'spirv') { 'spv' } else { 'wgsl' }
+    $outDir = if ($Target -eq 'spirv') { $SpirvOutputRoot } else { $WgslOutputRoot }
+    if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
+    # The source subdirectory prevents equal entry-point names from colliding.
+    $relDir = Split-Path $Entry.file -Parent
+    $targetOutDir = if ($relDir) { Join-Path $outDir $relDir } else { $outDir }
+    if (-not (Test-Path $targetOutDir)) { New-Item -ItemType Directory -Force -Path $targetOutDir | Out-Null }
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($Entry.file)
+    $outFile = Join-Path $targetOutDir "$baseName.$($Entry.entry).$outExt"
+
+    if (Test-Path $outFile) {
+        $outStamp = (Get-Item $outFile).LastWriteTimeUtc
+        if ($outStamp -ge $NewestSource) {
+            Write-Host "[INFO] Up to date: $outFile"
+            return [pscustomobject]@{ Compiled = $false; Failure = $null }
+        }
+        Write-Host "[INFO] Stale, recompiling: $outFile"
+    }
+
+    Write-Host "[INFO] Compiling $($Entry.file) ($($Entry.entry) / $($Entry.stage)) -> $Target"
+    $slangArgs = @('-target', $Target, '-stage', $Entry.stage, '-entry', $Entry.entry) + $IncludeArgs + @('-o', $outFile, $SourcePath)
+    & $Slangc $slangArgs
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "slangc failed: $($Entry.file) $($Entry.entry) -> $Target"
+        return [pscustomobject]@{ Compiled = $false; Failure = "$SourcePath ($($Entry.entry) -> $Target)" }
+    }
+    return [pscustomobject]@{ Compiled = $true; Failure = $null }
+}
+
+function Invoke-SlangManifestEntry {
+    param(
+        [Parameter(Mandatory)][object]$Entry,
+        [Parameter(Mandatory)][string]$SourceRoot,
+        [string[]]$AdditionalSourceRoots = @(),
+        [Parameter(Mandatory)][string]$SpirvOutputRoot,
+        [Parameter(Mandatory)][string]$WgslOutputRoot,
+        [Parameter(Mandatory)][datetime]$NewestSource,
+        [Parameter(Mandatory)][string]$Slangc
+    )
+    $srcPath = Resolve-SlangSourcePath -Relative $Entry.file -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
+    if (-not (Test-Path $srcPath)) {
+        Write-Warning "Manifest references missing file: $srcPath"
+        return [pscustomobject]@{ Failures = @($srcPath); Compiled = 0 }
+    }
+
+    $source = Get-SlangSourceInputs -SourcePath $srcPath -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
+    $failed = @()
+    $compiled = 0
+    foreach ($target in $Entry.targets) {
+        $result = Invoke-SlangTargetCompile -Entry $Entry -SourcePath $source.Path -Target $target `
+            -SpirvOutputRoot $SpirvOutputRoot -WgslOutputRoot $WgslOutputRoot -NewestSource $NewestSource `
+            -IncludeArgs $source.IncludeArgs -Slangc $Slangc
+        if ($result.Failure) { $failed += $result.Failure }
+        if ($result.Compiled) { $compiled++ }
+    }
+    return [pscustomobject]@{ Failures = @($failed); Compiled = $compiled }
+}
+
+function Invoke-SlangCombinedEmitOne {
+    param(
+        [Parameter(Mandatory)][object]$Entry,
+        [Parameter(Mandatory)][object]$Manifest,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [string[]]$IncludeArgs = @(),
+        [Parameter(Mandatory)][string]$CombinedOutputDir,
+        [Parameter(Mandatory)][string]$DestinationRoot,
+        [Parameter(Mandatory)][string]$Slangc,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$SlangcVersion
+    )
+    $tmpOut = Join-Path $CombinedOutputDir "combined_$($Entry.out)"
+    # The combined emit needs every entry point, so no -entry or -stage is passed.
+    & $Slangc -target wgsl $IncludeArgs -o $tmpOut $SourcePath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Combined WGSL emit failed: $($Entry.src)"
+        return 'failed'
+    }
+
+    $patchProp = $Manifest.depthTexturePatches.PSObject.Properties[$Entry.out]
+    if ($patchProp) {
+        $wgslText = Get-Content -Path $tmpOut -Raw
+        foreach ($p in @($patchProp.Value)) {
+            $patched = $wgslText -replace $p.pattern, $p.replacement
+            if ($patched -eq $wgslText) {
+                Write-Warning "$($Entry.out) depth-texture patch '$($p.pattern)' matched nothing - slangc output may have changed"
+            }
+            $wgslText = $patched
+        }
+        Set-Content -Path $tmpOut -Value $wgslText -NoNewline -Encoding utf8
+    }
+
+    # The destination stays intact until the emitted file passes the varying check.
+    $offenders = Test-WgslVaryingsAreLocated -Path $tmpOut
+    if ($offenders.Count -gt 0) {
+        Write-Warning ("[ERROR] $($Entry.out): slangc $SlangcVersion emitted varying struct member(s) with " +
+            "neither @builtin nor @location - that is not valid WGSL and wgpu/naga will reject it. Emit kept " +
+            "at $tmpOut; $($Entry.dst)/$($Entry.out) NOT overwritten:`n  " + ($offenders -join "`n  "))
+        return 'invalid'
+    }
+
+    $dstDir = Join-Path $DestinationRoot $Entry.dst
+    if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
+    Copy-Item -Path $tmpOut -Destination (Join-Path $dstDir $Entry.out) -Force
+    return 'emitted'
+}
+
+function Invoke-SlangCombinedEmits {
+    param(
+        [Parameter(Mandatory)][object]$Manifest,
+        [Parameter(Mandatory)][string]$SourceRoot,
+        [string[]]$AdditionalSourceRoots = @(),
+        [Parameter(Mandatory)][string]$CombinedOutputDir,
+        [Parameter(Mandatory)][string]$DestinationRoot,
+        [Parameter(Mandatory)][string]$Slangc
+    )
+    $wgslFailed = @()
+    $wgslInvalid = @()
+    $wgslEmitted = 0
+    if (-not (Test-Path $CombinedOutputDir)) { New-Item -ItemType Directory -Force -Path $CombinedOutputDir | Out-Null }
+
+    # Below the floor the emit is skipped, leaving checked-in WGSL untouched.
+    $minSlangcVersion = if ($Manifest.PSObject.Properties['minSlangcVersionForWgsl']) {
+        $Manifest.minSlangcVersionForWgsl
+    } else { '' }
+    $slangcVersion = (& $Slangc -version 2>&1 | Select-Object -First 1 | Out-String).Trim()
+    $wgslEmitEnabled = $true
+    if ($minSlangcVersion -and -not (Test-SlangcVersionAtLeast -Have $slangcVersion -Want $minSlangcVersion)) {
+        $wgslEmitEnabled = $false
+        Write-Warning ("slangc $slangcVersion is older than $minSlangcVersion, whose combined (whole-module) WGSL " +
+            'emit is the first known-correct one: older builds drop @location(N) from varying structs and produce ' +
+            'WGSL that wgpu/naga rejects. SKIPPING the combined WGSL emit - the checked-in Rust-crate WGSL is left ' +
+            'untouched. See docs/shader-build-pipeline.md.')
+    }
+
+    foreach ($entry in $(if ($wgslEmitEnabled) { @($Manifest.wgslMap) } else { @() })) {
+        $srcPath = Resolve-SlangSourcePath -Relative $entry.src -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
+        if (-not (Test-Path $srcPath)) { continue }
+        $source = Get-SlangSourceInputs -SourcePath $srcPath -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
+        $outcome = Invoke-SlangCombinedEmitOne -Entry $entry -Manifest $Manifest -SourcePath $source.Path `
+            -IncludeArgs $source.IncludeArgs -CombinedOutputDir $CombinedOutputDir `
+            -DestinationRoot $DestinationRoot -Slangc $Slangc -SlangcVersion $slangcVersion
+        if ($outcome -eq 'failed') { $wgslFailed += $entry.src }
+        if ($outcome -eq 'invalid') { $wgslInvalid += $entry.out }
+        if ($outcome -eq 'emitted') { $wgslEmitted++ }
+    }
+
+    if ($wgslFailed.Count -gt 0) {
+        Write-Warning ("Combined WGSL emit failed for $($wgslFailed.Count) file(s):`n  " + ($wgslFailed -join "`n  "))
+    }
+    return [pscustomobject]@{
+        Failed = @($wgslFailed)
+        Invalid = @($wgslInvalid)
+        Emitted = $wgslEmitted
+        MinVersion = $minSlangcVersion
+        Version = $slangcVersion
+    }
+}
+
 # Full pipeline; -DestinationRoot is the consuming repo root that wgslMap "dst" paths resolve against.
 function Invoke-SlangShaderCompile {
     param(
@@ -187,139 +378,29 @@ function Invoke-SlangShaderCompile {
         -not ($_.PSObject.Properties['disabled'] -and $_.disabled)
     })
 
-    # Conservative staleness: any .slang may be imported, and a manifest edit can retarget any output.
-    $allSlangFiles = @(foreach ($root in @($SourceRoot) + $AdditionalSourceRoots) {
-        Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.slang' -ErrorAction SilentlyContinue
-    })
-    $ownerPath = Resolve-SlangManifestImport -ManifestPath $ManifestPath -Manifest $manifestData
-    if ($null -ne $ownerPath) {
-        $allSlangFiles += Get-Item -LiteralPath $ownerPath
-    }
-    $newestSource = (($allSlangFiles + @(Get-Item $ManifestPath)) |
-        Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
-
+    $newestSource = Get-SlangNewestInputStamp -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots `
+        -ManifestPath $ManifestPath -Manifest $manifestData
     $failed = @()
     $compiled = 0
-
     foreach ($entry in $manifestRows) {
-        $srcPath = Resolve-SlangSourcePath -Relative $entry.file -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
-        if (-not (Test-Path $srcPath)) {
-            # A manifest bug: fail the run rather than quietly compile one shader fewer.
-            Write-Warning "Manifest references missing file: $srcPath"
-            $failed += $srcPath
-            continue
-        }
-
-        $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $srcPath -Parent) -AdditionalSourceRoots $AdditionalSourceRoots
-
-        foreach ($target in $entry.targets) {
-            $outExt = if ($target -eq 'spirv') { 'spv' } else { 'wgsl' }
-            $outDir = if ($target -eq 'spirv') { $SpirvOutputRoot } else { $WgslOutputRoot }
-            if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Force -Path $outDir | Out-Null }
-            # Mirrors the source subdirectory, so equal entry-point names in different shaders cannot collide.
-            $relDir = Split-Path $entry.file -Parent
-            $targetOutDir = if ($relDir) { Join-Path $outDir $relDir } else { $outDir }
-            if (-not (Test-Path $targetOutDir)) { New-Item -ItemType Directory -Force -Path $targetOutDir | Out-Null }
-            $baseName = [IO.Path]::GetFileNameWithoutExtension($entry.file)
-            $outFile = Join-Path $targetOutDir "$baseName.$($entry.entry).$outExt"
-
-            $needsCompile = $true
-            if (Test-Path $outFile) {
-                $outStamp = (Get-Item $outFile).LastWriteTimeUtc
-                if ($outStamp -ge $newestSource) {
-                    $needsCompile = $false
-                    Write-Host "[INFO] Up to date: $outFile"
-                } else {
-                    Write-Host "[INFO] Stale, recompiling: $outFile"
-                }
-            }
-            if (-not $needsCompile) { continue }
-
-            Write-Host "[INFO] Compiling $($entry.file) ($($entry.entry) / $($entry.stage)) -> $target"
-            $slangArgs = @("-target", $target, "-stage", $entry.stage, "-entry", $entry.entry) + $includeArgs + @('-o', $outFile, $srcPath)
-            & $slangc $slangArgs
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warning "slangc failed: $($entry.file) $($entry.entry) -> $target"
-                $failed += "$srcPath ($($entry.entry) -> $target)"
-            } else {
-                $compiled++
-            }
-        }
+        $result = Invoke-SlangManifestEntry -Entry $entry -SourceRoot $SourceRoot `
+            -AdditionalSourceRoots $AdditionalSourceRoots -SpirvOutputRoot $SpirvOutputRoot `
+            -WgslOutputRoot $WgslOutputRoot -NewestSource $newestSource -Slangc $slangc
+        $failed += @($result.Failures)
+        $compiled += $result.Compiled
     }
-
     if ($failed.Count -gt 0) {
         Write-Error ("Slang compilation failed for $($failed.Count) entry point(s):`n  " + ($failed -join "`n  "))
         return
     }
 
-    # --- Combined WGSL emit: all entry points in one file, copied where the manifest's dst names ---
-    $wgslFailed = @()
-    $wgslInvalid = @()
-    $wgslEmitted = 0
-    if (-not (Test-Path $CombinedOutputDir)) { New-Item -ItemType Directory -Force -Path $CombinedOutputDir | Out-Null }
-
-    # Below the floor the emit is skipped, never overwriting checked-in WGSL; consumers pin regeneration with a test.
-    $minSlangcVersion = if ($manifestData.PSObject.Properties['minSlangcVersionForWgsl']) {
-        $manifestData.minSlangcVersionForWgsl
-    } else { '' }
-    $slangcVersion = (& $slangc -version 2>&1 | Select-Object -First 1 | Out-String).Trim()
-    $wgslEmitEnabled = $true
-    if ($minSlangcVersion -and -not (Test-SlangcVersionAtLeast -Have $slangcVersion -Want $minSlangcVersion)) {
-        $wgslEmitEnabled = $false
-        Write-Warning ("slangc $slangcVersion is older than $minSlangcVersion, whose combined (whole-module) WGSL " +
-            'emit is the first known-correct one: older builds drop @location(N) from varying structs and produce ' +
-            'WGSL that wgpu/naga rejects. SKIPPING the combined WGSL emit - the checked-in Rust-crate WGSL is left ' +
-            'untouched. See docs/shader-build-pipeline.md.')
-    }
-
-    foreach ($entry in $(if ($wgslEmitEnabled) { @($manifestData.wgslMap) } else { @() })) {
-        $srcPath = Resolve-SlangSourcePath -Relative $entry.src -SourceRoot $SourceRoot -AdditionalSourceRoots $AdditionalSourceRoots
-        if (-not (Test-Path $srcPath)) { continue }
-
-        $includeArgs = Get-SlangIncludeArgument -SourceRoot $SourceRoot -SourceDirectory (Split-Path $srcPath -Parent) -AdditionalSourceRoots $AdditionalSourceRoots
-
-        $tmpOut = Join-Path $CombinedOutputDir "combined_$($entry.out)"
-        # No -entry/-stage: Slang emits ALL entry points in one WGSL file.
-        & $slangc -target wgsl $includeArgs -o $tmpOut $srcPath
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Combined WGSL emit failed: $($entry.src)"
-            $wgslFailed += $entry.src
-            continue
-        }
-
-        # The manifest's "_comment" fields say why each patch exists; one matching nothing means slangc's output moved.
-        $patchProp = $manifestData.depthTexturePatches.PSObject.Properties[$entry.out]
-        if ($patchProp) {
-            $wgslText = Get-Content -Path $tmpOut -Raw
-            foreach ($p in @($patchProp.Value)) {
-                $patched = $wgslText -replace $p.pattern, $p.replacement
-                if ($patched -eq $wgslText) {
-                    Write-Warning "$($entry.out) depth-texture patch '$($p.pattern)' matched nothing - slangc output may have changed"
-                }
-                $wgslText = $patched
-            }
-            Set-Content -Path $tmpOut -Value $wgslText -NoNewline -Encoding utf8
-        }
-
-        # Validated before the copy, so a broken regeneration can never be committed silently.
-        $offenders = Test-WgslVaryingsAreLocated -Path $tmpOut
-        if ($offenders.Count -gt 0) {
-            Write-Warning ("[ERROR] $($entry.out): slangc $slangcVersion emitted varying struct member(s) with " +
-                "neither @builtin nor @location - that is not valid WGSL and wgpu/naga will reject it. Emit kept " +
-                "at $tmpOut; $($entry.dst)/$($entry.out) NOT overwritten:`n  " + ($offenders -join "`n  "))
-            $wgslInvalid += $entry.out
-            continue
-        }
-
-        $dstDir = Join-Path $DestinationRoot $entry.dst
-        if (-not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
-        Copy-Item -Path $tmpOut -Destination (Join-Path $dstDir $entry.out) -Force
-        $wgslEmitted++
-    }
-
-    if ($wgslFailed.Count -gt 0) {
-      Write-Warning ("Combined WGSL emit failed for $($wgslFailed.Count) file(s):`n  " + ($wgslFailed -join "`n  "))
-    }
+    $combinedResult = Invoke-SlangCombinedEmits -Manifest $manifestData -SourceRoot $SourceRoot `
+        -AdditionalSourceRoots $AdditionalSourceRoots -CombinedOutputDir $CombinedOutputDir `
+        -DestinationRoot $DestinationRoot -Slangc $slangc
+    $wgslEmitted = $combinedResult.Emitted
+    $wgslInvalid = @($combinedResult.Invalid)
+    $minSlangcVersion = $combinedResult.MinVersion
+    $slangcVersion = $combinedResult.Version
 
     Write-Host "[INFO] Slang shader compilation finished ($compiled SPIR-V/WGSL artifact(s) + $wgslEmitted combined WGSL file(s))"
 

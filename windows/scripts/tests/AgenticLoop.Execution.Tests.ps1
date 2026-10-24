@@ -5,7 +5,7 @@ Import-Module (Join-Path $PSScriptRoot 'WindowsAgentic.Fixtures.psm1') -ErrorAct
 Import-Module (Join-Path $PSScriptRoot 'WindowsTest.MutationCases.psm1') -ErrorAction Stop
 
 $script:agenticExecutionFactory = New-TestAgenticModuleFactory -Properties @{ ProgressAt = @(); Attempts = 0; BuildOk = $true } `
-        -FunctionName @('Invoke-AgenticCommandPhase', 'Start-AgenticCommandPhase', 'Invoke-AgenticLoop', 'Get-AgenticConfigValue', 'Resolve-BuildMatrixEntry', 'Invoke-QualityCommand',
+        -FunctionName @('Invoke-AgenticCommandPhase', 'Start-AgenticCommandPhase', 'Invoke-AgenticLoop', 'Resolve-AgenticLoopInputs', 'Get-AgenticConfigValue', 'Resolve-BuildMatrixEntry', 'Invoke-QualityCommand',
             'Get-AgenticDefaultBacklogPath', 'Get-AgenticBacklogTaskCount', 'Get-UncheckedTaskCount', 'Get-BlockedTaskCount', 'Remove-CheckedBacklogTasks') -Prelude @'
 $script:AgenticExitCode = 0
 function Resolve-AgenticEngine { return @{ Engine = 'fixture'; PlannerModel = 'planner'; ExecutorModel = 'executor' } }

@@ -85,6 +85,17 @@ function Get-ImageConfigText {
     }
 }
 
+function Get-ImageConfigTokenReason {
+    param([AllowEmptyString()][string]$Token, [string]$Bucket = '', [string]$Region = '')
+    if (-not $Token) { return }
+    $name, $value = '', $Token
+    if ($Token -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') { $name = $Matches[1]; $value = $Matches[2].Trim([char[]]('"', "'")) }
+    if ($value -and ($name -match $script:BuildHostAddressName -or $name -match $script:CredentialName)) { "the build-host setting $name" }
+    foreach ($why in @(Get-ImageEnvAddressLeak -Name $name -Value $value)) { ($why -replace ' \S+$', '') + $(if ($name) { " in $name" }) }
+    if ($Bucket -and $name -match 'BUCKET' -and $value -eq $Bucket) { "the S3 bucket as $name" }
+    if ($Region -and $name -match 'REGION' -and $value -eq $Region) { "the S3 region as $name" }
+}
+
 <#
 .SYNOPSIS
     Where an image config names a build host, as Entry/Reason records; a reason never carries the value.
@@ -109,13 +120,7 @@ function Find-ImageConfigLeak {
         $entry, $text = $source
         $reasons = @(
             foreach ($token in ($text -split '\s+')) {
-                if (-not $token) { continue }
-                $name, $value = '', $token
-                if ($token -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') { $name = $Matches[1]; $value = $Matches[2].Trim([char[]]('"', "'")) }
-                if ($value -and ($name -match $script:BuildHostAddressName -or $name -match $script:CredentialName)) { "the build-host setting $name" }
-                foreach ($why in @(Get-ImageEnvAddressLeak -Name $name -Value $value)) { ($why -replace ' \S+$', '') + $(if ($name) { " in $name" }) }
-                if ($Bucket -and $name -match 'BUCKET' -and $value -eq $Bucket) { "the S3 bucket as $name" }
-                if ($Region -and $name -match 'REGION' -and $value -eq $Region) { "the S3 region as $name" }
+                Get-ImageConfigTokenReason -Token $token -Bucket $Bucket -Region $Region
             }
             foreach ($h in $hosts) {
                 if ($text -match ('(?i)(?<![\w.-])' + [regex]::Escape($h) + '(?![\w-]|\.\w)')) { "a cache endpoint's host" }
