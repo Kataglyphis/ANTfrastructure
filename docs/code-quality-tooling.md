@@ -497,7 +497,9 @@ were converted to f-strings before `UP032` became fatal. Three constant-name
 `getattr` calls now use direct attributes, and `B009` rejects regressions; dynamic
 attribute names are unaffected. Explicit
 targets and named roots retain their advisory adoption tier. A fixture adds an F541 finding
-outside the focused selectors and proves the default full ruleset fails. Linux CI also
+outside the focused selectors and proves the default full ruleset fails. The unused-assignment
+fixture asserts the focused hub unused-binding verdict, so the default sweep cannot hide a
+missing F841 selector. Linux CI also
 enforces EXE001, which requires a Python shebang file to have its executable bit set. The
 fixture writes `RUFF_VERSION`
 from `01-core/tool-pins.env` into its own `tool-pins.env`, so when no ruff is on

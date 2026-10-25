@@ -215,9 +215,11 @@ t_assert_contains "${_out}" "F401"
 t_assert_contains "${_out}" "linux/scripts/probe.sh:3:"
 t_assert_contains "${_out}" "rc=1"
 
-t_case "a full hub sweep rejects unused assignments"
+t_case "the focused hub unused-binding gate rejects unused assignments"
 _out="$(_targets $'def answer():\n    unused = 42\n    return 1' 'print("ok")')"
 t_assert_contains "${_out}" "F841"
+t_assert_contains "${_out}" "hub unused-binding gate failed" \
+  "the full default sweep must not hide a missing F841 selector"
 t_assert_contains "${_out}" "rc=1"
 
 t_case "a full hub sweep rejects unused unpacked variables"
