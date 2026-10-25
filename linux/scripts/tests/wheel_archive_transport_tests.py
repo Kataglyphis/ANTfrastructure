@@ -121,7 +121,7 @@ def run(funcs, row):
             ["/bin/bash", "-c", WORKER, "_", tmp, *row], capture_output=True, timeout=5, check=False
         )
 
-        def clean(b):
+        def clean(b) -> str:
             return b.decode().replace(tmp, "[WORK]")
 
         files = {

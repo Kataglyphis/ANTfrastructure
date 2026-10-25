@@ -29,6 +29,7 @@ windows_gate_report="${report_dir}/ty-windows-gate.txt"
 annotations_report="${report_dir}/ruff-annotations.txt"
 annotations_gate_report="${report_dir}/ruff-annotations-gate.txt"
 private_returns_report="${report_dir}/ruff-private-returns-gate.txt"
+parameter_returns_report="${report_dir}/ruff-parameters-returns-gate.txt"
 
 mapfile -d '' -t py_files < <(git ls-files -z -- '*.py')
 mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs/scripts/*.py' \
@@ -54,12 +55,14 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
   'linux/scripts/extract_embedded_python.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
-mapfile -d '' -t private_return_files < <(git ls-files -z -- 'linux/scripts/renovate_*.py' \
-  'linux/scripts/verify_*.py')
+mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
+  'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_planner.py' \
+  'linux/llm-stack/gateway/render_apisix.py' 'linux/llm-stack/tests/test_gateway_render.py' \
+  'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#private_return_files[@]}" -ge 8 ] || { echo "Missing tracked Python private-return targets" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 6 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()
@@ -111,11 +114,13 @@ strict_scan() {
   printf '%s: clean (%s files); %s\n' "${label}" "${count}" "${report}"
 }
 
-# ANN001/ANN201 and non-Renovate ANN202 findings stay report-only.
+# Remaining ANN001/ANN201 findings stay report-only outside the selected clean files.
 strict_scan "Ruff signature annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
   uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN002,ANN003,ANN204,ANN205,ANN206 --output-format concise "${py_files[@]}"
-strict_scan "Ruff private return gate" "${private_returns_report}" "${#private_return_files[@]}" \
-  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN202 --output-format concise "${private_return_files[@]}"
+strict_scan "Ruff private return gate" "${private_returns_report}" "${#py_files[@]}" \
+  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN202 --output-format concise "${py_files[@]}"
+strict_scan "Ruff parameter and public return gate" "${parameter_returns_report}" "${#parameter_return_files[@]}" \
+  uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN001,ANN201 --output-format concise "${parameter_return_files[@]}"
 strict_scan "ty quality gate" "${strict_report}" "${#quality_files[@]}" \
   "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}"
 strict_scan "ty Windows gate" "${windows_gate_report}" "${#windows_quality_files[@]}" \

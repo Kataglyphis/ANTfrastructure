@@ -138,7 +138,7 @@ def node_pins(v, keys) -> dict[str, str]:
     return pins
 
 
-def _same_major_node(cur):
+def _same_major_node(cur) -> str:
     major = cur.split(".")[0]
     idx = bv.http_json("https://nodejs.org/dist/index.json")
     return next(e["version"].lstrip("v") for e in idx if e["version"].lstrip("v").split(".")[0] == major)
@@ -352,7 +352,7 @@ def spec_vulkan(cur):
     if not consumed:
         raise RuntimeError("vulkan: latest.json carried neither a linux nor a windows version")
 
-    def _key(s):
+    def _key(s) -> tuple[int, ...]:
         return tuple(int(x) for x in re.findall(r"\d+", s))
 
     v = min(consumed.values(), key=_key)

@@ -13,6 +13,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+import urllib.response
 
 _TIMEOUT = 20
 _ACCEPT = ", ".join(
@@ -29,7 +30,7 @@ EXIT_UNREADABLE = 1
 EXIT_ABSENT = 2
 
 
-def _split_ref(ref: str):
+def _split_ref(ref: str) -> tuple[str, str, str] | None:
     """Split <host>/<repo>:<tag|@digest> into (host, repo, reference); short Docker Hub refs give None."""
     remainder = ref
     digest = ""
@@ -103,9 +104,9 @@ def _bearer_token(challenge: str, host: str, repo: str) -> str:
     return payload.get("token") or payload.get("access_token") or ""
 
 
-def _get(url: str, host: str, repo: str, accept: str):
+def _get(url: str, host: str, repo: str, accept: str) -> bytes | None:
     """GET <url>, negotiating a Bearer token on the first 401. Returns bytes."""
-    def _attempt(token: str):
+    def _attempt(token: str) -> urllib.response.addinfourl:
         request = urllib.request.Request(url)
         request.add_header("Accept", accept)
         if token:

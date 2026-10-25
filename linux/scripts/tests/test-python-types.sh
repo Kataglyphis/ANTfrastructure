@@ -10,7 +10,8 @@ trap 'rm -rf -- "${ROOT}"' EXIT
 mkdir -p "${ROOT}/linux/scripts/01-core" "${ROOT}/linux/scripts/tests" \
   "${ROOT}/linux/scripts/05-frameworks/flutter" "${ROOT}/docs/scripts" \
   "${ROOT}/windows/scripts/certificates" "${ROOT}/shared/python" \
-  "${ROOT}/linux/llm-stack/tests" "${ROOT}/linux/scripts/02-toolchain/python" \
+  "${ROOT}/linux/llm-stack/tests" "${ROOT}/linux/llm-stack/gateway" \
+  "${ROOT}/linux/scripts/02-toolchain/python" \
   "${ROOT}/linux/scripts/lib" "${ROOT}/quality"
 cp "${S}/lint-python-types.sh" "${ROOT}/linux/scripts/"
 cp "${S}/01-core/load-versions-env.sh" "${ROOT}/linux/scripts/01-core/"
@@ -29,7 +30,7 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (17 files)"
+  t_assert_contains "$1" "ty quality gate: clean (21 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -46,6 +47,10 @@ printf 'import pytest\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/s
 printf 'import yaml\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_audit.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_planner.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_cmake.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm-stack/gateway/render_apisix.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm-stack/tests/test_gateway_render.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_code_dupes.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_doc_dupes.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_locator.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_package_names.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_comment_size.py"
@@ -64,8 +69,10 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ty-windows-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (19 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (8 files)"
+t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (23 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (23 files)"
+t_assert_contains "${out}" "Ruff parameter and public return gate: clean (6 files)"
 
 t_case "the locked quality environment resolves test and parser imports"
 t_assert_ok test -d "${ROOT}/quality/.venv"
@@ -135,6 +142,15 @@ t_assert_contains "${out}" "ANN202"
 t_assert_contains "${out}" "rc=1"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_planner.py"
 
+t_case "a missing private Windows return fails the tracked-tree Ruff gate"
+printf 'def _answer():\n    return 42\n' > "${ROOT}/windows/scripts/subject.py"
+out="$(_run)"
+t_assert_contains "${out}" "Ruff private return gate failed (exit 1)"
+t_assert_contains "${out}" "windows/scripts/subject.py"
+t_assert_contains "${out}" "ANN202"
+t_assert_contains "${out}" "rc=1"
+_set_answer "${ROOT}/windows/scripts/subject.py" 42
+
 t_case "missing private verifier returns fail the focused Ruff gate"
 for target in verify_package_names verify_comment_size verify_gate_registry; do
   printf 'def _check():\n    return 42\n' > "${ROOT}/linux/scripts/${target}.py"
@@ -143,6 +159,20 @@ for target in verify_package_names verify_comment_size verify_gate_registry; do
   t_assert_contains "${out}" "ANN202"
   t_assert_contains "${out}" "rc=1"
   printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/${target}.py"
+done
+
+t_case "each selected Python file fails on missing parameter and public return types"
+for target in linux/scripts/renovate_cmake.py linux/scripts/renovate_planner.py \
+  linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \
+  docs/scripts/verify_code_dupes.py docs/scripts/verify_doc_dupes.py; do
+  printf 'def answer(value):\n    return value\n' > "${ROOT}/${target}"
+  out="$(_run)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate failed (exit 1)"
+  t_assert_contains "${out}" "${target}"
+  t_assert_contains "${out}" "ANN001"
+  t_assert_contains "${out}" "ANN201"
+  t_assert_contains "${out}" "rc=1"
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/${target}"
 done
 
 t_case "a type error in the Markdown parser fails the expanded strict scope"

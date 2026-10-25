@@ -11,6 +11,8 @@ import re
 import stat
 import struct
 import zipfile
+from collections.abc import Iterator
+from typing import TypeAlias
 
 ABI = (b"OrtGetApiBase", b"CreateEpFactories", b"RegisterCustomOps")
 # An ORT source path plus NUL, as __FILE__ embeds it; a bare chain dir is not ORT. See docs/onnxruntime-single-source.md
@@ -23,6 +25,7 @@ MAGIC = (b"\x7fELF", b"\0asm")
 SKIP_TOP = ("/proc", "/sys", "/dev", "/run")
 CHUNK = 16 << 20
 OVERLAP = 512
+ElfImage: TypeAlias = tuple[bool, str, list[tuple[int, int, int]], list[tuple[int, int]]]
 
 
 def emit(*fields: object):
@@ -73,7 +76,7 @@ def scan_stream(read):
     return sha.hexdigest(), sorted(abi), roots
 
 
-def _elf_image(mm):
+def _elf_image(mm) -> ElfImage | None:
     """(is64, byte order, PT_LOAD spans, dynamic entries) from an ELF's program headers; None without PT_DYNAMIC."""
     if mm[:4] != MAGIC[0]:
         return None
@@ -102,7 +105,7 @@ def _elf_image(mm):
     return is64, end, loads, entries
 
 
-def _file_offset(loads, vaddr):
+def _file_offset(loads, vaddr) -> int | None:
     return next((o + vaddr - v for v, o, n in loads if v <= vaddr < v + n), None)
 
 
@@ -115,7 +118,7 @@ def elf_dynamic(mm):
         return {}
 
 
-def _dynamic_entries(mm, loads, entries):
+def _dynamic_entries(mm, loads, entries) -> dict[str, list[str]]:
     base = _file_offset(loads, dict(entries).get(5, -1))
     if base is None:
         return {}
@@ -159,9 +162,9 @@ def user_facts(mm, abi, roots):
     return "use", sha, abi, roots, elf_dynamic(mm) if mm[:4] == MAGIC[0] else None
 
 
-def _hash_chain(mm, end, word, loads, tags, name):
+def _hash_chain(mm, end, word, loads, tags, name) -> Iterator[int]:
     """The symbol indices ld.so compares for `name`: DT_GNU_HASH's chain, else DT_HASH's."""
-    def u32(off):
+    def u32(off) -> int:
         return struct.unpack_from(end + "I", mm, off)[0]
     gnu, sysv = _file_offset(loads, tags.get(0x6FFFFEF5, -1)), _file_offset(loads, tags.get(4, -1))
     if gnu is not None:
@@ -295,7 +298,7 @@ class Census:
                      if n.endswith("-linux-gnu")]
             self.search = ld_conf_dirs(self.root) + multi + ["/lib", "/usr/lib", "/lib64", "/usr/lib64"]
 
-    def _list(self, image_dir):
+    def _list(self, image_dir) -> list[str]:
         try:
             return sorted(os.listdir(host(self.root, image_dir)))
         except OSError:
@@ -341,7 +344,7 @@ class Census:
                 if stat.S_ISREG(st.st_mode):
                     yield posixpath.join(ipath, n), os.path.join(dirpath, n), st
 
-    def _skip(self, _err):
+    def _skip(self, _err) -> None:
         self.skipped += 1
 
     def members(self, ipath, hpath):
@@ -395,7 +398,7 @@ class Census:
         if kind:
             self._record(kind_ref, ipath, name, sha, abi, roots, dyn, kind == "def")
 
-    def _record(self, kind_ref, label, name, sha, abi, roots, dyn, defines=False):
+    def _record(self, kind_ref, label, name, sha, abi, roots, dyn, defines=False) -> None:
         instance = bool(INSTANCE.match(name) or roots) or defines
         # A relative root prints as '.': emit() turns '' into '-', which means "no fingerprint at all".
         joined = "|".join(r or "." for r in roots)
@@ -414,7 +417,7 @@ class Census:
         """ld.so's order: DT_RPATH (only without DT_RUNPATH), LD_LIBRARY_PATH, DT_RUNPATH, cache, defaults."""
         origin = posixpath.dirname(importer)
 
-        def expand(dirs):
+        def expand(dirs) -> list[str]:
             return [d.replace("${ORIGIN}", origin).replace("$ORIGIN", origin) for d in dirs]
         runpath = expand(dyn.get("runpath", []))
         rpath = [] if runpath else expand(dyn.get("rpath", []))

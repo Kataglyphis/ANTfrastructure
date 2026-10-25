@@ -6,6 +6,7 @@
 import json
 import re
 import sys
+from collections.abc import Iterator
 
 # Exclude container flags from delete verbs.
 VERB = re.compile(
@@ -67,7 +68,7 @@ _SEGMENT = re.compile(r"[;&|\n]+")
 _CD = re.compile(r"\bcd\s+([^\s;&|]+)")
 
 
-def _split_outside_quotes(text: str):
+def _split_outside_quotes(text: str) -> list[str]:
     """Split on ; & | and newline, but never inside a quoted span.
 
     A regex split cuts through quotes, so the quote-stripping below has nothing
@@ -91,7 +92,7 @@ def _split_outside_quotes(text: str):
     return [s for s in out if s.strip()]
 
 
-def _delete_segments(norm: str):
+def _delete_segments(norm: str) -> Iterator[str]:
     """Segments that carry a delete verb, each prefixed with the directory a
     preceding `cd` established. docs/failure-modes.md#delete-guard-scope"""
     cwd = ""

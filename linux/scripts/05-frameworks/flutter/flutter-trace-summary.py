@@ -59,7 +59,7 @@ def main():
         return 1
     t0 = min(s[0] for s in all_spans)
 
-    def frames(name):
+    def frames(name) -> list[tuple[float, float, float, str | None, tuple[int | None, int | None]]]:
         return sorted((s for s in all_spans if s[3] == name), key=lambda s: -s[1])
 
     for title, name in (("UI frames", UI_FRAME), ("Raster frames", RASTER_FRAME)):

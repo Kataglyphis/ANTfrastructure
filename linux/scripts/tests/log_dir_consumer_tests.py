@@ -114,7 +114,7 @@ def main():
                 timeout=5,
             )
 
-            def clean(value):
+            def clean(value) -> str:
                 return re.sub(
                     r": line [0-9]+:",
                     ": line [LINE]:",

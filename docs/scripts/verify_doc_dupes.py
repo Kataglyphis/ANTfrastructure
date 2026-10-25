@@ -11,6 +11,17 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import TypeAlias
+
+DocUnit: TypeAlias = tuple[str, int]
+Shingle: TypeAlias = tuple[str, ...]
+Owners: TypeAlias = dict[Shingle, set[DocUnit]]
+Texts: TypeAlias = dict[DocUnit, str]
+DocPair: TypeAlias = tuple[DocUnit, DocUnit]
+AllowedPair: TypeAlias = tuple[int, DocUnit, DocUnit, str]
+Finding: TypeAlias = tuple[int, DocUnit, DocUnit, tuple[int, str] | None]
+HubPair: TypeAlias = tuple[int, DocUnit, DocUnit]
+AllowKey: TypeAlias = frozenset[str] | tuple[str, str]
 
 # HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
 HUB_ROOT = Path(__file__).resolve().parents[2]
@@ -83,10 +94,10 @@ def collect() -> list[Path]:
     ]
 
 
-def load_allow(fmt: str = ALLOW_FMT, ordered: bool = False) -> dict:
+def load_allow(fmt: str = ALLOW_FMT, ordered: bool = False) -> dict[AllowKey, tuple[int, str]]:
     """The shared reader's rows folded onto the file pair: unordered here, (consumer, hub) under --against-hub."""
-    allow: dict = {}
-    at: dict = {}
+    allow: dict[AllowKey, tuple[int, str]] = {}
+    at: dict[AllowKey, int] = {}
     for pair, budget, why, n in iter_rows(str(ALLOW_FILE), 2, fmt):
         key = tuple(pair) if ordered else frozenset(pair)
         if key in allow:
@@ -99,10 +110,12 @@ def load_allow(fmt: str = ALLOW_FMT, ordered: bool = False) -> dict:
     return allow
 
 
-def _index_paragraphs(files, root: Path | None = None, prefix: str = ""):
+def _index_paragraphs(
+    files: list[Path], root: Path | None = None, prefix: str = "",
+) -> tuple[Owners, Texts]:
     """(owners, texts): which paragraphs hold each 8-word shingle, and each paragraph's text for reporting."""
-    owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
-    texts: dict[tuple[str, int], str] = {}
+    owners: Owners = defaultdict(set)
+    texts: Texts = {}
     for path in files:
         rel = prefix + path.relative_to(root or REPO_ROOT).as_posix()
         for i, para in enumerate(paragraphs(path)):
@@ -115,9 +128,9 @@ def _index_paragraphs(files, root: Path | None = None, prefix: str = ""):
     return owners, texts
 
 
-def _collect_shared(owners) -> Counter:
+def _collect_shared(owners: Owners) -> Counter[DocPair]:
     """Cross-file paragraph-pair counts, skipping vocabulary shingles and same-file pairs."""
-    shared: Counter = Counter()
+    shared: Counter[DocPair] = Counter()
     for holders in owners.values():
         if 1 < len(holders) <= MAX_OWNERS:
             for a, b in itertools.combinations(sorted(holders), 2):
@@ -126,7 +139,9 @@ def _collect_shared(owners) -> Counter:
     return shared
 
 
-def _print_report(args, files, texts, allowed) -> None:
+def _print_report(
+    args: argparse.Namespace, files: list[Path], texts: Texts, allowed: list[AllowedPair],
+) -> None:
     """The --report listing: what was scanned, then every allowed pair."""
     print(f"scanned {len(texts)} paragraphs in {len(files)} files "
           f"(threshold {args.threshold} shared {SHINGLE}-word shingles)\n")
@@ -136,7 +151,7 @@ def _print_report(args, files, texts, allowed) -> None:
         print()
 
 
-def _print_findings(findings, texts, advice: str = "") -> None:
+def _print_findings(findings: list[Finding], texts: Texts, advice: str = "") -> None:
     """Every pair over its budget, with both excerpts and what to do about it."""
     print(f"docs duplication gate: {len(findings)} copied passage(s)\n", file=sys.stderr)
     for n, a, b, budget in findings:
@@ -149,7 +164,7 @@ def _print_findings(findings, texts, advice: str = "") -> None:
           f"{ALLOW_FILE.name} with a budget and a reason.", file=sys.stderr)
 
 
-def _print_bookkeeping(stale) -> int:
+def _print_bookkeeping(stale: list[AllowKey]) -> int:
     """The stale half of the allow contract: a row whose overlap is gone fails."""
     if not stale:
         return 0
@@ -167,7 +182,7 @@ def _hub_pages() -> list[Path]:
     return [HUB_ROOT / rel for rel in rels if not any(m in Path(rel).name for m in SKIP_MARKERS)]
 
 
-def _hub_pairs(files, threshold: int) -> tuple[list, dict]:
+def _hub_pairs(files: list[Path], threshold: int) -> tuple[list[HubPair], Texts]:
     """(pairs, texts): consumer paragraph <-> hub paragraph over the threshold, each as (n, consumer, hub)."""
     owners, texts = _index_paragraphs(files)
     hub_owners, hub_texts = _index_paragraphs(_hub_pages(), HUB_ROOT, HUB_TAG)
@@ -183,7 +198,7 @@ def _hub_pairs(files, threshold: int) -> tuple[list, dict]:
     return sorted(pairs, reverse=True), texts
 
 
-def _against_hub(args, files) -> int:
+def _against_hub(args: argparse.Namespace, files: list[Path]) -> int:
     """--against-hub: a consumer passage restating a hub page fails; off until <root>/doc-dupes-hub.allow exists."""
     global ALLOW_FILE
     if gate_scope.is_hub(str(REPO_ROOT), str(HUB_ROOT)):

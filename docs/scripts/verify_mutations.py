@@ -7,7 +7,7 @@ See docs/code-quality-tooling.md#the-mutation-gate-mutations
 import argparse
 import atexit
 import concurrent.futures
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 import json
 import os
 import queue
@@ -19,6 +19,7 @@ import sys
 import tempfile
 import threading
 import time
+from typing import Never
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
@@ -39,7 +40,7 @@ def host_skips(output):
     return len(_HOST_SKIP.findall(output))
 
 
-def _git_ignored(src):
+def _git_ignored(src) -> set[str]:
     """Every path git ignores under src (empty when git cannot answer), asked at the source since mirrors have no .git."""
     with _IGNORED_LOCK:
         if src in _IGNORED_CACHE:
@@ -122,7 +123,7 @@ _LIVE_GROUPS = set()
 _LIVE_LOCK = threading.Lock()
 
 
-def _kill_group(pid, grace=5.0):
+def _kill_group(pid, grace=5.0) -> None:
     """End a test's session and its leftovers: SIGTERM lets a runner inside reap its own groups, SIGKILL follows the grace."""
     if hasattr(os, "killpg"):
         try:
@@ -139,7 +140,7 @@ def _kill_group(pid, grace=5.0):
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True, check=False)
 
 
-def _kill_live_groups(*_: object):
+def _kill_live_groups(*_: object) -> None:
     """On exit or SIGTERM/SIGINT/SIGHUP: a test session started with start_new_session never sees the gate die."""
     with _LIVE_LOCK:
         groups = list(_LIVE_GROUPS)
@@ -148,12 +149,12 @@ def _kill_live_groups(*_: object):
         _kill_group(pid)
 
 
-def _exit_on_signal(signum, _frame):
+def _exit_on_signal(signum, _frame) -> Never:
     _kill_live_groups()
     sys.exit(128 + signum)
 
 
-def _reap_when_test_exits(proc, reap):
+def _reap_when_test_exits(proc, reap) -> None:
     proc.wait()
     reap()
 
@@ -189,7 +190,7 @@ def _timeout_result(
                              + _capture_text(out, stdout_encoding))
 
 
-def _run_test(cmd, root, timeout):
+def _run_test(cmd, root, timeout) -> tuple[int | None, bool, str]:
     """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -198,7 +199,7 @@ def _run_test(cmd, root, timeout):
     reap_lock = threading.Lock()
     reaped = False
 
-    def reap_once():
+    def reap_once() -> None:
         nonlocal reaped
         with reap_lock:
             if not reaped:
@@ -288,7 +289,7 @@ class Report:
         self.failed.add(self._cur.key)
         self._write(sys.stderr, text)
 
-    def _write(self, stream, text):
+    def _write(self, stream, text) -> None:
         with self._lock:
             stream.write(getattr(self._cur, "tag", "") + text)
             stream.flush()
@@ -434,7 +435,7 @@ def mirror_cap(mirror_bytes, free_bytes):
     return max(1, free_bytes // 4 // max(mirror_bytes, 1))
 
 
-def _drain(todo):
+def _drain(todo) -> Iterator[dict[str, str]]:
     """Entries off the shared queue until it is empty, so a mirror that is free takes the next one."""
     while True:
         try:
@@ -457,7 +458,7 @@ def run_shards(args, entries, src, report):
     extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in range(jobs - 1)]
     baselines = Baselines()
 
-    def shard(n, root):
+    def shard(n, root) -> int:
         if n:
             mirror_tree(src, root)
         return run_shard(args, _drain(todo), root, report, baselines, "[%d/%d] " % (n + 1, jobs))

@@ -9,6 +9,7 @@ import pathlib
 import stat
 import subprocess
 import sys
+from collections.abc import Callable
 
 import pytest
 import yaml
@@ -26,7 +27,7 @@ PROMPT = b"Pick the tool whose name matches.\r\nNever guess arguments.\r\n"
 P8_PROMPT_SHA = "970a8e4fcaf8540f55be6011c06ee33489e7915774ffc304d4022482b743e709"
 
 
-def fixture_doc():
+def fixture_doc() -> dict[str, dict]:
     return {
         "backends": {
             "g-npu": {"base_url": "http://127.0.0.1:18181", "model": "qualcomm/M-4B:W4A16"},
@@ -61,35 +62,35 @@ def fixture_doc():
 
 
 @pytest.fixture
-def tree(tmp_path):
+def tree(tmp_path: pathlib.Path) -> pathlib.Path:
     (tmp_path / "prompts").mkdir()
     (tmp_path / "prompts" / "tools.md").write_bytes(PROMPT)
     return tmp_path
 
 
-def write_doc(tree, doc):
+def write_doc(tree: pathlib.Path, doc: dict) -> str:
     path = tree / "backends.json"
     path.write_text(json.dumps(doc), encoding="utf-8")
     return str(path)
 
 
-def render_doc(tree, doc=None):
+def render_doc(tree: pathlib.Path, doc: dict | None = None) -> tuple[dict, dict[str, bytes], dict]:
     files, meta = ra.render(write_doc(tree, doc or fixture_doc()), str(tree / "prompts"),
                             ra.DEFAULT_OVERLAY)
     return json.loads(files["apisix.json"]), files, meta
 
 
-def routes_by_id(document):
+def routes_by_id(document: dict) -> dict[str, dict]:
     return {r["id"]: r for r in document["routes"]}
 
 
 # --- the shipped registry --------------------------------------------------------------
 
-def shipped():
+def shipped() -> dict:
     return json.loads((STACK / "backends.json").read_text(encoding="utf-8"))
 
 
-def test_the_shipped_serving_block_is_valid():
+def test_the_shipped_serving_block_is_valid() -> None:
     serving = ra.parse_serving(shipped())
     assert [r["alias"] for r in serving["routes"]] == ["chat", "chat-long", "agent"]
     assert serving["lanes"]["gpu"]["model"] == "unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_0"
@@ -99,11 +100,11 @@ def test_the_shipped_serving_block_is_valid():
     assert serving["gateway"]["prompts"]["tool-disambiguation"]["sha256"] == P8_PROMPT_SHA
 
 
-def test_geniex_cpu_keeps_the_model_the_lab_measures():
+def test_geniex_cpu_keeps_the_model_the_lab_measures() -> None:
     assert shipped()["backends"]["geniex-cpu"]["model"] == "unsloth/Qwen3-4B-GGUF:Q4_0"
 
 
-def test_the_lab_entries_go_through_the_gateway_with_the_lab_key():
+def test_the_lab_entries_go_through_the_gateway_with_the_lab_key() -> None:
     backends = shipped()["backends"]
     lab = {n: e for n, e in backends.items() if n.startswith("lab-")}
     assert sorted(lab) == ["lab-agent", "lab-chat", "lab-chat-long", "lab-raw-cpu", "lab-raw-gpu",
@@ -114,7 +115,7 @@ def test_the_lab_entries_go_through_the_gateway_with_the_lab_key():
         assert entry["model"] == name[len("lab-"):], name
 
 
-def test_the_shipped_registry_will_not_render_without_the_prompt(tree):
+def test_the_shipped_registry_will_not_render_without_the_prompt(tree: pathlib.Path) -> None:
     with pytest.raises(ra.RenderError, match=ra.PROMPTS_ENV):
         ra.render(str(STACK / "backends.json"), None, ra.DEFAULT_OVERLAY)
     lf = tree / "lf"
@@ -126,7 +127,7 @@ def test_the_shipped_registry_will_not_render_without_the_prompt(tree):
 
 # --- what it emits ----------------------------------------------------------------------
 
-def test_routes_and_priorities(tree):
+def test_routes_and_priorities(tree: pathlib.Path) -> None:
     routes = routes_by_id(render_doc(tree)[0])
     assert list(routes) == ["gateway-info", "chat-presend", "chat", "chat-long", "agent",
                             "raw-npu", "raw-gpu", "raw-cpu", "models", "unknown-model"]
@@ -139,7 +140,7 @@ def test_routes_and_priorities(tree):
         assert routes[rid]["uris"] == ["/v1/chat/completions", "/v1/completions"]
 
 
-def test_only_chat_can_fall_back_and_only_once(tree):
+def test_only_chat_can_fall_back_and_only_once(tree: pathlib.Path) -> None:
     routes = routes_by_id(render_doc(tree)[0])
     proxy = routes["chat"]["plugins"]["ai-proxy-multi"]
     assert [(i["name"], i["priority"]) for i in proxy["instances"]] == [("npu", 1), ("gpu", 0)]
@@ -154,7 +155,7 @@ def test_only_chat_can_fall_back_and_only_once(tree):
                    for i in r["plugins"].get("ai-proxy-multi", {}).get("instances", [])), "R10"
 
 
-def test_instances_pin_the_lane_model_and_hide_the_client_key(tree):
+def test_instances_pin_the_lane_model_and_hide_the_client_key(tree: pathlib.Path) -> None:
     routes = routes_by_id(render_doc(tree)[0])
     (cpu,) = routes["agent"]["plugins"]["ai-proxy-multi"]["instances"]
     assert cpu["options"] == {"model": "org/M-9B-GGUF:Q4_K_M"}
@@ -162,7 +163,7 @@ def test_instances_pin_the_lane_model_and_hide_the_client_key(tree):
     assert cpu["auth"] == {"header": {"Authorization": "Bearer unused"}}
 
 
-def test_lane_policy_per_route(tree):
+def test_lane_policy_per_route(tree: pathlib.Path) -> None:
     routes = routes_by_id(render_doc(tree)[0])
     shape = routes["chat"]["plugins"]["geniex-shape"]
     assert shape["lanes"] == {
@@ -177,7 +178,7 @@ def test_lane_policy_per_route(tree):
         assert raw["consumer-restriction"] == {"whitelist": ["lab"]}
 
 
-def test_the_prompt_rides_as_its_exact_bytes(tree):
+def test_the_prompt_rides_as_its_exact_bytes(tree: pathlib.Path) -> None:
     routes = routes_by_id(render_doc(tree)[0])
     for rid in ("chat", "chat-presend"):
         tp = routes[rid]["plugins"]["geniex-shape"]["tools_prompt"]
@@ -186,7 +187,7 @@ def test_the_prompt_rides_as_its_exact_bytes(tree):
     assert "tools_prompt" not in routes["chat-long"]["plugins"]["geniex-shape"]
 
 
-def test_consumers_metadata_and_log(tree):
+def test_consumers_metadata_and_log(tree: pathlib.Path) -> None:
     document = render_doc(tree)[0]
     assert [c["plugins"]["key-auth"]["key"] for c in document["consumers"]] == [
         "Bearer ${{GW_KEY_WEBUI}}", "Bearer ${{GW_KEY_LAB}}", "Bearer ${{GW_KEY_AGENT}}"]
@@ -198,7 +199,7 @@ def test_consumers_metadata_and_log(tree):
     assert rule["plugins"]["prometheus"] == {"prefer_name": True}
 
 
-def test_static_bodies(tree):
+def test_static_bodies(tree: pathlib.Path) -> None:
     routes = routes_by_id(render_doc(tree)[0])
     models = json.loads(routes["models"]["plugins"]["mocking"]["response_example"])
     assert [m["id"] for m in models["data"]] == ["chat", "chat-long", "agent"]
@@ -207,7 +208,7 @@ def test_static_bodies(tree):
     assert json.loads(unknown["response_example"])["error"]["code"] == "model_not_found"
 
 
-def test_gateway_info_hashes_everything_else(tree):
+def test_gateway_info_hashes_everything_else(tree: pathlib.Path) -> None:
     document, files, meta = render_doc(tree)
     info_route = document["routes"].pop(0)
     info = json.loads(info_route["plugins"]["mocking"]["response_example"])
@@ -217,7 +218,7 @@ def test_gateway_info_hashes_everything_else(tree):
     assert meta["key_vars"] == ["GW_KEY_WEBUI", "GW_KEY_LAB", "GW_KEY_AGENT"]
 
 
-def test_the_boot_config_is_localhost_only(tree):
+def test_the_boot_config_is_localhost_only(tree: pathlib.Path) -> None:
     boot = yaml.safe_load(render_doc(tree)[1]["config.yaml"])
     apisix = boot["apisix"]
     assert apisix["node_listen"] == [{"ip": "127.0.0.1", "port": 9080}]
@@ -232,11 +233,11 @@ def test_the_boot_config_is_localhost_only(tree):
                                "ai-proxy-multi", "file-logger", "prometheus"]
 
 
-def test_rendering_is_deterministic(tree):
+def test_rendering_is_deterministic(tree: pathlib.Path) -> None:
     assert render_doc(tree)[1] == render_doc(tree)[1]
 
 
-def test_apisix_json_is_rewritten_in_place(tree):
+def test_apisix_json_is_rewritten_in_place(tree: pathlib.Path) -> None:
     out = tree / "out"
     _, files, _ = render_doc(tree)
     ra.write_bundle(files, str(out))
@@ -246,7 +247,7 @@ def test_apisix_json_is_rewritten_in_place(tree):
     assert stat.S_IMODE(os.stat(out / "apisix.json").st_mode) == 0o644 or os.name == "nt"
 
 
-def test_check_mode_finds_a_stale_bundle(tree):
+def test_check_mode_finds_a_stale_bundle(tree: pathlib.Path) -> None:
     reg = write_doc(tree, fixture_doc())
     args = ["--registry", reg, "--prompts-dir", str(tree / "prompts"), "--out", str(tree / "out")]
     assert ra.main(args) == 0
@@ -258,8 +259,8 @@ def test_check_mode_finds_a_stale_bundle(tree):
 
 # --- what it refuses ------------------------------------------------------------------------
 
-def _set(path, value):
-    def edit(doc):
+def _set(path: tuple[str, ...], value: object) -> Callable[[dict], None]:
+    def edit(doc: dict) -> None:
         node = doc
         for key in path[:-1]:
             node = node[key]
@@ -267,8 +268,8 @@ def _set(path, value):
     return edit
 
 
-def _del(path):
-    def edit(doc):
+def _del(path: tuple[str, ...]) -> Callable[[dict], None]:
+    def edit(doc: dict) -> None:
         node = doc
         for key in path[:-1]:
             node = node[key]
@@ -313,14 +314,14 @@ REFUSALS = [
 
 
 @pytest.mark.parametrize("edit, message", REFUSALS, ids=[m for _, m in REFUSALS])
-def test_refuses(tree, edit, message):
+def test_refuses(tree: pathlib.Path, edit: Callable[[dict], None], message: str) -> None:
     doc = copy.deepcopy(fixture_doc())
     edit(doc)
     with pytest.raises(ra.RenderError, match=message):
         render_doc(tree, doc)
 
 
-def test_refuses_a_missing_or_changed_prompt(tree):
+def test_refuses_a_missing_or_changed_prompt(tree: pathlib.Path) -> None:
     (tree / "prompts" / "tools.md").write_bytes(PROMPT.replace(b"\r\n", b"\n"))
     with pytest.raises(ra.RenderError, match="the registry pins"):
         render_doc(tree)
@@ -329,12 +330,12 @@ def test_refuses_a_missing_or_changed_prompt(tree):
         render_doc(tree)
 
 
-def test_refuses_a_dollar_in_a_mocked_body():
+def test_refuses_a_dollar_in_a_mocked_body() -> None:
     with pytest.raises(ra.RenderError, match="expanded by APISIX"):
         ra._mock("x", ["GET"], 200, {"a": "$remote_addr"}, uri="/x")
 
 
-def test_main_reports_a_refusal_as_exit_1(tree, capsys):
+def test_main_reports_a_refusal_as_exit_1(tree: pathlib.Path, capsys: pytest.CaptureFixture[str]) -> None:
     doc = fixture_doc()
     doc["serving"]["routes"]["chat"]["lane"] = "tpu"
     assert ra.main(["--registry", write_doc(tree, doc), "--prompts-dir", str(tree / "prompts")]) == 1
@@ -343,17 +344,17 @@ def test_main_reports_a_refusal_as_exit_1(tree, capsys):
 
 # --- the compose overlay ----------------------------------------------------------------
 
-def overlay():
+def overlay() -> dict[str, dict]:
     return yaml.safe_load((STACK / "docker-compose.gateway.yml").read_text(encoding="utf-8"))
 
 
-def test_the_overlay_pins_the_image_by_digest():
+def test_the_overlay_pins_the_image_by_digest() -> None:
     image = overlay()["services"]["apisix"]["image"]
     assert image == ra.pinned_image(ra.DEFAULT_OVERLAY)
     assert image.startswith("docker.io/apache/apisix:") and len(image.split("@sha256:")[1]) == 64
 
 
-def test_the_overlay_mounts_read_only_on_the_host_network():
+def test_the_overlay_mounts_read_only_on_the_host_network() -> None:
     service = overlay()["services"]["apisix"]
     assert service["network_mode"] == "host" and "ports" not in service
     mounts = {v.split(":")[-2 if v.endswith(":ro") else -1]: v for v in service["volumes"]}
@@ -369,13 +370,13 @@ linux_only = pytest.mark.skipif(not sys.platform.startswith("linux"), reason="se
 
 
 @linux_only
-def test_serve_stack_usage():
+def test_serve_stack_usage() -> None:
     assert subprocess.run(["bash", str(SERVE), "--help"], capture_output=True, check=False).returncode == 0
     assert subprocess.run(["bash", str(SERVE), "bogus"], capture_output=True, check=False).returncode == 2
 
 
 @linux_only
-def test_serve_stack_keys_writes_distinct_private_keys(tmp_path):
+def test_serve_stack_keys_writes_distinct_private_keys(tmp_path: pathlib.Path) -> None:
     env = dict(os.environ, ANTFRASTRUCTURE_LLM_GATEWAY_DIR=str(tmp_path))
     first = subprocess.run(["bash", str(SERVE), "keys"], env=env, capture_output=True, text=True,
                            check=False)

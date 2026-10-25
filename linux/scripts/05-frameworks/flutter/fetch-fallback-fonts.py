@@ -12,6 +12,7 @@ import shutil
 import sys
 import urllib.request
 from pathlib import Path
+from types import ModuleType
 
 HERE = Path(__file__).resolve().parent
 # The engine's default fontFallbackBaseUrl: every lock URL is this plus the path the engine asks the site for.
@@ -21,7 +22,7 @@ ENGINE_DATA = Path("engine/src/flutter/lib/web_ui/lib/src/engine/font_fallback_d
 STORE_ENV = "KATAGLYPHIS_FONT_STORE"
 
 
-def _fetcher():
+def _fetcher() -> ModuleType:
     """The hub's lock fetcher, whose file name is no module name."""
     spec = importlib.util.spec_from_file_location("fetch_data_lock", HERE.parents[1] / "lib" / "fetch-data-lock.py")
     if spec is None or spec.loader is None:

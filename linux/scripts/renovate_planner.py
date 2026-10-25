@@ -21,18 +21,87 @@ import os
 import stat
 import sys
 import tempfile
-from collections.abc import Iterator
-from typing import TypedDict
+from collections.abc import Iterator, Mapping, Sequence
+from typing import NotRequired, TypedDict, cast
 
 import renovate_audit
 import renovate_locator
+
+
+class RenovateUpdate(TypedDict, total=False):
+    newValue: str
+    newDigest: str
+    updateType: str
+
+
+class RenovateWarning(TypedDict, total=False):
+    message: str
+    topic: str
+
+
+class RenovateDependency(TypedDict, total=False):
+    depName: str
+    packageName: str
+    datasource: str
+    depType: str
+    currentValue: str
+    currentDigest: str
+    skipReason: str
+    updates: list[RenovateUpdate]
+    warnings: list[RenovateWarning]
+
+
+class RenovatePackageFile(TypedDict, total=False):
+    packageFile: str
+    datasource: str
+    deps: list[RenovateDependency]
+
+
+class RenovateRepository(TypedDict, total=False):
+    packageFiles: dict[str, list[RenovatePackageFile]]
+
+
+class RenovateReport(TypedDict, total=False):
+    repositories: dict[str, RenovateRepository]
+
+
+class RenovateRule(TypedDict, total=False):
+    dependencyDashboardApproval: bool
+    description: str | list[str]
+    enabled: bool
+
+
+class RenovateManager(TypedDict, total=False):
+    managerFilePatterns: list[str]
+    enabled: bool
+    lockFileMaintenance: dict[str, bool]
+
+
+RenovateConfig = dict[str, object]
+PlanRow = dict[str, str]
+GroupKey = tuple[str, str, str, str, str]
+PinGroup = tuple[str, str, str, int]
+
+
+class PlanEdit(TypedDict):
+    file: str
+    line: int
+    old: str
+    new: str
+    manager: str
+    dep: str
+    cur: str
+    next: str
 
 
 class PendingTarget(TypedDict):
     path: str
     lines: list[str]
     stat: os.stat_result
-    steps: list[dict]
+    steps: list[PlanEdit]
+    syntax: NotRequired[str]
+    before: NotRequired[str]
+    groups: NotRequired[list[PinGroup]]
 
 
 # Other match keys are named in the output, never silently ignored (rule_hit).
@@ -44,7 +113,7 @@ FIELDS = {"matchManagers": "manager", "matchDatasources": "datasource",
 DASH = "-"
 
 
-def load(path):
+def load(path: str) -> object:
     """Parsed JSON, or an exit naming the file rather than a json/decoder.py traceback."""
     try:
         with open(path, encoding="utf-8") as fh:
@@ -55,24 +124,24 @@ def load(path):
         sys.exit("%s is not valid JSON: %s" % (path, exc))
 
 
-def load_obj(path):
+def load_obj(path: str) -> RenovateConfig:
     """A JSON object; a list would parse and then die in a .get() that no longer names the file."""
     obj = load(path)
     if not isinstance(obj, dict):
         sys.exit("%s must be a JSON object, not %s" % (path, type(obj).__name__))
-    return obj
+    return cast(RenovateConfig, obj)
 
 
-def load_report(path):
+def load_report(path: str) -> RenovateReport:
     """A Renovate report; a wrong shape must fail, never read as "up to date"."""
     rep = load_obj(path)
     if not isinstance(rep.get("repositories"), dict):
         sys.exit('%s is not a Renovate report: no top-level "repositories" object'
                  % path)
-    return rep
+    return cast(RenovateReport, rep)
 
 
-def in_root(root, rel):
+def in_root(root: str, rel: str) -> str | None:
     """`rel` resolved inside `root`, or None; `..`, absolute paths and symlinks out all fail alike."""
     if not rel:
         return None
@@ -81,7 +150,7 @@ def in_root(root, rel):
     return full if full.startswith(base + os.sep) else None
 
 
-def contained(root, rel, source):
+def contained(root: str, rel: str, source: str) -> str:
     """`rel` resolved inside `root`, or exit; called where a path enters, so no later use can forget."""
     full = in_root(root, rel)
     if full is None:
@@ -90,7 +159,7 @@ def contained(root, rel, source):
     return full
 
 
-def resolved_config(log):
+def resolved_config(log: str) -> RenovateConfig | None:
     """The --print-config record, with `extends` presets already expanded by Renovate."""
     out = None
     with open(log, encoding="utf-8", errors="replace") as fh:
@@ -99,15 +168,15 @@ def resolved_config(log):
             if not line.startswith("{"):
                 continue
             try:
-                rec = json.loads(line)
+                rec = cast(dict[str, object], json.loads(line))
             except ValueError:
                 continue
-            if "resolved config" in (rec.get("msg") or "").lower():
-                out = rec.get("config") or {}
+            if "resolved config" in cast(str, rec.get("msg") or "").lower():
+                out = cast(RenovateConfig, rec.get("config") or {})
     return out
 
 
-def _first_match(pats, files) -> str:
+def _first_match(pats: Sequence[str] | None, files: Sequence[str]) -> str:
     for pat in pats or []:
         rx = renovate_locator.renovate_pattern(pat)
         for f in files:
@@ -116,7 +185,7 @@ def _first_match(pats, files) -> str:
     return ""
 
 
-def managers(cfg, listing):
+def managers(cfg: RenovateConfig, listing: str) -> None:
     """Every manager whose own Renovate file patterns match a tracked file."""
     with open(listing, encoding="utf-8", errors="replace") as fh:
         files = [line.strip() for line in fh if line.strip()]
@@ -124,13 +193,13 @@ def managers(cfg, listing):
         block = cfg[name]
         if not isinstance(block, dict) or not block.get("managerFilePatterns"):
             continue
-        hit = _first_match(block["managerFilePatterns"], files)
+        hit = _first_match(cast(RenovateManager, block)["managerFilePatterns"], files)
         if hit:
             off = "false" if block.get("enabled") is False else "true"
             print("%s\t%s\t%s" % (name, off, hit))
 
 
-def _deps(report) -> Iterator[tuple[str, dict, dict]]:
+def _deps(report: RenovateReport) -> Iterator[tuple[str, RenovatePackageFile, RenovateDependency]]:
     """(manager, packageFile entry, dep) for every dependency the report carries."""
     for repo in (report.get("repositories") or {}).values():
         for mgr, files in (repo.get("packageFiles") or {}).items():
@@ -139,7 +208,7 @@ def _deps(report) -> Iterator[tuple[str, dict, dict]]:
                     yield mgr, f, dep
 
 
-def rows(report):
+def rows(report: RenovateReport) -> Iterator[PlanRow]:
     """One dict per pending update; only a dep's first update, the rest being other bucket levels."""
     for mgr, f, dep in _deps(report):
         for up in dep.get("updates") or []:
@@ -154,7 +223,7 @@ BY_DESIGN = {"disabled", "ignored", "package-rules", "path-dependency", "local-d
              "contains-variable"}
 
 
-def _skip_reason(dep) -> str:
+def _skip_reason(dep: RenovateDependency) -> str:
     """Why Renovate never compared this dep's value; "" when it did."""
     if dep.get("skipReason"):
         return dep["skipReason"]
@@ -164,7 +233,7 @@ def _skip_reason(dep) -> str:
     return "lookup-failed: " + warns[0] if warns else ""
 
 
-def skipped(report):
+def skipped(report: RenovateReport) -> tuple[list[tuple[str, str, str, str, str]], collections.Counter[str]]:
     """(listed rows, by-design counts): deps Renovate never looked up, or whose lookup failed."""
     listed, design = [], collections.Counter()
     for mgr, f, dep in _deps(report):
@@ -178,7 +247,8 @@ def skipped(report):
     return listed, design
 
 
-def _row(mgr, f, dep, up) -> dict[str, str]:
+def _row(mgr: str, f: RenovatePackageFile, dep: RenovateDependency,
+         up: RenovateUpdate) -> PlanRow:
     return {"manager": mgr, "file": f.get("packageFile") or "",
             "dep": dep.get("depName") or dep.get("packageName") or "?",
             "pkg": dep.get("packageName") or dep.get("depName") or "",
@@ -192,7 +262,7 @@ def _row(mgr, f, dep, up) -> dict[str, str]:
             "updateType": up.get("updateType") or ""}
 
 
-def _one(pat, val) -> bool:
+def _one(pat: str, val: str) -> bool:
     neg = pat.startswith("!")
     if neg:
         pat = pat[1:]
@@ -203,17 +273,17 @@ def _one(pat, val) -> bool:
     return hit != neg
 
 
-def rule_hit(rule, row):
+def rule_hit(rule: RenovateRule, row: Mapping[str, str]) -> tuple[bool, list[str]]:
     """(matched, unevaluated keys); an unknown match* key counts as matching, the safe direction."""
     unknown = sorted(k for k in rule if k.startswith("match") and k not in FIELDS)
     for key, field in FIELDS.items():
-        pats = rule.get(key)
+        pats = cast(list[str] | None, rule.get(key))
         if pats and not any(_one(p, row.get(field) or "") for p in pats):
             return False, unknown
     return True, unknown
 
 
-def refusal(row, rules):
+def refusal(row: Mapping[str, str], rules: Sequence[RenovateRule]) -> str:
     """The last matching dependencyDashboardApproval rule decides, as Renovate merges; "" = not refused."""
     out = ""
     for i, rule in enumerate(rules):
@@ -240,21 +310,22 @@ LOCK_MANAGERS = ("cargo", "npm", "pep621", "pub")
 LOCK_ALL = "*"
 
 
-def _maint_on(cfg, mgr, path) -> bool:
+def _maint_on(cfg: RenovateConfig, mgr: str, path: str) -> bool:
     """Renovate's own layering: the top-level switch, the manager's block, then the last matching packageRule."""
     top = cfg.get("lockFileMaintenance")
     on = isinstance(top, dict) and top.get("enabled") is True
-    sub = (cfg.get(mgr) or {}).get("lockFileMaintenance") if isinstance(cfg.get(mgr), dict) else None
+    block = cfg.get(mgr)
+    sub = (block or {}).get("lockFileMaintenance") if isinstance(block, dict) else None
     if isinstance(sub, dict) and "enabled" in sub:
         on = sub["enabled"] is True
     row = {"manager": mgr, "file": path, "updateType": "lockFileMaintenance"}
-    for rule in cfg.get("packageRules") or []:
+    for rule in cast(list[RenovateRule], cfg.get("packageRules") or []):
         if isinstance(rule, dict) and "enabled" in rule and rule_hit(rule, row)[0]:
             on = rule["enabled"] is True
     return on
 
 
-def lock_maintenance(report, cfg):
+def lock_maintenance(report: RenovateReport, cfg: RenovateConfig) -> Iterator[tuple[str, str]]:
     """(manager, packageFile) per manifest whose lock is under lockFileMaintenance; the report never says so itself."""
     for repo in (report.get("repositories") or {}).values():
         for mgr, files in sorted((repo.get("packageFiles") or {}).items()):
@@ -266,13 +337,14 @@ def lock_maintenance(report, cfg):
                     yield mgr, path
 
 
-def _clean(text) -> str:
+def _clean(text: str) -> str:
     """One plan column, flattened: a tab would add a column and a newline a row."""
     return (text or DASH).replace("\t", " ").replace("\r", "") \
                          .replace("\n", " ") or DASH
 
 
-def emit(kind, row, line, detail, before=DASH, after=DASH):
+def emit(kind: str, row: Mapping[str, str], line: str | int, detail: str,
+         before: str = DASH, after: str = DASH) -> None:
     """One plan row, ending in the line's exact text before and after, taken from the edit apply writes."""
     print("\t".join(_clean(str(col)) for col in (
         kind, row["manager"], row["file"], row["dep"],
@@ -280,19 +352,19 @@ def emit(kind, row, line, detail, before=DASH, after=DASH):
         line, detail, before, after)))
 
 
-def _read_lines(path) -> list[str]:
+def _read_lines(path: str) -> list[str]:
     """newline="" keeps a CRLF checkout CRLF."""
     with open(path, encoding="utf-8", newline="") as fh:
         return fh.read().split("\n")
 
 
-def group_key(row):
+def group_key(row: Mapping[str, str]) -> GroupKey:
     """One pin in one file; rows sharing it are occurrences the locator must find exactly."""
     return (row["file"], row["manager"], row["dep"],
             row["curDigest"] or row["cur"], row["newDigest"] or row["new"])
 
 
-def plan_group(group, edits):
+def plan_group(group: Sequence[PlanRow], edits: list[PlanEdit]) -> None:
     """One group's verdict, and its edits. Nothing is written here."""
     row = group[0]
     old = row["curDigest"] or row["cur"]
@@ -329,10 +401,10 @@ def plan_group(group, edits):
         emit("EDIT", row, site.line + 1, DASH, raw, after)
 
 
-def plan(report, cfg, root, planpath):
-    rules = cfg.get("packageRules") or []
-    edits = []
-    groups = collections.OrderedDict()
+def plan(report: RenovateReport, cfg: RenovateConfig, root: str, planpath: str) -> None:
+    rules = cast(list[RenovateRule], cfg.get("packageRules") or [])
+    edits: list[PlanEdit] = []
+    groups: dict[GroupKey, list[PlanRow]] = collections.OrderedDict()
     for row in rows(report):
         # Every packageFile is contained once, where it enters.
         row["path"] = contained(root, row["file"], "the report")
@@ -349,7 +421,7 @@ def plan(report, cfg, root, planpath):
         json.dump(edits, fh)
 
 
-def _writable(path, rel) -> None:
+def _writable(path: str, rel: str) -> None:
     """Probe that the file and its directory are writable; os.access says yes on a read-only mount."""
     try:
         with open(path, "r+", encoding="utf-8"):
@@ -368,7 +440,7 @@ def _writable(path, rel) -> None:
     os.unlink(probe)
 
 
-def _verify(steps, root) -> dict[str, PendingTarget]:
+def _verify(steps: Sequence[PlanEdit], root: str) -> dict[str, PendingTarget]:
     """Re-read, contain and prove writable every target before the first byte: the run writes all or nothing."""
     files: dict[str, PendingTarget] = {}
     seen = set()
@@ -404,7 +476,7 @@ def _verify(steps, root) -> dict[str, PendingTarget]:
     return files
 
 
-def groups_of(steps):
+def groups_of(steps: Sequence[PlanEdit]) -> list[PinGroup]:
     """(dep, old, new, lines planned) per pin: the count the locator was given, for the auditor to check."""
     counts = collections.OrderedDict()
     for e in steps:
@@ -413,7 +485,7 @@ def groups_of(steps):
     return [key + (n,) for key, n in counts.items()]
 
 
-def _manager_of(steps, rel) -> str:
+def _manager_of(steps: Sequence[PlanEdit], rel: str) -> str:
     names = {e["manager"] for e in steps}
     if len(names) != 1:
         sys.exit("%s is planned under %d managers (%s); one file has one syntax, "
@@ -422,7 +494,7 @@ def _manager_of(steps, rel) -> str:
     return names.pop()
 
 
-def _sanction(rel, target) -> None:
+def _sanction(rel: str, target: PendingTarget) -> None:
     """What a real parser lets this run change in one file; per file, so two groups claiming one value fail."""
     target["syntax"] = renovate_locator.syntax(_manager_of(target["steps"], rel), rel)
     target["before"] = "\n".join(target["lines"])
@@ -433,7 +505,7 @@ def _sanction(rel, target) -> None:
         sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
 
 
-def _edited(target) -> str:
+def _edited(target: PendingTarget) -> str:
     """The exact text this plan would put on disk for one file."""
     lines = list(target["lines"])
     for e in target["steps"]:
@@ -441,7 +513,7 @@ def _edited(target) -> str:
     return "\n".join(lines)
 
 
-def predict(files):
+def predict(files: Mapping[str, PendingTarget]) -> None:
     """The post-write audit over the text the write would produce; `edit` still proves the file off disk."""
     for rel, target in files.items():
         why = renovate_audit.audit(target["syntax"], target["before"],
@@ -450,7 +522,7 @@ def predict(files):
             sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
 
 
-def _replace(path, text) -> None:
+def _replace(path: str, text: str) -> None:
     """`text` onto `path` via a temp file and os.replace, never truncating; the mode survives mkstemp's 0600."""
     handle, temp = tempfile.mkstemp(dir=os.path.dirname(path),
                                     prefix=".renovate-", suffix=".tmp")
@@ -465,7 +537,7 @@ def _replace(path, text) -> None:
         raise
 
 
-def _audited(files) -> list[str]:
+def _audited(files: Mapping[str, PendingTarget]) -> list[str]:
     """Why each written file, read back off disk and re-parsed, is not what the plan claimed."""
     out = []
     for rel, target in files.items():
@@ -477,7 +549,7 @@ def _audited(files) -> list[str]:
     return out
 
 
-def _put_back(files) -> list[str]:
+def _put_back(files: Mapping[str, PendingTarget]) -> list[str]:
     """Restore bytes, mode and mtime (a fresh one fools make and cargo); returns what would not go back."""
     stuck = []
     for rel, target in files.items():
@@ -490,7 +562,7 @@ def _put_back(files) -> list[str]:
     return stuck
 
 
-def _refused(problems, files) -> str:
+def _refused(problems: list[str], files: Mapping[str, PendingTarget]) -> str:
     return "\n".join(
         ["the edit did not survive being read back by a real parser, so it "
          "was not the edit the report described:"] + problems
@@ -501,9 +573,9 @@ def _refused(problems, files) -> str:
            "#the-edit-is-audited-by-a-real-parser"])
 
 
-def apply_edits(root, planpath):
+def apply_edits(root: str, planpath: str) -> None:
     """Write the planned edits and audit them read back; a failed or raising audit puts every file back."""
-    steps = load(planpath)
+    steps = cast(list[PlanEdit], load(planpath))
     files = _verify(steps, root)
     for e in steps:
         files[e["file"]]["lines"][e["line"]] = e["new"]
@@ -529,7 +601,7 @@ LOCK_FORMATS = {
 }
 
 
-def lock_readable(root, rel, dep):
+def lock_readable(root: str, rel: str, dep: str) -> None:
     """Refuse a missing, empty or unparseable lockfile; only report whether it names `dep`."""
     path = contained(root, rel, "lockcheck")
     if not os.path.isfile(path):
@@ -560,14 +632,14 @@ def lock_readable(root, rel, dep):
     print("  %s: parses as %s, and %s %r" % (rel, kind, said, dep))
 
 
-def _print_config(log) -> None:
+def _print_config(log: str) -> None:
     cfg = resolved_config(log)
     if cfg is None:
         sys.exit("no --print-config record in %s" % log)
     json.dump(cfg, sys.stdout)
 
 
-def _print_rows(path) -> None:
+def _print_rows(path: str) -> None:
     for row in rows(load_report(path)):
         print("%s\t%s\t%s\t%s\t%s" % (
             row["manager"], row["file"], row["dep"],
@@ -575,7 +647,7 @@ def _print_rows(path) -> None:
             (row["newDigest"] or row["new"])[:12]))
 
 
-def _print_skipped(path) -> None:
+def _print_skipped(path: str) -> None:
     listed, design = skipped(load_report(path))
     for row in listed:
         print("SKIP\t%s\t%s\t%s\t%s\t%s" % row)
@@ -583,7 +655,7 @@ def _print_skipped(path) -> None:
         print("DESIGN\t%s\t%d" % (why, n))
 
 
-def _print_lockmaint(report, cfg) -> None:
+def _print_lockmaint(report: str, cfg: str) -> None:
     for mgr, path in lock_maintenance(load_report(report), load_obj(cfg)):
         print("%s\t%s" % (mgr, path))
 
@@ -596,13 +668,13 @@ MODES = {
     "skipped": lambda a: _print_skipped(a[0]),
     "lockmaint": lambda a: _print_lockmaint(a[0], a[1]),
     "plan": lambda a: plan(load_report(a[0]), load_obj(a[1]), a[2], a[3]),
-    "verify": lambda a: predict(_verify(load(a[1]), a[0])),
+    "verify": lambda a: predict(_verify(cast(list[PlanEdit], load(a[1])), a[0])),
     "edit": lambda a: apply_edits(a[0], a[1]),
     "lockcheck": lambda a: lock_readable(a[0], a[1], a[2]),
 }
 
 
-def main():
+def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode not in MODES:
         sys.exit("unknown planner mode %r" % mode)

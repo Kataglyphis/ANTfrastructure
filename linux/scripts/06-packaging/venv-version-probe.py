@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Check installed venv versions and media behavior; see docs/cross-build-verification.md#smoke-torch-venv-what-the-venv-assertions-cover."""
-import os
-import re
 import importlib
+import os
 import platform
+import re
 
 _MACHINE_TO_ARCH = {"x86_64": "amd64", "amd64": "amd64",
                     "aarch64": "arm64", "arm64": "arm64", "riscv64": "riscv64"}
@@ -198,7 +198,8 @@ def check_ffmpeg(cv2, _np, _d, fails):
             print("  XX  cv2 ffmpeg roundtrip: encoded clip did not decode")
 
 def check_media(cv2, _gst_ok, _ff_ok, fails):
-    import shutil as _sh, tempfile as _tf
+    import shutil as _sh
+    import tempfile as _tf
     _d = _tf.mkdtemp()
     try:
         import numpy as _np
@@ -225,7 +226,7 @@ def check_cv2(fails):
             print("  OK  %-16s %-16s (major %s)" % ("opencv/cv2", cvv, cv_major or "?"))
         import re as _re
         _binfo = cv2.getBuildInformation()
-        def _backend(name):
+        def _backend(name) -> str:
             m = _re.search(name + r":\s*(\S+)", _binfo)
             return m.group(1) if m else "?"
         _gst = _backend("GStreamer")

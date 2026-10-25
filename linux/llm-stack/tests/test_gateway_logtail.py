@@ -20,7 +20,7 @@ def test_logtail_waits_past_a_previous_request(tmp_path):
     tail = LogTail(str(path))
     path.write_text(json.dumps({"alias": "chat"}) + "\n", encoding="utf-8")
 
-    def append_current():
+    def append_current() -> None:
         time.sleep(0.2)
         with path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps({"alias": "chat-long", "aborted": "client_disconnect"}) + "\n")

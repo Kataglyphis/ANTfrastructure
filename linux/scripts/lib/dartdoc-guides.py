@@ -164,7 +164,7 @@ def slugify(value: str) -> str:
 def rewrite_md_links(rendered_html: str, links: LinkTargets, source_rel: str) -> str:
     """Point every relative link, anchor kept, at its guide page or, failing that, at GitHub."""
 
-    def repl(match):
+    def repl(match) -> str:
         prefix, href, suffix = match.group(1), match.group(2), match.group(3)
         if NOT_A_REPO_PATH.match(href):
             return match.group(0)

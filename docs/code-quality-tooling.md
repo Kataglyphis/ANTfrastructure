@@ -536,9 +536,11 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 `windows/`. The four ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
-`logs/code-quality/ruff-annotations-gate.txt`. All four Renovate Python scripts
-and all 22 Linux `verify_*.py` quality verifiers have a separate fatal ANN202 check in
-`logs/code-quality/ruff-private-returns-gate.txt`. The Linux x64 workflow uploads
+`logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
+`logs/code-quality/ruff-private-returns-gate.txt`. Six fully annotated Renovate,
+LLM gateway and docs scanner files have fatal ANN001/ANN201 checks in
+`logs/code-quality/ruff-parameters-returns-gate.txt`.
+The Linux x64 workflow uploads
 these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
@@ -561,10 +563,11 @@ Ty uses declared and inferred types. It does **not** add annotations or require 
 function to have one. Ruff's `ANN002`, `ANN003`, `ANN204`, `ANN205` and `ANN206`
 now fail on missing variadic parameter and method return annotations across every
 tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
-four `ANN205` findings were fixed; `ANN206` was already clean. The 195 private
-return findings in Renovate scripts and Linux quality verifiers were fixed,
-so `ANN202` is also fatal for those 26 files. Other `ANN202` findings,
-`ANN001` and `ANN201` remain in the
+four `ANN205` findings were fixed; `ANN206` was already clean. All 303 existing
+private return findings were fixed, so `ANN202` now fails across all 146 tracked
+Python files. Parameter and public return findings were fixed in the Renovate CMake
+parser and planner, the gateway renderer and its tests, and the two docs duplication
+scanners. ANN001/ANN201 fail in those six files while remaining findings stay in the
 full report. The focused suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
@@ -767,7 +770,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3437 entries** over **374 distinct test commands**; both digits are
+manifest holds **3439 entries** over **374 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

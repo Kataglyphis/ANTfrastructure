@@ -14,7 +14,7 @@ _OWN_PORTS = set()
 _REAL_BIND = socket.socket.bind
 
 
-def _recording_bind(self, address):
+def _recording_bind(self, address) -> None:
     _REAL_BIND(self, address)
     try:
         _OWN_PORTS.add(self.getsockname()[1])
@@ -43,7 +43,7 @@ def no_network(request, monkeypatch):
         return
     real_connect = socket.socket.connect
 
-    def guarded(self, address):
+    def guarded(self, address) -> None:
         port = address[1] if isinstance(address, tuple) and len(address) > 1 else None
         if port in _OWN_PORTS:
             return real_connect(self, address)

@@ -15,6 +15,8 @@ import os
 import re
 import string
 import sys
+from collections.abc import Collection, Mapping, Sequence
+from typing import NotRequired, TypeAlias, TypedDict, cast
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STACK = os.path.dirname(HERE)
@@ -64,67 +66,143 @@ class RenderError(Exception):
     """The registry, a prompt or the overlay is not something this renderer vouches for."""
 
 
-def need(cond, msg):
+_JsonObject: TypeAlias = dict[str, object]
+
+
+class _Listener(TypedDict):
+    ip: str
+    port: int
+
+
+class _PromptSpec(TypedDict):
+    file: str
+    sha256: str
+
+
+class _Estimate(TypedDict):
+    bytes_per_token: float
+    default_reserve: int
+
+
+class _Gateway(TypedDict):
+    listen: _Listener
+    status_listen: _Listener
+    metrics_listen: _Listener
+    consumers: dict[str, str]
+    lab_consumer: str
+    estimate: _Estimate
+    drop_fields: list[str]
+    prompts: dict[str, _PromptSpec]
+    raw_routes: bool
+
+
+class _Lane(TypedDict):
+    name: str
+    model: str
+    endpoint: str
+    context: int
+    timeout_ms: int
+    t0_rewrite: bool
+
+
+class _Route(TypedDict):
+    alias: str
+    lane: str
+    overflow_lane: str | None
+    budget: int | None
+    prompt: str | None
+
+
+class _Serving(TypedDict):
+    gateway: _Gateway
+    lanes: dict[str, _Lane]
+    routes: list[_Route]
+
+
+class _ApiRoute(TypedDict):
+    id: str
+    name: str
+    methods: list[str]
+    priority: int
+    plugins: dict[str, object]
+    vars: NotRequired[list[list[str | int | None]]]
+    uris: NotRequired[list[str]]
+    uri: NotRequired[str | None]
+
+
+class _Document(TypedDict):
+    consumers: list[dict[str, object]]
+    global_rules: list[dict[str, object]]
+    plugin_metadata: list[dict[str, object]]
+    routes: list[_ApiRoute]
+
+
+def need(cond: object, msg: str) -> None:
     if not cond:
         raise RenderError(msg)
 
 
-def sha256_hex(data):
+def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def canonical(obj):
+def canonical(obj: object) -> str:
     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def _is_number(v):
+def _is_number(v: object) -> bool:
     return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 
-def _keys(obj, allowed, where, required=()):
+def _keys(obj: object, allowed: Collection[str], where: str, required: Collection[str] = ()) -> None:
     need(isinstance(obj, dict), f"{where} must be a JSON object")
+    obj = cast(_JsonObject, obj)
     extra = sorted(k for k in obj if k not in allowed and not k.startswith("_"))
     need(not extra, f"{where}: unknown key(s) {extra} (allowed: {sorted(allowed)})")
     missing = sorted(k for k in required if k not in obj)
     need(not missing, f"{where}: missing key(s) {missing}")
 
 
-def _loopback(addr, where):
+def _loopback(addr: object, where: str) -> _Listener:
     m = LOOPBACK_RE.match(str(addr))
     if m is None or not 0 < int(m.group(1)) < 65536:
         raise RenderError(f"{where} must be 127.0.0.1:<port> (the gateway is localhost-only), got {addr!r}")
     return {"ip": "127.0.0.1", "port": int(m.group(1))}
 
 
-def parse_consumers(consumers, lab):
+def parse_consumers(consumers: object, lab: object) -> dict[str, str]:
     need(isinstance(consumers, dict) and consumers, "serving.gateway.consumers must name at least one client")
+    consumers = cast(_JsonObject, consumers)
     for name, var in consumers.items():
         need(CONSUMER_RE.match(name), f"consumer name {name!r} must match {CONSUMER_RE.pattern}")
         need(isinstance(var, str) and VAR_RE.match(var),
              f"consumer {name}: {var!r} is not an environment variable name")
     need(len(set(consumers.values())) == len(consumers), "two consumers share one key variable")
     need(lab in consumers, f"serving.gateway.lab_consumer {lab!r} is not a consumer")
-    return dict(consumers)
+    return cast(dict[str, str], dict(consumers))
 
 
-def parse_prompts(prompts):
+def parse_prompts(prompts: object) -> dict[str, _PromptSpec]:
     need(isinstance(prompts, dict), "serving.gateway.prompts must be an object")
-    out = {}
+    prompts = cast(_JsonObject, prompts)
+    out: dict[str, _PromptSpec] = {}
     for name, spec in prompts.items():
         where = f"serving.gateway.prompts.{name}"
         need(NAME_RE.match(name), f"{where}: name must match {NAME_RE.pattern}")
         _keys(spec, {"file", "sha256"}, where, required=("file", "sha256"))
+        spec = cast(_JsonObject, spec)
         need(isinstance(spec["file"], str) and FILE_RE.match(spec["file"]),
              f"{where}: file must be a plain file name inside the prompts directory")
         need(isinstance(spec["sha256"], str) and SHA_RE.match(spec["sha256"]),
              f"{where}: sha256 must be 64 lowercase hex digits")
-        out[name] = {"file": spec["file"], "sha256": spec["sha256"]}
+        out[name] = cast(_PromptSpec, {"file": spec["file"], "sha256": spec["sha256"]})
     return out
 
 
-def parse_gateway(gw):
+def parse_gateway(gw: object) -> _Gateway:
     where = "serving.gateway"
     _keys(gw, GATEWAY_KEYS, where, required=GATEWAY_KEYS - {"raw_routes"})
+    gw = cast(_JsonObject, gw)
     out = {name: _loopback(gw[name], f"{where}.{name}")
            for name in ("listen", "status_listen", "metrics_listen")}
     ports = {out[k]["port"] for k in out}
@@ -132,55 +210,63 @@ def parse_gateway(gw):
     est = gw["estimate"]
     _keys(est, {"bytes_per_token", "default_reserve"}, f"{where}.estimate",
           required=("bytes_per_token", "default_reserve"))
-    need(_is_number(est["bytes_per_token"]) and est["bytes_per_token"] >= 0.5,
+    est = cast(_JsonObject, est)
+    need(_is_number(est["bytes_per_token"]) and cast(float, est["bytes_per_token"]) >= 0.5,
          f"{where}.estimate.bytes_per_token must be a number >= 0.5")
     need(isinstance(est["default_reserve"], int) and not isinstance(est["default_reserve"], bool)
-         and est["default_reserve"] >= 0, f"{where}.estimate.default_reserve must be an integer >= 0")
+         and cast(int, est["default_reserve"]) >= 0,
+         f"{where}.estimate.default_reserve must be an integer >= 0")
     drop = gw["drop_fields"]
     need(isinstance(drop, list) and all(isinstance(f, str) and f for f in drop),
          f"{where}.drop_fields must be a list of field names")
     need(isinstance(gw.get("raw_routes", False), bool), f"{where}.raw_routes must be true or false")
-    out.update(consumers=parse_consumers(gw["consumers"], gw["lab_consumer"]),
-               lab_consumer=gw["lab_consumer"], estimate=dict(est), drop_fields=list(drop),
-               prompts=parse_prompts(gw["prompts"]), raw_routes=gw.get("raw_routes", False))
-    return out
+    return cast(_Gateway, dict(out, consumers=parse_consumers(gw["consumers"], gw["lab_consumer"]),
+                               lab_consumer=gw["lab_consumer"], estimate=dict(est),
+                               drop_fields=list(cast(list[str], drop)),
+                               prompts=parse_prompts(gw["prompts"]), raw_routes=gw.get("raw_routes", False)))
 
 
-def _endpoint(url, where):
+def _endpoint(url: object, where: str) -> str:
     m = ENDPOINT_RE.match(url if isinstance(url, str) else "")
     if m is None:
         raise RenderError(f"{where}: base_url must be http://<host>:<port> with no path, got {url!r}")
     return f"http://{m.group(1)}:{m.group(2)}"
 
 
-def parse_lane(name, lane, backends):
+def parse_lane(name: str, lane: object, backends: Mapping[str, object]) -> _Lane:
     where = f"serving.lanes.{name}"
     need(NAME_RE.match(name) and not name.startswith("raw-"), f"{where}: bad lane name")
     _keys(lane, LANE_KEYS, where, required=LANE_KEYS)
+    lane = cast(_JsonObject, lane)
     entry = backends.get(lane["backend"])
     need(isinstance(entry, dict), f"{where}: backend {lane['backend']!r} is not in backends")
+    entry = cast(_JsonObject, entry)
     model = entry.get("model")
     need(isinstance(model, str) and model, f"{where}: backend {lane['backend']!r} names no model")
+    model = cast(str, model)
     need(lane["format"] in ("qairt", "gguf"), f"{where}: format must be qairt or gguf")
     is_gguf = "gguf" in model.lower()
     need(not (lane["format"] == "qairt" and is_gguf),
          f"{where}: {model} is a GGUF; loading one into a QAIRT lane crashes the NPU server")
     need(lane["format"] == "qairt" or is_gguf, f"{where}: format gguf but {model} is not a GGUF id")
     need(isinstance(lane["context"], int) and not isinstance(lane["context"], bool)
-         and lane["context"] > 0, f"{where}: context must be a positive integer")
+         and cast(int, lane["context"]) > 0, f"{where}: context must be a positive integer")
     t = lane["timeout_s"]
-    need(_is_number(t) and 0 < t <= MAX_TIMEOUT_S, f"{where}: timeout_s must be in (0, {MAX_TIMEOUT_S}]")
+    need(_is_number(t) and 0 < cast(float, t) <= MAX_TIMEOUT_S,
+         f"{where}: timeout_s must be in (0, {MAX_TIMEOUT_S}]")
     need(isinstance(lane["t0_rewrite"], bool), f"{where}: t0_rewrite must be true or false")
     return {"name": name, "model": model, "endpoint": _endpoint(entry.get("base_url"), where),
-            "context": lane["context"], "timeout_ms": round(t * 1000),
-            "t0_rewrite": lane["t0_rewrite"]}
+            "context": cast(int, lane["context"]), "timeout_ms": round(cast(float, t) * 1000),
+            "t0_rewrite": cast(bool, lane["t0_rewrite"])}
 
 
-def parse_route(alias, route, lanes, prompts):
+def parse_route(alias: str, route: object, lanes: dict[str, _Lane],
+                prompts: Mapping[str, _PromptSpec]) -> _Route:
     where = f"serving.routes.{alias}"
     need(NAME_RE.match(alias) and not alias.startswith("raw-"),
          f"{where}: an alias must match {NAME_RE.pattern} and must not start with raw-")
     _keys(route, ROUTE_KEYS, where, required=("lane",))
+    route = cast(_JsonObject, route)
     need(route["lane"] in lanes, f"{where}: unknown lane {route['lane']!r} (lanes: {sorted(lanes)})")
     out = {"alias": alias, "lane": route["lane"], "overflow_lane": None, "budget": None,
            "prompt": route.get("tools_prompt")}
@@ -189,29 +275,34 @@ def parse_route(alias, route, lanes, prompts):
         need("budget_tokens" not in route, f"{where}: budget_tokens needs an overflow_lane")
     else:
         need(over in lanes, f"{where}: unknown overflow_lane {over!r} (lanes: {sorted(lanes)})")
-        primary = lanes[route["lane"]]["context"]
-        need(lanes[over]["context"] > primary,
+        primary = lanes[cast(str, route["lane"])]["context"]
+        need(lanes[cast(str, over)]["context"] > primary,
              f"{where}: overflow_lane {over} must have a larger context than lane {route['lane']}")
         budget = route.get("budget_tokens")
-        need(isinstance(budget, int) and not isinstance(budget, bool) and 0 < budget < primary,
+        need(isinstance(budget, int) and not isinstance(budget, bool)
+             and 0 < cast(int, budget) < primary,
              f"{where}: budget_tokens must be a positive integer below the lane's context ({primary})")
         out.update(overflow_lane=over, budget=budget)
     need(out["prompt"] is None or out["prompt"] in prompts,
          f"{where}: tools_prompt {out['prompt']!r} is not in serving.gateway.prompts")
-    return out
+    return cast(_Route, out)
 
 
-def parse_serving(doc):
+def parse_serving(doc: object) -> _Serving:
     """Validate the whole serving block; needs no prompt file and no network."""
     need(isinstance(doc, dict), "the registry must be a JSON object")
+    doc = cast(_JsonObject, doc)
     backends = doc.get("backends")
     need(isinstance(backends, dict), "the registry has no backends object")
+    backends = cast(_JsonObject, backends)
     serving = doc.get("serving")
     need(isinstance(serving, dict), "the registry has no serving block")
+    serving = cast(_JsonObject, serving)
     _keys(serving, SERVING_KEYS, "serving", required=SERVING_KEYS)
     gateway = parse_gateway(serving["gateway"])
     need(isinstance(serving["lanes"], dict) and serving["lanes"], "serving.lanes must name at least one lane")
-    lanes = {n: parse_lane(n, v, backends) for n, v in serving["lanes"].items() if not n.startswith("_")}
+    lane_entries = cast(_JsonObject, serving["lanes"])
+    lanes = {n: parse_lane(n, v, backends) for n, v in lane_entries.items() if not n.startswith("_")}
     own = {gateway[k]["port"] for k in ("listen", "status_listen", "metrics_listen")}
     for name, lane in lanes.items():
         host, port = lane["endpoint"][len("http://"):].rsplit(":", 1)
@@ -220,19 +311,20 @@ def parse_serving(doc):
              f"serving.lanes.{name}: {lane['endpoint']} is the gateway's own listener; "
              f"a lane is a GenieX server, never a lab-* entry")
     need(isinstance(serving["routes"], dict), "serving.routes must be an object")
+    route_entries = cast(_JsonObject, serving["routes"])
     routes = [parse_route(a, r, lanes, gateway["prompts"])
-              for a, r in serving["routes"].items() if not a.startswith("_")]
+              for a, r in route_entries.items() if not a.startswith("_")]
     need(routes, "serving.routes must name at least one alias")
     return {"gateway": gateway, "lanes": lanes, "routes": routes}
 
 
-def load_prompts(prompts, prompts_dir):
+def load_prompts(prompts: Mapping[str, _PromptSpec], prompts_dir: str | None) -> dict[str, bytes]:
     """Read every pinned prompt as raw bytes and check it against its pin."""
     out = {}
     for name, spec in prompts.items():
         need(prompts_dir, f"prompt {name!r} is pinned but no prompts directory was given "
                           f"(--prompts-dir or {PROMPTS_ENV})")
-        path = os.path.join(prompts_dir, spec["file"])
+        path = os.path.join(cast(str, prompts_dir), spec["file"])
         need(os.path.isfile(path), f"prompt {name!r}: {path} does not exist")
         with open(path, "rb") as fh:
             raw = fh.read()
@@ -244,30 +336,30 @@ def load_prompts(prompts, prompts_dir):
     return out
 
 
-def pinned_image(overlay):
+def pinned_image(overlay: str) -> str:
     with open(overlay, encoding="utf-8") as fh:
         found = IMAGE_RE.findall(fh.read())
     need(len(found) == 1, f"{overlay}: expected exactly one apisix image pinned by digest, found {found}")
     return found[0]
 
 
-def _instance(lane, priority):
+def _instance(lane: _Lane, priority: int) -> dict[str, object]:
     return {"name": lane["name"], "provider": "openai-compatible", "priority": priority,
             "weight": 1, "auth": copy.deepcopy(LANE_AUTH), "options": {"model": lane["model"]},
             "override": {"endpoint": lane["endpoint"]}}
 
 
-def _policy(lane, shaped, relabel=False):
+def _policy(lane: _Lane, shaped: bool, relabel: bool = False) -> dict[str, int | bool]:
     return {"timeout_ms": lane["timeout_ms"], "t0_rewrite": bool(shaped and lane["t0_rewrite"]),
             "overflow_relabel": relabel}
 
 
-def _fallback_window(timeout_ms):
+def _fallback_window(timeout_ms: int) -> int:
     """Failures slower than this go to the client: a timed-out lane is never retried."""
     return max(1, timeout_ms - min(1000, timeout_ms // 10))
 
 
-def _proxy(ordered):
+def _proxy(ordered: Sequence[tuple[_Lane, int]]) -> dict[str, object]:
     conf = {"instances": [_instance(lane, prio) for lane, prio in ordered],
             "timeout": max(lane["timeout_ms"] for lane, _ in ordered),
             "keepalive": False, "streaming_flush_interval_ms": 0}
@@ -277,28 +369,31 @@ def _proxy(ordered):
     return conf
 
 
-def _ai_route(rid, model, priority, extra_vars, shape, proxy, restrict=None):
-    plugins = {"key-auth": dict(KEY_AUTH), "geniex-shape": shape, "ai-proxy-multi": proxy}
+def _ai_route(rid: str, model: str, priority: int, extra_vars: list[list[str | int | None]],
+              shape: dict[str, object], proxy: dict[str, object], restrict: str | None = None) -> _ApiRoute:
+    plugins: dict[str, object] = {"key-auth": dict(KEY_AUTH), "geniex-shape": shape, "ai-proxy-multi": proxy}
     if restrict:
         plugins["consumer-restriction"] = {"whitelist": [restrict]}
     return {"id": rid, "name": rid, "uris": list(AI_URIS), "methods": ["POST"], "priority": priority,
             "vars": [["post_arg.model", "==", model]] + extra_vars, "plugins": plugins}
 
 
-def alias_routes(route, lanes, gateway, prompts):
+def alias_routes(route: _Route, lanes: Mapping[str, _Lane], gateway: _Gateway,
+                 prompts: Mapping[str, bytes]) -> list[_ApiRoute]:
     lane, alias = lanes[route["lane"]], route["alias"]
     over = lanes[route["overflow_lane"]] if route["overflow_lane"] else None
-    shape = {"primary": lane["name"], "tag": "no", "drop_fields": list(gateway["drop_fields"]),
-             "estimate": over is not None,
-             "lanes": {lane["name"]: _policy(lane, True, relabel=over is not None)}}
+    policies = {lane["name"]: _policy(lane, True, relabel=over is not None)}
+    shape: dict[str, object] = {"primary": lane["name"], "tag": "no",
+                                "drop_fields": list(gateway["drop_fields"]),
+                                "estimate": over is not None, "lanes": policies}
     if route["prompt"]:
         raw = prompts[route["prompt"]]
         shape["tools_prompt"] = {"name": route["prompt"], "sha256": sha256_hex(raw),
                                  "b64": base64.b64encode(raw).decode("ascii")}
-    out = []
+    out: list[_ApiRoute] = []
     ordered = [(lane, 1)]
     if over:
-        shape["lanes"][over["name"]] = _policy(over, True)
+        policies[over["name"]] = _policy(over, True)
         presend = dict(shape, primary=over["name"], tag="presend",
                        lanes={over["name"]: _policy(over, True)})
         out.append(_ai_route(f"{alias}-presend", alias, 30, [["gw_est_tokens", ">", route["budget"]]],
@@ -308,19 +403,21 @@ def alias_routes(route, lanes, gateway, prompts):
     return out
 
 
-def raw_route(lane, lab):
-    shape = {"primary": lane["name"], "tag": "no", "drop_fields": [], "estimate": False,
-             "lanes": {lane["name"]: _policy(lane, False)}}
+def raw_route(lane: _Lane, lab: str) -> _ApiRoute:
+    shape: dict[str, object] = {"primary": lane["name"], "tag": "no", "drop_fields": [],
+                                "estimate": False, "lanes": {lane["name"]: _policy(lane, False)}}
     rid = f"raw-{lane['name']}"
     return _ai_route(rid, rid, 20, [], shape, _proxy([(lane, 0)]), restrict=lab)
 
 
-def _mock(rid, methods, status, body, uris=None, uri=None, priority=0):
+def _mock(rid: str, methods: list[str], status: int, body: object,
+          uris: Sequence[str] | None = None, uri: str | None = None,
+          priority: int = 0) -> _ApiRoute:
     text = canonical(body)
     need("$" not in text, f"route {rid}: a '$' in a mocked body would be expanded by APISIX")
-    route = {"id": rid, "name": rid, "methods": methods, "priority": priority,
-             "plugins": {"mocking": {"response_status": status, "content_type": "application/json",
-                                     "with_mock_header": False, "response_example": text}}}
+    route: _ApiRoute = {"id": rid, "name": rid, "methods": methods, "priority": priority,
+                        "plugins": {"mocking": {"response_status": status, "content_type": "application/json",
+                                                "with_mock_header": False, "response_example": text}}}
     if uris:
         route["uris"] = list(uris)
     else:
@@ -328,7 +425,7 @@ def _mock(rid, methods, status, body, uris=None, uri=None, priority=0):
     return route
 
 
-def static_routes(aliases):
+def static_routes(aliases: Sequence[str]) -> list[_ApiRoute]:
     models = {"object": "list", "data": [{"id": a, "object": "model", "created": 0,
                                            "owned_by": "llm-gateway"} for a in aliases]}
     unknown = {"error": {"message": "unknown model; this gateway serves " + ", ".join(aliases),
@@ -337,25 +434,26 @@ def static_routes(aliases):
             _mock("unknown-model", ["POST"], 404, unknown, uris=AI_URIS)]
 
 
-def build_document(serving, prompts):
+def build_document(serving: _Serving, prompts: Mapping[str, bytes]) -> _Document:
     gw, lanes = serving["gateway"], serving["lanes"]
-    routes = []
+    routes: list[_ApiRoute] = []
     for route in serving["routes"]:
         routes.extend(alias_routes(route, lanes, gw, prompts))
     if gw["raw_routes"]:
         routes.extend(raw_route(lane, gw["lab_consumer"]) for lane in lanes.values())
     routes.extend(static_routes([r["alias"] for r in serving["routes"]]))
     prompt_bytes = {r["alias"]: len(prompts[r["prompt"]]) for r in serving["routes"] if r["prompt"]}
-    meta = dict(gw["estimate"], id="geniex-shape", prompt_bytes=prompt_bytes)
-    consumers = [{"username": name, "plugins": {"key-auth": {"key": "Bearer ${{" + var + "}}"}}}
-                 for name, var in gw["consumers"].items()]
-    rules = [{"id": "observe", "plugins": {
+    meta: dict[str, object] = dict(gw["estimate"], id="geniex-shape", prompt_bytes=prompt_bytes)
+    consumers: list[dict[str, object]] = [
+        {"username": name, "plugins": {"key-auth": {"key": "Bearer ${{" + var + "}}"}}}
+        for name, var in gw["consumers"].items()]
+    rules: list[dict[str, object]] = [{"id": "observe", "plugins": {
         "prometheus": {"prefer_name": True},
         "file-logger": {"path": LOG_FILE, "log_format": dict(LOG_FORMAT)}}}]
     return {"consumers": consumers, "global_rules": rules, "plugin_metadata": [meta], "routes": routes}
 
 
-def render_boot_config(gateway):
+def render_boot_config(gateway: _Gateway) -> str:
     with open(TEMPLATE, encoding="utf-8") as fh:
         tpl = string.Template(fh.read())
     return tpl.substitute(
@@ -365,7 +463,7 @@ def render_boot_config(gateway):
         key_vars="[" + ", ".join(gateway["consumers"].values()) + "]")
 
 
-def read_lua():
+def read_lua() -> dict[str, bytes]:
     out = {}
     for rel in LUA_FILES:
         with open(os.path.join(LUA_DIR, rel), "rb") as fh:
@@ -373,7 +471,7 @@ def read_lua():
     return out
 
 
-def render(registry, prompts_dir, overlay):
+def render(registry: str, prompts_dir: str | None, overlay: str) -> tuple[dict[str, bytes], dict[str, object]]:
     """Everything the gateway mounts, plus render.json (what /gateway/info reports)."""
     with open(registry, "rb") as fh:
         doc = json.loads(fh.read().decode("utf-8"))
@@ -395,9 +493,9 @@ def render(registry, prompts_dir, overlay):
     # APISIX keeps the last item of a repeated id and logs nothing: a silent half-load.
     need(not dupes, f"route id(s) {dupes} would be emitted twice; rename the alias")
     gw = serving["gateway"]
-    meta = dict(info, key_vars=list(gw["consumers"].values()),
-                listen=f"{gw['listen']['ip']}:{gw['listen']['port']}",
-                status_listen=f"{gw['status_listen']['ip']}:{gw['status_listen']['port']}")
+    meta: dict[str, object] = dict(info, key_vars=list(gw["consumers"].values()),
+                                   listen=f"{gw['listen']['ip']}:{gw['listen']['port']}",
+                                   status_listen=f"{gw['status_listen']['ip']}:{gw['status_listen']['port']}")
     files = {"apisix.json": (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("ascii"),
              "config.yaml": boot,
              "render.json": (json.dumps(meta, indent=1, sort_keys=True) + "\n").encode("ascii")}
@@ -405,7 +503,7 @@ def render(registry, prompts_dir, overlay):
     return files, meta
 
 
-def write_in_place(path, data):
+def write_in_place(path: str, data: bytes) -> None:
     """Truncate and rewrite: a rename would leave a single-file bind mount on the old inode."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "r+b" if os.path.exists(path) else "wb") as fh:
@@ -415,7 +513,7 @@ def write_in_place(path, data):
     os.chmod(path, 0o644)
 
 
-def write_bundle(files, out_dir):
+def write_bundle(files: Mapping[str, bytes], out_dir: str) -> None:
     for rel, data in sorted(files.items()):
         write_in_place(os.path.join(out_dir, *rel.split("/")), data)
     for root, dirs, _ in os.walk(out_dir):
@@ -424,7 +522,7 @@ def write_bundle(files, out_dir):
     os.chmod(out_dir, 0o755)
 
 
-def stale_files(files, out_dir):
+def stale_files(files: Mapping[str, bytes], out_dir: str) -> list[str]:
     stale = []
     for rel, data in sorted(files.items()):
         path = os.path.join(out_dir, *rel.split("/"))
@@ -437,7 +535,7 @@ def stale_files(files, out_dir):
     return stale
 
 
-def parse_args(argv):
+def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--registry", default=DEFAULT_REGISTRY, help="backends.json with a serving block")
     ap.add_argument("--prompts-dir", default=os.environ.get(PROMPTS_ENV),
@@ -453,7 +551,7 @@ def parse_args(argv):
     return ap.parse_args(argv)
 
 
-def main(argv=None):
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         if args.print_image:

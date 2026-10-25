@@ -179,7 +179,7 @@ def capture(paths, funcs, row, api="healthy"):
             check=False,
         )
 
-        def clean(value):
+        def clean(value) -> str:
             return value.decode().replace(directory, "[WORK]")
 
         files = (

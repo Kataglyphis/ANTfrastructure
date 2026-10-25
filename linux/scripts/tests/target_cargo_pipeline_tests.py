@@ -151,7 +151,7 @@ def capture(parts, row, missing=None, observe_return=False):
             timeout=5,
         )
 
-        def clean(data):
+        def clean(data) -> str:
             return re.sub(
                 r": line \d+:",
                 ": line [LINE]:",

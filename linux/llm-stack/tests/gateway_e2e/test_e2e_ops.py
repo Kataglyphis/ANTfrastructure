@@ -45,7 +45,7 @@ def test_static_routes_log_without_lane_fields(gateway):
     assert line["route_id"] == "models" and "lane" not in line
 
 
-def _metric_lines(gateway, prefix, timeout=35):
+def _metric_lines(gateway, prefix, timeout=35) -> list[str]:
     """The exporter refreshes its cache every 15 s, so a fresh series can take that long."""
     url = f"http://127.0.0.1:{gateway.metrics_port}/apisix/prometheus/metrics"
     deadline = time.monotonic() + timeout

@@ -84,7 +84,7 @@ class FakeLane:
             return [r for r in self.requests if r.method == "POST"]
 
 
-def _chat_reply(lane, n, body, directives):
+def _chat_reply(lane, n, body, directives) -> dict[str, object]:
     message = {"role": "assistant", "content": f"lane={lane.name} n={n}"}
     if "toolcall" in directives:
         message = {"role": "assistant", "content": None, "tool_calls": [{
@@ -96,14 +96,14 @@ def _chat_reply(lane, n, body, directives):
                                                      "finish_reason": "stop"}], "usage": usage}
 
 
-def _completion_reply(lane, n, body):
+def _completion_reply(lane, n, body) -> dict[str, object]:
     return {"id": f"fake-{lane.name}-{n}", "object": "text_completion", "created": 0,
             "model": body.get("model"), "choices": [{"index": 0, "text": f" lane={lane.name}",
                                                      "finish_reason": "stop"}],
             "usage": {"prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8}}
 
 
-def _sse_events(lane, n, body):
+def _sse_events(lane, n, body) -> list[bytes]:
     base = {"id": f"fake-{lane.name}-{n}", "object": "chat.completion.chunk", "created": 0,
             "model": body.get("model")}
     deltas = [{"role": "assistant", "content": ""}] + [{"content": f"tok{i} "} for i in range(3)]
@@ -115,18 +115,18 @@ def _sse_events(lane, n, body):
     return [b"data: " + json.dumps(e).encode() + b"\n\n" for e in events] + [b"data: [DONE]\n\n"]
 
 
-def _handler_for(lane):
+def _handler_for(lane) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
         def log_message(self, format: str, *args: object) -> None:
             pass
 
-        def do_GET(self):
+        def do_GET(self) -> None:
             lane.record(Received("GET", self.path, dict(self.headers), b""))
             self._json(404, {"error": {"message": "the fake lane expects no GET", "code": "no_get"}})
 
-        def do_POST(self):
+        def do_POST(self) -> None:
             raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             received = Received("POST", self.path, dict(self.headers), raw)
             n = lane.record(received)
@@ -136,7 +136,7 @@ def _handler_for(lane):
             except (BrokenPipeError, ConnectionResetError):
                 pass
 
-        def _answer(self, n, body, directives):
+        def _answer(self, n, body, directives) -> None:
             if "hold" in directives:
                 time.sleep(float(directives["hold"]))
             if "reset" in directives:
@@ -154,7 +154,7 @@ def _handler_for(lane):
                      else _chat_reply(lane, n, body, directives))
             return self._json(200, reply, crash="crash" in directives)
 
-        def _json(self, status, obj, crash=False):
+        def _json(self, status, obj, crash=False) -> None:
             data = json.dumps(obj).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -166,7 +166,7 @@ def _handler_for(lane):
                 return
             self.wfile.write(data)
 
-        def _stream(self, n, body, directives):
+        def _stream(self, n, body, directives) -> None:
             events = _sse_events(lane, n, body)
             gap = float(directives.get("gap", 0.05))
             crash = int(directives["crash"]) if "crash" in directives else None
@@ -186,7 +186,7 @@ def _handler_for(lane):
             with lane.lock:
                 lane.sent.append(b"".join(sent))
 
-        def _drop(self):
+        def _drop(self) -> None:
             self.close_connection = True
             try:
                 self.connection.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))

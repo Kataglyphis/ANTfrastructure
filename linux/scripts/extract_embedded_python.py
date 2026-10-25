@@ -20,11 +20,11 @@ COMMENT_OPENER = re.compile(r"[ \t]*#")
 FAMILY = re.compile(r"(PY(?:EOF|THON)?).*$")
 
 
-def _stem(src):
+def _stem(src) -> str:
     return os.path.basename(src)[:-3] if src.endswith(".sh") else os.path.basename(src)
 
 
-def _extract_blocks(src, text, outdir):
+def _extract_blocks(src, text, outdir) -> tuple[int, dict[str, list[str]]]:
     """Write the blocks that run their own interpreter; return how many, and the cat-ed fragments by family."""
     written = 0
     fragments = {}
@@ -46,7 +46,7 @@ def _extract_blocks(src, text, outdir):
     return written, fragments
 
 
-def _extract_families(src, fragments, outdir):
+def _extract_families(src, fragments, outdir) -> int:
     written = 0
     for family, frags in sorted(fragments.items()):
         # A lone fragment lints with bogus undefined names, which ast.parse cannot catch.

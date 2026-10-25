@@ -128,7 +128,7 @@ def capture(body, row):
             timeout=5,
         )
 
-        def clean(data):
+        def clean(data) -> str:
             return re.sub(
                 r": line \d+:",
                 ": line [LINE]:",

@@ -66,7 +66,7 @@ class FastSSD:
             with torch.cuda.graph(self.graph), torch.inference_mode():
                 self.static_out = self._net()
 
-    def _net(self):
+    def _net(self) -> tuple[torch.Tensor, torch.Tensor]:
         head = self.m.head(list(self.m.backbone(self.static_in).values()))
         return head["bbox_regression"][0], head["cls_logits"][0]
 
@@ -138,7 +138,7 @@ def inference_loop(args, frames, jpegs):
 
 def make_handler(jpegs):
     class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
+        def do_GET(self) -> None:
             if self.path != "/stream":
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html")

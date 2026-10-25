@@ -12,6 +12,21 @@ import sys
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
+from typing import TextIO, TypeAlias
+
+Unit: TypeAlias = tuple[str, int]
+Shingle: TypeAlias = tuple[str, ...]
+UnitPair: TypeAlias = tuple[Unit, Unit]
+MeasuredPair: TypeAlias = tuple[int, Unit, Unit]
+Finding: TypeAlias = tuple[int, Unit, Unit, tuple[int, str] | None]
+AllowedPair: TypeAlias = tuple[int, Unit, Unit, str]
+ShrunkPair: TypeAlias = tuple[frozenset[str], int, tuple[int, str]]
+Owners: TypeAlias = dict[Shingle, set[Unit]]
+Texts: TypeAlias = dict[Unit, str]
+UnitLines: TypeAlias = dict[Unit, list[str]]
+PerFile: TypeAlias = dict[frozenset[str], MeasuredPair]
+Allow: TypeAlias = dict[frozenset[str], tuple[int, str]]
+RankedFamily: TypeAlias = tuple[int, frozenset[str], Shingle, list[Unit]]
 
 # HUB_ROOT is where the gate lives, REPO_ROOT the tree it grades (--root): docs/code-quality-tooling.md#the-scan-root-contract
 HUB_ROOT = Path(__file__).resolve().parents[2]
@@ -165,7 +180,7 @@ def shell_units(path: Path) -> list[tuple[int, str]]:
     return _brace_units(lines, SHELL_FUNC, code_lines(lines))
 
 
-def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str | None):
+def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str | None) -> tuple[int, str, str | None]:
     if marker is None:
         raise ValueError("PowerShell here-string state has no delimiter")
     if i == 0 or text[i - 1] == "\n":
@@ -179,7 +194,7 @@ def _mask_ps_here_char(text: str, chars: list[str], i: int, marker: str | None):
     return i + 1, "here", marker
 
 
-def _mask_ps_comment_char(char: str, chars: list[str], i: int):
+def _mask_ps_comment_char(char: str, chars: list[str], i: int) -> tuple[int, str]:
     if char in "\r\n":
         return i + 1, "code"
     if char in "{}":
@@ -187,7 +202,7 @@ def _mask_ps_comment_char(char: str, chars: list[str], i: int):
     return i + 1, "comment"
 
 
-def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str | None):
+def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str | None) -> tuple[int, str, str | None]:
     if marker is None:
         raise ValueError("PowerShell quote state has no delimiter")
     char = text[i]
@@ -204,7 +219,7 @@ def _mask_ps_quote_char(text: str, chars: list[str], i: int, marker: str | None)
     return i + 1, "quote", marker
 
 
-def _mask_ps_code_char(text: str, chars: list[str], i: int):
+def _mask_ps_code_char(text: str, chars: list[str], i: int) -> tuple[int, str, str | None]:
     char = text[i]
     if char == "`" and i + 1 < len(text):
         if text[i + 1] in "{}":
@@ -341,12 +356,14 @@ def load_allow() -> dict[frozenset[str], tuple[int, str]]:
     return allow
 
 
-def _index_units(files):
+def _index_units(files: list[tuple[Path, str]]) -> tuple[
+    Owners, set[Shingle], Texts, UnitLines, dict[str, str],
+]:
     """(owners, heads, texts, unit_lines, kind_of): shingle holders, unit-opening shingles for excerpts, and report data."""
-    owners: dict[tuple, set[tuple[str, int]]] = defaultdict(set)
-    heads: set[tuple] = set()
-    texts: dict[tuple[str, int], str] = {}
-    unit_lines: dict[tuple[str, int], list[str]] = {}
+    owners: dict[Shingle, set[Unit]] = defaultdict(set)
+    heads: set[Shingle] = set()
+    texts: dict[Unit, str] = {}
+    unit_lines: dict[Unit, list[str]] = {}
     kind_of: dict[str, str] = {}
     for path, kind in files:
         rel = path.relative_to(REPO_ROOT).as_posix()
@@ -367,10 +384,12 @@ def _index_units(files):
     return owners, heads, texts, unit_lines, kind_of
 
 
-def _collect_shared(owners, heads, kind_of):
+def _collect_shared(owners: Owners, heads: set[Shingle], kind_of: dict[str, str]) -> tuple[
+    Counter[UnitPair], Counter[frozenset[str]], dict[frozenset[str], list], int,
+]:
     """(shared, spread, families, suppressed); a family is keyed by the block's owner set, never by file adjacency."""
-    shared: Counter = Counter()
-    spread: Counter = Counter()
+    shared: Counter[UnitPair] = Counter()
+    spread: Counter[frozenset[str]] = Counter()
     families: dict[frozenset[str], list] = {}
     suppressed = 0
     for shingle, holders in owners.items():
@@ -397,7 +416,10 @@ def _collect_shared(owners, heads, kind_of):
     return shared, spread, families, suppressed
 
 
-def _print_report(args, files, texts, allowed, runs, spread):
+def _print_report(
+    args: argparse.Namespace, files: list[tuple[Path, str]], texts: Texts,
+    allowed: list[AllowedPair], runs: dict[UnitPair, int], spread: Counter[frozenset[str]],
+) -> None:
     """The --report listing: every allowed pair, then the widely-copied blocks."""
     print(f"scanned {len(texts)} units in {len(files)} files "
           f"(threshold {args.threshold} shared {SHINGLE}-token shingles)\n")
@@ -422,7 +444,9 @@ def _print_report(args, files, texts, allowed, runs, spread):
         print()
 
 
-def _print_bookkeeping(shrunk, stale, measured, threshold) -> int:
+def _print_bookkeeping(
+    shrunk: list[ShrunkPair], stale: list[frozenset[str]], measured: PerFile, threshold: int,
+) -> int:
     """Allow rows whose budget no longer equals reality, shrunk or stale; returns 1 if any."""
     if shrunk:
         print(f"code duplication gate: {len(shrunk)} allowlist budget(s) above the "
@@ -442,7 +466,7 @@ def _print_bookkeeping(shrunk, stale, measured, threshold) -> int:
     return 1 if shrunk or stale else 0
 
 
-def _print_families(ranked, stream) -> None:
+def _print_families(ranked: list[RankedFamily], stream: TextIO) -> None:
     """Each family (one block held by more than two files), capped, with an excerpt to act on."""
     for cnt, held, sh, at in ranked[:FAMILY_MAX_REPORTED]:
         excerpt = " ".join(sh)
@@ -456,7 +480,10 @@ def _print_families(ranked, stream) -> None:
               file=stream)
 
 
-def _print_findings(findings, runs, texts, ranked) -> None:
+def _print_findings(
+    findings: list[Finding], runs: dict[UnitPair, int], texts: Texts,
+    ranked: list[RankedFamily],
+) -> None:
     print(f"code duplication gate: {len(findings)} copied block(s)\n", file=sys.stderr)
     for n, a, b, budget in findings:
         over = f", over its budget of {budget[0]}" if budget else ""
@@ -473,7 +500,10 @@ def _print_findings(findings, runs, texts, ranked) -> None:
           file=sys.stderr)
 
 
-def _dispatch_mode(args, owners, texts, unit_lines, per_file, allow):
+def _dispatch_mode(
+    args: argparse.Namespace, owners: Owners, texts: Texts, unit_lines: UnitLines,
+    per_file: PerFile, allow: Allow,
+) -> int | None:
     """Modes that answer instead of judging, kept out of main() for its complexity budget; None means judge."""
     if args.explain:
         return _explain_pair(args.explain, owners, texts, unit_lines)
@@ -481,7 +511,7 @@ def _dispatch_mode(args, owners, texts, unit_lines, per_file, allow):
         return _write_baseline(per_file, allow)
     return None
 
-def _explain_targets(paths, texts):
+def _explain_targets(paths: list[str], texts: Texts) -> tuple[str, str] | None:
     """The one or two files --explain was given, or None after saying why not."""
     if len(paths) > 2:
         print("ERROR: --explain takes one or two paths", file=sys.stderr)
@@ -499,10 +529,12 @@ def _explain_targets(paths, texts):
     return a_file, b_file
 
 
-def _explain_counts(owners, a_file, b_file):
+def _explain_counts(
+    owners: Owners, a_file: str, b_file: str,
+) -> tuple[Counter[UnitPair], Counter[UnitPair]]:
     """Shared shingles per unit pair, split into counted and dropped-as-idiom."""
-    counted: Counter = Counter()
-    idiom: Counter = Counter()
+    counted: Counter[UnitPair] = Counter()
+    idiom: Counter[UnitPair] = Counter()
     for _sh, holders in owners.items():
         left = sorted(h for h in holders if h[0] == a_file)
         right = sorted(h for h in holders if h[0] == b_file)
@@ -514,7 +546,7 @@ def _explain_counts(owners, a_file, b_file):
                     (idiom if len(holders) > MAX_OWNERS else counted)[(x, y)] += 1
     return counted, idiom
 
-def _explain_pair(paths, owners, texts, unit_lines) -> int:
+def _explain_pair(paths: list[str], owners: Owners, texts: Texts, unit_lines: UnitLines) -> int:
     """What a pair shares unit by unit, including the shingles the idiom cutoff drops from the count."""
     pair = _explain_targets(paths, texts)
     if pair is None:
@@ -547,7 +579,7 @@ def _explain_pair(paths, owners, texts, unit_lines) -> int:
               f" held by more than {MAX_OWNERS} units and never counted.")
     return 0
 
-def _write_baseline(per_file, allow) -> int:
+def _write_baseline(per_file: PerFile, allow: Allow) -> int:
     """Rewrite the allow file sorted by budget, keeping existing reasons and dating new rows."""
     lines = [
         "# code-dupes.allow -- deliberate twins, with a budget and a reason.",
@@ -590,7 +622,7 @@ def _build_parser() -> argparse.ArgumentParser:
                          " One path for a self-pair, two for a cross-file pair")
     return ap
 
-def _apply_root(arg) -> None:
+def _apply_root(arg: str | None) -> None:
     """Re-point the graded tree and its budget file; an unusable root ends the run via SystemExit."""
     global REPO_ROOT, ALLOW_FILE
     try:
@@ -602,9 +634,9 @@ def _apply_root(arg) -> None:
         ALLOW_FILE = root / "code-dupes.allow"
 
 
-def _collapse_to_files(shared, threshold):
+def _collapse_to_files(shared: Counter[UnitPair], threshold: int) -> tuple[PerFile, PerFile]:
     # Collapse unit pairs to file pairs, as the allowlist and the reader think in files.
-    measured: dict[frozenset[str], tuple[int, tuple, tuple]] = {}
+    measured: dict[frozenset[str], MeasuredPair] = {}
     for (a, b), n in shared.items():
         key = frozenset((a[0], b[0]))   # 1 element when the twin is same-file
         if key not in measured or n > measured[key][0]:
@@ -613,7 +645,9 @@ def _collapse_to_files(shared, threshold):
     return measured, per_file
 
 
-def _classify_pairs(per_file, allow):
+def _classify_pairs(
+    per_file: PerFile, allow: Allow,
+) -> tuple[list[Finding], list[AllowedPair], list[ShrunkPair]]:
     findings, allowed, shrunk = [], [], []
     for key, (n, a, b) in per_file.items():
         budget = allow.get(key)
@@ -626,7 +660,9 @@ def _classify_pairs(per_file, allow):
     return findings, allowed, shrunk
 
 
-def _rank_pairs(findings, allowed, unit_lines):
+def _rank_pairs(
+    findings: list[Finding], allowed: list[AllowedPair], unit_lines: UnitLines,
+) -> dict[UnitPair, int]:
     # Rank by the longest contiguous identical run, which is extractable where scattered overlap is not.
     runs = {}
     for _n, a, b, _x in list(findings) + list(allowed):

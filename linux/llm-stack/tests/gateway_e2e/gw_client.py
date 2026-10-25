@@ -60,14 +60,14 @@ class LogTail:
         self.path = path
         self.offset = 0
 
-    def _size(self):
+    def _size(self) -> int:
         return os.path.getsize(self.path) if os.path.exists(self.path) else 0
 
     def mark(self):
         self.offset = self._size()
 
     def lines(self, expect=1, timeout=5.0, settle=0.4, *, predicate=None):
-        def matching():
+        def matching() -> list[dict[str, object]]:
             lines = self._read()
             return [line for line in lines if predicate(line)] if predicate else lines
 
@@ -77,7 +77,7 @@ class LogTail:
         time.sleep(settle)
         return matching()
 
-    def _read(self):
+    def _read(self) -> list[dict[str, object]]:
         if not os.path.exists(self.path):
             return []
         with open(self.path, "rb") as fh:

@@ -233,8 +233,8 @@ def write_env_values(updates: dict[str, str]) -> list[str]:
 
 
 # Report-only latest lookups (high-risk stack pins)
-def _r(repo, strip_v=True, pattern=None, prefix=""):
-    def fn(cur):
+def _r(repo, strip_v=True, pattern=None, prefix="") -> Callable[[str], tuple[str, dict[str, str]]]:
+    def fn(cur) -> tuple[str, dict[str, str]]:
         pat = pattern
         if pat is None and prefix:
             pat = rf"^{re.escape(prefix)}\d+(?:[._-]\d+)*$"
@@ -480,7 +480,7 @@ def audit_sha_pairs() -> int:
     return 0
 
 
-def _parse_args():
+def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--check", action="store_true", help="report only (default)")
     ap.add_argument("--write", action="store_true", help="bump the safe set + refresh checksums")
@@ -505,7 +505,7 @@ def _parse_args():
     return ap.parse_args()
 
 
-def _lookup(key, spec, cur):
+def _lookup(key, spec, cur) -> tuple[bool, str, dict[str, str]]:
     """(failed, latest, extras) for one key; a failure is printed and counted, never aborts the sweep."""
     try:
         latest, extras = spec(cur)
@@ -515,14 +515,14 @@ def _lookup(key, spec, cur):
     return False, latest, extras
 
 
-def _record(key, latest, extras, updates):
+def _record(key, latest, extras, updates) -> None:
     updates[key] = latest
     updates.update(extras)
     for ek, ev in extras.items():
         print(f"  {ek:30} -> {ev}")
 
 
-def _safe_row(key, cur, latest, extras, impact, holds, updates, write):
+def _safe_row(key, cur, latest, extras, impact, holds, updates, write) -> None:
     if latest == cur and write and extras:
         print(f"{key:32} {cur:22} {latest:22} up to date; refreshing {', '.join(sorted(extras))}")
         _record(key, latest, extras, updates)
@@ -536,7 +536,7 @@ def _safe_row(key, cur, latest, extras, impact, holds, updates, write):
             _record(key, latest, extras, updates)
 
 
-def _report_row(key, cur, latest, extras, env, holds, updates, write_all):
+def _report_row(key, cur, latest, extras, env, holds, updates, write_all) -> None:
     if not latest:
         print(f"{key:32} {cur:22} {'?':22} lookup returned nothing")
         return
@@ -566,7 +566,7 @@ def _report_row(key, cur, latest, extras, env, holds, updates, write_all):
         _record(key, latest, extras, updates)
 
 
-def _sweep(entries, env, holds, only, updates, args, *, report):
+def _sweep(entries, env, holds, only, updates, args, *, report) -> int:
     """One tier's loop (SAFE and REPORT differ only in row renderer and write switch); returns the lookup-failure count."""
     failures = 0
     for entry in entries:
@@ -585,7 +585,7 @@ def _sweep(entries, env, holds, only, updates, args, *, report):
     return failures
 
 
-def _print_manual(env):
+def _print_manual(env) -> None:
     print("\n-- manual (no reliable programmatic source / deliberate pins) --")
     for key in MANUAL:
         print(f"{key:32} {env.get(key, ''):22} {'-':22} check vendor release notes")
@@ -611,7 +611,7 @@ def unclassified_keys(env: dict[str, str]) -> list[str]:
     return sorted(k for k in env if k not in covered and not nonversion.search(k))
 
 
-def _print_unclassified(env):
+def _print_unclassified(env) -> None:
     unclassified = unclassified_keys(env)
     if unclassified:
         print("\n-- UNCLASSIFIED versions.env keys (add to SAFE/REPORT/MANUAL or the non-version filter) --")
@@ -632,7 +632,7 @@ def audit_unclassified() -> int:
     return 0
 
 
-def _write_phase(updates, lookup_failures):
+def _write_phase(updates, lookup_failures) -> int | None:
     """Apply the write and print the ritual; returns an exit code, or None to fall through to the verdict."""
     if not updates:
         print("\nNothing to write — safe set already at latest.")
@@ -654,7 +654,7 @@ def _write_phase(updates, lookup_failures):
     return None
 
 
-def _lookup_verdict(lookup_failures):
+def _lookup_verdict(lookup_failures) -> int:
     if lookup_failures:
         print(
             f"\nWARNING: {lookup_failures} lookup(s) failed — the report above is "

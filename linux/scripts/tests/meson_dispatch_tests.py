@@ -196,7 +196,7 @@ def capture(parts, row, api="healthy"):
             check=False,
         )
 
-        def clean(v):
+        def clean(v) -> str:
             return v.decode().replace(directory, "[WORK]")
 
         return {

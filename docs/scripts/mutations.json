@@ -3370,8 +3370,8 @@
  {
   "id": "python-lint.heredoc-finding-names-its-source",
   "target": "linux/scripts/lint-python.sh",
-  "find": "  _name_sources \"${_RUFF_OUT}\"\n  echo \"\"\n  err \"python gate pass failed",
-  "replace": "  cat \"${_RUFF_OUT}\"\n  echo \"\"\n  err \"python gate pass failed",
+  "find": "    _name_sources \"${_RUFF_OUT}\"\n    echo \"\"\n    err \"${failed} (${selector})\"",
+  "replace": "    cat \"${_RUFF_OUT}\"\n    echo \"\"\n    err \"${failed} (${selector})\"",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "a finding named probe__2.py:1: makes the reader add an opener line to a body line by hand; the extractor's map already knows the answer"
  },
@@ -8046,8 +8046,8 @@
  {
   "id": "renovate.dry-run-predicts-the-write",
   "target": "linux/scripts/renovate_planner.py",
-  "find": "    \"verify\": lambda a: predict(_verify(load(a[1]), a[0])),",
-  "replace": "    \"verify\": lambda a: _verify(load(a[1]), a[0]),",
+  "find": "    \"verify\": lambda a: predict(_verify(cast(list[PlanEdit], load(a[1])), a[0])),",
+  "replace": "    \"verify\": lambda a: _verify(cast(list[PlanEdit], load(a[1])), a[0]),",
   "test": "bash linux/scripts/tests/test-renovate-audit.sh",
   "why": "without the prediction --dry-run printed a clean plan at rc 0 for a write --apply then refused, while claiming to show the exact writes it would make"
  },
@@ -27465,28 +27465,20 @@
   "why": "A missing variadic keyword annotation must fail the full tracked-tree gate."
  },
  {
-  "id": "python-types.renovate-private-return-gate",
+  "id": "python-types.private-return-gate",
   "target": "linux/scripts/lint-python-types.sh",
   "find": "--select ANN202 --output-format concise",
   "replace": "--select ANN204 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "A missing private return annotation in a Renovate script must fail the focused gate."
+  "why": "A missing private return annotation in any tracked Python file must fail the Ruff gate."
  },
  {
-  "id": "python-types.renovate-private-return-scope",
+  "id": "python-types.private-return-full-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'linux/scripts/renovate_*.py'",
-  "replace": "'linux/scripts/no-renovate_*.py'",
+  "find": "--select ANN202 --output-format concise \"${py_files[@]}\"",
+  "replace": "--select ANN202 --output-format concise \"${quality_files[@]}\"",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "The focused annotation gate must refuse a missing Renovate selection."
- },
- {
-  "id": "python-types.verifier-private-return-scope",
-  "target": "linux/scripts/lint-python-types.sh",
-  "find": "  'linux/scripts/verify_*.py')",
-  "replace": "  'linux/scripts/no-verify_*.py')",
-  "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Every tracked Python verifier must remain in the strict private-return selection."
+  "why": "Windows and image-only Python outside ty's quality subset must remain in the strict ANN202 scan."
  },
  {
   "id": "python-lint.hub-unused-import-gate",
@@ -27511,5 +27503,29 @@
   "replace": "HUB_UNUSED_SELECT=\"F401,F841\"",
   "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
   "why": "An unused unpacked binding must fail the full hub sweep."
+ },
+ {
+  "id": "python-types.parameter-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN001,ANN201 --output-format concise",
+  "replace": "--select ANN201 --output-format concise",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Missing parameter types in six typed Python files must fail the strict Ruff gate."
+ },
+ {
+  "id": "python-types.public-return-annotation-gate",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--select ANN001,ANN201 --output-format concise",
+  "replace": "--select ANN001 --output-format concise",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Missing public return types in six typed Python files must fail the strict Ruff gate."
+ },
+ {
+  "id": "python-types.parameter-return-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py')",
+  "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py')",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "All six typed Python files must remain in the strict parameter and public-return scope."
  }
 ]

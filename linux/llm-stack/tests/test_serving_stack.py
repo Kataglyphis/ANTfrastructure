@@ -9,6 +9,7 @@ its default lane and its GenieX entries.
 """
 import json
 import pathlib
+from typing import TypedDict
 
 import yaml
 
@@ -17,6 +18,15 @@ HERE = pathlib.Path(__file__).resolve().parent.parent
 COMPOSE = HERE / "docker-compose.yml"
 OVERLAYS = ("docker-compose.gpu.yml", "docker-compose.lan.yml", "docker-compose.gateway.yml")
 REGISTRY = HERE / "backends.json"
+
+
+class _Service(TypedDict, total=False):
+    build: str | dict[str, object]
+    image: str
+
+
+class _ComposeDoc(TypedDict):
+    services: dict[str, _Service]
 
 
 class _ComposeLoader(yaml.SafeLoader):
@@ -28,7 +38,7 @@ class _ComposeLoader(yaml.SafeLoader):
     """
 
 
-def _compose_tag(loader, _tag_suffix, node):
+def _compose_tag(loader, _tag_suffix, node) -> list[object] | dict[object, object] | str:
     if isinstance(node, yaml.SequenceNode):
         return loader.construct_sequence(node, deep=True)
     if isinstance(node, yaml.MappingNode):
@@ -39,11 +49,11 @@ def _compose_tag(loader, _tag_suffix, node):
 _ComposeLoader.add_multi_constructor("!", _compose_tag)
 
 
-def _load(path):
+def _load(path) -> _ComposeDoc:
     return yaml.load((HERE / path).read_text(encoding="utf-8"), Loader=_ComposeLoader)
 
 
-def _compose(*paths: str):
+def _compose(*paths: str) -> _ComposeDoc:
     doc = _load(paths[0])
     for extra in paths[1:]:
         overlay = _load(extra)

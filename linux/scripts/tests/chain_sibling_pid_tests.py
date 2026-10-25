@@ -109,7 +109,7 @@ def main():
                 timeout=5,
             )
 
-            def clean(data, work=work):
+            def clean(data, work=work) -> str:
                 data = re.sub(
                     r": line \d+:",
                     ": line [LINE]:",
