@@ -1286,6 +1286,15 @@ The rules; the mechanism is documented once in
 - **A run REPORTS. `--apply` only when the owner asked for it in that turn** (owner directive
   2026-09-11). `linux/scripts/renovate-local.sh .` reports; `--apply --dry-run` prints the plan;
   `--apply` writes gitlinks, manifests and locks, for every ecosystem the repo has.
+- **An owner-wide run uses GitHub's active, nonfork inventory.**
+  `linux/scripts/renovate-fleet.sh --github-owned` reports; add `--apply` only under the rule
+  above. Require every eligible repo's own checkout and tracked Renovate config, wrapper and CI
+  caller before any apply. Forks and archives are outside this mode; the older sibling-only fleet
+  remains available for offline work.
+- **A complete Renovate result includes custom regex managers and successful lookups.** The
+  default manager set includes `custom.regex`; an explicit `--managers` remains exact. Live runs
+  require a GitHub token, resolved by the shared driver, and any NOT CHECKED dependency makes the
+  report or apply fail before writing.
 - **A bare `git submodule update --remote` is forbidden in this family.** For a submodule that
   declares no `branch =` it does not skip: it walks the pin to the remote's DEFAULT branch.
   `--apply` passes explicit paths, takes only submodules that declare a branch, and never uses

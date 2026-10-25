@@ -24,10 +24,9 @@ whose header is one link to
 [`dependency-updates.md`](../../../docs/dependency-updates.md) plus a two-line
 per-repo slot. Seven copies of that wrapper existed with headers between 50 and
 106 lines, each carrying a different half of the same explanation and most of it
-stale. It also does the `GITHUB_COM_TOKEN` fallback, which is the one thing a
-wrapper genuinely owns: without that token the GitHub-hosted managers are
-rate-limited into reporting nothing, which looks exactly like "nothing is
-behind".
+stale. The hub driver now resolves `GITHUB_COM_TOKEN` from `GH_TOKEN`, `gh` or
+`gh.exe`, then refuses a live run without one. It also fails when Renovate leaves
+any dependency unchecked, so a rate-limited lookup cannot look up to date.
 
 `git-hooks/pre-commit` is the third file here, and the one a consumer does
 **not** copy: `git config core.hooksPath

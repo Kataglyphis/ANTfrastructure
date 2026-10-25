@@ -298,7 +298,7 @@ printf '%s\n' '{"repositories":{"local":{"packageFiles":{"regex":[{"packageFile"
   '{"depName":"local-crate","skipReason":"path-dependency"},' \
   '{"depName":"http","currentValue":"1.1.0","updates":[{"newValue":"1.6.0"}]}]}]}}}}' > "${SK_REPORT}"
 _run "${SK}" "${SK_REPORT}"
-t_assert_eq "0" "${RC}" "a skipped dependency informs; the report still succeeds"
+t_assert_eq "1" "${RC}" "unchecked dependencies make the report incomplete"
 t_assert_contains "${OUT}" "1 update(s) available" "the update table still renders"
 t_assert_contains "${OUT}" "NOT CHECKED" "skipped dependencies get their own list"
 t_assert_contains "${OUT}" "invalid-value" "an invalid value is listed with its reason"
@@ -307,6 +307,9 @@ t_assert_contains "${OUT}" "lookup-failed: Failed to look up" "a failed lookup i
 t_assert_contains "${OUT}" "2 dependency(ies) not checked" "both are counted"
 t_assert_contains "${OUT}" "skipped by design (nothing to look up): path-dependency 1" \
   "a path dependency is counted, not listed"
+_run "${SK}" "${SK_REPORT}" --apply
+t_assert_eq "1" "${RC}" "an incomplete lookup cannot produce a green apply"
+t_assert_eq '  http: 1.1.0' "$(_pub "${SK}" 3)" "no dependency is applied from an incomplete report"
 
 # A refusal in the repo's own Renovate config still wins
 t_case "dependencyDashboardApproval sends an update to a human, unwritten"

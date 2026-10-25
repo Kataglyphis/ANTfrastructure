@@ -38,6 +38,14 @@ placed wherever that repo already keeps its ANTfrastructure wrappers -
 AccelerANTgine and ANThology, but the flat `scripts/` in jotrockenmitlocken.
 Same shape as `run-lint-gates.sh` there.
 
+The hub driver resolves `GITHUB_COM_TOKEN` from the environment, `GH_TOKEN`, `gh`
+or WSL's `gh.exe` before a live run. A missing token or a NOT CHECKED lookup makes
+the command fail before any `--apply` write. Injected fixture reports and
+`--print-bin` do not need a token. The default manager set includes
+`custom.regex`, so annotated `versions.env` and CMake pins from the resolved
+preset are included alongside the built-in managers. An explicit `--managers`
+still means exactly the requested set.
+
 ## Shared driver helpers
 
 Both drivers require `renovate-cli.sh`, `renovate-git.sh` and `renovate-say.sh`
@@ -1340,6 +1348,8 @@ Two guards keep it that way:
   or whose lookup failed, with the reason and the file. Skips that mean "nothing
   to look up" (`path-dependency`, `disabled`, `unspecified-version`, …) are only
   counted, on one `skipped by design` line.
+  Any NOT CHECKED row exits 1, including report mode, and `--apply` stops before
+  changing a file.
 - `test-renovate-annotations.sh` parses every annotated value with the scheme its
   annotation names and fails on one that does not parse, before any run.
 
@@ -1374,7 +1384,9 @@ scripts/linux/renovate-local.sh --managers git-submodules,github-actions
 Scope it because an **unscoped run is slow**. Scoped to `git-submodules` a repo
 reports in about four seconds; unscoped, on OmniAccelerANT, it was still going
 after fifteen minutes, because it walks every manager it can detect. Custom
-managers (`custom.regex`) are never auto-detected — name them explicitly.
+managers (`custom.regex`) are not in Renovate's built-in pattern table, so the
+default run adds `custom.regex` alongside every detected manager. Name
+`--managers` explicitly to narrow that set.
 
 (An earlier version of this page said an unscoped run throws `spawn flutter ENOENT`
 / `spawn dart ENOENT` on the Flutter repos. That was never measured and is **false**:
@@ -1680,6 +1692,9 @@ linux/scripts/renovate-fleet.sh --apply
 linux/scripts/renovate-fleet.sh --only ANTfrastructure,OrchestrANT
 linux/scripts/renovate-fleet.sh --here              # this repo only, no fleet
 linux/scripts/renovate-fleet.sh --timeout 120       # a tighter per-repo budget
+linux/scripts/renovate-fleet.sh --github-owned       # every active, nonfork owned repo
+linux/scripts/renovate-fleet.sh --github-owned --apply  # apply in each eligible checkout
+linux/scripts/renovate-fleet.sh --github-owned --checkout-dir logs/consumer-rollout  # direct clones elsewhere
 ```
 
 **Run it from WSL, not from Git Bash.** `renovate-local.sh` needs a python that
@@ -1690,6 +1705,30 @@ pass` exits **49** and prints *"Python wurde nicht gefunden"*, and so does
 unless `PREFLIGHT_PYTHON` names a real interpreter. Every fleet measurement below
 was taken through `MSYS_NO_PATHCONV=1 wsl -d Ubuntu-26.04 -- bash …` unless it
 names another host.
+
+`--github-owned` queries the authenticated user's paginated GitHub inventory
+through `gh` or WSL's `gh.exe`. It selects active repositories that are not forks,
+checks the login against the root origin, and requires one own checkout of every
+eligible repository before any apply starts. A restricted token can see fewer
+private repositories; use an account credential with access to all owned repos.
+The API and pagination contract is documented by [GitHub's repository API](https://docs.github.com/en/rest/repos/repos#list-repositories-for-the-authenticated-user)
+and [GitHub CLI](https://cli.github.com/manual/gh_api). Missing checkouts, configs,
+wrappers or CI callers fail before any write. `--here`, `--vendored`, `--only` and
+`--skip` cannot narrow this mode.
+
+By default, own checkouts are siblings of the top checkout. `--checkout-dir DIR`
+instead scans only direct children of `DIR` and includes the root checkout even
+when it sits elsewhere. This lets a prepared workspace under ignored `logs/`
+hold consumer clones. The older fleet mode remains offline and still includes
+same-owner forks and archives found among its siblings.
+
+Every consumer tracks `.github/renovate.json`, a thin wrapper at
+`scripts/linux/renovate-local.sh` or `scripts/renovate-local.sh`, and a caller of
+the shared read-only `renovate-entrypoint.yml` workflow. The hub's
+`verify_renovate_entrypoint.py <repo-root>` checks those tracked files and invokes
+the wrapper's `--help` with a hub checkout to prove delegation without running a
+dependency lookup. CI runs the same gate on push and pull request; it never
+applies dependency updates.
 
 ### The fleet is found, not written down
 

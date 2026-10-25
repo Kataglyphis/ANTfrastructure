@@ -73,6 +73,28 @@ resolve_renovate_root TARGET
 INJECTED_REPORT="${RENOVATE_LOCAL_REPORT:-}"
 INJECTED_CONFIG="${RENOVATE_LOCAL_CONFIG:-}"
 
+# A missing GitHub token makes hosted lookups incomplete while still leaving a green report.
+resolve_github_token() {
+  local _gh_bin=""
+  if [ -z "${GITHUB_COM_TOKEN:-}" ]; then
+    GITHUB_COM_TOKEN="${GH_TOKEN:-}"
+  fi
+  if [ -z "${GITHUB_COM_TOKEN:-}" ]; then
+    if command -v gh >/dev/null 2>&1; then _gh_bin=gh
+    elif command -v gh.exe >/dev/null 2>&1; then _gh_bin=gh.exe
+    fi
+    if [ -n "${_gh_bin}" ]; then
+      GITHUB_COM_TOKEN="$("${_gh_bin}" auth token 2>/dev/null)" || GITHUB_COM_TOKEN=""
+      GITHUB_COM_TOKEN="${GITHUB_COM_TOKEN%$'\r'}"
+    fi
+  fi
+  [ -n "${GITHUB_COM_TOKEN:-}" ] || err "GitHub lookups need GITHUB_COM_TOKEN, GH_TOKEN or 'gh auth login'; refusing an incomplete report"
+  export GITHUB_COM_TOKEN
+}
+if [ -z "${INJECTED_REPORT}" ] && [ "${MODE}" != print-bin ]; then
+  resolve_github_token
+fi
+
 # Bootstrap pinned tools; probe python, since on Windows `python3` can be the Microsoft Store stub.
 PY_BIN="${PREFLIGHT_PYTHON:-python3}"
 if ! "${PY_BIN}" -c 'pass' >/dev/null 2>&1; then
@@ -258,11 +280,12 @@ detect_managers() {
     fi
   done < "${MGR_TSV}"
   rm -f "${list}" "${MGR_TSV}"
-  [ -n "${csv}" ] || err "no Renovate manager's file patterns match anything tracked in ${TARGET}"
+  # Custom regex managers live in the repository's resolved preset, not Renovate's built-in pattern table.
+  csv="${csv:+${csv},}custom.regex"
+  why+=("custom.regex  <- configured custom managers (when present)")
   MANAGERS="${csv}"
   note "managers selected from what this tree HAS (override with --managers <csv>):"
   printf '  %s\n' "${why[@]}"
-  note "custom managers (custom.regex) are NOT auto-detected -- name them explicitly."
 }
 
 # --enabled-managers alone does not undo a shipped `enabled: false`; this global layer does, and a repo's own config still wins.
@@ -381,6 +404,7 @@ report_skipped() {
     note "${k} dependency(ies) not checked: fix the annotation or the value (docs/dependency-updates.md#a-skipped-pin-is-not-up-to-date)"
   fi
   if [ -n "${design}" ]; then note "skipped by design (nothing to look up): ${design}"; fi
+  [ "${k}" -eq 0 ] || err "Renovate left ${k} dependency(ies) unchecked; refusing a complete-result verdict"
   return 0
 }
 

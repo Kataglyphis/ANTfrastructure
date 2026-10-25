@@ -21,7 +21,8 @@ budget_text() {
 usage() {
   cat <<'USAGE'
 renovate-fleet.sh [--apply [--dry-run]] [--only <csv>] [--skip <csv>]
-                  [--here] [--managers <csv>] [--timeout <seconds>] [<root>]
+                  [--here | --github-owned] [--managers <csv>]
+                  [--checkout-dir <directory>] [--timeout <seconds>] [<root>]
 
   (no flags)      report what is behind, in every repo of the fleet
   --apply         and write it, in dependency order
@@ -29,6 +30,10 @@ renovate-fleet.sh [--apply [--dry-run]] [--only <csv>] [--skip <csv>]
   --only <csv>    keep only these repo directory names
   --skip <csv>    drop these
   --here          this repo only; no fleet discovery at all
+  --github-owned  every active, nonfork repo owned by the authenticated GitHub
+                  user; require an own checkout beside the top before running
+  --checkout-dir <dir>  with --github-owned, find own checkouts directly under
+                  this directory and include the root checkout outside it
   --vendored      ALSO run in vendored checkouts that are the only copy of one
                   of the owner's repos (opt-in; dependency-updates.md#the-fleet)
   --managers <csv>  passed straight through to renovate-local.sh
@@ -51,10 +56,12 @@ LOCAL="${SELF_DIR}/renovate-local.sh"
 MODE=report
 DRY_RUN=0
 HERE=0
+GITHUB_OWNED=0
 # Off by default: with one repo in several checkouts, write in exactly one of them.
 VENDORED_MODE=0
 ONLY=""; SKIP=""; MANAGERS=""
 ROOT=""
+CHECKOUT_DIR=""
 # Per-repo seconds, not a network knob: one huge repo must not hold the rest of the fleet.
 BUDGET=600
 # The rollback window between TERM and KILL; a KILL cannot be trapped.
@@ -63,6 +70,14 @@ BUDGET_GRACE=30
 # shellcheck source=renovate-cli.sh
 . "$(dirname "${BASH_SOURCE[0]}")/renovate-cli.sh" || err "cannot load renovate-cli.sh beside me"
 parse_renovate_options fleet usage root ROOT "$@"
+
+if [ "${GITHUB_OWNED}" -eq 1 ]; then
+  [ "${HERE}" -eq 0 ] || err "--github-owned cannot be combined with --here"
+  [ "${VENDORED_MODE}" -eq 0 ] || err "--github-owned requires an own checkout, not --vendored"
+  [ -z "${ONLY}" ] && [ -z "${SKIP}" ] || err "--github-owned means every eligible repo; --only and --skip would leave some out"
+elif [ -n "${CHECKOUT_DIR}" ]; then
+  err "--checkout-dir requires --github-owned"
+fi
 
 case "${BUDGET}" in
   ''|*[!0-9]*) err "--timeout takes whole seconds (0 turns the budget off), not '${BUDGET}'" ;;
@@ -161,8 +176,17 @@ discover_own() {
   local d id rem
   TOP="$(climb_to_top "${ROOT}")"
   FAMILY_DIR="$(dirname "${TOP}")"
+  if [ -n "${CHECKOUT_DIR}" ]; then
+    FAMILY_DIR="$(cd "${CHECKOUT_DIR}" 2>/dev/null && pwd -P)" \
+      || err "--checkout-dir is not a readable directory: ${CHECKOUT_DIR}"
+  fi
   OWNER="$(identity_owner "$(repo_identity "${TOP}" || true)")"
   [ -n "${OWNER}" ] || err "${TOP} has no origin remote, so 'the same owner' has no meaning here; run with --here"
+  if [ "${FAMILY_DIR}" != "$(dirname "${TOP}")" ]; then
+    id="$(repo_identity "${TOP}" 2>/dev/null)" || id=""
+    [ -n "${id}" ] || err "${TOP} has no own origin identity"
+    OWN_PATHS+=("${TOP}"); OWN_IDS+=("${id}"); OWN_NAMES+=("$(basename "${TOP}")")
+  fi
   for d in "${FAMILY_DIR}"/*; do
     [ -e "${d}/.git" ] || continue
     id="$(repo_identity "${d}" 2>/dev/null)" || id=""
@@ -178,6 +202,85 @@ discover_own() {
     fi
     OWN_PATHS+=("${d}"); OWN_IDS+=("${id}"); OWN_NAMES+=("$(basename "${d}")")
   done
+}
+
+# The authenticated user's paginated API inventory is the source of truth; a local directory alone cannot prove fork or archive status.
+GITHUB_INVENTORY=""
+GITHUB_LOGIN=""
+GH_BIN=""
+GITHUB_IDS=()
+GITHUB_NAMES=()
+MISSING_GITHUB=()
+load_github_inventory() {
+  local full id name
+  case "${OWNER}" in github.com/*) ;; *) err "--github-owned needs a github.com origin, got ${OWNER}" ;; esac
+  if command -v gh >/dev/null 2>&1; then GH_BIN=gh
+  elif command -v gh.exe >/dev/null 2>&1; then GH_BIN=gh.exe
+  else err "--github-owned needs gh or gh.exe on PATH"
+  fi
+  GITHUB_LOGIN="$("${GH_BIN}" api user --jq .login)" || err "gh could not identify the authenticated GitHub user"
+  GITHUB_LOGIN="${GITHUB_LOGIN%$'\r'}"
+  [ -n "${GITHUB_LOGIN}" ] || err "gh returned an empty authenticated GitHub login"
+  [ "$(printf '%s' "${GITHUB_LOGIN}" | tr '[:upper:]' '[:lower:]')" = "${OWNER#github.com/}" ] \
+    || err "origin belongs to ${OWNER}, but gh is authenticated as ${GITHUB_LOGIN}"
+  GITHUB_INVENTORY="$(mktemp)" || err "mktemp failed"
+  "${GH_BIN}" api --paginate '/user/repos?affiliation=owner&visibility=all&per_page=100' \
+    --jq '.[] | select(.fork == false and .archived == false) | .full_name' > "${GITHUB_INVENTORY}" \
+    || err "gh could not list every active, nonfork repository owned by ${GITHUB_LOGIN}"
+  while IFS= read -r full; do
+    full="${full%$'\r'}"
+    [ -n "${full}" ] || continue
+    id="$(normalize_url "https://github.com/${full}")"
+    name="${full#*/}"
+    [ "$(identity_owner "${id}")" = "${OWNER}" ] && [ -n "${name}" ] && [ "${name}" != "${full}" ] \
+      && [[ "${name}" != */* ]] || err "invalid repository identity from gh: ${full}"
+    case " ${GITHUB_IDS[*]-} " in *" ${id} "*) err "gh listed ${full} more than once" ;; esac
+    GITHUB_IDS+=("${id}")
+    GITHUB_NAMES+=("${name}")
+  done < "${GITHUB_INVENTORY}"
+  [ "${#GITHUB_IDS[@]}" -gt 0 ] || err "gh listed no active, nonfork repositories for ${GITHUB_LOGIN}; check its access"
+}
+
+# Every eligible identity must have one own sibling checkout before a single repo is updated.
+restrict_to_github_inventory() {
+  local i j found
+  local -a paths=() ids=() names=()
+  for i in "${!OWN_IDS[@]}"; do
+    for j in "${!GITHUB_IDS[@]}"; do
+      [ "${OWN_IDS[$i]}" = "${GITHUB_IDS[$j]}" ] || continue
+      paths+=("${OWN_PATHS[$i]}")
+      ids+=("${OWN_IDS[$i]}")
+      names+=("${OWN_NAMES[$i]}")
+      break
+    done
+  done
+  OWN_PATHS=("${paths[@]}")
+  OWN_IDS=("${ids[@]}")
+  OWN_NAMES=("${names[@]}")
+  for j in "${!GITHUB_IDS[@]}"; do
+    found=0
+    for i in "${!OWN_IDS[@]}"; do
+      [ "${OWN_IDS[$i]}" = "${GITHUB_IDS[$j]}" ] && { found=1; break; }
+    done
+    [ "${found}" -eq 1 ] || MISSING_GITHUB+=("${GITHUB_IDS[$j]}")
+  done
+  if [ "${#MISSING_GITHUB[@]}" -gt 0 ]; then
+    note "--github-owned: ${#GITHUB_IDS[@]} eligible repository(ies), ${#MISSING_GITHUB[@]} without an own checkout directly under ${FAMILY_DIR} (root ${TOP} also counts):" >&2
+    printf '  %s\n' "${MISSING_GITHUB[@]}" >&2
+    err "clone those repositories directly under ${FAMILY_DIR} and rerun; nothing was updated"
+  fi
+  note "--github-owned: all ${#GITHUB_IDS[@]} active, nonfork repositories have an own checkout."
+}
+
+# Adoption gaps are refused across the whole inventory before any per-repo apply can write.
+verify_github_entrypoints() {
+  local path failed=0
+  local validator="${SELF_DIR}/verify_renovate_entrypoint.py"
+  [ -f "${validator}" ] || err "the shared Renovate entrypoint validator is missing at ${validator}"
+  for path in "${OWN_PATHS[@]}"; do
+    "${PREFLIGHT_PYTHON:-python3}" "${validator}" "${path}" || failed=1
+  done
+  [ "${failed}" -eq 0 ] || err "Renovate entrypoint adoption is incomplete; nothing was updated"
 }
 
 # One walk per own repo, rows tagged with that repo so the ordering reuses them.
@@ -603,7 +706,11 @@ print_signoff() {
 }
 
 # --------------------------------------------------------------------------
-cleanup() { [ -n "${GRAPH}" ] && rm -f "${GRAPH}"; return 0; }
+cleanup() {
+  [ -z "${GRAPH}" ] || rm -f "${GRAPH}"
+  [ -z "${GITHUB_INVENTORY}" ] || rm -f "${GITHUB_INVENTORY}"
+  return 0
+}
 trap cleanup EXIT
 
 if [ "${HERE}" -eq 1 ]; then
@@ -611,6 +718,11 @@ if [ "${HERE}" -eq 1 ]; then
   ORDER_PATHS=("${ROOT}"); ORDER_NAMES=("$(basename "${ROOT}")")
 else
   discover_own
+  if [ "${GITHUB_OWNED}" -eq 1 ]; then
+    load_github_inventory
+    restrict_to_github_inventory
+    verify_github_entrypoints
+  fi
   discover_graph
   order_fleet
   [ "${#ORDER_PATHS[@]}" -gt 0 ] || err "no repo of ${OWNER} left to run after --only/--skip"

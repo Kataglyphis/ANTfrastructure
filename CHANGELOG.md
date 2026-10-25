@@ -15,6 +15,10 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Add `renovate-fleet.sh --github-owned` with a paginated, authenticated active nonfork inventory
+  and complete-checkout/adoption preflight; provide a reusable read-only CI entrypoint gate.
+- Include custom regex managers in default Renovate scans, resolve the GitHub token centrally
+  (including `gh.exe` under WSL), and fail before writes when any dependency was not checked.
 - Add a reusable one-consumer hub pin helper: require an explicit remote `develop` SHA,
   check the consumer branch and a clean initialized submodule, and stage only its gitlink.
 - Make quality measurements reusable across owned repositories: rooted size, complexity and duplication reports, consumer mutation recipes, read-only Python refactor previews, uv-locked Ruff and ty reports, and a standalone PowerShell lint/JSON workflow rooted at the caller. Keep duplication strictness separate from the existing ratchets while consumers remove current findings.

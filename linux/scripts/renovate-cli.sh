@@ -16,6 +16,7 @@ renovate_driver_option() {
     local:--refresh) assign_renovate_options REFRESH 1 ;;
     local:--print-bin) assign_renovate_options MODE print-bin ;;
     fleet:--here) assign_renovate_options HERE 1 ;;
+    fleet:--github-owned) assign_renovate_options GITHUB_OWNED 1 ;;
     local:--dry-run) assign_renovate_options DRY_RUN 1 ;;
     fleet:--dry-run) assign_renovate_options DRY_RUN 1 MODE apply ;;
     fleet:--vendored|fleet:--in-place) assign_renovate_options VENDORED_MODE 1 ;;
@@ -33,6 +34,7 @@ parse_renovate_options() {
     values[--only]=ONLY
     values[--skip]=SKIP
     values[--timeout]=BUDGET
+    values[--checkout-dir]=CHECKOUT_DIR
   fi
   while [ "$#" -gt 0 ]; do
     option="${1%%=*}"

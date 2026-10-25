@@ -46,6 +46,17 @@ _report "${NODE_REPORT}" regex "${ENV_REL}" node 24.21.0 24.22.0
 # One owner for the apply call, so it cannot drift between cases.
 _apply_regex() { RUN_CONFIG="${ENV_CONFIG}" _run "$1" "$2" --apply --managers custom.regex; }
 
+t_case "a custom-only tree is included by the default one-call manager set"
+CUSTOM_ONLY="$(_repo env-custom-only)"
+mkdir -p "${CUSTOM_ONLY}/linux/scripts/01-core"
+printf '# renovate: datasource=github-tags depName=rust-lang/rust\nRUST_VERSION=1.98.0\n' > "${CUSTOM_ONLY}/${ENV_REL}"
+_commit "${CUSTOM_ONLY}"
+RUN_CONFIG="${ENV_CONFIG}" _run "${CUSTOM_ONLY}" "${RUST_REPORT}" --apply
+t_assert_eq 0 "${RC}" "the default run applies a custom regex dependency"
+t_assert_contains "${OUT}" "custom.regex" "the selected custom manager is visible"
+t_assert_eq "RUST_VERSION=1.98.1" "$(_line "${CUSTOM_ONLY}/${ENV_REL}" 2)" \
+  "the annotated pin moved"
+
 t_case "an allowlisted annotated key is written"
 _apply_regex "${ENV_REPO}" "${RUST_REPORT}"
 t_assert_eq "0" "${RC}" "an apply over a self-contained key exits 0"
