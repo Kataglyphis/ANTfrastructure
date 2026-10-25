@@ -105,7 +105,6 @@ if ! "${PY_BIN}" -c 'pass' >/dev/null 2>&1; then
 fi
 
 CACHE_ROOT="${RENOVATE_LOCAL_CACHE:-${XDG_CACHE_HOME:-${HOME}/.cache}/kataglyphis}"
-NODE_DIR="${CACHE_ROOT}/node-${RENOVATE_NODE_VERSION}"
 RENOVATE_NPM_DIR="${HUB_ROOT}/linux/scripts/renovate-npm"
 RENOVATE_BOOTSTRAP_PY="${HUB_ROOT}/linux/scripts/renovate_bootstrap.py"
 NPM_PREFIX=""

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # A partial tar extraction must never count as a cached Node installation.
 
+NODE_DIR="${CACHE_ROOT}/node-${RENOVATE_NODE_VERSION}"
+
 node_toolchain_valid() {
   local candidate="$1" match="$2" directory version
   directory="$(dirname "${candidate}")"
