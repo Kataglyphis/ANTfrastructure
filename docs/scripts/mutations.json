@@ -16174,8 +16174,8 @@
  {
   "id": "renovate.bootstrap-installs-from-the-lock",
   "target": "linux/scripts/renovate-local.sh",
-  "find": "    \"$(dirname \"${NODE_BIN}\")/npm\" ci --no-fund",
-  "replace": "    \"$(dirname \"${NODE_BIN}\")/npm\" install --no-fund",
+  "find": "    \"${NPM_BIN}\" ci --engine-strict",
+  "replace": "    \"${NPM_BIN}\" install --engine-strict",
   "test": "bash linux/scripts/tests/test-renovate-bootstrap.sh",
   "why": "a fresh resolve takes whatever the registry holds that minute: on 2026-10-19 renovate 44.157.0 failed ETARGET for five minutes while AWS published a dependency after its dependents"
  },
@@ -16190,16 +16190,16 @@
  {
   "id": "renovate.bootstrap-prefix-keyed-by-lock",
   "target": "linux/scripts/renovate-local.sh",
-  "find": "  NPM_PREFIX=\"${CACHE_ROOT}/renovate-${RENOVATE_VERSION}-$(sha256sum \"${lock}\" | cut -c1-12)\"",
-  "replace": "  NPM_PREFIX=\"${CACHE_ROOT}/renovate-${RENOVATE_VERSION}\"",
+  "find": "    NPM_PREFIX=\"${CACHE_ROOT}/renovate-${RENOVATE_VERSION}-$(sha256sum \"${RENOVATE_NPM_DIR}/package-lock.json\" | cut -c1-12)\"",
+  "replace": "    NPM_PREFIX=\"${CACHE_ROOT}/renovate-${RENOVATE_VERSION}\"",
   "test": "bash linux/scripts/tests/test-renovate-bootstrap.sh",
   "why": "a regenerated lock for the same version must reinstall, not reuse the prefix the old lock filled"
  },
  {
   "id": "renovate.bootstrap-keeps-print-bin-stdout",
   "target": "linux/scripts/renovate-local.sh",
-  "find": "--no-update-notifier --loglevel=error >&2) \\",
-  "replace": "--no-update-notifier --loglevel=error) \\",
+  "find": "    \"${NPM_BIN}\" ci --engine-strict --no-fund --no-audit --no-update-notifier --loglevel=error >&2)",
+  "replace": "    \"${NPM_BIN}\" ci --engine-strict --no-fund --no-audit --no-update-notifier --loglevel=error)",
   "test": "bash linux/scripts/tests/test-renovate-bootstrap.sh",
   "why": "node \"$(renovate-local.sh --print-bin)\" must get the path alone, not npm's 'added N packages' line before it"
  },

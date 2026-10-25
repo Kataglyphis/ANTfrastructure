@@ -48,6 +48,7 @@ case "$1" in
     mkdir -p node_modules/renovate/dist
     printf '{"version": "%s"}\n' "${version}" > node_modules/renovate/package.json
     : > node_modules/renovate/dist/renovate.js
+    printf 'added 1 package\n'
     ;;
   *) exit 8 ;;
 esac
