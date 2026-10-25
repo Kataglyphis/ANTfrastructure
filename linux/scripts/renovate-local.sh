@@ -80,9 +80,7 @@ resolve_github_token() {
     GITHUB_COM_TOKEN="${GH_TOKEN:-}"
   fi
   if [ -z "${GITHUB_COM_TOKEN:-}" ]; then
-    if command -v gh >/dev/null 2>&1; then _gh_bin=gh
-    elif command -v gh.exe >/dev/null 2>&1; then _gh_bin=gh.exe
-    fi
+    _gh_bin="$(renovate_github_cli)" || _gh_bin=""
     if [ -n "${_gh_bin}" ]; then
       GITHUB_COM_TOKEN="$("${_gh_bin}" auth token 2>/dev/null)" || GITHUB_COM_TOKEN=""
       GITHUB_COM_TOKEN="${GITHUB_COM_TOKEN%$'\r'}"

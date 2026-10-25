@@ -211,22 +211,25 @@ GH_BIN=""
 GITHUB_IDS=()
 GITHUB_NAMES=()
 MISSING_GITHUB=()
-load_github_inventory() {
-  local full id name
+load_github_login() {
   case "${OWNER}" in github.com/*) ;; *) err "--github-owned needs a github.com origin, got ${OWNER}" ;; esac
-  if command -v gh >/dev/null 2>&1; then GH_BIN=gh
-  elif command -v gh.exe >/dev/null 2>&1; then GH_BIN=gh.exe
-  else err "--github-owned needs gh or gh.exe on PATH"
-  fi
+  GH_BIN="$(renovate_github_cli)" || err "--github-owned needs gh or gh.exe on PATH"
   GITHUB_LOGIN="$("${GH_BIN}" api user --jq .login)" || err "gh could not identify the authenticated GitHub user"
   GITHUB_LOGIN="${GITHUB_LOGIN%$'\r'}"
   [ -n "${GITHUB_LOGIN}" ] || err "gh returned an empty authenticated GitHub login"
   [ "$(printf '%s' "${GITHUB_LOGIN}" | tr '[:upper:]' '[:lower:]')" = "${OWNER#github.com/}" ] \
     || err "origin belongs to ${OWNER}, but gh is authenticated as ${GITHUB_LOGIN}"
+}
+
+fetch_github_inventory() {
   GITHUB_INVENTORY="$(mktemp)" || err "mktemp failed"
   "${GH_BIN}" api --paginate '/user/repos?affiliation=owner&visibility=all&per_page=100' \
     --jq '.[] | select(.fork == false and .archived == false) | .full_name' > "${GITHUB_INVENTORY}" \
     || err "gh could not list every active, nonfork repository owned by ${GITHUB_LOGIN}"
+}
+
+parse_github_inventory() {
+  local full id name
   while IFS= read -r full; do
     full="${full%$'\r'}"
     [ -n "${full}" ] || continue
@@ -239,6 +242,12 @@ load_github_inventory() {
     GITHUB_NAMES+=("${name}")
   done < "${GITHUB_INVENTORY}"
   [ "${#GITHUB_IDS[@]}" -gt 0 ] || err "gh listed no active, nonfork repositories for ${GITHUB_LOGIN}; check its access"
+}
+
+load_github_inventory() {
+  load_github_login
+  fetch_github_inventory
+  parse_github_inventory
 }
 
 # Every eligible identity must have one own sibling checkout before a single repo is updated.

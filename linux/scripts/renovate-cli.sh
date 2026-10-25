@@ -4,6 +4,12 @@
 [ -n "${_RENOVATE_CLI_LOADED:-}" ] && return 0
 _RENOVATE_CLI_LOADED=1
 
+renovate_github_cli() {
+  if command -v gh >/dev/null 2>&1; then printf 'gh\n'; return 0; fi
+  if command -v gh.exe >/dev/null 2>&1; then printf 'gh.exe\n'; return 0; fi
+  return 1
+}
+
 assign_renovate_options() {
   while [ "$#" -gt 0 ]; do
     printf -v "$1" '%s' "$2"

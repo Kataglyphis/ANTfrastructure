@@ -4,6 +4,7 @@ set -uo pipefail
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
 t_skip_unless "real symlinks for an isolated PATH" t_posix_symlinks
+t_source_functions "${TESTS_DIR}/../renovate-cli.sh" renovate_github_cli || exit 1
 t_source_functions "${TESTS_DIR}/../renovate-local.sh" resolve_github_token || exit 1
 
 WORK="$(mktemp -d)"
@@ -29,8 +30,8 @@ token_probe() (
   PATH="${BIN}"
   err() { exit 1; }
   case "${mode}" in
-    direct) GITHUB_COM_TOKEN=fixture-direct GH_TOKEN=fixture-gh ;;
-    env) GH_TOKEN=fixture-gh ;;
+    direct) GITHUB_COM_TOKEN=fixture-direct; export GH_TOKEN=fixture-gh ;;
+    env) export GH_TOKEN=fixture-gh ;;
     exe) ;;
     none) PATH="${EMPTY}" ;;
   esac
