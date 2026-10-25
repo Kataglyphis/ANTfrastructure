@@ -2147,6 +2147,19 @@ comments *and its definition heads* stripped, so neither a mention in a comment
 nor a second copy of the same function keeps the first one alive. Matching is on
 word boundaries: `used_fn_extra` is not a use of `used_fn`, `run-used_fn` is.
 
+**Shared bootstrap calls across repositories.** A consumer can carry an exact copy
+of `shared/linux/templates/antfrastructure.sh` while another consumer calls one
+of that template's functions. For a tracked `antfrastructure-sh` declaration in
+`.antfrastructure-shared.manifest`, the foreign-root gate also reads the validated
+`shared/config/image-consumers.json` acceptance plan. It counts only a `bash -lc`
+command that sources the declared mirror path and then invokes one of its
+functions as a shell command. An `echo`, a quoted name, a call before the source,
+an undeclared mirror, and unrelated local dead functions still fail. The gate
+does not inspect the mirror's byte equality; the separate `shared-config` gate
+checks that copy against the canonical template in the same lint run. The plan's
+Flutter command is exercised by `test-image-consumer-bootstrap.py`, and
+`test-dead-functions.sh` mutates the call and declaration to prove the verdict.
+
 **A definition's mentions of ITSELF are subtracted (2026-09-05).** String literals
 are not stripped from the corpus, so `printf 'export_clang_gcc_toolchain_env: no
 GCC toolchain at %s\n'` inside that function's own body read as a call to it —

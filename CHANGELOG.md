@@ -15,6 +15,8 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Count a declared shared shell bootstrap's real image-consumer command as a caller in the
+  dead-function gate; keep local dead code fatal and prove inert names do not count.
 - Check npm's latest Renovate release before each live local dependency scan and install it in
   an isolated user cache first; fail when the version check or installation cannot complete.
 - Add `renovate-fleet.sh --github-owned` with a paginated, authenticated active nonfork inventory

@@ -6,6 +6,8 @@ docs/code-quality-tooling.md#dead-shell-functions-dead-functions
 import argparse
 import os
 import re
+import runpy
+import shlex
 import subprocess
 import sys
 from collections import Counter
@@ -121,6 +123,82 @@ def corpus() -> Iterator[tuple[str, str]]:
     return _walk_corpus() if GRADED == HUB else _tracked_corpus()
 
 
+def _shared_bootstrap_rel() -> str | None:
+    """Return the declared consumer mirror path, including nondefault layouts."""
+    if ".antfrastructure-shared.manifest" not in set(_tracked(GRADED)):
+        return None
+    manifest = os.path.join(GRADED, ".antfrastructure-shared.manifest")
+    if not os.path.isfile(manifest):
+        return None
+    with open(manifest, encoding="utf-8") as fh:
+        rows = [line.strip().split(maxsplit=1) for line in fh
+                if line.strip() and not line.lstrip().startswith("#")]
+    selected = [row for row in rows if row[0] == "antfrastructure-sh"]
+    if not selected:
+        return None
+    if len(selected) != 1:
+        raise ValueError("antfrastructure-sh must be declared once")
+    if len(selected[0]) == 2:
+        rel = selected[0][1]
+    else:
+        registry = os.path.join(HUB, "shared/config/shared-assets.manifest")
+        with open(registry, encoding="utf-8") as fh:
+            defaults = [fields[2].strip() for line in fh
+                        if len(fields := line.split("|")) >= 3
+                        and fields[0].strip() == "antfrastructure-sh"]
+        if len(defaults) != 1:
+            raise ValueError("shared asset registry lacks one antfrastructure-sh default path")
+        rel = defaults[0]
+    parts = rel.replace("\\", "/").split("/")
+    if not rel or os.path.isabs(rel) or ":" in parts[0] or ".." in parts or "." in parts:
+        raise ValueError("antfrastructure-sh mirror must be a rooted-relative path")
+    return "/".join(parts)
+
+
+def _command_calls(command: list[str], mirror: str, names: set[str]) -> set[str]:
+    """Only shell command words after a source of the declared mirror are calls."""
+    if len(command) != 3 or command[:2] != ["bash", "-lc"]:
+        return set()
+    lexer = shlex.shlex(command[2], posix=True, punctuation_chars=";&|")
+    lexer.whitespace_split = True
+    words = list(lexer)
+    statements: list[list[str]] = [[]]
+    for word in words:
+        if word in {";", "&&", "||", "|"}:
+            statements.append([])
+        else:
+            statements[-1].append(word)
+    loaded = False
+    called = set()
+    for statement in statements:
+        if len(statement) >= 2 and statement[0] in {"source", "."} and statement[1] == mirror:
+            loaded = True
+        elif loaded and statement and statement[0] in names:
+            called.add(statement[0])
+    return called
+
+
+def shared_api_calls() -> set[tuple[str, str]]:
+    """Calls in the validated image-consumer command to a declared shared shell mirror."""
+    if GRADED == HUB:
+        return set()
+    try:
+        mirror = _shared_bootstrap_rel()
+        if mirror is None:
+            return set()
+        names = {name for rel, name in definitions() if rel == mirror}
+        if not names:
+            return set()
+        plan_path = os.path.join(HUB, "shared/config/image-consumers.json")
+        read_plan = runpy.run_path(os.path.join(HUB, "linux/scripts/image-acceptance.py"))["read_plan"]
+        plan = read_plan(plan_path)
+        return {(mirror, name) for row in plan["consumers"]
+                for name in _command_calls(row["command"], mirror, names)}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        sys.stderr.write(f"ERROR: cannot validate shared bootstrap call evidence: {exc}\n")
+        raise SystemExit(2) from exc
+
+
 def texts() -> dict[str, str]:
     """relpath -> text for every corpus file that reads as UTF-8."""
     out = {}
@@ -213,10 +291,14 @@ def _isolated(rel: str, corpus_texts: Mapping[str, str]) -> bool:
 
 def census(
     corpus_texts: Mapping[str, str],
+    external_calls: set[tuple[str, str]] | None = None,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], int, int]:
     """(isolated rows, same-name shared rows, considered count, unlinked count) over self-unnamed definitions."""
+    external_calls = external_calls or set()
     considered = []
     for rel, name in definitions():
+        if (rel, name) in external_calls:
+            continue
         text = corpus_texts.get(rel)
         if text is None or re.search(rf"\b{name}\b", _code(text)):
             continue
@@ -224,7 +306,7 @@ def census(
     definers = Counter(name for _, name in definitions())
     return ([key for key in considered if _isolated(key[0], corpus_texts)],
             [key for key in considered if definers[key[1]] > 1],
-            len(considered), len(unlinked(corpus_texts)))
+            len(considered), len([row for row in unlinked(corpus_texts) if row not in external_calls]))
 
 
 def _where(allow_path: str | None = None) -> None:
@@ -310,15 +392,20 @@ def main(argv: Sequence[str]) -> int:
     allow_path = args.allow or (ALLOW if GRADED == HUB
                                 else os.path.join(GRADED, "dead-functions.allow"))
     corpus_texts = texts()
+    external_calls = shared_api_calls()
     if args.census:
-        return report_census(*census(corpus_texts))
+        return report_census(*census(corpus_texts, external_calls))
     defined, found = dead(mentions(corpus_texts))
-    scoped = {f"{rel}\t{name}" for rel, name in unlinked(corpus_texts)}
-    found_keys = {f"{rel}\t{name}" for rel, name in found}
+    scoped = {f"{rel}\t{name}" for rel, name in unlinked(corpus_texts)
+              if (rel, name) not in external_calls}
+    found_keys = {f"{rel}\t{name}" for rel, name in found
+                  if (rel, name) not in external_calls}
     allow = load_keys(allow_path)
     print("=== dead function gate ===")
     _where(allow_path)
-    print(f"  {len(defined)} shell functions; {len(found)} named nowhere else, "
+    if external_calls:
+        print(f"  {len(external_calls)} shared bootstrap function(s) used by executable image-consumer commands")
+    print(f"  {len(defined)} shell functions; {len(found_keys)} named nowhere else, "
           f"{len(scoped - found_keys)} more unlinked from every "
           f"other definer of their name; {len(allow)} frozen in {os.path.basename(allow_path)}")
     rc = check_keys(found_keys | scoped, allow,

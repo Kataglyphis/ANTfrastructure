@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Fixture functions are printf'd so this corpus file defines none; see docs/code-quality-tooling.md#dead-shell-functions-dead-functions
+# Fixture subject functions are printed so this suite's definitions cannot mask their dead-code verdicts.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -261,6 +261,57 @@ t_assert_eq "1" "$(grep -c -e "$(printf '%s\t%s' "${PARITY_SH##*/}" "${_CP}")" \
 t_case "the REAL tree is clean today"
 t_assert_eq "0" "$( "${PY}" "${GATE}" >/dev/null 2>&1; echo $? )"
 t_assert_eq "0" "$( "${PY}" "${GATE}" --census >/dev/null 2>&1; echo $? )"
+
+t_case "a declared shared bootstrap has a real image-consumer caller, not an inert name"
+shared_hub="$(_fixture ':')"
+cp "${SCRIPTS_DIR}/image-acceptance.py" "${shared_hub}/linux/scripts/"
+mkdir -p "${shared_hub}/shared/config"
+shared_plan="${shared_hub}/shared/config/image-consumers.json"
+cat > "${shared_plan}" <<'JSON'
+{"schema_version":1,"platform":"linux/amd64","timeout_seconds":60,"consumers":[{"name":"consumer","repository":"Example/Consumer","ref":"develop","command":["bash","-lc","source scripts/lib/antfrastructure.sh; antfrastructure_source linux/scripts/01-core/platform.sh"]}]}
+JSON
+shared_consumer="$(gate_tree_git $'antfrastructure_source() {\n  source "$1"\n}' scripts/lib/antfrastructure.sh)"
+printf 'antfrastructure-sh scripts/lib/antfrastructure.sh\n' > "${shared_consumer}/.antfrastructure-shared.manifest"
+t_git_commit "${shared_consumer}"
+shared_gate="${shared_hub}/linux/scripts/verify_dead_functions.py"
+t_assert_eq 0 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "the checked image command calls the declared mirror API"
+
+_shared_command() {
+  "${PY}" - "${shared_plan}" "$1" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as source:
+    plan = json.load(source)
+plan["consumers"][0]["command"][2] = sys.argv[2]
+with open(sys.argv[1], "w", encoding="utf-8") as target:
+    json.dump(plan, target)
+PY
+}
+_shared_command 'source scripts/lib/antfrastructure.sh; echo antfrastructure_source'
+t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "echoing the API name is not a shell call"
+t_assert_contains "$("${PY}" "${shared_gate}" --root "${shared_consumer}" 2>&1)" \
+  "scripts/lib/antfrastructure.sh  antfrastructure_source" "the missing real call names the mirror"
+
+_shared_command 'source scripts/lib/antfrastructure.sh; printf "%s" "antfrastructure_source"'
+t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "a quoted API name is not a shell call"
+
+_shared_command 'antfrastructure_source linux/scripts/01-core/platform.sh; source scripts/lib/antfrastructure.sh'
+t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "calling before sourcing the mirror is not executable shared API evidence"
+
+_shared_command 'source scripts/lib/antfrastructure.sh; antfrastructure_source linux/scripts/01-core/platform.sh'
+printf '# no shared bootstrap declaration\n' > "${shared_consumer}/.antfrastructure-shared.manifest"
+t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "a missing manifest declaration cannot import another consumer's call"
+printf 'antfrastructure-sh scripts/lib/antfrastructure.sh\n' > "${shared_consumer}/.antfrastructure-shared.manifest"
+printf '%s\n' "${DEAD}" > "${shared_consumer}/scripts/local.sh"
+t_git_commit "${shared_consumer}"
+t_assert_eq 1 "$(t_rc "${PY}" "${shared_gate}" --root "${shared_consumer}")" \
+  "real local dead code still fails with external shared API evidence"
+rm -rf "${shared_hub}" "${shared_consumer}"
 
 # Every fixture above plants its tree around the gate, so only gate_root_arm reaches --root.
 t_case "--root grades the named tree, and reads its freeze file"
