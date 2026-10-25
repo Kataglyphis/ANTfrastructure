@@ -240,6 +240,24 @@ _out="$(_targets 'print([("a" "b")])' 'print("ok")')"
 t_assert_contains "${_out}" "hub string-concatenation gate (ISC004): clean"
 t_assert_contains "${_out}" "rc=0"
 
+t_case "a full hub sweep rejects format calls in Python"
+_out="$(_targets $'who = "world"\nprint("hello {}".format(who))' 'print("ok")')"
+t_assert_contains "${_out}" "UP032"
+t_assert_contains "${_out}" "hub string-format gate failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a full hub sweep rejects format calls in shell heredocs"
+_out="$(_targets 'print("ok")' $'who = "world"\nprint("hello {}".format(who))')"
+t_assert_contains "${_out}" "UP032"
+t_assert_contains "${_out}" "linux/scripts/probe.sh:"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "explicit targets keep format calls advisory during consumer adoption"
+_out="$(_lint $'who = "world"\nprint("hello {}".format(who))')"
+t_assert_contains "${_out}" "UP032"
+t_assert_contains "${_out}" "ADVISORY: findings above are informational"
+t_assert_contains "${_out}" "rc=0"
+
 t_case "a clean tree of every target shape passes"
 _out="$(_targets 'print("ok")' 'print("ok")')"
 t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" \

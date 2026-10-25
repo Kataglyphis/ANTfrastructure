@@ -19,6 +19,7 @@ GATE_SELECT="E9,F63,F7,F82,B012,B023"
 HUB_UNUSED_SELECT="F401,F841,RUF059"
 HUB_REGEX_SELECT="FURB167"
 HUB_STRING_SELECT="ISC004"
+HUB_FORMAT_SELECT="UP032"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
@@ -159,6 +160,7 @@ if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
   _lint_python_check "${HUB_UNUSED_SELECT}" "hub unused-binding gate failed" "hub unused-binding gate"
   _lint_python_check "${HUB_REGEX_SELECT}" "hub regex-flag gate failed" "hub regex-flag gate"
   _lint_python_check "${HUB_STRING_SELECT}" "hub string-concatenation gate failed" "hub string-concatenation gate"
+  _lint_python_check "${HUB_FORMAT_SELECT}" "hub string-format gate failed" "hub string-format gate"
 fi
 
 # Advisory pass — full default ruleset, informational only.

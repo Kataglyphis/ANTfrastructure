@@ -87,18 +87,20 @@ def main():
         return gate_scope.die(exc)
     allow = load_keys(allow_path)
     # Keyed on file and variable, not line, so moves above a site do not re-flag it.
-    keys = {"{}\t{}".format(f, v) for f, _n, v in found}
+    keys = {f"{f}\t{v}" for f, _n, v in found}
     print("=== masked declaration gate ===")
     if root != os.path.abspath(ROOT):
-        print("  root: {}".format(root))
-        print("  allow: {}".format(allow_path))
-    print("  {} `local/export x=$(...)` site(s); {} frozen in {}".format(
-        len(found), len(allow), os.path.basename(allow_path)))
+        print(f"  root: {root}")
+        print(f"  allow: {allow_path}")
+    print(
+        f"  {len(found)} `local/export x=$(...)` site(s); "
+        f"{len(allow)} frozen in {os.path.basename(allow_path)}"
+    )
 
     def _site(k) -> str:
         f, v = k.split("\t")
         ln = next((n for ff, n, vv in found if ff == f and vv == v), "?")
-        return "{}:{}  {}".format(f, ln, v)
+        return f"{f}:{ln}  {v}"
 
     rc = check_keys(keys, allow,
                     'NEW masked declaration(s) — split them:\n\n  local x\n  x="$(cmd)" || return 1',

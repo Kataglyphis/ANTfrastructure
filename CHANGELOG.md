@@ -23,6 +23,8 @@
 - Clear 14 more parameter and public return findings in nine docs, host, image, wheel and test files; extend the strict Ruff gate to all 15 typed files and test every selected path.
 - Spell out 27 equivalent Python regex flags in source and shell heredocs; make Ruff FURB167 fatal in full hub lint sweeps with source, heredoc and mutation proofs.
 - Parenthesize eight intentional adjacent strings in collections without changing their values; make Ruff ISC004 fatal in full hub lint sweeps with failure and mutation proofs.
+- Convert 30 string formatting calls to f-strings and make Ruff UP032 fatal in full hub lint sweeps; test Python, shell heredoc and consumer advisory boundaries plus a selector mutation.
+- Share Windows agentic-loop test config defaults and child-process transport; lower their measured duplication budget from 39 to 20 without changing the gate threshold.
 - Check `docs/conf.py` with pinned ty against the checked-out DocumANTation theme before the docs site builds; require a fatal type verdict, a missing-theme failure and mutation proofs for the file and source path.
 - Enforce an 80% command coverage floor for Windows Vulkan validation after adding child-process behavior tests; the complete Windows suite passes 2,729 tests and all 15 module floors.
 - Remove eight unused Python bindings, including one inside a shell heredoc, and make Ruff F401, F841 and RUF059 fatal in default hub preflight sweeps with failing fixtures and selector mutations.

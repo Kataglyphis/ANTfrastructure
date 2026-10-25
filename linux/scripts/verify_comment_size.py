@@ -237,18 +237,18 @@ def main():
         with open(os.path.join(root, rel), encoding="utf-8", errors="replace") as fh:
             # rstrip after truncating, or a trailing space would not survive the allowlist round-trip.
             first = fh.readlines()[start - 1].strip()[:60].rstrip()
-        keys["{}\t{}".format(rel, first)] = (start, n)
+        keys[f"{rel}\t{first}"] = (start, n)
 
     print("=== comment size gate (limit {} line{}) ===".format(LIMIT, "" if LIMIT == 1 else "s"))
     if root != os.path.abspath(ROOT):
-        print("  root: {}".format(root))
-        print("  allow: {}".format(allow))
-    print("  {} block(s) over the limit; {} frozen".format(len(keys), len(frozen)))
+        print(f"  root: {root}")
+        print(f"  allow: {allow}")
+    print(f"  {len(keys)} block(s) over the limit; {len(frozen)} frozen")
 
     def _block(k) -> str:
         rel, _ = k.split("\t")
         start, n = keys[k]
-        return "{}:{}  {} lines".format(rel, start, n)
+        return f"{rel}:{start}  {n} lines"
 
     rc = check_keys(keys, frozen,
                     "NEW comment block(s) over the limit: one line, only the why (AGENTS.md § Comments):",

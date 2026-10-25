@@ -64,9 +64,9 @@ def _report_unchecked(advertised, checked) -> int:
     unchecked = sorted(advertised - checked - set(EXCUSED))
     for k in unchecked:
         sys.stderr.write(
-            "FAIL: {} is advertised by the image but neither checked by the smoke's "
+            f"FAIL: {k} is advertised by the image but neither checked by the smoke's "
             "advertised-vs-actual gate nor excused -- add a HAVE probe + a row in "
-            "_ADVERTISED_VERSION_KEYS, or an EXCUSED entry saying why not.\n".format(k))
+            "_ADVERTISED_VERSION_KEYS, or an EXCUSED entry saying why not.\n")
     return 1 if unchecked else 0
 
 
@@ -74,8 +74,8 @@ def _report_stale(advertised, checked) -> int:
     stale = sorted(set(EXCUSED) - advertised - checked)
     for k in stale:
         sys.stderr.write(
-            "FAIL: STALE excuse for {} ({}) -- the image no longer advertises it; "
-            "delete the EXCUSED entry.\n".format(k, EXCUSED[k]))
+            f"FAIL: STALE excuse for {k} ({EXCUSED[k]}) -- the image no longer advertises it; "
+            "delete the EXCUSED entry.\n")
     return 1 if stale else 0
 
 
@@ -85,9 +85,9 @@ def _report_new_unprobed(checked, probed) -> int:
     if new_unprobed:
         for k in new_unprobed:
             sys.stderr.write(
-                "FAIL: {} sits in _ADVERTISED_VERSION_KEYS but the in-image probe "
-                "prints no `ADV {}` line, so its row can only ever SKIP -- add the "
-                "printf next to the others, or drop the row.\n".format(k, k))
+                f"FAIL: {k} sits in _ADVERTISED_VERSION_KEYS but the in-image probe "
+                f"prints no `ADV {k}` line, so its row can only ever SKIP -- add the "
+                "printf next to the others, or drop the row.\n")
         return 1
     return 0
 
@@ -97,8 +97,8 @@ def _report_healed(probed) -> int:
     if healed:
         for k in healed:
             sys.stderr.write(
-                "FAIL: {} now HAS a probe -- remove it from FROZEN_UNPROBED so the "
-                "baseline cannot rot.\n".format(k))
+                f"FAIL: {k} now HAS a probe -- remove it from FROZEN_UNPROBED so the "
+                "baseline cannot rot.\n")
         return 1
     return 0
 
@@ -113,19 +113,19 @@ def _report_still_unprobed(checked, probed) -> None:
 
 def _report_phantom(advertised, checked) -> None:
     for k in sorted(checked - advertised):
-        print("note: {} is checked but not ENV/ARG-set in any Dockerfile "
-              "(it may come from a base image)".format(k))
+        print(f"note: {k} is checked but not ENV/ARG-set in any Dockerfile "
+              "(it may come from a base image)")
 
 
 def main():
     spath = os.path.join(ROOT, SMOKE)
     if not os.path.exists(spath):
-        sys.stderr.write("FAIL: missing {}\n".format(spath))
+        sys.stderr.write(f"FAIL: missing {spath}\n")
         return 1
 
     seen_files = sorted(glob.glob(os.path.join(ROOT, DOCKERFILE_GLOB)))
     if not seen_files:
-        sys.stderr.write("FAIL: no Dockerfile matched {}\n".format(DOCKERFILE_GLOB))
+        sys.stderr.write(f"FAIL: no Dockerfile matched {DOCKERFILE_GLOB}\n")
         return 1
     advertised = _advertised(seen_files)
 
@@ -133,15 +133,17 @@ def main():
         smoke = fh.read()
     m = re.search(r'_ADVERTISED_VERSION_KEYS="([^"]*)"', smoke)
     if not m:
-        sys.stderr.write("FAIL: _ADVERTISED_VERSION_KEYS not found in {}\n".format(SMOKE))
+        sys.stderr.write(f"FAIL: _ADVERTISED_VERSION_KEYS not found in {SMOKE}\n")
         return 1
     checked = set(m.group(1).split())
     # A row without an `ADV <KEY>` probe line is a permanent SKIP that reads as a pass.
     probed = set(re.findall(r"printf\s+'ADV ([A-Z0-9_]+) ", smoke))
 
     print("=== advertised version keys ===")
-    print("{} advertised across {} Dockerfile(s), {} checked by the smoke, {} excused"
-          .format(len(advertised), len(seen_files), len(checked), len(EXCUSED)))
+    print(
+        f"{len(advertised)} advertised across {len(seen_files)} Dockerfile(s), "
+        f"{len(checked)} checked by the smoke, {len(EXCUSED)} excused"
+    )
 
     rc = (_report_unchecked(advertised, checked)
           | _report_stale(advertised, checked)

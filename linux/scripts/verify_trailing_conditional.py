@@ -144,7 +144,7 @@ def file_sites(path, rel):
         stmt, off = returned_statement(body_lines(body))
         if not stmt:
             continue
-        site = "{}:{}  {}".format(rel, start + off, stmt)
+        site = f"{rel}:{start + off}  {stmt}"
         if is_finding(stmt):
             found[name] = site
         elif delegate(stmt):
@@ -211,18 +211,20 @@ def main():
 
     found = sorted(sites(root, scan_paths(root, args.scan)))
     allow = load_keys(allow_file)
-    keys = {"{}\t{}".format(f, n) for f, n, _s in found}
+    keys = {f"{f}\t{n}" for f, n, _s in found}
     print("=== trailing-conditional return gate ===")
     if root != os.path.abspath(ROOT):
-        print("  root: {}".format(root))
-        print("  allow: {}".format(allow_file))
-    print("  {} function(s) ending on a conditional; {} frozen in {}".format(
-        len(keys), len(allow), os.path.basename(allow_file)))
+        print(f"  root: {root}")
+        print(f"  allow: {allow_file}")
+    print(
+        f"  {len(keys)} function(s) ending on a conditional; "
+        f"{len(allow)} frozen in {os.path.basename(allow_file)}"
+    )
 
     def _site(k) -> str:
         f, n = k.split("\t")
         at = next((s for ff, nn, s in found if ff == f and nn == n), f)
-        return "{}  ->  {}".format(n, at[:110])
+        return f"{n}  ->  {at[:110]}"
 
     rc = check_keys(keys, allow,
                     "NEW trailing-conditional return(s) -- the false arm returns 1 and\n"

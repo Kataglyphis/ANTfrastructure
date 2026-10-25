@@ -487,10 +487,11 @@ subjects are built with `printf`, not written as literal lines: a real
 `tests/test-python-lint-gate.sh` covers the lint tiers. The shared **gate tier**
 (`ruff check --select E9,F63,F7,F82,B012,B023`) rejects an undefined name, syntax
 error, silenced exception or late-bound closure. The default hub preflight sweep also rejects
-`F401`, `F841`, `RUF059`, `FURB167` and `ISC004` in Python files and extracted shell heredocs;
+`F401`, `F841`, `RUF059`, `FURB167`, `ISC004` and `UP032` in Python files and extracted shell heredocs;
 the regex rule rejects abbreviated `re.M`, `re.S` and `re.I` flags after the 27
 existing uses were spelled out. The string rule requires parentheses around the
-eight intentional adjacent literals in collections. Explicit
+eight intentional adjacent literals in collections. Thirty string `.format()` calls
+were converted to f-strings before `UP032` became fatal. Explicit
 targets and named roots retain their advisory adoption tier. The **advisory
 tier** (the full default ruleset) reports other findings without failing. The
 fixture writes `RUFF_VERSION`
@@ -518,6 +519,7 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `python-lint.hub-unused-import-gate`, `python-lint.hub-unused-assignment-gate`,
 `python-lint.hub-unused-unpacking-gate`, `python-lint.hub-regex-flag-gate`,
 `python-lint.hub-string-concatenation-gate`,
+`python-lint.hub-string-format-gate`,
 `python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
 `python-lint.heredoc-python-decision` (the last targets
 `extract_embedded_python.py`, which `verify_gate_registry.py` counts among
@@ -673,6 +675,9 @@ as proof. Baseline budgets only decrease after an authoritative whole-tree scan.
 DLL graph, debugger transport, temporary environments and local git fixtures now
 share their existing owners. Regression controls retain independent expected bytes,
 arguments and failure verdicts; missing copied companions remain fatal.
+The Windows agentic loop tests now share config defaults and real-child transport;
+their measured self-pair budget fell from 39 to 20. The remaining overlay cases
+exercise different configuration behavior.
 
 The cleanup separates SBOM construction and comparison, Python extraction, package-index
 fetching, dependency dispatch, option parsing and smoke probes from their drivers. Shared
@@ -785,7 +790,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3443 entries** over **374 distinct test commands**; both digits are
+manifest holds **3444 entries** over **374 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

@@ -27521,6 +27521,14 @@
   "why": "An unparenthesized adjacent string in a hub collection must fail the full lint sweep."
  },
  {
+  "id": "python-lint.hub-string-format-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_FORMAT_SELECT=\"UP032\"",
+  "replace": "HUB_FORMAT_SELECT=\"E9\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "A format call in hub Python or an extracted shell block must fail the full lint sweep."
+ },
+ {
   "id": "python-types.parameter-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
   "find": "--select ANN001,ANN201 --output-format concise",

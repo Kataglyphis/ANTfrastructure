@@ -36,10 +36,10 @@ def _extract_blocks(src, text, outdir) -> tuple[int, dict[str, list[str]]]:
             continue
         if RUNS_IT.search(opener):
             line = text[:m.start()].count("\n") + 1
-            out = os.path.join(outdir, "{}__{}.py".format(_stem(src), line))
+            out = os.path.join(outdir, f"{_stem(src)}__{line}.py")
             with open(out, "w", encoding="utf-8") as fh:
                 fh.write(body + "\n")
-            print("{}\t{}:{}".format(out, src, line))
+            print(f"{out}\t{src}:{line}")
             written += 1
         elif CATS_IT.search(opener) and not is_fixture_source:
             fragments.setdefault(FAMILY.sub(r"\1", marker), []).append(body)
@@ -57,10 +57,10 @@ def _extract_families(src, fragments, outdir) -> int:
             ast.parse(joined)
         except SyntaxError:
             continue  # not one program after all — leave it out rather than guess
-        out = os.path.join(outdir, "{}__{}.py".format(_stem(src), family.lower()))
+        out = os.path.join(outdir, f"{_stem(src)}__{family.lower()}.py")
         with open(out, "w", encoding="utf-8") as fh:
             fh.write(joined)
-        print("{}\t{}: {} cat-ed fragments".format(out, src, len(frags)))
+        print(f"{out}\t{src}: {len(frags)} cat-ed fragments")
         written += 1
     return written
 

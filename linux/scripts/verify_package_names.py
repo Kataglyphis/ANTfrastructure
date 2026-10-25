@@ -500,8 +500,8 @@ def load_arch(arch, codename, pocket, mirrors, cdir, ttl, timeout, refresh):
     got = ok_n == len(urls)
     if ok_n and not got:
         sys.stderr.write(
-            "WARN: {}{} index incomplete ({}/{} components); not caching, "
-            "falling back\n".format(arch, suffix, ok_n, len(urls)))
+            f"WARN: {arch}{suffix} index incomplete ({ok_n}/{len(urls)} components); "
+            "not caching, falling back\n")
         real, virtual = set(), {}
     if not got:
         if os.path.exists(stamp):

@@ -95,17 +95,30 @@ Describe 'WindowsAgenticLoop.Common' {
 
     # A real child process: every other test runs -DryRun, which never exercises the output reader threads.
     Context 'Invoke-AgentProcess captures a real process' {
+        BeforeAll {
+            function Invoke-TestAgentChild {
+                param([string]$CommandText, [string]$Label, [string]$Message = '', [int]$TimeoutSeconds = 60,
+                    [switch]$RenderClaudeStream)
+                $processArgs = @{
+                    Executable = (Get-Process -Id $PID).Path
+                    ArgumentList = @('-NoProfile', '-Command', $CommandText)
+                    Message = $Message
+                    TimeoutSeconds = $TimeoutSeconds
+                    Label = $Label
+                }
+                if ($RenderClaudeStream) { $processArgs.RenderClaudeStream = $true }
+                Invoke-AgentProcess @processArgs 6>$null
+            }
+        }
+
         It 'returns stdout in order and the exit code' {
-            $pwsh = (Get-Process -Id $PID).Path
-            $result = Invoke-AgentProcess -Executable $pwsh `
-                -ArgumentList @('-NoProfile', '-Command', '$in = [Console]::In.ReadToEnd(); "one"; "two:$in"; exit 3') `
-                -Message 'stdin-text' -TimeoutSeconds 60 -Label 'capture-test' 6>$null
+            $result = Invoke-TestAgentChild -CommandText '$in = [Console]::In.ReadToEnd(); "one"; "two:$in"; exit 3' `
+                -Message 'stdin-text' -Label 'capture-test'
             $result.ExitCode | Should -Be 3
             $result.Output | Should -Be "one`ntwo:stdin-text"
         }
 
         It 'renders Claude events while returning the raw protocol in order' {
-            $pwsh = (Get-Process -Id $PID).Path
             $events = @(
                 '{"type":"system","subtype":"init","model":"fixture-model"}',
                 '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"src/fixture.ps1"}},{"type":"text","text":"fixture answer"}]}}',
@@ -115,7 +128,7 @@ Describe 'WindowsAgenticLoop.Common' {
             )
             $payload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(($events -join [char]10)))
             $child = "[Console]::Out.Write([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$payload')))"
-            $result = Invoke-AgentProcess -Executable $pwsh -ArgumentList @('-NoProfile', '-Command', $child) -Message '' -TimeoutSeconds 60 -Label 'claude-render-test' -RenderClaudeStream 6>$null
+            $result = Invoke-TestAgentChild -CommandText $child -Label 'claude-render-test' -RenderClaudeStream
             $result.ExitCode | Should -Be 0
             $result.Output | Should -Be ($events -join [char]10)
             $log = Get-Content -LiteralPath (Get-AgenticLogFile) -Raw
@@ -130,9 +143,8 @@ Describe 'WindowsAgenticLoop.Common' {
         }
 
         It 'keeps stderr visible and marks its persisted log section' {
-            $pwsh = (Get-Process -Id $PID).Path
             $child = '[Console]::Out.WriteLine("fixture stdout"); [Console]::Error.WriteLine("fixture stderr")'
-            $result = Invoke-AgentProcess -Executable $pwsh -ArgumentList @('-NoProfile', '-Command', $child) -Message '' -TimeoutSeconds 60 -Label 'stderr-test' 6>$null
+            $result = Invoke-TestAgentChild -CommandText $child -Label 'stderr-test'
             $result.ExitCode | Should -Be 0
             $result.Output | Should -Be 'fixture stdout'
             $log = Get-Content -LiteralPath (Get-AgenticLogFile) -Raw
@@ -141,8 +153,7 @@ Describe 'WindowsAgenticLoop.Common' {
         }
 
         It 'kills a timed-out child and reports exit minus one' {
-            $pwsh = (Get-Process -Id $PID).Path
-            $result = Invoke-AgentProcess -Executable $pwsh -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 20') -Message '' -TimeoutSeconds 1 -Label 'timeout-test' 6>$null
+            $result = Invoke-TestAgentChild -CommandText 'Start-Sleep -Seconds 20' -TimeoutSeconds 1 -Label 'timeout-test'
             $result.ExitCode | Should -Be -1
             (Get-Content -LiteralPath (Get-AgenticLogFile) -Raw) | Should -Match 'timeout-test timed out after 1s'
         }
@@ -563,21 +574,10 @@ Plain text after the block.
 
     Context 'Invoke-AgenticLoop' {
         BeforeAll {
-            $script:mockConfig = @{
-                models = @{ planner = 'test-planner'; executor = 'test-executor' }
-                intervals = @{
-                    buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
-                    maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
-                }
-                git = @{ autoCommit = $false; commitPrefix = 'test' }
-                build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok'; linuxTestCommand = 'echo ok'; linuxQualityCommand = 'echo ok' }
-            }
-            # The engine tests share one config shape; only the engines table differs.
-            function New-EngineTestConfig {
+            # Keep the legacy models and modern engines cases on their original schemas.
+            function New-LoopTestConfig {
                 param([hashtable]$Engines)
-                @{
-                    engine = 'claude'
-                    engines = $Engines
+                $config = @{
                     intervals = @{
                         buildEveryNTasks = 3; qualityEveryNTasks = 5; refactorEveryNIterations = 3
                         maxIterations = 1; maxExecutorRetries = 1; loopDelaySeconds = 0
@@ -585,7 +585,17 @@ Plain text after the block.
                     git = @{ autoCommit = $false; commitPrefix = 'test' }
                     build = @{ windowsTestCommand = 'echo ok'; windowsQualityCommand = 'echo ok' }
                 }
+                if ($null -eq $Engines) {
+                    $config.models = @{ planner = 'test-planner'; executor = 'test-executor' }
+                    $config.build.linuxTestCommand = 'echo ok'
+                    $config.build.linuxQualityCommand = 'echo ok'
+                } else {
+                    $config.engine = 'claude'
+                    $config.engines = $Engines
+                }
+                return $config
             }
+            $script:mockConfig = New-LoopTestConfig
         }
 
         It 'rejects a config with no build entries before running phases' {
@@ -635,7 +645,7 @@ Plain text after the block.
         ) {
             $scenario = $_
             $loopArgs = @{
-                Config = New-EngineTestConfig -Engines $scenario.Engines
+                Config = New-LoopTestConfig -Engines $scenario.Engines
                 PlannerPrompt = 'test'
                 ExecutorPrompt = 'test'
                 BuildConfigs = @('debug')
