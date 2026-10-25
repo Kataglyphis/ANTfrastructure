@@ -46,6 +46,18 @@ placed wherever that repo already keeps its ANTfrastructure wrappers -
 AccelerANTgine and ANThology, but the flat `scripts/` in jotrockenmitlocken.
 Same shape as `run-lint-gates.sh` there.
 
+A copied wrapper needs the hub driver before the driver can inspect submodules. If its direct
+`third_party/ANTfrastructure` checkout is absent, a real `--apply` first initializes that one
+recorded gitlink, without recursing into the hub's own submodules. The driver then updates all
+selected direct submodules to their remote default tips. The wrapper checks the tracked gitlink,
+unchanged `.gitmodules` mapping and empty, unredirected path before cloning. It saves the parent's
+entire local Git config before initialization. Fatal setup or driver failures deinitialize the hub,
+restore the config bytes, and remove only directories that were absent before the call; a failed
+rollback leaves the backup path in the error. Driver exit 2 means applied updates with refusals,
+so the initialized hub remains for review. A report or `--apply --dry-run` never bootstraps the
+missing hub: initialize it explicitly or point `ANTFRASTRUCTURE_DIR` at an existing checkout to
+load the driver for a read-only run.
+
 The hub driver resolves `GITHUB_COM_TOKEN` from the environment, `GH_TOKEN`, `gh`
 or WSL's `gh.exe` before a live run. A missing token or a NOT CHECKED lookup makes
 the command fail before any `--apply` write. Injected fixture reports and

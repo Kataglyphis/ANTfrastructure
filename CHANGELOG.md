@@ -15,6 +15,8 @@
 
 ## 2026-10-26 — Renovate submodule updates
 
+- Let a copied consumer Renovate wrapper initialize its own missing hub submodule on `--apply`;
+  report and dry-run stay read-only, while fatal failures restore the checkout and Git config.
 - Make the local Renovate command inspect every direct submodule and update its gitlink to the
   latest commit of the remote default branch, regardless of `.gitmodules branch` or Renovate's
   report rows. Apply initializes missing checkouts; report and dry-run clone nothing. Retain

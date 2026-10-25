@@ -12,7 +12,7 @@
   "git-submodules": {
     "description": [
       "Renovate DISABLES the git-submodules manager by default, which is why every Kataglyphis submodule gitlink - ANTfrastructure's own third_party/DocumANTation pin included - has been unwatched since the day it was added. Nothing else in this preset matters as much as this one line.",
-      "The manager bumps a gitlink to the tip of the branch named in .gitmodules (falling back to the remote's default branch), so a submodule that wants to be watched needs a `branch = <name>` entry there."
+      "Renovate's manager may report the branch named in .gitmodules; the local driver independently checks every direct gitlink against its remote default branch, even without a branch entry or a Renovate row."
     ],
     "enabled": true
   },

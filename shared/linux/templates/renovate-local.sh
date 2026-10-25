@@ -5,5 +5,5 @@ set -euo pipefail
 _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${_SCRIPT_DIR}/lib/antfrastructure.sh"
 
-# No preconditions here: upstream owns and tests them, and a second copy only disagrees.
-antfrastructure_exec linux/scripts/renovate-local.sh "$KATAGLYPHIS_REPO_ROOT" "$@"
+# The copied bootstrap initializes this hub only for a real apply; upstream owns the update.
+antfrastructure_renovate_exec linux/scripts/renovate-local.sh "$KATAGLYPHIS_REPO_ROOT" "$@"

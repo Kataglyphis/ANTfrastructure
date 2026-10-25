@@ -27,6 +27,11 @@ per-repo slot. Seven copies of that wrapper existed with headers between 50 and
 stale. The hub driver now resolves `GITHUB_COM_TOKEN` from `GH_TOKEN`, `gh` or
 `gh.exe`, then refuses a live run without one. It also fails when Renovate leaves
 any dependency unchecked, so a rate-limited lookup cannot look up to date.
+Use `antfrastructure_renovate_exec` in that wrapper. If its pinned hub submodule is missing,
+the copied bootstrap initializes only that gitlink for a real `--apply`, then calls the hub
+driver. Report and dry-run do not clone. A fatal failure restores the previous uninitialized
+state and the parent's Git config; status 2 leaves the checkout for review. Sync both templates
+to consumers when this bootstrap changes.
 
 `git-hooks/pre-commit` is the third file here, and the one a consumer does
 **not** copy: `git config core.hooksPath

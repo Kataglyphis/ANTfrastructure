@@ -1323,6 +1323,12 @@ The rules; the mechanism is documented once in
   recurse into nested external submodules, stage or commit gitlinks. An explicit `--managers`
   selection still controls whether the `git-submodules` manager runs. See
   [the submodule mechanism](docs/dependency-updates.md#how-the-submodule-half-follows-default-branches).
+- **A consumer wrapper can start from an uninitialized hub.** Its copied bootstrap initializes
+  only the tracked direct `third_party/ANTfrastructure` gitlink for a real `--apply`, before the
+  hub driver exists to handle the rest. Report and dry-run must not clone. On fatal driver or
+  initialization failure, deinitialize that bootstrap checkout, restore the parent's Git config
+  byte-for-byte and remove only paths absent before the call. Exit 2 retains the checkout for
+  review; an incomplete rollback retains the config backup and fails visibly.
 - **`linux/scripts/git-sync-branches.sh` is not that command.** It puts working trees on their
   branch tip for local work, fast-forward only, third-party submodules included unless
   `--owned-only`, and commits no gitlink:

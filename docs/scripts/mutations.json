@@ -28255,5 +28255,37 @@
   "replace": "paths = ['''^logs/''']",
   "test": "bash linux/scripts/tests/test-secret-scan.sh",
   "why": "ignored Python bytecode caches can contain scanner-shaped bytes but are not source"
+ },
+ {
+  "id": "renovate.wrapper-apply-initializes-hub",
+  "target": "shared/linux/templates/antfrastructure.sh",
+  "find": "            --apply) apply=1 ;;",
+  "replace": "            --apply) : ;;",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "without the copied wrapper's bootstrap, a fresh consumer clone cannot load the Renovate driver for its first apply"
+ },
+ {
+  "id": "renovate.wrapper-dry-run-does-not-clone",
+  "target": "shared/linux/templates/antfrastructure.sh",
+  "find": "            --dry-run) return 1 ;;",
+  "replace": "            --dry-run) : ;;",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "a preview must not initialize the very hub checkout whose absence the user is inspecting"
+ },
+ {
+  "id": "renovate.wrapper-fatal-restores-hub",
+  "target": "shared/linux/templates/antfrastructure.sh",
+  "find": "    if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 2 ]; then",
+  "replace": "    if false; then",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "a fatal driver status after bootstrap must not leave an initialized hub or changed parent config behind"
+ },
+ {
+  "id": "renovate.wrapper-refusal-keeps-hub",
+  "target": "shared/linux/templates/antfrastructure.sh",
+  "find": "    if [ \"$status\" -ne 0 ] && [ \"$status\" -ne 2 ]; then",
+  "replace": "    if [ \"$status\" -ne 0 ]; then",
+  "test": "bash linux/scripts/tests/test-renovate-template-bootstrap.sh",
+  "why": "driver exit two can carry applied updates and explicit refusals, so its initialized hub must remain for review"
  }
 ]
