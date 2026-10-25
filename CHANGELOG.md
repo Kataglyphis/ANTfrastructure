@@ -15,6 +15,7 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Isolate riscv64 cross pkg-config probes from the amd64 image's metadata, and make the GStreamer smoke use the shared target environment so invalid x86_64 link paths fail before consumer tests.
 - Add an on-demand Python refactor preview: pinned safe Ruff fixes and formatting, strict follow-up gates and an uploaded patch, with local logs ignored by Git.
 - Keep the preview's general tests on the runner Python while the type gate uses the locked quality environment; prove both paths in the workflow fixture.
 - Upload strict Windows complexity JSON from CI so each run keeps its measured results for comparison.

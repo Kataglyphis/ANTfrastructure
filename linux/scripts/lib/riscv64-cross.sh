@@ -75,6 +75,10 @@ riscv64_cross_env() {
   export PKG_CONFIG_ALLOW_CROSS=1
   export PKG_CONFIG_SYSROOT_DIR_riscv64gc_unknown_linux_gnu="${sysroot}"
   export PKG_CONFIG_LIBDIR_riscv64gc_unknown_linux_gnu="${RISCV64_PKG_CONFIG_LIBDIR}"
+  # The image's native PKG_CONFIG_PATH outranks the target libdir, so hide it from target probes.
+  unset PKG_CONFIG_PATH PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu
+  export PKG_CONFIG_SYSROOT_DIR="${sysroot}"
+  export PKG_CONFIG_LIBDIR="${RISCV64_PKG_CONFIG_LIBDIR}"
 
   # QEMU remaps absolute opens into the sysroot, so the image's arch-neutral paths reach riscv64 files.
   export QEMU_LD_PREFIX="${sysroot}"

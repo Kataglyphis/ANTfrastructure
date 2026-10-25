@@ -31,8 +31,12 @@ run_riscv64 "${WORK}/cxx"
 
 printf '#include <gst/gst.h>\nint main(void) { gchar *v = gst_version_string(); g_print("riscv64 %%s ok\\n", v); g_free(v); return 0; }\n' \
   > "${WORK}/gst.c"
-read -r -a GST_FLAGS <<< "$(PKG_CONFIG_LIBDIR="${RISCV64_PKG_CONFIG_LIBDIR}" PKG_CONFIG_SYSROOT_DIR="${RISCV64_SYSROOT}" \
-  pkg-config --cflags --libs gstreamer-1.0)"
+GST_FLAGS_TEXT="$(pkg-config --cflags --libs gstreamer-1.0)"
+if [[ "${GST_FLAGS_TEXT}" == *x86_64-linux-gnu* ]]; then
+  printf 'riscv64-cross-smoke: host GStreamer pkg-config path leaked into target flags\n' >&2
+  exit 1
+fi
+read -r -a GST_FLAGS <<< "${GST_FLAGS_TEXT}"
 "${CC_RV}" -O2 -o "${WORK}/gst" "${WORK}/gst.c" "${GST_FLAGS[@]}"
 run_riscv64 "${WORK}/gst"
 

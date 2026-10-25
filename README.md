@@ -24,7 +24,7 @@ actions, reusable workflows, shell libraries and gates serve the family at `@dev
 
 ## Highlights
 
-- **One multi-arch `:latest`** for Linux: ONNX Runtime (+GenAI), OpenCV, FFmpeg, GStreamer, LiteRT, TVM, IREE ([GenAI smoke contract](docs/gen1-riscv64-genai.md)).
+- **One multi-arch `:latest`** for Linux: ONNX Runtime (+GenAI), OpenCV, FFmpeg, GStreamer, LiteRT, TVM, IREE ([GenAI smoke contract](docs/gen1-riscv64-genai.md); [RISC-V cross tests](docs/riscv64-cross-test-lanes.md#the-pieces)).
 - **A Windows build image**, `:winamd64`, with MSVC, clang-cl, DirectML and HailoRT; `:winarm64` is its arm64 bundle.
 - **Accelerators**: Hailo-10H in `:latest`, CUDA and DeepStream in `:latest-nvidia`, MIGraphX in `:latest-rocm`.
 - **The family's CI surface**: composite actions and reusable workflows, called at `@develop`.

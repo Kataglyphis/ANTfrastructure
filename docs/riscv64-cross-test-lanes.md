@@ -93,6 +93,15 @@ loader finds every prefix of the image under QEMU.
 wrapper; `CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_RUSTFLAGS` carries the image's
 `+v,+zvl128b`, which rustc 1.98 still reports as unstable features (a warning per crate).
 
+**pkg-config:** `riscv64_cross_env` removes the image's amd64 `PKG_CONFIG_PATH` and any inherited
+Rust target path before exporting both direct and Rust target `PKG_CONFIG_LIBDIR` and
+`PKG_CONFIG_SYSROOT_DIR` values. `PKG_CONFIG_PATH` takes precedence over `PKG_CONFIG_LIBDIR`;
+leaving the native path in place makes GStreamer's `.pc` files emit
+`/opt/riscv64-sysroot/opt/gstreamer/lib/x86_64-linux-gnu`, where the riscv64 libraries do not
+exist. The GStreamer cross smoke now uses these exports without overriding them, and fails if an
+x86_64 link path returns. The local cross-env fixture plants native values and proves they are
+removed; it does not replace a full image/sysroot link test.
+
 **QEMU: 10.2.3, `rva23u64`.** The action registers `tonistiigi/binfmt:qemu-v10.2.3-68`,
 pinned by digest; its `qemu-riscv64` is byte-identical (`3ddd4d6e…`) to the one this dev
 host's rootless binfmt uses, so a local run is the CI run. The image's glibc needs RVV 1.0

@@ -971,6 +971,9 @@ CI validates them through `linux/scripts/verify-critical-fixes.sh`.
 - **riscv64 self-builds `onnxruntime-genai`** (GEN1); never re-add an arch guard.
   `GENAI_ALLOW_RISCV64=false` backs it out. What is proven, and the one caveat that is not (real
   silicon): [`gen1-riscv64-genai.md`](docs/gen1-riscv64-genai.md).
+- **riscv64 cross probes must read only target pkg-config metadata.** Keep the native
+  `PKG_CONFIG_PATH` out of `riscv64_cross_env` and let the GStreamer smoke consume its exported
+  target settings; a host `.pc` can turn into an invalid sysroot-prefixed x86_64 link path.
 - The GenAI smoke catches only known binding and native failures; unexpected exceptions stay fatal and cannot produce a green sentinel.
 - **Feature parity has exactly TWO documented exemptions**, both riscv64: `cmake` (Kitware
   publishes no riscv64 archive) and `iree_base_compiler` (the IREE compiler cannot be

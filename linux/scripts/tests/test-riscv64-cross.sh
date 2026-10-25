@@ -106,6 +106,44 @@ t_assert_contains "${_pc}" "/opt/rv/opt/gstreamer/lib/pkgconfig" "the image's ow
 t_assert_contains "${_pc}" "/opt/rv/usr/lib/riscv64-linux-gnu/pkgconfig" "the distro's multiarch .pc files"
 t_assert_eq "" "$(printf '%s' "${_pc}" | tr ':' '\n' | grep -v -e '^/opt/rv/' || true)" "every entry is inside the sysroot"
 
+t_case "cross environment hides amd64 pkg-config metadata from Rust and direct probes"
+_cross_sysroot="${_tmp}/cross-pc/sysroot"
+_cross_llvm="${_tmp}/cross-pc/llvm"
+mkdir -p "${_cross_sysroot}/lib" "${_cross_llvm}/bin"
+printf '#!/bin/sh\nexit 0\n' > "${_cross_sysroot}/lib/ld-linux-riscv64-lp64d.so.1"
+chmod +x "${_cross_sysroot}/lib/ld-linux-riscv64-lp64d.so.1"
+printf '#!/bin/sh\nprintf "clang version 22\\n"\n' > "${_cross_llvm}/bin/clang"
+chmod +x "${_cross_llvm}/bin/clang"
+_cross_libdir="$(bash -c "source '${LIB}'; riscv64_cross_pkg_config_libdir '${_cross_sysroot}'")"
+# shellcheck disable=SC2016
+_cross_env="$(env RISCV64_SYSROOT="${_cross_sysroot}" \
+  PKG_CONFIG_PATH=/opt/gstreamer/lib/x86_64-linux-gnu/pkgconfig \
+  PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu=/opt/gstreamer/lib/x86_64-linux-gnu/pkgconfig \
+  PKG_CONFIG_LIBDIR=/usr/lib/x86_64-linux-gnu/pkgconfig PKG_CONFIG_SYSROOT_DIR=/ \
+  bash -c '
+    source "$1"
+    _fake_llvm="$3"
+    riscv64_cross_llvm_dir() { printf "%s" "${_fake_llvm}"; }
+    riscv64_cross_env "$2" || exit
+    printf "path=%s\n" "${PKG_CONFIG_PATH+present}"
+    printf "target-path=%s\n" "${PKG_CONFIG_PATH_riscv64gc_unknown_linux_gnu+present}"
+    printf "libdir=%s\n" "${PKG_CONFIG_LIBDIR}"
+    printf "sysroot=%s\n" "${PKG_CONFIG_SYSROOT_DIR}"
+    printf "target-libdir=%s\n" "${PKG_CONFIG_LIBDIR_riscv64gc_unknown_linux_gnu}"
+  ' _ "${LIB}" "${_tmp}/cross-pc/bin" "${_cross_llvm}")"; _rc=$?
+t_assert_eq 0 "${_rc}" "the fixture must reach the exported environment"
+t_assert_contains "${_cross_env}" 'path=' "host PKG_CONFIG_PATH must not outrank the target library directory"
+t_assert_eq "" "$(printf '%s\n' "${_cross_env}" | grep -Fx 'path=present' || true)" \
+  "the image's native GStreamer .pc files must be hidden"
+t_assert_eq "" "$(printf '%s\n' "${_cross_env}" | grep -Fx 'target-path=present' || true)" \
+  "an inherited Rust target path must not reintroduce host metadata"
+t_assert_contains "${_cross_env}" "libdir=${_cross_libdir}" \
+  "direct pkg-config probes must search the target sysroot"
+t_assert_contains "${_cross_env}" "sysroot=${_cross_sysroot}" \
+  "direct pkg-config probes must rewrite target paths into the sysroot"
+t_assert_contains "${_cross_env}" "target-libdir=${_cross_libdir}" \
+  "pkg-config-rs must receive the same target directory"
+
 t_case "riscv64_cross_env refuses a missing sysroot instead of building for the host"
 _out="$(RISCV64_SYSROOT="${_tmp}/none" bash -c "source '${LIB}'; riscv64_cross_env '${_tmp}/bin2'" 2>&1)"; _rc=$?
 t_assert_eq 1 "${_rc}" "no sysroot must stop the lane"
