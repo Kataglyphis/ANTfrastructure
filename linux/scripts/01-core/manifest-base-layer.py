@@ -8,10 +8,11 @@ Prints the first layer's digest string to stdout and exits 0 on success.
 If the input is empty, the manifest is a list, or no layers exist, prints nothing
 and exits 0 (caller should handle empty output).
 """
-import sys
 import json
+import sys
 
-def main():
+
+def main() -> None:
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError):

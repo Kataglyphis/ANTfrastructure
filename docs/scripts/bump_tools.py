@@ -131,7 +131,7 @@ def node_pins(v, keys) -> dict[str, str]:
     pins = {}
     for env_key, plat in zip(keys, ("linux-x64", "linux-arm64")):
         asset = f"node-v{v}-{plat}.tar.xz"
-        m = re.search(rf"^([0-9a-f]{{64}})\s+{re.escape(asset)}$", sums, re.M)
+        m = re.search(rf"^([0-9a-f]{{64}})\s+{re.escape(asset)}$", sums, re.MULTILINE)
         if not m:
             raise RuntimeError(f"node {v}: SHASUMS256.txt lists no {asset}")
         pins[env_key] = m.group(1)
@@ -379,7 +379,7 @@ def vulkan_rt_windows_zip_sha256(v, arch="X64"):
         text = bv.http_text(f"https://sdk.lunarg.com/sdk/sha/{v}/{platform}/{name}.txt")
     except Exception:  # noqa: BLE001 — fall back to hashing the zip itself
         text = ""
-    m = re.search(rf"^([0-9a-fA-F]{{64}})\s+{re.escape(name)}\s*$", text, re.M)
+    m = re.search(rf"^([0-9a-fA-F]{{64}})\s+{re.escape(name)}\s*$", text, re.MULTILINE)
     return m.group(1).lower() if m else bv.sha256_of_url(f"https://sdk.lunarg.com/sdk/download/{v}/{platform}/{name}")
 
 

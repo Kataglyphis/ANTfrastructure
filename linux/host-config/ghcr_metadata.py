@@ -4,13 +4,26 @@
 """Read GHCR package metadata without contacting the registry."""
 import json
 import sys
+from typing import TypedDict
 
 
-def version_tags(version):
+class ContainerMetadata(TypedDict, total=False):
+    tags: list[str]
+
+
+class PackageMetadata(TypedDict, total=False):
+    container: ContainerMetadata
+
+
+class PackageVersion(TypedDict, total=False):
+    metadata: PackageMetadata
+
+
+def version_tags(version: PackageVersion) -> list[str]:
     return version.get("metadata", {}).get("container", {}).get("tags", [])
 
 
-def main():
+def main() -> None:
     payload = json.load(sys.stdin)
     mode = sys.argv[1]
     if mode == "inventory":

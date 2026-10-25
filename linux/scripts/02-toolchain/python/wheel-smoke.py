@@ -14,9 +14,10 @@ import importlib.util
 import platform
 import sys
 from pathlib import Path
+from types import ModuleType
 
 
-def load_sibling(stem: str):
+def load_sibling(stem: str) -> ModuleType:
     """The free-threaded helper beside this file, by path: -I keeps the script's directory off sys.path."""
     path = Path(__file__).with_name(f"{stem}.py")
     spec = importlib.util.spec_from_file_location(stem.replace("-", "_"), path)

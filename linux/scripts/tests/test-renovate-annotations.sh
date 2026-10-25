@@ -49,7 +49,7 @@ for pat in pats:
         if not groups.get("currentDigest") and not readable(groups):
             unreadable.append("%s=%s (versioning %s)" % (
                 groups["depName"], groups["currentValue"], groups.get("versioning") or "semver"))
-written = len(re.findall(r"^# renovate: ", body, re.M))
+written = len(re.findall(r"^# renovate: ", body, re.MULTILINE))
 if sys.argv[2] == "count":
     print("%d %d" % (written, len(found)))
 elif sys.argv[2] == "unreadable":

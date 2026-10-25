@@ -108,7 +108,7 @@ for root, _, files in os.walk(bundle):
 cache = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True).stdout
 packages, missing = {"libc6"}, []
 for soname in sorted(needed):
-    m = re.search(r"^\s*" + re.escape(soname) + r" \(.*?\) => (\S+)$", cache, re.M)
+    m = re.search(r"^\s*" + re.escape(soname) + r" \(.*?\) => (\S+)$", cache, re.MULTILINE)
     path = m.group(1) if m else ""
     # usrmerge: ldconfig says /lib/..., dpkg recorded /usr/lib/... or the versioned file the link names.
     candidates = [path, "/usr" + path if path.startswith("/lib") else "", os.path.realpath(path) if path else ""]

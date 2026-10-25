@@ -18,6 +18,7 @@ import stat
 import sys
 import tarfile
 import time
+from collections.abc import Iterable
 
 WHITEOUT = ".wh."
 OPAQUE = ".wh..wh..opq"
@@ -45,7 +46,7 @@ def norm(name: str) -> str:
 class Allow:
     """The allowlist: a path selects itself and everything under it, as tar's member names do."""
 
-    def __init__(self, paths) -> None:
+    def __init__(self, paths: Iterable[str]) -> None:
         self.paths = tuple(norm(p) for p in paths)
 
     def selects(self, name: str) -> bool:

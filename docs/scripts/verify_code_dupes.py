@@ -71,7 +71,7 @@ SHELL_FUNC = re.compile(r"^([A-Za-z_][A-Za-z0-9_:-]*)\s*\(\)\s*\{\s*$")
 PS_FUNC = re.compile(r"^\s*(?:function|filter)\s+([^\s({]+)\s*(?:\([^)]*\))?\s*\{?\s*$",
                      re.IGNORECASE)
 # Blanked first: an unbalanced brace in a <# #> comment would swallow the rest of the file.
-PS_BLOCK_COMMENT = re.compile(r"<#.*?#>", re.S)
+PS_BLOCK_COMMENT = re.compile(r"<#.*?#>", re.DOTALL)
 # $env:PATH and $script:Foo are one variable each, so a renamed copy still matches.
 PS_SCOPE_VAR = re.compile(r"\$(?:global|script|local|private|using|env|variable):",
                           re.IGNORECASE)
@@ -284,7 +284,7 @@ def docker_units(path: Path) -> list[tuple[int, str]]:
 def md_units(path: Path) -> list[tuple[int, str]]:
     """Paragraphs, with fenced code blocks dropped (the prose gate's rule)."""
     text = path.read_text(encoding="utf-8", errors="replace")
-    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     units, buf, start, line_no = [], [], 1, 1
     for raw in text.split("\n"):
         if raw.strip():

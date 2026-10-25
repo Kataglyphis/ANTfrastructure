@@ -27505,12 +27505,20 @@
   "why": "An unused unpacked binding must fail the full hub sweep."
  },
  {
+  "id": "python-lint.hub-regex-flag-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_REGEX_SELECT=\"FURB167\"",
+  "replace": "HUB_REGEX_SELECT=\"E9\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "An abbreviated regex flag in hub Python or an extracted shell block must fail the full hub sweep."
+ },
+ {
   "id": "python-types.parameter-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN201 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Missing parameter types in six typed Python files must fail the strict Ruff gate."
+  "why": "Missing parameter types in fifteen typed Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.public-return-annotation-gate",
@@ -27518,14 +27526,14 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN001 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Missing public return types in six typed Python files must fail the strict Ruff gate."
+  "why": "Missing public return types in fifteen typed Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.parameter-return-file-scope",
   "target": "linux/scripts/lint-python-types.sh",
-  "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py')",
-  "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py')",
+  "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py'",
+  "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "All six typed Python files must remain in the strict parameter and public-return scope."
+  "why": "All fifteen typed Python files must remain in the strict parameter and public-return scope."
  }
 ]

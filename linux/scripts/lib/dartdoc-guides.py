@@ -29,7 +29,7 @@ RUST_MAIN_END = "</section></div></main>"
 RUST_TOC_START = '<section id="rustdoc-toc">'
 RUST_TOC_END = "</section>"
 RUST_SIDEBAR = '<div class="sidebar-elems">'
-RUST_TOPBAR = re.compile(r'(<rustdoc-topbar><h2><a href="#">).*?(</a>)', re.S)
+RUST_TOPBAR = re.compile(r'(<rustdoc-topbar><h2><a href="#">).*?(</a>)', re.DOTALL)
 FLAVORS = ("dartdoc", "rustdoc")
 NAV_MARKER = "kg-md-nav-section"
 FOOTER_MARKER = "kg-doc-footer-links"
@@ -248,7 +248,7 @@ def render_guide_page(shell, nav_title: str, suffix: str, md_text: str, links, s
     body = add_heading_ids(rewrite_md_links(RENDERER.render(md_text), links, source_rel), headings)
     title = f"{nav_title} - {suffix}" if suffix else nav_title
     page, n = re.subn(
-        r"<title>.*?</title>", f"<title>{html.escape(title)}</title>", shell, count=1, flags=re.S
+        r"<title>.*?</title>", f"<title>{html.escape(title)}</title>", shell, count=1, flags=re.DOTALL
     )
     if n != 1:
         raise SystemExit(f"guide-{slug}.html: no <title> in the page shell.")

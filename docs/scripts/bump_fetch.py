@@ -155,7 +155,7 @@ def asset_sha256(repo: str, tag: str, asset: str, sums: tuple[str, ...] = ()) ->
             text = bv.http_text(base + sums_name)
         except Exception:  # noqa: BLE001 — try the next candidate / fallback
             continue
-        m = re.search(rf"([0-9a-fA-F]{{64}})[ \t*]+\.?/?{re.escape(asset)}\s*$", text, re.M)
+        m = re.search(rf"([0-9a-fA-F]{{64}})[ \t*]+\.?/?{re.escape(asset)}\s*$", text, re.MULTILINE)
         if m:
             return m.group(1).lower()
     return bv.sha256_of_url(base + asset)

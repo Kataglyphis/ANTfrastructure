@@ -131,7 +131,7 @@ def _get(url: str, host: str, repo: str, accept: str) -> bytes | None:
         return None
 
 
-def main(argv) -> int:
+def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print(f"usage: {argv[0]} <image-ref> <label-key>", file=sys.stderr)
         return EXIT_UNREADABLE

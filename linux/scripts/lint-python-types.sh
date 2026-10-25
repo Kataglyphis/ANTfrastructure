@@ -58,11 +58,16 @@ mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/c
 mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_planner.py' \
   'linux/llm-stack/gateway/render_apisix.py' 'linux/llm-stack/tests/test_gateway_render.py' \
-  'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py')
+  'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py' \
+  'docs/scripts/sync_versions.py' 'linux/host-config/ghcr_metadata.py' \
+  'linux/scripts/01-core/manifest-base-layer.py' 'linux/scripts/01-core/registry-config-label.py' \
+  'linux/scripts/01-core/registry-digest.py' 'linux/scripts/02-toolchain/oci-layers-extract.py' \
+  'linux/scripts/02-toolchain/python/wheel-smoke.py' 'linux/scripts/tests/test-wheel-rewrite.py' \
+  'linux/scripts/verify_readme_length.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 6 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 15 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()

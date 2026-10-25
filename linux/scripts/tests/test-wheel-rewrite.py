@@ -4,18 +4,18 @@
 """Verify compression, RECORD quoting and failure atomicity on actual wheel archives."""
 import csv
 import io
-from pathlib import Path
 import runpy
 import tempfile
 import unittest
 import zipfile
+from pathlib import Path
 
 HELPER = Path(__file__).resolve().parents[3] / "shared/python/kataglyphis_wheel.py"
 rewrite_wheel = runpy.run_path(str(HELPER))["rewrite_wheel"]
 
 
 class WheelRewriteTests(unittest.TestCase):
-    def test_compression_record_quoting_and_metadata(self):
+    def test_compression_record_quoting_and_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "test.whl"
             data = b"extension" * 10000
@@ -41,7 +41,7 @@ class WheelRewriteTests(unittest.TestCase):
                 self.assertEqual(rows[0][2], str(len(data)))
                 self.assertEqual(rows[-1], ["pkg.dist-info/RECORD", "", ""])
 
-    def test_invalid_wheel_preserves_original_and_leaves_no_temporary(self):
+    def test_invalid_wheel_preserves_original_and_leaves_no_temporary(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "test.whl"
             with zipfile.ZipFile(path, "w") as archive:

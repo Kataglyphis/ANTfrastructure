@@ -32,7 +32,7 @@ _IGNORED_LOCK = threading.Lock()
 DEFAULT_JOBS = (getattr(os, "process_cpu_count", None) or os.cpu_count)() or 1
 # Git Bash may skip a suite (exit 77) or waive a case it cannot host; Linux, where CI runs, never may.
 HOST_MAY_SKIP = os.name == "nt" or sys.platform.startswith(("cygwin", "msys"))
-_HOST_SKIP = re.compile(r"^ *(?:SKIP \[|\d+ failed assertion\(s\) waived)", re.M)
+_HOST_SKIP = re.compile(r"^ *(?:SKIP \[|\d+ failed assertion\(s\) waived)", re.MULTILINE)
 
 
 def host_skips(output):

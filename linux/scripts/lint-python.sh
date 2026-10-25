@@ -17,6 +17,7 @@ fi
 RUFF_PIN="${RUFF_VERSION}"
 GATE_SELECT="E9,F63,F7,F82,B012,B023"
 HUB_UNUSED_SELECT="F401,F841,RUF059"
+HUB_REGEX_SELECT="FURB167"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
@@ -155,6 +156,7 @@ _lint_python_check "${GATE_SELECT}" "python gate pass failed" "gate pass"
 # Consumer roots keep the older tier until their unused bindings are reviewed.
 if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
   _lint_python_check "${HUB_UNUSED_SELECT}" "hub unused-binding gate failed" "hub unused-binding gate"
+  _lint_python_check "${HUB_REGEX_SELECT}" "hub regex-flag gate failed" "hub regex-flag gate"
 fi
 
 # Advisory pass — full default ruleset, informational only.

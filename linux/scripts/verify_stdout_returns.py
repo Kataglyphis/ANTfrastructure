@@ -15,7 +15,7 @@ import gate_scope  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 # log()/info() reach fd 1; warn()/err()/die() reach fd 2 and are therefore safe.
 STDOUT_LOGGERS = re.compile(r"^\s*(log|info)\s")
-FUNC_DEF = re.compile(r"^([a-z_][a-z0-9_]*)\(\)\s*\{(.*?)^\}", re.S | re.M)
+FUNC_DEF = re.compile(r"^([a-z_][a-z0-9_]*)\(\)\s*\{(.*?)^\}", re.DOTALL | re.MULTILINE)
 SUBST = re.compile(r"\$\(\s*([a-z_][a-z0-9_]*)\b")
 
 

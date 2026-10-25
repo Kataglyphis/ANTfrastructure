@@ -17,14 +17,14 @@ LIMIT = 100
 RULE = "https://github.com/Kataglyphis/ANTfrastructure/blob/develop/docs/repository-family.md#the-readme-rule"
 
 
-def count_lines(path):
+def count_lines(path: str) -> int:
     """Lines as an editor numbers them: a last line without a newline still counts."""
     with open(path, "rb") as fh:
         data = fh.read()
     return data.count(b"\n") + (1 if data and not data.endswith(b"\n") else 0)
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Hold the root README.md to the family's README rule.")
     ap.add_argument("--root", default=None, help="the repository to grade (default: this repo)")
     args = ap.parse_args()

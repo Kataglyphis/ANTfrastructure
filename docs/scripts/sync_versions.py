@@ -6,10 +6,10 @@ from __future__ import annotations
 import argparse
 import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from consumer_pins import check_consumer_pins
-
 
 START_MARKER = "<!-- generated:version-snapshot:start -->"
 END_MARKER = "<!-- generated:version-snapshot:end -->"
@@ -461,7 +461,7 @@ def _unquote(value: str) -> str:
     return value
 
 
-def _rewrite_lines(file_path: Path, dry_run: bool, rewrite) -> bool:
+def _rewrite_lines(file_path: Path, dry_run: bool, rewrite: Callable[[str], str | None]) -> bool:
     """Rewrite lines for which rewrite(line) returns one, keeping each file's frozen EOL (newline=''); True if anything changed."""
     with open(file_path, encoding="utf-8", newline="") as fh:
         lines = fh.read().splitlines(keepends=True)

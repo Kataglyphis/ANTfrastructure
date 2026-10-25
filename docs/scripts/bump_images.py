@@ -272,8 +272,8 @@ def spec_x265(cur):
 def gstreamer_wrap_pin(gst_version: str, wrap: str) -> tuple[str, str]:
     """(version, source_hash) of a GStreamer subprojects/<wrap>.wrap at a GStreamer tag."""
     text = bv.http_text(f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{gst_version}/subprojects/{wrap}.wrap")
-    d = re.search(r"^directory\s*=\s*\S+?-(\d+(?:\.\d+)+)\s*$", text, re.M)
-    h = re.search(r"^source_hash\s*=\s*([0-9a-fA-F]{64})\s*$", text, re.M)
+    d = re.search(r"^directory\s*=\s*\S+?-(\d+(?:\.\d+)+)\s*$", text, re.MULTILINE)
+    h = re.search(r"^source_hash\s*=\s*([0-9a-fA-F]{64})\s*$", text, re.MULTILINE)
     if not (d and h):
         raise RuntimeError(f"GStreamer {gst_version}: {wrap}.wrap has no versioned directory or source_hash")
     return d.group(1), h.group(1).lower()
@@ -289,8 +289,8 @@ def spec_x264_meson(cur):
     """Slaved to GSTREAMER_VERSION: x264.wrap names a meson-ports branch, and its head commit pins it."""
     text = bv.http_text(
         f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{bv.read_env()['GSTREAMER_VERSION']}/subprojects/x264.wrap")
-    url = re.search(r"^url\s*=\s*(\S+)\s*$", text, re.M)
-    rev = re.search(r"^revision\s*=\s*(\S+)\s*$", text, re.M)
+    url = re.search(r"^url\s*=\s*(\S+)\s*$", text, re.MULTILINE)
+    rev = re.search(r"^revision\s*=\s*(\S+)\s*$", text, re.MULTILINE)
     if not (url and rev):
         raise RuntimeError("GStreamer's x264.wrap names no url or revision")
     extras = {}
@@ -382,7 +382,7 @@ def nvidia_apt_packages(repo: str) -> list[dict[str, str]]:
     """The stanzas of NVIDIA's CUDA apt repo Packages index for x86_64."""
     raw = gzip.decompress(bv.http_bytes(
         f"https://developer.download.nvidia.com/compute/cuda/repos/{repo}/x86_64/Packages.gz")).decode("utf-8")
-    return [dict(re.findall(r"^([A-Za-z0-9-]+): (.*)$", block, re.M)) for block in raw.split("\n\n")]
+    return [dict(re.findall(r"^([A-Za-z0-9-]+): (.*)$", block, re.MULTILINE)) for block in raw.split("\n\n")]
 
 
 def deepstream_trt_pins(stanzas, trt_version: str, cuda: str) -> dict[str, str]:

@@ -20,7 +20,7 @@ from quality_allow import check_keys, load_keys  # noqa: E402
 
 SITE = "http://site.invalid/site/"
 SKIP_SCHEMES = ("mailto:", "javascript:", "data:", "tel:", "about:")
-REFRESH_URL = re.compile(r"url\s*=\s*['\"]?([^'\";]+)", re.I)
+REFRESH_URL = re.compile(r"url\s*=\s*['\"]?([^'\";]+)", re.IGNORECASE)
 LINE_RANGE = re.compile(r"^(\d+)-(\d+)$")
 
 

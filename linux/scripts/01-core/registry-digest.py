@@ -10,10 +10,11 @@ If the input is a JSON object (single manifest), it is used directly.
 Prints the digest string to stdout and exits 0 on success.
 Exits non-zero if the digest cannot be resolved.
 """
-import sys
 import json
+import sys
 
-def main():
+
+def main() -> None:
     try:
         data = json.load(sys.stdin)
     except (json.JSONDecodeError, ValueError) as exc:

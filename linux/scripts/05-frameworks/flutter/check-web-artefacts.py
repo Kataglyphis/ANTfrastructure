@@ -52,7 +52,7 @@ def check_sqlite(root, pinned):
         )
     lock = root / "pubspec.lock"
     if lock.is_file():
-        m = re.search(r'^  sqlite3:\r?\n(?:    .*\r?\n)*?    version: "([^"]+)"', lock.read_text(encoding="utf-8"), re.M)
+        m = re.search(r'^  sqlite3:\r?\n(?:    .*\r?\n)*?    version: "([^"]+)"', lock.read_text(encoding="utf-8"), re.MULTILINE)
         if m and m.group(1) != pinned.get("SQLITE3_WASM_VERSION"):
             problems.append(
                 f"pubspec.lock resolves sqlite3 {m.group(1)} but web/sqlite3.wasm is the {pinned.get('SQLITE3_WASM_VERSION')} build: "

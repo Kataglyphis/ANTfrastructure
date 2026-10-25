@@ -222,7 +222,7 @@ def write_env_values(updates: dict[str, str]) -> list[str]:
         before = text
         for key, value in updates.items():
             new_text, n = re.subn(
-                rf"^({re.escape(key)})=.*$", rf"\g<1>={value}", text, count=1, flags=re.M
+                rf"^({re.escape(key)})=.*$", rf"\g<1>={value}", text, count=1, flags=re.MULTILINE
             )
             if n and new_text != text:
                 changed.append(key)

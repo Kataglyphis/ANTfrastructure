@@ -487,7 +487,9 @@ subjects are built with `printf`, not written as literal lines: a real
 `tests/test-python-lint-gate.sh` covers the lint tiers. The shared **gate tier**
 (`ruff check --select E9,F63,F7,F82,B012,B023`) rejects an undefined name, syntax
 error, silenced exception or late-bound closure. The default hub preflight sweep also rejects
-`F401`, `F841` and `RUF059` in Python files and extracted shell heredocs; explicit
+`F401`, `F841`, `RUF059` and `FURB167` in Python files and extracted shell heredocs;
+the regex rule rejects abbreviated `re.M`, `re.S` and `re.I` flags after the 27
+existing uses were spelled out. Explicit
 targets and named roots retain their advisory adoption tier. The **advisory
 tier** (the full default ruleset) reports other findings without failing. The
 fixture writes `RUFF_VERSION`
@@ -513,7 +515,7 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `masked-decls.verdict-discarded`, `masked-decls.substitution-required`,
 `python-lint.gate-tier-neutered`, `python-lint.tier-boundary`,
 `python-lint.hub-unused-import-gate`, `python-lint.hub-unused-assignment-gate`,
-`python-lint.hub-unused-unpacking-gate`,
+`python-lint.hub-unused-unpacking-gate`, `python-lint.hub-regex-flag-gate`,
 `python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
 `python-lint.heredoc-python-decision` (the last targets
 `extract_embedded_python.py`, which `verify_gate_registry.py` counts among
@@ -537,8 +539,8 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. Six fully annotated Renovate,
-LLM gateway and docs scanner files have fatal ANN001/ANN201 checks in
+`logs/code-quality/ruff-private-returns-gate.txt`. Fifteen fully annotated Renovate,
+LLM gateway, docs, host and build helper files have fatal ANN001/ANN201 checks in
 `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
 these files after preflight. Reports with findings state that
@@ -566,9 +568,10 @@ tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
 four `ANN205` findings were fixed; `ANN206` was already clean. All 303 existing
 private return findings were fixed, so `ANN202` now fails across all 146 tracked
 Python files. Parameter and public return findings were fixed in the Renovate CMake
-parser and planner, the gateway renderer and its tests, and the two docs duplication
-scanners. ANN001/ANN201 fail in those six files while remaining findings stay in the
-full report. The focused suite injects unannotated signatures, and selector and
+parser and planner, the gateway renderer and its tests, the two docs duplication
+scanners, and nine small docs, host, image, wheel and test files. ANN001/ANN201
+fail in those 15 files. Remaining findings stay in the full report. The focused
+suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
 
@@ -770,7 +773,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3439 entries** over **374 distinct test commands**; both digits are
+manifest holds **3440 entries** over **374 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.

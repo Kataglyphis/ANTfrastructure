@@ -12,7 +12,7 @@ mkdir -p "${ROOT}/linux/scripts/01-core" "${ROOT}/linux/scripts/tests" \
   "${ROOT}/windows/scripts/certificates" "${ROOT}/shared/python" \
   "${ROOT}/linux/llm-stack/tests" "${ROOT}/linux/llm-stack/gateway" \
   "${ROOT}/linux/scripts/02-toolchain/python" \
-  "${ROOT}/linux/scripts/lib" "${ROOT}/quality"
+  "${ROOT}/linux/scripts/lib" "${ROOT}/linux/host-config" "${ROOT}/quality"
 cp "${S}/lint-python-types.sh" "${ROOT}/linux/scripts/"
 cp "${S}/01-core/load-versions-env.sh" "${ROOT}/linux/scripts/01-core/"
 cp "${S}/../../quality/pyproject.toml" "${S}/../../quality/uv.lock" "${ROOT}/quality/"
@@ -30,7 +30,7 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (21 files)"
+  t_assert_contains "$1" "ty quality gate: clean (30 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -51,6 +51,15 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm-stack/tests/test_gateway_render.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_code_dupes.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_doc_dupes.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/sync_versions.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/host-config/ghcr_metadata.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/01-core/manifest-base-layer.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/01-core/registry-config-label.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/01-core/registry-digest.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/02-toolchain/oci-layers-extract.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/02-toolchain/python/wheel-smoke.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/tests/test-wheel-rewrite.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/verify_readme_length.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_locator.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_package_names.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_comment_size.py"
@@ -70,9 +79,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (23 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (23 files)"
-t_assert_contains "${out}" "Ruff parameter and public return gate: clean (6 files)"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (32 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (32 files)"
+t_assert_contains "${out}" "Ruff parameter and public return gate: clean (15 files)"
 
 t_case "the locked quality environment resolves test and parser imports"
 t_assert_ok test -d "${ROOT}/quality/.venv"
@@ -164,7 +173,12 @@ done
 t_case "each selected Python file fails on missing parameter and public return types"
 for target in linux/scripts/renovate_cmake.py linux/scripts/renovate_planner.py \
   linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \
-  docs/scripts/verify_code_dupes.py docs/scripts/verify_doc_dupes.py; do
+  docs/scripts/verify_code_dupes.py docs/scripts/verify_doc_dupes.py \
+  docs/scripts/sync_versions.py linux/host-config/ghcr_metadata.py \
+  linux/scripts/01-core/manifest-base-layer.py linux/scripts/01-core/registry-config-label.py \
+  linux/scripts/01-core/registry-digest.py linux/scripts/02-toolchain/oci-layers-extract.py \
+  linux/scripts/02-toolchain/python/wheel-smoke.py linux/scripts/tests/test-wheel-rewrite.py \
+  linux/scripts/verify_readme_length.py; do
   printf 'def answer(value):\n    return value\n' > "${ROOT}/${target}"
   out="$(_run)"
   t_assert_contains "${out}" "Ruff parameter and public return gate failed (exit 1)"

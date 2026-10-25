@@ -8,11 +8,11 @@ import sys
 BLOCK = re.compile(
     # Openers may carry redirections; digits in the marker class catch GENAI_PY_T1..T4.
     r"([^\n]*)<<-?'([A-Z_0-9]*(?:PY|PYEOF|PYTHON)[A-Z_0-9]*)'[^\n]*\n(.*?)\n[ \t]*\2[ \t]*$",
-    re.S | re.M)
+    re.DOTALL | re.MULTILINE)
 # The interpreter is often a variable whose name varies in case and spelling ("${PY}" -, ${PREFLIGHT_PYTHON} -).
 RUNS_IT = re.compile(
     r"(python3?|\$\{?[A-Za-z_]*PY(?:THON)?[A-Za-z_0-9]*\}?)[^|]*(-|\s)$|python3? -",
-    re.I)
+    re.IGNORECASE)
 CATS_IT = re.compile(r"\bcat\b")
 # A comment cannot open a heredoc. docs/code-quality-tooling.md#comment-openers
 COMMENT_OPENER = re.compile(r"[ \t]*#")
