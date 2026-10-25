@@ -265,7 +265,7 @@ SAFE: list[tuple[str, Spec, str]] = [
     ("SHELLCHECK_VERSION", spec_shellcheck, "torch stage (every arch) + host-side lint bootstrap; linux+windows"),
     ("GITLEAKS_VERSION", spec_gitleaks, "none (host-side secret-scan bootstrap; linux+windows)"),
     ("MOLD_LINUX_VERSION", spec_mold, "none (opt-in linker, fetched on demand)"),
-    ("RENOVATE_NODE_VERSION", spec_renovate_node, "none (renovate-local.sh bootstrap; same-major only)"),
+    ("RENOVATE_NODE_VERSION", spec_renovate_node, "none (renovate-local.sh bootstrap; same-major minimum, exact cache)"),
     ("CARGO_AUDIT_VERSION", spec_cargo_audit, "linux package image cargo QA layer"),
     ("CARGO_DENY_VERSION", spec_cargo_deny, "linux package image cargo QA layer"),
     ("CARGO_TARPAULIN_VERSION", spec_cargo_tarpaulin, "linux package image cargo QA layer"),

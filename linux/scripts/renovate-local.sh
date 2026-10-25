@@ -116,19 +116,6 @@ RENOVATE_RUN_VERSION=""
 
 rb_py() { "${PY_BIN}" "${RENOVATE_BOOTSTRAP_PY}" "$@"; }
 
-node_major() { "$1" --version 2>/dev/null | sed -e 's/^v//' -e 's/\..*//'; }
-
-# arch_normalize owns the arch spelling; a local `uname -m` case is what the dupes gate flags.
-node_arch_asset() {
-  local arch
-  arch="$(arch_normalize "$(uname -m)")"
-  case "${arch}" in
-    amd64) printf 'linux-x64 %s\n'   "${RENOVATE_NODE_LINUX_X64_SHA256:-}" ;;
-    arm64) printf 'linux-arm64 %s\n' "${RENOVATE_NODE_LINUX_ARM64_SHA256:-}" ;;
-    *) err "no pinned Node asset for ${arch}; install Node ${RENOVATE_NODE_VERSION}+ yourself and re-run" ;;
-  esac
-}
-
 renovate_lock_check() {
   local lock="${RENOVATE_NPM_DIR}/package-lock.json" locked declared
   [ -f "${RENOVATE_BOOTSTRAP_PY}" ] || err "no ${RENOVATE_BOOTSTRAP_PY}: Renovate bootstrap metadata cannot be checked"
@@ -170,83 +157,61 @@ verify_renovate_install() {
   return 0
 }
 
-bootstrap_node() {
-  local path_node
-  path_node="$(command -v node || true)"
-  # Match the pinned major, not exceed it: Renovate's engines.node is a caret range.
-  local want_major="${RENOVATE_NODE_VERSION%%.*}"
-  if [ -n "${path_node}" ] && [ "$(node_major "${path_node}")" = "${want_major}" ] 2>/dev/null; then
-    NODE_BIN="${path_node}"
-    return 0
-  fi
-  NODE_BIN="${NODE_DIR}/bin/node"
-  [ -x "${NODE_BIN}" ] && return 0
-
-  local asset sha url tmp
-  read -r asset sha <<<"$(node_arch_asset)"
-  [ -n "${sha}" ] || err "no SHA256 pinned for node-v${RENOVATE_NODE_VERSION}-${asset}"
-  url="https://nodejs.org/dist/v${RENOVATE_NODE_VERSION}/node-v${RENOVATE_NODE_VERSION}-${asset}.tar.xz"
-  tmp="$(mktemp -d)" || err "mktemp failed"
-
-  note "bootstrapping node ${RENOVATE_NODE_VERSION} (${asset}) into ${NODE_DIR}" >&2
-  curl -fsSL -o "${tmp}/node.tar.xz" "${url}" || { rm -rf "${tmp}"; err "download failed: ${url}"; }
-  local got
-  got="$(sha256sum "${tmp}/node.tar.xz" | cut -d' ' -f1)"
-  if [ "${got}" != "${sha}" ]; then
-    rm -rf "${tmp}"
-    err "checksum mismatch for node-v${RENOVATE_NODE_VERSION}-${asset}: expected ${sha}, got ${got}"
-  fi
-  mkdir -p "${NODE_DIR}"
-  tar -xJf "${tmp}/node.tar.xz" -C "${NODE_DIR}" --strip-components=1 \
-    || { rm -rf "${tmp}"; err "extract failed"; }
-  rm -rf "${tmp}"
-  [ -x "${NODE_BIN}" ] || err "node did not land at ${NODE_BIN}"
-}
-
-renovate_stage_error() {
+bootstrap_stage_error() {
   local stage="$1"
   shift
   case "${stage}" in
-    "${CACHE_ROOT}"/.renovate-install.*) rm -rf -- "${stage}" || err "cannot clean ${stage}" ;;
+    "${CACHE_ROOT}"/.renovate-install.*|"${CACHE_ROOT}"/.node-install.*) rm -rf -- "${stage}" || err "cannot clean ${stage}" ;;
     *) err "refusing to clean non-cache stage ${stage}" ;;
   esac
   err "$@"
 }
 
+BOOTSTRAP_LOCK_FD=""
+bootstrap_cache_lock() {
+  local target="$1"
+  mkdir -p "${CACHE_ROOT}" || err "cannot create ${CACHE_ROOT}"
+  command -v flock >/dev/null 2>&1 || err "flock is required to coordinate cache installs"
+  exec {BOOTSTRAP_LOCK_FD}>"${target}.lock" || err "cannot lock ${target}"
+  flock -x "${BOOTSTRAP_LOCK_FD}" || err "cannot lock ${target}"
+}
+
+bootstrap_cache_unlock() { exec {BOOTSTRAP_LOCK_FD}>&-; }
+
+# shellcheck source=renovate-node.sh
+. "$(dirname "${BASH_SOURCE[0]}")/renovate-node.sh" || err "cannot load renovate-node.sh beside me"
+
 install_renovate_stage() {
   local stage="$1"
   if [ "${RENOVATE_RUN_VERSION}" = "${RENOVATE_VERSION}" ]; then
     cp "${RENOVATE_NPM_DIR}/package.json" "${RENOVATE_NPM_DIR}/package-lock.json" "${stage}/" \
-      || renovate_stage_error "${stage}" "cannot stage the committed Renovate lock"
+      || bootstrap_stage_error "${stage}" "cannot stage the committed Renovate lock"
   else
     rb_py stage-manifest "${RENOVATE_NPM_DIR}/package.json" "${stage}/package.json" "${RENOVATE_RUN_VERSION}" \
-      || renovate_stage_error "${stage}" "cannot stage Renovate ${RENOVATE_RUN_VERSION} manifest"
+      || bootstrap_stage_error "${stage}" "cannot stage Renovate ${RENOVATE_RUN_VERSION} manifest"
     (cd "${stage}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
       "${NPM_BIN}" install --package-lock-only --ignore-scripts --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
-      || renovate_stage_error "${stage}" "cannot resolve an integrity lock for renovate@${RENOVATE_RUN_VERSION}"
+      || bootstrap_stage_error "${stage}" "cannot resolve an integrity lock for renovate@${RENOVATE_RUN_VERSION}"
   fi
   rb_py verify-lock "${stage}/package-lock.json" "${RENOVATE_RUN_VERSION}" \
-    || renovate_stage_error "${stage}" "Renovate lock lacks renovate@${RENOVATE_RUN_VERSION} with integrity"
+    || bootstrap_stage_error "${stage}" "Renovate lock lacks renovate@${RENOVATE_RUN_VERSION} with integrity"
   note "installing renovate ${RENOVATE_RUN_VERSION} into ${NPM_PREFIX} from its integrity lock" >&2
   (cd "${stage}" && PATH="$(dirname "${NODE_BIN}"):${PATH}" \
     "${NPM_BIN}" ci --engine-strict --no-fund --no-audit --no-update-notifier --loglevel=error >&2) \
-    || renovate_stage_error "${stage}" "npm ci of renovate@${RENOVATE_RUN_VERSION} failed"
+    || bootstrap_stage_error "${stage}" "npm ci of renovate@${RENOVATE_RUN_VERSION} failed"
 }
 
 # stdout stays the --print-bin answer, so the install talks on stderr.
 bootstrap_renovate() {
-  local stage lock_fd
-  mkdir -p "${CACHE_ROOT}" || err "cannot create ${CACHE_ROOT}"
-  command -v flock >/dev/null 2>&1 || err "flock is required to coordinate Renovate cache installs"
-  exec {lock_fd}>"${NPM_PREFIX}.lock" || err "cannot lock ${NPM_PREFIX}"
-  flock -x "${lock_fd}" || err "cannot lock ${NPM_PREFIX}"
-  if verify_renovate_install; then exec {lock_fd}>&-; return 0; fi
+  local stage
+  bootstrap_cache_lock "${NPM_PREFIX}"
+  if verify_renovate_install; then bootstrap_cache_unlock; return 0; fi
   stage="$(mktemp -d "${CACHE_ROOT}/.renovate-install.XXXXXXXX")" || err "cannot stage Renovate install"
   install_renovate_stage "${stage}"
-  rm -rf "${NPM_PREFIX:?}" || renovate_stage_error "${stage}" "cannot replace ${NPM_PREFIX}"
-  mv "${stage}" "${NPM_PREFIX}" || renovate_stage_error "${stage}" "cannot publish ${NPM_PREFIX}"
+  rm -rf "${NPM_PREFIX:?}" || bootstrap_stage_error "${stage}" "cannot replace ${NPM_PREFIX}"
+  mv "${stage}" "${NPM_PREFIX}" || bootstrap_stage_error "${stage}" "cannot publish ${NPM_PREFIX}"
   verify_renovate_install || err "installed Renovate ${RENOVATE_RUN_VERSION} failed its version smoke"
-  exec {lock_fd}>&-
+  bootstrap_cache_unlock
 }
 
 if [ -z "${INJECTED_REPORT}" ] || [ "${MODE}" = print-bin ]; then

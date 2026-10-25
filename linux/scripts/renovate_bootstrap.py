@@ -14,6 +14,7 @@ VERSION = re.compile(
     r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?"
     r"(?:\+[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)?"
 )
+NODE_VERSION = re.compile(r"v?([0-9]+)\.([0-9]+)\.([0-9]+)")
 
 
 def read_json(path: str) -> dict[str, Any]:
@@ -27,6 +28,18 @@ def latest(_args: list[str]) -> int:
         return 1
     print(value)
     return 0
+
+
+def node_version(args: list[str]) -> int:
+    actual = NODE_VERSION.fullmatch(args[1])
+    pinned = NODE_VERSION.fullmatch(args[2])
+    if args[0] not in {"exact", "at-least"} or actual is None or pinned is None:
+        return 1
+    found = tuple(int(part) for part in actual.groups())
+    required = tuple(int(part) for part in pinned.groups())
+    if found[0] != required[0]:
+        return 1
+    return 0 if (found == required if args[0] == "exact" else found >= required) else 1
 
 
 def lock_version(args: list[str]) -> int:
@@ -59,6 +72,7 @@ def installed_version(args: list[str]) -> int:
 def main(argv: list[str]) -> int:
     commands: dict[str, tuple[int, Callable[[list[str]], int]]] = {
         "latest": (0, latest),
+        "node-version": (3, node_version),
         "lock-version": (1, lock_version),
         "manifest-version": (1, manifest_version),
         "stage-manifest": (3, stage_manifest),

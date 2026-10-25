@@ -16204,6 +16204,22 @@
   "why": "node \"$(renovate-local.sh --print-bin)\" must get the path alone, not npm's 'added N packages' line before it"
  },
  {
+  "id": "renovate.bootstrap-rejects-old-same-major-node",
+  "target": "linux/scripts/renovate-node.sh",
+  "find": "  rb_py node-version \"${match}\" \"${version}\" \"${RENOVATE_NODE_VERSION}\" || return 1",
+  "replace": "  : \"${version}\" \"${RENOVATE_NODE_VERSION}\"",
+  "test": "bash linux/scripts/tests/test-renovate-bootstrap.sh",
+  "why": "Node 24.0.0 has the pinned major but fails Renovate's minimum engine, so using it makes the dependency scan fail before the pinned cache is tried"
+ },
+ {
+  "id": "renovate.bootstrap-repairs-partial-node-cache",
+  "target": "linux/scripts/renovate-node.sh",
+  "find": "  if node_toolchain_valid \"${NODE_BIN}\" exact; then bootstrap_cache_unlock; return 0; fi",
+  "replace": "  if [ -x \"${NODE_BIN}\" ]; then bootstrap_cache_unlock; return 0; fi",
+  "test": "bash linux/scripts/tests/test-renovate-bootstrap.sh",
+  "why": "an interrupted extraction can leave bin/node executable with npm absent; accepting that cache prevents every later run from recovering"
+ },
+ {
   "id": "python.preamble-fallback-is-the-pin",
   "target": "linux/scripts/01-core/install-deps-preamble.sh",
   "find": "2>/dev/null && return 0\n",

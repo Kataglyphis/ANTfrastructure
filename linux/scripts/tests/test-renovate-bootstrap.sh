@@ -18,7 +18,14 @@ export STUB_CI_FAIL=0 STUB_INSTALL_FAIL=0 STUB_LOCK_BAD=0 STUB_VIEW_FAIL=0 STUB_
 
 cat > "${w}/bin/node" <<'SH'
 #!/usr/bin/env bash
-if [ "${1:-}" = --version ]; then printf 'v24.21.0\n'; exit 0; fi
+if [ "${1:-}" = --version ]; then
+  if [ "$0" = "$(dirname "${STUB_NPM_LOG}")/bin/node" ] && [ -s "$(dirname "${STUB_NPM_LOG}")/old-node-version" ]; then
+    cat "$(dirname "${STUB_NPM_LOG}")/old-node-version"
+  else
+    printf 'v24.21.0\n'
+  fi
+  exit 0
+fi
 if [ "${2:-}" = --version ]; then
   sed -n 's/.*"version": "\([^"]*\)".*/\1/p' "$(dirname "$1")/../package.json"
   exit 0
@@ -29,7 +36,9 @@ cat > "${w}/bin/npm" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${STUB_NPM_LOG}"
 case "$1" in
+  --version) printf '11.0.0\n' ;;
   view)
+    [ "$(node --version)" != v24.0.0 ] || exit 9
     [ "${STUB_VIEW_FAIL:-0}" = 0 ] || exit 4
     if [ "${STUB_VIEW_INVALID:-0}" = 1 ]; then printf 'invalid json\n'; else printf '"%s"\n' "${STUB_RENOVATE_LATEST}"; fi
     ;;
@@ -54,6 +63,30 @@ case "$1" in
 esac
 SH
 chmod +x "${w}/bin/node" "${w}/bin/npm"
+
+printf 'stub node archive\n' > "${w}/node.tar.xz"
+export STUB_NODE_ARCHIVE="${w}/node.tar.xz" STUB_GOOD_NODE="${w}/bin/node" STUB_GOOD_NPM="${w}/bin/npm"
+cat > "${w}/bin/curl" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = -o ]; then cp "${STUB_NODE_ARCHIVE}" "$2"; exit; fi
+  shift
+done
+exit 9
+SH
+cat > "${w}/bin/tar" <<'SH'
+#!/usr/bin/env bash
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = -C ]; then target="$2"; break; fi
+  shift
+done
+[ -n "${target:-}" ] || exit 9
+mkdir -p "${target}/bin"
+cp "${STUB_GOOD_NODE}" "${target}/bin/node"
+[ "${STUB_TAR_FAIL:-0}" = 0 ] || exit 8
+cp "${STUB_GOOD_NPM}" "${target}/bin/npm"
+SH
+chmod +x "${w}/bin/curl" "${w}/bin/tar"
 
 print_bin() {
   (cd "${w}/repo" && env -u RENOVATE_VERSION PATH="${w}/bin:${PATH}" RENOVATE_LOCAL_CACHE="${w}/cache" "$@" \
@@ -137,4 +170,25 @@ before="$(wc -l < "${STUB_NPM_LOG}" | tr -d ' ')"
 t_assert_fails print_bin RENOVATE_VERSION=0.0.1
 t_assert_contains "$(cat "${w}/err")" "installs renovate ${want}, tool-pins.env pins 0.0.1"
 t_assert_eq "${before}" "$(wc -l < "${STUB_NPM_LOG}" | tr -d ' ')"
+t_case "Node below the pinned minor release falls back to the verified cached toolchain"
+cached_node="${w}/cache/node-24.21.0"
+mkdir -p "${cached_node}/bin"
+cp "${STUB_GOOD_NODE}" "${cached_node}/bin/node"
+cp "${STUB_GOOD_NPM}" "${cached_node}/bin/npm"
+printf 'v24.0.0\n' > "${w}/old-node-version"
+t_assert_ok print_bin
+t_assert_ok test -x "${cached_node}/bin/npm"
+
+t_case "an interrupted Node extraction leaves no stage and a partial cache is repaired"
+rm -f "${cached_node}/bin/npm"
+printf 'v22.0.0\n' > "${w}/old-node-version"
+archive_sha="$(sha256sum "${STUB_NODE_ARCHIVE}" | cut -d' ' -f1)"
+t_assert_fails print_bin \
+  STUB_TAR_FAIL=1 RENOVATE_NODE_LINUX_X64_SHA256="${archive_sha}" RENOVATE_NODE_LINUX_ARM64_SHA256="${archive_sha}"
+t_assert_eq 0 "$(find "${w}/cache" -maxdepth 1 -name '.node-install.*' | wc -l | tr -d ' ')"
+t_assert_ok print_bin \
+  RENOVATE_NODE_LINUX_X64_SHA256="${archive_sha}" RENOVATE_NODE_LINUX_ARM64_SHA256="${archive_sha}"
+t_assert_ok test -x "${cached_node}/bin/npm"
+t_assert_eq 0 "$(find "${w}/cache" -maxdepth 1 -name '.node-install.*' | wc -l | tr -d ' ')"
+
 t_summary

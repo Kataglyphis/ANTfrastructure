@@ -24,6 +24,8 @@
   dead-function gate; keep local dead code fatal and prove inert names do not count.
 - Check npm's latest Renovate release before each live local dependency scan and install it in
   an isolated user cache first; fail when the version check or installation cannot complete.
+- Reject a PATH Node below Renovate's pinned minimum and recover a partial cached Node/npm
+  installation through a checked staged extraction.
 - Add `renovate-fleet.sh --github-owned` with a paginated, authenticated active nonfork inventory
   and complete-checkout/adoption preflight; provide a reusable read-only CI entrypoint gate.
 - Include custom regex managers in default Renovate scans, resolve the GitHub token centrally

@@ -119,7 +119,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Fixture cleanup uses `Remove-TestDir` with literal paths; bracketed diagnostic prefixes must leave no temporary roots.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
-   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies and nonempty-list advice.
+   Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; the local driver also requires `renovate-node.sh`. Preserve their distinct dry-run policies and nonempty-list advice.
    Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
@@ -1292,7 +1292,9 @@ The rules; the mechanism is documented once in
 - **A live Renovate scan checks its own CLI first.** Resolve npm's `renovate@latest` tag and
   install that exact release into the isolated user cache before scanning dependencies. A failed
   lookup or install fails the run; never report repository dependencies with an unchecked stale
-  CLI. Report and dry-run modes do not rewrite the tracked Renovate pin or lock.
+  CLI. Use a PATH Node only when its full version reaches the pinned minimum in the same major;
+  reuse cached Node only at the exact pin with working npm. Report and dry-run modes do not rewrite
+  the tracked Renovate pin or lock.
 - **An owner-wide run uses GitHub's active, nonfork inventory.**
   `linux/scripts/renovate-fleet.sh --github-owned` reports; add `--apply` only under the rule
   above. Require every eligible repo's own checkout and tracked Renovate config, wrapper and CI

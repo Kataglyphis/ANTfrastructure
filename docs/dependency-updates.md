@@ -59,6 +59,7 @@ Both drivers require `renovate-cli.sh`, `renovate-git.sh` and `renovate-say.sh`
 beside them. The CLI helper owns argument movement, value validation and common
 options. Local `--dry-run` preserves the selected mode; fleet `--dry-run` selects
 apply mode, so it prints the complete plan. A later `--report` still wins.
+The local driver also requires `renovate-node.sh` for its checked Node bootstrap.
 
 Renovate reports share list rendering in `renovate-say.sh`. The caller selects
 indentation; unreadable lock reports keep their unindented lines. Advice appears
@@ -1311,11 +1312,12 @@ Node 22 with `TypeError: RegExp.escape is not a function`, an error that named
 nothing relevant. It is deliberately **not** the canonical `NODE_VERSION`, which is
 26.11.0 for the images: the committed Renovate 44.157.0 baseline declares
 `engines.node "^24.11.0"`, major 24 only, so one name cannot serve both.
-A node already on `PATH` is used only when its major
-**matches** the pin rather than merely exceeding it;
-otherwise the pinned tarball is downloaded once, **SHA256-verified**, and cached
-per version under `${XDG_CACHE_HOME:-~/.cache}/kataglyphis` (override with
-`RENOVATE_LOCAL_CACHE`).
+A Node already on `PATH` is used only when its major matches and its full version is
+at least the pinned `RENOVATE_NODE_VERSION`; its adjacent npm must run too. The cache
+is reused only when Node is exactly the pin and npm runs. Otherwise the pinned tarball
+is downloaded, **SHA256-verified**, extracted into a locked staging directory and
+checked before replacing an incomplete cache under
+`${XDG_CACHE_HOME:-~/.cache}/kataglyphis` (override with `RENOVATE_LOCAL_CACHE`).
 
 Before every live report, dry-run, apply or `--print-bin`, the bootstrap asks npm
 for the `renovate` package's [`latest` dist-tag](https://docs.npmjs.com/cli/v11/commands/npm-view/).
@@ -2365,6 +2367,7 @@ match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
 | Thing | Path |
 |---|---|
 | The script | [`linux/scripts/renovate-local.sh`](../linux/scripts/renovate-local.sh) |
+| Checked Node toolchain selection and staged cache repair | [`linux/scripts/renovate-node.sh`](../linux/scripts/renovate-node.sh) |
 | Renovate CLI version lookup and cache verification | [`linux/scripts/renovate_bootstrap.py`](../linux/scripts/renovate_bootstrap.py) |
 | The fleet: every repo the family has, in an order it can be landed in | [`linux/scripts/renovate-fleet.sh`](../linux/scripts/renovate-fleet.sh) |
 | Which git owns the tree, whether it is clean, and what ELSE moved | [`linux/scripts/renovate-tree.sh`](../linux/scripts/renovate-tree.sh) |
