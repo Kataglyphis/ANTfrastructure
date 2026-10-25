@@ -497,7 +497,8 @@ were converted to f-strings before `UP032` became fatal. Three constant-name
 `getattr` calls now use direct attributes, and `B009` rejects regressions; dynamic
 attribute names are unaffected. Explicit
 targets and named roots retain their advisory adoption tier. A fixture adds an F541 finding
-outside the focused selectors and proves the default full ruleset fails. The
+outside the focused selectors and proves the default full ruleset fails. Linux CI also
+enforces EXE001, which requires a Python shebang file to have its executable bit set. The
 fixture writes `RUFF_VERSION`
 from `01-core/tool-pins.env` into its own `tool-pins.env`, so when no ruff is on
 PATH it bootstraps the same pinned `uvx ruff@<pin>` the repo does (a ruff already
@@ -824,7 +825,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3524 entries** over **376 distinct test commands**; both digits are
+manifest holds **3527 entries** over **376 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
