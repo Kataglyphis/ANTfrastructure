@@ -17260,6 +17260,22 @@
   "why": "advertised backends must deliver frames and open their writer rather than passing on build strings alone"
  },
  {
+  "id": "probe.venv-ty-dockerfile-invocation",
+  "target": "linux/Dockerfile.torch",
+  "find": "amd64) bash /tmp/venv-probe-ty/check.sh /opt/venv /opt/scripts/packaging/venv-version-probe.py /tmp/venv-probe-ty/tool-pins.env ;;",
+  "replace": "amd64) true ;;",
+  "test": "bash linux/scripts/tests/test-venv-probe-types.sh",
+  "why": "the built x64 venv must actually run the pinned type gate against its copied probe"
+ },
+ {
+  "id": "probe.venv-ty-loader-mount",
+  "target": "linux/Dockerfile.torch",
+  "find": "source=linux/scripts/01-core/load-ty-tool.sh,target=/tmp/venv-probe-ty/load-ty-tool.sh,ro",
+  "replace": "source=linux/scripts/01-core/load-versions-env.sh,target=/tmp/venv-probe-ty/load-ty-tool.sh,ro",
+  "test": "bash linux/scripts/tests/test-venv-probe-types.sh",
+  "why": "the image build must mount the shared pinned ty loader beside the checker"
+ },
+ {
   "id": "probe.gst-python-headers-required",
   "target": "linux/scripts/03-media/build/gstreamer/common/gst-python-build-config.py",
   "find": "if not include_dir.is_dir():",
@@ -27529,12 +27545,36 @@
   "why": "A format call in hub Python or an extracted shell block must fail the full lint sweep."
  },
  {
+  "id": "python-lint.hub-literal-attribute-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_ATTR_SELECT=\"B009\"",
+  "replace": "HUB_ATTR_SELECT=\"E9\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "A constant getattr in hub Python or an extracted shell block must fail; dynamic names and consumer roots remain outside this rule."
+ },
+ {
+  "id": "python-types.ty-pin-env-override",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": ". linux/scripts/01-core/load-ty-tool.sh\nunset RUFF_VERSION\nload_ty_tool linux/scripts/01-core/tool-pins.env",
+  "replace": ". linux/scripts/01-core/load-versions-env.sh\nunset RUFF_VERSION\nload_versions_env linux/scripts/01-core/tool-pins.env",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "An ambient ty version must not replace the repository pin in the strict type gate."
+ },
+ {
+  "id": "python-types.ruff-pin-env-override",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "unset RUFF_VERSION",
+  "replace": ":",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "An ambient Ruff version must not replace the repository pin in the annotation gate."
+ },
+ {
   "id": "python-types.parameter-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN201 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Missing parameter types in fifteen typed Python files must fail the strict Ruff gate."
+  "why": "Missing parameter types in twenty typed Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.public-return-annotation-gate",
@@ -27542,7 +27582,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN001 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Missing public return types in fifteen typed Python files must fail the strict Ruff gate."
+  "why": "Missing public return types in twenty typed Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.parameter-return-file-scope",
@@ -27550,7 +27590,7 @@
   "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py'",
   "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "All fifteen typed Python files must remain in the strict parameter and public-return scope."
+  "why": "All twenty typed Python files must remain in the strict parameter and public-return scope."
  },
  {
   "id": "python-types.docs-conf-file-scope",

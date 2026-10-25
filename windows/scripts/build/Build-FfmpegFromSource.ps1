@@ -129,9 +129,9 @@ function Get-FfmpegVulkanPlan {
     $sdk = $VulkanSdk.TrimEnd('\', '/')
     # configure runs `$glslc_probe -v` unquoted, so a spaced path would split into two words.
     if ($sdk -match '\s') { throw "rocm lane: VULKAN_SDK '$sdk' contains whitespace; FFmpeg's glslc probe cannot run it." }
-    foreach ($rel in 'Include\vulkan\vulkan.h', 'Include\spirv-headers\spirv.h', 'Bin\glslc.exe') {
-        if (-not (Test-Path -LiteralPath (Join-Path $sdk $rel) -PathType Leaf)) { throw "rocm lane: no $rel under VULKAN_SDK=$sdk" }
-    }
+    $missing = @(Get-MissingBuildChildPaths -Root $sdk -RelativePath @(
+        'Include\vulkan\vulkan.h', 'Include\spirv-headers\spirv.h', 'Bin\glslc.exe') -PathType Leaf)
+    if ($missing.Count -gt 0) { throw "rocm lane: no $($missing[0]) under VULKAN_SDK=$sdk" }
     return @{ SdkRoot = $sdk; IncludeDir = (ConvertTo-MsysPath (Join-Path $sdk 'Include')); Glslc = ((Join-Path $sdk 'Bin\glslc.exe') -replace '\\', '/') }
 }
 

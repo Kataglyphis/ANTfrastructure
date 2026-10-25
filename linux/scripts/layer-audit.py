@@ -5,27 +5,58 @@ import collections
 import json
 import os
 import tarfile
+from collections.abc import Iterator, Sequence
+from typing import TypedDict
 
 
-def layers_of(manifest_path):
-    doc = json.load(open(manifest_path))
+class LayerDescriptor(TypedDict):
+    digest: str
+    size: int
+
+
+class LayerSummary(TypedDict):
+    layer: int
+    compressed: int
+    unpacked: int
+    files: int
+    whiteouts: int
+
+
+class FoundEntry(TypedDict):
+    layer: int
+    path: str
+    size: int
+
+
+class AuditReport(TypedDict):
+    layers: list[LayerSummary]
+    live_bytes: int
+    deleted_bytes: int
+    replaced_bytes: int
+    found: list[FoundEntry]
+
+
+def layers_of(manifest_path: str) -> list[LayerDescriptor]:
+    with open(manifest_path, encoding='utf-8') as handle:
+        doc = json.load(handle)
     doc = doc[0] if isinstance(doc, list) else doc
     return doc['Manifest']['layers']
 
 
-def members(blob):
+def members(blob: str) -> Iterator[tuple[str, bool, int]]:
     with tarfile.open(blob, 'r:*') as tar:
         for m in tar:
-            name = m.name[2:] if m.name.startswith('./') else m.name
+            name = m.name.removeprefix('./')
             name = name.strip('/')
             if name:
                 yield name, m.isreg(), m.size
 
 
-def audit(layers, blob_dir, find=''):
-    live = {}                                   # path -> (size, layer index), as the image sees it
-    dead = collections.Counter()                # 'deleted' | 'replaced' -> bytes stored but no longer visible
-    per_layer, found = [], []
+def audit(layers: Sequence[LayerDescriptor], blob_dir: str, find: str = '') -> AuditReport:
+    live: dict[str, tuple[int, int]] = {}
+    dead: collections.Counter[str] = collections.Counter()
+    per_layer: list[LayerSummary] = []
+    found: list[FoundEntry] = []
     for i, layer in enumerate(layers):
         blob = os.path.join(blob_dir, layer['digest'].split(':', 1)[1])
         unpacked, whiteouts, files = 0, [], {}
@@ -57,7 +88,7 @@ def audit(layers, blob_dir, find=''):
             'deleted_bytes': dead['deleted'], 'replaced_bytes': dead['replaced'], 'found': found}
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description='What an image stores, layer by layer')
     ap.add_argument('manifest')
     ap.add_argument('blob_dir')

@@ -49,6 +49,20 @@ function Get-SourceBuildVersion {
     return $resolved
 }
 
+function Get-MissingBuildChildPaths {
+    param(
+        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string[]]$RelativePath,
+        [Parameter(Mandatory)][ValidateSet('Leaf', 'Container')][string]$PathType
+    )
+    if ($RelativePath.Count -eq 0) { throw 'required child path list is empty' }
+    foreach ($relative in $RelativePath) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Root $relative) -PathType $PathType)) {
+            $relative
+        }
+    }
+}
+
 function Reset-SourceBuildDirectory {
     # A BuildKit cache-mount target cannot be removed, only emptied.
     param(
@@ -2692,6 +2706,7 @@ function Complete-SourceBuildChain {
 
 Export-ModuleMember -Function @(
     'Get-SourceBuildVersion',
+    'Get-MissingBuildChildPaths',
     'Get-PersistentBuildLogPath',
     'Invoke-SourceBuildChain',
     'Complete-SourceBuildChain',

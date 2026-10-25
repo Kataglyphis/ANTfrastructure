@@ -9,7 +9,9 @@ import fnmatch
 import json
 import os
 import re
-from typing import NamedTuple, TypedDict
+from collections.abc import Callable, Sequence
+from typing import Literal, NamedTuple, TypedDict
+
 
 # start/end: the value's half-open span, so a rewrite touches nothing else on the line.
 class Site(NamedTuple):
@@ -34,6 +36,11 @@ class YamlNode(TypedDict):
     at: dict[str, Site]
 
 
+class JsonFrame(TypedDict):
+    kind: str
+    key: str | None
+
+
 _DASH = re.compile(r"^(\s*)-\s+(?=\S)")
 _YAML_KEY = re.compile(r"^\s*(?:-\s+)?([A-Za-z0-9_./\-]+)\s*:(?=\s|$)")
 _BLOCK = re.compile(r"^[|>][+-]?\d*$")
@@ -49,12 +56,12 @@ NPM_OBJECTS = ("dependencies", "devDependencies", "optionalDependencies",
                "peerDependencies", "resolutions", "overrides")
 
 
-def normalise(name):
+def normalise(name: str) -> str:
     """A PEP 503 project name, so a report's foo-bar finds the line spelling Foo_Bar."""
     return re.sub(r"[-_.]+", "-", name.strip()).lower()
 
 
-def pep508_span(text):
+def pep508_span(text: str) -> tuple[str, str, int, int] | None:
     """(name, extras, start, end) of one PEP 508 requirement, the span excluding the marker; or None."""
     match = _PEP508_NAME.match(text)
     if not match:
@@ -65,7 +72,7 @@ def pep508_span(text):
     return match.group(1), match.group(2) or "", start, start + len(spec.strip())
 
 
-def uncomment(line, quotes=""):
+def uncomment(line: str, quotes: str = "") -> str:
     """`line` cut at the first unquoted `#` after whitespace, since `@v1#frag` is no comment."""
     quote = ""
     escaped = False
@@ -84,11 +91,11 @@ def uncomment(line, quotes=""):
     return line
 
 
-def _indent(line) -> int:
+def _indent(line: str) -> int:
     return len(line) - len(line.lstrip(" "))
 
 
-def _key_value(line, quotes="\"'") -> Key | None:
+def _key_value(line: str, quotes: str = "\"'") -> Key | None:
     """The Key on a `key: value` line, or None; start indexes into `line`."""
     match = _YAML_KEY.match(line)
     if not match:
@@ -98,38 +105,38 @@ def _key_value(line, quotes="\"'") -> Key | None:
     return Key(match.group(1), match.start(1), match.end() + lead, body.strip())
 
 
-def _unquote(value, start) -> tuple[str, int]:
+def _unquote(value: str, start: int) -> tuple[str, int]:
     """A YAML scalar with its surrounding quotes removed, span adjusted."""
     if len(value) >= 2 and value[0] in "\"'" and value[-1] == value[0]:
         return value[1:-1], start + 1
     return value, start
 
 
-def _site(line_no, start, value) -> Site:
+def _site(line_no: int, start: int, value: str) -> Site:
     return Site(line_no, start, start + len(value), value)
 
 
-def _blank_or_comment(line) -> bool:
+def _blank_or_comment(line: str) -> bool:
     stripped = line.strip()
     return not stripped or stripped.startswith("#")
 
 
 # One YAML walk, three managers
-def _open_node(nodes, stack, name, col) -> None:
+def _open_node(nodes: list[YamlNode], stack: list[YamlNode], name: str, col: int) -> None:
     """Push a new mapping at `col`, closing everything it dedents out of."""
     while len(stack) > 1 and stack[-1]["col"] >= col:
         stack.pop()
-    node = {"name": name, "col": col, "parent": stack[-1], "at": {}}
+    node: YamlNode = {"name": name, "col": col, "parent": stack[-1], "at": {}}
     nodes.append(node)
     stack.append(node)
 
 
-def yaml_nodes(lines):
+def yaml_nodes(lines: Sequence[str]) -> list[YamlNode]:
     """Every mapping the document opens, with its own keys as Sites; block scalars are skipped as text."""
     root: YamlNode = {"name": "", "col": -1, "parent": None, "at": {}}
     nodes = [root]
     stack = [root]
-    block = None
+    block: int | None = None
     for num, line in enumerate(lines):
         if block is not None:
             if not line.strip() or _indent(line) > block:
@@ -153,12 +160,13 @@ def yaml_nodes(lines):
     return nodes
 
 
-def _named(node, name) -> bool:
-    return node["parent"] is not None and node["parent"]["name"] == name
+def _named(node: YamlNode, name: str) -> bool:
+    parent = node["parent"]
+    return parent is not None and parent["name"] == name
 
 
 # github-actions
-def find_actions(lines, dep, _dep_type):
+def find_actions(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """The ref of every step or job `uses:` naming this action, split at the last `@`."""
     out = []
     want = dep.casefold()
@@ -177,7 +185,7 @@ def find_actions(lines, dep, _dep_type):
 
 
 # pub (pubspec.yaml)
-def find_pub(lines, dep, _dep_type):
+def find_pub(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """The value of this dep's own key in a top-level pubspec section; a map-shaped dep comes back empty."""
     out = []
     for node in yaml_nodes(lines):
@@ -190,14 +198,14 @@ def find_pub(lines, dep, _dep_type):
 
 
 # pip_requirements
-def _requirement_body(line) -> str:
+def _requirement_body(line: str) -> str:
     """One line without its comment or a trailing continuation `\\`, which is not part of the specifier."""
     body = uncomment(line)
     stripped = body.rstrip()
     return stripped[:-1] if stripped.endswith("\\") else body
 
 
-def find_requirements(lines, dep, _dep_type):
+def find_requirements(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """The specifier of every PEP 508 line whose name normalises to this dep; options and comments skipped."""
     out = []
     want = normalise(dep)
@@ -224,12 +232,12 @@ PEP621_TABLES = (("project", "optional-dependencies"),
                  ("tool", "pdm", "dev-dependencies"))
 
 
-def _is_dep_array(path, key) -> bool:
+def _is_dep_array(path: Sequence[str], key: str | None) -> bool:
     table = tuple(path)
     return table in PEP621_TABLES or key in PEP621_KEYS.get(table, ())
 
 
-def _bracket_delta(body) -> int:
+def _bracket_delta(body: str) -> int:
     """`[` minus `]` outside quoted strings, so a bracket in a URL or marker cannot close the array."""
     depth = 0
     quote = ""
@@ -251,7 +259,7 @@ def _bracket_delta(body) -> int:
     return depth
 
 
-def _pep508_sites(body, num, want) -> list[Site]:
+def _pep508_sites(body: str, num: int, want: str) -> list[Site]:
     """Every quoted PEP 508 requirement on this line whose name is `want`."""
     out = []
     for match in _QUOTED.finditer(body):
@@ -265,7 +273,7 @@ def _pep508_sites(body, num, want) -> list[Site]:
     return out
 
 
-def find_pep621(lines, dep, _dep_type):
+def find_pep621(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """Specifiers of quoted PEP 508 strings naming this dep inside known dependency arrays."""
     out = []
     want = normalise(dep)
@@ -292,7 +300,7 @@ def find_pep621(lines, dep, _dep_type):
 
 
 # pre-commit
-def repo_name(url):
+def repo_name(url: str) -> str:
     """`owner/repo`, Renovate's depName for a pre-commit `repo:`; "" for local, meta and the like."""
     text = re.sub(r"\.git$", "", url.strip().strip("\"'"))
     text = re.sub(r"^[A-Za-z][A-Za-z0-9+.\-]*://", "", text)
@@ -303,7 +311,7 @@ def repo_name(url):
     return "/".join(parts[-2:]).casefold()
 
 
-def find_precommit(lines, dep, _dep_type):
+def find_precommit(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """The `rev:` of the sequence item whose own `repo:` names this dep."""
     want = dep.casefold()
     return [node["at"]["rev"] for node in yaml_nodes(lines)
@@ -313,7 +321,7 @@ def find_precommit(lines, dep, _dep_type):
 
 
 # cargo
-def toml_path(header):
+def toml_path(header: str) -> list[str]:
     """The dotted table path of a `[a.b.c]` header, quoted segments unquoted."""
     out = []
     current = ""
@@ -335,7 +343,7 @@ def toml_path(header):
     return [part for part in out if part]
 
 
-def _toml_key(line, num, key) -> Site | None:
+def _toml_key(line: str, num: int, key: str) -> Site | None:
     """The Site of `key = <value>` on this line, value UNPARSED, or None."""
     body = uncomment(line, "\"'")
     match = _TOML_KV.match(body)
@@ -349,7 +357,7 @@ def _toml_key(line, num, key) -> Site | None:
     return _site(num, match.end() + lead, rest.strip())
 
 
-def _cargo_value(site) -> Site:
+def _cargo_value(site: Site) -> Site:
     """A cargo requirement narrowed to its version span; an inline table without `version` comes back empty."""
     text = site.value
     if len(text) >= 2 and text[0] in "\"'" and text[-1] == text[0]:
@@ -360,7 +368,7 @@ def _cargo_value(site) -> Site:
     return Site(site.line, site.start, site.end, "")
 
 
-def _cargo_table(path) -> tuple[str, str | None] | None:
+def _cargo_table(path: Sequence[str]) -> tuple[str, str | None] | None:
     """(table, crate or None) when the whole path is a cargo dependency table, else None."""
     parts = list(path)
     if parts[:1] == ["workspace"]:
@@ -372,7 +380,7 @@ def _cargo_table(path) -> tuple[str, str | None] | None:
     return parts[0], parts[1] if len(parts) == 2 else None
 
 
-def find_cargo(lines, dep, _dep_type):
+def find_cargo(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """A key in a dependency table, or the `version` of `[dependencies.<dep>]`; a versionless entry is no site."""
     out = []
     path = []
@@ -400,7 +408,7 @@ def find_cargo(lines, dep, _dep_type):
 
 
 # npm
-def _json_string_end(text, start) -> int:
+def _json_string_end(text: str, start: int) -> int:
     """The index of the quote closing the JSON string that opens at `start`."""
     i = start + 1
     while i < len(text):
@@ -413,10 +421,10 @@ def _json_string_end(text, start) -> int:
     return len(text)
 
 
-def json_strings(text):
+def json_strings(text: str) -> list[tuple[tuple[str | None, ...], int, int, str]]:
     """Every string value as (key path, line, column, text); a scanner, since json.loads drops positions."""
     out = []
-    stack = []
+    stack: list[JsonFrame] = []
     expect_key = False
     line = 0
     bol = 0
@@ -453,7 +461,7 @@ def json_strings(text):
     return out
 
 
-def find_npm(lines, dep, _dep_type):
+def find_npm(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """The dep's value in a top-level dependencies object; only the full key path decides."""
     out = []
     for path, num, col, text in json_strings("\n".join(lines)):
@@ -467,7 +475,7 @@ _ENV_ANN = re.compile(r"^# renovate:.*?\bdepName=(\S+)(?:\s|$)")
 _ENV_KV = re.compile(r"^([A-Z0-9_]+)=([^\s#]*)$")
 
 
-def find_annotated_env(lines, dep, _dep_type):
+def find_annotated_env(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """The value of the KEY= line under each hint naming this dep; a hint without one is no site."""
     out = []
     for num, line in enumerate(lines):
@@ -493,24 +501,24 @@ CMAKE = "regex:cmake"
 _CMAKE_FILE = re.compile(r"(^|/)CMakeLists\.txt$|\.cmake$")
 PRESET = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir,
                       "default.json")
-_CMAKE_PATTERNS = []
+_CMAKE_PATTERNS: list[re.Pattern[str]] = []
 
 
-def syntax(manager, path):
+def syntax(manager: str, path: str) -> str:
     """The syntax a report row's file is written in: the regex manager over a CMake file reads CMake."""
     if manager in ("regex", "custom.regex") and _CMAKE_FILE.search(path.replace("\\", "/")):
         return CMAKE
     return manager
 
 
-def renovate_pattern(text):
+def renovate_pattern(text: str) -> re.Pattern[str]:
     """A Renovate managerFilePatterns entry: /regex/ as written, anything else a glob."""
     if len(text) > 1 and text.startswith("/") and text.endswith("/"):
         return re.compile(text[1:-1])
     return re.compile(fnmatch.translate(text))
 
 
-def cmake_patterns():
+def cmake_patterns() -> list[re.Pattern[str]]:
     """The preset's CMake matchStrings, compiled once; Python spells a named group (?P<x>...)."""
     if _CMAKE_PATTERNS:
         return _CMAKE_PATTERNS
@@ -527,7 +535,7 @@ def cmake_patterns():
     return _CMAKE_PATTERNS
 
 
-def find_cmake(lines, dep, _dep_type):
+def find_cmake(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
     """Every value a preset CMake matchString captures for this depName: the locator places what Renovate read."""
     text = "\n".join(lines)
     out = []
@@ -541,7 +549,7 @@ def find_cmake(lines, dep, _dep_type):
     return out
 
 
-FINDERS = {
+FINDERS: dict[str, Callable[[Sequence[str], str, str], list[Site]]] = {
     "github-actions": find_actions,
     "pub": find_pub,
     "pip_requirements": find_requirements,
@@ -556,7 +564,7 @@ FINDERS = {
 }
 
 
-def sites(manager, lines, dep, dep_type=""):
+def sites(manager: str, lines: Sequence[str], dep: str, dep_type: str = "") -> list[Site] | None:
     """Every declaration of `dep`, or None (the caller refuses) when the manager has no exact locator."""
     finder = FINDERS.get(manager)
     if finder is None:
@@ -564,16 +572,17 @@ def sites(manager, lines, dep, dep_type=""):
     return finder([line.rstrip("\r") for line in lines], dep, dep_type)
 
 
-def _numbers(found) -> str:
+def _numbers(found: Sequence[Site]) -> str:
     return ",".join(str(site.line + 1) for site in found)
 
 
-def _values(found) -> str:
-    return ", ".join("%d:%s" % (site.line + 1, site.value or "(no value)")
+def _values(found: Sequence[Site]) -> str:
+    return ", ".join(f"{site.line + 1}:{site.value or '(no value)'}"
                      for site in found)
 
 
-def resolve(manager, lines, dep, old, new, count):
+def resolve(manager: str, lines: Sequence[str], dep: str, old: str, new: str,
+            count: int) -> tuple[Literal["EDIT", "DONE", "REFUSE"], list[Site], str]:
     """(EDIT|DONE|REFUSE, sites, reason) for `count` updates of `dep` from `old` to `new`.
 
     More declarations at `old` than report rows refuse: which line a row means is not knowable.
@@ -581,30 +590,28 @@ def resolve(manager, lines, dep, old, new, count):
     found = sites(manager, lines, dep)
     if found is None:
         return "REFUSE", [], (
-            "no exact locator for manager '%s'; this tool refuses to edit a "
-            "syntax it cannot parse" % manager)
+            f"no exact locator for manager '{manager}'; this tool refuses to edit a "
+            "syntax it cannot parse")
     if not found:
         return "REFUSE", [], (
-            "no %s declaration of '%s' in this file" % (manager, dep))
+            f"no {manager} declaration of '{dep}' in this file")
     # A valueless site is an unreadable form; letting the other sites decide rewrites the wrong one.
     if any(not site.value for site in found):
         return "REFUSE", [], (
-            "'%s' is declared at line(s) %s, and a line carrying no value "
+            f"'{dep}' is declared at line(s) {_values(found)}, and a line carrying no value "
             "spells it in a form this locator cannot read -- writing some "
-            "OTHER line instead is exactly what it refuses to do"
-            % (dep, _values(found)))
+            "OTHER line instead is exactly what it refuses to do")
     at_old = [site for site in found if site.value == old]
     at_new = [site for site in found if site.value == new]
     if at_old and len(at_old) == count:
         return "EDIT", at_old, ""
     if at_old:
         return "REFUSE", [], (
-            "the report carries %d update(s) of '%s' here but the file declares "
-            "it at %d line(s) holding %s (line %s) -- which one the report means "
-            "is not knowable" % (count, dep, len(at_old), old, _numbers(at_old)))
+            f"the report carries {count} update(s) of '{dep}' here but the file declares "
+            f"it at {len(at_old)} line(s) holding {old} (line {_numbers(at_old)}) -- which one the report means "
+            "is not knowable")
     if at_new and len(at_new) == len(found):
-        return "DONE", at_new, "already at %s" % new
+        return "DONE", at_new, f"already at {new}"
     return "REFUSE", [], (
-        "'%s' is declared at line(s) %s, and none of them carries the reported "
-        "current value %s -- something moved, so nothing is written"
-        % (dep, _values(found), old))
+        f"'{dep}' is declared at line(s) {_values(found)}, and none of them carries the reported "
+        f"current value {old} -- something moved, so nothing is written")

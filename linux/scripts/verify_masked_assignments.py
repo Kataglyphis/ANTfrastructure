@@ -4,7 +4,7 @@
 docs/failure-modes.md#a-declaration-that-masks-its-commands-exit-status
 """
 import argparse
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 import os
 import re
 import sys
@@ -21,7 +21,7 @@ SUBST = re.compile(r"\$\(|`")
 SCAN = ("linux",)
 
 
-def _walk_scan(root, tops) -> Iterator[str]:
+def _walk_scan(root: str, tops: Iterable[str]) -> Iterator[str]:
     """Every *.sh under the named top-level directories."""
     for top in tops:
         for base, dirs, files in os.walk(os.path.join(root, top)):
@@ -32,13 +32,13 @@ def _walk_scan(root, tops) -> Iterator[str]:
                     yield os.path.relpath(os.path.join(base, fn), root).replace(os.sep, "/")
 
 
-def scan_paths(root):
+def scan_paths(root: str) -> list[str]:
     if gate_scope.is_hub(root, ROOT):
         return sorted(_walk_scan(root, SCAN))
     return gate_scope.tracked(root, ['*.sh'])
 
 
-def sites(root, rels):
+def sites(root: str, rels: Iterable[str]) -> list[tuple[str, int, str]]:
     out = []
     for rel in rels:
         path = os.path.join(root, rel)
@@ -55,7 +55,7 @@ def sites(root, rels):
     return sorted(out)
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Fail on new masked declarations.")
     ap.add_argument("--root", default=None,
                     help="the tree to grade (default: this repo)")
@@ -97,7 +97,7 @@ def main():
         f"{len(allow)} frozen in {os.path.basename(allow_path)}"
     )
 
-    def _site(k) -> str:
+    def _site(k: str) -> str:
         f, v = k.split("\t")
         ln = next((n for ff, n, vv in found if ff == f and vv == v), "?")
         return f"{f}:{ln}  {v}"

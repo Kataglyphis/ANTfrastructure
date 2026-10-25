@@ -10,12 +10,11 @@ case "${1:-}" in
 esac
 [ "$#" -le 1 ] || { echo "Python type scan accepts at most one mode" >&2; exit 2; }
 
-# shellcheck source=01-core/load-versions-env.sh
-. linux/scripts/01-core/load-versions-env.sh
-load_versions_env linux/scripts/01-core/tool-pins.env
-: "${TY_VERSION:?TY_VERSION is missing from tool-pins.env}"
+# shellcheck source=01-core/load-ty-tool.sh
+. linux/scripts/01-core/load-ty-tool.sh
+unset RUFF_VERSION
+load_ty_tool linux/scripts/01-core/tool-pins.env
 : "${RUFF_VERSION:?RUFF_VERSION is missing from tool-pins.env}"
-command -v uvx >/dev/null 2>&1 || { echo "uvx is required for ty@${TY_VERSION}" >&2; exit 2; }
 command -v uv >/dev/null 2>&1 || { echo "uv is required for the locked Python type environment" >&2; exit 2; }
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "A Git worktree is required for the Python type scan" >&2; exit 2; }
 if [ "${1:-}" = --docs-conf ]; then
@@ -67,7 +66,10 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/extract_embedded_python.py' 'shared/python/*.py')
 mapfile -d '' -t windows_quality_files < <(git ls-files -z -- 'windows/scripts/certificates/*.py')
 mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
-  'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_planner.py' \
+  'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \
+  'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_locator.py' \
+  'linux/scripts/renovate_planner.py' \
+  'linux/scripts/verify_large_files.py' 'linux/scripts/verify_masked_assignments.py' \
   'linux/llm-stack/gateway/render_apisix.py' 'linux/llm-stack/tests/test_gateway_render.py' \
   'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py' \
   'docs/scripts/sync_versions.py' 'linux/host-config/ghcr_metadata.py' \
@@ -78,7 +80,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 15 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 20 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()

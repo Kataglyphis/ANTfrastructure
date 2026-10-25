@@ -144,3 +144,102 @@ Describe 'Build-LitertWheelBazel: pins and the wheel contract' {
         Assert-Match '(?s)Push-Location \$src\s+try \{.*@startup build @opts --nobuild' $script:WheelText 'from inside the clone (probe P3: outside a workspace the client env overflows the JVM command line)'
     }
 }
+
+function Invoke-LitertTyFixture {
+    param([Parameter(Mandatory)][scriptblock]$Body, [int]$ExitCode = 0, [string]$Output = 'All checks passed!',
+        [switch]$ColdCache)
+    Invoke-InTestDir { param($dir)
+        $target = Join-Path $dir 'site'
+        foreach ($package in 'ai_edge_litert', 'numpy', 'ml_dtypes') {
+            $null = New-Item -ItemType Directory -Force -Path (Join-Path $target $package)
+        }
+        $smoke = Join-Path $dir 'smoke.py'
+        [IO.File]::WriteAllText($smoke, "value: str = 'ok'`n")
+        $state = [pscustomobject]@{ Calls = [Collections.Generic.List[object]]::new(); Code = $ExitCode; OnlineCode = $ExitCode;
+            Output = $Output; ColdCache = [bool]$ColdCache }
+        Invoke-WithTestNativeCommand -Name uvx -FixtureState $state -Implementation {
+            param($fixture, $arguments)
+            if ($fixture.ColdCache -and '--offline' -in $arguments) {
+                $fixture.Code = 1
+                return 'ty is not cached'
+            }
+            $fixture.Code = $fixture.OnlineCode
+            $fixture.Output
+        } -Body {
+            param($fixture)
+            & $Body $fixture $target $smoke
+        }
+    }.GetNewClosure()
+}
+
+Describe 'Build-LitertWheelBazel: pinned type check over the installed wheel' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsSourceBuild.Common.psm1' -FunctionName 'Get-MissingBuildChildPaths')
+    . (Get-ScriptFunctionDefinition -ScriptPath $script:WheelScript -FunctionName 'Assert-LitertTyAvailable', 'Assert-LitertWheelSmokeTypes')
+
+    It 'prewarms the pinned checker before Bazel and refuses a missing or mismatched version' {
+        Invoke-LitertTyFixture -Output 'ty 0.0.91 (fixture)' -Body {
+            param($state, $target, $smoke)
+            Assert-LitertTyAvailable -TyVersion '0.0.91'
+            Assert-Equal '--offline|ty@0.0.91|--version' (@($state.Calls[0]) -join '|')
+            Assert-Throws { Assert-LitertTyAvailable -TyVersion '' } -MessagePattern 'not a pinned release'
+            Assert-Equal 1 $state.Calls.Count 'invalid pin never starts uvx'
+        }
+        Invoke-LitertTyFixture -Output 'ty 0.0.90 (fixture)' -Body {
+            Assert-Throws { Assert-LitertTyAvailable -TyVersion '0.0.91' } -MessagePattern 'pinned ty 0.0.91 is unavailable'
+        }
+        Invoke-LitertTyFixture -ColdCache -Output 'ty 0.0.91 (fixture)' -Body {
+            param($state, $target, $smoke)
+            Assert-LitertTyAvailable -TyVersion '0.0.91'
+            Assert-Equal 2 $state.Calls.Count 'cold cache retries online once, before Bazel'
+            Assert-Equal 'ty@0.0.91|--version' (@($state.Calls[1]) -join '|')
+        }
+        Assert-Match '(?s)\$tyVersion = \$env:TY_VERSION\s+if \(\[string\]::IsNullOrWhiteSpace\(\$tyVersion\)\).*?Assert-LitertTyAvailable -TyVersion \$tyVersion.*?& \$bazel @startup build' $script:WheelText
+    }
+
+    It 'checks the installed target tree with offline ty and requires a positive report' {
+        Invoke-LitertTyFixture -Body {
+            param($state, $target, $smoke)
+            Assert-LitertWheelSmokeTypes -Python 'C:\python.exe' -Target $target -SmokeScript $smoke -TyVersion '0.0.91'
+            $argv = @($state.Calls[0])
+            Assert-Equal '--offline|ty@0.0.91|check' ($argv[0..2] -join '|')
+            Assert-True ('--no-respect-ignore-files' -in $argv)
+            Assert-True ('--python-platform' -in $argv)
+            Assert-Equal 'windows' $argv[([array]::IndexOf($argv, '--python-platform') + 1)]
+            Assert-Equal 'C:\python.exe' $argv[([array]::IndexOf($argv, '--python') + 1)]
+            Assert-Equal $target $argv[([array]::IndexOf($argv, '--extra-search-path') + 1)]
+            Assert-Equal $smoke $argv[-1]
+            Assert-Equal 1 $state.Calls.Count
+        }
+        Invoke-LitertTyFixture -Output '' -Body {
+            param($state, $target, $smoke)
+            Assert-Throws { Assert-LitertWheelSmokeTypes -Python 'C:\python.exe' -Target $target -SmokeScript $smoke -TyVersion '0.0.91' } `
+                -MessagePattern 'pinned ty failed'
+        }
+        Invoke-LitertTyFixture -Body {
+            param($state, $target, $smoke)
+            Remove-Item -LiteralPath (Join-Path $target 'ai_edge_litert')
+            Assert-Throws { Assert-LitertWheelSmokeTypes -Python 'C:\python.exe' -Target $target -SmokeScript $smoke -TyVersion '0.0.91' } `
+                -MessagePattern 'missing installed ai_edge_litert'
+            Assert-Equal 0 $state.Calls.Count 'missing wheel bytes never launch ty'
+        }
+    }
+
+    It 'fails on ty errors even when the checker prints a success marker (mutation)' {
+        Invoke-LitertTyFixture -ExitCode 1 -Body {
+            param($state, $target, $smoke)
+            $exercise = {
+                Assert-MutLitertWheelSmokeTypes -Python 'C:\python.exe' -Target $target -SmokeScript $smoke -TyVersion '0.0.91'
+            }.GetNewClosure()
+            Invoke-TestFunctionMutations -ScriptPath $script:WheelScript -FunctionName 'Assert-LitertWheelSmokeTypes' `
+                -Find '$code -ne 0' -Replace '$false' -Throws 'pinned ty failed' -IncludeControl -Body $exercise
+        }
+    }
+
+    It 'threads the one host tool pin to the wheel RUN without baking the checker into the image' {
+        $driver = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Build-Buildkit.ps1'))
+        $docker = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) 'windows\Dockerfile.media-builder'))
+        Assert-Match "(?s)if \(\`$branch -eq 'media-litert'\).*?tool-pins\.env.*?\`$branchBuildArgs\['TY_VERSION'\] = \`$tyVersion" $driver
+        Assert-Match '(?s)ARG TY_VERSION\s+ENV LITERT_WINDOWS_SOURCE_COMMIT.*?RUN --mount=type=cache,target=C:\\bzl-repo-cache.*?UV_CACHE_DIR.*?UV_TOOL_DIR.*?UV_PYTHON_DOWNLOADS.*?Build-LitertWheelBazel\.ps1' $docker
+        Assert-Match '(?s)function Invoke-LitertWheelSmoke.*?pip install.*?Assert-LitertWheelSmokeTypes.*?\$Python \$SmokeScript \$Model' $script:WheelText
+    }
+}

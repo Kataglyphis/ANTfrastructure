@@ -13,6 +13,7 @@ function Write-FfRocmTestFile([string]$Path, [string]$Text = 'x') {
 }
 
 Describe 'Get-FfmpegAmfPlan / Get-FfmpegVulkanPlan / Get-FfmpegRocmConfigureArg (AMF: native amd64; Vulkan: rocm)' {
+    . (Get-ScriptFunctionDefinition -ScriptPath 'windows\scripts\modules\WindowsSourceBuild.Common.psm1' -FunctionName 'Get-MissingBuildChildPaths')
     . (Get-ScriptFunctionDefinition -ScriptPath $script:ffScript -FunctionName 'ConvertTo-MsysPath', 'Get-FfmpegAmfPlan', 'Get-FfmpegVulkanPlan', 'Get-FfmpegRocmConfigureArg')
 
     # A slice of the real amd64 cpu-lane line; the property is that NOTHING is appended to it.

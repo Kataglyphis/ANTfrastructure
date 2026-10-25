@@ -258,6 +258,29 @@ t_assert_contains "${_out}" "UP032"
 t_assert_contains "${_out}" "ADVISORY: findings above are informational"
 t_assert_contains "${_out}" "rc=0"
 
+t_case "a full hub sweep rejects a constant getattr in Python"
+_out="$(_targets $'class Sample:\n    value = 1\nprint(getattr(Sample, "value"))' 'print("ok")')"
+t_assert_contains "${_out}" "B009"
+t_assert_contains "${_out}" "hub literal-attribute gate failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "a full hub sweep rejects a constant getattr in a shell heredoc"
+_out="$(_targets 'print("ok")' $'class Sample:\n    value = 1\nprint(getattr(Sample, "value"))')"
+t_assert_contains "${_out}" "B009"
+t_assert_contains "${_out}" "linux/scripts/probe.sh:"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "explicit targets keep constant getattr advisory during consumer adoption"
+_out="$(_lint $'class Sample:\n    value = 1\nprint(getattr(Sample, "value"))')"
+t_assert_contains "${_out}" "B009"
+t_assert_contains "${_out}" "ADVISORY: findings above are informational"
+t_assert_contains "${_out}" "rc=0"
+
+t_case "direct and dynamic attribute access pass the hub literal-attribute gate"
+_out="$(_targets $'class Sample:\n    value = 1\nname = "value"\nprint(Sample.value, getattr(Sample, name))' 'print("ok")')"
+t_assert_contains "${_out}" "hub literal-attribute gate (B009): clean"
+t_assert_contains "${_out}" "rc=0"
+
 t_case "a clean tree of every target shape passes"
 _out="$(_targets 'print("ok")' 'print("ok")')"
 t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" \

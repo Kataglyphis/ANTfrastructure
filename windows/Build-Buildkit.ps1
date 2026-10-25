@@ -969,6 +969,12 @@ if ($Stages -contains 'media') {
         $branchBuildArgs = @{
             BASE_IMAGE      = Get-BkTag 'windows-toolchain'
         } + $branchArgs[$branch] + $archArgs + (Get-BkRocmStageArg -Variant $Variant -Stage $branch -NoRocmSpikes ([bool]$NoRocmSpikes) -VersionTable $versions)
+        if ($branch -eq 'media-litert') {
+            $toolPins = ConvertFrom-VersionsEnv -Path (Join-Path $repoRoot 'linux\scripts\01-core\tool-pins.env')
+            $tyVersion = $toolPins['TY_VERSION']
+            if ($tyVersion -notmatch '^\d+\.\d+\.\d+$') { throw "tool-pins.env has no valid TY_VERSION: '$tyVersion'" }
+            $branchBuildArgs['TY_VERSION'] = $tyVersion
+        }
         if ($branch -eq 'media-core') {
             # Without it the trt-sdk stage mounts the toolchain's (absent) C:\tensorrt and ORT builds no TensorRT EP.
             $trtSdkArg = if ($isNvidia) { @{ TENSORRT_SDK_IMAGE = Get-BkTag 'windows-tensorrt-sdk' } } else { @{} }

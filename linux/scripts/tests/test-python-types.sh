@@ -16,6 +16,7 @@ mkdir -p "${ROOT}/linux/scripts/01-core" "${ROOT}/linux/scripts/tests" \
   "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis"
 cp "${S}/lint-python-types.sh" "${ROOT}/linux/scripts/"
 cp "${S}/01-core/load-versions-env.sh" "${ROOT}/linux/scripts/01-core/"
+cp "${S}/01-core/load-ty-tool.sh" "${ROOT}/linux/scripts/01-core/"
 cp "${S}/../../quality/pyproject.toml" "${S}/../../quality/uv.lock" "${ROOT}/quality/"
 sed -n '/^\(TY\|RUFF\)_VERSION=/p' "${S}/01-core/tool-pins.env" > "${ROOT}/linux/scripts/01-core/tool-pins.env"
 git -C "${ROOT}" init -q
@@ -31,7 +32,7 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (30 files)"
+  t_assert_contains "$1" "ty quality gate: clean (34 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -63,6 +64,9 @@ printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scr
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/tests/test-wheel-rewrite.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/verify_readme_length.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_locator.py"
+for target in develop_red.py layer-audit.py verify_large_files.py verify_masked_assignments.py; do
+  printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
+done
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_package_names.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_comment_size.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_gate_registry.py"
@@ -82,9 +86,13 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (33 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (33 files)"
-t_assert_contains "${out}" "Ruff parameter and public return gate: clean (15 files)"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (37 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (37 files)"
+t_assert_contains "${out}" "Ruff parameter and public return gate: clean (20 files)"
+
+t_case "ambient checker versions cannot replace the repository pins"
+out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
+_assert_clean_quality "${out}"
 
 t_case "docs configuration is checked against the pinned theme source"
 out="$(_run --docs-conf)"
@@ -195,7 +203,9 @@ for target in verify_package_names verify_comment_size verify_gate_registry; do
 done
 
 t_case "each selected Python file fails on missing parameter and public return types"
-for target in linux/scripts/renovate_cmake.py linux/scripts/renovate_planner.py \
+for target in linux/scripts/develop_red.py linux/scripts/layer-audit.py \
+  linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_planner.py \
+  linux/scripts/verify_large_files.py linux/scripts/verify_masked_assignments.py \
   linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \
   docs/scripts/verify_code_dupes.py docs/scripts/verify_doc_dupes.py \
   docs/scripts/sync_versions.py linux/host-config/ghcr_metadata.py \

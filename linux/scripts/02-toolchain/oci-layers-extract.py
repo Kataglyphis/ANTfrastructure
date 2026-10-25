@@ -31,6 +31,14 @@ class ExtractError(Exception):
     """The layout or a layer cannot be applied as the OCI layer rules say."""
 
 
+def stream_member_cache(tar: tarfile.TarFile) -> list[object]:
+    # Stream mode retains read headers here; clearing them bounds memory for large layers.
+    cache = vars(tar).get("members")
+    if not isinstance(cache, list):
+        raise ExtractError("tar stream has no mutable member cache")
+    return cache
+
+
 def norm(name: str) -> str:
     """A member name relative to the image root; a '..' component is refused, never resolved."""
     parts = []
@@ -146,9 +154,10 @@ def place(tar: tarfile.TarFile, member: tarfile.TarInfo, name: str, staging: str
 
 
 def scan(tar: tarfile.TarFile, staging: str, allow: Allow, rec: dict, umask: int) -> None:
+    member_cache = stream_member_cache(tar)
     for member in tar:
         # A stream keeps every header it read; a layer of 100k files would hold them all.
-        getattr(tar, "members").clear()
+        member_cache.clear()
         name = norm(member.name)
         parent, base = posixpath.split(name)
         if not name or AUFS_META in parent:
@@ -176,13 +185,14 @@ def copy_link_targets(blob: str, staging: str, links: list, umask: int) -> None:
     for name, target in links:
         want.setdefault(target, []).append(name)
     with open(blob, "rb") as raw, tarfile.open(fileobj=raw, mode="r|*") as tar:
+        member_cache = stream_member_cache(tar)
         for member in tar:
             names = want.pop(norm(member.name), None) if member.isreg() else None
             for name in names or ():
                 path = make_parents(staging, name)
                 remove(path)
                 write_file(tar, member, path, umask)
-            getattr(tar, "members").clear()
+            member_cache.clear()
     if want:
         raise ExtractError("hard link target(s) not in the same layer: %s" % ", ".join(sorted(want)))
 

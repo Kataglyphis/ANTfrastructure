@@ -13,6 +13,8 @@ import json
 import os
 import sys
 import urllib.request
+from collections.abc import Callable
+from typing import Any
 
 OWNER = "Kataglyphis"
 HUB = "ANTfrastructure"
@@ -35,7 +37,7 @@ class Client:
     def __init__(self, token: str, dry_run: bool, replay: dict | None) -> None:
         self.token, self.dry_run, self.replay = token, dry_run, replay
 
-    def call(self, method: str, path: str, body: dict | None = None):
+    def call(self, method: str, path: str, body: dict | None = None) -> Any:
         if method != "GET" and (self.dry_run or self.replay is not None):
             print("dry-run: %s %s %s" % (method, path, json.dumps(body, sort_keys=True)))
             return {}
@@ -119,7 +121,7 @@ def window(runs: list[dict], state: dict, now: dt.datetime) -> list[dict]:
     return newer[:WALK]
 
 
-def verdict(state: dict, walked: list[dict], jobs_of) -> dict:
+def verdict(state: dict, walked: list[dict], jobs_of: Callable[[dict[str, Any]], dict[str, str]]) -> dict:
     """The newest run that ran a job decides it; an older re-run never overrides a newer red."""
     red = dict(state["red"])
     decided: set[str] = set()

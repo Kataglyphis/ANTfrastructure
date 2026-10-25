@@ -1950,6 +1950,17 @@ required TVM, actual media failures, and target metadata. `test-smoke-arch-parit
 the shell-to-probe handoff and refuses a missing drift table. These tests use stub packages;
 they do not replace the image smoke against shipped libraries.
 
+The late `Dockerfile.torch` build step runs the pinned `ty` checker against
+`venv-version-probe.py` with the assembled x64 `/opt/venv`, so imports resolve from the
+actual TVM, NumPy and OpenCV packages without adding them to the generic quality lock.
+The checker uses BuildKit's uv cache and leaves no tool in the shipped image. It is fatal
+on type findings, missing imports, a missing venv or checker setup failure. ARM64 and
+RISC-V retain their runtime smoke assertions; this static gate runs on x64 because
+foreign-arch images can ship without cv2 under the current smoke policy.
+`test-venv-probe-types.sh` mutates the fixture's import and return type to prove the pinned
+checker fails on both. It also checks the active Dockerfile invocation and its packaged
+source path; the `probe.venv-ty-dockerfile-invocation` mutation disables that call.
+
 The host and GStreamer Rust compiler wrappers both use `make_compiler_wrapper` in
 `01-core/cross-gcc.sh`. It owns executable creation, shell quoting and the `-B` prefix.
 The host wrapper supplies its fixed host PATH; the cargo target wrapper inherits PATH.

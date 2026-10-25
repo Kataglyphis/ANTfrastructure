@@ -555,7 +555,7 @@ The cpu and nvidia lanes are configured exactly as before.
 **Why it was off.** The SDK ships no `vulkan.pc`, so `check_pkg_config_header_only` fails. The fallback `check_cpp_condition` (configure:7806) sees only CFLAGS, and n9.0.2 never assigns `$vulkan_incflags`. The SDK's `Include` missing from INCLUDE was not the cause.
 
 **How.**
-- `Get-FfmpegVulkanPlan` exists only when the AMF plan does, so `HasRocm` is still read in one place. It fails closed when `VULKAN_SDK` is unset or contains whitespace (configure runs the glslc probe unquoted), or when `Include\vulkan\vulkan.h`, `Include\spirv-headers\spirv.h` or `Bin\glslc.exe` is missing.
+- `Get-FfmpegVulkanPlan` exists only when the AMF plan does, so `HasRocm` is still read in one place. It fails closed when `VULKAN_SDK` is unset or contains whitespace (configure runs the glslc probe unquoted), or when `Include\vulkan\vulkan.h`, `Include\spirv-headers\spirv.h` or `Bin\glslc.exe` is missing. The shared required-child probe checks those files; the plan names the first missing SDK file.
 - configure gets `--enable-vulkan --extra-cflags=-I<VULKAN_SDK>/Include --glslc=<VULKAN_SDK>/Bin/glslc.exe`. `--glslc` pins the SDK's compiler; otherwise configure takes the first `glslc`, `glslang` or `glslangValidator` on PATH.
 - SPIR-V is compiled at build time; n9.0.2 has no libshaderc or libglslang option. make runs glslc over the 58 `*.comp.glsl` shaders, and FFmpeg's own `bin2c` embeds the result in the libraries (`ffbuild/common.mak:113-133`). No shader compiler ships.
 - Shader compression follows zlib+gzip autodetection (configure:7275-7285). Which path the image takes is not measured yet; the build logs `config.mak: shader compression ON|OFF` right after the Vulkan gate.

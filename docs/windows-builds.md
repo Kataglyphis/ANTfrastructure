@@ -880,7 +880,15 @@ Its actions are cached on the host's dufs
 - **Gates.** The wheel must be `ai_edge_litert-<version>-cpXY-cpXY-win_amd64.whl`, hold the four
   `_pywrap_litert_*` extensions, have `pywrap_litert_common.dll` import `pythonXY.dll`, carry the
   pinned accelerator and no OpenVINO vendor dir, and no PE may import an ONNX Runtime. A CPU smoke
-  then runs `simple_floor_op.tflite` through the `Interpreter` and `CompiledModel` APIs.
+  then runs `simple_floor_op.tflite` through the `Interpreter` and `CompiledModel` APIs. Before the
+  model runs, pinned `ty` checks `litert-wheel-smoke.py` against the **installed** built wheel,
+  NumPy and ml_dtypes in the smoke target. The driver passes only `TY_VERSION` from
+  `tool-pins.env` to this RUN. `uvx` prewarms the checker before Bazel work, storing downloads in
+  the existing locked cache mount and its tool environment in the disposable build tree. The
+  final check is offline and fails on a missing package, checker error or empty success report.
+  This gate checks the smoke script's types and import resolution; it
+  does not type-check LiteRT's upstream package internals. The Windows harness mutates its exit
+  verdict to prove the gate fails closed.
 - **Cross.** The arm64 lane leaves the store empty with an ABSENT marker: upstream has no
   windows-arm64 config.
 
@@ -2430,6 +2438,11 @@ through WindowsTargetArch.Common; Meson keeps its export and BSS-tail policy. Ar
 readers use its bounded ASCII signature check.
 FFmpeg pkg-config edits and OpenCV probe diagnostics share indexed line selection through
 WindowsSourceBuild.Common, while callers keep their match, context and failure policies.
+`Get-MissingBuildChildPaths` shares required-child enumeration for FFmpeg's Vulkan SDK
+files and the LiteRT wheel smoke's installed package directories. Each caller selects
+leaf or directory checks and keeps its own fatal diagnostic.
+MIGraphX licence copying calls its existing file-gap helper, preserving empty-list
+behavior and its missing-file error rather than repeating the file scan.
 TVM marker and Torch probe lists share empty-token handling through WindowsNative.Common.
 Handoff transfers share context and curl execution;
 source-build sccache sessions share lookup and command capture without changing

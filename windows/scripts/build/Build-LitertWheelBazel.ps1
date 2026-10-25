@@ -267,7 +267,8 @@ function Invoke-LitertWheelSmoke {
         Installs the wheel, numpy and ml_dtypes (tensor_buffer imports it) at their pins into -Target, then runs a floor model through both Python APIs on the CPU.
     #>
     param([Parameter(Mandatory)][string]$Wheel, [Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$PipDir,
-        [Parameter(Mandatory)][string]$Target, [Parameter(Mandatory)][string]$Model, [Parameter(Mandatory)][string]$SmokeScript)
+        [Parameter(Mandatory)][string]$Target, [Parameter(Mandatory)][string]$Model, [Parameter(Mandatory)][string]$SmokeScript,
+        [Parameter(Mandatory)][string]$TyVersion)
     $saved = $env:PYTHONPATH
     try {
         # The hermetic layout ships no pip; the @pypi__pip repo's copy runs from PYTHONPATH.
@@ -275,10 +276,43 @@ function Invoke-LitertWheelSmoke {
         & $Python -m pip install --quiet --disable-pip-version-check --no-deps --only-binary=:all: --target $Target $Wheel @(Get-PipPin -Name 'numpy', 'ml_dtypes') | Out-Host
         if ($LASTEXITCODE -ne 0) { throw "pip install of the smoke set exited $LASTEXITCODE" }
         $env:PYTHONPATH = $Target
+        Assert-LitertWheelSmokeTypes -Python $Python -Target $Target -SmokeScript $SmokeScript -TyVersion $TyVersion
         $out = @(& $Python $SmokeScript $Model 2>&1 | ForEach-Object { "$_" })
         $out | Out-Host
         if ($LASTEXITCODE -ne 0 -or -not ($out -match '^LITERT-WHEEL-SMOKE PASS')) { throw 'the ai_edge_litert CPU smoke failed (output above)' }
     } finally { $env:PYTHONPATH = $saved }
+}
+
+function Assert-LitertTyAvailable {
+    # Prewarm before Bazel so a missing checker cannot waste the wheel compile.
+    param([AllowEmptyString()][string]$TyVersion)
+    if ($TyVersion -notmatch '^\d+\.\d+\.\d+$') { throw "TY_VERSION is not a pinned release: '$TyVersion'" }
+    $output = @(& uvx --offline "ty@$TyVersion" --version 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        $output = @(& uvx "ty@$TyVersion" --version 2>&1 | ForEach-Object { "$_" })
+        $code = $LASTEXITCODE
+    }
+    $output | Out-Host
+    if ($code -ne 0 -or -not ($output -match "^ty $([regex]::Escape($TyVersion))(?:\s|$)")) {
+        throw "pinned ty $TyVersion is unavailable (exit $code)"
+    }
+}
+
+function Assert-LitertWheelSmokeTypes {
+    # The installed wheel and pinned NumPy are available here; this does not type-check upstream package internals.
+    param([Parameter(Mandatory)][string]$Python, [Parameter(Mandatory)][string]$Target,
+        [Parameter(Mandatory)][string]$SmokeScript, [Parameter(Mandatory)][string]$TyVersion)
+    $missing = @(Get-MissingBuildChildPaths -Root $Target -RelativePath @('ai_edge_litert', 'numpy', 'ml_dtypes') -PathType Container)
+    if ($missing.Count -gt 0) { throw "ty smoke environment is missing installed $($missing[0]) under $Target" }
+    $output = @(& uvx --offline "ty@$TyVersion" check --project (Split-Path -Parent $SmokeScript) `
+            --no-respect-ignore-files --python $Python --python-platform windows `
+            --extra-search-path $Target --output-format concise $SmokeScript 2>&1 | ForEach-Object { "$_" })
+    $code = $LASTEXITCODE
+    $output | Out-Host
+    if ($code -ne 0 -or 'All checks passed!' -notin $output) {
+        throw "pinned ty failed the installed ai_edge_litert smoke script (exit $code)"
+    }
 }
 
 Import-CanonicalVersions -ScriptRoot $ScriptDir
@@ -292,6 +326,10 @@ if (Test-WindowsCrossTarget) {
 }
 
 $pin = Get-LitertWheelPin
+$tyVersion = $env:TY_VERSION
+if ([string]::IsNullOrWhiteSpace($tyVersion)) { throw 'TY_VERSION is unset for the LiteRT wheel type gate' }
+$null = New-Item -ItemType Directory -Force -Path $WorkRoot
+Assert-LitertTyAvailable -TyVersion $tyVersion
 $python = Get-PinnedPythonVersion
 $clock = [Diagnostics.Stopwatch]::StartNew()
 reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f | Out-Null
@@ -369,7 +407,8 @@ try {
     Assert-LitertWheelContract -Wheel $dist[0].FullName -Version $version -AbiTag $python.AbiTag `
         -AcceleratorSha256 $pin.LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256 -ExtractDir (Join-Path $WorkRoot 'contract')
     Invoke-LitertWheelSmoke -Wheel $dist[0].FullName -Python (Join-Path $WorkRoot 'py\python\python.exe') -PipDir (Join-Path $WorkRoot 'pip') `
-        -Target (Join-Path $WorkRoot 'smoke') -Model (Join-Path $src 'litert\test\testdata\simple_floor_op.tflite') -SmokeScript (Join-Path $ScriptDir 'litert-wheel-smoke.py')
+        -Target (Join-Path $WorkRoot 'smoke') -Model (Join-Path $src 'litert\test\testdata\simple_floor_op.tflite') `
+        -SmokeScript (Join-Path $ScriptDir 'litert-wheel-smoke.py') -TyVersion $tyVersion
 
     Write-Host '=== [7/7] store the wheel ==='
     [void](Save-PythonWheel -SourceDir (Split-Path $dist[0].FullName) -Filter $dist[0].Name -WheelDir $WheelDir -Required)

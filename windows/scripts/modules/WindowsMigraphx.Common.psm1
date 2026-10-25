@@ -498,7 +498,7 @@ function Copy-MigraphxLicenseFile {
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$RelativePath,
         [Parameter(Mandatory)][string]$Destination
     )
-    $missing = @($RelativePath | Where-Object { -not (Test-Path -LiteralPath (Join-Path $SourceRoot $_) -PathType Leaf) })
+    $missing = @(Get-MigraphxFileGap -Root $SourceRoot -RelativePath $RelativePath)
     if ($missing.Count -gt 0) { throw "$Name`: licence file(s) $($missing -join ', ') not found in $SourceRoot (upstream moved them?)" }
     foreach ($rel in $RelativePath) {
         $target = Join-Path $Destination "licenses\$Name\$rel"

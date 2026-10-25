@@ -133,7 +133,7 @@ def _kill_group(pid, grace=5.0) -> None:
                 time.sleep(0.1)
                 os.killpg(pid, 0)
             # Windows has no SIGKILL; this branch runs only where killpg exists.
-            os.killpg(pid, getattr(signal, "SIGKILL"))
+            os.killpg(pid, signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
             pass
     else:

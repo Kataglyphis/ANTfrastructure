@@ -487,11 +487,13 @@ subjects are built with `printf`, not written as literal lines: a real
 `tests/test-python-lint-gate.sh` covers the lint tiers. The shared **gate tier**
 (`ruff check --select E9,F63,F7,F82,B012,B023`) rejects an undefined name, syntax
 error, silenced exception or late-bound closure. The default hub preflight sweep also rejects
-`F401`, `F841`, `RUF059`, `FURB167`, `ISC004` and `UP032` in Python files and extracted shell heredocs;
+`F401`, `F841`, `RUF059`, `FURB167`, `ISC004`, `UP032` and `B009` in Python files and extracted shell heredocs;
 the regex rule rejects abbreviated `re.M`, `re.S` and `re.I` flags after the 27
 existing uses were spelled out. The string rule requires parentheses around the
 eight intentional adjacent literals in collections. Thirty string `.format()` calls
-were converted to f-strings before `UP032` became fatal. Explicit
+were converted to f-strings before `UP032` became fatal. Three constant-name
+`getattr` calls now use direct attributes, and `B009` rejects regressions; dynamic
+attribute names are unaffected. Explicit
 targets and named roots retain their advisory adoption tier. The **advisory
 tier** (the full default ruleset) reports other findings without failing. The
 fixture writes `RUFF_VERSION`
@@ -544,7 +546,7 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. Fifteen fully annotated Renovate,
+`logs/code-quality/ruff-private-returns-gate.txt`. Twenty fully annotated Renovate,
 LLM gateway, docs, host and build helper files have fatal ANN001/ANN201 checks in
 `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
@@ -565,10 +567,21 @@ workflow checks out the pinned DocumANTation submodule and runs `--docs-conf`
 as a prerequisite to building and publishing the site. That mode checks the
 tracked configuration against the theme's source path, writes
 `logs/code-quality/ty-docs-conf-gate.txt`, and fails for a missing theme or a
-type finding. Sphinx rendering is checked by the later docs build. The five
-remaining runtime-dependent files still have report-only ty findings. A new
+type finding. Sphinx rendering is checked by the later docs build. Two more
+runtime-dependent files have separate build-time type gates: `venv-version-probe.py`
+in the x64 torch image uses its assembled `/opt/venv`, and `litert-wheel-smoke.py`
+in the Windows media wheel build uses the installed wheel, NumPy and ml_dtypes.
+They remain visible in generic reports because those packages are absent from
+the quality environment. The Jetson webcam, WebDAV downloader and Flutter
+browser smoke still have only report-only ty findings. A new
 Python path outside the strict patterns also starts in the full report until
 the strict scope is extended.
+The preflight and x64 image build share `01-core/load-ty-tool.sh` for the pinned
+ty version and uvx setup. The torch Dockerfile mounts it beside the version loader
+and probe script so the build checks the same pin without copying the checker into
+the final image. The shared loader clears an ambient `TY_VERSION`; the preflight
+driver also clears `RUFF_VERSION` before loading its pinned tools. Fixtures and
+mutations prove ambient versions cannot replace either pin.
 There is no allowlist or raised diagnostic threshold. The full report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
 return and errors in selected Linux and Windows helpers, requiring the gate to fail.
@@ -582,9 +595,10 @@ tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
 four `ANN205` findings were fixed; `ANN206` was already clean. All 303 existing
 private return findings were fixed, so `ANN202` now fails across all 146 tracked
 Python files. Parameter and public return findings were fixed in the Renovate CMake
-parser and planner, the gateway renderer and its tests, the two docs duplication
-scanners, and nine small docs, host, image, wheel and test files. ANN001/ANN201
-fail in those 15 files. Remaining findings stay in the full report. The focused
+parser, locator and planner, the gateway renderer and its tests, the two docs duplication
+scanners, the develop-red watcher, layer audit, large-file and masked-assignment
+verifiers, and nine small docs, host, image, wheel and test files. ANN001/ANN201
+fail in those 20 files. Remaining findings stay in the full report. The focused
 suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
@@ -790,7 +804,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3444 entries** over **374 distinct test commands**; both digits are
+manifest holds **3449 entries** over **375 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -2145,7 +2159,7 @@ rather than trying to resolve what a call site sees.
 
 `python3 linux/scripts/verify_dead_functions.py --census` runs the pass masking
 defeats: a definition whose **own file** never names it again. It cannot be a gate
-on this tree, and the numbers say why. 938 definitions qualify, and nearly all are
+on this tree, and the numbers say why. 939 definitions qualify, and nearly all are
 alive: library helpers called by whoever sources the file, stubs a suite defines
 for the code under test, `"check_${name}"` dispatch. Filter to files that are
 self-contained — they source nothing, and no other corpus file names them by

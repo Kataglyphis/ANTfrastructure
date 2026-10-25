@@ -9,6 +9,7 @@ import argparse
 import os
 import subprocess
 import sys
+from collections.abc import Sequence
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from quality_allow import check_counts, load_counts  # noqa: E402
@@ -31,14 +32,14 @@ DATA_EXT = frozenset("""
 """.split())
 
 
-def is_data(path):
+def is_data(path: str) -> bool:
     if os.path.splitext(path)[1].lower() in DATA_EXT:
         return True
     with open(path, "rb") as fh:
         return b"\0" in fh.read(SNIFF)
 
 
-def blob_sizes(root, shas):
+def blob_sizes(root: str, shas: Sequence[str]) -> dict[str, int]:
     """{sha: bytes} as git stores the blobs, which a CRLF checkout does not change."""
     out = subprocess.run(["git", "-C", root, "cat-file", "--batch-check=%(objectname) %(objectsize)"],
                          input="".join(sha + "\n" for sha in shas), capture_output=True, text=True, encoding="utf-8")
@@ -53,7 +54,7 @@ def blob_sizes(root, shas):
     return sizes
 
 
-def large_data(root):
+def large_data(root: str) -> list[tuple[tuple[str], int]]:
     """[((rel,), KiB)] for every tracked regular data file over the limit; source text (lockfiles, generated code) is not data."""
     out = subprocess.run(["git", "-C", root, "ls-files", "-s", "-z"], capture_output=True, text=True, encoding="utf-8")
     if out.returncode != 0:
@@ -82,7 +83,7 @@ def large_data(root):
     return found
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description="Keep big binary data out of the code repositories.")
     ap.add_argument("--root", default=None, help="the tree to grade (default: this repo)")
     ap.add_argument("--allow", default=None,

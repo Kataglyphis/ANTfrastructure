@@ -325,6 +325,7 @@ ARG LITERT_BAZEL_WINDOWS_AMD64_SHA256=36f82b752d59948a9b839738d7c96f1bcca3841546
 ARG LITERT_WINDOWS_ACCELERATOR_WHEEL_URL=https://files.pythonhosted.org/packages/4b/e6/71e7c3164c7c4c3d3e06e224ba54559b7f5730fa4527fda5a48bf59d3ed0/ai_edge_litert-2.3.0-cp314-cp314-win_amd64.whl
 ARG LITERT_WINDOWS_ACCELERATOR_WHEEL_SHA256=08cec0910d071345743379c9bac1b1d76f5050d9dd2d525e2300826ba132e89c
 ARG LITERT_WINDOWS_WEBGPU_ACCELERATOR_SHA256=1cf8b23cd30d04f0c7f087243322a4550a695c4803be9b5ef5027d7de3e26d8d
+ARG TY_VERSION
 ENV LITERT_WINDOWS_SOURCE_COMMIT="${LITERT_WINDOWS_SOURCE_COMMIT}" `
     LITERT_BAZEL_WINDOWS_VERSION="${LITERT_BAZEL_WINDOWS_VERSION}" `
     LITERT_BAZEL_WINDOWS_AMD64_SHA256="${LITERT_BAZEL_WINDOWS_AMD64_SHA256}" `
@@ -340,7 +341,8 @@ RUN --mount=type=cache,target=C:\bzl-repo-cache,id=bazel-litertlm-winamd64,shari
     --mount=type=bind,from=buildmods,source=/bkmods,target=C:\bkmnt\modules `
     --mount=type=bind,source=windows/scripts/modules/WindowsBazel.Common.psm1,target=C:\bkmnt\bazelmods\WindowsBazel.Common.psm1 `
     --mount=type=bind,source=windows/scripts/patches/litert,target=C:\bkmnt\patches\litert `
-    & 'C:\bkmnt\Build-LitertWheelBazel.ps1' -ScriptDir 'C:\bkmnt' -ToolCache 'C:\bzl-repo-cache\toolcache'
+    $env:UV_CACHE_DIR = 'C:\bzl-repo-cache\ty-uv-cache'; $env:UV_TOOL_DIR = 'C:\lw\ty-uv-tools'; `
+    $env:UV_PYTHON_DOWNLOADS = 'never'; & 'C:\bkmnt\Build-LitertWheelBazel.ps1' -ScriptDir 'C:\bkmnt' -ToolCache 'C:\bzl-repo-cache\toolcache'
 
 # tvm: direct solve, same mount pattern.
 FROM media-tvm-env AS media-tvm-built

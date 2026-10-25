@@ -20,6 +20,7 @@ HUB_UNUSED_SELECT="F401,F841,RUF059"
 HUB_REGEX_SELECT="FURB167"
 HUB_STRING_SELECT="ISC004"
 HUB_FORMAT_SELECT="UP032"
+HUB_ATTR_SELECT="B009"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
@@ -161,6 +162,8 @@ if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
   _lint_python_check "${HUB_REGEX_SELECT}" "hub regex-flag gate failed" "hub regex-flag gate"
   _lint_python_check "${HUB_STRING_SELECT}" "hub string-concatenation gate failed" "hub string-concatenation gate"
   _lint_python_check "${HUB_FORMAT_SELECT}" "hub string-format gate failed" "hub string-format gate"
+  # Dynamic attribute names and consumer roots keep their own behavior.
+  _lint_python_check "${HUB_ATTR_SELECT}" "hub literal-attribute gate failed" "hub literal-attribute gate"
 fi
 
 # Advisory pass — full default ruleset, informational only.

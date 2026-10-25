@@ -24,6 +24,13 @@
 - Spell out 27 equivalent Python regex flags in source and shell heredocs; make Ruff FURB167 fatal in full hub lint sweeps with source, heredoc and mutation proofs.
 - Parenthesize eight intentional adjacent strings in collections without changing their values; make Ruff ISC004 fatal in full hub lint sweeps with failure and mutation proofs.
 - Convert 30 string formatting calls to f-strings and make Ruff UP032 fatal in full hub lint sweeps; test Python, shell heredoc and consumer advisory boundaries plus a selector mutation.
+- Replace three constant-name `getattr` calls with direct attributes and make Ruff B009 fatal in full hub lint sweeps, including extracted shell Python, with failing fixtures and a selector mutation.
+- Annotate the Renovate locator's 100 missing parameters and public returns and add it to the strict Ruff ANN001/ANN201 scope, with failing signature fixtures.
+- Annotate 28 missing parameters and returns in four Linux quality scripts and add those files to the strict Ruff ANN001/ANN201 scope.
+- Check the Linux venv probe with pinned ty against the assembled x64 torch environment, with a missing-import and wrong-return fixture; foreign architectures keep their runtime smokes.
+- Check the Windows LiteRT wheel smoke with pinned ty against the built wheel and smoke dependencies, with offline execution and fatal checker and import verdicts.
+- Share pinned ty setup between preflight and the Linux image build, share Windows required-child checks between FFmpeg and LiteRT, and reuse MIGraphX's file-gap probe for licence copies; shrink the measured FFmpeg/OpenCV duplication budget from 13 to 12.
+- Refuse ambient ty and Ruff version overrides in the Python type and annotation gate, with failing version mutations.
 - Share Windows agentic-loop test config defaults and child-process transport; lower their measured duplication budget from 39 to 20 without changing the gate threshold.
 - Check `docs/conf.py` with pinned ty against the checked-out DocumANTation theme before the docs site builds; require a fatal type verdict, a missing-theme failure and mutation proofs for the file and source path.
 - Enforce an 80% command coverage floor for Windows Vulkan validation after adding child-process behavior tests; the complete Windows suite passes 2,729 tests and all 15 module floors.
