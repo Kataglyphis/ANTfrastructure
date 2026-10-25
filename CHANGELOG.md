@@ -15,6 +15,8 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Check npm's latest Renovate release before each live local dependency scan and install it in
+  an isolated user cache first; fail when the version check or installation cannot complete.
 - Add `renovate-fleet.sh --github-owned` with a paginated, authenticated active nonfork inventory
   and complete-checkout/adoption preflight; provide a reusable read-only CI entrypoint gate.
 - Include custom regex managers in default Renovate scans, resolve the GitHub token centrally

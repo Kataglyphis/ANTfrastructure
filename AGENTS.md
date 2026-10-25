@@ -1287,6 +1287,10 @@ The rules; the mechanism is documented once in
 - **A run REPORTS. `--apply` only when the owner asked for it in that turn** (owner directive
   2026-09-11). `linux/scripts/renovate-local.sh .` reports; `--apply --dry-run` prints the plan;
   `--apply` writes gitlinks, manifests and locks, for every ecosystem the repo has.
+- **A live Renovate scan checks its own CLI first.** Resolve npm's `renovate@latest` tag and
+  install that exact release into the isolated user cache before scanning dependencies. A failed
+  lookup or install fails the run; never report repository dependencies with an unchecked stale
+  CLI. Report and dry-run modes do not rewrite the tracked Renovate pin or lock.
 - **An owner-wide run uses GitHub's active, nonfork inventory.**
   `linux/scripts/renovate-fleet.sh --github-owned` reports; add `--apply` only under the rule
   above. Require every eligible repo's own checkout and tracked Renovate config, wrapper and CI

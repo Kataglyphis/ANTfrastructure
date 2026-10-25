@@ -32,6 +32,13 @@ third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply --dry-run .
 third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply .
 ```
 
+Each live invocation first asks npm for the `renovate` package's `latest` tag,
+checks the local Renovate CLI, and installs that exact release into an isolated
+user cache when needed. The repository dependency scan starts only after this
+check succeeds. An unavailable registry or failed installation stops the command
+instead of silently using an older CLI. Report and dry-run calls keep the tracked
+Renovate pin and lock unchanged; see [the bootstrap details](#pins-and-why-node-is-one-of-them).
+
 Consumers reach it through their own thin wrapper, named `renovate-local.sh` and
 placed wherever that repo already keeps its ANTfrastructure wrappers -
 `scripts/linux/` in BeschleunigerBallett, OmniAccelerANT, OrchestrANT, OxidANT,
@@ -84,10 +91,10 @@ linux/scripts/renovate-local.sh --apply .      # gitlinks AND manifests AND lock
 ```
 
 Consumers call their own thin `renovate-local.sh` wrapper (`scripts/linux/`, or
-`scripts/` in a flat repo), same shape as `run-lint-gates.sh`. Node 24
-(SHA256-verified) and Renovate (an exact npm version, installed from a committed
-lock) are pinned in `01-core/tool-pins.env` and bootstrapped on demand into
-`~/.cache/kataglyphis` ([§ Pins](#pins-and-why-node-is-one-of-them)). The apply
+`scripts/` in a flat repo), same shape as `run-lint-gates.sh`. The SHA256-verified
+Node runtime and the committed Renovate baseline are pinned in
+`01-core/tool-pins.env`. Live scans check npm's latest Renovate release first and
+bootstrap it into `~/.cache/kataglyphis` ([§ Pins](#pins-and-why-node-is-one-of-them)). The apply
 half's JSON reading and file editing live beside it in `renovate_planner.py`, and
 `tests/test-renovate-local.sh` drives the real script over fixtures through
 `RENOVATE_LOCAL_REPORT` / `RENOVATE_LOCAL_CONFIG` - no network, no node.
@@ -1296,23 +1303,43 @@ GPU constraints: when bumping CUDA/ROCm/MIGraphX, verify driver requirements and
 [`linux/scripts/01-core/tool-pins.env`](../linux/scripts/01-core/tool-pins.env),
 like every other tool this repo bootstraps on demand (in `versions.env` until CON59
 moved the host-tool pins out of the image build's inputs, 2026-10-05). Both are marked
-`# noforward` — no image installs them.
+`# noforward` — no image installs them. `RENOVATE_VERSION` defines the committed,
+reproducible baseline; the version used by a live scan can be newer.
 
-Node is pinned because Renovate 44 declares `"node": "^24.11.0"` and dies on
-Node 22 with `TypeError: RegExp.escape is not a function`, an error that names
+The Node pin originated when Renovate 44 declared `"node": "^24.11.0"` and died on
+Node 22 with `TypeError: RegExp.escape is not a function`, an error that named
 nothing relevant. It is deliberately **not** the canonical `NODE_VERSION`, which is
-26.11.0 for the images: Renovate declares `engines.node "^24.11.0"`, major 24 only,
-so one name cannot serve both. A node already on `PATH` is used only when its major
+26.11.0 for the images: the committed Renovate 44.157.0 baseline declares
+`engines.node "^24.11.0"`, major 24 only, so one name cannot serve both.
+A node already on `PATH` is used only when its major
 **matches** the pin rather than merely exceeding it;
 otherwise the pinned tarball is downloaded once, **SHA256-verified**, and cached
 per version under `${XDG_CACHE_HOME:-~/.cache}/kataglyphis` (override with
 `RENOVATE_LOCAL_CACHE`).
-Renovate itself installs with **`npm ci` from the committed
-`linux/scripts/renovate-npm/package-lock.json`** (every transitive version with its
-sha512 integrity) into a user-owned prefix, `renovate-<version>-<lock hash>` in that
-cache: no sudo, nothing global, and a regenerated lock reinstalls. `renovate-local.sh`
-refuses a lock that installs another Renovate than `RENOVATE_VERSION`, and `--print-bin`
-prints the path alone (the install talks on stderr).
+
+Before every live report, dry-run, apply or `--print-bin`, the bootstrap asks npm
+for the `renovate` package's [`latest` dist-tag](https://docs.npmjs.com/cli/v11/commands/npm-view/).
+When that release equals `RENOVATE_VERSION`, it installs or reuses **`npm ci` from the
+committed `linux/scripts/renovate-npm/package-lock.json`**, which fixes every
+transitive version and its integrity hash. When npm reports a different latest
+release, the bootstrap copies the committed package manifest into a separate
+user-owned cache, keeps its security overrides, sets Renovate to that exact
+release, resolves a cache-local lock, and installs it with `npm ci` there. No sudo,
+global npm install or tracked-file rewrite is involved. The install is reused on
+later runs of the same release; its cache key includes the selected version and
+the committed manifest hash, so a security-override edit creates a new install.
+A failed registry query, lock resolution, `npm ci --engine-strict` installation or
+CLI version smoke fails before the repository scan; a cached older release
+cannot turn that failure into a green report.
+`--print-bin` runs the same check and prints only the selected `renovate.js` path
+on stdout. Injected `RENOVATE_LOCAL_REPORT` fixtures bypass this network
+bootstrap so the test suites remain offline.
+
+The committed lock still has its own invariant: `renovate-local.sh` refuses a
+lock that installs another Renovate than `RENOVATE_VERSION`. Its cache prefix is
+`renovate-<version>-<lock hash>`, so a regenerated committed lock reinstalls.
+The [Renovate CLI is published through npm](https://docs.renovatebot.com/getting-started/running/),
+and [`npm ci` refuses a manifest/lock mismatch](https://docs.npmjs.com/cli/v11/commands/npm-ci/).
 
 **Why a lock (2026-10-19).** `npm install -g renovate@44.157.0` failed with `npm ETARGET
 @aws-sdk/credential-provider-http@^3.972.77`. Renovate pins its direct dependencies
@@ -1322,13 +1349,16 @@ exactly and nothing below them, so each install resolved the registry of that mi
 Nothing was yanked and no lock was stale; there was none. Suite:
 `tests/test-renovate-bootstrap.sh`.
 
-Renovate updates itself the same way: both keys are annotated (`datasource=npm
-depName=renovate`, `datasource=node-version depName=node`), so a report names a newer
-Renovate like any other pin. Their bump is a hand bump, because the Node tarball's SHA256
-moves with it. A Renovate bump also sets `renovate` in `linux/scripts/renovate-npm/package.json`
-and regenerates the lock there: `npm install --package-lock-only --ignore-scripts` with the
-pinned Node. `.github/renovate.json` gates that `package.json` the same way; lock maintenance
-(`--apply`) still moves the lock's transitive entries.
+The automatic CLI refresh does not move the **tracked baseline**. Both baseline
+keys are annotated (`datasource=npm depName=renovate`, `datasource=node-version
+depName=node`), so a report still names a newer pin. Changing those tracked pins
+remains a coordinated edit: the Node tarball's SHA256 moves with a Node bump, and
+a Renovate bump also changes `renovate` in `linux/scripts/renovate-npm/package.json`
+and regenerates its committed lock with `npm install --package-lock-only
+--ignore-scripts` under the pinned Node. `.github/renovate.json` gates that
+`package.json` the same way; lock maintenance (`--apply`) still moves the lock's
+transitive entries. A current CLI can therefore scan and update other repository
+dependencies without making report or dry-run modes mutate this baseline.
 
 `overrides` in that `package.json` holds security pins only: a dependency Renovate pins exactly
 at a vulnerable version (markdown-it 15.0.2 → 15.0.3, GHSA-gfr2-rv44-r23c and GHSA-vfgh-jcmw-g37q,
