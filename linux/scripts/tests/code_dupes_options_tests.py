@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Exercise duplication report modes in a disposable consumer checkout."""
 
 import importlib.util

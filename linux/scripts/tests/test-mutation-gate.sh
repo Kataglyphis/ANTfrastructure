@@ -598,21 +598,33 @@ t_assert_ok _safe_target_contract "${GATE}"
 sed '/if not within(os.path.realpath(root), target):/,+1d' "${GATE}" > "${_tmp}/no-target-containment.py"
 t_assert_fails _safe_target_contract "${_tmp}/no-target-containment.py"
 
+# _shard_fixture <n> <survivor> [root] [setup]: a dropped shard leaves a surviving mutation.
+_shard_fixture() {
+  local n="$1" survivor="$2" root="${3:-${_work}}" setup="${4:-}" entries="" id prefix=""
+  [ "${setup}" = setup ] && prefix='test -f .venv/ready && '
+  for id in $(seq 1 "${n}"); do
+    printf 'GUARD=on\n' > "${root}/s${id}.sh"
+    if [ "${id}" = "${survivor}" ]; then
+      printf 'true\n' > "${root}/t${id}.sh"
+    else
+      printf '%sgrep -q "GUARD=on" "./s%s.sh"\n' "${prefix}" "${id}" > "${root}/t${id}.sh"
+    fi
+    entries="${entries}${entries:+,}$(printf '{"id":"probe.%s","target":"s%s.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t%s.sh","why":"probe %s"}' "${id}" "${id}" "${id}" "${id}")"
+  done
+  printf '[%s]\n' "${entries}" > "${root}/m.json"
+}
+
+_plant_setup_caller() {
+  local dir="$1"
+  mkdir -p "${dir}/.venv"
+  printf '.venv/\n' > "${dir}/.gitignore"
+  printf 'old\n' > "${dir}/.venv/source-only"
+  _shard_fixture 2 0 "${dir}" setup
+  printf 'mkdir -p .venv\nprintf ready > .venv/ready\necho setup >> "%s/setup-count"\n' "${_tmp}" > "${dir}/setup.sh"
+}
+
 t_case "optional setup runs once in each copy before its unmutated baseline"
-_setup_repo="${_tmp}/setup-caller"
-mkdir -p "${_setup_repo}/.venv"
-git -C "${_setup_repo}" init -q
-printf '.venv/\n' > "${_setup_repo}/.gitignore"
-printf 'old\n' > "${_setup_repo}/.venv/source-only"
-for _n in 1 2; do
-  printf 'GUARD=on\n' > "${_setup_repo}/subject${_n}.sh"
-  printf 'test -f .venv/ready && grep -q "GUARD=on" ./subject%s.sh\n' "${_n}" > "${_setup_repo}/test${_n}.sh"
-done
-cat > "${_setup_repo}/m.json" <<'EOF'
-[{"id":"probe.1","target":"subject1.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./test1.sh","why":"probe"},
- {"id":"probe.2","target":"subject2.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./test2.sh","why":"probe"}]
-EOF
-printf 'mkdir -p .venv\nprintf ready > .venv/ready\necho setup >> "%s/setup-count"\n' "${_tmp}" > "${_setup_repo}/setup.sh"
+_setup_repo="$(t_consumer_fixture "${_tmp}" _plant_setup_caller setup)"
 _setup_gate() {
   TMPDIR="${_tmp}" "${PY}" "${GATE}" --manifest "${_setup_repo}/m.json" \
     --root "${_setup_repo}" --jobs 2 "$@"
@@ -639,20 +651,6 @@ t_assert_eq "1" "$(t_rc _mutant_setup_gate)"
 
 # Shards run in parallel, but every entry must still be proven alone.
 
-# _shard_fixture <n> <survivor>: n entries; the survivor's test cannot fail, so a dropped shard shows.
-_shard_fixture() {
-  local n="$1" survivor="$2" entries="" id
-  for id in $(seq 1 "${n}"); do
-    printf 'GUARD=on\n' > "${_work}/s${id}.sh"
-    if [ "${id}" = "${survivor}" ]; then
-      printf 'true\n' > "${_work}/t${id}.sh"
-    else
-      printf 'grep -q "GUARD=on" "./s%s.sh"\n' "${id}" > "${_work}/t${id}.sh"
-    fi
-    entries="${entries}${entries:+,}$(printf '{"id":"probe.%s","target":"s%s.sh","find":"GUARD=on","replace":"GUARD=off","test":"bash ./t%s.sh","why":"probe %s"}' "${id}" "${id}" "${id}" "${id}")"
-  done
-  printf '[%s]\n' "${entries}" > "${_work}/m.json"
-}
 # The ids reported as biting, in id order: verdicts stream in completion order, each behind its [j/J] tag.
 _bitten() {
   printf '%s\n' "$1" | sed -n 's/^\(\[[0-9]*\/[0-9]*\] \)\{0,1\}  bites  *probe\.\([0-9]*\).*/\2/p' \
