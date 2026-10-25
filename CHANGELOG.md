@@ -15,6 +15,8 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Resolve another 180 Ruff parameter and public-return findings in consumer inventory and the image bump tool; enforce ANN001/ANN201 on 26 fully annotated files.
+- Require nonempty combined artifact uploads in both reusable Python CI workflows, remove the resolved workflow census budget, and prove the upload steps keep their failure and always-run settings.
 - Keep the Windows 15-decision complexity gate green by moving LiteRT ty-pin validation into focused helpers in the BuildKit driver and wheel builder; missing pins still fail before a media solve or Bazel build.
 - Clear 264 Ruff parameter and public-return annotation findings in the Renovate audit, package-name verifier and two docs bump tools; enforce ANN001/ANN201 on all 24 fully annotated files.
 - Add Playwright to the locked quality environment and make ty check the Flutter browser smoke against its real API, with a failing API-type fixture and regenerated licence and SBOM records.

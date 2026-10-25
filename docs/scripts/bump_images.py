@@ -6,8 +6,13 @@ import gzip
 import hashlib
 import re
 import subprocess
+from collections.abc import Callable, Mapping, Sequence
 
 import bump_versions as bv  # tests patch names on bump_versions; every call reads them through it
+
+SpecResult = tuple[str, dict[str, str]]
+CudaRedistManifest = Mapping[str, Mapping[str, Mapping[str, str]]]
+CudnnRedistManifest = Mapping[str, Mapping[str, Mapping[str, Mapping[str, str]]]]
 
 
 # Install-Cuda.ps1's windows-arm64 redist set: key infix -> manifest component.
@@ -25,7 +30,7 @@ _CUDA_WINDOWS_ARM64_COMPONENTS = (
 )
 
 
-def cuda_windows_arm64_pins(manifest) -> dict[str, str]:
+def cuda_windows_arm64_pins(manifest: CudaRedistManifest) -> dict[str, str]:
     """Each arm64 component's version and sha256 from a parsed redistrib_<CUDA_VERSION>.json."""
     pins = {}
     for ver_key, sha_key, comp in bv._CUDA_WINDOWS_ARM64_COMPONENTS:
@@ -59,7 +64,7 @@ def cuda_network_installer_sha256(v: str) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def spec_cuda(cur):
+def spec_cuda(cur: str) -> SpecResult:
     """CUDA from the redist index; a changed version re-hashes the network installer Install-Cuda.ps1 downloads."""
     v = bv.nvidia_redist_latest("cuda")
     extras = {}
@@ -70,7 +75,7 @@ def spec_cuda(cur):
     return v, extras
 
 
-def spec_cudnn(cur):
+def spec_cudnn(cur: str) -> SpecResult:
     """cuDNN's full 4-part version and zip sha256 from the redist manifest, preferring CUDA_VERSION's major."""
     label = bv.nvidia_redist_latest("cudnn")
     if not label:
@@ -92,7 +97,7 @@ def spec_cudnn(cur):
     return full_version, extras
 
 
-def cudnn_windows_arm64_sha256(manifest, cuda_major) -> str:
+def cudnn_windows_arm64_sha256(manifest: CudnnRedistManifest, cuda_major: str) -> str:
     """The windows-arm64 cuDNN zip's sha256 for one CUDA major, from a parsed cuDNN redist manifest."""
     entry = manifest.get("cudnn", {}).get("windows-arm64", {}).get(cuda_major)
     if not entry or not entry.get("sha256"):
@@ -100,7 +105,7 @@ def cudnn_windows_arm64_sha256(manifest, cuda_major) -> str:
     return entry["sha256"]
 
 
-def spec_llama_cpp_hip(cur):
+def spec_llama_cpp_hip(cur: str) -> SpecResult:
     """Newest llama.cpp bNNNN publishing both the win-cpu-x64 and win-vulkan-x64 zips; ggml-hip builds from that tag's source."""
     tags = sorted((t for t in bv.ls_remote_tags("ggml-org/llama.cpp") if re.fullmatch(r"b\d+", t)),
                   key=bv._vkey, reverse=True)
@@ -123,7 +128,7 @@ def spec_llama_cpp_hip(cur):
     raise RuntimeError("none of the newest 30 ggml-org/llama.cpp builds publishes both a win-cpu-x64 and a win-vulkan-x64 zip")
 
 
-def spec_ort_webgpu_dxc(cur):
+def spec_ort_webgpu_dxc(cur: str) -> SpecResult:
     """DXC's newest release zip (dxcompiler.dll + dxil.dll); its dated name and SHA move with the tag."""
     rel = bv.http_json("https://api.github.com/repos/microsoft/DirectXShaderCompiler/releases/latest")
     tag = rel["tag_name"]
@@ -137,7 +142,8 @@ def spec_ort_webgpu_dxc(cur):
     return tag, extras
 
 
-def _asset_pins(repo, tag, pairs, sums=()) -> dict[str, str]:
+def _asset_pins(repo: str, tag: str, pairs: Sequence[tuple[str, str]],
+                sums: tuple[str, ...] = ()) -> dict[str, str]:
     return {key: bv.asset_sha256(repo, tag, asset, sums=sums) for key, asset in pairs}
 
 
@@ -162,18 +168,18 @@ def cargo_qa_pins(tool: str, v: str) -> dict[str, str]:
     raise ValueError(tool)
 
 
-def spec_cargo_audit(cur):
+def spec_cargo_audit(cur: str) -> SpecResult:
     # rustsec/rustsec is a monorepo, so only the cargo-audit/v* tags are cargo-audit releases.
     v = bv.gh_latest("rustsec/rustsec", pattern=r"^cargo-audit/v\d+\.\d+\.\d+$").split("/v", 1)[1]
     return v, (bv.cargo_qa_pins("cargo-audit", v) if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_cargo_deny(cur):
+def spec_cargo_deny(cur: str) -> SpecResult:
     v = bv.gh_latest("EmbarkStudios/cargo-deny")
     return v, (bv.cargo_qa_pins("cargo-deny", v) if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_cargo_tarpaulin(cur):
+def spec_cargo_tarpaulin(cur: str) -> SpecResult:
     v = bv.gh_latest("xd009642/tarpaulin")
     return v, (bv.cargo_qa_pins("cargo-tarpaulin", v) if v != cur and bv.WRITE_MODE else {})
 
@@ -195,12 +201,12 @@ def web_lane_pins(tool: str, v: str) -> dict[str, str]:
     raise ValueError(tool)
 
 
-def spec_wasm_pack(cur):
+def spec_wasm_pack(cur: str) -> SpecResult:
     v = bv.gh_latest("rustwasm/wasm-pack").lstrip("v")
     return v, (bv.web_lane_pins("wasm-pack", v) if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_flutter_rust_bridge(cur):
+def spec_flutter_rust_bridge(cur: str) -> SpecResult:
     """Report tier: consumers pin the flutter_rust_bridge crate to this exact version, so the codegen moves with them."""
     v = bv.gh_latest("fzyzcjy/flutter_rust_bridge").lstrip("v")
     return v, (bv.web_lane_pins("flutter_rust_bridge_codegen", v) if v != cur and bv.WRITE_MODE else {})
@@ -214,7 +220,7 @@ def gitleaks_pins(v: str) -> dict[str, str]:
     ], sums=(f"gitleaks_{v}_checksums.txt",))
 
 
-def spec_gitleaks(cur):
+def spec_gitleaks(cur: str) -> SpecResult:
     v = bv.gh_latest("gitleaks/gitleaks").lstrip("v")
     return v, (bv.gitleaks_pins(v) if v != cur and bv.WRITE_MODE else {})
 
@@ -227,7 +233,7 @@ def mold_pins(v: str) -> dict[str, str]:
     ])
 
 
-def spec_mold(cur):
+def spec_mold(cur: str) -> SpecResult:
     v = bv.gh_latest("rui314/mold").lstrip("v")
     return v, (bv.mold_pins(v) if v != cur and bv.WRITE_MODE else {})
 
@@ -239,7 +245,7 @@ def lavapipe_pins(v: str) -> dict[str, str]:
     ])
 
 
-def spec_lavapipe(cur):
+def spec_lavapipe(cur: str) -> SpecResult:
     v = bv.gh_latest("mmozeiko/build-mesa")
     return v, (bv.lavapipe_pins(v) if v != cur and bv.WRITE_MODE else {})
 
@@ -248,7 +254,7 @@ def sqlite3_wasm_pin(v: str) -> dict[str, str]:
     return {"SQLITE3_WASM_SHA256": bv.asset_sha256("simolus3/sqlite3.dart", f"sqlite3-{v}", "sqlite3.wasm")}
 
 
-def spec_sqlite3_wasm(cur):
+def spec_sqlite3_wasm(cur: str) -> SpecResult:
     """Report tier: the wasm must match the sqlite3 Dart package a consumer locks; sqlite3.dart tags it sqlite3-<v>."""
     v = bv.gh_latest("simolus3/sqlite3.dart", pattern=r"^sqlite3-\d+\.\d+\.\d+$").removeprefix("sqlite3-")
     return v, (bv.sqlite3_wasm_pin(v) if v != cur and bv.WRITE_MODE else {})
@@ -258,7 +264,7 @@ def x265_pin(v: str) -> dict[str, str]:
     return {"X265_SHA256": bv.sha256_of_url(f"https://bitbucket.org/multicoreware/x265_git/downloads/x265_{v}.tar.gz")}
 
 
-def spec_x265(cur):
+def spec_x265(cur: str) -> SpecResult:
     """The newest x265_<v>.tar.gz in Bitbucket's downloads, the tarball Build-FfmpegCodecs.ps1 fetches; tags alone are not releases."""
     data = bv.http_json("https://api.bitbucket.org/2.0/repositories/multicoreware/x265_git/downloads?pagelen=100")
     found = [m.group(1) for d in data.get("values", [])
@@ -279,13 +285,13 @@ def gstreamer_wrap_pin(gst_version: str, wrap: str) -> tuple[str, str]:
     return d.group(1), h.group(1).lower()
 
 
-def spec_dav1d(cur):
+def spec_dav1d(cur: str) -> SpecResult:
     """Slaved to GSTREAMER_VERSION: the Windows codec build uses exactly the dav1d tarball GStreamer's wrap pins."""
     v, sha = bv.gstreamer_wrap_pin(bv.read_env()["GSTREAMER_VERSION"], "dav1d")
     return v, ({"DAV1D_SHA256": sha} if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_x264_meson(cur):
+def spec_x264_meson(cur: str) -> SpecResult:
     """Slaved to GSTREAMER_VERSION: x264.wrap names a meson-ports branch, and its head commit pins it."""
     text = bv.http_text(
         f"https://gitlab.freedesktop.org/gstreamer/gstreamer/-/raw/{bv.read_env()['GSTREAMER_VERSION']}/subprojects/x264.wrap")
@@ -299,7 +305,7 @@ def spec_x264_meson(cur):
     return rev.group(1), extras
 
 
-def spec_webdavclient(cur):
+def spec_webdavclient(cur: str) -> SpecResult:
     """The owner's WebDavClient has no releases; report its default branch's head against the pinned commit."""
     out = subprocess.run(["git", "ls-remote", "https://github.com/Kataglyphis/WebDavClient.git", "HEAD"],
                          capture_output=True, text=True, timeout=120, check=False)
@@ -309,7 +315,7 @@ def spec_webdavclient(cur):
     return m.group(1), {}
 
 
-def spec_pytorch_rocm_index(cur):
+def spec_pytorch_rocm_index(cur: str) -> SpecResult:
     """The newest download.pytorch.org rocmX.Y line carrying an x86_64 torch at PYTORCH_VERSION for PYTHON_VERSION's tag."""
     env = bv.read_env()
     torch = env["PYTORCH_VERSION"].lstrip("v")
@@ -330,7 +336,7 @@ _DEEPSTREAM_OSS_DEPS = (
 )
 
 
-def deepstream_oss_pins(script: str, tag_commit=None) -> dict[str, str]:
+def deepstream_oss_pins(script: str, tag_commit: Callable[[str, str], str] | None = None) -> dict[str, str]:
     """Each dependency's tag (the script's `git clone --branch`) and that tag's commit."""
     tag_commit = tag_commit or bv.ls_remote_tag_commit
     pins = {}
@@ -355,7 +361,7 @@ def deepstream_pins(v: str) -> dict[str, str]:
     }
 
 
-def spec_deepstream(cur):
+def spec_deepstream(cur: str) -> SpecResult:
     """The newest tag whose own release carries deepstream.sh's runtime deb; v9.1.0.x tags have no release at all."""
     tags = sorted((t for t in bv.ls_remote_tags("NVIDIA/DeepStream") if re.fullmatch(r"v\d+(?:\.\d+)+", t)),
                   key=bv._vkey, reverse=True)
@@ -385,7 +391,7 @@ def nvidia_apt_packages(repo: str) -> list[dict[str, str]]:
     return [dict(re.findall(r"^([A-Za-z0-9-]+): (.*)$", block, re.MULTILINE)) for block in raw.split("\n\n")]
 
 
-def deepstream_trt_pins(stanzas, trt_version: str, cuda: str) -> dict[str, str]:
+def deepstream_trt_pins(stanzas: list[dict[str, str]], trt_version: str, cuda: str) -> dict[str, str]:
     """Each TensorRT 10 deb's sha256 at <trt_version>-1+cuda<cuda>, from parsed Packages stanzas."""
     want = f"{trt_version}-1+cuda{cuda}"
     pins = {}
@@ -397,7 +403,7 @@ def deepstream_trt_pins(stanzas, trt_version: str, cuda: str) -> dict[str, str]:
     return pins
 
 
-def spec_deepstream_trt(cur):
+def spec_deepstream_trt(cur: str) -> SpecResult:
     """The newest TensorRT 10 (DeepStream links libnvinfer.so.10) the repo builds for DEEPSTREAM_TENSORRT_CUDA."""
     env = bv.read_env()
     cuda = env["DEEPSTREAM_TENSORRT_CUDA"]
@@ -410,7 +416,7 @@ def spec_deepstream_trt(cur):
     return v, (bv.deepstream_trt_pins(stanzas, v, cuda) if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_hailort(cur):
+def spec_hailort(cur: str) -> SpecResult:
     v = bv.gh_latest("hailo-ai/hailort").lstrip("v")
     extras = {}
     if v != cur and bv.WRITE_MODE:
@@ -429,7 +435,7 @@ def hailo_protobuf_version(hailort_version: str) -> str:
     return m.group(1)
 
 
-def spec_hailo_protobuf(cur):
+def spec_hailo_protobuf(cur: str) -> SpecResult:
     """Slaved to HAILORT_VERSION: build-hailort.sh stages the protobuf HailoRT's own FetchContent pins."""
     v = bv.hailo_protobuf_version(bv.read_env()["HAILORT_VERSION"])
     extras = {}
@@ -438,12 +444,12 @@ def spec_hailo_protobuf(cur):
     return v, extras
 
 
-def spec_tappas(cur):
+def spec_tappas(cur: str) -> SpecResult:
     v = bv.gh_latest("hailo-ai/tappas").lstrip("v")
     return v, ({"TAPPAS_SOURCE_SHA256": bv.gh_archive_sha256("hailo-ai/tappas", f"v{v}")} if v != cur and bv.WRITE_MODE else {})
 
 
-def spec_hailo_libzmq(cur):
+def spec_hailo_libzmq(cur: str) -> SpecResult:
     v = bv.gh_latest("zeromq/libzmq").lstrip("v")
     extras = {}
     if v != cur and bv.WRITE_MODE:
@@ -451,7 +457,7 @@ def spec_hailo_libzmq(cur):
     return v, extras
 
 
-def spec_hailo_cppzmq(cur):
+def spec_hailo_cppzmq(cur: str) -> SpecResult:
     v = bv.gh_latest("zeromq/cppzmq").lstrip("v")
     return v, ({"HAILO_CPPZMQ_SHA256": bv.gh_archive_sha256("zeromq/cppzmq", f"v{v}")} if v != cur and bv.WRITE_MODE else {})
 
@@ -463,7 +469,7 @@ def rocm_windows_tarball_url(family: str, release: str) -> str:
     return f"{bv._ROCM_TARBALL_BASE}/therock-dist-windows-{family}-{release}.tar.gz"
 
 
-def spec_rocm_windows(cur):
+def spec_rocm_windows(cur: str) -> SpecResult:
     """TheRock's newest Windows tarball for ROCM_WINDOWS_GFX_FAMILY; AMD publishes no checksum, so a bump hashes ~2.2 GB."""
     family = bv.read_env()["ROCM_WINDOWS_GFX_FAMILY"]
     html = bv.http_text(f"{bv._ROCM_TARBALL_BASE}/")

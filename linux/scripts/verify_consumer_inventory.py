@@ -14,8 +14,9 @@ import re
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import TypedDict
+from typing import NotRequired, TypeAlias, TypedDict, cast
 
 from verify_consumer_quality_wiring import inspect as inspect_quality_wiring
 
@@ -36,7 +37,7 @@ MAX_FILE_BYTES = 4 * 1024 * 1024
 FIXTURE_DIR = "tests"
 
 
-def is_fixture(rel):
+def is_fixture(rel: str) -> bool:
     """True for a file inside a test-suite directory, in any repo's layout."""
     return FIXTURE_DIR in Path(rel).parts[:-1]
 
@@ -72,7 +73,58 @@ class EntryPoint(TypedDict):
     alias_name: str | None
 
 
-def run_git(args):
+class HubSpec(TypedDict):
+    owner: str
+    repo: str
+    submodule_path: str
+
+
+class ConsumerSpec(TypedDict):
+    name: str
+    clone_url: str
+    ref: str
+    self: bool
+
+
+class EntryClass(TypedDict):
+    kind: str
+    glob: str
+    needle: NotRequired[str]
+    match: NotRequired[str]
+    alias: NotRequired[str]
+    requires: NotRequired[str]
+
+
+class Inventory(TypedDict):
+    hub: HubSpec
+    consumers: list[ConsumerSpec]
+    entry_point_classes: list[EntryClass]
+    unconfirmed: NotRequired[list[object]]
+
+
+class ScanContext(TypedDict):
+    paths: set[str]
+    qualifiers: tuple[str, str, str]
+    basenames: set[str]
+    is_self: bool
+
+
+class VerdictRow(TypedDict):
+    kind: str
+    needle: str
+    status: str
+    reached_by: list[tuple[str, bool, str]]
+    mentioned_by: list[tuple[str, str]]
+
+
+HitBuckets: TypeAlias = dict[str, list[str]]
+ScanHits: TypeAlias = dict[str, HitBuckets]
+PerConsumer: TypeAlias = dict[str, tuple[bool, ScanHits]]
+Dangling: TypeAlias = dict[str, list[str]]
+QualityWiring: TypeAlias = dict[str, tuple[list[str], list[str]]]
+
+
+def run_git(args: list[str]) -> bytes:
     proc = subprocess.run(args, capture_output=True, check=False)
     if proc.returncode != 0:
         raise Failure("%s exited %d: %s"
@@ -81,7 +133,7 @@ def run_git(args):
     return proc.stdout
 
 
-def load_inventory(path):
+def load_inventory(path: Path) -> Inventory:
     """Parse and shape-check the inventory. A malformed list must not run."""
     if not path.is_file():
         raise Failure("inventory %s does not exist" % path)
@@ -100,10 +152,10 @@ def load_inventory(path):
     if not [c for c in data["consumers"] if c["self"]]:
         raise Failure("inventory %s: no consumer is marked self:true, so nothing "
                       "can tell hub-internal use from an external caller" % path)
-    return data
+    return cast(Inventory, data)
 
 
-def entry_forms(spec, path, rel) -> EntryPoint:
+def entry_forms(spec: EntryClass, path: Path, rel: str) -> EntryPoint:
     """One entry point: its path needle plus any by-name form its class declares."""
     needle = rel.rsplit("/", 1)[0] if spec.get("needle") == "dir" else rel
     entry: EntryPoint = {"kind": spec["kind"], "needle": needle,
@@ -121,7 +173,7 @@ def entry_forms(spec, path, rel) -> EntryPoint:
     return entry
 
 
-def discover_entry_points(hub_root, classes):
+def discover_entry_points(hub_root: Path, classes: list[EntryClass]) -> list[EntryPoint]:
     """Expand each declared class into the concrete entry points of the hub."""
     found: dict[str, EntryPoint] = {}
     for spec in classes:
@@ -143,7 +195,7 @@ def discover_entry_points(hub_root, classes):
     return sorted(found.values(), key=lambda e: (e["kind"], e["needle"]))
 
 
-def tracked_files(root, name):
+def tracked_files(root: Path, name: str) -> list[str]:
     """The repository's tracked files. Untracked build output is not evidence."""
     if not (root / ".git").exists():
         raise Failure("%s: %s is not a git checkout -- refusing to grade a "
@@ -155,7 +207,7 @@ def tracked_files(root, name):
     return files
 
 
-def readable(root, rel):
+def readable(root: Path, rel: str) -> str | None:
     """The file as text, or None when it is binary, huge or unreadable."""
     if Path(rel).suffix.lower() in BINARY_SUFFIXES:
         return None
@@ -171,13 +223,13 @@ def readable(root, rel):
     return data.decode("utf-8", "replace")
 
 
-def line_at(text, pos):
+def line_at(text: str, pos: int) -> tuple[int, str]:
     start = text.rfind("\n", 0, pos) + 1
     end = text.find("\n", pos)
     return text.count("\n", 0, pos) + 1, text[start:end if end >= 0 else len(text)]
 
 
-def use_kind(rel, line):
+def use_kind(rel: str, line: str) -> str:
     """REACHED when the hit sits where something executes it, else MENTIONED."""
     if Path(rel).suffix.lower() in DOC_SUFFIXES:
         return MENTIONED
@@ -187,7 +239,7 @@ def use_kind(rel, line):
     return REACHED
 
 
-def entry_hits(text, entry):
+def entry_hits(text: str, entry: EntryPoint) -> list[tuple[int, str]]:
     """(offset, matched text) per occurrence; str.find per entry is far cheaper than one giant alternation."""
     out = []
     needle = entry["needle"]
@@ -196,12 +248,13 @@ def entry_hits(text, entry):
         out.append((pos, needle))
         pos = text.find(needle, pos + len(needle))
     stem = entry["alias_stem"]
-    if stem and stem in text:
-        out += [(m.start(), m.group(0)) for m in entry["alias_re"].finditer(text)]
+    alias_re = entry["alias_re"]
+    if stem and alias_re is not None and stem in text:
+        out += [(m.start(), m.group(0)) for m in alias_re.finditer(text)]
     return out
 
 
-def path_universe(files):
+def path_universe(files: list[str]) -> set[str]:
     """Every tracked path AND every directory on the way to one."""
     out = set(files)
     for rel in files:
@@ -211,7 +264,8 @@ def path_universe(files):
     return out
 
 
-def is_hub_reference(text, start, matched, entry, ctx):
+def is_hub_reference(text: str, start: int, matched: str,
+                     entry: EntryPoint, ctx: ScanContext) -> bool:
     """Does this hit mean the hub's copy? In a consumer only when qualified or the consumer has no such file."""
     if entry["root_file"]:
         before = text[max(0, start - 64):start]
@@ -232,12 +286,14 @@ def is_hub_reference(text, start, matched, entry, ctx):
     return entry["needle"] not in ctx["paths"]
 
 
-def scan_context(files, qualifiers, is_self):
+def scan_context(files: list[str], qualifiers: tuple[str, str, str],
+                 is_self: bool) -> ScanContext:
     return {"paths": path_universe(files), "qualifiers": qualifiers,
             "basenames": {f.rsplit("/", 1)[-1] for f in files}, "is_self": is_self}
 
 
-def scan_file(rel, text, entries, ctx, hits):
+def scan_file(rel: str, text: str, entries: list[EntryPoint],
+              ctx: ScanContext, hits: ScanHits) -> None:
     for entry in entries:
         needle = entry["needle"]
         if rel == needle or rel.startswith(needle + "/"):
@@ -250,9 +306,10 @@ def scan_file(rel, text, entries, ctx, hits):
             bucket[use_kind(rel, line)].append("%s:%d" % (rel, lineno))
 
 
-def scan_consumer(root, files, entries, ctx):
+def scan_consumer(root: Path, files: list[str], entries: list[EntryPoint],
+                  ctx: ScanContext) -> ScanHits:
     """needle -> {reached: [...], mentioned: [...]} of '<file>:<line>' strings."""
-    hits = {}
+    hits: ScanHits = {}
     for rel in files:
         text = readable(root, rel)
         if text is not None:
@@ -260,14 +317,14 @@ def scan_consumer(root, files, entries, ctx):
     return hits
 
 
-def inside_url(text, start):
+def inside_url(text: str, start: int) -> bool:
     """Is this hit inside an http(s) URL, which looks like a repository path but is not one?"""
     before = text[max(0, start - 96):start]
     cut = before.rfind("://")
     return cut >= 0 and not re.search(r"[\s'\"`<>]", before[cut:])
 
 
-def submodule_prefixes(hub_root):
+def submodule_prefixes(hub_root: Path) -> tuple[str, ...]:
     """Submodule paths from .gitmodules, whose worktrees a fresh clone leaves empty and which are not graded."""
     gitmodules = hub_root / ".gitmodules"
     prefixes = []
@@ -279,7 +336,8 @@ def submodule_prefixes(hub_root):
     return tuple(sorted(prefixes))
 
 
-def dangling_refs(root, files, hub_root, ref_re, vendored):
+def dangling_refs(root: Path, files: list[str], hub_root: Path,
+                  ref_re: re.Pattern[str], vendored: tuple[str, ...]) -> list[str]:
     """Executable (reached, not prose) references to hub paths that do not exist."""
     found = []
     for rel in files:
@@ -315,7 +373,7 @@ MODULE_REFS = (
 MODULE_NAME = re.compile(r"['{q}]([A-Za-z0-9_.]+?)(?:\.psm1)?['{q}]".replace("{q}", chr(34)))
 
 
-def dangling_modules(root, files, hub_root):
+def dangling_modules(root: Path, files: list[str], hub_root: Path) -> list[str]:
     """Module NAMES a consumer imports that the hub no longer ships."""
     have = {p.stem for p in (hub_root / MODULE_DIR).glob("*.psm1")}
     # Resolve-BuildModule falls back to the consumer's own modules; fixture modules do not count.
@@ -340,7 +398,7 @@ def dangling_modules(root, files, hub_root):
     return sorted(set(found))
 
 
-def clone_url(spec):
+def clone_url(spec: ConsumerSpec) -> str:
     """The URL to clone, with a token spliced in when one is provided."""
     url = spec["clone_url"]
     token = os.environ.get(TOKEN_ENV, "").strip()
@@ -349,7 +407,8 @@ def clone_url(spec):
     return url
 
 
-def obtain(spec, local, work, offline):
+def obtain(spec: ConsumerSpec, local: dict[str, Path], work: Path,
+           offline: bool) -> Path:
     """A checkout of this consumer, or a hard failure. Never a skip."""
     name = spec["name"]
     if name in local:
@@ -367,9 +426,10 @@ def obtain(spec, local, work, offline):
     return dest
 
 
-def grade(entry, per_consumer):
+def grade(entry: EntryPoint, per_consumer: PerConsumer) -> VerdictRow:
     """Fold one entry point's hits across all consumers into a verdict row."""
-    reached_by, mentioned_by = [], []
+    reached_by: list[tuple[str, bool, str]] = []
+    mentioned_by: list[tuple[str, str]] = []
     for name in per_consumer:
         is_self, hits = per_consumer[name]
         bucket = hits.get(entry["needle"])
@@ -391,13 +451,14 @@ def grade(entry, per_consumer):
             "reached_by": reached_by, "mentioned_by": mentioned_by}
 
 
-def table(rows, cell):
+def table(rows: list[VerdictRow], cell: Callable[[VerdictRow], str]) -> list[str]:
     out = ["", "| kind | entry point | evidence |", "| --- | --- | --- |"]
     out += ["| %s | `%s` | %s |" % (r["kind"], r["needle"], cell(r)) for r in rows]
     return out
 
 
-def section(rows, status, heading, blurb, cell):
+def section(rows: list[VerdictRow], status: str, heading: str, blurb: str,
+            cell: Callable[[VerdictRow], str]) -> list[str]:
     picked = [r for r in rows if r["status"] == status]
     out = ["", "## %s -- %d" % (heading, len(picked)), "", blurb]
     if not picked:
@@ -405,15 +466,15 @@ def section(rows, status, heading, blurb, cell):
     return out + table(picked, cell)
 
 
-def evidence_reached(row):
+def evidence_reached(row: VerdictRow) -> str:
     return ", ".join("%s (`%s`)" % (n, w) for n, _s, w in row["reached_by"]) or "--"
 
 
-def evidence_mentioned(row):
+def evidence_mentioned(row: VerdictRow) -> str:
     return ", ".join("%s (`%s`)" % (n, w) for n, w in row["mentioned_by"]) or "--"
 
 
-def render_dangling(dangling):
+def render_dangling(dangling: Dangling) -> list[str]:
     blurb = ("A consumer names a hub path that does not exist. Either the path"
              " moved and the consumer was not updated, or the reference was"
              " always wrong. These fail the run.")
@@ -427,7 +488,8 @@ def render_dangling(dangling):
     return out
 
 
-def render_quality_wiring(quality, consumers):
+def render_quality_wiring(quality: QualityWiring,
+                          consumers: list[ConsumerSpec]) -> list[str]:
     out = ["", "## CI quality wiring", "",
            ("Every detected lint call must keep its ratchets enabled and its failure fatal. "
             "A consumer with no lint call is reported only: removal of every lint call "
@@ -445,7 +507,8 @@ def render_quality_wiring(quality, consumers):
     return out
 
 
-def render_report(rows, consumers, dangling, quality=None):
+def render_report(rows: list[VerdictRow], consumers: list[ConsumerSpec],
+                  dangling: Dangling, quality: QualityWiring | None = None) -> str:
     counts = {s: len([r for r in rows if r["status"] == s]) for s in STATUS_ORDER}
     names = ", ".join("%s%s" % (c["name"], " (hub)" if c["self"] else "")
                       for c in consumers)
@@ -474,7 +537,8 @@ def render_report(rows, consumers, dangling, quality=None):
     return "\n".join(out) + "\n"
 
 
-def parse_local(values, root, names):
+def parse_local(values: list[str] | None, root: str | None,
+                names: list[str]) -> dict[str, Path]:
     local = {}
     if root:
         for name in names:
@@ -493,7 +557,7 @@ def parse_local(values, root, names):
     return local
 
 
-def build_args():
+def build_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--inventory", default=str(DEFAULT_INVENTORY))
     ap.add_argument("--hub-root", default=str(HUB_ROOT))
@@ -507,14 +571,14 @@ def build_args():
     return ap.parse_args()
 
 
-def qualifier_set(hub):
+def qualifier_set(hub: HubSpec) -> tuple[str, str, str]:
     """The prefixes that make a bare hub path unambiguously the hub's."""
     return (hub["submodule_path"] + "/",
             "%s/%s/" % (hub["owner"], hub["repo"]),
             hub["repo"] + "/")
 
 
-def ref_qualifiers(hub):
+def ref_qualifiers(hub: HubSpec) -> list[str]:
     r"""The two path qualifiers in both separator spellings, since PowerShell callers write backslashes."""
     out = []
     for qualifier in qualifier_set(hub)[:2]:
@@ -523,7 +587,8 @@ def ref_qualifiers(hub):
     return out
 
 
-def collect(data, args, hub_root, entries, work):
+def collect(data: Inventory, args: argparse.Namespace, hub_root: Path,
+            entries: list[EntryPoint], work: Path) -> tuple[PerConsumer, Dangling, QualityWiring]:
     """Obtain every consumer and scan paths and CI quality calls."""
     names = [c["name"] for c in data["consumers"]]
     local = parse_local(args.local, args.local_root, names)
@@ -532,9 +597,9 @@ def collect(data, args, hub_root, entries, work):
     # The class includes the backslash, or a Windows path would stop at its first segment.
     ref_re = re.compile(r"(?:%s)([A-Za-z0-9_./@\\-]+)"
                         % "|".join(re.escape(q) for q in ref_qualifiers(data["hub"])))
-    per_consumer = {}
-    dangling = {}
-    quality = {}
+    per_consumer: PerConsumer = {}
+    dangling: Dangling = {}
+    quality: QualityWiring = {}
     for spec in data["consumers"]:
         root = obtain(spec, local, work, args.offline)
         files = tracked_files(root, spec["name"])
@@ -551,7 +616,7 @@ def collect(data, args, hub_root, entries, work):
     return per_consumer, dangling, quality
 
 
-def report_out(args, text):
+def report_out(args: argparse.Namespace, text: str) -> None:
     if not args.report:
         return
     dest = Path(args.report)
@@ -560,7 +625,7 @@ def report_out(args, text):
     print("   report written to %s" % dest)
 
 
-def print_dangling(dangling):
+def print_dangling(dangling: Dangling) -> int:
     for name in sorted(dangling):
         for ref in dangling[name]:
             sys.stderr.write("FAIL: %s names a hub path that does not exist: %s\n"
@@ -568,7 +633,7 @@ def print_dangling(dangling):
     return sum(len(v) for v in dangling.values())
 
 
-def main():
+def main() -> int:
     args = build_args()
     hub_root = Path(args.hub_root).resolve()
     try:

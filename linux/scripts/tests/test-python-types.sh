@@ -32,7 +32,7 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (37 files)"
+  t_assert_contains "$1" "ty quality gate: clean (39 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -41,6 +41,7 @@ t_case "the pinned ty checks tracked quality scripts and writes all reports unde
 _set_answer "${ROOT}/docs/scripts/subject.py" 42
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/bump_tools.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/bump_fetch.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/bump_images.py"
 printf 'from sphinx_kataglyphis import value\nRESULT: int = value()\n' > "${ROOT}/docs/conf.py"
 _set_answer "${ROOT}/windows/scripts/subject.py" 42
 _set_answer "${ROOT}/linux/scripts/verify_subject.py" 42
@@ -71,6 +72,7 @@ for target in develop_red.py layer-audit.py verify_large_files.py verify_masked_
   printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/${target}"
 done
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_package_names.py"
+printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_consumer_inventory.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_comment_size.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_gate_registry.py"
 printf 'from markdown_it import MarkdownIt\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/lib/dartdoc-guides.py"
@@ -89,9 +91,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (40 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (40 files)"
-t_assert_contains "${out}" "Ruff parameter and public return gate: clean (24 files)"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (42 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (42 files)"
+t_assert_contains "${out}" "Ruff parameter and public return gate: clean (26 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -218,10 +220,10 @@ t_case "each selected Python file fails on missing parameter and public return t
 for target in linux/scripts/develop_red.py linux/scripts/layer-audit.py \
   linux/scripts/renovate_audit.py linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_planner.py \
   linux/scripts/verify_large_files.py linux/scripts/verify_masked_assignments.py \
-  linux/scripts/verify_package_names.py \
+  linux/scripts/verify_consumer_inventory.py linux/scripts/verify_package_names.py \
   linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \
   docs/scripts/verify_code_dupes.py docs/scripts/verify_doc_dupes.py \
-  docs/scripts/sync_versions.py docs/scripts/bump_tools.py docs/scripts/bump_fetch.py \
+  docs/scripts/sync_versions.py docs/scripts/bump_tools.py docs/scripts/bump_fetch.py docs/scripts/bump_images.py \
   linux/host-config/ghcr_metadata.py \
   linux/scripts/01-core/manifest-base-layer.py linux/scripts/01-core/registry-config-label.py \
   linux/scripts/01-core/registry-digest.py linux/scripts/02-toolchain/oci-layers-extract.py \

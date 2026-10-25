@@ -27,7 +27,6 @@
 #   restates them. The measurement below is 2026-09-09, all eight repositories at
 #   their `origin` head, 49 files (37 workflows + 12 composite actions).
 #
-CENSUS | ANTfrastructure | artifact-error | 2 | The two upload sites in python-ci-linux.yml and python-ci-windows.yml. Both are diagnostic uploads whose emptiness means an upstream failure; whether that is an excuse or a fix is the owner's call, and until it is made the count may not grow
 #
 # `runner-ban` has no row anywhere, and never will: it is armed with no knob, so
 # its ceiling is zero and a single `*-latest` label is a hard failure the day it
@@ -57,6 +56,3 @@ CENSUS | ANTfrastructure | artifact-error | 2 | The two upload sites in python-c
 # excused here: excusing a finding to make a lane green is the opposite of the
 # job, and every one of them is a decision for the repository's owner.
 #
-# Worked example of the row shape, for whoever adds the first one:
-#
-#   ANTfrastructure | .github/workflows/python-ci-windows.yml | artifact-error | Upload files, logs & Zip | The workflow header states the choice: an empty dist/ here means the build already failed upstream, and `error` would fail the job a second time for the same cause while losing the logs/test-results/ the artifact carries for the diagnosis.

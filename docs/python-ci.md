@@ -29,6 +29,15 @@ profile to the consumer workspace's ignored `logs/test-results/` directory. The 
 workflows upload that directory after tests, including failed tests. The docs build copies
 selected reports from there into its generated site assets for publication.
 
+## Test artifact uploads
+
+The Linux and Windows reusable jobs keep `if: always()` on their uploads so failed
+tests can still publish logs. Both use `if-no-files-found: error`: an empty combined
+path set fails the job. Linux uploads `logs/test-results/`; Windows defaults to
+`dist/` and `logs/`. A Windows log can make that upload nonempty when `dist/`
+is missing, so the build driver still checks the distribution artifacts.
+The optional Windows lint-only call skips the build job and its upload.
+
 ## Positional arguments: empty means default
 
 Every driver reads its positionals as `"${N:-default}"`, which treats an **empty** argument like

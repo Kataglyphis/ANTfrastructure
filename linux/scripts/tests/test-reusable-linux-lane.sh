@@ -14,6 +14,18 @@ trap 'rm -rf "${_work}"' EXIT
 t_case "the lane file is where every consumer's uses: line expects it"
 t_assert_ok test -f "${LANE}"
 
+_test_report_upload_required() {
+  local candidate="$1"
+  local query="len([s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload test results' and V.value(s,'if') == 'always()' and V.value(V.value(s,'with'),'path') == 'logs/test-results/' and V.value(V.value(s,'with'),'if-no-files-found') == 'error']) == 1"
+  [ "$(LANE="${candidate}" _q "${query}")" = True ]
+}
+
+t_case "the test report upload stays fatal and reachable after a failed test"
+t_assert_ok _test_report_upload_required "${LANE}"
+faulted="${_work}/test-report-upload-warn.yml"
+sed 's/if-no-files-found: error/if-no-files-found: warn/g' "${LANE}" > "${faulted}"
+t_assert_fails _test_report_upload_required "${faulted}"
+
 t_case "the shared query driver retains multiword interpreter selection and Python errors"
 t_assert_eq fixture-query "$(
   workflow_lane_fixture_init .github/workflows/python-ci-linux.yml build - $'env\nWORKFLOW_QUERY_MARKER=fixture-query\n'"${_PY}"

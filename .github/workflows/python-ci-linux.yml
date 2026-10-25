@@ -257,6 +257,7 @@ jobs:
         with:
           name: test-reports-${{ matrix.arch }}
           path: logs/test-results/
+          if-no-files-found: error
 
       # After a red test too: the site carries the test report, and a red test must not leave it stale.
       - name: Build Docs

@@ -9,6 +9,20 @@ workflow_lane_fixture_init .github/workflows/python-ci-windows.yml build-test-py
 t_case "the lane file is where preflight and every consumer expect it"
 t_assert_ok test -f "${LANE}"
 
+t_case "the optional build job requires an artifact when it runs, including after failure"
+upload_step="next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload files, logs & Zip')"
+t_assert_contains "$(_q "V.value(${upload_step},'if')")" 'always()'
+t_assert_contains "$(_q "V.value(V.value(${upload_step},'with'),'path')")" 'inputs.artifact-paths'
+upload_findings="[r[2] for r in V.check_artifact_error('', lane) if r[2] == 'Upload files, logs & Zip']"
+_artifact_gate() { [ "$(LANE="$1" _q "${upload_findings}")" = '[]' ]; }
+t_assert_ok _artifact_gate "${LANE}"
+mkdir -p "${ROOT}/logs/test-results"
+faulted="$(mktemp "${ROOT}/logs/test-results/windows-upload.XXXXXXXX")"
+trap 'rm -f -- "${faulted}"' EXIT
+sed 's/if-no-files-found: error/if-no-files-found: warn/g' "${LANE}" > "${faulted}"
+t_assert_fails _artifact_gate "${faulted}"
+t_assert_contains "$(LANE="${faulted}" _q "${upload_findings}")" 'Upload files, logs & Zip'
+
 # Needles are whole command fragments, never bare flags, which the lane's comments also name.
 _raw_has() { grep -qF -- "$1" "${LANE}" && echo True || echo False; }
 

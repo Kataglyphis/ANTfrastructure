@@ -292,7 +292,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.artifact-name }}
-          if-no-files-found: warn
+          if-no-files-found: error
           path: ${{ inputs.artifact-paths }}
 
   # The device has no image, so :winarm64's interpreters and toolchain stage everything it runs (CON113).

@@ -547,7 +547,7 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. Twenty-four fully annotated Renovate,
+`logs/code-quality/ruff-private-returns-gate.txt`. Twenty-six fully annotated Renovate,
 LLM gateway, docs, host and build helper files have fatal ANN001/ANN201 checks in
 `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
@@ -605,9 +605,9 @@ private return findings were fixed, so `ANN202` now fails across all 146 tracked
 Python files. Parameter and public return findings were fixed in the Renovate CMake
 parser, locator and planner, the gateway renderer and its tests, the two docs duplication
 scanners, the develop-red watcher, layer audit, large-file and masked-assignment
-verifiers, the Renovate audit, package-name verifier, two docs bump tools, and
+verifiers, the Renovate audit, consumer inventory, package-name verifier, three docs bump tools, and
 nine small docs, host, image, wheel and test files. ANN001/ANN201 fail in
-those 24 files. Remaining findings stay in the full report. The focused
+those 26 files. Remaining findings stay in the full report. The focused
 suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
@@ -3151,6 +3151,11 @@ The counts are deliberately not written here. They live once, as the CENSUS rows
 of `linux/scripts/workflow-conventions.allow`, where they are the gate's own
 output and a gate grades them; a number restated in prose is a number that
 drifts, and this pair had already drifted once.
+
+The hub reusable Python CI uploads now require a nonempty combined path set
+and keep `always()` so failed tests can publish logs. On Windows, logs can make
+the upload nonempty without `dist/`; the build verdict separately requires the
+distribution artifacts. The resolved hub census entry was removed.
 
 A copied comment is not a convention: it is as strong as the last person who read
 one, and it says nothing at all about the file it was never copied into.
