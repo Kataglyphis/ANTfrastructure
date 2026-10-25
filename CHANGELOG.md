@@ -13,6 +13,13 @@
 > [`through 2026-08-13`](docs/changelog-archive-2026-08-13.md).
 > Archive when this file passes ~700 lines; never delete. Cut on a DATE boundary.
 
+## 2026-10-26 — Renovate submodule updates
+
+- Make the local Renovate command inspect every direct submodule and update its gitlink to the
+  latest commit of the remote default branch, regardless of `.gitmodules branch` or Renovate's
+  report rows. Apply initializes missing checkouts; report and dry-run clone nothing. Retain
+  rollback and manual staging.
+
 ## 2026-10-25 — Quality debt cleanup
 
 - Reconcile OrchestrANT's seven tagged Torch/vision Git URLs with GitHub lookups;

@@ -39,8 +39,14 @@ classify_apply_paths() {
   APPLY_DIRTY=(); APPLY_EOL=()
   local q
   for q in ${APPLY_PATHS[@]+"${APPLY_PATHS[@]}"}; do
-    [ -e "${TARGET}/${q}/.git" ] || continue          # not initialised; git handles it
-    classify_one "${GIT_TARGET}/${q}" "" "${q}"
+    if [ -e "${TARGET}/${q}" ]; then
+      classify_one "${GIT_TARGET}" "${q}" "${q}"
+    elif ! "${GIT_BIN}" -C "${GIT_TARGET}" diff --cached --quiet HEAD -- "${q}"; then
+      APPLY_DIRTY+=("${q}")
+    fi
+    if [ -e "${TARGET}/${q}/.git" ]; then
+      classify_one "${GIT_TARGET}/${q}" "" "${q}"
+    fi
   done
   for q in ${EDIT_FILES[@]+"${EDIT_FILES[@]}"}; do
     [ -f "${TARGET}/${q}" ] || continue
@@ -49,10 +55,26 @@ classify_apply_paths() {
 }
 
 # On Windows the report needs WSL's node but the checkout needs the git that wrote it, so switch to git.exe.
+missing_submodule_needs_windows_git() {
+  local i
+  for ((i=0; i<${#APPLY_INITIALIZED[@]}; i++)); do
+    [ "${APPLY_INITIALIZED[i]}" -eq 0 ] && return 0
+  done
+  return 1
+}
+
+windows_git_owns_missing_submodule() {
+  local win_target="$1" autocrlf
+  case "${win_target}" in [A-Za-z]:\\*) ;; *) return 1 ;; esac
+  autocrlf="$(git.exe -C "${win_target}" config --get core.autocrlf 2>/dev/null || true)"
+  [ "${autocrlf}" = true ] || return 1
+  return 0
+}
+
 select_git_for_tree() {
   GIT_BIN=git; GIT_TARGET="${TARGET}"
   classify_apply_paths
-  [ "${#APPLY_EOL[@]}" -gt 0 ] || return 0
+  [ "${#APPLY_EOL[@]}" -gt 0 ] || missing_submodule_needs_windows_git || return 0
   command -v git.exe >/dev/null 2>&1 || return 0
   command -v wslpath >/dev/null 2>&1 || return 0
 
@@ -60,6 +82,9 @@ select_git_for_tree() {
   win_target="$(wslpath -w "${TARGET}" 2>/dev/null || true)"
   [ -n "${win_target}" ] || return 0
   git.exe -C "${win_target}" rev-parse --git-dir >/dev/null 2>&1 || return 0
+  if [ "${#APPLY_EOL[@]}" -eq 0 ]; then
+    windows_git_owns_missing_submodule "${win_target}" || return 0
+  fi
 
   GIT_BIN=git.exe
   GIT_TARGET="${win_target}"

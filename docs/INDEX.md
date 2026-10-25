@@ -157,7 +157,7 @@ Wiring a new project: [Start here](#start-here).
 | Which preflight gate has a test, a mutation, or neither — the derived table | [`code-quality-gates.md`](code-quality-gates.md) |
 | **A consumer page that restates a hub page** — `doc-dupes --against-hub` in `run-lint-gates.sh --ratchets`, off until the consumer seeds `doc-dupes-hub.allow` | [`code-quality-tooling.md`](code-quality-tooling.md#consumer-pages-against-the-hub-doc-dupes---against-hub) |
 | Which repos consume this hub, and which entry points they actually reach | [`consumer-inventory.md`](consumer-inventory.md) |
-| **Upgrading dependencies** — Renovate as a local CLI, why `--apply` refuses some submodules, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |
+| **Upgrading dependencies** — Renovate as a local CLI, direct submodules initialized on apply and moved to each remote default branch tip, and lock file maintenance (every lock to its newest in-range release) | [`dependency-updates.md`](dependency-updates.md) |
 | Compiling a Slang shader tree to SPIR-V and WGSL | [`slang-shader-compilation.md`](slang-shader-compilation.md) |
 | The sourceable cores in `linux/scripts/lib/` — cmake-build, ctest-run, docs-build, app-packaging, compiler-llvm-tools, linker-select (`KATAGLYPHIS_LINKER`, lld or mold) and the rest — and the consumer entry points beside them (`run-lint-gates.sh`, `run-in-ci-image.sh`, `ci-image-ref.sh`) | [`shared-script-libraries.md`](shared-script-libraries.md) |
 | Job counts, per-job memory, why a build got OOM-killed | [`build-parallelism-memory-tuning.md`](build-parallelism-memory-tuning.md) |

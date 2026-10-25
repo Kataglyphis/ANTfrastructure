@@ -577,7 +577,8 @@ t_assert_eq "0" "${RC}" "the run must reach the plan, not a refusal"
 t_assert_fails grep -q "these paths have local changes" <<<"${OUT}"
 # Both diffs in classify_one need the option, or the eol-classifier misreads `-dirty` as an EOL disagreement.
 t_assert_fails grep -q "wrong git for this working tree" <<<"${OUT}"
-t_assert_contains "${OUT}" "gitlink(s), moved to the tip" "the plan is printed instead"
+t_assert_contains "${OUT}" "gitlink(s), moved to their remote default branch HEAD" \
+  "the default-branch plan is printed instead"
 
 t_case "(H2) the submodule's OWN tracked file, edited, still refuses"
 H2="$(_deep_repo h2)"

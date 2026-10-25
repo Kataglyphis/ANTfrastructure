@@ -8134,18 +8134,26 @@
  {
   "id": "renovate.both-halves-settle-together",
   "target": "linux/scripts/renovate-local.sh",
-  "find": "  apply_files\n  apply_submodules\n",
-  "replace": "  apply_files\n  settle_targets\n  apply_submodules\n",
+  "find": "  apply_files\n  apply_default_submodules\n",
+  "replace": "  apply_files\n  settle_targets\n  apply_default_submodules\n",
   "test": "bash linux/scripts/tests/test-renovate-exit.sh",
   "why": "settling between the halves is exactly the bug: apply_files discarded its safety net one line before the gitlink half began, so a signal there found BACKUP_STATE=applied and rolled nothing back"
  },
  {
   "id": "renovate.submodule-failure-undoes-the-run",
-  "target": "linux/scripts/renovate-local.sh",
-  "find": "    || undo_run \"git submodule update --remote failed\"",
-  "replace": "    || err \"git submodule update --remote failed\"",
-  "test": "bash linux/scripts/tests/test-renovate-exit.sh",
-  "why": "err() exits 1, and rc 1 is documented as 'the tree is where it started'; without the undo it exited 1 with the manifests written and the copies already gone -- measured 2026-09-10"
+  "target": "linux/scripts/renovate-submodules.sh",
+  "find": "    || undo_run \"submodule checkout failed for ${APPLY_PATHS[i]}\"",
+  "replace": "    || err \"submodule checkout failed for ${APPLY_PATHS[i]}\"",
+  "test": "bash linux/scripts/tests/test-renovate-submodule-default.sh",
+  "why": "a later checkout failure must restore earlier gitlinks and manifest bytes before rc 1 claims the tree is unchanged"
+ },
+ {
+  "id": "renovate.remote-default-tip-is-selected",
+  "target": "linux/scripts/renovate-submodules.sh",
+  "find": "  if [ \"${checked}\" != \"${SUB_QUERY_SHA}\" ] || [ \"${pinned}\" != \"${SUB_QUERY_SHA}\" ]; then",
+  "replace": "  if [ \"${checked}\" != \"${pinned}\" ]; then",
+  "test": "bash linux/scripts/tests/test-renovate-submodule-default.sh",
+  "why": "a local checkout matching its pinned gitlink can still be several commits behind the remote default branch; comparing only local state misses that update"
  },
  {
   "id": "renovate.sigpipe-is-trapped",
@@ -13646,8 +13654,8 @@
  {
   "id": "renovate.skipped-deps-are-listed",
   "target": "linux/scripts/renovate-local.sh",
-  "find": "    note \"${n} update(s) available (manager(s): ${MANAGERS})\"\n  fi\n  report_skipped\n}",
-  "replace": "    note \"${n} update(s) available (manager(s): ${MANAGERS})\"\n  fi\n}",
+  "find": "    note \"$((n + ${#APPLY_PATHS[@]})) update(s) available (manager(s): ${MANAGERS})\"\n  fi\n  report_skipped\n}",
+  "replace": "    note \"$((n + ${#APPLY_PATHS[@]})) update(s) available (manager(s): ${MANAGERS})\"\n  fi\n}",
   "test": "bash linux/scripts/tests/test-renovate-local.sh",
   "why": "a skipped dependency is never behind, so without the NOT CHECKED list ROCM_VERSION=10.0 under semver read as up to date and TheRock 10.1 went unreported"
  },

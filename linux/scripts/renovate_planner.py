@@ -474,6 +474,9 @@ def plan(report: RenovateReport, cfg: RenovateConfig, root: str, planpath: str) 
     pep_git = renovate_pep_git.inspect(report, root)
     paired, pair_refusal = renovate_pep_git.projection(pep_git, root)
     for row in rows(report):
+        # The local default-HEAD probe owns gitlinks; Renovate follows .gitmodules branch instead.
+        if row["manager"] == "git-submodules":
+            continue
         # Every packageFile is contained once, where it enters.
         row["path"] = contained(root, row["file"], "the report")
         if renovate_pep_git.managed(row, pep_git):
@@ -483,8 +486,6 @@ def plan(report: RenovateReport, cfg: RenovateConfig, root: str, planpath: str) 
         why = refusal(row, rules)
         if why:
             emit("REFUSE", row, DASH, why)
-        elif row["manager"] == "git-submodules":
-            emit("SUBMODULE", row, DASH, DASH)
         else:
             groups.setdefault(group_key(row), []).append(row)
     for row in paired:

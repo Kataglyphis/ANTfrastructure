@@ -131,7 +131,7 @@ t_assert_eq "3" "$(_rows)" \
   "and the summary has one row per member, not one per checkout"
 
 t_case "(F4b) the heading does not promise more than the tool keeps"
-# --apply's `git submodule update --remote` does check out inside the vendored tree.
+# --apply's detached checkout writes inside the vendored tree.
 t_assert_fails grep -q 'NONE of them is written' <<<"${OUT}"
 t_assert_contains "${OUT}" "No update is APPLIED in" "what is true is what it says"
 t_assert_contains "${OUT}" "does check the new commit out inside the copy" \
@@ -286,20 +286,23 @@ t_assert_eq "  http: 1.1.0" "$(_pub "${CA}" 3)" "no manifest moved"
 t_assert_eq "  http: 1.1.0" "$(_pub "${HUB}" 3)" "in any repo"
 
 t_case "(F12) --apply moves the gitlink, and Renovate applies in no vendored copy"
-# Both halves in the report so apply_submodules really runs; `insteadOf` keeps the copy's identity url yet fetchable.
+# Every direct gitlink origin must be reachable so the all-submodule scan can complete.
 GITLINK_REPORT="${WORK}/fleet-gitlink.json"
 _report_mixed "${GITLINK_REPORT}" \
   git-submodules .gitmodules third_party/hub main main \
   pub pubspec.yaml http 1.1.0 1.6.0
 git -C "${CA}/third_party/hub" config "url.${UP}/hub.insteadOf" "${HUB_URL}"
+git -C "${CA}/third_party/only" config "url.${UP}/vendored-only.insteadOf" "${ONLY_URL}"
+git -C "${CB}/third_party/hub" config "url.${UP}/hub.insteadOf" 'git@example.invalid:fam/hub.git'
 _VHUB_BEFORE="$(git -C "${CA}/third_party/hub" rev-parse HEAD)"
 _plant_file "${UP}/hub" NEWFILE.txt 'moved on\n'
 RUN_FLEET_REPORT="${GITLINK_REPORT}" RUN_FLEET_MANAGERS=pub,git-submodules \
   _fleet "${CA}" --apply
+t_assert_eq "0" "${RC}" "every fleet member applied its own manifest and direct gitlinks: ${OUT}"
 t_assert_eq "  http: 1.6.0" "$(_pub "${HUB}" 3)" "the hub's own checkout moved"
 t_assert_eq "  http: 1.6.0" "$(_pub "${CA}" 3)" "and the consumer's"
 t_assert_eq "  http: 1.1.0" "$(_pub "${CA}/third_party/only" 3)" \
-  "a vendored copy no gitlink update names is not written at all"
+  "a vendored copy already at its remote tip stays unchanged"
 t_assert_fails test "${_VHUB_BEFORE}" = "$(git -C "${CA}/third_party/hub" rev-parse HEAD)"
 t_assert_ok test -f "${CA}/third_party/hub/NEWFILE.txt"
 t_assert_eq "  http: 1.1.0" "$(_pub "${CA}/third_party/hub" 3)" \

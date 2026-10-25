@@ -21,6 +21,7 @@ BACKUP_STATE=""
 
 # "<path>\t<sha>\t<ref>" per submodule; the ref restores the attachment --remote detaches. See docs/dependency-updates.md#the-gitlink-half-is-part-of-the-unit
 BACKUP_LINKS=()
+BACKUP_CONFIG_PATH=""; BACKUP_CONFIG_FILE=""
 
 # A kill cannot be trapped, so this marker makes the next run refuse instead (write_inflight, assert_no_wreckage).
 INFLIGHT_MARK=""
@@ -371,19 +372,39 @@ backup_one() {
   BACKUP_PATHS+=("${rel}")
 }
 
-# The submodule's own HEAD, not `HEAD:<path>`: `--remote` moves its working tree, not the index.
+# The submodule's own HEAD records the checkout; "-" records a path awaiting initialization.
 snapshot_gitlinks() {
-  local pth sha ref
+  local pth sha ref probe missing
   BACKUP_LINKS=()
   for pth in "$@"; do
     if [ ! -e "${TARGET}/${pth}/.git" ]; then
-      BACKUP_LINKS+=("$(printf '%s\t-\t-' "${pth}")")
+      probe="${TARGET}/${pth}"
+      missing=0
+      while [ ! -e "${probe}" ] && [ "${probe}" != "${TARGET}" ]; do
+        missing=$((missing + 1))
+        probe="$(dirname "${probe}")"
+      done
+      BACKUP_LINKS+=("$(printf '%s\t-\tabsent:%s' "${pth}" "${missing}")")
       continue
     fi
     sha="$("${GIT_BIN}" -C "${GIT_TARGET}/${pth}" rev-parse HEAD 2>/dev/null)" \
       || err "cannot read the current commit of submodule ${pth}; nothing written"
     ref="$("${GIT_BIN}" -C "${GIT_TARGET}/${pth}" symbolic-ref --quiet HEAD 2>/dev/null || true)"
     BACKUP_LINKS+=("$(printf '%s\t%s\t%s' "${pth}" "${sha}" "${ref}")")
+  done
+}
+
+snapshot_parent_config() {
+  local initialized
+  BACKUP_CONFIG_PATH=""; BACKUP_CONFIG_FILE=""
+  for initialized in ${APPLY_INITIALIZED[@]+"${APPLY_INITIALIZED[@]}"}; do
+    [ "${initialized}" -eq 0 ] || continue
+    BACKUP_CONFIG_PATH="$(git -C "${TARGET}" rev-parse --path-format=absolute --git-path config)" \
+      || err "cannot locate parent Git config before submodule initialization"
+    BACKUP_CONFIG_FILE="${BACKUP_DIR}/PARENT_CONFIG"
+    cp -p -- "${BACKUP_CONFIG_PATH}" "${BACKUP_CONFIG_FILE}" \
+      || err "cannot snapshot parent Git config; nothing written"
+    return 0
   done
 }
 
@@ -410,8 +431,8 @@ write_inflight() {
     printf '\nfiles being rewritten:\n'
     inflight_list ${BACKUP_PATHS[@]+"${BACKUP_PATHS[@]}"}
     printf '\nsubmodules being moved -- <path> <commit it was at> <branch it was\n'
-    printf 'on>, and a bare "-" for a path with no checkout, which --remote does\n'
-    printf 'not touch:\n'
+    printf 'on>, and a bare "-" for a path without a checkout before this run.\n'
+    [ -z "${BACKUP_CONFIG_FILE}" ] || printf 'PARENT_CONFIG holds the original local Git config bytes.\n'
     inflight_list ${BACKUP_LINKS[@]+"${BACKUP_LINKS[@]}"}
   } > "${INFLIGHT_MARK}" \
     || err "cannot write the in-flight marker at ${INFLIGHT_MARK}; nothing written"
@@ -460,6 +481,7 @@ snapshot_targets() {
   local q
   for q in "$@"; do backup_one "${q}"; done
   for_each_lock lock_backup_one
+  snapshot_parent_config
   snapshot_gitlinks ${APPLY_PATHS[@]+"${APPLY_PATHS[@]}"}
   write_inflight
 }
@@ -473,19 +495,42 @@ settle_targets() {
 
 # Proven back by re-reading the sha; an attached submodule is restored by ref, or its branch stays lost.
 restore_gitlinks() {
-  local row pth sha ref
-  for row in ${BACKUP_LINKS[@]+"${BACKUP_LINKS[@]}"}; do
+  local row pth sha ref probe missing j i
+  for ((i=0; i<${#BACKUP_LINKS[@]}; i++)); do
+    row="${BACKUP_LINKS[i]}"
     IFS=$'\t' read -r pth sha ref <<<"${row}"
-    [ "${sha}" = "-" ] && continue
+    if [ "${sha}" = "-" ]; then
+      "${GIT_BIN}" -C "${GIT_TARGET}" submodule deinit --force -- "${pth}" >/dev/null 2>&1 || true
+      [ ! -e "${TARGET}/${pth}/.git" ] \
+        || RESTORE_FAILED+=("${pth}  (submodule, newly initialized checkout was not removed)")
+      missing="${ref#absent:}"
+      probe="${TARGET}/${pth}"
+      for ((j=0; j<missing; j++)); do
+        if ! rmdir -- "${probe}" 2>/dev/null; then
+          RESTORE_FAILED+=("${pth}  (new checkout directory ${probe} was not removed)")
+          break
+        fi
+        probe="$(dirname "${probe}")"
+      done
+      continue
+    fi
     if [ -n "${ref}" ]; then
-      "${GIT_BIN}" -C "${GIT_TARGET}/${pth}" checkout --quiet "${ref#refs/heads/}" >/dev/null 2>&1
+      "${GIT_BIN}" -C "${GIT_TARGET}/${pth}" checkout --quiet --no-overwrite-ignore "${ref#refs/heads/}" >/dev/null 2>&1
     else
-      "${GIT_BIN}" -C "${GIT_TARGET}/${pth}" checkout --quiet --detach "${sha}" >/dev/null 2>&1
+      "${GIT_BIN}" -C "${GIT_TARGET}/${pth}" checkout --quiet --no-overwrite-ignore --detach "${sha}" >/dev/null 2>&1
     fi
     if [ "$("${GIT_BIN}" -C "${GIT_TARGET}/${pth}" rev-parse HEAD 2>/dev/null)" != "${sha}" ]; then
       RESTORE_FAILED+=("${pth}  (submodule, still not back at ${sha})")
     fi
   done
+}
+
+restore_parent_config() {
+  [ -n "${BACKUP_CONFIG_FILE}" ] || return 0
+  cp -p -- "${BACKUP_CONFIG_FILE}" "${BACKUP_CONFIG_PATH}" \
+    || RESTORE_FAILED+=("parent Git config could not be restored")
+  cmp -s -- "${BACKUP_CONFIG_FILE}" "${BACKUP_CONFIG_PATH}" \
+    || RESTORE_FAILED+=("parent Git config bytes still differ after rollback")
 }
 
 restore_targets() {
@@ -498,6 +543,7 @@ restore_targets() {
     i=$((i + 1))
   done
   restore_gitlinks
+  restore_parent_config
   # A lock tool failing half way may already have changed files beyond its lock.
   restore_collateral
   # TREE_STUCK rows are "<path>\t<why>"; RESTORE_FAILED goes straight to a human.

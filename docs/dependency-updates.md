@@ -24,11 +24,12 @@ where they are on: they open no branches.
 # what is behind, in this repo, according to THIS repo's renovate.json
 third_party/ANTfrastructure/linux/scripts/renovate-local.sh .
 
-# show every write it would make, and make none of them
+# show every write it would make, including initialization, without cloning
 third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply --dry-run .
 
-# ...and make them: gitlinks move with git, every other ecosystem is one
-# value rewritten on one line, and the lockfile beside it is refreshed
+# ...and make them: missing direct submodules are initialized and their
+# gitlinks move to their remote default branch tip;
+# every other ecosystem rewrites a manifest value and refreshes its lock
 third_party/ANTfrastructure/linux/scripts/renovate-local.sh --apply .
 ```
 
@@ -60,6 +61,8 @@ beside them. The CLI helper owns argument movement, value validation and common
 options. Local `--dry-run` preserves the selected mode; fleet `--dry-run` selects
 apply mode, so it prints the complete plan. A later `--report` still wins.
 The local driver also requires `renovate-node.sh` for its checked Node bootstrap.
+It requires `renovate-submodules.sh` for live default-branch resolution and exact
+gitlink updates.
 
 Renovate reports share list rendering in `renovate-say.sh`. The caller selects
 indentation; unreadable lock reports keep their unindented lines. Advice appears
@@ -68,10 +71,13 @@ including their original messages, status and cleanup policy.
 
 The Git helper validates the root and enumerates declared submodule names and
 nonempty paths from one NUL-delimited Git query. Duplicate declarations retain
-Git's last-value path semantics. Callbacks retain the policies: local classifies explicit branches;
-fleet resolves identities and recurses within its depth bound. Discovery makes no
-network requests and changes no gitlinks. Root validation preserves a supplied
-subdirectory; fleet separately resolves its repository top level.
+Git's last-value path semantics. Local updates inspect every direct path,
+including one with no checkout, independent of its `branch =` setting; fleet
+resolves identities and recurses within its depth bound. Enumeration makes no
+network requests or gitlink changes. The local driver separately resolves each
+remote default branch and its tip without cloning for report or dry-run. Root
+validation preserves a supplied subdirectory; fleet separately
+resolves its repository top level.
 
 `test-renovate-cli.sh` checks option order, diagnostics and driver boundaries;
 `test-renovate-git.sh` checks local discovery, spaces and callback context. The
@@ -123,9 +129,11 @@ agent must not rediscover the hard way:
   `git-submodules` and `pre-commit` both ship disabled, so naming them is not
   enough. Detected ones are enabled from the global config layer, where the
   repo's own config still outranks the script.
-* **The `git submodule update --remote` refusal** is a rule, so it lives in
-  `AGENTS.md` § Dependency Updates. What the apply half does about it is here:
-  explicit paths, only submodules that declare a branch, never `--recursive`.
+* **The submodule half follows each remote's default branch.** It inspects every
+  direct `.gitmodules` path, independent of Renovate rows and `branch =` overrides.
+  Report and dry-run show the exact target without cloning; apply initializes a
+  missing checkout, fetches and checks out that commit. It does not recurse into
+  nested external modules.
 * **The apply half needs the git that WROTE the working tree.** A Windows checkout
   read by Linux git shows every text file as modified and the checkout aborts half
   way, leaving the superproject partially updated. The script detects this and
@@ -155,7 +163,7 @@ has its own section below:
 5. Every path it writes to is **inside the checkout** — [nothing outside the checkout](#nothing-outside-the-checkout)
 6. A run writes **all** of its files or **none** of them — [all of it, or none of it](#all-of-it-or-none-of-it)
 7. An edited manifest whose lock is stale is half a job — [lockfiles are part of the job](#lockfiles-are-part-of-the-job)
-8. A bare `git submodule update --remote` is forbidden here — [why `--apply` refuses some submodules](#why---apply-refuses-some-submodules)
+8. Submodule targets come from each remote's default branch — [how the submodule half follows default branches](#how-the-submodule-half-follows-default-branches)
 9. The apply half needs the git that **wrote** the working tree — [which git runs the apply half](#which-git-runs-the-apply-half)
 10. Nothing **else** in the repo may move while an ecosystem tool runs — [nothing else in the repo moved](#nothing-else-in-the-repo-moved)
 
@@ -199,7 +207,7 @@ So the loop has two halves, and the script owns both:
 | Half | Who does it | What it is |
 |---|---|---|
 | Decide | Renovate CLI | reads the repo's own config, reports what is behind |
-| Apply, gitlinks | `git submodule update --remote -- <explicit paths>` | moves the gitlinks |
+| Apply, gitlinks | Git initializes missing direct checkouts, fetches each remote default branch, then checks out its exact tip | moves the gitlinks |
 | Apply, manifests | `renovate_locator.py` + `renovate_planner.py` | rewrites one value on one line, then refreshes the lock |
 
 A manager with no locator of its own is **refused by name**, not guessed at:
@@ -513,7 +521,7 @@ a YAML anchor, as the only update in the report, printed the refusal in full and
 exited **0** — byte-identical, to anything reading `$?`, to a repository with
 nothing behind. Every plan-time refusal landed in that class: the locator would
 not place the value, the parser would not sanction the edit, the repo's own
-config sent the update to a human, a submodule declares no `branch =`. Those are
+config sent the update to a human. Those are
 all the same fact — *the report named an update and this run did not write it* —
 and it is not the same fact as *there was nothing to write*.
 
@@ -748,7 +756,7 @@ Two things were missing, and both are now there:
   half undid *nothing at all*, while the header, the docs and the report all
   promised otherwise. Each submodule the run would move now has its position
   recorded before anything is written: the commit **and** the ref it is attached
-  to. Both matter, because `git submodule update --remote` leaves a submodule
+  to. Both matter, because checking out the exact target commit leaves a submodule
   **detached** at the new tip, so restoring the sha alone hands a branch checkout
   back as a detached one. Putting it back is `git -C <path> checkout <ref-or-sha>`,
   and the result is read back and compared — a checkout that reports success and
@@ -758,14 +766,17 @@ Two things were missing, and both are now there:
   A failure or a signal anywhere between them puts back everything: manifests,
   lockfiles, gitlinks.
 
-`git submodule update --remote` over several paths is itself **not atomic** — it
-walks them in order and one failure leaves the earlier ones moved — which is
-precisely why its failure now takes the same undo everything else does, rather
-than printing advice about `git submodule update --init` and exiting.
-
-A submodule with **no checkout** is recorded as such and left alone: `--remote`
-over an uninitialised path prints `not initialized` and exits 0 without touching
-it (measured), so there is nothing to put back and nothing to pretend about.
+Moving several submodules is itself **not atomic** — one failed initialization,
+fetch or checkout can leave earlier ones moved. That is why the failure takes the
+same undo path as every other write. A newly initialized checkout goes back to
+its prior uninitialized state on failure. Before applying, the driver also saves
+the parent repository's complete local Git config as `PARENT_CONFIG` in the
+rollback backup. Git initialization can rewrite this file before creating the
+child's `.git`. Rollback copies the original config back and compares the bytes,
+preserving comments, layout and pre-existing settings even when initialization
+fails at that point. The old bare `--remote` command printed
+`not initialized` and exited 0 without touching it (measured); the current
+`--apply` initializes it instead.
 
 ### A copy nobody can place is not a backup
 
@@ -838,14 +849,16 @@ next run really should refuse.
 
 `--dry-run` exits what `--apply` will exit for every verdict a *plan* can reach —
 the locator would not place a value, the parser will not sanction the edit, a
-path is unwritable, a lockfile is ambiguous, a lock tool is missing, a submodule
-declares no branch, the repo's own config sends an update to a human. Measured
-across those, the two agree.
+path is unwritable, a lockfile is ambiguous, a lock tool is missing, the repo's
+own config sends an update to a human, or a submodule has no readable remote
+default branch. A `branch =` override cannot exclude a direct submodule, and a
+missing checkout is planned without cloning it.
 
 They differ on exactly one class, and it is worth naming rather than hiding:
 **a tool the pre-flight proved present, which then fails when it runs.** A
-`cargo` that exits 1; a `git submodule update --remote` whose fetch cannot reach
-the remote. Measured, `--dry-run` exits 0 and `--apply` exits 1.
+`cargo` that exits 1, or a submodule initialization, fetch or checkout that
+fails after its remote target was resolved. In that case, `--dry-run` can exit 0
+and `--apply` exits 1.
 
 No plan can predict those without *running* the tool, and running it is the write
 `--dry-run` exists not to do. So the promise `--dry-run` makes is not "the same
@@ -1095,37 +1108,55 @@ Renovate 44.140.0 over DocumANTation at 4dfdd3e, with maintenance on. The report
 packages. The result was the same 45-package lock that `uv lock --upgrade` run by
 hand produced.
 
-## Why `--apply` refuses some submodules
+## How the submodule half follows default branches
 
-A bare `git submodule update --remote` moves **every** gitlink. For a submodule
-that declares no `branch =` it does not skip — it walks the submodule to the
-**remote's default branch**.
+The owner directive of 2026-10-26 makes each direct `.gitmodules` entry part of
+the default Renovate command's submodule scan, including a checkout that has not
+been initialized. The scan does not depend on a Renovate report row, a
+`branch =` setting, or dashboard approval. An explicit `--managers` list still
+scopes the run: it includes this half when `git-submodules` is selected.
 
-This was established by experiment, not from the manual: a synthetic
-superproject whose submodule declares no branch, against an upstream whose
-default branch is deliberately named `trunk`, had `trunk` checked out and staged
-by a bare `--remote`.
+Before looking up a remote, the scanner checks that each `.gitmodules` path is
+one tracked gitlink at its literal checkout location. An initialized checkout
+must resolve to exactly that path. A symlink at the leaf or in a parent directory,
+including a dangling symlink, fails the scan for an uninitialized checkout too.
+This prevents a declared path from redirecting reads or writes elsewhere.
 
-In this family that has a name. BeschleunigerBallett's `third_party/FUZZTEST` is
-pinned to the tip of a **frozen** `release_<date>` line; a bare `--remote` walks
-it 82 commits onto `main`, which is precisely what the paragraph in its
-`.gitmodules` exists to prevent — and which that paragraph wrongly claimed was
-impossible until 2026-09-09.
+For an initialized path, the driver asks `origin` for its live default branch
+and commit with `git ls-remote --symref origin HEAD`. For a missing checkout, it
+uses the declared submodule URL to find the same remote tip without cloning.
+The report and `--apply --dry-run` name the exact target and leave missing
+checkouts uninitialized. `--apply` initializes any missing direct checkout,
+fetches and checks out the target commit, then verifies the resulting `HEAD`.
+There is no one-commit-at-a-time step: a pin ten or a hundred commits behind
+moves straight to the latest reachable default-branch commit. A missing default
+branch or failed lookup is an error, not an empty update. See the
+[Git `ls-remote` manual](https://git-scm.com/docs/git-ls-remote) for the `--symref`
+output and the [submodule manual](https://git-scm.com/docs/git-submodule) for the
+behavior of `update --remote`.
 
-So `--apply`:
+The earlier policy admitted only entries with a declared branch. It protected
+BeschleunigerBallett's `third_party/FUZZTEST`, whose `release_<date>` line was
+treated as frozen; an earlier experiment showed that moving its pin to the
+upstream default branch could cross 82 commits. The new owner direction
+**intentionally supersedes that exception**. `FUZZTEST` and other direct modules
+now follow their remote default branches even when `.gitmodules` names a release
+branch. Any release-line requirement must be handled as a separate reviewed
+decision, not by silently skipping the module in this command.
 
-* passes **explicit paths**, never the bare form;
-* includes a submodule **only if it declares `branch =`** in `.gitmodules`, and
-  prints the ones it skipped with the reason;
-* never uses `--recursive`, which additionally dirties nested submodules' own
-  working trees with gitlink changes the superproject cannot commit;
-* **stages nothing and commits nothing.** It prints `git submodule summary` and
-  stops. Reviewing the move is yours.
+The driver does not use a bare `git submodule update --remote`: Git can use a
+configured submodule branch instead of the remote default, and one failed path
+can leave earlier paths moved. The script checks explicit paths and rolls back
+the complete apply unit if any initialization, fetch, checkout or verification
+fails, including a checkout it initialized during the run. It does not recurse
+into nested external submodules. It **stages and commits nothing**; review the
+resulting gitlinks and commit them after the run.
 
-Renovate has the same blind spot, incidentally — it reports FUZZTEST as behind
-too. The difference is that its version is a PR you can close, while a bare
-`--remote` is already in your index. That is why `renovate.json` holds that one
-path to `dependencyDashboardApproval`.
+The exact-commit checkout uses `--no-overwrite-ignore`. A local ignored file
+whose name arrives in the new commit makes the checkout fail instead of losing
+the local bytes; the transaction then restores earlier gitlinks and manifest
+edits. The [Git checkout manual](https://git-scm.com/docs/git-checkout) describes
+this option.
 
 ## Which git runs the apply half
 
@@ -1134,9 +1165,9 @@ report half needs node, which lives in WSL. The apply half needs the git that wr
 the working tree: a Windows checkout (`core.autocrlf=true`) read by Linux git shows
 every text file as modified.
 
-That is not cosmetic. `git submodule update --remote` over several paths is **not
-atomic** — it walks them in order, and one submodule it cannot check out makes git
-abort THAT checkout while the ones already done stay moved. Observed on 2026-09-09:
+That is not cosmetic. The former `git submodule update --remote` call over several
+paths was **not atomic**: one checkout could fail while earlier ones stayed moved.
+Observed on 2026-09-09:
 a run from WSL moved `third_party/IMGUI`, then failed on `third_party/NLOHMANN_JSON`,
 leaving BeschleunigerBallett half updated with a non-zero exit.
 
@@ -1145,7 +1176,10 @@ So the script:
 * tells a genuinely dirty tree from the wrong git with `--ignore-cr-at-eol` — if
   every difference is a CR, it is the git that is wrong, not the tree;
 * switches to `git.exe` (via `wslpath -w`) when it is reachable, and says so;
-* **refuses up front** when it is not, rather than applying part of the change.
+* also checks a Windows-drive tree's `core.autocrlf` when an uninitialized direct
+  submodule gives no existing child files from which to detect CRLF drift;
+* **refuses up front** on detected CRLF drift when Windows Git cannot be used,
+  rather than applying part of the change.
 
 The report half is safe from anywhere; it only reads.
 
@@ -1477,14 +1511,13 @@ default run adds `custom.regex` alongside every detected manager. Name
 / `spawn dart ENOENT` on the Flutter repos. That was never measured and is **false**:
 two runs on OmniAccelerANT, at `LOG_LEVEL=warn` and `=debug`, produced zero.)
 
-No token is needed for submodules — the `git-submodules` manager uses the
-`git-refs` datasource, i.e. anonymous `git ls-remote`, and `git@github.com:` URLs
-are rewritten to `https://` automatically. Other managers will warn that a
-GitHub token would give better results; supply one with
-`GITHUB_COM_TOKEN=$(gh auth token)` when you care about those. `--platform=local`
-reads `GITHUB_COM_TOKEN` for GitHub-hosted dependencies; `RENOVATE_TOKEN` only
-applies to `--platform=github` (measured 2026-09-09 on ANThology: 1 row with
-neither, 1 row with `RENOVATE_TOKEN`, 5 rows with `GITHUB_COM_TOKEN`).
+The submodule Git lookup itself uses `origin` and does not require a GitHub API
+token for a public remote. A live local Renovate run still requires a token so
+other managers cannot silently leave dependencies NOT CHECKED. Supply
+`GITHUB_COM_TOKEN=$(gh auth token)` or use the shared driver's token resolution.
+`--platform=local` reads `GITHUB_COM_TOKEN` for GitHub-hosted dependencies;
+`RENOVATE_TOKEN` applies to `--platform=github` (measured 2026-09-09 on ANThology:
+1 row with neither, 1 row with `RENOVATE_TOKEN`, 5 rows with `GITHUB_COM_TOKEN`).
 
 ## Full fidelity, when the report is not enough
 
@@ -1909,7 +1942,7 @@ order.
 
 **The honest limit, which no ordering can fix:** this tool commits nothing and
 pushes nothing. Inside one fleet run a consumer cannot see a hub change that has
-not been pushed — the gitlink half moves to the tip of the branch on the
+not been pushed — the gitlink half moves to the default-branch tip on the
 **remote**. The order is therefore the order to **land** the results in, and the
 run prints it as exactly that.
 
@@ -1932,12 +1965,12 @@ vendored checkout is therefore never a fleet member, and it is **named**, with
 the repo that owns the pointer to it.
 
 **"Named" is not "never written", and the heading used to claim it was.** No
-Renovate update is ever *applied* inside a vendored copy — but moving the pointer
-is `git submodule update --remote`, which fetches and checks the new commit out
-**inside that working tree**. Measured 2026-09-11 on a fixture that drives the
-real gitlink path: the vendored hub went `31a4445 → 256c4c6` and a new tracked
-file appeared in it. The heading now says that, because a promise this tool does
-not keep is worse than no promise.
+Renovate manifest update is *applied* inside a vendored copy. Moving its pointer
+still fetches and checks out a new commit **inside that working tree**. The
+former `git submodule update --remote` path demonstrated this on 2026-09-11: the
+vendored hub went `31a4445 → 256c4c6` and a new tracked file appeared in it.
+The current path takes the exact `origin` default-branch tip and retains the
+same visible worktree change.
 
 #### Two OWN checkouts of one repository
 
@@ -2368,6 +2401,7 @@ match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
 |---|---|
 | The script | [`linux/scripts/renovate-local.sh`](../linux/scripts/renovate-local.sh) |
 | Checked Node toolchain selection and staged cache repair | [`linux/scripts/renovate-node.sh`](../linux/scripts/renovate-node.sh) |
+| Direct submodule default-branch lookup, initialization and checkout | [`linux/scripts/renovate-submodules.sh`](../linux/scripts/renovate-submodules.sh) |
 | Renovate CLI version lookup and cache verification | [`linux/scripts/renovate_bootstrap.py`](../linux/scripts/renovate_bootstrap.py) |
 | The fleet: every repo the family has, in an order it can be landed in | [`linux/scripts/renovate-fleet.sh`](../linux/scripts/renovate-fleet.sh) |
 | Which git owns the tree, whether it is clean, and what ELSE moved | [`linux/scripts/renovate-tree.sh`](../linux/scripts/renovate-tree.sh) |

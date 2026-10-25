@@ -56,16 +56,17 @@ t_assert_eq "  http: 1.1.0" "$(_line "${X6}/pkg/pubspec.yaml" 3)" \
   "the file that could not is untouched"
 t_assert_contains "${OUT}" "NOT EVERYTHING WAS APPLIED" "and the run says so"
 
-# All four refusal classes share one counter; an undeclared submodule is the one with no file at all.
-t_case "(X6b) a submodule reported behind that this repo does not declare is 2 too"
+# A report row without a tracked gitlink cannot invent an update target.
+t_case "(X6b) an undeclared submodule report row cannot invent a gitlink"
 X6B="$(_repo x6b)"
 printf 'placeholder\n' > "${X6B}/README"
 _commit "${X6B}"
 X6B_REPORT="${WORK}/x6b.json"
 _report "${X6B_REPORT}" git-submodules .gitmodules sub main main
 _run "${X6B}" "${X6B_REPORT}" --apply --managers git-submodules
-t_assert_eq "2" "${RC}" "nothing was applied, and something was reported behind"
-t_assert_contains "${OUT}" "this repo does not declare" "and the run says which class"
+t_assert_eq "0" "${RC}" "nothing is applied without a real gitlink"
+t_assert_contains "${OUT}" "none declared" "the live submodule scan reports the empty set"
+t_assert_ok git -C "${X6B}" diff --quiet HEAD
 
 t_case "(X7) --dry-run exits what --apply will exit, on the same plan"
 X7="$(_mixed_repo x7)"
@@ -107,7 +108,7 @@ PY
 _run_interrupted() {
   local sig="$1" repo="$2" report="$3"
   local log="${WORK}/sig-${sig}-${repo##*/}.log"
-  rm -f "${SIG_PIDFILE}"
+  rm -f "${SIG_PIDFILE}" "${SIG_PIDFILE}.checkout"
   PATH="${SIG_PATH:-${SIG_STUBS}}:${BARE_PATH}" PREFLIGHT_PYTHON="${PY_ABS}" \
     RENOVATE_LOCAL_REPORT="${report}" RENOVATE_LOCAL_CONFIG="${CONFIG}" \
     TMPDIR="${SIG_TMP}" RL_REAL_GIT="${GIT_ABS}" \
@@ -189,9 +190,9 @@ t_assert_contains "$(cat "${KEEP_TMP}"/*/MANIFEST)" "cp -p " \
 # A stuck restore keeps the (X14) marker: the one exit where it survives on purpose.
 t_assert_ok test -f "${X10}/.git/renovate-local-inflight"
 
-# The gitlink half: a failed `submodule update --remote` must undo the already-written manifest half too.
+# Remote default HEAD resolution fails before either half can write.
 
-# _broken_sub_repo <name>: the submodule's origin points at nothing, so its fetch fails after the manifest is written.
+# _broken_sub_repo <name>: the submodule's origin points at nothing, so preflight cannot resolve its default HEAD.
 _broken_sub_repo() {
   local d
   d="$(_sub_repo "$1")"
@@ -206,24 +207,31 @@ _asserts_tree_intact() {
   t_assert_ok git -C "$1" diff --quiet HEAD
 }
 
-t_case "(X11) the submodule half failing puts the MANIFEST half back as well"
+_assert_remote_preflight_refusal() {
+  local repo="$1" before mode=apply
+  shift
+  [ "$#" -eq 0 ] || mode=dry-run
+  before="$(_sub_at "${repo}")"
+  _run "${repo}" "${SUB_REPORT}" --apply "$@" --managers pub,git-submodules
+  t_assert_eq "1" "${RC}" "${mode} refuses an unreadable remote default HEAD"
+  t_assert_contains "${OUT}" "cannot read remote default HEAD for sub" \
+    "${mode} names the remote probe that failed"
+  _asserts_tree_intact "${repo}" "${before}"
+  t_assert_fails test -f "${repo}/.git/renovate-local-inflight"
+}
+
+t_case "(X11) an unreadable submodule default HEAD refuses before the manifest half"
 X11="$(_broken_sub_repo x11)"
-X11_AT="$(_sub_at "${X11}")"
 X11_TMP="${WORK}/x11-tmp"
 mkdir -p "${X11_TMP}"
-RUN_TMPDIR="${X11_TMP}" _run "${X11}" "${SUB_REPORT}" --apply --managers pub,git-submodules
-t_assert_eq "1" "${RC}" "the run could not complete"
-t_assert_contains "${OUT}" "git submodule update --remote failed" "and says which half"
-# The manifest the FIRST half wrote is what this case is really about.
-_asserts_tree_intact "${X11}" "${X11_AT}"
-t_assert_eq "" "$(ls -A "${X11_TMP}")" "the copies went because everything was put back"
-t_assert_fails test -f "${X11}/.git/renovate-local-inflight"
+RUN_TMPDIR="${X11_TMP}" _assert_remote_preflight_refusal "${X11}"
+t_assert_eq "" "$(ls -A "${X11_TMP}")" "preflight failed before allocating copies"
 
 # rc 1 claims the tree is where it started, so the tree is read.
-t_case "(X11b) and a gitlink that DID move is put back attached, not detached"
+t_case "(X11b) a failing lock tool leaves the attached gitlink untouched"
 X11B="$(_sub_repo x11b)"
 X11B_AT="$(_sub_at "${X11B}")"
-# The gitlink moves and the lock half fails; `--remote` detaches, so the branch is restored as well.
+# A failing lock command must not change either half or detach the submodule.
 printf 'name: fixture\ndependencies:\n  http: 1.1.0\n' > "${X11B}/pubspec.yaml"
 printf '# placeholder\n' > "${X11B}/pubspec.lock"
 _commit "${X11B}"
@@ -236,23 +244,25 @@ STUB_PATH="${X11B_STUBS}:${BARE_PATH}" \
 t_assert_eq "1" "${RC}" "a lock tool that fails still ends the whole run"
 _asserts_tree_intact "${X11B}" "${X11B_AT}"
 
-# A git that signals the run as the submodule checkout starts, and is real git otherwise.
+# A git that signals once as the detached submodule checkout starts, and is real git otherwise.
 SUB_STUBS="${WORK}/sub-stubs"
 mkdir -p "${SUB_STUBS}"
 cat > "${SUB_STUBS}/git" <<'STUB'
 #!/usr/bin/env bash
-_sub=""
+_checkout=0 _detach=0
 for a in "$@"; do
   case "${a}" in
-    submodule) _sub=1 ;;
-    update)
-      if [ -n "${_sub}" ]; then
-        while [ ! -s "${RL_SIGNAL_PIDFILE}" ]; do sleep 0.05; done
-        kill -"${RL_SIGNAL_SIG}" "$(cat "${RL_SIGNAL_PIDFILE}")"
-        sleep 0.5
-      fi ;;
+    checkout) _checkout=1 ;;
+    --detach) _detach=1 ;;
   esac
 done
+if [ "${_checkout}" -eq 1 ] && [ "${_detach}" -eq 1 ] &&
+   [ ! -e "${RL_SIGNAL_PIDFILE}.checkout" ]; then
+  : > "${RL_SIGNAL_PIDFILE}.checkout"
+  while [ ! -s "${RL_SIGNAL_PIDFILE}" ]; do sleep 0.05; done
+  kill -"${RL_SIGNAL_SIG}" "$(cat "${RL_SIGNAL_PIDFILE}")"
+  sleep 0.5
+fi
 exec "${RL_REAL_GIT}" "$@"
 STUB
 chmod +x "${SUB_STUBS}/git"
@@ -263,6 +273,7 @@ X12_AT="$(_sub_at "${X12}")"
 SIG_PATH="${SUB_STUBS}" SIG_MGRS=pub,git-submodules \
   _run_interrupted INT "${X12}" "${SUB_REPORT}"
 t_assert_eq "130" "${RC}" "a stopped run is never reported as a finished one"
+t_assert_ok test -f "${SIG_PIDFILE}.checkout"
 t_assert_contains "${OUT}" "SIGINT received" "the run says what stopped it"
 t_assert_contains "${OUT}" "back at the commit it was checked" \
   "and says it put the gitlink back, which it used not to do at all"
@@ -376,19 +387,12 @@ t_assert_contains "${X14B_MARK}" "refs/heads/main" "and the branch it was attach
 # A run that finished both halves leaves no marker, or every later run would refuse.
 t_assert_fails test -f "${X14B}/.git/renovate-local-inflight"
 
-# --dry-run cannot predict a tool that fails at runtime, so its promise is about the tree, not the exit code.
-t_case "(X15) --dry-run cannot predict a tool that fails, and neither run writes"
+# --dry-run resolves the same remote HEAD as --apply, so both reject an unreadable remote.
+t_case "(X15) --dry-run and --apply both reject an unreadable remote before writing"
 # Each repo is compared with its own recorded position: two fixtures' shas agree only by timing.
 X15D="$(_broken_sub_repo x15d)"
-X15D_AT="$(_sub_at "${X15D}")"
-_run "${X15D}" "${SUB_REPORT}" --apply --dry-run --managers pub,git-submodules
-t_assert_eq "0" "${RC}" "the plan is clean, because at plan time it IS clean"
+_assert_remote_preflight_refusal "${X15D}" --dry-run
 X15A="$(_broken_sub_repo x15a)"
-X15A_AT="$(_sub_at "${X15A}")"
-_run "${X15A}" "${SUB_REPORT}" --apply --managers pub,git-submodules
-t_assert_eq "1" "${RC}" "the real run meets the failure the plan could not see"
-# The codes differ, but either way the checkout is untouched.
-_asserts_tree_intact "${X15D}" "${X15D_AT}"
-_asserts_tree_intact "${X15A}" "${X15A_AT}"
+_assert_remote_preflight_refusal "${X15A}"
 
 t_summary

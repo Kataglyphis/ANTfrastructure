@@ -6,19 +6,19 @@ set -uo pipefail
 
 _renovate_usage() {
   cat <<'HELP'
-# renovate-local.sh - Renovate as a local CLI: Renovate detects what is behind,
-# this script applies it, for every ecosystem the repo has.
+# renovate-local.sh - Renovate finds manifest updates; live remote HEADs locate submodule tips.
 # Before changing it, read docs/dependency-updates.md#before-you-change-the-script
 # Usage:
 #   renovate-local.sh [--refresh] [<root>]        report what is behind (default)
 #   renovate-local.sh --apply [--dry-run] <root>  update gitlinks, manifests and locks
+#   --apply initializes direct submodules and checks out each remote default tip.
 #   renovate-local.sh --managers <csv> <root>     default: whatever the tree HAS
 #   renovate-local.sh --print-bin                 the resolved renovate.js
 #   renovate-fleet.sh beside this one runs it over EVERY repo the family has
 #   Every live run installs npm's latest Renovate CLI before the dependency scan.
 
 # Exit codes -- branch on these, never on the text:
-#   0  every reported update is now at its new value, or already was
+#   0  every selected update is now at its new value, or already was
 #   1  the run could not complete; anything written (manifests, lockfiles,
 #      gitlinks) was put back, so the tree is as it was
 #   2  the run completed and the tree is consistent, but at least one reported
@@ -253,6 +253,11 @@ TREE="${HUB_ROOT}/linux/scripts/renovate-tree.sh"
 # shellcheck source=renovate-tree.sh
 . "${TREE}"
 
+SUBMODULES="${HUB_ROOT}/linux/scripts/renovate-submodules.sh"
+[ -f "${SUBMODULES}" ] || err "the submodule half is missing at ${SUBMODULES}"
+# shellcheck source=renovate-submodules.sh
+. "${SUBMODULES}"
+
 # Manager selection: by default every manager whose own file patterns match a tracked file.
 MGR_CFG=""
 RUN_DIR=""
@@ -403,17 +408,18 @@ run_report() {
     || err "could not read the report at ${REPORT_JSON} (above)"
   while IFS=$'\t' read -r mgr file dep cur new; do
     [ -n "${dep}" ] || continue
+    [ "${mgr}" = git-submodules ] && continue
     if [ "${n}" -eq 0 ]; then
       printf '%-16s %-34s %-14s %s\n' 'MANAGER' 'DEPENDENCY' 'CURRENT' 'AVAILABLE'
     fi
     printf '%-16s %-34s %-14s %s\n' "${mgr}" "${dep}" "${cur}" "${new}"
     n=$((n + 1))
   done < "${ROWS_TSV}"
-  if [ "${n}" -eq 0 ]; then
+  if [ "${n}" -eq 0 ] && [ "${#APPLY_PATHS[@]}" -eq 0 ]; then
     note "up to date: nothing behind for manager(s) ${MANAGERS}"
   else
     note ""
-    note "${n} update(s) available (manager(s): ${MANAGERS})"
+    note "$((n + ${#APPLY_PATHS[@]})) update(s) available (manager(s): ${MANAGERS})"
   fi
   report_skipped
 }
@@ -424,6 +430,7 @@ report_skipped() {
   rl_plan_to_tsv SKIP_TSV "could not read the skipped dependencies out of ${REPORT_JSON} (above)" \
     skipped "${REPORT_JSON}" "${TARGET}"
   while IFS=$'\t' read -r kind mgr file dep cur why; do
+    [ "${mgr}" = git-submodules ] && continue
     case "${kind}" in
       SKIP)
         if [ "${k}" -eq 0 ]; then
@@ -499,27 +506,10 @@ report_lock_maintenance() {
     -- ${MAINT_SKIP[@]+"${MAINT_SKIP[@]}"} || true
 }
 
-# Apply: gitlinks move with git, other ecosystems by one line rewrite; neither half may half-run.
-submodule_paths() {
-  for_each_renovate_submodule "${TARGET}" print_renovate_submodule_path "$1"
-}
-
-print_renovate_submodule_path() {
-  local directory="$1" name="$2" path="$3" want="$4"
-  if git -C "${directory}" config -f .gitmodules --get "submodule.${name}.branch" >/dev/null 2>&1; then
-    [ "${want}" = with-branch ] || return 0
-  else
-    [ "${want}" = without-branch ] || return 0
-  fi
-  printf '%s\n' "${path}"
-}
-
 # Globals: bash cannot return a list, and a $() round-trip would re-run the classification.
-APPLY_PATHS=(); APPLY_REFUSED=(); APPLY_UNMATCHED=()
 APPLY_DIRTY=(); APPLY_EOL=()
-GIT_BIN=git; GIT_TARGET=""
 PLAN_TSV=""; PLAN_JSON=""; MGR_TSV=""; ROWS_TSV=""; SKIP_TSV=""
-PLAN_SUBMODULES=(); PLAN_EDITS=(); PLAN_REFUSE=(); PLAN_SKIP=(); PLAN_DONE=()
+PLAN_EDITS=(); PLAN_REFUSE=(); PLAN_SKIP=(); PLAN_DONE=()
 EDIT_FILES=(); EDIT_LINES=0
 
 # The JSON plan written here is what gets applied, so --dry-run and --apply cannot disagree.
@@ -531,7 +521,6 @@ build_plan() {
     plan "${REPORT_JSON}" "${REPO_CFG}" "${TARGET}" "${PLAN_JSON}"
   while IFS=$'\t' read -r kind mgr file dep cur new line detail before after; do
     case "${kind}" in
-      SUBMODULE) PLAN_SUBMODULES+=("${dep}") ;;
       REFUSE) PLAN_REFUSE+=("${mgr}  ${file}  ${dep}  ${cur} -> ${new}  ${detail}") ;;
       SKIP)   PLAN_SKIP+=("${mgr}  ${file}  ${dep}  ${cur} -> ${new}  -- ${detail}") ;;
       DONE)   PLAN_DONE+=("${file}:${line}  ${dep} is already at ${new}") ;;
@@ -553,26 +542,7 @@ plan_edit_row() {
   case " ${LOCK_JOBS[*]-} " in *" ${key} "*) ;; *) LOCK_JOBS+=("${key}") ;; esac
 }
 
-# Move a submodule only when it is behind AND declares a branch; neither alone suffices.
-select_apply_targets() {
-  local -a declared=() branchless=()
-  local pth b d
-  while IFS= read -r pth; do [ -n "${pth}" ] && declared+=("${pth}"); done < <(submodule_paths with-branch)
-  while IFS= read -r pth; do [ -n "${pth}" ] && branchless+=("${pth}"); done < <(submodule_paths without-branch)
-
-  APPLY_PATHS=(); APPLY_REFUSED=(); APPLY_UNMATCHED=()
-  for b in ${PLAN_SUBMODULES[@]+"${PLAN_SUBMODULES[@]}"}; do
-    for d in ${declared[@]+"${declared[@]}"}; do
-      [ "${b}" = "${d}" ] && { APPLY_PATHS+=("${b}"); continue 2; }
-    done
-    for d in ${branchless[@]+"${branchless[@]}"}; do
-      [ "${b}" = "${d}" ] && { APPLY_REFUSED+=("${b}"); continue 2; }
-    done
-    APPLY_UNMATCHED+=("${b}")
-  done
-}
-
-# `submodule update --remote` is not atomic, so every target is checked before anything is written.
+# Every target is checked before anything is written.
 assert_targets_applyable() {
   refuse_listing "wrong git for this working tree" \
     "The REPORT half is safe from anywhere -- it only reads. Run --apply with the
@@ -605,15 +575,6 @@ print_plan_notes() {
   note_listing \
     "already applied - the dependency's own line is at the new value:" \
     -- ${PLAN_DONE[@]+"${PLAN_DONE[@]}"} || true
-  note_listing \
-    "behind, and reported as a submodule that this repo does not declare --" \
-    "--apply does not touch these:" \
-    -- ${APPLY_UNMATCHED[@]+"${APPLY_UNMATCHED[@]}"} || true
-  note_listing_advice "Move one of these by hand, deliberately, or give it a branch entry." \
-      "REFUSED - behind, but no \`branch =\` in .gitmodules. A bare --remote would" \
-      "walk these to the remote's DEFAULT branch, which is not the line the pin" \
-      "was taken from (the FUZZTEST case):" \
-      -- ${APPLY_REFUSED[@]+"${APPLY_REFUSED[@]}"}
 }
 
 print_dry_run() {
@@ -622,29 +583,14 @@ print_dry_run() {
   note ""
   note "--dry-run: the exact writes this would make, and nothing else -- the"
   note "audit that runs AFTER a write has already been run over this text."
-  note_listing "gitlink(s), moved to the tip of the branch .gitmodules names:" \
-    -- ${APPLY_PATHS[@]+"${APPLY_PATHS[@]}"} || true
+  if [ "${#APPLY_PATHS[@]}" -gt 0 ]; then
+    note "gitlink(s), moved to their remote default branch HEAD:"
+    for_each_pending_submodule print_default_submodule_target
+  fi
   note_listing "file edit(s) -- <file>:<line>, then that line before and after:" \
     -- ${PLAN_EDITS[@]+"${PLAN_EDITS[@]}"} || true
   note_listing "lockfile(s) that would then be refreshed:" \
     -- ${LOCK_PLANNED[@]+"${LOCK_PLANNED[@]}"} || true
-  if [ "${#APPLY_PATHS[@]}" -gt 0 ]; then
-    note ""
-    note "the submodule command that would run:"
-    note "  ${GIT_BIN} -C ${GIT_TARGET} submodule update --remote -- ${APPLY_PATHS[*]}"
-  fi
-}
-
-# `--remote` is not atomic, so its failure takes the same undo as the manifest half.
-apply_submodules() {
-  [ "${#APPLY_PATHS[@]}" -gt 0 ] || return 0
-  note ""
-  note "updating ${#APPLY_PATHS[@]} submodule(s) to the tip of the branch they name:"
-  printf '  %s\n' "${APPLY_PATHS[@]}"
-  # Explicit paths and no --recursive: only the eligible gitlinks of this repo move.
-  "${GIT_BIN}" -C "${GIT_TARGET}" submodule update --remote -- "${APPLY_PATHS[@]}" \
-    || undo_run "git submodule update --remote failed"
-  "${GIT_BIN}" -C "${GIT_TARGET}" submodule summary -- "${APPLY_PATHS[@]}" 2>/dev/null || true
 }
 
 # Every target was copied aside first, so a failing lock tool puts all back. See docs/dependency-updates.md#all-of-it-or-none-of-it
@@ -670,13 +616,12 @@ apply_files() {
 # The only place EXIT_CODE becomes 2; --dry-run runs it too, so a reviewer sees the real rc.
 report_refusals() {
   local n
-  n=$(( ${#PLAN_REFUSE[@]} + ${#PLAN_SKIP[@]} \
-        + ${#APPLY_REFUSED[@]} + ${#APPLY_UNMATCHED[@]} + ${#MAINT_SKIP[@]} ))
+  n=$(( ${#PLAN_REFUSE[@]} + ${#PLAN_SKIP[@]} + ${#MAINT_SKIP[@]} ))
   [ "${n}" -gt 0 ] || return 0
   EXIT_CODE="${EXIT_REFUSED}"
   note ""
   note "NOT EVERYTHING WAS APPLIED: ${n} reported update(s) are listed above as"
-  note "REFUSED / NOT APPLIED / behind-but-not-eligible, and this run did not"
+  note "REFUSED / NOT APPLIED, and this run did not"
   note "write them. Exiting ${EXIT_REFUSED} -- rc 0 from --apply means every"
   note "reported update is at its new value, and nothing else does."
 }
@@ -685,7 +630,6 @@ run_apply() {
   build_plan
   # After the edits' jobs, so a maintained lock is refreshed last and ends at the newest it allows.
   LOCK_JOBS+=(${MAINT_JOBS[@]+"${MAINT_JOBS[@]}"})
-  select_apply_targets
   print_plan_notes
 
   if [ "${#APPLY_PATHS[@]}" -eq 0 ] && [ "${#LOCK_JOBS[@]}" -eq 0 ] && [ "${EDIT_LINES}" -eq 0 ]; then
@@ -705,12 +649,14 @@ run_apply() {
     return 0
   fi
 
+  prefetch_default_submodules
+
   # One snapshot over both halves, tree first, so not even the in-flight marker reads as a tool's write.
   tree_snapshot
   snapshot_targets ${EDIT_FILES[@]+"${EDIT_FILES[@]}"}
   # Either half failing restores both, so this order is for reviewability only.
   apply_files
-  apply_submodules
+  apply_default_submodules
   # See docs/dependency-updates.md#nothing-else-in-the-repo-moved
   assert_no_collateral
   # Only now is the tree worth keeping: cleanup() may drop the copies and the in-flight marker.
@@ -747,9 +693,10 @@ trap cleanup EXIT
 assert_no_wreckage
 detect_managers
 run_renovate
+scan_default_submodules
 case "${MODE}" in
-  report) run_report; report_lock_maintenance ;;
-  apply)  run_report; report_lock_maintenance; run_apply ;;
+  report) run_report; report_default_submodules; report_lock_maintenance ;;
+  apply)  run_report; report_default_submodules; report_lock_maintenance; run_apply ;;
   *)      err "unreachable mode ${MODE}" ;;
 esac
 # Explicit: the status of that case's last command is no contract.

@@ -14,7 +14,7 @@ trap 'rm -rf "${WORK}"' EXIT
 # Host tools minus every lock tool, so "cargo is not installed" is a fixture property, not a hope.
 BARE_PATH="${WORK}/bare-path"
 mkdir -p "${BARE_PATH}"
-for _bin in bash env sh git sed grep awk mktemp dirname basename rm mkdir tr cut \
+for _bin in bash env sh git sed grep awk mktemp dirname basename rm rmdir mkdir cmp tr cut \
             cat wc sort head tail uname ls cp mv chmod sleep find; do
   _src="$(command -v "${_bin}" 2>/dev/null || true)"
   if [ -n "${_src}" ]; then ln -sf "${_src}" "${BARE_PATH}/${_bin}"; fi
@@ -102,7 +102,7 @@ _cargo_repo() {
   printf '%s' "${d}"
 }
 
-# protocol.file.allow on every checkout: `submodule update --remote` fetches under the submodule's own config.
+# protocol.file.allow on every checkout: the default-HEAD fetch uses the submodule's own config.
 _init_repo() {
   mkdir -p "$1"
   git -C "$1" init -q -b main

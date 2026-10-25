@@ -47,6 +47,8 @@ git submodule sync   # moves the existing checkout's remote too
 The family moves gitlinks with Renovate as a local CLI
 ([`dependency-updates.md`](dependency-updates.md)): `renovate-local.sh`, called through the
 wrapper template in `shared/linux/templates/`, reports what is behind; `--apply` moves the gitlink.
+It checks every direct submodule against its remote default branch, even when
+`.gitmodules` names another branch or the checkout has not been initialized.
 To stage one explicit, already published hub `develop` commit across consumers, run the
 hub checkout's reusable pin helper once per initialized consumer:
 

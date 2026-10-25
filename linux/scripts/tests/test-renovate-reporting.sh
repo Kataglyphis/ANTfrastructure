@@ -20,8 +20,7 @@ undo_run() { printf 'UNDO:%s\n' "$*"; exit 37; }
 case "$scenario" in
   listing) note_listing 'first %s' 'second line' -- "${items[@]}" ;;
   plan)
-    PLAN_REFUSE=() PLAN_SKIP=() PLAN_DONE=() APPLY_UNMATCHED=()
-    APPLY_REFUSED=("${items[@]}")
+    PLAN_REFUSE=("${items[@]}") PLAN_SKIP=() PLAN_DONE=()
     print_plan_notes ;;
   collateral)
     TREE_PUTBACK=() TREE_UNSAFE=()
@@ -54,7 +53,10 @@ for scenario in listing plan collateral locks manifests; do
       [ "${scenario}" != locks ] || prefix=''
       t_assert_contains "${output}" $'\n'"${prefix}path 0 %s" "${scenario} literal item bytes"
       case "${scenario}" in
-        plan) tail=$'Move one of these by hand, deliberately, or give it a branch entry.\n\036' ;;
+        plan)
+          t_assert_contains "${output}" '(dependencyDashboardApproval), so --apply will not write them:' \
+            "the refusal explains why a human must approve"
+          tail="  path $((count-1)) %s"$'\n\036' ;;
         collateral) tail=$'Decide those by hand -- `git diff -- <path>` says what is in them.\n\036' ;;
         locks) tail="UNDO:${count} refreshed lockfile(s) cannot be read back"$'\n\036' ;;
         manifests) tail="UNDO:a lockfile tool rewrote ${count} audited manifest(s)"$'\n\036' ;;
