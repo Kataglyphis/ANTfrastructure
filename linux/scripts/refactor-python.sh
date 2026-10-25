@@ -96,11 +96,11 @@ for selected in "${SELECTED[@]}"; do
     || die "selected Python path is missing or a symlink: ${selected}"
 done
 
-log() { printf '%s\n' "$*" | tee -a "${RUN_LOG}"; }
+refactor_log() { printf '%s\n' "$*" | tee -a "${RUN_LOG}"; }
 
 run_ruff() {
   local -a statuses
-  log "== uvx ruff@${RUFF_VERSION} $1 (${#SELECTED[@]} file(s)) =="
+  refactor_log "== uvx ruff@${RUFF_VERSION} $1 (${#SELECTED[@]} file(s)) =="
   set +e
   uvx "ruff@${RUFF_VERSION}" "$@" 2>&1 | tee -a "${RUN_LOG}"
   statuses=("${PIPESTATUS[@]}")
@@ -109,13 +109,13 @@ run_ruff() {
   return "${statuses[0]}"
 }
 
-log "mode=${MODE} scope=${#SELECTED[@]} report=${RUN_DIR#"${REPO_ROOT}"/}"
+refactor_log "mode=${MODE} scope=${#SELECTED[@]} report=${RUN_DIR#"${REPO_ROOT}"/}"
 if [[ "${MODE}" == check ]]; then
   failed=0
   run_ruff check --no-fix --no-unsafe-fixes -- "${SELECTED[@]}" || failed=1
   run_ruff format --check --diff -- "${SELECTED[@]}" || failed=1
   [[ "${failed}" -eq 0 ]] || die "Python lint or format drift remains; see ${RUN_LOG}"
-  log "Ruff lint and format are clean; no files were changed."
+  refactor_log "Ruff lint and format are clean; no files were changed."
   exit 0
 fi
 
@@ -156,4 +156,4 @@ run_ruff format --check -- "${SELECTED[@]}" \
 git diff --binary -- "${SELECTED[@]}" > "${RUN_DIR}/changes.patch" \
   || die "cannot write the resulting patch"
 APPLY_DONE=1
-log "Refactor complete. Patch: ${RUN_DIR#"${REPO_ROOT}"/}/changes.patch"
+refactor_log "Refactor complete. Patch: ${RUN_DIR#"${REPO_ROOT}"/}/changes.patch"

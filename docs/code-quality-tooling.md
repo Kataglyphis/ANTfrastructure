@@ -558,7 +558,10 @@ path, applies the same script, checks mutation recipes and affected quality gate
 uploads an ignored patch and logs. It has read-only repository permissions and does not
 commit or open a pull request. The patch is the review boundary. Some mutation recipes
 match exact source text, so a format edit can require a recipe update before the gates
-pass. The existing agentic loop is unsuitable for this narrow CI job because it consumes
+pass. The workflow syncs the locked quality environment for ty, while general script tests
+use the runner Python with pytest and PyYAML as in `linux-x64.yml`; putting the quality
+venv first on `PATH` changes existing test assumptions about the runner's `pip` package.
+The existing agentic loop is unsuitable for this narrow CI job because it consumes
 the whole backlog, may commit and treats its quality phase as advisory. Its reusable
 components are documented in `shared/agentic-loop/templates/README.md` for a future
 scoped AI driver.

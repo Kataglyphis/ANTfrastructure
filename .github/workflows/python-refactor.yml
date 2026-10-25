@@ -17,7 +17,6 @@ jobs:
     timeout-minutes: 45
     env:
       REFACTOR_PATH: ${{ inputs.path }}
-      PREFLIGHT_PYTHON: ${{ github.workspace }}/quality/.venv/bin/python
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,16 +26,16 @@ jobs:
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
 
       - name: Sync locked quality environment
-        run: |
-          uv sync --project quality --locked --python 3.14
-          echo "$GITHUB_WORKSPACE/quality/.venv/bin" >> "$GITHUB_PATH"
+        run: uv sync --project quality --locked --python 3.14
+
+      - name: Install runner test dependencies
+        run: pip install --quiet pytest pyyaml
 
       - name: Apply pinned safe Ruff edits
         run: bash linux/scripts/refactor-python.sh --apply -- "$REFACTOR_PATH"
 
       - name: Verify mutation recipes still match
-        run: |
-          "$PREFLIGHT_PYTHON" docs/scripts/verify_mutations.py --stale-check
+        run: python3 docs/scripts/verify_mutations.py --stale-check
 
       - name: Run affected quality gates
         run: PREFLIGHT_ONLY=python-lint,python-types,code-dupes,code-size,code-complexity,comment-size,script-tests bash linux/scripts/preflight.sh
