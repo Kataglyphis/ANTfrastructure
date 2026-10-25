@@ -3,6 +3,16 @@
 # SPDX-License-Identifier: MIT
 # Runner image updates must not float lint results; this fixture does not test PowerShell Gallery installation.
 
+function Assert-WorkflowMutation {
+    param([string]$Workflow, [string]$Original, [string]$Replacement, [scriptblock]$Check, [string]$Path = '', [string]$RequiredText = '')
+    $Text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $Workflow))
+    if ($RequiredText) { Assert-True ($Text.Contains($RequiredText)) "$Workflow resolves the hub pin path" }
+    Assert-True ($Text.Contains($Original)) 'the workflow mutation has a real subject'
+    & $Check $Text $Path
+    $mutant = $Text.Replace($Original, $Replacement)
+    Assert-Throws { & $Check $mutant $Path } -MessagePattern 'Assert-True'
+}
+
 Describe 'Invoke-Lint analyzer pin' {
     It 'uses the hub pin when a newer module is also installed' {
         Invoke-InTestDir { param($d)
@@ -78,7 +88,6 @@ function Get-Module {
     }
 
     It 'runs for action edits on push and pull requests' {
-        $workflow = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) '.github/workflows/windows-x64.yml'))
         $check = {
             param([string]$text)
             foreach ($triggerName in @('push', 'pull_request')) {
@@ -86,9 +95,7 @@ function Get-Module {
                 Assert-True ($section -match '(?m)^      - ''\.github/actions/\*\*''\r?$') "$triggerName watches .github/actions"
             }
         }
-        & $check $workflow
-        $mutant = $workflow -replace "(?m)^      - '\.github/actions/\*\*'\r?\n", ''
-        Assert-Throws { & $check $mutant } -MessagePattern 'Assert-True'
+        Assert-WorkflowMutation -Workflow '.github/workflows/windows-x64.yml' -Original "      - '.github/actions/**'" -Replacement '' -Check $check
     }
 
     It 'installs the hub pin in Windows lanes and the reusable quality workflow' {
@@ -102,20 +109,16 @@ function Get-Module {
                 @{ Workflow = '.github/workflows/windows-x64.yml'; Path = "'linux/scripts/01-core/versions.env'" }
                 @{ Workflow = '.github/workflows/powershell-quality.yml'; Path = '$versions'; Root = "Join-Path `$hub 'linux/scripts/01-core/versions.env'" }
             )) {
-            $text = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) $case.Workflow))
-            if ($case.ContainsKey('Root')) { Assert-True ($text.Contains($case.Root)) 'quality workflow resolves the hub pin path' }
-            & $check $text $case.Path
-            $mutant = $text.Replace('Install-Module PSScriptAnalyzer -RequiredVersion $pin', 'Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0')
-            Assert-Throws { & $check $mutant $case.Path } -MessagePattern 'Assert-True'
+            $root = if ($case.ContainsKey('Root')) { $case.Root } else { '' }
+            Assert-WorkflowMutation -Workflow $case.Workflow -Original 'Install-Module PSScriptAnalyzer -RequiredVersion $pin' `
+                -Replacement 'Install-Module PSScriptAnalyzer -RequiredVersion 1.25.0' -Check $check -Path $case.Path -RequiredText $root
         }
-        $caller = [IO.File]::ReadAllText((Join-Path (Get-RepoRoot) '.github/workflows/python-ci-windows.yml'))
         $checkCaller = {
             param([string]$text)
             $job = [regex]::Match($text, '(?ms)^  lint-powershell:\r?\n(?<body>.*?)(?=^  [a-z][\w-]*:|\z)').Groups['body'].Value
             Assert-True ($job.Contains('uses: ./.github/workflows/powershell-quality.yml')) 'consumer lint job calls the pinned quality workflow'
         }
-        & $checkCaller $caller
-        $mutant = $caller.Replace('uses: ./.github/workflows/powershell-quality.yml', 'uses: ./.github/workflows/missing-quality.yml')
-        Assert-Throws { & $checkCaller $mutant } -MessagePattern 'Assert-True'
+        Assert-WorkflowMutation -Workflow '.github/workflows/python-ci-windows.yml' -Original 'uses: ./.github/workflows/powershell-quality.yml' `
+            -Replacement 'uses: ./.github/workflows/missing-quality.yml' -Check $checkCaller
     }
 }

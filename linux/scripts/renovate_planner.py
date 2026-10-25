@@ -250,6 +250,18 @@ def _named_build_context(root: str, file: str, name: str) -> bool:
                for i, line in enumerate(lines))
 
 
+def _semantic_image_skip(manager: str, file: str, name: str, value: str,
+                         root: str | None) -> str:
+    """Classify floating and local container references by their source shape."""
+    if manager == "docker-compose" and {"latest", "stable"} & set(re.split(r"[-_.]", value.lower())):
+        return "floating-image-tag"
+    if manager == "dockerfile" and name.startswith(("local/", "docker.io/local/")):
+        return "local-build-image"
+    if manager == "dockerfile" and not value and root and _named_build_context(root, file, name):
+        return "named-build-context"
+    return ""
+
+
 def _semantic_skip(manager: str, file: str, dep: RenovateDependency, reason: str,
                    root: str | None) -> str:
     """Distinguish non-version inputs from malformed version pins."""
@@ -262,12 +274,8 @@ def _semantic_skip(manager: str, file: str, dep: RenovateDependency, reason: str
         return ""
     name = dep.get("depName") or dep.get("packageName") or ""
     value = dep.get("currentValue") or ""
-    if manager == "docker-compose" and {"latest", "stable"} & set(re.split(r"[-_.]", value.lower())):
-        return "floating-image-tag"
-    if manager == "dockerfile" and name.startswith(("local/", "docker.io/local/")):
-        return "local-build-image"
-    if manager == "dockerfile" and not value and root and _named_build_context(root, file, name):
-        return "named-build-context"
+    if image := _semantic_image_skip(manager, file, name, value, root):
+        return image
     if manager == "github-actions" and re.fullmatch(
         r"\$\{\{\s*steps\.[A-Za-z_][\w-]*\.outputs\.[A-Za-z_][\w-]*\s*\}\}", value
     ):

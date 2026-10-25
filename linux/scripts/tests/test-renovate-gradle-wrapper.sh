@@ -14,6 +14,13 @@ _wrapper_repo() {
   printf '%s' "${repo}"
 }
 
+_wrapper_refuses() {
+  local repo
+  repo="$(_wrapper_repo "$1")"
+  _parser_refuses "${repo}" "${REPORT}" gradle-wrapper "$2" "$3" "$4"
+  t_assert_ok git -C "${repo}" diff --quiet HEAD
+}
+
 REPORT="${WORK}/gradle-wrapper.json"
 _report "${REPORT}" gradle-wrapper "${PROPERTIES}" gradle 9.8.1 9.8.2
 
@@ -35,33 +42,27 @@ PROPS
 )" "$(cat "${GOOD}/${PROPERTIES}")" "only the version span changed"
 
 t_case "two distributionUrl lines are ambiguous and leave the checkout untouched"
-DUP="$(_wrapper_repo gradle-wrapper-duplicate <<'PROPS'
+_wrapper_refuses gradle-wrapper-duplicate \
+  "multiple declarations or report rows are ambiguous" "duplicate URLs refuse" \
+  "the refusal names ambiguity" <<'PROPS'
 distributionUrl=https\://services.gradle.org/distributions/gradle-9.8.1-all.zip
 distributionUrl=https\://mirror.example.invalid/gradle-9.8.1-bin.zip
 PROPS
-)"
-_run_apply_verdict "${DUP}" "${REPORT}" gradle-wrapper 2 "duplicate URLs refuse"
-t_assert_contains "${OUT}" "multiple declarations or report rows are ambiguous" "the refusal names ambiguity"
-t_assert_ok git -C "${DUP}" diff --quiet HEAD
 
 t_case "an unreadable distributionUrl cannot be guessed from nearby versions"
-BAD="$(_wrapper_repo gradle-wrapper-malformed <<'PROPS'
+_wrapper_refuses gradle-wrapper-malformed \
+  "no gradle-wrapper declaration of 'gradle'" "malformed URL refuses" \
+  "the refusal names the missing declaration" <<'PROPS'
 # The old version in a comment is not a declaration.
 distributionUrl=https\://services.gradle.org/distributions/gradle-9.8.1-all.zip#unexpected
 PROPS
-)"
-_run_apply_verdict "${BAD}" "${REPORT}" gradle-wrapper 2 "malformed URL refuses"
-t_assert_contains "${OUT}" "no gradle-wrapper declaration of 'gradle'" "the refusal names the missing declaration"
-t_assert_ok git -C "${BAD}" diff --quiet HEAD
 
 t_case "a checksum pin cannot be left behind when the archive URL moves"
-SHA="$(_wrapper_repo gradle-wrapper-checksum <<'PROPS'
+_wrapper_refuses gradle-wrapper-checksum \
+  "distributionSha256Sum pins the current Gradle archive" "checksum-coupled URL refuses" \
+  "the refusal names the coupled checksum" <<'PROPS'
 distributionUrl=https\://services.gradle.org/distributions/gradle-9.8.1-all.zip
 distributionSha256Sum=0000000000000000000000000000000000000000000000000000000000000000
 PROPS
-)"
-_run_apply_verdict "${SHA}" "${REPORT}" gradle-wrapper 2 "checksum-coupled URL refuses"
-t_assert_contains "${OUT}" "distributionSha256Sum pins the current Gradle archive" "the refusal names the coupled checksum"
-t_assert_ok git -C "${SHA}" diff --quiet HEAD
 
 t_summary

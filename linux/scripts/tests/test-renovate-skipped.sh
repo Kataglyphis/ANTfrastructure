@@ -8,34 +8,7 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "${WORK}"' EXIT
 printf '# hadolint ignore=DL3022\nCOPY --from=site / /site/\n' > "${WORK}/Dockerfile"
 
-cat > "${WORK}/report.json" <<'JSON'
-{"repositories":{"local":{"packageFiles":{
-  "docker-compose":[{"packageFile":"compose.yaml","deps":[
-    {"depName":"ghcr.io/acme/app","currentValue":"latest","skipReason":"invalid-value"},
-    {"depName":"ghcr.io/acme/full","currentValue":"ubuntu-latest-full","skipReason":"invalid-value"},
-    {"depName":"ghcr.io/acme/other","currentValue":"rolling","skipReason":"invalid-value"}] }],
-  "dockerfile":[{"packageFile":"Dockerfile","deps":[
-    {"depName":"local/kataglyphis","currentValue":"sdk","skipReason":"invalid-value"},
-    {"depName":"docker.io/local/kataglyphis","currentValue":"bk-windows-toolchain","skipReason":"invalid-value"},
-    {"depName":"site","skipReason":"invalid-value"},
-    {"depName":"ghcr.io/acme/base","currentValue":"sdk","skipReason":"invalid-value"},
-    {"depName":"local/kataglyphis","currentValue":"sdk","warnings":[{"message":"registry unreachable"}]},
-    {"depName":"local/kataglyphis","currentValue":"sdk","skipReason":"invalid-value","warnings":[{"message":"registry unreachable"}]}] }],
-  "github-actions":[{"packageFile":".github/workflows/ci.yml","deps":[
-    {"depName":"python","currentValue":"${{ steps.python.outputs.version }}","skipReason":"invalid-value"},
-    {"depName":"python","currentValue":"${{ nonsense }}","skipReason":"invalid-value"}] }],
-  "rust-toolchain":[{"packageFile":"firmware/rust-toolchain.toml","deps":[
-    {"depName":"rust","currentValue":"esp","skipReason":"invalid-version"},
-    {"depName":"rust","currentValue":"esp","warnings":[{"message":"cannot reach Rust toolchain feed"}]},
-    {"depName":"rust","currentValue":"lates","skipReason":"invalid-version"}] }],
-  "pep621":[{"packageFile":"pyproject.toml","deps":[
-    {"depName":"opencv-python","currentValue":"@ git+https://github.com/opencv/opencv-python.git ","skipReason":"invalid-value"},
-    {"depName":"torch","currentValue":"@ git+https://github.com/pytorch/pytorch.git@v2.14.1","skipReason":"invalid-value"},
-    {"depName":"opencv-python","currentValue":"@ git+https://github.com/opencv/opencv-python.git","warnings":[{"message":"registry unreachable"}]}] }],
-  "regex":[{"packageFile":"tool-pins.env","deps":[
-    {"depName":"dartdoc","currentValue":"9.0.8","skipReason":"invalid-config"}] }]
-}}}}
-JSON
+cp "${TESTS_DIR}/fixtures/renovate-semantic-skips.json" "${WORK}/report.json"
 
 run_skipped() { python3 "${PLANNER}" skipped "${WORK}/report.json" "${WORK}"; }
 

@@ -80,9 +80,7 @@ resolve_github_token() {
     GITHUB_COM_TOKEN="${GH_TOKEN:-}"
   fi
   if [ -z "${GITHUB_COM_TOKEN:-}" ]; then
-    if command -v gh >/dev/null 2>&1; then _gh_bin=gh
-    elif command -v gh.exe >/dev/null 2>&1; then _gh_bin=gh.exe
-    fi
+    _gh_bin="$(renovate_github_cli)" || _gh_bin=""
     if [ -n "${_gh_bin}" ]; then
       GITHUB_COM_TOKEN="$("${_gh_bin}" auth token 2>/dev/null)" || GITHUB_COM_TOKEN=""
       GITHUB_COM_TOKEN="${GITHUB_COM_TOKEN%$'\r'}"
@@ -203,6 +201,14 @@ LOCATOR="${HUB_ROOT}/linux/scripts/renovate_locator.py"
 [ -f "${LOCATOR}" ] || err "the locator is missing at ${LOCATOR}"
 
 rl_py() { "${PY_BIN}" "${PLANNER}" "$@"; }
+
+rl_plan_to_tsv() {
+  local -n output="$1"
+  local failure="$2"
+  shift 2
+  output="$(mktemp)" || err "mktemp failed"
+  rl_py "$@" > "${output}" || err "${failure}"
+}
 
 # The lockfile half; sourced after note()/err()/refuse_listing(), which it calls.
 LOCKS="${HUB_ROOT}/linux/scripts/renovate-locks.sh"
@@ -384,9 +390,8 @@ run_report() {
 # A skipped dep is never "behind", so without this list an unreadable pin (ROCm's 10.0 under semver) reads as up to date.
 report_skipped() {
   local kind mgr file dep cur why k=0 design=""
-  SKIP_TSV="$(mktemp)" || err "mktemp failed"
-  rl_py skipped "${REPORT_JSON}" "${TARGET}" > "${SKIP_TSV}" \
-    || err "could not read the skipped dependencies out of ${REPORT_JSON} (above)"
+  rl_plan_to_tsv SKIP_TSV "could not read the skipped dependencies out of ${REPORT_JSON} (above)" \
+    skipped "${REPORT_JSON}" "${TARGET}"
   while IFS=$'\t' read -r kind mgr file dep cur why; do
     case "${kind}" in
       SKIP)
@@ -490,10 +495,9 @@ EDIT_FILES=(); EDIT_LINES=0
 build_plan() {
   local kind mgr file dep cur new line detail before after key
   resolve_repo_config
-  PLAN_TSV="$(mktemp)" || err "mktemp failed"
   PLAN_JSON="$(mktemp)" || err "mktemp failed"
-  rl_py plan "${REPORT_JSON}" "${REPO_CFG}" "${TARGET}" "${PLAN_JSON}" > "${PLAN_TSV}" \
-    || err "planning the updates failed"
+  rl_plan_to_tsv PLAN_TSV "planning the updates failed" \
+    plan "${REPORT_JSON}" "${REPO_CFG}" "${TARGET}" "${PLAN_JSON}"
   while IFS=$'\t' read -r kind mgr file dep cur new line detail before after; do
     case "${kind}" in
       SUBMODULE) PLAN_SUBMODULES+=("${dep}") ;;
