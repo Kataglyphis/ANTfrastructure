@@ -220,6 +220,30 @@ def find_requirements(lines: Sequence[str], dep: str, _dep_type: str) -> list[Si
     return out
 
 
+_GRADLE_WRAPPER_LINE = re.compile(r"^\s*distributionUrl\s*=\s*(?P<url>\S+)\s*$")
+_GRADLE_WRAPPER_URL = re.compile(
+    r"^https\\?://[^?#\s]+/gradle-(?P<version>[0-9][A-Za-z0-9.+-]*?)-"
+    r"(?:all|bin)\.zip(?:\?[^#\s]+)?$"
+)
+
+
+def find_gradle_wrapper(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
+    """The version inside a Gradle distribution URL, leaving its host, type and suffix untouched."""
+    if dep != "gradle":
+        return []
+    out = []
+    for num, line in enumerate(lines):
+        found = _GRADLE_WRAPPER_LINE.fullmatch(line)
+        if found is None:
+            continue
+        url = _GRADLE_WRAPPER_URL.fullmatch(found.group("url"))
+        if url is None:
+            continue
+        start = found.start("url") + url.start("version")
+        out.append(_site(num, start, url.group("version")))
+    return out
+
+
 # pep621 (pyproject.toml): only these arrays hold dependencies, so a `keywords` entry is never a pin.
 PEP621_KEYS = {
     ("project",): ("dependencies",),
@@ -551,6 +575,7 @@ def find_cmake(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
 
 FINDERS: dict[str, Callable[[Sequence[str], str, str], list[Site]]] = {
     "github-actions": find_actions,
+    "gradle-wrapper": find_gradle_wrapper,
     "pub": find_pub,
     "pip_requirements": find_requirements,
     "pip-compile": find_requirements,
@@ -592,6 +617,10 @@ def resolve(manager: str, lines: Sequence[str], dep: str, old: str, new: str,
         return "REFUSE", [], (
             f"no exact locator for manager '{manager}'; this tool refuses to edit a "
             "syntax it cannot parse")
+    if manager == "gradle-wrapper" and (count != 1 or len(found) > 1):
+        return "REFUSE", [], (
+            "a gradle-wrapper report must name exactly one distributionUrl version per file; "
+            "multiple declarations or report rows are ambiguous")
     if not found:
         return "REFUSE", [], (
             f"no {manager} declaration of '{dep}' in this file")

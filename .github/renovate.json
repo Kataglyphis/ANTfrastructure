@@ -36,6 +36,12 @@
       "dependencyDashboardApproval": true
     },
     {
+      "description": "Windows diagnostic images follow Server Core LTSC release years, not SemVer tags; compare the release year instead of skipping the dependency.",
+      "matchManagers": ["dockerfile"],
+      "matchPackageNames": ["mcr.microsoft.com/windows/servercore"],
+      "versioning": "regex:^ltsc(?<major>\\d{4})$"
+    },
+    {
       "description": "NODE_VERSION may only move within its major: the image tail and the tools built on it are validated per major (bump_versions.py SAFE tier: same-major only).",
       "matchManagers": ["custom.regex"],
       "matchDepNames": ["node"],

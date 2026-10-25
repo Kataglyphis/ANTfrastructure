@@ -19,6 +19,11 @@
   and complete-checkout/adoption preflight; provide a reusable read-only CI entrypoint gate.
 - Include custom regex managers in default Renovate scans, resolve the GitHub token centrally
   (including `gh.exe` under WSL), and fail before writes when any dependency was not checked.
+- Distinguish floating aliases, local build images, named Docker build contexts, Actions outputs,
+  espup's named toolchain and unversioned Git sources from real failed Renovate lookups; fix
+  dartdoc's datasource and give Windows Server Core LTSC tags a release-year versioning rule.
+- Apply versioned Gradle wrapper URL updates through an audited properties parser; refuse ambiguous
+  URLs and checksum-coupled archives instead of editing a guess.
 - Add a reusable one-consumer hub pin helper: require an explicit remote `develop` SHA,
   check the consumer branch and a clean initialized submodule, and stage only its gitlink.
 - Make quality measurements reusable across owned repositories: rooted size, complexity and duplication reports, consumer mutation recipes, read-only Python refactor previews, uv-locked Ruff and ty reports, and a standalone PowerShell lint/JSON workflow rooted at the caller. Keep duplication strictness separate from the existing ratchets while consumers remove current findings.

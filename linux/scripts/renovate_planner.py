@@ -18,6 +18,7 @@ Subcommands (argv[1]); every line of output is tab-separated:
 import collections
 import json
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -231,13 +232,62 @@ def _skip_reason(dep: RenovateDependency) -> str:
     return "lookup-failed: " + warns[0] if warns else ""
 
 
-def skipped(report: RenovateReport) -> tuple[list[tuple[str, str, str, str, str]], collections.Counter[str]]:
+def _named_build_context(root: str, file: str, name: str) -> bool:
+    """A COPY source with the adjacent DL3022 context assertion is not a registry image."""
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.-]*", name):
+        return False
+    base = os.path.realpath(root)
+    path = os.path.realpath(os.path.join(base, file))
+    try:
+        if os.path.commonpath((base, path)) != base:
+            return False
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except (OSError, ValueError):
+        return False
+    copy = re.compile(rf"^\s*COPY\b.*--from={re.escape(name)}(?=\s|$)", re.IGNORECASE)
+    return any(i > 0 and lines[i - 1].strip() == "# hadolint ignore=DL3022" and copy.search(line)
+               for i, line in enumerate(lines))
+
+
+def _semantic_skip(manager: str, file: str, dep: RenovateDependency, reason: str,
+                   root: str | None) -> str:
+    """Distinguish non-version inputs from malformed version pins."""
+    if dep.get("warnings"):
+        return ""
+    if (manager == "rust-toolchain" and reason == "invalid-version"
+            and dep.get("depName") == "rust" and dep.get("currentValue") == "esp"):
+        return "espup-toolchain-channel"
+    if reason != "invalid-value":
+        return ""
+    name = dep.get("depName") or dep.get("packageName") or ""
+    value = dep.get("currentValue") or ""
+    if manager == "docker-compose" and {"latest", "stable"} & set(re.split(r"[-_.]", value.lower())):
+        return "floating-image-tag"
+    if manager == "dockerfile" and name.startswith(("local/", "docker.io/local/")):
+        return "local-build-image"
+    if manager == "dockerfile" and not value and root and _named_build_context(root, file, name):
+        return "named-build-context"
+    if manager == "github-actions" and re.fullmatch(
+        r"\$\{\{\s*steps\.[A-Za-z_][\w-]*\.outputs\.[A-Za-z_][\w-]*\s*\}\}", value
+    ):
+        return "workflow-output-expression"
+    if manager == "pep621" and re.fullmatch(
+        r"@\s+git\+https://[A-Za-z0-9.-]+/(?:[A-Za-z0-9._-]+/)+[A-Za-z0-9._-]+\.git", value.strip()
+    ):
+        return "floating-git-source"
+    return ""
+
+
+def skipped(report: RenovateReport, root: str | None = None) -> tuple[list[tuple[str, str, str, str, str]], collections.Counter[str]]:
     """(listed rows, by-design counts): deps Renovate never looked up, or whose lookup failed."""
     listed, design = [], collections.Counter()
     for mgr, f, dep in _deps(report):
         why = _skip_reason(dep)
         if why in BY_DESIGN:
             design[why] += 1
+        elif semantic := _semantic_skip(mgr, f.get("packageFile") or "", dep, why, root):
+            design[semantic] += 1
         elif why:
             listed.append((mgr, f.get("packageFile") or DASH,
                            dep.get("depName") or dep.get("packageName") or "?",
@@ -640,8 +690,8 @@ def _print_rows(path: str) -> None:
             (row["newDigest"] or row["new"])[:12]))
 
 
-def _print_skipped(path: str) -> None:
-    listed, design = skipped(load_report(path))
+def _print_skipped(path: str, root: str | None = None) -> None:
+    listed, design = skipped(load_report(path), root)
     for row in listed:
         print("SKIP\t{}\t{}\t{}\t{}\t{}".format(*row))
     for why, n in sorted(design.items()):
@@ -658,7 +708,7 @@ MODES = {
     "config": lambda a: _print_config(a[0]),
     "managers": lambda a: managers(load_obj(a[0]), a[1]),
     "rows": lambda a: _print_rows(a[0]),
-    "skipped": lambda a: _print_skipped(a[0]),
+    "skipped": lambda a: _print_skipped(a[0], a[1] if len(a) > 1 else None),
     "lockmaint": lambda a: _print_lockmaint(a[0], a[1]),
     "plan": lambda a: plan(load_report(a[0]), load_obj(a[1]), a[2], a[3]),
     "verify": lambda a: predict(_verify(cast(list[PlanEdit], load(a[1])), a[0])),

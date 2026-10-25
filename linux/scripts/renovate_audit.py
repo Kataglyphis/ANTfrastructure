@@ -28,6 +28,7 @@ Leaves = dict[DeclPath, tuple[str, object]]
 # Every manager renovate_locator.py can edit must be verifiable here; test-renovate-audit.sh asserts it.
 FORMATS = {
     "github-actions": "yaml",
+    "gradle-wrapper": "gradle-wrapper",
     "pub": "yaml",
     "pre-commit": "yaml",
     "pep621": "toml",
@@ -211,6 +212,30 @@ def parse_requirements(text: str) -> list[dict[str, str]]:
     return out
 
 
+def parse_gradle_wrapper(text: str) -> dict[str, str]:
+    """Read the unambiguous key=value subset used by Gradle wrapper properties files."""
+    out = {}
+    for num, line in enumerate(text.splitlines(), 1):
+        stripped = line.lstrip()
+        if not stripped or stripped.startswith(("#", "!")):
+            continue
+        if line.endswith("\\"):
+            raise Unreadable(f"line {num}: continued Java properties values are not supported")
+        match = re.fullmatch(r"[ \t]*([A-Za-z][A-Za-z0-9_.-]*)[ \t]*=(.*)", line)
+        if match is None:
+            raise Unreadable(f"line {num}: expected one key=value property")
+        key, value = match.groups()
+        if key in out:
+            raise Unreadable(_duplicate("property", key))
+        out[key] = value.lstrip(" \t")
+    if "distributionSha256Sum" in out:
+        raise Unreadable(
+            "distributionSha256Sum pins the current Gradle archive; this updater cannot "
+            "verify a replacement digest"
+        )
+    return out
+
+
 def _spec_and_options(text: str) -> tuple[str, str]:
     """(specifier, glued-on options such as --hash), so the digests are not compared as the version."""
     cut = text.find(" --")
@@ -236,6 +261,7 @@ PARSERS = {
     "toml": tomllib.loads,
     "json": _parse_json,
     "requirements": parse_requirements,
+    "gradle-wrapper": parse_gradle_wrapper,
     "env": _parse_env,
     "cmake": renovate_cmake.parse,
 }
@@ -477,6 +503,26 @@ def decl_requirements(struct: object, dep: str) -> list[Decl]:
     return out
 
 
+def decl_gradle_wrapper(struct: object, dep: str) -> list[Decl]:
+    """The Gradle version in the parsed distributionUrl, independent of the line locator."""
+    if dep != "gradle":
+        return []
+    value = _mapping(struct).get("distributionUrl")
+    if not isinstance(value, str):
+        return []
+    prefix, slash, filename = value.rpartition("/")
+    if not slash or not prefix.startswith(("https\\:", "https:")):
+        return []
+    match = re.fullmatch(
+        r"gradle-(?P<version>[0-9][A-Za-z0-9.+-]*?)-(?:all|bin)\.zip(?:\?[^#\s]+)?",
+        filename,
+    )
+    if match is None:
+        return []
+    start = len(prefix) + 1 + match.start("version")
+    return [Decl(("distributionUrl",), value, start, start + len(match.group("version")))]
+
+
 def decl_cmake(struct: object, dep: str) -> list[Decl]:
     """Every declaration of dep the preset's CMake forms read, found in CMake's token stream."""
     cmake_tokens = cast(dict[str, renovate_cmake.CmakeToken], struct)
@@ -485,6 +531,7 @@ def decl_cmake(struct: object, dep: str) -> list[Decl]:
 
 DECLARERS = {
     "github-actions": decl_actions,
+    "gradle-wrapper": decl_gradle_wrapper,
     "pub": decl_pub,
     "pre-commit": decl_precommit,
     "pep621": decl_pep621,

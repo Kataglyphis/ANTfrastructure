@@ -385,7 +385,7 @@ run_report() {
 report_skipped() {
   local kind mgr file dep cur why k=0 design=""
   SKIP_TSV="$(mktemp)" || err "mktemp failed"
-  rl_py skipped "${REPORT_JSON}" > "${SKIP_TSV}" \
+  rl_py skipped "${REPORT_JSON}" "${TARGET}" > "${SKIP_TSV}" \
     || err "could not read the skipped dependencies out of ${REPORT_JSON} (above)"
   while IFS=$'\t' read -r kind mgr file dep cur why; do
     case "${kind}" in

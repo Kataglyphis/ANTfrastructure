@@ -232,6 +232,7 @@ it is only ever confirmed on a line that was already located.**
 | Manager | What counts as a declaration | Where the value is |
 |---|---|---|
 | `github-actions` | a `uses:` key of a **step** (a sequence item) or of a **job** (`jobs.<id>.uses`), whose value splits at the **last** `@` into `<dep>` or `<dep>/<path>` | the ref after that `@` |
+| `gradle-wrapper` | one `distributionUrl=` property naming a versioned Gradle `all` or `bin` zip over HTTPS | only the version between `gradle-` and `-all.zip` / `-bin.zip`; mirror URL and query stay intact |
 | `pub` | a key whose whole key **is** the dep, in a top-level `dependencies` / `dev_dependencies` / `dependency_overrides` mapping | the scalar after the colon |
 | `pip_requirements` / `pip-compile` | a PEP 508 line whose name **normalises** to the dep (PEP 503: `-`, `_`, `.` and case all fold) | the specifier, up to any `;` marker |
 | `pep621` | a quoted PEP 508 string inside a dependency **array** — `[project] dependencies`, an `optional-dependencies` group, `build-system.requires`, `dependency-groups`, uv's and pdm's dev-dependency arrays | the specifier inside that string |
@@ -240,6 +241,12 @@ it is only ever confirmed on a line that was already located.**
 | `npm` | the dep's key inside a **top-level** dependencies object of `package.json` | the version string |
 | `custom.regex` / `regex` | the `KEY=` line under a `# renovate: … depName=<dep>` hint (blank lines and one `# noforward` may sit between) | the value after `=` |
 | `custom.regex` / `regex` over `CMakeLists.txt` / `*.cmake` | a match of one of the shared preset's own CMake `matchStrings` whose `depName` is the dep ([CMake dependencies](#cmake-dependencies)) | the `currentValue` that match captured |
+
+The Gradle wrapper reader refuses duplicate or malformed properties and a
+`distributionSha256Sum`: a new archive invalidates that checksum. It edits only
+`gradle-wrapper.properties`. The three wrapper files currently tracked by the
+consumer family have no wrapper JAR or `gradlew` script to synchronize; adding
+either companion requires extending this update path and its tests first.
 
 The three "what counts" columns that read oddly are the ones that were wrong.
 A `uses:` is not a step's just because the line spells `uses:` — a `with:` input
@@ -1352,6 +1359,19 @@ Two guards keep it that way:
   changing a file.
 - `test-renovate-annotations.sh` parses every annotated value with the scheme its
   annotation names and fails on one that does not parse, before any run.
+
+The report's `skipped by design` count has semantic checks for values that are
+not versions: floating Compose aliases such as `latest` or `ubuntu-latest-full`,
+local Docker build handoffs, a `COPY --from` named context with an adjacent
+`# hadolint ignore=DL3022` proof, a GitHub Actions step output, espup's named
+`esp` Rust toolchain, and an unversioned `@ git+https://...git` Python source.
+The last one still needs the lock maintenance step to move its resolved commit.
+A tagged Git URL remains a version pin and stays NOT CHECKED until a source pin
+and its projection can move together. Any failed lookup or invalid config also
+stays fatal. Windows Server Core `ltsc2025` uses a release-year versioning rule
+instead of being classified away. The `dartdoc` annotation uses Renovate's
+[`dart` datasource](https://docs.renovatebot.com/modules/datasource/dart/),
+which turns its former invalid config into a real release lookup.
 
 A pin with no annotation at all is a different gap: Renovate never sees it. Most
 of those are slaved to an annotated key (a SHA256, a commit, a URL, MIGraphX to
