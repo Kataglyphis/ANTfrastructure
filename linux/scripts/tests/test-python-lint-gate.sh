@@ -223,6 +223,23 @@ _out="$(_targets $'import re\nprint(re.search("a", "a", re.MULTILINE))' 'print("
 t_assert_contains "${_out}" "hub regex-flag gate (FURB167): clean"
 t_assert_contains "${_out}" "rc=0"
 
+t_case "a full hub sweep rejects adjacent strings in a collection"
+_out="$(_targets 'print(["a" "b"])' 'print("ok")')"
+t_assert_contains "${_out}" "ISC004"
+t_assert_contains "${_out}" "hub string-concatenation gate failed"
+t_assert_contains "${_out}" "rc=1"
+
+t_case "explicit targets keep adjacent strings advisory during consumer adoption"
+_out="$(_lint 'print(["a" "b"])')"
+t_assert_contains "${_out}" "ISC004"
+t_assert_contains "${_out}" "ADVISORY: findings above are informational"
+t_assert_contains "${_out}" "rc=0"
+
+t_case "parenthesized adjacent strings pass the hub gate"
+_out="$(_targets 'print([("a" "b")])' 'print("ok")')"
+t_assert_contains "${_out}" "hub string-concatenation gate (ISC004): clean"
+t_assert_contains "${_out}" "rc=0"
+
 t_case "a clean tree of every target shape passes"
 _out="$(_targets 'print("ok")' 'print("ok")')"
 t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean" \

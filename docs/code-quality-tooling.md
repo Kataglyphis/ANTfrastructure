@@ -487,9 +487,10 @@ subjects are built with `printf`, not written as literal lines: a real
 `tests/test-python-lint-gate.sh` covers the lint tiers. The shared **gate tier**
 (`ruff check --select E9,F63,F7,F82,B012,B023`) rejects an undefined name, syntax
 error, silenced exception or late-bound closure. The default hub preflight sweep also rejects
-`F401`, `F841`, `RUF059` and `FURB167` in Python files and extracted shell heredocs;
+`F401`, `F841`, `RUF059`, `FURB167` and `ISC004` in Python files and extracted shell heredocs;
 the regex rule rejects abbreviated `re.M`, `re.S` and `re.I` flags after the 27
-existing uses were spelled out. Explicit
+existing uses were spelled out. The string rule requires parentheses around the
+eight intentional adjacent literals in collections. Explicit
 targets and named roots retain their advisory adoption tier. The **advisory
 tier** (the full default ruleset) reports other findings without failing. The
 fixture writes `RUFF_VERSION`
@@ -516,6 +517,7 @@ Mutations: `comment-size.verdict-discarded`, `comment-size.limit-not-enforced`,
 `python-lint.gate-tier-neutered`, `python-lint.tier-boundary`,
 `python-lint.hub-unused-import-gate`, `python-lint.hub-unused-assignment-gate`,
 `python-lint.hub-unused-unpacking-gate`, `python-lint.hub-regex-flag-gate`,
+`python-lint.hub-string-concatenation-gate`,
 `python-lint.embedded-extraction-off`, `python-lint.embedded-file-discovery` and
 `python-lint.heredoc-python-decision` (the last targets
 `extract_embedded_python.py`, which `verify_gate_registry.py` counts among
@@ -531,11 +533,12 @@ the exact `TY_VERSION` and `RUFF_VERSION` in `01-core/tool-pins.env`:
 
 ```bash
 PREFLIGHT_ONLY=python-types bash linux/scripts/preflight.sh
+bash linux/scripts/lint-python-types.sh --docs-conf
 ```
 
 The script passes tracked Python paths to ty rather than scanning a directory of generated
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
-`windows/`. The four ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
+`windows/`. The four preflight ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
@@ -553,13 +556,22 @@ Windows certificate helper. `quality/pyproject.toml` and the committed
 `quality/uv.lock` supply pytest, PyYAML and markdown-it-py to a Python 3.14 environment;
 the gate syncs it with `uv sync --project quality --locked` and passes that interpreter
 to ty. The Linux and Windows strict results have separate ignored reports.
-The full first-party ty scan remains a report for six files that need image-only,
-submodule or private dependencies. A new Python path outside the strict
-patterns also starts in that report until the strict scope is extended.
+The Linux x64 full scan still reports six files with image-only, submodule or
+private imports. One is `docs/conf.py`: Linux x64 checks out without the theme
+submodule, so its unresolved import stays visible in `ty-linux.txt`. The docs
+workflow checks out the pinned DocumANTation submodule and runs `--docs-conf`
+as a prerequisite to building and publishing the site. That mode checks the
+tracked configuration against the theme's source path, writes
+`logs/code-quality/ty-docs-conf-gate.txt`, and fails for a missing theme or a
+type finding. Sphinx rendering is checked by the later docs build. The five
+remaining runtime-dependent files still have report-only ty findings. A new
+Python path outside the strict patterns also starts in the full report until
+the strict scope is extended.
 There is no allowlist or raised diagnostic threshold. The full report retains paths and
 rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
 return and errors in selected Linux and Windows helpers, requiring the gate to fail.
-Mutation cases remove the verdict and path selections; the suite must catch each.
+Mutation cases remove the verdict, path selections and theme search path; the
+suite must catch each.
 
 Ty uses declared and inferred types. It does **not** add annotations or require every
 function to have one. Ruff's `ANN002`, `ANN003`, `ANN204`, `ANN205` and `ANN206`
@@ -773,7 +785,7 @@ using it is applied; if that baseline fails, the entry is reported as
 `FAIL: <id> -- baseline test already fails unmutated (vacuous bite)`, the gate
 exits 1, and the file is never mutated. The cost is one extra suite run per
 distinct command, and it is paid once per command, not once per entry. The
-manifest holds **3440 entries** over **374 distinct test commands**; both digits are
+manifest holds **3443 entries** over **374 distinct test commands**; both digits are
 derived, not typed (`## Doc numbers are derived`). A full uncapped run took 5m58s
 on 2026-09-03, when the manifest held 180 entries — a one-off measurement that
 scales with the manifest, not a current figure.
@@ -1761,7 +1773,7 @@ The Windows test runner writes a JSON summary for each parent run to
 ## Windows Pester coverage
 
 `pwsh -NoProfile -File windows/scripts/tests/Invoke-Tests.ps1` measures command coverage
-for fourteen modules, each with a focused Pester suite:
+for fifteen modules, each with a focused Pester suite:
 
 | Module | Minimum command coverage |
 |---|---:|
@@ -1779,9 +1791,10 @@ for fourteen modules, each with a focused Pester suite:
 | `WindowsWebDav.Common.psm1` | 90% |
 | `WindowsMsix.Signing.psm1` | 80% |
 | `WindowsContainerImage.Bootstrap.psm1` | 100% |
+| `WindowsVulkanValidation.Common.psm1` | 80% |
 
 The target-inventory test pins every suite/module pair and floor, and mutations prove
-that removing the ONNX, wasm-opt, WebDAV, MSIX signing or container-image bootstrap target or lowering its floor fails the test.
+that removing the ONNX, wasm-opt, WebDAV, MSIX signing, container-image bootstrap or Vulkan target or lowering its floor fails the test.
 The runner rejects a missing, empty, malformed or wrong-module Cobertura XML report,
 zero measured files or commands, inconsistent counts, a missing or duplicate target,
 or a score below its floor. Parallel child suites pass their results to the parent, which writes the verdict

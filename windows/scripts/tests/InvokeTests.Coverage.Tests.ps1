@@ -49,6 +49,7 @@ Describe 'Invoke-Tests coverage gate' {
             'WindowsWebDav.Common.Tests.ps1=WindowsWebDav.Common.psm1:90'
             'WindowsMsix.Signing.Tests.ps1=WindowsMsix.Signing.psm1:80'
             'WindowsContainerImage.Bootstrap.Coverage.Tests.ps1=WindowsContainerImage.Bootstrap.psm1:100'
+            'WindowsVulkanValidation.Common.Tests.ps1=WindowsVulkanValidation.Common.psm1:80'
         ) | Sort-Object
         $targets = Get-CoverageTargets
         $actual = @($targets.Keys | ForEach-Object { "$_=$($targets[$_].Module):$($targets[$_].MinimumPercent)" } | Sort-Object)
@@ -62,6 +63,7 @@ Describe 'Invoke-Tests coverage gate' {
             @{ Suite = 'WindowsWebDav.Common.Tests.ps1'; Module = 'WindowsWebDav.Common.psm1'; Floor = 90 }
             @{ Suite = 'WindowsMsix.Signing.Tests.ps1'; Module = 'WindowsMsix.Signing.psm1'; Floor = 80 }
             @{ Suite = 'WindowsContainerImage.Bootstrap.Coverage.Tests.ps1'; Module = 'WindowsContainerImage.Bootstrap.psm1'; Floor = 100 }
+            @{ Suite = 'WindowsVulkanValidation.Common.Tests.ps1'; Module = 'WindowsVulkanValidation.Common.psm1'; Floor = 80 }
         )) {
             $row = "'$($target.Suite)' = @{ Module = '$($target.Module)'; MinimumPercent = $($target.Floor) }"
             Invoke-TestFunctionMutations -ScriptPath 'windows/scripts/tests/Invoke-Tests.ps1' `
@@ -103,6 +105,19 @@ Describe 'Invoke-Tests coverage gate' {
             $mutated.CommandsExecutedCount = 30
             $mutated.CoveragePercent = 76.92
             Assert-CoverageRejected -Measured $mutated -Report $report -ExpectedClass $expectedClass -Pattern 'below 85%'
+        }
+    }
+
+    It 'rejects a Vulkan result below its measured 80 percent floor' {
+        Invoke-CoverageFixture { param($report, $measured, $expectedClass)
+            $expectedClass = 'windows/scripts/modules/WindowsVulkanValidation.Common.psm1'
+            Write-CoberturaFixture -Path $report -ClassPath $expectedClass
+            $measured.CommandsAnalyzedCount = 153
+            $measured.CommandsExecutedCount = 121
+            $measured.CoveragePercent = 100 * 121 / 153
+            $reason = Get-CoverageFailure -Coverage $measured -ReportPath $report `
+                -ExpectedClass $expectedClass -MinimumPercent 80
+            Assert-Match 'below 80%' $reason
         }
     }
 

@@ -1,7 +1,7 @@
 #requires -Version 7.0
 # Copyright (c) 2025 Kataglyphis
 # SPDX-License-Identifier: MIT
-# Running the executable needs a GPU and a Vulkan SDK, so the consuming project's wrapper covers it.
+# NOT covered: GPU-backed Vulkan execution and SDK validation; the consuming wrapper runs those.
 
 Describe 'WindowsVulkanValidation.Common' {
   BeforeAll {
@@ -21,6 +21,12 @@ Describe 'WindowsVulkanValidation.Common' {
         finally { & $restore -Staging $staging }
         & $inspectRestored $path $staging
       }.GetNewClosure()
+    }
+
+    function Assert-VulkanChildResult {
+      param([string]$LogPath, [int]$ExitCode, [string]$Marker)
+      $global:LASTEXITCODE | Should -Be $ExitCode
+      (Get-Content -LiteralPath $LogPath -Raw) | Should -Match ([regex]::Escape($Marker))
     }
 
     $script:root = New-TestDir -Prefix 'vkvalidation-'
@@ -138,6 +144,54 @@ function Restore-VulkanLayerSettings { param($Staging); $State.Calls.Add('restor
         Copy-VulkanLayerSettings -SettingsPath (Join-Path $script:root 'missing.txt') -TargetDirectory $script:root
       } catch { $threw = $true }
       $threw | Should -Be $true
+    }
+  }
+
+  Context 'validation command lifecycle' {
+    It 'stages settings for the child and restores them after a nonzero exit' {
+      $settings = Join-Path $script:root 'vk_layer_settings.txt'
+      $tool = New-TestBatchTool -Directory $script:root -Name 'vulkan-sync-probe.cmd' -Line @(
+        "if exist `"$settings`" echo SETTINGS_PRESENT",
+        'echo ARG=%1'
+      ) -ExitCode 7
+      $log = Join-Path $script:root 'run.log'
+
+      Invoke-VulkanValidationRun -ExecutablePath $tool -Arguments @('hello') -WorkingDirectory $script:root -LogPath $log
+
+      Assert-VulkanChildResult -LogPath $log -ExitCode 7 -Marker 'SETTINGS_PRESENT'
+      (Get-Content -LiteralPath $log -Raw) | Should -Match 'ARG=hello'
+      Test-Path -LiteralPath $settings | Should -BeFalse
+    }
+
+    It 'rejects a missing executable before it can stage settings' {
+      $missing = Join-Path $script:root 'missing.exe'
+      $log = Join-Path $script:root 'missing.log'
+
+      { Invoke-VulkanValidationRun -ExecutablePath $missing -WorkingDirectory $script:root -LogPath $log } |
+        Should -Throw '*Executable not found*'
+      Test-Path -LiteralPath (Join-Path $script:root 'vk_layer_settings.txt') | Should -BeFalse
+    }
+
+    It 'restores a caller Vulkan layer path after the child exits' {
+      $tool = New-TestBatchTool -Directory $script:root -Name 'vulkan-layer-probe.cmd' -Line 'echo LAYER=%VK_LAYER_PATH%'
+      $log = Join-Path $script:root 'layer.log'
+
+      Invoke-WithEnv @{ VK_LAYER_PATH = 'caller-layer' } {
+        Invoke-VulkanValidationRun -ExecutablePath $tool -WorkingDirectory $script:root -LogPath $log -LayerPath $script:root
+        $env:VK_LAYER_PATH | Should -Be 'caller-layer'
+      }
+      (Get-Content -LiteralPath $log -Raw) | Should -Match ([regex]::Escape("LAYER=$script:root"))
+    }
+
+    It 'captures a bounded child exit and cleans its redirected files' {
+      $tool = New-TestBatchTool -Directory $script:root -Name 'vulkan-timed-probe.cmd' -Line 'echo TIMED_RUN' -ExitCode 9
+      $log = Join-Path $script:root 'timed.log'
+
+      Invoke-VulkanValidationRun -ExecutablePath $tool -WorkingDirectory $script:root -LogPath $log -TimeoutSeconds 5
+
+      Assert-VulkanChildResult -LogPath $log -ExitCode 9 -Marker 'TIMED_RUN'
+      Test-Path -LiteralPath "$log.stdout.tmp" | Should -BeFalse
+      Test-Path -LiteralPath "$log.stderr.tmp" | Should -BeFalse
     }
   }
 }

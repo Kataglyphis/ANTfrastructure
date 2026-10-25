@@ -974,7 +974,7 @@ the Git-ignored `logs/windows-build-logs/` directory. Python CI reports and cove
 The repository's `windows/scripts/tests/Invoke-Tests.ps1` writes one parent-run result to
 `logs/windows-tests/summary-<timestamp>-<pid>.json`, including counts, failed and skipped
 suites, the discovery floor, targeted Pester coverage and the exit code. Child suites only
-hand tallies to the parent. Coverage XML for the fourteen measured modules also stays under
+hand tallies to the parent. Coverage XML for the fifteen measured modules also stays under
 `logs/windows-tests/`; Windows x64 CI uploads the test and coverage reports. The MSIX,
 Slang and wasm-opt module floors are 80%, 65% and 80%, against measured command coverage
 of 233/282, 229/342 and 87/108 respectively. The wasm-opt suite now exercises cached
@@ -987,6 +987,9 @@ and fatal missing-command versus advisory lookup failures.
 The container image module resolver has a separate three-case Pester suite and a 100%
 floor against 11/11 measured commands; its existing harness suite still checks installer
 imports and Dockerfile mounts.
+Vulkan validation has an 80% floor against 129/153 measured commands. Its Pester suite
+uses short local executables to verify settings staging, child exit status, environment
+restoration and redirected-file cleanup; it does not require a GPU or Vulkan SDK.
 
 Run the driver from the repository root. It parses `linux/scripts/01-core/versions.env`, passes
 every version as `--build-arg` (the Dockerfile ARG defaults are only fallbacks), builds the stages
@@ -2609,7 +2612,7 @@ fixtures exercise these policies with independent expectations; they do not
 replace container, compiler, certificate or GPU acceptance.
 
 
-The Windows unit runner's discovery floor is 2,698 after a complete 2,724-test
+The Windows unit runner's discovery floor is 2,702 after a complete 2,729-test
 run. Keep that floor close to the measured suite count as coverage grows;
 missing or skipped suites fail rather than yielding a partial green result.
 

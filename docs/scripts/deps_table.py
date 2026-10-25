@@ -65,9 +65,9 @@ def render_obligations_lines() -> list[str]:
 
     order = [o for o in lo.DESCRIPTIONS if o in present]
     lines = ["", "## What these licences require", "",
-             "Every obligation below is triggered by at least one component actually shipped in "
-             "an image on this page. This is a structured reading of the licence texts, not legal "
-             "advice.", ""]
+             ("Every obligation below is triggered by at least one component actually shipped in "
+              "an image on this page. This is a structured reading of the licence texts, not legal "
+              "advice."), ""]
     for ob in order:
         lines.append(f"- **{ob}** — {lo.DESCRIPTIONS[ob]}")
     lines.append("")
@@ -89,12 +89,12 @@ def render_source_offer_lines(versions: dict[str, str]) -> list[str]:
                     rows.append((label, entry["spdx"], entry["source"]))
 
     lines = ["", "## Corresponding source", "",
-             "The components below are copyleft-licensed, so their source must accompany the "
-             "binaries. Each entry names the exact upstream and the revision this project builds, "
-             "any patches applied on top, and — where the build configuration is what determines "
-             "the licence — the flags used.", "",
-             "If a link ever fails to resolve, the obligation stands: request the corresponding "
-             "source and it will be provided.", ""]
+             ("The components below are copyleft-licensed, so their source must accompany the "
+              "binaries. Each entry names the exact upstream and the revision this project builds, "
+              "any patches applied on top, and — where the build configuration is what determines "
+              "the licence — the flags used."), "",
+             ("If a link ever fails to resolve, the obligation stands: request the corresponding "
+              "source and it will be provided."), ""]
     for name, spdx, src in rows:
         ref = _resolve_ref(src, versions)
         url = src.get("url", "")
@@ -125,8 +125,8 @@ def render_modified_lines() -> list[str]:
     if not rows:
         return []
     lines = ["", "## Modified components", "",
-             "This project patches the following upstreams before redistributing them. Both the "
-             "Apache-2.0 and the GPL families require that modification be stated.", ""]
+             ("This project patches the following upstreams before redistributing them. Both the "
+              "Apache-2.0 and the GPL families require that modification be stated."), ""]
     for name, mod in rows:
         patches = ", ".join(f"`{p}`" for p in mod.get("patches", []))
         lines.append(f"- **{name}** — {mod.get('note', '')}"

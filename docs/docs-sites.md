@@ -168,7 +168,12 @@ else the first crate of `crates.js`. On each page and width:
   link: an item that never folds (its script did not run), stays put, or does not unfold
   again fails.
 
-It runs where each site is built, in the image: `docs-site.sh build <site>` builds and then
+For this hub, `docs.yml` type-checks `docs/conf.py` against the checked-out
+DocumANTation theme before the reusable site job starts; a missing theme or type
+finding prevents publication. `linux/scripts/lint-python-types.sh --docs-conf`
+writes its ignored report under `logs/code-quality/`, while the Sphinx build
+checks runtime rendering. The sidebar check runs where each site is built, in
+the image: `docs-site.sh build <site>` builds and then
 checks in one container command in `build-docs.yml` (the action's `script` is `docker
 run`'s argv, so a shell `&&` would run on the runner), and for the artifact sites after `make html` in
 `lib/docs-build.sh` (BeschleunigerBallett, AccelerANTgine) and

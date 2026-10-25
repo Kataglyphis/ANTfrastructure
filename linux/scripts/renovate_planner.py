@@ -564,13 +564,13 @@ def _put_back(files: Mapping[str, PendingTarget]) -> list[str]:
 
 def _refused(problems: list[str], files: Mapping[str, PendingTarget]) -> str:
     return "\n".join(
-        ["the edit did not survive being read back by a real parser, so it "
-         "was not the edit the report described:"] + problems
+        [("the edit did not survive being read back by a real parser, so it "
+          "was not the edit the report described:")] + problems
         + _put_back(files)
-        + ["every file of this run is back at the bytes it had; nothing "
-           "was written. This is the check that does not trust the "
-           "locator -- see docs/dependency-updates.md"
-           "#the-edit-is-audited-by-a-real-parser"])
+        + [("every file of this run is back at the bytes it had; nothing "
+            "was written. This is the check that does not trust the "
+            "locator -- see docs/dependency-updates.md"
+            "#the-edit-is-audited-by-a-real-parser")])
 
 
 def apply_edits(root: str, planpath: str) -> None:

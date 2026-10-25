@@ -12,7 +12,8 @@ mkdir -p "${ROOT}/linux/scripts/01-core" "${ROOT}/linux/scripts/tests" \
   "${ROOT}/windows/scripts/certificates" "${ROOT}/shared/python" \
   "${ROOT}/linux/llm-stack/tests" "${ROOT}/linux/llm-stack/gateway" \
   "${ROOT}/linux/scripts/02-toolchain/python" \
-  "${ROOT}/linux/scripts/lib" "${ROOT}/linux/host-config" "${ROOT}/quality"
+  "${ROOT}/linux/scripts/lib" "${ROOT}/linux/host-config" "${ROOT}/quality" \
+  "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis"
 cp "${S}/lint-python-types.sh" "${ROOT}/linux/scripts/"
 cp "${S}/01-core/load-versions-env.sh" "${ROOT}/linux/scripts/01-core/"
 cp "${S}/../../quality/pyproject.toml" "${S}/../../quality/uv.lock" "${ROOT}/quality/"
@@ -21,7 +22,7 @@ git -C "${ROOT}" init -q
 
 _run() {
   local out rc=0
-  out="$(bash "${ROOT}/linux/scripts/lint-python-types.sh" 2>&1)" || rc=$?
+  out="$(bash "${ROOT}/linux/scripts/lint-python-types.sh" "$@" 2>&1)" || rc=$?
   printf '%s\nrc=%s\n' "${out}" "${rc}"
 }
 
@@ -37,6 +38,7 @@ _assert_clean_quality() {
 
 t_case "the pinned ty checks tracked quality scripts and writes all reports under logs"
 _set_answer "${ROOT}/docs/scripts/subject.py" 42
+printf 'from sphinx_kataglyphis import value\nRESULT: int = value()\n' > "${ROOT}/docs/conf.py"
 _set_answer "${ROOT}/windows/scripts/subject.py" 42
 _set_answer "${ROOT}/linux/scripts/verify_subject.py" 42
 _set_answer "${ROOT}/linux/scripts/tests/typed_subject.py" 42
@@ -69,6 +71,7 @@ printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/gate_scope.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/quality_allow.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/extract_embedded_python.py"
 git -c core.autocrlf=false -C "${ROOT}" add .
+printf 'def value() -> int:\n    return 42\n' > "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py"
 out="$(_run)"
 _assert_clean_quality "${out}"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ty-quality-gate.txt"
@@ -79,9 +82,30 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (32 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (32 files)"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (33 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (33 files)"
 t_assert_contains "${out}" "Ruff parameter and public return gate: clean (15 files)"
+
+t_case "docs configuration is checked against the pinned theme source"
+out="$(_run --docs-conf)"
+t_assert_contains "${out}" "ty docs configuration gate: clean (1 files)"
+t_assert_ok test -f "${ROOT}/logs/code-quality/ty-docs-conf-gate.txt"
+t_assert_contains "${out}" "rc=0"
+
+t_case "a docs configuration type error fails the strict theme-aware gate"
+printf 'from sphinx_kataglyphis import value\nRESULT: int = "wrong"\n' > "${ROOT}/docs/conf.py"
+out="$(_run --docs-conf)"
+t_assert_contains "${out}" "ty docs configuration gate failed (exit 1)"
+t_assert_contains "${out}" "docs/conf.py"
+t_assert_contains "${out}" "rc=1"
+printf 'from sphinx_kataglyphis import value\nRESULT: int = value()\n' > "${ROOT}/docs/conf.py"
+
+t_case "missing theme source fails before a green docs verdict"
+rm "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py"
+out="$(_run --docs-conf)"
+t_assert_contains "${out}" "Pinned DocumANTation theme source is missing"
+t_assert_contains "${out}" "rc=2"
+printf 'def value() -> int:\n    return 42\n' > "${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme/sphinx_kataglyphis/__init__.py"
 
 t_case "the locked quality environment resolves test and parser imports"
 t_assert_ok test -d "${ROOT}/quality/.venv"

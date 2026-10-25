@@ -14,7 +14,27 @@ on:
 
 # No workflow-level concurrency: cancelling a run would cancel a publish half-way. build-docs.yml groups its jobs itself.
 jobs:
+  docs-types:
+    name: Type-check Sphinx configuration
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: 'true'
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.0
+      - name: Check docs configuration types
+        run: bash linux/scripts/lint-python-types.sh --docs-conf
+      - name: Upload docs type report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ty-docs-conf-report
+          path: logs/code-quality/ty-docs-conf-gate.txt
+          if-no-files-found: error
   docs:
+    needs: docs-types
     uses: ./.github/workflows/build-docs.yml
     with:
       command: bash linux/scripts/build-docs.sh

@@ -142,8 +142,8 @@ def body(repo: str, newest: dict, workflow_id: int, new: dict) -> str:
     for job, ref in sorted(new["red"].items()):
         lines.append("- `%s`: last failed in [run %d](%s) at `%s`" % (job, ref["run"], ref["url"], ref["sha"]))
     mark = {"repo": repo, "workflow_id": workflow_id, "seen": new["seen"], "red": new["red"]}
-    lines += ["", "Closes itself once each job above passed on `develop` again (`develop-red.yml`). "
-              "A job that was renamed or removed never passes again: close the issue by hand.",
+    lines += ["", ("Closes itself once each job above passed on `develop` again (`develop-red.yml`). "
+                   "A job that was renamed or removed never passes again: close the issue by hand."),
               "", MARK + json.dumps(mark, sort_keys=True) + " -->"]
     return "\n".join(lines)
 

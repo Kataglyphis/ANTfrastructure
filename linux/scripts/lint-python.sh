@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Default hub sweeps reject unused bindings; named roots and explicit targets keep the advisory tier.
+# Consumer roots retain advisory rules until their findings are reviewed.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -18,6 +18,7 @@ RUFF_PIN="${RUFF_VERSION}"
 GATE_SELECT="E9,F63,F7,F82,B012,B023"
 HUB_UNUSED_SELECT="F401,F841,RUF059"
 HUB_REGEX_SELECT="FURB167"
+HUB_STRING_SELECT="ISC004"
 
 err() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 _RUFF_OUT="$(mktemp)"
@@ -157,6 +158,7 @@ _lint_python_check "${GATE_SELECT}" "python gate pass failed" "gate pass"
 if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
   _lint_python_check "${HUB_UNUSED_SELECT}" "hub unused-binding gate failed" "hub unused-binding gate"
   _lint_python_check "${HUB_REGEX_SELECT}" "hub regex-flag gate failed" "hub regex-flag gate"
+  _lint_python_check "${HUB_STRING_SELECT}" "hub string-concatenation gate failed" "hub string-concatenation gate"
 fi
 
 # Advisory pass — full default ruleset, informational only.

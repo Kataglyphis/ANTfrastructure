@@ -27513,6 +27513,14 @@
   "why": "An abbreviated regex flag in hub Python or an extracted shell block must fail the full hub sweep."
  },
  {
+  "id": "python-lint.hub-string-concatenation-gate",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "HUB_STRING_SELECT=\"ISC004\"",
+  "replace": "HUB_STRING_SELECT=\"E9\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "An unparenthesized adjacent string in a hub collection must fail the full lint sweep."
+ },
+ {
   "id": "python-types.parameter-annotation-gate",
   "target": "linux/scripts/lint-python-types.sh",
   "find": "--select ANN001,ANN201 --output-format concise",
@@ -27535,5 +27543,21 @@
   "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
   "why": "All fifteen typed Python files must remain in the strict parameter and public-return scope."
+ },
+ {
+  "id": "python-types.docs-conf-file-scope",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "git ls-files -z -- 'docs/conf.py'",
+  "replace": "git ls-files -z -- 'docs/scripts/subject.py'",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "A type error in docs/conf.py must fail the theme-aware docs type gate."
+ },
+ {
+  "id": "python-types.docs-conf-theme-path",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "--extra-search-path \"${theme}\"",
+  "replace": "--extra-search-path \"${ROOT}/docs/scripts\"",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "The strict docs type gate must resolve the pinned theme source instead of reporting its import as unresolved."
  }
 ]

@@ -429,9 +429,9 @@ def render_dangling(dangling):
 
 def render_quality_wiring(quality, consumers):
     out = ["", "## CI quality wiring", "",
-           "Every detected lint call must keep its ratchets enabled and its failure fatal. "
-           "A consumer with no lint call is reported only: removal of every lint call "
-           "is outside this gate.", ""]
+           ("Every detected lint call must keep its ratchets enabled and its failure fatal. "
+            "A consumer with no lint call is reported only: removal of every lint call "
+            "is outside this gate."), ""]
     providers = {item["name"] for item in consumers if item["self"]}
     for name, (witnesses, failures) in quality.items():
         if name in providers:

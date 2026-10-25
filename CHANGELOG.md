@@ -22,6 +22,9 @@
 - Clear parameter and public return annotation findings in the Renovate planner, gateway renderer and tests, and docs duplication scanners; extend the strict Ruff ANN001/ANN201 gate to all six fully annotated files, with failure fixtures and mutation proofs.
 - Clear 14 more parameter and public return findings in nine docs, host, image, wheel and test files; extend the strict Ruff gate to all 15 typed files and test every selected path.
 - Spell out 27 equivalent Python regex flags in source and shell heredocs; make Ruff FURB167 fatal in full hub lint sweeps with source, heredoc and mutation proofs.
+- Parenthesize eight intentional adjacent strings in collections without changing their values; make Ruff ISC004 fatal in full hub lint sweeps with failure and mutation proofs.
+- Check `docs/conf.py` with pinned ty against the checked-out DocumANTation theme before the docs site builds; require a fatal type verdict, a missing-theme failure and mutation proofs for the file and source path.
+- Enforce an 80% command coverage floor for Windows Vulkan validation after adding child-process behavior tests; the complete Windows suite passes 2,729 tests and all 15 module floors.
 - Remove eight unused Python bindings, including one inside a shell heredoc, and make Ruff F401, F841 and RUF059 fatal in default hub preflight sweeps with failing fixtures and selector mutations.
 - Quote the cross CMake policy option as one argument, remove its frozen ShellCheck SC2206 row, and prove the argument boundary with a focused test and mutation.
 - Extend enforced Windows Pester command coverage from eleven to fourteen modules: WebDAV has a 90% floor, MSIX signing an 80% floor, and container-image module resolution a 100% floor, with success/failure tests and missing-target mutation proofs.

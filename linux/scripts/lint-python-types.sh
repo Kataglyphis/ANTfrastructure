@@ -4,6 +4,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "${ROOT}" || exit 1
+case "${1:-}" in
+  ''|--docs-conf) ;;
+  *) echo "Unknown Python type scan mode: $1" >&2; exit 2 ;;
+esac
+[ "$#" -le 1 ] || { echo "Python type scan accepts at most one mode" >&2; exit 2; }
 
 # shellcheck source=01-core/load-versions-env.sh
 . linux/scripts/01-core/load-versions-env.sh
@@ -13,6 +18,12 @@ load_versions_env linux/scripts/01-core/tool-pins.env
 command -v uvx >/dev/null 2>&1 || { echo "uvx is required for ty@${TY_VERSION}" >&2; exit 2; }
 command -v uv >/dev/null 2>&1 || { echo "uv is required for the locked Python type environment" >&2; exit 2; }
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "A Git worktree is required for the Python type scan" >&2; exit 2; }
+if [ "${1:-}" = --docs-conf ]; then
+  theme="${ROOT}/third_party/DocumANTation/sphinx-kataglyphis-theme"
+  [ -f "${theme}/sphinx_kataglyphis/__init__.py" ] || { echo "Pinned DocumANTation theme source is missing" >&2; exit 2; }
+  mapfile -d '' -t docs_conf_files < <(git ls-files -z -- 'docs/conf.py')
+  [ "${#docs_conf_files[@]}" -eq 1 ] || { echo "Tracked docs/conf.py is missing" >&2; exit 2; }
+fi
 
 quality_venv="${ROOT}/quality/.venv"
 UV_PROJECT_ENVIRONMENT="${quality_venv}" uv sync --project "${ROOT}/quality" --locked --python 3.14
@@ -82,6 +93,25 @@ done
 ty=(uvx "ty@${TY_VERSION}" check --python "${quality_python}" --python-version 3.14 --output-format concise)
 search=(--extra-search-path docs/scripts --extra-search-path linux/scripts --extra-search-path shared/python)
 
+strict_scan() {
+  local label="$1" report="$2" count="$3" rc=0
+  shift 3
+  "$@" > "${report}" 2>&1 || rc=$?
+  if [ "${rc}" -ne 0 ]; then
+    if [ -f "${report}" ]; then cat "${report}" >&2; fi
+    printf '%s failed (exit %s)\n' "${label}" "${rc}" >&2
+    exit "${rc}"
+  fi
+  printf '%s: clean (%s files); %s\n' "${label}" "${count}" "${report}"
+}
+
+if [ "${1:-}" = --docs-conf ]; then
+  # Sphinx rendering stays in the docs build; this checks static configuration types only.
+  strict_scan "ty docs configuration gate" "${report_dir}/ty-docs-conf-gate.txt" "${#docs_conf_files[@]}" \
+    "${ty[@]}" --python-platform linux "${search[@]}" --extra-search-path "${theme}" "${docs_conf_files[@]}"
+  exit 0
+fi
+
 # Findings remain visible during adoption; setup and checker crashes still fail CI.
 report_scan() {
   local label="$1" platform="$2" report="$3" rc=0
@@ -106,18 +136,6 @@ case "${annotation_rc}" in
   1) printf 'Ruff annotation report: findings (%s files); %s\n' "${#py_files[@]}" "${annotations_report}" ;;
   *) cat "${annotations_report}" >&2; exit "${annotation_rc}" ;;
 esac
-
-strict_scan() {
-  local label="$1" report="$2" count="$3" rc=0
-  shift 3
-  "$@" > "${report}" 2>&1 || rc=$?
-  if [ "${rc}" -ne 0 ]; then
-    if [ -f "${report}" ]; then cat "${report}" >&2; fi
-    printf '%s failed (exit %s)\n' "${label}" "${rc}" >&2
-    exit "${rc}"
-  fi
-  printf '%s: clean (%s files); %s\n' "${label}" "${count}" "${report}"
-}
 
 # Remaining ANN001/ANN201 findings stay report-only outside the selected clean files.
 strict_scan "Ruff signature annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
