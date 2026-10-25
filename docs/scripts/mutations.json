@@ -7758,7 +7758,7 @@
  {
   "id": "consumer-inventory.unobtainable-consumer-says-so",
   "target": "linux/scripts/verify_consumer_inventory.py",
-  "find": "    if offline:\n        raise Failure(\"%s: --offline was given and no --local path was supplied \"\n                      \"for it. Skipping it would make the inventory lie.\" % name)",
+  "find": "    if offline:\n        raise Failure(f\"{name}: --offline was given and no --local path was supplied \"\n                      \"for it. Skipping it would make the inventory lie.\")",
   "replace": "    if offline:\n        return work / name",
   "test": "bash linux/scripts/tests/test-consumer-inventory.sh",
   "why": "a consumer that cannot be obtained must fail AS ITSELF: degraded into some later 'not a git checkout' error the operator reads it as a broken fixture, not as the missing evidence that makes 'no caller found' a lie"
@@ -8030,8 +8030,8 @@
  {
   "id": "renovate.rollback-survives-a-raising-audit",
   "target": "linux/scripts/renovate_planner.py",
-  "find": "        problems = _audited(files)\n    except BaseException as exc:                   # noqa: BLE001 -- see above\n        sys.exit(_refused(\n            [\"  the audit itself raised %s: %s\" % (type(exc).__name__, exc)],\n            files))",
-  "replace": "        problems = _audited(files)",
+  "find": "        problems = _audited(files)\n    except BaseException as exc:                   # noqa: BLE001 -- see above\n        sys.exit(_refused(\n            [f\"  the audit itself raised {type(exc).__name__}: {exc}\"],\n            files))",
+  "replace": "        problems = _audited(files)\n    except BaseException:\n        raise",
   "test": "bash linux/scripts/tests/test-renovate-audit.sh",
   "why": "an exception from the audit travelled past _put_back(), so a hostile write stayed on disk at rc 1; the rollback must not rest on the audit finishing"
  },
@@ -27574,7 +27574,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN201 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Missing parameter types in twenty typed Python files must fail the strict Ruff gate."
+   "why": "Missing parameter types in all 29 selected Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.public-return-annotation-gate",
@@ -27582,7 +27582,7 @@
   "find": "--select ANN001,ANN201 --output-format concise",
   "replace": "--select ANN001 --output-format concise",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "Missing public return types in twenty typed Python files must fail the strict Ruff gate."
+   "why": "Missing public return types in all 29 selected Python files must fail the strict Ruff gate."
  },
  {
   "id": "python-types.parameter-return-file-scope",
@@ -27590,7 +27590,7 @@
   "find": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/verify_doc_dupes.py'",
   "replace": "'docs/scripts/verify_code_dupes.py' 'docs/scripts/subject.py'",
   "test": "bash linux/scripts/tests/test-python-types.sh",
-  "why": "All twenty typed Python files must remain in the strict parameter and public-return scope."
+   "why": "All 29 typed Python files must remain in the strict parameter and public-return scope."
  },
  {
   "id": "python-types.docs-conf-file-scope",

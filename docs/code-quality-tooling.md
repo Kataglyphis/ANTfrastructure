@@ -547,14 +547,14 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. Twenty-six fully annotated Renovate,
-LLM gateway, docs, host and build helper files have fatal ANN001/ANN201 checks in
+`logs/code-quality/ruff-private-returns-gate.txt`. Twenty-nine fully annotated Renovate,
+LLM gateway, docs, host, image acceptance and build helper files have fatal ANN001/ANN201 checks in
 `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
 these files after preflight. Reports with findings state that
 they have findings; a failed download, invalid configuration or checker crash fails CI.
 
-**141 of 146 tracked Python files are a strict type gate.** This includes all tracked
+**140 of 146 tracked Python files are a strict type gate.** This includes all tracked
 `docs/scripts/*.py`, `linux/scripts/verify_*.py`, `linux/scripts/tests/*.py`,
 Linux LLM stack tests, dependency-free build helpers, shared Python helpers and the
 Windows certificate helper. `quality/pyproject.toml` and the committed
@@ -606,11 +606,16 @@ Python files. Parameter and public return findings were fixed in the Renovate CM
 parser, locator and planner, the gateway renderer and its tests, the two docs duplication
 scanners, the develop-red watcher, layer audit, large-file and masked-assignment
 verifiers, the Renovate audit, consumer inventory, package-name verifier, three docs bump tools, and
-nine small docs, host, image, wheel and test files. ANN001/ANN201 fail in
-those 26 files. Remaining findings stay in the full report. The focused
+nine small docs, host, image, wheel and test files, plus the mutation verifier,
+gate registry and image acceptance driver. ANN001/ANN201 fail in those 29 files.
+Remaining findings stay in the full report. The focused
 suite injects unannotated signatures, and selector and
 scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
 their diagnostics and exit status cannot drift apart.
+The workflow convention verifier, consumer inventory and Renovate planner now
+have zero Ruff UP031 findings after changing their diagnostics to equivalent
+f-strings. Their focused fixtures check the emitted verdicts; the inventory's
+tabular progress output keeps the original column widths.
 
 ## Dockerfile lint: hadolint rule selection (`dockerfile-lint`)
 
@@ -2838,6 +2843,10 @@ whenever something above it moved. Each group carries the reason it was kept.
 Freezing one is a judgement, so make it out loud: **every** call site must read
 the status as an answer. If any caller invokes it bare under `set -e`, it is a
 defect, not a predicate.
+The reusable Linux and Windows lane fixtures now use explicit `return 0` and
+`return 1` branches for their upload-step predicates. Their callers still
+assert the true and false verdicts, and the gate sees no new implicit trailing
+conditional.
 
 ### Known limits
 

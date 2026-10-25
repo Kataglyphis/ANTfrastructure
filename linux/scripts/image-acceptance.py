@@ -16,6 +16,52 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, Protocol, TypedDict
+
+
+class ConsumerSpec(TypedDict):
+    name: str
+    repository: str
+    ref: str
+    command: list[str]
+
+
+class AcceptancePlan(TypedDict):
+    schema_version: int
+    platform: str
+    timeout_seconds: int
+    consumers: list[ConsumerSpec]
+
+
+class SourceSnapshot(TypedDict):
+    repository: str
+    revision: str
+    submodules: str
+    data_locks: dict[str, str]
+
+
+class LockData(TypedDict):
+    sha256: str
+    content: str
+
+
+class EngineArgs(Protocol):
+    engine: str
+    image: str
+
+
+class CheckArgs(EngineArgs, Protocol):
+    plan: str
+    workspace: str
+    receipt: str
+    replay: str | None
+
+
+class PromoteArgs(Protocol):
+    receipt: str
+    plan: str
+    target: str
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PLAN = ROOT / "shared/config/image-consumers.json"
@@ -26,11 +72,11 @@ MEDIA = "application/vnd.oci.image.index.v1+json,application/vnd.docker.distribu
 MANIFEST_MEDIA = {"application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"}
 
 
-def fingerprint(path):
+def fingerprint(path: str | os.PathLike[str]) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def image_parts(image, pinned=True):
+def image_parts(image: str, pinned: bool = True) -> tuple[str, str]:
     if not image.startswith("ghcr.io/"):
         raise ValueError("image acceptance supports the family's GHCR images")
     repository, separator, ref = image.removeprefix("ghcr.io/").rpartition("@" if pinned else ":")
@@ -44,7 +90,7 @@ def image_parts(image, pinned=True):
 
 
 class Registry:
-    def __init__(self, repository, *, write=False) -> None:
+    def __init__(self, repository: str, *, write: bool = False) -> None:
         self.repository = repository
         scope = f"repository:{repository}:pull" + (",push" if write else "")
         headers = {}
@@ -73,7 +119,7 @@ class Registry:
             return value["Username"], value["Secret"]
         raise ValueError("promotion needs GHCR_TOKEN or existing GHCR login credentials")
 
-    def manifest(self, ref):
+    def manifest(self, ref: str) -> tuple[bytes, str, str]:
         url = f"https://ghcr.io/v2/{self.repository}/manifests/{ref}"
         request = urllib.request.Request(url, headers={"Authorization": "Bearer " + self.token, "Accept": MEDIA})
         with urllib.request.urlopen(request, timeout=60) as response:
@@ -84,7 +130,7 @@ class Registry:
             raise ValueError("registry manifest bytes do not match their requested digest")
         return raw, media_type, digest
 
-    def publish(self, tag, raw, media_type):
+    def publish(self, tag: str, raw: bytes, media_type: str) -> None:
         url = f"https://ghcr.io/v2/{self.repository}/manifests/{tag}"
         request = urllib.request.Request(url, data=raw, method="PUT",
                                          headers={"Authorization": "Bearer " + self.token, "Content-Type": media_type})
@@ -92,7 +138,7 @@ class Registry:
             response.read()
 
 
-def validate_consumer(row):
+def validate_consumer(row: ConsumerSpec) -> None:
     if not re.fullmatch(r"[A-Za-z0-9_-]+", row["name"]):
         raise ValueError("invalid consumer name")
     if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", row["repository"]):
@@ -103,7 +149,7 @@ def validate_consumer(row):
         raise ValueError("consumer ref must identify a branch")
 
 
-def read_plan(path):
+def read_plan(path: str | os.PathLike[str]) -> AcceptancePlan:
     plan = json.loads(Path(path).read_text(encoding="utf-8"))
     consumers = plan.get("consumers", [])
     names = [row.get("name") for row in consumers]
@@ -118,12 +164,12 @@ def read_plan(path):
     return plan
 
 
-def git(root, *args: str):
+def git(root: Path, *args: str) -> str:
     return subprocess.run(["git", "-c", f"safe.directory={root}", "-C", str(root), *args],
                           text=True, capture_output=True, check=True, timeout=300).stdout.strip()
 
 
-def source_snapshot(root, spec, expected=None):
+def source_snapshot(root: Path, spec: ConsumerSpec, expected: dict[str, Any] | None = None) -> SourceSnapshot:
     if not (root / ".git").exists():
         root.mkdir(parents=True, exist_ok=True)
         git(root, "init", "--quiet")
@@ -142,13 +188,14 @@ def source_snapshot(root, spec, expected=None):
         raise ValueError(f"{spec['name']}: submodule checkout differs from the recorded pins")
     locks = {path: fingerprint(root / path) for path in git(root, "ls-files", "--recurse-submodules").splitlines()
              if Path(path).name in ("models.lock", "assets.lock")}
-    result = {"repository": spec["repository"], "revision": revision, "submodules": submodules, "data_locks": locks}
-    if expected and any(result[key] != expected[key] for key in result):
+    result: SourceSnapshot = {"repository": spec["repository"], "revision": revision,
+                              "submodules": submodules, "data_locks": locks}
+    if expected and any(value != expected[key] for key, value in result.items()):
         raise ValueError(f"{spec['name']}: replay sources differ from the original receipt")
     return result
 
 
-def lock_path(root, relative):
+def lock_path(root: Path, relative: str) -> Path:
     path = Path(relative)
     if path.is_absolute() or "\\" in relative or ":" in relative or ".." in path.parts or path.name not in ("Cargo.lock", "pubspec.lock", "uv.lock"):
         raise ValueError("receipt contains an invalid dependency lock path")
@@ -158,9 +205,9 @@ def lock_path(root, relative):
     return target
 
 
-def collect_locks(root):
+def collect_locks(root: Path) -> dict[str, LockData]:
     names = {"Cargo.toml": "Cargo.lock", "pubspec.yaml": "pubspec.lock", "pyproject.toml": "uv.lock"}
-    result = {}
+    result: dict[str, LockData] = {}
     for source in git(root, "ls-files", "--recurse-submodules").splitlines():
         path = Path(source)
         if path.name not in names:
@@ -173,7 +220,7 @@ def collect_locks(root):
     return result
 
 
-def restore_locks(root, locks):
+def restore_locks(root: Path, locks: dict[str, LockData]) -> None:
     for relative, value in locks.items():
         data = value["content"].encode("utf-8")
         if hashlib.sha256(data).hexdigest() != value["sha256"]:
@@ -185,7 +232,7 @@ def restore_locks(root, locks):
         target.write_bytes(data)
 
 
-def validate_consumer_result(result, spec):
+def validate_consumer_result(result: dict[str, Any], spec: ConsumerSpec) -> None:
     if result.get("name") != spec["name"] or result.get("exit_code") != 0:
         raise ValueError("consumer failed, skipped or was reordered")
     if result.get("repository") != spec["repository"] or result.get("command") != spec["command"] or not SHA.fullmatch(result.get("revision", "")):
@@ -194,7 +241,7 @@ def validate_consumer_result(result, spec):
         raise ValueError("consumer evidence is missing")
 
 
-def validate_receipt(receipt, image, plan_path):
+def validate_receipt(receipt: dict[str, Any], image: str, plan_path: str | os.PathLike[str]) -> dict[str, Any]:
     plan = read_plan(plan_path)
     image_parts(image)
     if receipt.get("schema_version") != 1 or receipt.get("image") != image:
@@ -211,7 +258,7 @@ def validate_receipt(receipt, image, plan_path):
     return receipt
 
 
-def restore_ownership(args, platform, checkout, owner, name, log):
+def restore_ownership(args: EngineArgs, platform: str, checkout: Path, owner: str, name: str, log: Path) -> None:
     command = [args.engine, "run", "--rm", "--pull", "never", "--name", name,
                "--platform", platform, "--user", "0:0", "-v", f"{checkout}:/workspace",
                "--entrypoint", "chown", args.image, "-hR", "--", owner, "/workspace"]
@@ -222,7 +269,8 @@ def restore_ownership(args, platform, checkout, owner, name, log):
         subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
 
 
-def cleanup_consumer(args, platform, checkout, owner, name, log, row):
+def cleanup_consumer(args: EngineArgs, platform: str, checkout: Path, owner: str | None,
+                     name: str, log: Path, row: dict[str, Any]) -> None:
     try:
         subprocess.run([args.engine, "rm", "--force", name], capture_output=True, timeout=60, check=False)
     except (OSError, subprocess.SubprocessError) as error:
@@ -234,7 +282,8 @@ def cleanup_consumer(args, platform, checkout, owner, name, log, row):
             row["ownership_error"] = str(error)
 
 
-def run_consumer(args, plan, work, index, spec, row, expected, rootless):
+def run_consumer(args: EngineArgs, plan: AcceptancePlan, work: Path, index: int, spec: ConsumerSpec,
+                 row: dict[str, Any], expected: dict[str, Any] | None, rootless: bool) -> None:
     checkout = work / spec["name"]
     row.update(source_snapshot(checkout, spec, expected))
     if expected:
@@ -281,7 +330,7 @@ def run_consumer(args, plan, work, index, spec, row, expected, rootless):
         raise ValueError(f"{spec['name']}: consumer modified tracked acceptance sources")
 
 
-def check(args):
+def check(args: CheckArgs) -> None:
     image_parts(args.image)
     plan = read_plan(args.plan)
     work = Path(args.workspace).resolve()
@@ -321,7 +370,7 @@ def check(args):
     validate_receipt(receipt, args.image, args.plan)
 
 
-def manifest_descriptor(entry):
+def manifest_descriptor(entry: object) -> tuple[dict[str, Any], dict[str, Any]]:
     if not isinstance(entry, dict) or entry.get("mediaType") not in MANIFEST_MEDIA or not isinstance(entry.get("digest"), str) or not DIGEST.fullmatch(entry["digest"]) or type(entry.get("size")) is not int or entry["size"] <= 0:
         raise ValueError("index contains an invalid manifest descriptor")
     platform = entry.get("platform", {})
@@ -331,7 +380,7 @@ def manifest_descriptor(entry):
     return platform, annotations
 
 
-def runtime_platform(entry):
+def runtime_platform(entry: object) -> str | None:
     platform, annotations = manifest_descriptor(entry)
     if platform == {"os": "unknown", "architecture": "unknown"} and annotations.get("vnd.docker.reference.type") == "attestation-manifest":
         return None
@@ -343,7 +392,7 @@ def runtime_platform(entry):
     return "/".join(parts)
 
 
-def runtime_platforms(raw, media_type):
+def runtime_platforms(raw: bytes, media_type: str) -> set[str]:
     index = json.loads(raw)
     if not isinstance(index, dict) or media_type not in MEDIA.split(",") or index.get("schemaVersion") != 2 or not isinstance(index.get("manifests"), list) or not index["manifests"]:
         raise ValueError("promotion requires a multi-platform index")
@@ -362,7 +411,7 @@ def runtime_platforms(raw, media_type):
     return platforms
 
 
-def promote(args):
+def promote(args: PromoteArgs) -> None:
     receipt = json.loads(Path(args.receipt).read_text(encoding="utf-8"))
     validate_receipt(receipt, receipt["image"], args.plan)
     repository, digest = image_parts(receipt["image"])
@@ -389,7 +438,7 @@ def promote(args):
         raise ValueError("published tag does not resolve to the tested index")
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="action", required=True)
     resolve = commands.add_parser("resolve")

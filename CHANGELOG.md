@@ -15,6 +15,8 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Repair the Linux preflight failure caused by two reusable-lane test predicates ending on bare conditions; spell out their success and failure returns and keep the trailing-conditional gate clean.
+- Annotate the mutation verifier, gate registry and image acceptance driver; clear 248 Ruff ANN001/ANN201 findings and enforce both rules on 29 files, with a failing fixture for each selected path. Clear 118 UP031 findings across the workflow checker, consumer inventory and Renovate planner, plus one PIE810 finding; keep their verdict fixtures and updated mutation recipes green.
 - Resolve another 180 Ruff parameter and public-return findings in consumer inventory and the image bump tool; enforce ANN001/ANN201 on 26 fully annotated files.
 - Require nonempty combined artifact uploads in both reusable Python CI workflows, remove the resolved workflow census budget, and prove the upload steps keep their failure and always-run settings.
 - Keep the Windows 15-decision complexity gate green by moving LiteRT ty-pin validation into focused helpers in the BuildKit driver and wheel builder; missing pins still fail before a media solve or Bazel build.

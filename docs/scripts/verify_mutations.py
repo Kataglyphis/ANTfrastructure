@@ -7,7 +7,6 @@ See docs/code-quality-tooling.md#the-mutation-gate-mutations
 import argparse
 import atexit
 import concurrent.futures
-from collections.abc import Callable, Iterator
 import json
 import os
 import queue
@@ -19,14 +18,27 @@ import sys
 import tempfile
 import threading
 import time
-from typing import Never
+from _thread import LockType
+from collections.abc import Callable, Iterable, Iterator, Sequence
+from types import FrameType
+from typing import Never, NotRequired, TextIO, TypedDict
+
+
+class MutationEntry(TypedDict):
+    id: str
+    target: str
+    find: str
+    replace: str
+    test: str
+    why: str
+    timeout: NotRequired[int]
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MANIFEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutations.json")
 COPY_EXCLUDES = (".git", "external", "out", "logs", "archive", "linux/webserver/dist",
                  # 1.5 GB, gitignored, read by no test, and otherwise copied into every mirror.
                  "linux/llm-stack/ollama-binary.tar.zst")
-_IGNORED_CACHE = {}
+_IGNORED_CACHE: dict[str, set[str]] = {}
 _IGNORED_LOCK = threading.Lock()
 # The CPUs this process may use, so a runner pinned to 4 of a host's 32 gets 4.
 DEFAULT_JOBS = (getattr(os, "process_cpu_count", None) or os.cpu_count)() or 1
@@ -35,12 +47,12 @@ HOST_MAY_SKIP = os.name == "nt" or sys.platform.startswith(("cygwin", "msys"))
 _HOST_SKIP = re.compile(r"^ *(?:SKIP \[|\d+ failed assertion\(s\) waived)", re.MULTILINE)
 
 
-def host_skips(output):
+def host_skips(output: str) -> int:
     """SKIP lines and waiver counts in a run's output: the cases this host could not grade."""
     return len(_HOST_SKIP.findall(output))
 
 
-def _git_ignored(src) -> set[str]:
+def _git_ignored(src: str) -> set[str]:
     """Every path git ignores under src (empty when git cannot answer), asked at the source since mirrors have no .git."""
     with _IGNORED_LOCK:
         if src in _IGNORED_CACHE:
@@ -60,7 +72,7 @@ def _git_ignored(src) -> set[str]:
     return out
 
 
-def within(root, path):
+def within(root: str, path: str) -> bool:
     """Does path RESOLVE inside root? A link that leaves it must not be copied."""
     try:
         return os.path.commonpath([root, os.path.realpath(path)]) == root
@@ -68,7 +80,7 @@ def within(root, path):
         return False
 
 
-def mirror_tree(src, dst):
+def mirror_tree(src: str, dst: str) -> str:
     """Throwaway copy of src minus ignored and excluded paths; symlinks stay links, and a failed copy is fatal, never skipped."""
     skip = {os.path.normpath(os.path.join(src, rel)) for rel in COPY_EXCLUDES}
     skip |= {os.path.normpath(dst)} | _git_ignored(src)
@@ -93,7 +105,7 @@ def mirror_tree(src, dst):
     return dst
 
 
-def load(path):
+def load(path: str) -> list[MutationEntry]:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
     seen = set()
@@ -107,7 +119,7 @@ def load(path):
     return data
 
 
-def changed_files(base="origin/main"):
+def changed_files(base: str = "origin/main") -> set[str]:
     """Union of files committed since base, staged, and edited in the tree."""
     touched = set()
     for cmd in (["git", "diff", "--name-only", base + "...HEAD"],
@@ -119,11 +131,11 @@ def changed_files(base="origin/main"):
     return touched
 
 
-_LIVE_GROUPS = set()
+_LIVE_GROUPS: set[int] = set()
 _LIVE_LOCK = threading.Lock()
 
 
-def _kill_group(pid, grace=5.0) -> None:
+def _kill_group(pid: int, grace: float = 5.0) -> None:
     """End a test's session and its leftovers: SIGTERM lets a runner inside reap its own groups, SIGKILL follows the grace."""
     if hasattr(os, "killpg"):
         try:
@@ -149,12 +161,12 @@ def _kill_live_groups(*_: object) -> None:
         _kill_group(pid)
 
 
-def _exit_on_signal(signum, _frame) -> Never:
+def _exit_on_signal(signum: int, _frame: FrameType | None) -> Never:
     _kill_live_groups()
     sys.exit(128 + signum)
 
 
-def _reap_when_test_exits(proc, reap) -> None:
+def _reap_when_test_exits(proc: subprocess.Popen[str], reap: Callable[[], None]) -> None:
     proc.wait()
     reap()
 
@@ -190,7 +202,7 @@ def _timeout_result(
                              + _capture_text(out, stdout_encoding))
 
 
-def _run_test(cmd, root, timeout) -> tuple[int | None, bool, str]:
+def _run_test(cmd: str, root: str, timeout: float) -> tuple[int | None, bool, str]:
     """Run one test command, killing its whole process tree when it ends or times out; returns (returncode, timed_out, output)."""
     proc = subprocess.Popen(cmd, shell=True, cwd=root, stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE, text=True, start_new_session=True)
@@ -230,7 +242,7 @@ def _output_excerpt(output: str) -> str:
     return " | ".join(line[:500] for line in excerpt) or "<empty>"
 
 
-def passes(cmd, root, timeout):
+def passes(cmd: str, root: str, timeout: float) -> tuple[bool | None, str | None]:
     """Run one test command unmutated; returns (ok, why), ok None for a host skip. A timeout is not a pass."""
     rc, timed_out, output = _run_test(cmd, root, timeout)
     if timed_out:
@@ -250,11 +262,11 @@ class Baselines:
     """One unmutated run per distinct test command, shared by every shard."""
 
     def __init__(self) -> None:
-        self._ok = {}
-        self._guards = {}
+        self._ok: dict[str, tuple[bool | None, str | None]] = {}
+        self._guards: dict[str, LockType] = {}
         self._lock = threading.Lock()
 
-    def ok(self, cmd, root, timeout):
+    def ok(self, cmd: str, root: str, timeout: float) -> tuple[bool | None, str | None]:
         with self._lock:
             guard = self._guards.setdefault(cmd, threading.Lock())
         with guard:
@@ -267,57 +279,57 @@ class Report:
     """Prints and flushes each verdict as it completes, so a run killed at its timeout still reports; summary() lists failures."""
 
     def __init__(self) -> None:
-        self.failed = set()
-        self.skipped = set()
+        self.failed: set[str] = set()
+        self.skipped: set[str] = set()
         self._lock = threading.Lock()
         self._cur = threading.local()
 
-    def shard(self, tag):
+    def shard(self, tag: str) -> None:
         self._cur.tag = tag
 
-    def entry(self, key):
+    def entry(self, key: str) -> None:
         self._cur.key = key
 
-    def out(self, text):
+    def out(self, text: str) -> None:
         self._write(sys.stdout, text)
 
-    def skip(self, text):
+    def skip(self, text: str) -> None:
         self.skipped.add(self._cur.key)
         self._write(sys.stdout, text)
 
-    def err(self, text):
+    def err(self, text: str) -> None:
         self.failed.add(self._cur.key)
         self._write(sys.stderr, text)
 
-    def _write(self, stream, text) -> None:
+    def _write(self, stream: TextIO, text: str) -> None:
         with self._lock:
             stream.write(getattr(self._cur, "tag", "") + text)
             stream.flush()
 
-    def summary(self, entries):
+    def summary(self, entries: Sequence[MutationEntry]) -> None:
         failed = [e["id"] for e in entries if e["id"] in self.failed]
         if failed:
             say("FAILED: %d of %d entr(ies), in manifest order: %s"
                 % (len(failed), len(entries), ", ".join(failed)))
 
 
-def say(text):
+def say(text: str) -> None:
     """One line on stdout, flushed: see Report."""
     print(text, flush=True)
 
 
-def read_exact(path):
+def read_exact(path: str) -> str:
     """A target's text as its bytes hold it: text mode on Windows reads CRLF as LF and writes LF back as CRLF."""
     with open(path, "rb") as fh:
         return fh.read().decode("utf-8")
 
 
-def write_exact(path, text):
+def write_exact(path: str, text: str) -> None:
     with open(path, "wb") as fh:
         fh.write(text.encode("utf-8"))
 
 
-def applicable(entry, root):
+def applicable(entry: MutationEntry, root: str) -> tuple[str | None, str | None, str | None]:
     """(original, mutated, reason); mutated is None, with the reason, when the edit no longer applies."""
     target = os.path.join(root, entry["target"])
     if os.path.islink(target):
@@ -340,7 +352,7 @@ def applicable(entry, root):
     return original, mutated, None
 
 
-def run_stale(entries, root):
+def run_stale(entries: Iterable[MutationEntry], root: str) -> int:
     """Every recorded edit still applies, checked without running one test."""
     rc = 0
     for e in entries:
@@ -351,12 +363,14 @@ def run_stale(entries, root):
     return rc
 
 
-def apply_and_run(entry, root):
+def apply_and_run(entry: MutationEntry, root: str) -> tuple[bool, bool, str | None, int]:
     """Mutate, run the test, restore. Returns (applied, test_failed, detail, host_skips)."""
     target = os.path.join(root, entry["target"])
     original, mutated, why = applicable(entry, root)
     if mutated is None:
         return False, False, why, 0
+    if original is None:
+        raise RuntimeError("applicable returned mutated text without an original")
 
     backup = tempfile.NamedTemporaryFile("wb", delete=False)
     backup.write(original.encode("utf-8"))
@@ -372,12 +386,17 @@ def apply_and_run(entry, root):
         os.unlink(backup.name)
 
 
-def baseline_ok(entry, root, cache):
+def baseline_ok(
+    entry: MutationEntry, root: str, cache: Baselines,
+) -> tuple[bool | None, str | None]:
     """Does this entry's test pass UNMUTATED? Cached per command string."""
     return cache.ok(entry["test"], root, entry.get("timeout", 300))
 
 
-def run_entries(args, entries, report, baselines=None):
+def run_entries(
+    args: argparse.Namespace, entries: Iterable[MutationEntry], report: Report,
+    baselines: Baselines | None = None,
+) -> int:
     rc = 0
     baselines = Baselines() if baselines is None else baselines
     for e in entries:
@@ -411,14 +430,17 @@ def run_entries(args, entries, report, baselines=None):
     return rc
 
 
-def run_shard(args, entries, root, report, baselines, tag=""):
+def run_shard(
+    args: argparse.Namespace, entries: Iterable[MutationEntry], root: str,
+    report: Report, baselines: Baselines, tag: str = "",
+) -> int:
     local = argparse.Namespace(**vars(args))
     local.root = root
     report.shard(tag)
     return run_entries(local, entries, report, baselines)
 
 
-def tree_bytes(root):
+def tree_bytes(root: str) -> int:
     """Bytes under root, links not followed: what one more mirror of it costs."""
     total = 0
     for dirpath, _dirnames, filenames in os.walk(root):
@@ -430,12 +452,12 @@ def tree_bytes(root):
     return total
 
 
-def mirror_cap(mirror_bytes, free_bytes):
+def mirror_cap(mirror_bytes: int, free_bytes: int) -> int:
     """Mirrors that fit a quarter of the temp filesystem's free space; on tmpfs that space is RAM a build may need."""
     return max(1, free_bytes // 4 // max(mirror_bytes, 1))
 
 
-def _drain(todo) -> Iterator[dict[str, str]]:
+def _drain(todo: queue.Queue[MutationEntry]) -> Iterator[MutationEntry]:
     """Entries off the shared queue until it is empty, so a mirror that is free takes the next one."""
     while True:
         try:
@@ -444,7 +466,9 @@ def _drain(todo) -> Iterator[dict[str, str]]:
             return
 
 
-def run_shards(args, entries, src, report):
+def run_shards(
+    args: argparse.Namespace, entries: Sequence[MutationEntry], src: str, report: Report,
+) -> int:
     """--jobs mirrors draining one queue; each extra mirror is copied by its own shard, from src, which no shard mutates."""
     size = tree_bytes(args.root)
     cap = mirror_cap(size, shutil.disk_usage(args.root).free)
@@ -452,13 +476,13 @@ def run_shards(args, entries, src, report):
     if jobs < min(args.jobs, len(entries)):
         say("  --jobs %d capped at %d: mirrors of %d MB each fit a quarter of the free space under %s"
             % (args.jobs, jobs, size // 2**20, os.path.dirname(args.root)))
-    todo = queue.Queue()
+    todo: queue.Queue[MutationEntry] = queue.Queue()
     for e in entries:
         todo.put(e)
     extra = [tempfile.mkdtemp(prefix="mutation-gate-") for _ in range(jobs - 1)]
     baselines = Baselines()
 
-    def shard(n, root) -> int:
+    def shard(n: int, root: str) -> int:
         if n:
             mirror_tree(src, root)
         return run_shard(args, _drain(todo), root, report, baselines, "[%d/%d] " % (n + 1, jobs))
@@ -472,7 +496,9 @@ def run_shards(args, entries, src, report):
             shutil.rmtree(root, ignore_errors=True)
 
 
-def select_only(entries, only, manifest):
+def select_only(
+    entries: list[MutationEntry], only: list[str] | None, manifest: str,
+) -> list[MutationEntry]:
     """The --only subset of exact ids, never globs; an unknown id exits 2 instead of selecting nothing."""
     if not only:
         return entries
@@ -489,7 +515,7 @@ def select_only(entries, only, manifest):
     return [e for e in entries if e["id"] in set(only)]
 
 
-def select_shard(entries, spec):
+def select_shard(entries: list[MutationEntry], spec: str | None) -> list[MutationEntry]:
     """--shard K/N: entries[K::N] (K from 0), a partition across N CI jobs; a bad spec exits 2."""
     if not spec:
         return entries
@@ -503,7 +529,7 @@ def select_shard(entries, spec):
     return entries[k::n]
 
 
-def select(args):
+def select(args: argparse.Namespace) -> list[MutationEntry]:
     """The entries this invocation proves: --only, then --changed, then --shard."""
     entries = select_only(load(args.manifest), args.only, args.manifest)
     if args.changed:
@@ -514,7 +540,7 @@ def select(args):
     return select_shard(entries, args.shard)
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", default=MANIFEST)

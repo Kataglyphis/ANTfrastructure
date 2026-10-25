@@ -17,7 +17,10 @@ t_assert_ok test -f "${LANE}"
 _test_report_upload_required() {
   local candidate="$1"
   local query="len([s for s in V.value(build,'steps') if V.value(s,'name') == 'Upload test results' and V.value(s,'if') == 'always()' and V.value(V.value(s,'with'),'path') == 'logs/test-results/' and V.value(V.value(s,'with'),'if-no-files-found') == 'error']) == 1"
-  [ "$(LANE="${candidate}" _q "${query}")" = True ]
+  if [ "$(LANE="${candidate}" _q "${query}")" = True ]; then
+    return 0
+  fi
+  return 1
 }
 
 t_case "the test report upload stays fatal and reachable after a failed test"

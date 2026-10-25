@@ -78,11 +78,12 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/scripts/01-core/manifest-base-layer.py' 'linux/scripts/01-core/registry-config-label.py' \
   'linux/scripts/01-core/registry-digest.py' 'linux/scripts/02-toolchain/oci-layers-extract.py' \
   'linux/scripts/02-toolchain/python/wheel-smoke.py' 'linux/scripts/tests/test-wheel-rewrite.py' \
-  'linux/scripts/verify_readme_length.py')
+  'linux/scripts/verify_readme_length.py' 'linux/scripts/verify_gate_registry.py' \
+  'linux/scripts/image-acceptance.py' 'docs/scripts/verify_mutations.py')
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 26 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 29 ] || { echo "Missing tracked parameter and public-return targets" >&2; exit 2; }
 
 linux_files=()
 windows_files=()

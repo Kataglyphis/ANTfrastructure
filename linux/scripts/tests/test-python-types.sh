@@ -32,7 +32,7 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (39 files)"
+  t_assert_contains "$1" "ty quality gate: clean (41 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -75,6 +75,8 @@ printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_p
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_consumer_inventory.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_comment_size.py"
 printf 'def _check() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/verify_gate_registry.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/image-acceptance.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/docs/scripts/verify_mutations.py"
 printf 'from markdown_it import MarkdownIt\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/lib/dartdoc-guides.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/gate_scope.py"
 printf 'VALUE = 1\n' > "${ROOT}/linux/scripts/quality_allow.py"
@@ -91,9 +93,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-t_assert_contains "${out}" "Ruff signature annotation gate: clean (42 files)"
-t_assert_contains "${out}" "Ruff private return gate: clean (42 files)"
-t_assert_contains "${out}" "Ruff parameter and public return gate: clean (26 files)"
+t_assert_contains "${out}" "Ruff signature annotation gate: clean (44 files)"
+t_assert_contains "${out}" "Ruff private return gate: clean (44 files)"
+t_assert_contains "${out}" "Ruff parameter and public return gate: clean (29 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -228,7 +230,8 @@ for target in linux/scripts/develop_red.py linux/scripts/layer-audit.py \
   linux/scripts/01-core/manifest-base-layer.py linux/scripts/01-core/registry-config-label.py \
   linux/scripts/01-core/registry-digest.py linux/scripts/02-toolchain/oci-layers-extract.py \
   linux/scripts/02-toolchain/python/wheel-smoke.py linux/scripts/tests/test-wheel-rewrite.py \
-  linux/scripts/verify_readme_length.py; do
+  linux/scripts/verify_readme_length.py linux/scripts/verify_gate_registry.py \
+  linux/scripts/image-acceptance.py docs/scripts/verify_mutations.py; do
   printf 'def answer(value):\n    return value\n' > "${ROOT}/${target}"
   out="$(_run)"
   t_assert_contains "${out}" "Ruff parameter and public return gate failed (exit 1)"

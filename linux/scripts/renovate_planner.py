@@ -119,16 +119,16 @@ def load(path: str) -> object:
         with open(path, encoding="utf-8") as fh:
             return json.load(fh)
     except OSError as exc:
-        sys.exit("cannot read %s: %s" % (path, exc))
+        sys.exit(f"cannot read {path}: {exc}")
     except ValueError as exc:
-        sys.exit("%s is not valid JSON: %s" % (path, exc))
+        sys.exit(f"{path} is not valid JSON: {exc}")
 
 
 def load_obj(path: str) -> RenovateConfig:
     """A JSON object; a list would parse and then die in a .get() that no longer names the file."""
     obj = load(path)
     if not isinstance(obj, dict):
-        sys.exit("%s must be a JSON object, not %s" % (path, type(obj).__name__))
+        sys.exit(f"{path} must be a JSON object, not {type(obj).__name__}")
     return cast(RenovateConfig, obj)
 
 
@@ -136,8 +136,7 @@ def load_report(path: str) -> RenovateReport:
     """A Renovate report; a wrong shape must fail, never read as "up to date"."""
     rep = load_obj(path)
     if not isinstance(rep.get("repositories"), dict):
-        sys.exit('%s is not a Renovate report: no top-level "repositories" object'
-                 % path)
+        sys.exit(f'{path} is not a Renovate report: no top-level "repositories" object')
     return cast(RenovateReport, rep)
 
 
@@ -154,8 +153,7 @@ def contained(root: str, rel: str, source: str) -> str:
     """`rel` resolved inside `root`, or exit; called where a path enters, so no later use can forget."""
     full = in_root(root, rel)
     if full is None:
-        sys.exit("%s names %r, which is not a file inside %s; nothing written"
-                 % (source, rel, root))
+        sys.exit(f"{source} names {rel!r}, which is not a file inside {root}; nothing written")
     return full
 
 
@@ -196,7 +194,7 @@ def managers(cfg: RenovateConfig, listing: str) -> None:
         hit = _first_match(cast(RenovateManager, block)["managerFilePatterns"], files)
         if hit:
             off = "false" if block.get("enabled") is False else "true"
-            print("%s\t%s\t%s" % (name, off, hit))
+            print(f"{name}\t{off}\t{hit}")
 
 
 def _deps(report: RenovateReport) -> Iterator[tuple[str, RenovatePackageFile, RenovateDependency]]:
@@ -298,9 +296,9 @@ def refusal(row: Mapping[str, str], rules: Sequence[RenovateRule]) -> str:
         why = rule.get("description") or "(no description)"
         if isinstance(why, list):
             why = " ".join(why)
-        out = "packageRule #%d: %s" % (i + 1, why[:150])
+        out = f"packageRule #{i + 1}: {why[:150]}"
         if unknown:
-            out += " [unevaluated: %s; refused conservatively]" % ",".join(unknown)
+            out += " [unevaluated: {}; refused conservatively]".format(",".join(unknown))
     return out
 
 
@@ -375,7 +373,7 @@ def plan_group(group: Sequence[PlanRow], edits: list[PlanEdit]) -> None:
     try:
         lines = _read_lines(row["path"])
     except OSError as exc:
-        emit("SKIP", row, DASH, "cannot read %s: %s" % (row["file"], exc))
+        emit("SKIP", row, DASH, "cannot read {}: {}".format(row["file"], exc))
         return
     syntax = renovate_locator.syntax(row["manager"], row["file"])
     kind, found, why = renovate_locator.resolve(
@@ -427,15 +425,15 @@ def _writable(path: str, rel: str) -> None:
         with open(path, "r+", encoding="utf-8"):
             pass
     except OSError as exc:
-        sys.exit("cannot write %s: %s; nothing written, in any file" % (rel, exc))
+        sys.exit(f"cannot write {rel}: {exc}; nothing written, in any file")
     try:
         handle, probe = tempfile.mkstemp(dir=os.path.dirname(path),
                                          prefix=".renovate-probe-")
     except OSError as exc:
-        sys.exit("cannot write in the directory holding %s: %s; this tool "
+        sys.exit(f"cannot write in the directory holding {rel}: {exc}; this tool "
                  "replaces a manifest through a temp file beside it so the "
                  "file is never left half-written, and that needs a writable "
-                 "directory. Nothing written, in any file." % (rel, exc))
+                 "directory. Nothing written, in any file.")
     os.close(handle)
     os.unlink(probe)
 
@@ -453,24 +451,22 @@ def _verify(steps: Sequence[PlanEdit], root: str) -> dict[str, PendingTarget]:
                 target = {"path": path, "lines": _read_lines(path),
                           "stat": os.stat(path), "steps": []}
             except OSError as exc:
-                sys.exit("cannot read %s: %s; nothing written" % (e["file"], exc))
+                sys.exit("cannot read {}: {}; nothing written".format(e["file"], exc))
             _writable(path, e["file"])
             files[e["file"]] = target
         target["steps"].append(e)
         # The plan comes from the command line; a step missing any of these cannot be audited.
         blank = [k for k in ("manager", "dep", "cur", "next") if not e.get(k)]
         if blank:
-            sys.exit("%s line %d is planned without %s, so the edit cannot be "
+            sys.exit(f"{e['file']} line {e['line'] + 1} is planned without {', '.join(blank)}, so the edit cannot be "
                      "checked against a parse of the file; nothing written, in "
-                     "any file" % (e["file"], e["line"] + 1, ", ".join(blank)))
+                     "any file")
         # Two updates on one line is a planner bug; applying both would keep the last.
         if (e["file"], e["line"]) in seen:
-            sys.exit("%s line %d is planned twice; nothing written, in any file"
-                     % (e["file"], e["line"] + 1))
+            sys.exit(f"{e['file']} line {e['line'] + 1} is planned twice; nothing written, in any file")
         seen.add((e["file"], e["line"]))
         if e["line"] >= len(target["lines"]) or target["lines"][e["line"]] != e["old"]:
-            sys.exit("%s line %d moved since the plan; nothing written, in any file"
-                     % (e["file"], e["line"] + 1))
+            sys.exit(f"{e['file']} line {e['line'] + 1} moved since the plan; nothing written, in any file")
     for rel, target in files.items():
         _sanction(rel, target)
     return files
@@ -488,9 +484,9 @@ def groups_of(steps: Sequence[PlanEdit]) -> list[PinGroup]:
 def _manager_of(steps: Sequence[PlanEdit], rel: str) -> str:
     names = {e["manager"] for e in steps}
     if len(names) != 1:
-        sys.exit("%s is planned under %d managers (%s); one file has one syntax, "
+        sys.exit(f"{rel} is planned under {len(names)} managers ({', '.join(sorted(names))}); one file has one syntax, "
                  "so this plan cannot be audited. Nothing written, in any file"
-                 % (rel, len(names), ", ".join(sorted(names))))
+                 )
     return names.pop()
 
 
@@ -502,7 +498,7 @@ def _sanction(rel: str, target: PendingTarget) -> None:
     _, _, why = renovate_audit.expected(
         target["syntax"], target["before"], target["groups"])
     if why:
-        sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
+        sys.exit(f"{rel}: {why}. Nothing written, in any file")
 
 
 def _edited(target: PendingTarget) -> str:
@@ -519,7 +515,7 @@ def predict(files: Mapping[str, PendingTarget]) -> None:
         why = renovate_audit.audit(target["syntax"], target["before"],
                                    _edited(target), target["groups"])
         if why:
-            sys.exit("%s: %s. Nothing written, in any file" % (rel, why))
+            sys.exit(f"{rel}: {why}. Nothing written, in any file")
 
 
 def _replace(path: str, text: str) -> None:
@@ -545,7 +541,7 @@ def _audited(files: Mapping[str, PendingTarget]) -> list[str]:
                                    "\n".join(_read_lines(target["path"])),
                                    target["groups"])
         if why:
-            out.append("  %s: %s" % (rel, why))
+            out.append(f"  {rel}: {why}")
     return out
 
 
@@ -558,7 +554,7 @@ def _put_back(files: Mapping[str, PendingTarget]) -> list[str]:
             was = target["stat"]
             os.utime(target["path"], ns=(was.st_atime_ns, was.st_mtime_ns))
         except OSError as exc:
-            stuck.append("  %s could NOT be put back: %s" % (rel, exc))
+            stuck.append(f"  {rel} could NOT be put back: {exc}")
     return stuck
 
 
@@ -585,12 +581,12 @@ def apply_edits(root: str, planpath: str) -> None:
         problems = _audited(files)
     except BaseException as exc:                   # noqa: BLE001 -- see above
         sys.exit(_refused(
-            ["  the audit itself raised %s: %s" % (type(exc).__name__, exc)],
+            [f"  the audit itself raised {type(exc).__name__}: {exc}"],
             files))
     if problems:
         sys.exit(_refused(problems, files))
     for e in steps:
-        print("  %s:%d  %s" % (e["file"], e["line"] + 1, e["new"].strip()))
+        print(f"  {e['file']}:{e['line'] + 1}  {e['new'].strip()}")
 
 
 # Keyed by file name (npm has three formats); yarn.lock v1 has no stdlib parser, so it is deliberately absent.
@@ -605,15 +601,15 @@ def lock_readable(root: str, rel: str, dep: str) -> None:
     """Refuse a missing, empty or unparseable lockfile; only report whether it names `dep`."""
     path = contained(root, rel, "lockcheck")
     if not os.path.isfile(path):
-        sys.exit("  %s: there is no lockfile at this path" % rel)
+        sys.exit(f"  {rel}: there is no lockfile at this path")
     with open(path, encoding="utf-8", errors="replace", newline="") as fh:
         text = fh.read()
     if not text.strip():
-        sys.exit("  %s: the lockfile is EMPTY" % rel)
+        sys.exit(f"  {rel}: the lockfile is EMPTY")
     kind = LOCK_FORMATS.get(os.path.basename(rel))
     if kind is None:
-        print("  %s: present, %d bytes; no stdlib parser for this format, so "
-              "'there and not empty' is the whole claim" % (rel, len(text)))
+        print(f"  {rel}: present, {len(text)} bytes; no stdlib parser for this format, so "
+              "'there and not empty' is the whole claim")
         return
     body = text[len(renovate_audit.BOM):] if text.startswith(
         renovate_audit.BOM) else text
@@ -621,27 +617,25 @@ def lock_readable(root: str, rel: str, dep: str) -> None:
         renovate_audit.PARSERS[kind](body)
     except BaseException as exc:                   # noqa: BLE001 -- a parser
         # may raise anything; say what, never when, as renovate-locks.sh frames before/after itself.
-        sys.exit("  %s: it does not read as %s: %s: %s"
-                 % (rel, kind, type(exc).__name__,
+        sys.exit("  {}: it does not read as {}: {}: {}".format(rel, kind, type(exc).__name__,
                     " ".join(str(exc).split())[:200]))
     if dep == LOCK_ALL:
-        print("  %s: parses as %s (lock file maintenance: any entry may have moved)"
-              % (rel, kind))
+        print(f"  {rel}: parses as {kind} (lock file maintenance: any entry may have moved)")
         return
     said = "names" if dep and dep in text else "does NOT name"
-    print("  %s: parses as %s, and %s %r" % (rel, kind, said, dep))
+    print(f"  {rel}: parses as {kind}, and {said} {dep!r}")
 
 
 def _print_config(log: str) -> None:
     cfg = resolved_config(log)
     if cfg is None:
-        sys.exit("no --print-config record in %s" % log)
+        sys.exit(f"no --print-config record in {log}")
     json.dump(cfg, sys.stdout)
 
 
 def _print_rows(path: str) -> None:
     for row in rows(load_report(path)):
-        print("%s\t%s\t%s\t%s\t%s" % (
+        print("{}\t{}\t{}\t{}\t{}".format(
             row["manager"], row["file"], row["dep"],
             (row["curDigest"] or row["cur"])[:12],
             (row["newDigest"] or row["new"])[:12]))
@@ -650,14 +644,14 @@ def _print_rows(path: str) -> None:
 def _print_skipped(path: str) -> None:
     listed, design = skipped(load_report(path))
     for row in listed:
-        print("SKIP\t%s\t%s\t%s\t%s\t%s" % row)
+        print("SKIP\t{}\t{}\t{}\t{}\t{}".format(*row))
     for why, n in sorted(design.items()):
-        print("DESIGN\t%s\t%d" % (why, n))
+        print(f"DESIGN\t{why}\t{n}")
 
 
 def _print_lockmaint(report: str, cfg: str) -> None:
     for mgr, path in lock_maintenance(load_report(report), load_obj(cfg)):
-        print("%s\t%s" % (mgr, path))
+        print(f"{mgr}\t{path}")
 
 
 # A table, not an if-chain: every mode is one entry, so a new one adds no branch to main.
@@ -677,7 +671,7 @@ MODES = {
 def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else ""
     if mode not in MODES:
-        sys.exit("unknown planner mode %r" % mode)
+        sys.exit(f"unknown planner mode {mode!r}")
     MODES[mode](sys.argv[2:])
 
 main()

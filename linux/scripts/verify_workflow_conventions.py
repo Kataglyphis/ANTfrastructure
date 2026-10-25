@@ -45,7 +45,7 @@ class ParseError(Exception):
 def fail(msg: str) -> None:
     # Flush stdout first so a CI log keeps advisories and failures in order.
     sys.stdout.flush()
-    sys.stderr.write("FAIL: %s\n" % msg)
+    sys.stderr.write(f"FAIL: {msg}\n")
     sys.stderr.flush()
 
 
@@ -104,12 +104,12 @@ def _flow_close(s: str, i: int, close: str, what: str) -> tuple[bool, int]:
     """(finished, next index) after one entry: a `,`, the closer, or a refusal."""
     i = _flow_ws(s, i)
     if i >= len(s):
-        raise ParseError("an unterminated flow %s; one that spans lines is "
-                         "outside this subset" % what)
+        raise ParseError(f"an unterminated flow {what}; one that spans lines is "
+                         "outside this subset")
     if s[i] == close:
         return True, i + 1
     if s[i] != ",":
-        raise ParseError("unexpected %r inside a flow %s" % (s[i], what))
+        raise ParseError(f"unexpected {s[i]!r} inside a flow {what}")
     i = _flow_ws(s, i + 1)
     if i < len(s) and s[i] == close:  # a trailing comma before the closer
         return True, i + 1
@@ -165,7 +165,7 @@ def _scalar(text: str, line: int = 0) -> YamlNode:
     if text[:1] in ("[", "{"):
         node, i = _flow_node(text, 0, line)
         if text[i:].strip():
-            raise ParseError("%r follows a flow collection" % text[i:].strip()[:24])
+            raise ParseError(f"{text[i:].strip()[:24]!r} follows a flow collection")
         return node
     if text.startswith(("&", "*")) or text.startswith("<<"):
         raise ParseError("anchors, aliases and merge keys are not supported")
@@ -291,9 +291,8 @@ def load_yaml(path: Path) -> dict:
                          % ("sequence" if isinstance(node, list) else "scalar"))
     left = cur.peek()
     if left is not None:
-        raise ParseError("line %d (%r) is outside the document the walk read, so "
-                         "the rest of the file was graded by nothing"
-                         % (left[2], left[1][:40]))
+        raise ParseError(f"line {left[2]} ({left[1][:40]!r}) is outside the document the walk read, so "
+                         "the rest of the file was graded by nothing")
     return node
 
 
@@ -346,8 +345,8 @@ def check_runner_ban(rel, doc):
     found = []
     _labels(doc, found)
     return [(rel, "runner-ban", label, num,
-             "runner label '%s' is a MOVING alias; pin the image (ubuntu-26.04, "
-             "windows-2025)" % label)
+             (f"runner label '{label}' is a MOVING alias; pin the image (ubuntu-26.04, "
+              "windows-2025)"))
             for label, num in found
             if EXPRESSION not in label and LATEST_LABEL.match(label)]
 
@@ -365,8 +364,8 @@ def check_job_timeout(rel, doc):
             continue
         if "timeout-minutes" not in job:
             out.append((rel, "job-timeout", jid, num,
-                        "job '%s' has no timeout-minutes; a hung step runs to "
-                        "the six-hour account default" % jid))
+                        (f"job '{jid}' has no timeout-minutes; a hung step runs to "
+                         "the six-hour account default")))
     return out
 
 
@@ -374,8 +373,8 @@ def check_permissions(rel, doc):
     if "permissions" in doc:
         return []
     return [(rel, "permissions", jid, num,
-             "no top-level `permissions:` and job '%s' declares none either, so "
-             "GITHUB_TOKEN gets the repository default" % jid)
+             (f"no top-level `permissions:` and job '{jid}' declares none either, so "
+              "GITHUB_TOKEN gets the repository default"))
             for jid, (job, num) in _jobs(doc)
             if not isinstance(job, dict) or "permissions" not in job]
 
@@ -407,9 +406,8 @@ def check_artifact_error(rel, doc):
         # The allow file is pipe-delimited, and a step name may contain a pipe.
         name = (value(step, "name") or value(step, "id") or "(unnamed)").replace("|", "/")
         out.append((rel, "artifact-error", name, line_of(step, "uses"),
-                    "upload-artifact step %r sets if-no-files-found=%s; a build "
-                    "that produced nothing uploads nothing and stays green"
-                    % (name, setting or "<unset, defaults to warn>")))
+                    "upload-artifact step {!r} sets if-no-files-found={}; a build "
+                    "that produced nothing uploads nothing and stays green".format(name, setting or "<unset, defaults to warn>")))
     return out
 
 
@@ -425,7 +423,7 @@ CHECKERS = {
 
 
 def _allow_fail(path: Path, num: int, msg: str) -> Never:
-    raise SystemExit("FAIL: %s:%d: %s\n" % (path.name, num, msg))
+    raise SystemExit(f"FAIL: {path.name}:{num}: {msg}\n")
 
 
 def _census_row(path: Path, parts: list, num: int, census: dict) -> None:
@@ -434,14 +432,14 @@ def _census_row(path: Path, parts: list, num: int, census: dict) -> None:
         _allow_fail(path, num, "expected 'CENSUS | <repo> | <check> | <count> | "
                                "<reason>'; a frozen count with no reason is not a baseline.")
     if parts[2] not in CHECKS:
-        _allow_fail(path, num, "unknown check %r (known: %s)" % (parts[2], ", ".join(CHECKS)))
+        _allow_fail(path, num, "unknown check {!r} (known: {})".format(parts[2], ", ".join(CHECKS)))
     if not parts[3].isdigit():
-        _allow_fail(path, num, "census count %r is not a number" % parts[3])
+        _allow_fail(path, num, f"census count {parts[3]!r} is not a number")
     key = (parts[1], parts[2])
     if key in census:
-        _allow_fail(path, num, "duplicate CENSUS row for %s [%s] (already at line %d). "
+        _allow_fail(path, num, f"duplicate CENSUS row for {key[0]} [{key[1]}] (already at line {census[key][2]}). "
                                "Two baselines for one check means one of them is unread."
-                    % (key[0], key[1], census[key][2]))
+                    )
     census[key] = (int(parts[3]), " | ".join(parts[4:]), num)
 
 
@@ -451,12 +449,12 @@ def _excuse_row(path: Path, parts: list, num: int, rows: list, seen: dict) -> No
         _allow_fail(path, num, "expected '<repo> | <path> | <check> | <detail> | "
                                "<reason>'; a row with no reason is not an excuse.")
     if parts[2] not in CHECKS:
-        _allow_fail(path, num, "unknown check %r (known: %s)" % (parts[2], ", ".join(CHECKS)))
+        _allow_fail(path, num, "unknown check {!r} (known: {})".format(parts[2], ", ".join(CHECKS)))
     key = tuple(parts[:4])
     if key in seen:
-        _allow_fail(path, num, "duplicate row for %s (already at line %d). Two "
+        _allow_fail(path, num, "duplicate row for {} (already at line {}). Two "
                                "reasons for one deviation means one of them is unread."
-                    % (" | ".join(key), seen[key]))
+                    .format(" | ".join(key), seen[key]))
     seen[key] = num
     rows.append((key, " | ".join(parts[4:]), num))
 
@@ -465,9 +463,9 @@ def load_allow(path: Path):
     """-> (excuse rows in file order, {(repo, check): (count, reason, line)})."""
     rows, seen, census = [], {}, {}
     if not path.exists():
-        raise SystemExit("FAIL: %s is missing. Its CENSUS rows are the ratchet; "
+        raise SystemExit(f"FAIL: {path} is missing. Its CENSUS rows are the ratchet; "
                          "without them every ramped check would be advisory with "
-                         "no ceiling.\n" % path)
+                         "no ceiling.\n")
     for num, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = raw.strip()
         if not line or line.startswith("#"):
@@ -485,25 +483,24 @@ def declared_repos():
     try:
         raw = CONSUMERS.read_text(encoding="utf-8")
     except OSError as exc:
-        raise SystemExit("FAIL: cannot read %s (%s); the allow file's <repo> and "
-                         "CENSUS columns are graded against it.\n" % (CONSUMERS, exc))
+        raise SystemExit(f"FAIL: cannot read {CONSUMERS} ({exc}); the allow file's <repo> and "
+                         "CENSUS columns are graded against it.\n")
     try:
         data = json.loads(raw)
     except ValueError as exc:
-        raise SystemExit("FAIL: %s is not valid JSON (%s).\n" % (CONSUMERS, exc))
+        raise SystemExit(f"FAIL: {CONSUMERS} is not valid JSON ({exc}).\n")
     consumers = data.get("consumers")
     if not isinstance(consumers, list) or not consumers:
-        raise SystemExit("FAIL: %s declares no `consumers` list.\n" % CONSUMERS)
+        raise SystemExit(f"FAIL: {CONSUMERS} declares no `consumers` list.\n")
     names = set()
     for entry in consumers:
         name = entry.get("name") if isinstance(entry, dict) else None
         if not name:
-            raise SystemExit("FAIL: %s has a consumer entry with no `name`: %r\n"
-                             % (CONSUMERS, entry))
+            raise SystemExit(f"FAIL: {CONSUMERS} has a consumer entry with no `name`: {entry!r}\n")
         names.add(name)
     hub = data.get("hub", {}).get("repo")
     if not hub:
-        raise SystemExit("FAIL: %s declares no `hub.repo`.\n" % CONSUMERS)
+        raise SystemExit(f"FAIL: {CONSUMERS} declares no `hub.repo`.\n")
     names.add(hub)
     return names, hub
 
@@ -527,10 +524,9 @@ def armed() -> frozenset:
     named = {p.strip() for p in raw.split(",") if p.strip()}
     unknown = named - set(CHECKS)
     if unknown:
-        raise SystemExit("FAIL: %s names unknown check(s): %s (known: %s; or %s "
-                         "to disarm the ramped ones)\n"
-                         % (ARM_ENV, ", ".join(sorted(unknown)), ", ".join(CHECKS),
-                            "/".join(sorted(d for d in DISARM if d))))
+        disarm = "/".join(sorted(d for d in DISARM if d))
+        raise SystemExit(f"FAIL: {ARM_ENV} names unknown check(s): {', '.join(sorted(unknown))} "
+                         f"(known: {', '.join(CHECKS)}; or {disarm} to disarm the ramped ones)\n")
     return frozenset(named) | ALWAYS_ARMED
 
 
@@ -548,8 +544,8 @@ def collect(root: Path, files: list) -> list:
             doc = load_yaml(path)
         except ParseError as exc:
             findings.append((rel, PARSE, "-", 0,
-                             "cannot be read by this gate (%s), so NONE of the "
-                             "four conventions was graded over it" % exc))
+                             (f"cannot be read by this gate ({exc}), so NONE of the "
+                              "four conventions was graded over it")))
             continue
         # A composite action has no jobs or permissions, so only the step-shaped checks apply.
         is_action = rel.startswith(".github/actions/")
@@ -567,12 +563,12 @@ def grade_findings(findings: list, repo: str, excused: dict, live: frozenset):
         key = (repo, rel, check, detail)
         if key in excused:
             used.add(key)
-            print("  EXCUSED %s:%d [%s] %s" % (rel, num, check, excused[key]))
+            print(f"  EXCUSED {rel}:{num} [{check}] {excused[key]}")
         elif check in live or check == PARSE:
-            fail("%s:%d [%s] %s" % (rel, num, check, why))
+            fail(f"{rel}:{num} [{check}] {why}")
             fatal += 1
         else:
-            print("  ADVISORY %s:%d [%s] %s" % (rel, num, check, why))
+            print(f"  ADVISORY {rel}:{num} [{check}] {why}")
             advisory += 1
     return used, fatal, advisory
 
@@ -582,15 +578,15 @@ def grade_rows(rows: list, census: dict, repo: str, known: set, used: set):
     stale = typos = 0
     for key, _reason, num in rows:
         if key[0] == repo and key not in used:
-            fail("%s:%d: STALE allow row -- %s no longer reports [%s] %s. "
-                 "Delete the row." % (ALLOW.name, num, key[1], key[2], key[3]))
+            fail(f"{ALLOW.name}:{num}: STALE allow row -- {key[1]} no longer reports [{key[2]}] {key[3]}. "
+                 "Delete the row.")
             stale += 1
     named = [(key[0], num) for key, _reason, num in rows]
     named += [(key[0], num) for key, (_c, _r, num) in census.items()]
     for name, num in sorted(named, key=lambda pair: pair[1]):
         if name not in known:
-            fail("%s:%d: row names repository %r, which .github/consumers.json "
-                 "does not declare." % (ALLOW.name, num, name))
+            fail(f"{ALLOW.name}:{num}: row names repository {name!r}, which .github/consumers.json "
+                 "does not declare.")
             typos += 1
     return stale, typos
 
@@ -609,27 +605,24 @@ def grade_census(findings: list, repo: str, excused: set, census: dict,
         if row is None:
             if now:
                 bad += 1
-                fail("%s reports %d unexcused, still-ramping [%s] finding(s) and "
-                     "%s has no CENSUS row for it. Fix them, arm the check, or "
+                fail(f"{repo} reports {now} unexcused, still-ramping [{check}] finding(s) and "
+                     f"{ALLOW.name} has no CENSUS row for it. Fix them, arm the check, or "
                      "freeze the count with a reason: "
-                     "'CENSUS | %s | %s | %d | <why>'."
-                     % (repo, now, check, ALLOW.name, repo, check, now))
+                     f"'CENSUS | {repo} | {check} | {now} | <why>'.")
             continue
         was, _reason, num = row
         if now > was:
             bad += 1
-            fail("%s:%d: [%s] GREW from %d to %d in %s. The census may only go "
-                 "down; fix the new finding(s) above." % (ALLOW.name, num, check, was, now, repo))
+            fail(f"{ALLOW.name}:{num}: [{check}] GREW from {was} to {now} in {repo}. The census may only go "
+                 "down; fix the new finding(s) above.")
         elif now < was and is_hub:
             bad += 1
-            fail("%s:%d: [%s] is down to %d in %s from a frozen %d -- %s in the "
-                 "same commit so the baseline cannot rot."
-                 % (ALLOW.name, num, check, now, repo, was,
-                    "delete the row" if now == 0 else "lower the row"))
+            action = "delete the row" if now == 0 else "lower the row"
+            fail(f"{ALLOW.name}:{num}: [{check}] is down to {now} in {repo} from a frozen {was} -- "
+                 f"{action} in the same commit so the baseline cannot rot.")
         elif now < was:
-            print("   RATCHET [%s] is down to %d in %s from a frozen %d; %s:%d "
-                  "can be lowered next time the hub is edited."
-                  % (check, now, repo, was, ALLOW.name, num))
+            print(f"   RATCHET [{check}] is down to {now} in {repo} from a frozen {was}; {ALLOW.name}:{num} "
+                  "can be lowered next time the hub is edited.")
     return bad
 
 
@@ -642,19 +635,16 @@ def report(repo: str, findings: list, rows: list, census: dict, live: frozenset,
     stale, typos = grade_rows(rows, census, repo, known, used)
     grew = grade_census(findings, repo, set(excused), census, repo == hub, live)
 
-    print("   %d finding(s): %d enforced, %d advisory, %d excused; "
-          "%d allow row(s) for this repo, %d for other repositories"
-          % (len(findings), fatal, advisory, len(used), len(excused), foreign))
+    print(f"   {len(findings)} finding(s): {fatal} enforced, {advisory} advisory, {len(used)} excused; "
+          f"{len(excused)} allow row(s) for this repo, {foreign} for other repositories")
     if advisory:
-        print("   (advisory -- set %s=%s to enforce; the census ratchet holds "
-              "them at today's count meanwhile)"
-              % (ARM_ENV, ",".join(sorted(set(CHECKS) - live))))
+        print("   (advisory -- set {}={} to enforce; the census ratchet holds "
+              "them at today's count meanwhile)".format(ARM_ENV, ",".join(sorted(set(CHECKS) - live))))
     if fatal or stale or typos or grew:
-        sys.stderr.write("WORKFLOW CONVENTION GATE FAILED (%d finding(s), %d stale "
-                         "row(s), %d unknown repo(s), %d census row(s))\n"
-                         % (fatal, stale, typos, grew))
+        sys.stderr.write(f"WORKFLOW CONVENTION GATE FAILED ({fatal} finding(s), {stale} stale "
+                         f"row(s), {typos} unknown repo(s), {grew} census row(s))\n")
         return 1
-    print("WORKFLOW CONVENTIONS OK (%s)" % repo)
+    print(f"WORKFLOW CONVENTIONS OK ({repo})")
     return 0
 
 
@@ -663,22 +653,22 @@ def main() -> int:
     live = armed()
     known, hub = declared_repos()
     repo = repo_name(root)
-    print("== workflow conventions under %s ==" % root)
-    print("   repository %s; enforced %s; advisory %s"
-          % (repo, ",".join(sorted(live)), ",".join(sorted(set(CHECKS) - live)) or "-"))
+    print(f"== workflow conventions under {root} ==")
+    enforced = ",".join(sorted(live))
+    advisory = ",".join(sorted(set(CHECKS) - live)) or "-"
+    print(f"   repository {repo}; enforced {enforced}; advisory {advisory}")
 
     files = yaml_files(root)
     if not files:
         # A gate that checks nothing must not report green.
-        fail("no workflow or action YAML under %s/.github -- wrong root?" % root)
+        fail(f"no workflow or action YAML under {root}/.github -- wrong root?")
         return 1
     if repo not in known:
         # Every allow row is keyed on this name, so an undeclared one disconnects the bookkeeping.
-        fail("%r, resolved from this tree's `origin` remote, is not declared in "
-             ".github/consumers.json. No %s row can be keyed to it, so its "
-             "%d file(s) would be graded with the excuse table and the census "
-             "ratchet both inert. Declare the repository, or fix the remote."
-             % (repo, ALLOW.name, len(files)))
+        fail(f"{repo!r}, resolved from this tree's `origin` remote, is not declared in "
+             f".github/consumers.json. No {ALLOW.name} row can be keyed to it, so its "
+             f"{len(files)} file(s) would be graded with the excuse table and the census "
+             "ratchet both inert. Declare the repository, or fix the remote.")
         return 1
     rows, census = load_allow(ALLOW)
     return report(repo, collect(root, files), rows, census, live, known, hub)

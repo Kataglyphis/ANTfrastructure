@@ -14,7 +14,12 @@ upload_step="next(s for s in V.value(build,'steps') if V.value(s,'name') == 'Upl
 t_assert_contains "$(_q "V.value(${upload_step},'if')")" 'always()'
 t_assert_contains "$(_q "V.value(V.value(${upload_step},'with'),'path')")" 'inputs.artifact-paths'
 upload_findings="[r[2] for r in V.check_artifact_error('', lane) if r[2] == 'Upload files, logs & Zip']"
-_artifact_gate() { [ "$(LANE="$1" _q "${upload_findings}")" = '[]' ]; }
+_artifact_gate() {
+  if [ "$(LANE="$1" _q "${upload_findings}")" = '[]' ]; then
+    return 0
+  fi
+  return 1
+}
 t_assert_ok _artifact_gate "${LANE}"
 mkdir -p "${ROOT}/logs/test-results"
 faulted="$(mktemp "${ROOT}/logs/test-results/windows-upload.XXXXXXXX")"

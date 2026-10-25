@@ -127,31 +127,30 @@ QualityWiring: TypeAlias = dict[str, tuple[list[str], list[str]]]
 def run_git(args: list[str]) -> bytes:
     proc = subprocess.run(args, capture_output=True, check=False)
     if proc.returncode != 0:
-        raise Failure("%s exited %d: %s"
-                      % (" ".join(args), proc.returncode,
-                         proc.stderr.decode("utf-8", "replace").strip()))
+        detail = proc.stderr.decode("utf-8", "replace").strip()
+        raise Failure(f"{' '.join(args)} exited {proc.returncode}: {detail}")
     return proc.stdout
 
 
 def load_inventory(path: Path) -> Inventory:
     """Parse and shape-check the inventory. A malformed list must not run."""
     if not path.is_file():
-        raise Failure("inventory %s does not exist" % path)
+        raise Failure(f"inventory {path} does not exist")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except ValueError as exc:
-        raise Failure("inventory %s is not valid JSON: %s" % (path, exc))
+        raise Failure(f"inventory {path} is not valid JSON: {exc}")
     for key in ("hub", "consumers", "entry_point_classes"):
         if not data.get(key):
-            raise Failure("inventory %s: '%s' is missing or empty" % (path, key))
+            raise Failure(f"inventory {path}: '{key}' is missing or empty")
     for spec in data["consumers"]:
         missing = [k for k in ("name", "clone_url", "ref", "self") if k not in spec]
         if missing:
-            raise Failure("inventory %s: consumer %r lacks %s"
-                          % (path, spec.get("name", "?"), ", ".join(missing)))
+            raise Failure(f"inventory {path}: consumer {spec.get('name', '?')!r} lacks "
+                          f"{', '.join(missing)}")
     if not [c for c in data["consumers"] if c["self"]]:
-        raise Failure("inventory %s: no consumer is marked self:true, so nothing "
-                      "can tell hub-internal use from an external caller" % path)
+        raise Failure(f"inventory {path}: no consumer is marked self:true, so nothing "
+                      "can tell hub-internal use from an external caller")
     return cast(Inventory, data)
 
 
@@ -165,8 +164,8 @@ def entry_forms(spec: EntryClass, path: Path, rel: str) -> EntryPoint:
     if not alias:
         return entry
     if alias not in STEM_ALIASES:
-        raise Failure("entry point class %r declares alias %r; known: %s"
-                      % (spec["kind"], alias, ", ".join(sorted(STEM_ALIASES))))
+        raise Failure(f"entry point class {spec['kind']!r} declares alias {alias!r}; "
+                      f"known: {', '.join(sorted(STEM_ALIASES))}")
     entry["alias_stem"] = path.stem
     entry["alias_re"] = re.compile(STEM_ALIASES[alias] % re.escape(path.stem))
     entry["alias_name"] = path.name
@@ -180,9 +179,8 @@ def discover_entry_points(hub_root: Path, classes: list[EntryClass]) -> list[Ent
         kind, glob = spec["kind"], spec["glob"]
         hits = sorted(p for p in hub_root.glob(glob) if p.is_file())
         if not hits:
-            raise Failure("entry point class %r matches nothing under %s -- a class "
-                          "that expands to zero would silently narrow the report"
-                          % (kind, glob))
+            raise Failure(f"entry point class {kind!r} matches nothing under {glob} -- a class "
+                          "that expands to zero would silently narrow the report")
         required = spec.get("requires")
         for path in hits:
             rel = path.relative_to(hub_root).as_posix()
@@ -198,12 +196,12 @@ def discover_entry_points(hub_root: Path, classes: list[EntryClass]) -> list[Ent
 def tracked_files(root: Path, name: str) -> list[str]:
     """The repository's tracked files. Untracked build output is not evidence."""
     if not (root / ".git").exists():
-        raise Failure("%s: %s is not a git checkout -- refusing to grade a "
-                      "partial tree" % (name, root))
+        raise Failure(f"{name}: {root} is not a git checkout -- refusing to grade a "
+                      "partial tree")
     raw = run_git(["git", "-C", str(root), "ls-files", "-z"])
     files = [p for p in raw.decode("utf-8", "replace").split("\0") if p]
     if not files:
-        raise Failure("%s: git ls-files listed nothing under %s" % (name, root))
+        raise Failure(f"{name}: git ls-files listed nothing under {root}")
     return files
 
 
@@ -272,7 +270,7 @@ def is_hub_reference(text: str, start: int, matched: str,
         suffix = text[start + len(matched):start + len(matched) + 1]
         if suffix and (suffix.isalnum() or suffix in "_.-"):
             return False
-        if any(before.endswith(q) or before.endswith(q.replace("/", "\\"))
+        if any(before.endswith((q, q.replace("/", "\\")))
                for q in ctx["qualifiers"]):
             return True
         return ctx["is_self"] and before.endswith(("${REPO_ROOT}/", "${HUB_ROOT}/"))
@@ -303,7 +301,7 @@ def scan_file(rel: str, text: str, entries: list[EntryPoint],
                 continue
             lineno, line = line_at(text, start)
             bucket = hits.setdefault(needle, {REACHED: [], MENTIONED: []})
-            bucket[use_kind(rel, line)].append("%s:%d" % (rel, lineno))
+            bucket[use_kind(rel, line)].append(f"{rel}:{lineno}")
 
 
 def scan_consumer(root: Path, files: list[str], entries: list[EntryPoint],
@@ -359,7 +357,7 @@ def dangling_refs(root: Path, files: list[str], hub_root: Path,
                 continue
             lineno, line = line_at(text, match.start())
             if use_kind(rel, line) == REACHED:
-                found.append("%s:%d -> %s" % (rel, lineno, target))
+                found.append(f"{rel}:{lineno} -> {target}")
     return sorted(set(found))
 
 
@@ -394,7 +392,7 @@ def dangling_modules(root: Path, files: list[str], hub_root: Path) -> list[str]:
                     # Only a name the hub is expected to carry can dangle.
                     if name in have or name in own or not name.startswith("Windows"):
                         continue
-                    found.append("%s:%d -> %s.psm1 (module name)" % (rel, lineno, name))
+                    found.append(f"{rel}:{lineno} -> {name}.psm1 (module name)")
     return sorted(set(found))
 
 
@@ -403,7 +401,7 @@ def clone_url(spec: ConsumerSpec) -> str:
     url = spec["clone_url"]
     token = os.environ.get(TOKEN_ENV, "").strip()
     if token and url.startswith("https://github.com/"):
-        return url.replace("https://", "https://x-access-token:%s@" % token, 1)
+        return url.replace("https://", f"https://x-access-token:{token}@", 1)
     return url
 
 
@@ -414,13 +412,13 @@ def obtain(spec: ConsumerSpec, local: dict[str, Path], work: Path,
     if name in local:
         root = local[name]
         if not root.is_dir():
-            raise Failure("%s: --local path %s does not exist" % (name, root))
+            raise Failure(f"{name}: --local path {root} does not exist")
         return root
     if offline:
-        raise Failure("%s: --offline was given and no --local path was supplied "
-                      "for it. Skipping it would make the inventory lie." % name)
+        raise Failure(f"{name}: --offline was given and no --local path was supplied "
+                      "for it. Skipping it would make the inventory lie.")
     dest = work / name
-    print("   cloning %s (%s @ %s)" % (name, spec["clone_url"], spec["ref"]))
+    print(f"   cloning {name} ({spec['clone_url']} @ {spec['ref']})")
     run_git(["git", "clone", "--depth", "1", "--single-branch",
              "--branch", spec["ref"], clone_url(spec), str(dest)])
     return dest
@@ -453,25 +451,25 @@ def grade(entry: EntryPoint, per_consumer: PerConsumer) -> VerdictRow:
 
 def table(rows: list[VerdictRow], cell: Callable[[VerdictRow], str]) -> list[str]:
     out = ["", "| kind | entry point | evidence |", "| --- | --- | --- |"]
-    out += ["| %s | `%s` | %s |" % (r["kind"], r["needle"], cell(r)) for r in rows]
+    out += [f"| {r['kind']} | `{r['needle']}` | {cell(r)} |" for r in rows]
     return out
 
 
 def section(rows: list[VerdictRow], status: str, heading: str, blurb: str,
             cell: Callable[[VerdictRow], str]) -> list[str]:
     picked = [r for r in rows if r["status"] == status]
-    out = ["", "## %s -- %d" % (heading, len(picked)), "", blurb]
+    out = ["", f"## {heading} -- {len(picked)}", "", blurb]
     if not picked:
         return out + ["", "_None._"]
     return out + table(picked, cell)
 
 
 def evidence_reached(row: VerdictRow) -> str:
-    return ", ".join("%s (`%s`)" % (n, w) for n, _s, w in row["reached_by"]) or "--"
+    return ", ".join(f"{n} (`{w}`)" for n, _s, w in row["reached_by"]) or "--"
 
 
 def evidence_mentioned(row: VerdictRow) -> str:
-    return ", ".join("%s (`%s`)" % (n, w) for n, w in row["mentioned_by"]) or "--"
+    return ", ".join(f"{n} (`{w}`)" for n, w in row["mentioned_by"]) or "--"
 
 
 def render_dangling(dangling: Dangling) -> list[str]:
@@ -479,12 +477,12 @@ def render_dangling(dangling: Dangling) -> list[str]:
              " moved and the consumer was not updated, or the reference was"
              " always wrong. These fail the run.")
     total = sum(len(v) for v in dangling.values())
-    out = ["", "## Dangling references -- %d" % total, "", blurb]
+    out = ["", f"## Dangling references -- {total}", "", blurb]
     if not any(dangling.values()):
         return out + ["", "_None._"]
     for name in sorted(dangling):
         if dangling[name]:
-            out += ["", "**%s**" % name] + ["- `%s`" % r for r in dangling[name]]
+            out += ["", f"**{name}**"] + [f"- `{r}`" for r in dangling[name]]
     return out
 
 
@@ -497,11 +495,11 @@ def render_quality_wiring(quality: QualityWiring,
     providers = {item["name"] for item in consumers if item["self"]}
     for name, (witnesses, failures) in quality.items():
         if name in providers:
-            out.append("- **%s:** hub provider; consumer wiring is out of scope" % name)
+            out.append(f"- **{name}:** hub provider; consumer wiring is out of scope")
             continue
         verdict = "FAIL" if failures else ("OK" if witnesses else "ADVISORY")
-        out.append("- **%s:** %s" % (name, verdict))
-        out.extend("  - %s" % item for item in witnesses + failures)
+        out.append(f"- **{name}:** {verdict}")
+        out.extend(f"  - {item}" for item in witnesses + failures)
         if not witnesses and not failures:
             out.append("  - No tracked CI lint call was found.")
     return out
@@ -510,13 +508,13 @@ def render_quality_wiring(quality: QualityWiring,
 def render_report(rows: list[VerdictRow], consumers: list[ConsumerSpec],
                   dangling: Dangling, quality: QualityWiring | None = None) -> str:
     counts = {s: len([r for r in rows if r["status"] == s]) for s in STATUS_ORDER}
-    names = ", ".join("%s%s" % (c["name"], " (hub)" if c["self"] else "")
+    names = ", ".join(c["name"] + (" (hub)" if c["self"] else "")
                       for c in consumers)
     out = ["# ANTfrastructure consumer inventory", "",
-           "Consumers scanned: %d -- %s" % (len(consumers), names), "",
-           "Entry points graded: %d" % len(rows), "",
+           f"Consumers scanned: {len(consumers)} -- {names}", "",
+           f"Entry points graded: {len(rows)}", "",
            "| verdict | count |", "| --- | --- |"]
-    out += ["| %s | %d |" % (s, counts[s]) for s in STATUS_ORDER]
+    out += [f"| {s} | {counts[s]} |" for s in STATUS_ORDER]
     out += section(rows, UNREFERENCED, "Named by nobody",
                    "No repository in the inventory mentions these at all. This is the "
                    "candidate list for deletion -- and it is only as good as the "
@@ -547,13 +545,12 @@ def parse_local(values: list[str] | None, root: str | None,
                 local[name] = candidate.resolve()
     for item in values or []:
         if "=" not in item:
-            raise Failure("--local expects NAME=PATH, got %r" % item)
+            raise Failure(f"--local expects NAME=PATH, got {item!r}")
         name, _, path = item.partition("=")
         local[name] = Path(path).resolve()
     unknown = sorted(set(local) - set(names))
     if unknown:
-        raise Failure("--local names %s, which the inventory does not list"
-                      % ", ".join(unknown))
+        raise Failure(f"--local names {', '.join(unknown)}, which the inventory does not list")
     return local
 
 
@@ -574,7 +571,7 @@ def build_args() -> argparse.Namespace:
 def qualifier_set(hub: HubSpec) -> tuple[str, str, str]:
     """The prefixes that make a bare hub path unambiguously the hub's."""
     return (hub["submodule_path"] + "/",
-            "%s/%s/" % (hub["owner"], hub["repo"]),
+            f"{hub['owner']}/{hub['repo']}/",
             hub["repo"] + "/")
 
 
@@ -595,8 +592,8 @@ def collect(data: Inventory, args: argparse.Namespace, hub_root: Path,
     qualifiers = qualifier_set(data["hub"])
     vendored = submodule_prefixes(hub_root)
     # The class includes the backslash, or a Windows path would stop at its first segment.
-    ref_re = re.compile(r"(?:%s)([A-Za-z0-9_./@\\-]+)"
-                        % "|".join(re.escape(q) for q in ref_qualifiers(data["hub"])))
+    qualifiers_re = "|".join(re.escape(q) for q in ref_qualifiers(data["hub"]))
+    ref_re = re.compile(rf"(?:{qualifiers_re})([A-Za-z0-9_./@\\-]+)")
     per_consumer: PerConsumer = {}
     dangling: Dangling = {}
     quality: QualityWiring = {}
@@ -611,8 +608,9 @@ def collect(data: Inventory, args: argparse.Namespace, hub_root: Path,
         dangling[spec["name"]] = sorted(set(
             dangling_refs(root, files, hub_root, ref_re, vendored)
             + dangling_modules(root, files, hub_root)))
-        print("   %-22s %5d tracked files, %3d entry points touched, %d dangling"
-              % (spec["name"], len(files), len(hits), len(dangling[spec["name"]])))
+        print(f"   {spec['name']:<22} {len(files):5d} tracked files, "
+              f"{len(hits):3d} entry points touched, "
+              f"{len(dangling[spec['name']])} dangling")
     return per_consumer, dangling, quality
 
 
@@ -622,14 +620,13 @@ def report_out(args: argparse.Namespace, text: str) -> None:
     dest = Path(args.report)
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_text(text, encoding="utf-8")
-    print("   report written to %s" % dest)
+    print(f"   report written to {dest}")
 
 
 def print_dangling(dangling: Dangling) -> int:
     for name in sorted(dangling):
         for ref in dangling[name]:
-            sys.stderr.write("FAIL: %s names a hub path that does not exist: %s\n"
-                             % (name, ref))
+            sys.stderr.write(f"FAIL: {name} names a hub path that does not exist: {ref}\n")
     return sum(len(v) for v in dangling.values())
 
 
@@ -639,28 +636,28 @@ def main() -> int:
     try:
         data = load_inventory(Path(args.inventory).resolve())
         entries = discover_entry_points(hub_root, data["entry_point_classes"])
-        print("== consumer inventory: %d entry points, %d consumers =="
-              % (len(entries), len(data["consumers"])))
+        print(f"== consumer inventory: {len(entries)} entry points, "
+              f"{len(data['consumers'])} consumers ==")
         with tempfile.TemporaryDirectory(prefix="consumer-inventory-") as tmp:
             per_consumer, dangling, quality = collect(data, args, hub_root, entries, Path(tmp))
     except Failure as exc:
-        sys.stderr.write("FAIL: %s\n" % exc)
+        sys.stderr.write(f"FAIL: {exc}\n")
         return 1
     rows = [grade(e, per_consumer) for e in entries]
     report_out(args, render_report(rows, data["consumers"], dangling, quality))
     for status in STATUS_ORDER:
-        print("   %-26s %d" % (status, len([r for r in rows if r["status"] == status])))
+        print(f"   {status:<26} {len([r for r in rows if r['status'] == status])}")
     broken_paths = print_dangling(dangling)
     broken_quality = sum(len(failures) for _witnesses, failures in quality.values())
     for name, (_witnesses, failures) in quality.items():
         for failure in failures:
-            sys.stderr.write("FAIL: %s CI quality wiring: %s\n" % (name, failure))
+            sys.stderr.write(f"FAIL: {name} CI quality wiring: {failure}\n")
     if broken_paths or broken_quality:
-        sys.stderr.write("CONSUMER INVENTORY FAILED (%d dangling references, %d CI quality calls)\n"
-                         % (broken_paths, broken_quality))
+        sys.stderr.write(f"CONSUMER INVENTORY FAILED ({broken_paths} dangling references, "
+                         f"{broken_quality} CI quality calls)\n")
         return 1
-    print("CONSUMER INVENTORY OK (%d unconfirmed candidate repo(s) still to resolve)"
-          % len(data.get("unconfirmed", [])))
+    print(f"CONSUMER INVENTORY OK ({len(data.get('unconfirmed', []))} "
+          "unconfirmed candidate repo(s) still to resolve)")
     return 0
 
 
