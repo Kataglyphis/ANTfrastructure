@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# A verified Torch/vision pair moves wheel pins, Git URLs and uv.lock together; a failed lock rolls back.
-# Does not prove wheel availability on every PyTorch index or compatibility beyond the hub's accepted pair.
+# The pair/rollback fixture cannot prove PyTorch wheel availability or compatibility beyond the approved versions.
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/renovate-fixtures.sh"
 
