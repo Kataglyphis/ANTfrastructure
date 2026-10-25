@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Remaining image-only imports and annotation debt stay report-only; see docs/code-quality-tooling.md#python-type-analysis.
+# Compatible imports and annotations fail in CI; dependency-specific files use their build gates.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -255,24 +255,23 @@ report_scan() {
   "${ty[@]}" --python-platform "${platform}" "${search[@]}" "$@" > "${report}" 2>&1 || rc=$?
   case "${rc}" in
     0) printf '%s: clean (%s files)\n' "${label}" "$#" ;;
-    1) printf '%s: findings (%s files); %s\n' "${label}" "$#" "${report}" ;;
+    1)
+      cat "${report}" >&2
+      printf '%s failed (exit 1); %s\n' "${label}" "${report}" >&2
+      return 1
+      ;;
     *) cat "${report}" >&2; return "${rc}" ;;
   esac
 }
-
-report_scan "Linux Python report" linux "${linux_report}" "${linux_files[@]}"
-report_scan "Windows Python report" windows "${windows_report}" "${windows_files[@]}"
 
 annotation_rc=0
 uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN001,ANN002,ANN003,ANN201,ANN202,ANN204,ANN205,ANN206 \
   --output-format concise "${py_files[@]}" > "${annotations_report}" 2>&1 || annotation_rc=$?
 case "${annotation_rc}" in
-  0) printf 'Ruff annotation report: clean (%s files)\n' "${#py_files[@]}" ;;
-  1) printf 'Ruff annotation report: findings (%s files); %s\n' "${#py_files[@]}" "${annotations_report}" ;;
+  0|1) ;;
   *) cat "${annotations_report}" >&2; exit "${annotation_rc}" ;;
 esac
 
-# Remaining ANN001/ANN201 findings stay report-only outside the selected clean files.
 strict_scan "Ruff signature annotation gate" "${annotations_gate_report}" "${#py_files[@]}" \
   uvx "ruff@${RUFF_VERSION}" check --no-fix --select ANN002,ANN003,ANN204,ANN205,ANN206 --output-format concise "${py_files[@]}"
 strict_scan "Ruff private return gate" "${private_returns_report}" "${#py_files[@]}" \
@@ -283,3 +282,13 @@ strict_scan "ty quality gate" "${strict_report}" "${#quality_files[@]}" \
   "${ty[@]}" --python-platform linux "${search[@]}" "${quality_files[@]}"
 strict_scan "ty Windows gate" "${windows_gate_report}" "${#windows_quality_files[@]}" \
   "${ty[@]}" --python-platform windows "${search[@]}" "${windows_quality_files[@]}"
+
+report_scan "Linux Python report" linux "${linux_report}" "${linux_files[@]}"
+report_scan "Windows Python report" windows "${windows_report}" "${windows_files[@]}"
+
+if [ "${annotation_rc}" -eq 1 ]; then
+  cat "${annotations_report}" >&2
+  printf 'Ruff annotation gate failed (exit 1); %s\n' "${annotations_report}" >&2
+  exit 1
+fi
+printf 'Ruff annotation gate: clean (%s files); %s\n' "${#py_files[@]}" "${annotations_report}"

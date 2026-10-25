@@ -449,8 +449,10 @@ dynamically at runtime.
 
 The fatal Ruff tier also selects B012 (a `return`, `break` or `continue` in `finally` can
 silence an exception) and B023 (a loop variable captured by a closure can bind too late).
-It applies to tracked Python and extracted heredocs. The larger Ruff rule set remains
-advisory. `test-python-lint-gate.sh` checks both defects and a safe form. The
+It applies to tracked Python and extracted heredocs. The default hub sweep makes the full
+Ruff default ruleset fatal; explicitly targeted and named-root calls keep the consumer
+adoption tier advisory. `test-python-lint-gate.sh` checks both defects, a safe form and a
+default-rule finding outside the focused selectors. The
 `python-lint.exception-return-required` and `python-lint.loop-closure-required`
 mutations remove each selector independently and must fail.
 
@@ -494,8 +496,8 @@ eight intentional adjacent literals in collections. Thirty string `.format()` ca
 were converted to f-strings before `UP032` became fatal. Three constant-name
 `getattr` calls now use direct attributes, and `B009` rejects regressions; dynamic
 attribute names are unaffected. Explicit
-targets and named roots retain their advisory adoption tier. The **advisory
-tier** (the full default ruleset) reports other findings without failing. The
+targets and named roots retain their advisory adoption tier. A fixture adds an F541 finding
+outside the focused selectors and proves the default full ruleset fails. The
 fixture writes `RUFF_VERSION`
 from `01-core/tool-pins.env` into its own `tool-pins.env`, so when no ruff is on
 PATH it bootstraps the same pinned `uvx ruff@<pin>` the repo does (a ruff already
@@ -550,13 +552,14 @@ bash linux/scripts/01-core/check-webdav-types.sh
 files. It uses the Linux target for Linux and shared scripts and the Windows target for
 `windows/`. The four preflight ty outputs go to ignored `logs/code-quality/ty-*.txt`; Ruff's
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
-The full-tree ANN002/ANN003/ANN204/ANN205/ANN206 gate writes
+The full-tree Ruff annotation scan writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
 `logs/code-quality/ruff-private-returns-gate.txt`. The maintained 121-file scope has fatal
 ANN001/ANN201 checks in `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
-these files after preflight. Reports with findings state that
-they have findings; a failed download, invalid configuration or checker crash fails CI.
+these files after preflight. Any finding in the full Ruff annotation scan or the generic
+Linux/Windows ty reports fails preflight. A failed download, invalid configuration or
+checker crash also fails CI.
 
 **All 146 tracked Python files have fatal ty coverage.** The locked quality
 environment checks 140 Linux/shared files, and the Windows platform gate checks
@@ -583,19 +586,19 @@ runtime dependencies, writes the verdict to ignored
 checks a wrong API argument, missing client source and failed fetch. The Flutter
 browser smoke joins the strict ty scope through the locked Playwright package;
 type checking does not launch Chromium; the Flutter font fetcher and web artifact checker are also in the strict scope. A new
-Python path outside the strict patterns also starts in the full report until
-the strict scope is extended.
+New tracked Python files enter the compatible Linux or Windows report dynamically
+and fail CI on ty findings. Files whose dependencies are absent from the locked
+quality environment need a dedicated type gate in their real workflow or build environment.
 The preflight and x64 image build share `01-core/load-ty-tool.sh` for the pinned
 ty version and uvx setup. The torch Dockerfile mounts it beside the version loader
 and probe script so the build checks the same pin without copying the checker into
 the final image. The shared loader clears an ambient `TY_VERSION`; the preflight
 driver also clears `RUFF_VERSION` before loading its pinned tools. Fixtures and
 mutations prove ambient versions cannot replace either pin.
-There is no allowlist or raised diagnostic threshold. The all-file Ruff report retains paths and
-rules for the next cleanup. `tests/test-python-types.sh` plants an incorrect annotated
-return and errors in selected Linux and Windows helpers, requiring the gate to fail.
-Mutation cases remove the verdict, path selections and theme search path; the
-suite must catch each.
+There is no allowlist or raised diagnostic threshold. `tests/test-python-types.sh` plants
+incorrect types and missing annotations in existing and newly discovered Linux and Windows
+files, requiring each gate to fail. Mutation cases remove the verdict, path selections,
+dynamic report failures and the theme search path; the suite must catch each.
 
 Ty uses declared and inferred types. It does **not** add annotations or require every
 function to have one. Ruff's `ANN002`, `ANN003`, `ANN204`, `ANN205` and `ANN206`
@@ -611,10 +614,10 @@ nine small docs, host, image, wheel and test files, plus the mutation verifier,
 gate registry, image acceptance driver, image-env verifier, complexity and
 dead-function verifiers, ORT census probe, venv version probe, GStreamer metadata
 helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, and the WebDAV downloader. ANN001/ANN201 fail in those 121 files.
-Remaining findings stay in the full report. The focused
-suite injects unannotated signatures, and selector and
-scope mutations prove the gates can fail. The Ruff annotation and ty checks share one fatal report/exit path so
-their diagnostics and exit status cannot drift apart.
+All eight Ruff annotation rules in this scan are fatal across every tracked Python file.
+The focused suite injects unannotated signatures, and selector, scope and verdict mutations
+prove the gates can fail. The annotation and ty scans preserve their own diagnostics and
+exit status so a finding cannot be hidden by another check.
 The workflow convention verifier, consumer inventory, Renovate planner and
 image-env verifier now have zero Ruff UP031 findings after changing their
 diagnostics to equivalent f-strings. Their focused fixtures check the emitted

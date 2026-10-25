@@ -111,6 +111,14 @@ t_assert_contains "${_out}" "gate pass (E9,F63,F7,F82,B012,B023): clean"
 t_assert_contains "${_out}" "advisory pass: clean"
 t_assert_contains "${_out}" "rc=0" "nothing to report, nothing to fail"
 
+t_case "the full hub sweep fails on a default Ruff rule outside the focused passes"
+_d="$(_mkroot)"
+printf 'message = f"plain text"\n' > "${_d}/docs/scripts/subject.py"
+_out="$(_run "${_d}")"
+t_assert_contains "${_out}" "F541" "the full Ruff default ruleset must cover every hub file"
+t_assert_contains "${_out}" "full Ruff ruleset failed"
+t_assert_contains "${_out}" "rc=1" "a report-only Ruff finding must fail the hub sweep"
+
 t_case "a tree with no embedded Python still passes after a complete extraction"
 _d="$(_mkroot)"
 printf 'print("ok")\n' > "${_d}/docs/scripts/subject.py"
@@ -236,7 +244,7 @@ t_assert_contains "${_out}" "ADVISORY: findings above are informational"
 t_assert_contains "${_out}" "rc=0"
 
 t_case "long regex flag names pass the hub gate"
-_out="$(_targets $'import re\nprint(re.search("a", "a", re.MULTILINE))' 'print("ok")')"
+_out="$(_targets $'import re\n\nprint(re.search("a", "a", re.MULTILINE))' 'print("ok")')"
 t_assert_contains "${_out}" "hub regex-flag gate (FURB167): clean"
 t_assert_contains "${_out}" "rc=0"
 

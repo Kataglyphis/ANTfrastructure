@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Real ty fixtures prove the strict scopes; image-only imports remain in the full reports.
+# Real ty fixtures prove strict scopes and dynamically discovered report verdicts.
 set -u
 TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${TESTS_DIR}/test-harness.sh"
@@ -450,32 +450,48 @@ t_assert_contains "${out}" "dartdoc-guides.py"
 t_assert_contains "${out}" "rc=1"
 printf 'from markdown_it import MarkdownIt\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/lib/dartdoc-guides.py"
 
-t_case "a Windows source mismatch is visible and fails the Windows type gate"
+t_case "a Windows source mismatch fails the strict Windows type gate"
 _set_answer "${ROOT}/docs/scripts/subject.py" 42
 _set_answer "${ROOT}/windows/scripts/certificates/typed_subject.py" '"wrong"'
 out="$(_run)"
-t_assert_contains "${out}" "Windows Python report: findings (2 files)"
 t_assert_contains "${out}" "ty Windows gate failed (exit 1)"
 t_assert_contains "${out}" "rc=1"
-t_assert_grep "${ROOT}/logs/code-quality/ty-windows.txt" 'invalid-return-type'
+t_assert_grep "${ROOT}/logs/code-quality/ty-windows-gate.txt" 'invalid-return-type'
 _set_answer "${ROOT}/windows/scripts/certificates/typed_subject.py" 42
 
-t_case "missing annotations are reported without claiming ty requires them"
+t_case "a missing public return annotation outside the focused list fails the full Ruff report"
 printf 'def answer():\n    return 42\n' > "${ROOT}/docs/scripts/subject.py"
 _set_answer "${ROOT}/windows/scripts/subject.py" 42
 out="$(_run)"
-t_assert_contains "${out}" "Ruff annotation report: findings"
-t_assert_contains "${out}" "ty quality gate: clean"
-t_assert_contains "${out}" "rc=0"
+t_assert_contains "${out}" "Ruff annotation gate failed (exit 1)"
+t_assert_contains "${out}" "rc=1"
 t_assert_grep "${ROOT}/logs/code-quality/ruff-annotations.txt" 'ANN201'
 
-t_case "missing parameter annotations are reported without failing the type gate"
+t_case "a missing parameter annotation outside the focused list fails the full Ruff report"
 printf 'def answer(value) -> int:\n    return 42\n' > "${ROOT}/docs/scripts/subject.py"
 out="$(_run)"
-t_assert_contains "${out}" "Ruff annotation report: findings"
-t_assert_contains "${out}" "ty quality gate: clean"
-t_assert_contains "${out}" "rc=0"
+t_assert_contains "${out}" "Ruff annotation gate failed (exit 1)"
+t_assert_contains "${out}" "rc=1"
 t_assert_grep "${ROOT}/logs/code-quality/ruff-annotations.txt" 'ANN001'
+
+t_case "a new Linux source outside the fixed list fails the dynamic ty report"
+_set_answer "${ROOT}/docs/scripts/subject.py" 42
+printf 'def answer() -> int:\n    return "wrong"\n' > "${ROOT}/linux/scripts/new_unscoped_quality.py"
+git -C "${ROOT}" add -- linux/scripts/new_unscoped_quality.py
+out="$(_run)"
+t_assert_contains "${out}" "Linux Python report failed (exit 1)"
+t_assert_grep "${ROOT}/logs/code-quality/ty-linux.txt" 'invalid-return-type'
+t_assert_contains "${out}" "rc=1"
+_set_answer "${ROOT}/linux/scripts/new_unscoped_quality.py" 42
+
+t_case "a new Windows source outside the fixed list fails the dynamic ty report"
+printf 'def answer() -> int:\n    return "wrong"\n' > "${ROOT}/windows/scripts/new_unscoped_quality.py"
+git -C "${ROOT}" add -- windows/scripts/new_unscoped_quality.py
+out="$(_run)"
+t_assert_contains "${out}" "Windows Python report failed (exit 1)"
+t_assert_grep "${ROOT}/logs/code-quality/ty-windows.txt" 'invalid-return-type'
+t_assert_contains "${out}" "rc=1"
+_set_answer "${ROOT}/windows/scripts/new_unscoped_quality.py" 42
 
 t_case "a staticmethod without a return annotation fails the full tracked-tree gate"
 printf 'class Answer:\n    @staticmethod\n    def value():\n        return 42\n' > "${ROOT}/docs/scripts/subject.py"

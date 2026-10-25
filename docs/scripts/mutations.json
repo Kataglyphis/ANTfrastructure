@@ -28161,6 +28161,30 @@
   "why": "The Jetson app must be type-checked against the assembled torch environment."
  },
  {
+  "id": "python-types.generic-report-fatal",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "      printf '%s failed (exit 1); %s\\n' \"${label}\" \"${report}\" >&2\n      return 1",
+  "replace": "      printf '%s failed (exit 1); %s\\n' \"${label}\" \"${report}\" >&2\n      return 0",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Findings in dynamically discovered Linux and Windows Python files must fail the compatible ty report."
+ },
+ {
+  "id": "python-types.annotation-report-fatal",
+  "target": "linux/scripts/lint-python-types.sh",
+  "find": "  printf 'Ruff annotation gate failed (exit 1); %s\\n' \"${annotations_report}\" >&2\n  exit 1",
+  "replace": "  printf 'Ruff annotation gate failed (exit 1); %s\\n' \"${annotations_report}\" >&2\n  exit 0",
+  "test": "bash linux/scripts/tests/test-python-types.sh",
+  "why": "Any Ruff ANN finding in the full tracked-Python scan must fail the quality gate."
+ },
+ {
+  "id": "python-lint.full-default-ruleset-fatal",
+  "target": "linux/scripts/lint-python.sh",
+  "find": "    err \"full Ruff ruleset failed\"",
+  "replace": "    echo \"full Ruff ruleset failed\"",
+  "test": "bash linux/scripts/tests/test-python-lint-gate.sh",
+  "why": "The default full hub sweep must fail on Ruff findings outside its focused selectors."
+ },
+ {
   "id": "python-lint.utf8-diagnostic-output",
   "target": "linux/scripts/lint-python.sh",
   "find": "  PYTHONIOENCODING=utf-8 ${_LINT_PY} - \"${_EMB_MAP:-/dev/null}\" \"$1\" <<'EMBPY'",

@@ -17,6 +17,7 @@
 
 - Require owned repositories to reuse or extend functionality from their shared repositories and submodules before adding another implementation.
 - Add a WSL2 quality runner that installs pinned tools and runs Linux preflight, mutation proofs and PowerShell checks with logs under ignored `logs/`.
+- Make the default hub Ruff sweep, all-file annotation scan and dynamic Linux/Windows ty reports fail on findings; add regression and mutation proofs for each verdict.
 - Use the fixture server's free port for the dead-site browser check, because Chrome blocks port 9 before it can report connection refusal.
 - Close stdin for mutation test children so inherited terminal input cannot stall proofs; save Windows harness proof JSON under ignored `logs/code-quality/`.
 - Share child-process cleanup in the shell test harness and use it in both lifecycle and browser fixtures.

@@ -166,16 +166,30 @@ if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
   _lint_python_check "${HUB_ATTR_SELECT}" "hub literal-attribute gate failed" "hub literal-attribute gate"
 fi
 
-# Advisory pass — full default ruleset, informational only.
-echo ""
-echo "-- advisory pass (full default ruleset; does not fail the gate) --"
-if "${RUFF[@]}" check "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
-  echo "advisory pass: clean"
-else
-  _name_sources "${_RUFF_OUT}"
+_lint_python_default_rules() {
+  if ! "${RUFF[@]}" check "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
+    _name_sources "${_RUFF_OUT}"
+    echo ""
+    err "full Ruff ruleset failed"
+  fi
+  printf 'full Ruff ruleset: clean (%s file(s))\n' "${#PY_FILES[@]}"
+}
+
+_lint_python_advisory() {
   echo ""
-  echo "ADVISORY: findings above are informational (adoption ramp — tighten by"
-  echo "promoting codes into GATE_SELECT once addressed; do not churn files"
-  echo "just to satisfy style rules)."
+  echo "-- advisory pass (consumer adoption tier) --"
+  if "${RUFF[@]}" check "${PY_FILES[@]}" > "${_RUFF_OUT}" 2>&1; then
+    echo "advisory pass: clean"
+  else
+    _name_sources "${_RUFF_OUT}"
+    echo ""
+    echo "ADVISORY: findings above are informational for consumer adoption."
+  fi
+}
+
+if [ "${LINT_ROOT_GIVEN}" -eq 0 ] && [ "$#" -eq 0 ]; then
+  _lint_python_default_rules
+else
+  _lint_python_advisory
 fi
 exit 0
