@@ -11,10 +11,11 @@ _renovate_usage() {
 # Before changing it, read docs/dependency-updates.md#before-you-change-the-script
 # Usage:
 #   renovate-local.sh [--refresh] [<root>]        report what is behind (default)
-#   renovate-local.sh --apply [--dry-run] <root>  move gitlinks AND edit manifests
+#   renovate-local.sh --apply [--dry-run] <root>  update gitlinks, manifests and locks
 #   renovate-local.sh --managers <csv> <root>     default: whatever the tree HAS
 #   renovate-local.sh --print-bin                 the resolved renovate.js
 #   renovate-fleet.sh beside this one runs it over EVERY repo the family has
+#   Every live run installs npm's latest Renovate CLI before the dependency scan.
 
 # Exit codes -- branch on these, never on the text:
 #   0  every reported update is now at its new value, or already was

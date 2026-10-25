@@ -19,7 +19,7 @@ what is true for all of them, so each README stays a short overview that links h
 | [ANThology](https://github.com/Kataglyphis/ANThology) | The shared Flutter/Dart UI package | submodule of OmniAccelerANT and jotrockenmitlocken |
 | [BeschleunigerBallett](https://github.com/Kataglyphis/BeschleunigerBallett) | C++23 Vulkan renderer and acceleration playground | nobody |
 | [OrchestrANT](https://github.com/Kataglyphis/OrchestrANT) | Python AI prototyping package, the LLM benchmark lab and its viewer | its app environment is baked into the build images |
-| [ANTfrastructure](https://github.com/Kataglyphis/ANTfrastructure) | The build images, the CI actions and reusable workflows, the quality gates, and this page | submodule of every code repository but ANThology, whose CI checks it out |
+| [ANTfrastructure](https://github.com/Kataglyphis/ANTfrastructure) | The build images, the CI actions and reusable workflows, the quality gates, and this page | submodule of the code repos, including ANThology; DocumANTation uses a separate checkout to avoid a cycle |
 | [DocumANTation](https://github.com/Kataglyphis/DocumANTation) | Markdown to a LaTeX book or Beamer slides, and the theme every docs site uses | submodule of ANTfrastructure |
 | [ModelANT](https://github.com/Kataglyphis/ModelANT) | Permissively licensed ML models, one release each | fetched by SHA-256: OxidANT, OmniAccelerANT and OrchestrANT through a lock, AccelerANTgine through `sha256sum -c` |
 | [AssetANT](https://github.com/Kataglyphis/AssetANT) | 3D scenes and textures, one archive per release | fetched by SHA-256 lock: BeschleunigerBallett |

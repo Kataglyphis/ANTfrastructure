@@ -74,7 +74,7 @@
       "ref": "develop",
       "self": false,
       "confirmed": true,
-      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It has NO ANTfrastructure submodule: docs.yml (dart.yml until 2026-09-24) checks the tooling out in CI and uses the composite actions at @develop. A consumer that reaches the hub without a gitlink is exactly the kind an inventory keyed on submodules would miss."
+      "note": "Shared Dart package, consumed by OmniAccelerANT and jotrockenmitlocken. It now pins ANTfrastructure at third_party/ANTfrastructure for local tooling and calls the hub's reusable workflows and composite actions at @develop in CI. Inventory grades both routes."
     },
     {
       "name": "WebDavClient",

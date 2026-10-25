@@ -9,7 +9,7 @@ import fnmatch
 import json
 import os
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from typing import Literal, NamedTuple, TypedDict
 
 
@@ -49,6 +49,11 @@ _TOML_KV = re.compile(r"""^\s*(?:"([^"]+)"|'([^']+)'|([A-Za-z0-9_.\-]+))\s*=\s*"
 _INLINE_VERSION = re.compile(r"""version\s*=\s*"([^"]*)\"""")
 _QUOTED = re.compile(r""""((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'""")
 _PEP508_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._\-]*)\s*(\[[^\]]*\])?\s*")
+_PEP_GIT_URL = re.compile(
+    r"@\s*git\+https://github\.com/(?P<repo>[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)\.git@"
+    r"(?P<tag>v[0-9][A-Za-z0-9._+-]*)"
+)
+_PEP_GIT_PACKAGES = {"pytorch/pytorch": "torch", "pytorch/vision": "torchvision"}
 
 PUB_SECTIONS = ("dependencies", "dev_dependencies", "dependency_overrides")
 CARGO_TABLES = ("dependencies", "dev-dependencies", "build-dependencies")
@@ -70,6 +75,25 @@ def pep508_span(text: str) -> tuple[str, str, int, int] | None:
     lead = len(spec) - len(spec.lstrip())
     start = match.end() + lead
     return match.group(1), match.group(2) or "", start, start + len(spec.strip())
+
+
+def valid_pep_git_tag(value: str) -> bool:
+    """A URL-safe version tag; injected syntax cannot become part of a requirement marker."""
+    return re.fullmatch(r"v[0-9][A-Za-z0-9._+-]*", value) is not None
+
+
+def pep508_git_tag_span(text: str, repo: str) -> tuple[int, int] | None:
+    """The tagged GitHub ref in one PEP 508 URL for exactly `owner/repo`."""
+    parsed = pep508_span(text)
+    if parsed is None:
+        return None
+    match = _PEP_GIT_URL.fullmatch(text[parsed[2]:parsed[3]])
+    if match is None or match.group("repo").casefold() != repo.casefold():
+        return None
+    required_name = _PEP_GIT_PACKAGES.get(repo.casefold())
+    if required_name is not None and normalise(parsed[0]) != required_name:
+        return None
+    return parsed[2] + match.start("tag"), parsed[2] + match.end("tag")
 
 
 def uncomment(line: str, quotes: str = "") -> str:
@@ -253,7 +277,8 @@ PEP621_KEYS = {
 }
 PEP621_TABLES = (("project", "optional-dependencies"),
                  ("dependency-groups",),
-                 ("tool", "pdm", "dev-dependencies"))
+                 ("tool", "pdm", "dev-dependencies"),
+                 ("tool", "uv", "extra-build-dependencies"))
 
 
 def _is_dep_array(path: Sequence[str], key: str | None) -> bool:
@@ -283,24 +308,8 @@ def _bracket_delta(body: str) -> int:
     return depth
 
 
-def _pep508_sites(body: str, num: int, want: str) -> list[Site]:
-    """Every quoted PEP 508 requirement on this line whose name is `want`."""
-    out = []
-    for match in _QUOTED.finditer(body):
-        text = match.group(1) if match.group(1) is not None else match.group(2)
-        parsed = pep508_span(text)
-        if parsed is None or normalise(parsed[0]) != want:
-            continue
-        at = match.start() + 1
-        out.append(Site(num, at + parsed[2], at + parsed[3],
-                        text[parsed[2]:parsed[3]]))
-    return out
-
-
-def find_pep621(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
-    """Specifiers of quoted PEP 508 strings naming this dep inside known dependency arrays."""
-    out = []
-    want = normalise(dep)
+def _pep621_requirements(lines: Sequence[str]) -> Iterator[tuple[int, int, str]]:
+    """Quoted requirements in known PEP 621 dependency arrays, with their source position."""
     path = []
     depth = 0
     for num, line in enumerate(lines):
@@ -318,8 +327,31 @@ def find_pep621(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
             depth = 0
         elif depth <= 0:
             continue
-        out.extend(_pep508_sites(body, num, want))
+        for match in _QUOTED.finditer(body):
+            text = match.group(1) if match.group(1) is not None else match.group(2)
+            yield num, match.start() + 1, text
         depth += _bracket_delta(body)
+
+
+def find_pep621(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
+    """Specifiers of quoted PEP 508 strings naming this dep inside known dependency arrays."""
+    out = []
+    want = normalise(dep)
+    for num, at, text in _pep621_requirements(lines):
+        parsed = pep508_span(text)
+        if parsed is not None and normalise(parsed[0]) == want:
+            out.append(Site(num, at + parsed[2], at + parsed[3],
+                            text[parsed[2]:parsed[3]]))
+    return out
+
+
+def find_pep621_git(lines: Sequence[str], dep: str, _dep_type: str) -> list[Site]:
+    """Tag spans of direct GitHub requirements for this repo in PEP 621 arrays."""
+    out = []
+    for num, at, text in _pep621_requirements(lines):
+        span = pep508_git_tag_span(text, dep)
+        if span is not None:
+            out.append(Site(num, at + span[0], at + span[1], text[span[0]:span[1]]))
     return out
 
 
@@ -522,6 +554,7 @@ def find_annotated_env(lines: Sequence[str], dep: str, _dep_type: str) -> list[S
 
 # custom.regex over CMake: not a Renovate manager name, so no report row can claim it by itself.
 CMAKE = "regex:cmake"
+PEP621_GIT = "pep621-git"
 _CMAKE_FILE = re.compile(r"(^|/)CMakeLists\.txt$|\.cmake$")
 PRESET = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, os.pardir,
                       "default.json")
@@ -580,6 +613,7 @@ FINDERS: dict[str, Callable[[Sequence[str], str, str], list[Site]]] = {
     "pip_requirements": find_requirements,
     "pip-compile": find_requirements,
     "pep621": find_pep621,
+    PEP621_GIT: find_pep621_git,
     "pre-commit": find_precommit,
     "cargo": find_cargo,
     "npm": find_npm,
@@ -606,6 +640,23 @@ def _values(found: Sequence[Site]) -> str:
                      for site in found)
 
 
+def _manager_refusal(manager: str, dep: str, old: str, new: str,
+                     count: int, found: Sequence[Site]) -> str:
+    """Manager-specific constraints before a common old/new site decision."""
+    if manager == PEP621_GIT:
+        if not valid_pep_git_tag(old) or not valid_pep_git_tag(new):
+            return "a tagged PEP 508 Git URL needs URL-safe v-prefixed old and new tags"
+        if found and len(found) != count:
+            return (
+                f"'{dep}' has {len(found)} tagged Git URLs, but the report covers {count}; "
+                "unmatched URLs are not written")
+    if manager == "gradle-wrapper" and (count != 1 or len(found) > 1):
+        return (
+            "a gradle-wrapper report must name exactly one distributionUrl version per file; "
+            "multiple declarations or report rows are ambiguous")
+    return ""
+
+
 def resolve(manager: str, lines: Sequence[str], dep: str, old: str, new: str,
             count: int) -> tuple[Literal["EDIT", "DONE", "REFUSE"], list[Site], str]:
     """(EDIT|DONE|REFUSE, sites, reason) for `count` updates of `dep` from `old` to `new`.
@@ -617,10 +668,8 @@ def resolve(manager: str, lines: Sequence[str], dep: str, old: str, new: str,
         return "REFUSE", [], (
             f"no exact locator for manager '{manager}'; this tool refuses to edit a "
             "syntax it cannot parse")
-    if manager == "gradle-wrapper" and (count != 1 or len(found) > 1):
-        return "REFUSE", [], (
-            "a gradle-wrapper report must name exactly one distributionUrl version per file; "
-            "multiple declarations or report rows are ambiguous")
+    if why := _manager_refusal(manager, dep, old, new, count, found):
+        return "REFUSE", [], why
     if not found:
         return "REFUSE", [], (
             f"no {manager} declaration of '{dep}' in this file")

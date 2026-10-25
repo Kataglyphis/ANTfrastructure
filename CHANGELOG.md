@@ -15,6 +15,11 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Reconcile OrchestrANT's seven tagged Torch/vision Git URLs with GitHub lookups;
+  project only the hub-approved pair to every source and wheel pin in one audited
+  TOML/uv-lock transaction, with missing-lookup and failed-lock rollback proofs.
+  Include the new resolver in strict ty and Ruff annotation gates.
+- Correct the family inventory to reflect ANThology's ANTfrastructure submodule.
 - Count a declared shared shell bootstrap's real image-consumer command as a caller in the
   dead-function gate; keep local dead code fatal and prove inert names do not count.
 - Check npm's latest Renovate release before each live local dependency scan and install it in

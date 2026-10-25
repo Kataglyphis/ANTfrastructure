@@ -39,9 +39,9 @@ _set_answer() {
 }
 
 _assert_clean_quality() {
-  t_assert_contains "$1" "ty quality gate: clean (124 files)"
+  t_assert_contains "$1" "ty quality gate: clean (125 files)"
   t_assert_contains "$1" "ty Windows gate: clean (1 files)"
-  t_assert_contains "$1" "Linux Python report: clean (124 files)"
+  t_assert_contains "$1" "Linux Python report: clean (125 files)"
   t_assert_contains "$1" "Windows Python report: clean (2 files)"
   t_assert_contains "$1" "rc=0"
 }
@@ -135,6 +135,7 @@ printf 'def answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/tests/on
 printf 'def answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/tests/workflow-lane-query.py"
 printf 'import pytest\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/02-toolchain/python/free-threaded-wheel-tests.py"
 printf 'import yaml\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_audit.py"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_pep_git.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_planner.py"
 printf 'def _plan() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_cmake.py"
 printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/llm-stack/gateway/render_apisix.py"
@@ -186,9 +187,9 @@ t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-annotations-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-private-returns-gate.txt"
 t_assert_ok test -f "${ROOT}/logs/code-quality/ruff-parameters-returns-gate.txt"
-  t_assert_contains "${out}" "Ruff signature annotation gate: clean (131 files)"
-  t_assert_contains "${out}" "Ruff private return gate: clean (131 files)"
-  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (121 files)"
+  t_assert_contains "${out}" "Ruff signature annotation gate: clean (132 files)"
+  t_assert_contains "${out}" "Ruff private return gate: clean (132 files)"
+  t_assert_contains "${out}" "Ruff parameter and public return gate: clean (122 files)"
 
 t_case "ambient checker versions cannot replace the repository pins"
 out="$(TY_VERSION=bogus RUFF_VERSION=bogus _run)"
@@ -291,6 +292,15 @@ t_assert_contains "${out}" "renovate_audit.py"
 t_assert_contains "${out}" "rc=1"
 printf 'import yaml\ndef answer() -> int:\n    return 42\n' > "${ROOT}/linux/scripts/renovate_audit.py"
 
+t_case "a type error in the PEP git resolver fails the strict scope"
+printf 'def answer(value: int) -> int:\n    return "wrong"\n' > "${ROOT}/linux/scripts/renovate_pep_git.py"
+out="$(_run)"
+t_assert_contains "${out}" "ty quality gate failed (exit 1)"
+t_assert_contains "${out}" "renovate_pep_git.py"
+t_assert_contains "${out}" "invalid-return-type"
+t_assert_contains "${out}" "rc=1"
+printf 'def answer(value: int) -> int:\n    return value\n' > "${ROOT}/linux/scripts/renovate_pep_git.py"
+
 t_case "a missing private Renovate return fails the focused Ruff gate"
 printf 'def _plan():\n    return 42\n' > "${ROOT}/linux/scripts/renovate_planner.py"
 out="$(_run)"
@@ -363,7 +373,7 @@ parameter_targets=(
   linux/jetson-webcam/app.py \
   linux/ansible/scripts/ansible_run_status.py \
   linux/scripts/develop_red.py linux/scripts/layer-audit.py \
-  linux/scripts/renovate_audit.py linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_planner.py \
+  linux/scripts/renovate_audit.py linux/scripts/renovate_cmake.py linux/scripts/renovate_locator.py linux/scripts/renovate_pep_git.py linux/scripts/renovate_planner.py \
   linux/scripts/verify_large_files.py linux/scripts/verify_masked_assignments.py \
   linux/scripts/verify_consumer_inventory.py linux/scripts/verify_package_names.py \
   linux/llm-stack/gateway/render_apisix.py linux/llm-stack/tests/test_gateway_render.py \

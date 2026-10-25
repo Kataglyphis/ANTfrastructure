@@ -14,6 +14,7 @@ Subcommands (argv[1]); every line of output is tab-separated:
   plan     <report> <config> <root> <plan.json>  the plan (+ the JSON edits)
   verify   <root> <plan.json>                    the pre-flight and predicted audit, writing nothing
   edit     <root> <plan.json>                    write, then audit the file or put it back
+  pairlock <root> <plan.json> <before|after>     Torch/vision uv lock projection proof
 """
 import collections
 import json
@@ -27,6 +28,7 @@ from typing import NotRequired, TypedDict, cast
 
 import renovate_audit
 import renovate_locator
+import renovate_pep_git
 
 
 class RenovateUpdate(TypedDict, total=False):
@@ -290,7 +292,10 @@ def _semantic_skip(manager: str, file: str, dep: RenovateDependency, reason: str
 def skipped(report: RenovateReport, root: str | None = None) -> tuple[list[tuple[str, str, str, str, str]], collections.Counter[str]]:
     """(listed rows, by-design counts): deps Renovate never looked up, or whose lookup failed."""
     listed, design = [], collections.Counter()
+    pep_git = renovate_pep_git.inspect(report, root)
     for mgr, f, dep in _deps(report):
+        if id(dep) in pep_git.covered:
+            continue
         why = _skip_reason(dep)
         if why in BY_DESIGN:
             design[why] += 1
@@ -300,6 +305,11 @@ def skipped(report: RenovateReport, root: str | None = None) -> tuple[list[tuple
             listed.append((mgr, f.get("packageFile") or DASH,
                            dep.get("depName") or dep.get("packageName") or "?",
                            dep.get("currentValue") or DASH, _clean(why)))
+    pair_gap = (pep_git.reason if not pep_git.verified
+                else renovate_pep_git.report_gap(pep_git, root))
+    if pep_git.active and pair_gap:
+        listed.append(("regex", renovate_pep_git.MANIFEST, "Torch/vision Git pair", DASH,
+                       _clean(pair_gap)))
     return listed, design
 
 
@@ -461,9 +471,15 @@ def plan(report: RenovateReport, cfg: RenovateConfig, root: str, planpath: str) 
     rules = cast(list[RenovateRule], cfg.get("packageRules") or [])
     edits: list[PlanEdit] = []
     groups: dict[GroupKey, list[PlanRow]] = collections.OrderedDict()
+    pep_git = renovate_pep_git.inspect(report, root)
+    paired, pair_refusal = renovate_pep_git.projection(pep_git, root)
     for row in rows(report):
         # Every packageFile is contained once, where it enters.
         row["path"] = contained(root, row["file"], "the report")
+        if renovate_pep_git.managed(row, pep_git):
+            if pair_refusal:
+                emit("REFUSE", row, DASH, pair_refusal)
+            continue
         why = refusal(row, rules)
         if why:
             emit("REFUSE", row, DASH, why)
@@ -471,6 +487,9 @@ def plan(report: RenovateReport, cfg: RenovateConfig, root: str, planpath: str) 
             emit("SUBMODULE", row, DASH, DASH)
         else:
             groups.setdefault(group_key(row), []).append(row)
+    for row in paired:
+        row["path"] = contained(root, row["file"], "the hub-approved pair")
+        groups.setdefault(group_key(row), []).append(row)
     for group in groups.values():
         plan_group(group, edits)
     with open(planpath, "w", encoding="utf-8") as fh:
@@ -711,6 +730,11 @@ def _print_lockmaint(report: str, cfg: str) -> None:
         print(f"{mgr}\t{path}")
 
 
+def _pairlock(root: str, planpath: str, phase: str) -> None:
+    if why := renovate_pep_git.lock_gap(root, planpath, phase):
+        sys.exit(why)
+
+
 # A table, not an if-chain: every mode is one entry, so a new one adds no branch to main.
 MODES = {
     "config": lambda a: _print_config(a[0]),
@@ -722,6 +746,7 @@ MODES = {
     "verify": lambda a: predict(_verify(cast(list[PlanEdit], load(a[1])), a[0])),
     "edit": lambda a: apply_edits(a[0], a[1]),
     "lockcheck": lambda a: lock_readable(a[0], a[1], a[2]),
+    "pairlock": lambda a: _pairlock(a[0], a[1], a[2]),
 }
 
 

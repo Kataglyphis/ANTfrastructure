@@ -618,15 +618,15 @@ files. It uses the Linux target for Linux and shared scripts and the Windows tar
 missing parameter and return annotations go to `logs/code-quality/ruff-annotations.txt`.
 The full-tree Ruff annotation scan writes
 `logs/code-quality/ruff-annotations-gate.txt`. A second full-tree ANN202 gate writes
-`logs/code-quality/ruff-private-returns-gate.txt`. The maintained 121-file scope has fatal
+`logs/code-quality/ruff-private-returns-gate.txt`. The maintained 122-file scope has fatal
 ANN001/ANN201 checks in `logs/code-quality/ruff-parameters-returns-gate.txt`.
 The Linux x64 workflow uploads
 these files after preflight. Any finding in the full Ruff annotation scan or the generic
 Linux/Windows ty reports fails preflight. A failed download, invalid configuration or
 checker crash also fails CI.
 
-**All 146 tracked Python files have fatal ty coverage.** The locked quality
-environment checks 140 Linux/shared files, and the Windows platform gate checks
+**All 154 tracked Python files have fatal ty coverage.** The locked quality
+environment checks 146 Linux/shared files, and the Windows platform gate checks
 the Windows certificate helper. Five files with dependencies absent from the
 locked environment are checked in their real workflow or build environments:
 `docs/conf.py`, the WebDAV downloader, `venv-version-probe.py`, the Jetson webcam
@@ -669,7 +669,7 @@ function to have one. Ruff's `ANN002`, `ANN003`, `ANN204`, `ANN205` and `ANN206`
 now fail on missing variadic parameter and method return annotations across every
 tracked Python file. The 20 existing variadic findings, 22 `ANN204` findings and
 four `ANN205` findings were fixed; `ANN206` was already clean. All 303 existing
-private return findings were fixed, so `ANN202` now fails across all 146 tracked
+private return findings were fixed, so `ANN202` now fails across all 154 tracked
 Python files. Parameter and public return findings were fixed in the Renovate CMake
 parser, locator and planner, the gateway renderer and its tests, gateway fixture, client, operations, routing and shaping tests with their fake lane and harness, apt update selection, guarded link, image acceptance and header discovery tests, the version bump driver and Flutter browser smoke, the two docs duplication
 scanners, the develop-red watcher, manifest annotation, layer audit, code-size, large-file,
@@ -677,7 +677,7 @@ masked-assignment and trailing-conditional verifiers, the lint-scope and callbac
 nine small docs, host, image, wheel and test files, plus the mutation verifier,
 gate registry, image acceptance driver, image-env verifier, complexity and
 dead-function verifiers, ORT census probe, venv version probe, GStreamer metadata
-helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, and the WebDAV downloader. ANN001/ANN201 fail in those 121 files.
+helper, ORT venv census, QNN query tests, chain ORT fixtures, sudo policy, raw pin reader, cross-active registration, compiler candidate, media-file set, smoke query contract, Clang job policy, binfmt probe, Meson dispatch, host Cargo preparation, target Cargo pipeline and host Python pin tests, Flutter performance reporter, media-pin advisory, directory-visitor, verified-installer, toolchain download-loader and fleet dependency tests, workflow conventions verifier, site-link verifier, shared quality allow and gate scope helpers, comment-size and ShellCheck ratchet verifiers, the Dart documentation renderer, free-threaded sysconfig tool, SHA-256 data-lock fetcher, Ansible status report, Jetson webcam app, validator probe, runtime child-stop, wheel tag resolution, runtime SDK help, triplet query, advertised-key verifier, CLI help exit, image-reference CLI, native smoke dispatch, nerdctl service receipts, binfmt probe controls, native GCC environment tests, Dockerfile ENV ordering verifier, image-consumer bootstrap tests, NPM Python transport tests, Python provider context tests, serving stack tests, LLM network guard, libcamera report tests, consumer quality wiring tests, embedded Python extractor, Corrosion toolchain tests, sudo policy closure tests, wheel archive transport tests, WebDAV download tests, Meson bound provider tests, Flutter trace summary, wheelhouse manifest, chain sibling PID and log-dir consumer tests, gateway log-tail tests, the WebDAV downloader, and the Renovate PEP git resolver. ANN001/ANN201 fail in those 122 files.
 All eight Ruff annotation rules in this scan are fatal across every tracked Python file.
 The focused suite injects unannotated signatures, and selector, scope and verdict mutations
 prove the gates can fail. The annotation and ty scans preserve their own diagnostics and

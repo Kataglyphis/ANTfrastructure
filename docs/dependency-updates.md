@@ -242,7 +242,7 @@ it is only ever confirmed on a line that was already located.**
 | `gradle-wrapper` | one `distributionUrl=` property naming a versioned Gradle `all` or `bin` zip over HTTPS | only the version between `gradle-` and `-all.zip` / `-bin.zip`; mirror URL and query stay intact |
 | `pub` | a key whose whole key **is** the dep, in a top-level `dependencies` / `dev_dependencies` / `dependency_overrides` mapping | the scalar after the colon |
 | `pip_requirements` / `pip-compile` | a PEP 508 line whose name **normalises** to the dep (PEP 503: `-`, `_`, `.` and case all fold) | the specifier, up to any `;` marker |
-| `pep621` | a quoted PEP 508 string inside a dependency **array** — `[project] dependencies`, an `optional-dependencies` group, `build-system.requires`, `dependency-groups`, uv's and pdm's dev-dependency arrays | the specifier inside that string |
+| `pep621` | a quoted PEP 508 string inside a dependency **array** — `[project] dependencies`, an `optional-dependencies` group, `build-system.requires`, `dependency-groups`, uv's and pdm's dev-dependency arrays, or uv's extra-build-dependencies | the specifier inside that string |
 | `pre-commit` | the `rev:` of the sequence item whose **own** `repo:` resolves to `<owner>/<repo>` | the `rev:` scalar |
 | `cargo` | a key in `[dependencies]` / `[dev-dependencies]` / `[build-dependencies]` — optionally under `[workspace.…]` or `[target.<cfg>.…]`, optionally one segment deeper for one crate (`[dependencies.serde]`) | the bare string, or the inline table's `version` |
 | `npm` | the dep's key inside a **top-level** dependencies object of `package.json` | the version string |
@@ -1396,12 +1396,45 @@ local Docker build handoffs, a `COPY --from` named context with an adjacent
 `# hadolint ignore=DL3022` proof, a GitHub Actions step output, espup's named
 `esp` Rust toolchain, and an unversioned `@ git+https://...git` Python source.
 The last one still needs the lock maintenance step to move its resolved commit.
-A tagged Git URL remains a version pin and stays NOT CHECKED until a source pin
-and its projection can move together. Any failed lookup or invalid config also
-stays fatal. Windows Server Core `ltsc2025` uses a release-year versioning rule
-instead of being classified away. The `dartdoc` annotation uses Renovate's
+A tagged Git URL remains a version pin and stays NOT CHECKED unless a custom
+manager looks up every tag and the planner proves that each lookup matches the
+source declaration. OrchestrANT's Torch/vision pair uses this path for its seven
+riscv64 Git URLs: the native PEP 621 manager's six `invalid-value` rows count as
+checked only when all seven regex rows have successful, matching GitHub tag
+lookups. A failed or partial lookup stays fatal. Windows Server Core `ltsc2025`
+uses a release-year versioning rule instead of being classified away. The `dartdoc`
+annotation uses Renovate's
 [`dart` datasource](https://docs.renovatebot.com/modules/datasource/dart/),
 which turns its former invalid config into a real release lookup.
+
+### Tagged Torch/vision Git sources in OrchestrANT
+
+OrchestrANT's `.github/renovate.json` extracts each `pytorch/pytorch` and
+`pytorch/vision` tag with `github-tags`. The shared
+`renovate_pep_git.py` reconciles the seven lookups with every PEP 508 Git URL
+and every plain wheel pin in `pyproject.toml`. The accepted target pair comes
+from the consumer's pinned `third_party/ANTfrastructure/linux/scripts/01-core/versions.env`:
+`PYTORCH_VERSION` and `TORCHVISION_VERSION`. A candidate that differs from that
+pair is refused, even when GitHub offers a newer release. The hub pair must be
+published, and the consumer's new hub gitlink must be **committed** first. If a
+default `--apply` run moves that gitlink, commit it and rerun the local driver
+to project the pair. The planner reads `versions.env` from the parent-pinned
+gitlink commit and rejects a staged gitlink, moved submodule HEAD or dirty
+version file. The hub's build and consumer tests are the compatibility
+decision. No version arithmetic substitutes for that decision.
+
+Once the pair is accepted, the ordinary `--apply --dry-run` plan shows the four
+Torch Git URLs, three vision Git URLs and all wheel pins together. `--apply`
+uses the existing PEP 621 TOML parser and refreshes `uv.lock` inside the same
+rollback unit. A missing URL, malformed tag, inconsistent copy, unapproved
+candidate or failed `uv lock` cannot produce a successful update. The lock is
+parsed before and after the write: its Git source refs and registry wheel
+versions must match both packages' manifest pins, so a successful no-op `uv lock`
+also rolls back. The mutation proof is
+`linux/scripts/tests/test-renovate-pep-git-projection.sh`; the parser
+proof is `test-renovate-pep621-git.sh`. Neither test contacts GitHub or installs
+wheels, so wheel availability on each PyTorch index remains a separate build
+check.
 
 A pin with no annotation at all is a different gap: Renovate never sees it. Most
 of those are slaved to an annotated key (a SHA256, a commit, a URL, MIGraphX to
@@ -2332,10 +2365,12 @@ match, a mixed `versions.env` + CMake report, and a wrong-line plan put back.
 | Thing | Path |
 |---|---|
 | The script | [`linux/scripts/renovate-local.sh`](../linux/scripts/renovate-local.sh) |
+| Renovate CLI version lookup and cache verification | [`linux/scripts/renovate_bootstrap.py`](../linux/scripts/renovate_bootstrap.py) |
 | The fleet: every repo the family has, in an order it can be landed in | [`linux/scripts/renovate-fleet.sh`](../linux/scripts/renovate-fleet.sh) |
 | Which git owns the tree, whether it is clean, and what ELSE moved | [`linux/scripts/renovate-tree.sh`](../linux/scripts/renovate-tree.sh) |
 | The lockfile half: which lock, whose tool, the copies and the undo | [`linux/scripts/renovate-locks.sh`](../linux/scripts/renovate-locks.sh) |
 | Report parsing, packageRules, the plan and the write | [`linux/scripts/renovate_planner.py`](../linux/scripts/renovate_planner.py) |
+| Tagged PEP Git URL lookup reconciliation and hub-approved pair projection | [`linux/scripts/renovate_pep_git.py`](../linux/scripts/renovate_pep_git.py) |
 | Which line declares a dependency | [`linux/scripts/renovate_locator.py`](../linux/scripts/renovate_locator.py) |
 | What the file MEANS, before and after the edit | [`linux/scripts/renovate_audit.py`](../linux/scripts/renovate_audit.py) |
 | CMake read by its own grammar, for that audit | [`linux/scripts/renovate_cmake.py`](../linux/scripts/renovate_cmake.py) |

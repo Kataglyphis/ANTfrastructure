@@ -120,6 +120,7 @@ matrices, script tables), belong to the `docs/` page that owns the topic.
    Inline source patchers share the patch API; `-Quiet` transfers diagnostics to the caller without relaxing required inputs or postconditions.
    CMake/CTest library copies include `project-env.sh`, `log-bootstrap.sh` and the Vulkan leaf; SDK hooks keep precedence over explicit setup scripts.
    Renovate drivers require `renovate-cli.sh` and `renovate-git.sh` beside `renovate-say.sh`; preserve their distinct dry-run policies and nonempty-list advice.
+   Renovate planner companions belong in the strict ty and ANN001/ANN201 scopes; the isolated type fixture must detect their removal.
    Gradle wrapper updates change only the version in one distribution URL; duplicate properties and checksum-pinned archives refuse before writing.
    Shared harness mutation suites stay host-portable; native batch execution remains in the separately discovered Windows suite.
    Copied code-quality and coverage libraries carry `cli-value-options.sh`; preserve empty-argument filtering, prefixing and caller argv order.
@@ -1301,7 +1302,11 @@ The rules; the mechanism is documented once in
   default manager set includes `custom.regex`; an explicit `--managers` remains exact. Live runs
   require a GitHub token, resolved by the shared driver, and any NOT CHECKED dependency makes the
   report or apply fail before writing. Only source-proved non-version inputs are DESIGN; failed
-  lookups, invalid config and tagged direct Git pins remain fatal.
+  lookups, invalid config and unreconciled tagged direct Git pins remain fatal. OrchestrANT's
+  Torch/vision Git URLs count as checked only when all seven custom regex lookups match the
+  declarations; apply projects only the pair accepted in the parent-committed hub gitlink, with
+  wheel pins and a parsed, matching `uv.lock` in the same rollback unit. Commit a moved hub
+  gitlink before rerunning the pair update.
 - **A bare `git submodule update --remote` is forbidden in this family.** For a submodule that
   declares no `branch =` it does not skip: it walks the pin to the remote's DEFAULT branch.
   `--apply` passes explicit paths, takes only submodules that declare a branch, and never uses

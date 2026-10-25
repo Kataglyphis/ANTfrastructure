@@ -293,7 +293,8 @@ printf '[{"file":"package.json","line":3,"old":"    \\"left-pad\\": \\"1.1.0\\""
 BROKEN="${WORK}/broken-auditor"
 mkdir -p "${BROKEN}"
 cp "${SCRIPTS_DIR}/renovate_planner.py" "${SCRIPTS_DIR}/renovate_locator.py" \
-   "${SCRIPTS_DIR}/renovate_audit.py" "${SCRIPTS_DIR}/renovate_cmake.py" "${BROKEN}/"
+   "${SCRIPTS_DIR}/renovate_audit.py" "${SCRIPTS_DIR}/renovate_cmake.py" \
+   "${SCRIPTS_DIR}/renovate_pep_git.py" "${BROKEN}/"
 cat >> "${BROKEN}/renovate_audit.py" <<'PY'
 
 

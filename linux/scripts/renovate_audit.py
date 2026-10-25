@@ -32,6 +32,7 @@ FORMATS = {
     "pub": "yaml",
     "pre-commit": "yaml",
     "pep621": "toml",
+    renovate_locator.PEP621_GIT: "toml",
     "cargo": "toml",
     "npm": "json",
     "pip_requirements": "requirements",
@@ -431,16 +432,35 @@ def _array(out: list[Decl], array: object, path: DeclPath, want: str) -> None:
         out.append(Decl(path + (i,), text, parsed[2], parsed[3]))
 
 
+def _pep621_arrays(struct: object) -> Iterator[tuple[DeclPath, object]]:
+    """The TOML parser's dependency arrays corresponding to the locator's tables."""
+    for table, keys in renovate_locator.PEP621_KEYS.items():
+        for key in keys:
+            yield table + (key,), _mapping(_dig(struct, table)).get(key)
+    for table in renovate_locator.PEP621_TABLES:
+        for key, array in _mapping(_dig(struct, table)).items():
+            yield table + (key,), array
+
+
 def decl_pep621(struct: object, dep: str) -> list[Decl]:
     """Specifiers of PEP 508 strings naming the dep, in the locator's tables as tomllib places them."""
     out = []
     want = renovate_locator.normalise(dep)
-    for table, keys in renovate_locator.PEP621_KEYS.items():
-        for key in keys:
-            _array(out, _mapping(_dig(struct, table)).get(key), table + (key,), want)
-    for table in renovate_locator.PEP621_TABLES:
-        for key, array in _mapping(_dig(struct, table)).items():
-            _array(out, array, table + (key,), want)
+    for path, array in _pep621_arrays(struct):
+        _array(out, array, path, want)
+    return out
+
+
+def decl_pep621_git(struct: object, dep: str) -> list[Decl]:
+    """Git URL tag leaves for a specific GitHub repo in PEP 621 dependency arrays."""
+    out = []
+    for path, array in _pep621_arrays(struct):
+        for i, text in enumerate(_sequence(array)):
+            if not isinstance(text, str):
+                continue
+            span = renovate_locator.pep508_git_tag_span(text, dep)
+            if span is not None:
+                out.append(Decl(path + (i,), text, *span))
     return out
 
 
@@ -535,6 +555,7 @@ DECLARERS = {
     "pub": decl_pub,
     "pre-commit": decl_precommit,
     "pep621": decl_pep621,
+    renovate_locator.PEP621_GIT: decl_pep621_git,
     "cargo": decl_cargo,
     "npm": decl_npm,
     "pip_requirements": decl_requirements,
@@ -587,7 +608,17 @@ def _expected(
     leaves = flatten(struct)
     want = {}
     for dep, old, new, count in groups:
+        if manager == renovate_locator.PEP621_GIT and (
+            not renovate_locator.valid_pep_git_tag(old)
+            or not renovate_locator.valid_pep_git_tag(new)
+        ):
+            return {}, {}, "a tagged PEP 508 Git URL needs URL-safe v-prefixed old and new tags"
         found = DECLARERS[manager](struct, dep)
+        if manager == renovate_locator.PEP621_GIT and len(found) != count:
+            return {}, {}, (
+                f"'{dep}' has {len(found)} tagged Git URLs, but the report covers {count}; "
+                "unmatched URLs are not written"
+            )
         at_old = [d for d in found if d.leaf[d.start : d.end] == old]
         if len(at_old) != count:
             return {}, {}, _miscount(dep, old, count, found, at_old)

@@ -61,7 +61,8 @@ mapfile -d '' -t quality_files < <(git ls-files -z -- '.claude/hooks/*.py' 'docs
   'linux/scripts/layer-audit.py' 'linux/scripts/lib/cmakelang-py315.py' \
   'linux/scripts/lib/fetch-data-lock.py' 'linux/scripts/lib/dartdoc-guides.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' \
-  'linux/scripts/renovate_locator.py' 'linux/scripts/renovate_planner.py' \
+  'linux/scripts/renovate_locator.py' 'linux/scripts/renovate_pep_git.py' \
+  'linux/scripts/renovate_planner.py' \
   'linux/scripts/verify_*.py' \
   'linux/scripts/tests/*.py' 'linux/scripts/gate_scope.py' 'linux/scripts/quality_allow.py' \
   'linux/scripts/extract_embedded_python.py' 'linux/webserver/scripts/*.py' 'shared/python/*.py')
@@ -71,7 +72,7 @@ mapfile -d '' -t parameter_return_files < <(git ls-files -z -- \
   'linux/ansible/scripts/ansible_run_status.py' \
   'linux/scripts/develop_red.py' 'linux/scripts/layer-audit.py' \
   'linux/scripts/renovate_audit.py' 'linux/scripts/renovate_cmake.py' 'linux/scripts/renovate_locator.py' \
-  'linux/scripts/renovate_planner.py' \
+  'linux/scripts/renovate_pep_git.py' 'linux/scripts/renovate_planner.py' \
   'linux/scripts/verify_large_files.py' 'linux/scripts/verify_masked_assignments.py' \
   'linux/scripts/verify_consumer_inventory.py' 'linux/scripts/verify_package_names.py' \
   'linux/scripts/01-core/download-webdav-files.py' \
@@ -184,7 +185,7 @@ windows_environment_checked_files=('windows/scripts/build/litert-wheel-smoke.py'
 [ "${#py_files[@]}" -gt 0 ] || { echo "No tracked Python files found" >&2; exit 2; }
 [ "${#quality_files[@]}" -gt 0 ] || { echo "No tracked Python quality or test scripts found" >&2; exit 2; }
 [ "${#windows_quality_files[@]}" -gt 0 ] || { echo "No tracked Windows Python certificate scripts found" >&2; exit 2; }
-[ "${#parameter_return_files[@]}" -eq 121 ] || { echo "Expected 121 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
+[ "${#parameter_return_files[@]}" -eq 122 ] || { echo "Expected 122 tracked parameter and public-return targets, found ${#parameter_return_files[@]}" >&2; exit 2; }
 jetson_dockerfile="${ROOT}/linux/Dockerfile.torch"
 [ -f "${jetson_dockerfile}" ] || { echo "Torch Dockerfile is missing for the Jetson type gate" >&2; exit 2; }
 grep -Fq 'source=linux/jetson-webcam/app.py,target=/tmp/venv-probe-ty/jetson-webcam-app.py,ro' "${jetson_dockerfile}" || {

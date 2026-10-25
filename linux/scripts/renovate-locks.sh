@@ -277,6 +277,7 @@ lock_backup_one() { backup_one "$4"; }
 
 # Checked while the tree is untouched: a missing or ambiguous lock tool refuses the run.
 assert_locks_runnable() {
+  local pair_why
   LOCK_MISSING=()
   for_each_lock lock_missing_one
   refuse_listing "ambiguous lockfile(s) -- see the list above" \
@@ -302,6 +303,10 @@ ecosystem with --managers <csv>." \
     "beside a lockfile nobody can parse is not an update, it is a second" \
     "problem stacked on the first:" \
     -- ${LOCK_UNREADABLE[@]+"${LOCK_UNREADABLE[@]}"}
+  if [ -n "${PLAN_JSON:-}" ] && [ -f "${PLAN_JSON}" ]; then
+    pair_why="$(rl_py pairlock "${TARGET}" "${PLAN_JSON}" before 2>&1)" \
+      || err "the paired Torch/vision uv lock is stale: ${pair_why}; nothing written"
+  fi
 }
 
 # Lockfiles are rewritten wholesale. See docs/dependency-updates.md#what-can-be-said-about-a-lockfile
@@ -321,6 +326,11 @@ lock_probe_all() {
 }
 
 assert_locks_sane() {
+  local pair_why
+  if [ -n "${PLAN_JSON:-}" ] && [ -f "${PLAN_JSON}" ]; then
+    pair_why="$(rl_py pairlock "${TARGET}" "${PLAN_JSON}" after 2>&1)" \
+      || undo_run "the paired Torch/vision uv lock did not refresh: ${pair_why}"
+  fi
   [ "${#LOCK_DONE[@]}" -gt 0 ] || return 0
   lock_probe_all
   note ""
