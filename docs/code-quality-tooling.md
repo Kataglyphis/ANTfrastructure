@@ -538,6 +538,40 @@ shells out to), and `python-lint.utf8-diagnostic-output` (which forces the
 Windows source-map helper to print non-ASCII Ruff findings as UTF-8; its fixture
 runs under cp1252).
 
+## Python refactor preview
+
+`bash linux/scripts/refactor-python.sh --check [-- <tracked.py> ...]` checks tracked Python
+files with the Ruff version in `linux/scripts/01-core/tool-pins.env`. It defaults to all
+tracked `.py` files and never writes to source. `--apply -- <tracked.py> ...` runs Ruff's
+safe lint fixes and formatter on the named clean files, then saves the proposed diff and
+tool log under ignored `logs/code-quality/python-refactor.*`. A dirty, untracked or
+non-Python input is rejected. Run the script from the repository root, review the diff,
+then run the relevant preflight gates before committing. This tool does not refactor
+PowerShell, Bash, embedded Python or generated code, and a Ruff fix is not a substitute
+for tests.
+
+The first whole-tree formatter audit on 2026-10-25 found 123 of 147 tracked Python
+files would change. That is existing formatting debt; the ordinary preflight still
+enforces Ruff lint and ty, not whole-tree `ruff format --check`. The on-demand
+`.github/workflows/python-refactor.yml` accepts one tracked repository-relative Python
+path, applies the same script, checks mutation recipes and affected quality gates, and
+uploads an ignored patch and logs. It has read-only repository permissions and does not
+commit or open a pull request. The patch is the review boundary. Some mutation recipes
+match exact source text, so a format edit can require a recipe update before the gates
+pass. The existing agentic loop is unsuitable for this narrow CI job because it consumes
+the whole backlog, may commit and treats its quality phase as advisory. Its reusable
+components are documented in `shared/agentic-loop/templates/README.md` for a future
+scoped AI driver.
+
+The next measurement gaps are concrete: the existing size and complexity scanners cover
+139 of 147 tracked Python files; eight files in Windows, shared and other Linux locations
+are outside their four scan roots. The duplication scanner handles shell, PowerShell,
+Dockerfiles and Markdown, but not Python. Its current `--report` and `--explain` modes
+already rank the languages it does cover for an AI refactor queue. Linux size, complexity
+and duplication gates print verdicts but keep no structured trend report. Extend these
+existing scanners, first measure the added scope, then remove its findings before making
+new coverage fatal; do not add quality exceptions or weaken thresholds for the rollout.
+
 ## Python type analysis
 
 The Python consumer static-analysis drivers on Linux and Windows already gate `ty check`
@@ -1868,7 +1902,8 @@ structural test harness; the scanner owns file selection and metric rules, and
 the harness keeps its rooted-path and missing-file policies.
 
 The default command prints a nonblocking report. Windows x64 CI runs the full
-tracked-tree scan with `-Strict` after the PowerShell lint gate. Use
+tracked-tree scan with `-Strict` after the PowerShell lint gate, writes the JSON report
+under ignored `logs/code-quality/complexity/`, and uploads it even when the gate fails. Use
 `-Path <file-or-dir> -Strict` to include a new file before Git tracks it, and
 save local JSON results in the Git-ignored `logs/code-quality/complexity/` folder:
 
@@ -1877,7 +1912,7 @@ New-Item -ItemType Directory -Force logs/code-quality/complexity | Out-Null
 pwsh -File windows/scripts/Invoke-CodeComplexity.ps1 -Strict -JsonPath logs/code-quality/complexity/windows-full.json
 ```
 
-`-JsonPath` remains optional; CI runs the strict gate without writing a report.
+`-JsonPath` remains optional for local runs; CI supplies it to the strict gate.
 The optional `lint-powershell` job in `python-ci-windows.yml` runs the scanner
 on the consumer's `lint-path` after PSScriptAnalyzer. Set `complexity-strict: true`
 in a consumer's workflow to fail on findings; parse and scan failures are fatal

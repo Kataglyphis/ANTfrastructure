@@ -305,6 +305,13 @@ Five of them are RULES and stay here:
   reports, mutation results and complexity metrics. The directory is ignored by Git.
   Live `chain-status*.json` stays at the repo root.
 
+- **Preview Python refactors before accepting them.** `bash linux/scripts/refactor-python.sh --check`
+  reports formatter drift; `--apply -- <tracked.py>` makes pinned safe Ruff edits and saves a
+  patch under ignored `logs/code-quality/`. The on-demand `python-refactor.yml` workflow uploads
+  its patch with read-only repository permissions. Review the patch and run the relevant gates
+  before committing it. The general agentic loop drains the whole backlog and may commit; do not
+  use it as an unattended single-file refactor driver.
+
 ### Windows Container Build
 
 All stages use Ninja + clang-cl + lld-link on containerd + BuildKit + nerdctl, each tool where its
@@ -1238,9 +1245,10 @@ Dockerfile: [`linux-accelerator-images.md`](docs/linux-accelerator-images.md) an
   Windows PowerShell file in hub CI; the optional reusable consumer lint job reports
   the consumer's `lint-path` and gates it when `complexity-strict: true` is set.
   Use `-Path <file-or-dir> -Strict` while working on new
-  files that Git has not tracked yet. For an untracked JSON result, create
-  `logs/code-quality/complexity/` with `New-Item -ItemType Directory -Force logs/code-quality/complexity`, then add
-  `-JsonPath logs/code-quality/complexity/windows-full.json` to the strict command. Parse and scan
+  files that Git has not tracked yet. For a local JSON result, create
+  `logs/code-quality/complexity/` and add
+  `-JsonPath logs/code-quality/complexity/windows-full.json` to the strict command. CI writes
+  and uploads that same ignored report even when the strict gate finds violations. Parse and scan
   failures are fatal. Do not add exceptions or raise limits to silence findings.
 
 - **Runtime verification happens inside a container, or against raw symlink targets.** Never use

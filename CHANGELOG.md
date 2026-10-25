@@ -15,6 +15,8 @@
 
 ## 2026-10-25 — Quality debt cleanup
 
+- Add an on-demand Python refactor preview: pinned safe Ruff fixes and formatting, strict follow-up gates and an uploaded patch, with local logs ignored by Git.
+- Upload strict Windows complexity JSON from CI so each run keeps its measured results for comparison.
 - Require owned repositories to reuse or extend functionality from their shared repositories and submodules before adding another implementation.
 - Add a WSL2 quality runner that installs pinned tools and runs Linux preflight, mutation proofs and PowerShell checks with logs under ignored `logs/`.
 - Make the default hub Ruff sweep, all-file annotation scan and dynamic Linux/Windows ty reports fail on findings; add regression and mutation proofs for each verdict.

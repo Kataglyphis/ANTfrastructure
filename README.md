@@ -46,7 +46,7 @@ bash linux/scripts/build-cross-chain.sh --target-arches amd64,arm64,riscv64 --lo
 ```
 
 A fresh host starts at [Linux Host Setup](docs/linux-host-setup.md) or [Windows Host Setup](docs/windows-host-setup.md).
-From Ubuntu WSL2, run `bash linux/scripts/wsl-quality.sh setup` to install pinned tools, then `bash linux/scripts/wsl-quality.sh check` to run Linux and PowerShell checks. Generated logs, test reports and complexity metrics go in ignored `logs/`.
+From Ubuntu WSL2, run `bash linux/scripts/wsl-quality.sh setup` to install pinned tools, then `bash linux/scripts/wsl-quality.sh check` to run Linux and PowerShell checks. Use `bash linux/scripts/refactor-python.sh --check` to preview Python format debt, or `--apply -- path/to/file.py` to create a reviewable fix; [quality tooling](docs/code-quality-tooling.md#python-refactor-preview). Generated reports go in ignored `logs/`.
 
 ## Published images
 

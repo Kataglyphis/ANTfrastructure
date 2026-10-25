@@ -6,6 +6,7 @@ operating systems reach it. This file stays because WindowsWebDav.Common.psm1
 resolves `..\\certificates\\download_webdav_files.py` relative to itself, and a
 consumer pinning an older hub would otherwise find nothing here at all.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -14,7 +15,10 @@ import sys
 
 _TARGET = (
     pathlib.Path(__file__).resolve().parents[3]
-    / "linux" / "scripts" / "01-core" / "download-webdav-files.py"
+    / "linux"
+    / "scripts"
+    / "01-core"
+    / "download-webdav-files.py"
 )
 
 if not _TARGET.is_file():
